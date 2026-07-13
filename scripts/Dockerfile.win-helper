@@ -1,12 +1,27 @@
 # scripts/Dockerfile.win-helper — pinned helper tooling for the §12.2 Windows VM harness.
 #
 # build-windows-vm.sh, provision-windows-vm.sh, and verify-windows-golden.sh must not apt-install
-# host helper tools while producing or verifying artifacts. online-fetch.sh builds this image during
-# the single networked phase; every later use runs with --network=none against the local image.
-ARG BASE_DIGEST
+# host helper tools while producing or verifying artifacts. Release builds load the exact captured
+# image archive and run the verified immutable image ID with --network=none.
+ARG BASE_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
 FROM ubuntu:24.04@${BASE_DIGEST}
+ARG BASE_DIGEST
+ARG DOCKERFILE_SHA256
+ARG DPKG_MANIFEST_SHA256
 ENV DEBIAN_FRONTEND=noninteractive
+COPY Dockerfile.win-helper /usr/local/share/rustdesk-build-provenance/Dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates genisoimage libguestfs-tools linux-image-generic \
       python3 python3-olefile \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && printf '%s  %s\n' "$DOCKERFILE_SHA256" /usr/local/share/rustdesk-build-provenance/Dockerfile | sha256sum -c - \
+    && dpkg-query -W -f='${binary:Package}\t${Version}\n' | LC_ALL=C sort > /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv \
+    && printf '%s  %s\n' "$DPKG_MANIFEST_SHA256" /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv | sha256sum -c - \
+    && printf 'contract=rustdesk-build-image-v1\nrole=win-helper\nbase=ubuntu:24.04@%s\ndockerfile_sha256=%s\ndpkg_manifest_sha256=%s\n' \
+         "$BASE_DIGEST" "$DOCKERFILE_SHA256" "$DPKG_MANIFEST_SHA256" \
+         > /usr/local/share/rustdesk-build-provenance/contract-v1
+LABEL org.rustdesk.build-input.contract="rustdesk-build-image-v1" \
+      org.rustdesk.build-input.role="win-helper" \
+      org.rustdesk.build-input.base="ubuntu:24.04@${BASE_DIGEST}" \
+      org.rustdesk.build-input.dockerfile-sha256="${DOCKERFILE_SHA256}" \
+      org.rustdesk.build-input.dpkg-manifest-sha256="${DPKG_MANIFEST_SHA256}"

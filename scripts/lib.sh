@@ -85,11 +85,117 @@ verify_sha256() {
     log "sha256 OK: $(basename "$file")"
 }
 
+verify_sha512() {
+    local file="$1" expected="${2:-}"
+    [ -n "$expected" ] || die "verify_sha512: no expected hash given for $file"
+    [ "$expected" != "${SHA_PENDING:-__PENDING_R_B12__}" ] || \
+        die "verify_sha512: $file is pinned to the R-B12 sentinel"
+    [ -f "$file" ] || die "verify_sha512: file not found: $file"
+    local got
+    got="$(sha512sum "$file" | awk '{print $1}')"
+    [ "$got" = "$expected" ] || die "SHA-512 mismatch for $file: expected $expected, got $got"
+    log "sha512 OK: $(basename "$file")"
+}
+
 # ── Offline-build guards (R-B10) ──────────────────────────────────────────────
 # require_online_complete: the build runs with the network namespace removed and
 # MUST refuse to start if ./online is missing/incomplete (never silently fetch).
 require_online_complete() {
     [ -d "$ONLINE_DIR" ] || die "./online cache is absent — run scripts/online-fetch.sh first (the ONLY networked step, R-B10)"
+    require_cmd python3
+    local expected="${SHA256_ONLINE_CLOSURE_V1:-}"
+    [ -n "$expected" ] || die "pins.env is missing SHA256_ONLINE_CLOSURE_V1"
+    [ "$expected" != "${SHA_PENDING:-__PENDING_R_B12__}" ] || die "SHA256_ONLINE_CLOSURE_V1 is not established"
+    verify_online_glob_cardinality
+    python3 "$LIB_DIR/online-input-provenance.py" verify --tree "$ONLINE_DIR" --expected "$expected" \
+        || die "./online does not equal its canonical pinned closure"
+    log "./online canonical closure verified: $expected"
+}
+
+create_private_online_snapshot() {
+    [ "$#" -eq 1 ] || die "create_private_online_snapshot requires one absent destination path"
+    local expected="${SHA256_ONLINE_CLOSURE_V1:-}"
+    [ -n "$expected" ] || die "pins.env is missing SHA256_ONLINE_CLOSURE_V1"
+    require_cmd python3
+    python3 "$LIB_DIR/online-input-provenance.py" snapshot-create \
+        --source "$ONLINE_DIR" --destination "$1" --expected "$expected" \
+        || die "private ./online snapshot creation failed"
+}
+
+verify_private_online_snapshot() {
+    [ "$#" -eq 1 ] || die "verify_private_online_snapshot requires one snapshot path"
+    local expected="${SHA256_ONLINE_CLOSURE_V1:-}"
+    [ -n "$expected" ] || die "pins.env is missing SHA256_ONLINE_CLOSURE_V1"
+    require_cmd python3
+    [ "$(stat -c '%a' "$1" 2>/dev/null)" = "700" ] || die "private snapshot parent is not mode 0700: $1"
+    python3 "$LIB_DIR/online-input-provenance.py" snapshot-verify --tree "$1/online" --expected "$expected" \
+        || die "private ./online snapshot changed during build use"
+}
+
+assert_single_online_match() {
+    [ "$#" -eq 2 ] || die "assert_single_online_match requires PATTERN EXPECTED_BASENAME"
+    local pattern="$1" expected="$2" matches=()
+    mapfile -d '' matches < <(find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 -type f -name "$pattern" -print0)
+    [ "${#matches[@]}" -eq 1 ] || die "./online/$pattern must resolve to exactly one top-level regular file"
+    [ "${matches[0]}" = "$ONLINE_DIR/$expected" ] || die "./online/$pattern resolved to ${matches[0]}, expected $ONLINE_DIR/$expected"
+}
+
+verify_online_glob_cardinality() {
+    assert_single_online_match 'rust-1.*.tar.xz' "rust-${RUST_VERSION}.tar.xz"
+    assert_single_online_match 'flutter-*.tar.xz' "flutter-${FLUTTER_VERSION}.tar.xz"
+    assert_single_online_match 'llvm-*.tar.xz' "llvm-${LLVM_VERSION}.tar.xz"
+    assert_single_online_match 'flutter-windows-*.zip' "flutter-windows-${FLUTTER_VERSION}.zip"
+}
+
+verify_online_pinned_archives() {
+    verify_online_glob_cardinality
+    verify_online_shas \
+        "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
+        "rust-std-${RUST_VERSION}-aarch64-linux-android.tar.xz" "$SHA256_RUST_STD_ANDROID_1_75" \
+        "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
+        "flutter-windows-${FLUTTER_VERSION}.zip" "$SHA256_FLUTTER_WIN_3_24_5" \
+        "flutter-windows-engine.tar.gz" "$SHA256_FLUTTER_WIN_ENGINE" \
+        "flutter-pub-cache.tar.gz" "$SHA256_FLUTTER_PUB_CACHE" \
+        "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6" \
+        "llvm-windows-${LLVM_VERSION}.exe" "$SHA256_LLVM_WIN_15_0_6" \
+        "python-windows-${PYTHON_VERSION}.exe" "$SHA256_PYTHON_WIN_3_11_9" \
+        "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47" \
+        "wix-nuget.tar.gz" "$SHA256_WIX_NUGET" \
+        "android-ndk-${ANDROID_NDK_VERSION}.zip" "$SHA256_ANDROID_NDK_R28C" \
+        "android-cmdline-tools.zip" "$SHA256_ANDROID_CMDLINE_TOOLS" \
+        "vcpkg-${VCPKG_BASELINE}.tar.gz" "$SHA256_VCPKG_120DEAC3" \
+        "frb-${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz" "$SHA256_FRB_1_80_1" \
+        "win11.iso" "$SHA256_WIN11_ISO" \
+        "vs-buildtools.layout.tar" "$SHA256_VS_BUILDTOOLS" \
+        "win/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi" "$SHA256_RUST_MSVC_1_75" \
+        "win/Git-2.45.2-64-bit.exe" "$SHA256_GIT_WIN_2_45_2" \
+        "win/rustup-init.exe" "$SHA256_RUSTUP_INIT_WIN"
+    verify_sha512 "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
+}
+
+require_pinned_builder_image() {
+    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || die "require_pinned_builder_image requires ROLE [IMAGE_REF]"
+    local role="$1" image_ref="${2:-}" prefix base image_id dockerfile_sha dpkg_sha
+    case "$role" in
+        deb-builder) prefix=DEB_BUILDER; base="ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" ;;
+        android-builder) prefix=ANDROID_BUILDER; base="ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" ;;
+        win-helper) prefix=WIN_HELPER; base="ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" ;;
+        *) die "unknown builder image role: $role" ;;
+    esac
+    local image_var="${prefix}_IMAGE_ID" dockerfile_var="SHA256_${prefix}_DOCKERFILE" dpkg_var="SHA256_${prefix}_DPKG_MANIFEST"
+    image_id="${!image_var:-}"
+    dockerfile_sha="${!dockerfile_var:-}"
+    dpkg_sha="${!dpkg_var:-}"
+    [ -n "$image_id" ] && [ -n "$dockerfile_sha" ] && [ -n "$dpkg_sha" ] \
+        || die "pins.env is missing $image_var, $dockerfile_var, or $dpkg_var"
+    require_cmd python3 docker
+    local args=(
+        verify-local --role "$role" --expected-id "$image_id" --base "$base"
+        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+    )
+    [ -z "$image_ref" ] || args+=(--image-ref "$image_ref")
+    python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}" \
+        || die "pinned $role image provenance verification failed"
 }
 
 # verify_online_shas NAME1 SHA1 NAME2 SHA2 ...: re-verify each ./online artifact against its pinned

@@ -17,6 +17,7 @@ cd "$(dirname "$0")/.."
 # gate-script | one-line description
 GATES=(
   "verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"
+  "verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"
   "smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
   "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
@@ -31,7 +32,15 @@ fail=0
 for entry in "${GATES[@]}"; do
   s="${entry%%|*}"; d="${entry#*|}"
   printf '\n================ RELEASE GATE: scripts/%s ================\n%s\n' "$s" "$d"
-  if bash "scripts/$s"; then
+  if [[ "$s" == *.py* ]]; then
+    read -r -a gate_args <<< "$s"
+    python3 "scripts/${gate_args[0]}" "${gate_args[@]:1}"
+    gate_status=$?
+  else
+    bash "scripts/$s"
+    gate_status=$?
+  fi
+  if [ "$gate_status" -eq 0 ]; then
     results+=("  PASS  $s")
   else
     results+=("  FAIL  $s  ($d)")

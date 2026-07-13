@@ -292,7 +292,7 @@ pub(crate) fn new_socket(
 /// bind the same port and join the group, stealing a fraction of inbound connections — a local
 /// connection-hijack invisible to R-A4's own-process `/proc/self/net` self-check, violating
 /// R-D3's "no second listener of any kind". On Unix it keeps `SO_REUSEADDR` for a clean
-/// restart; on Windows it OMITS `SO_REUSEADDR` (whose Windows semantics are "steal the port"),
+/// restart; on Windows it leaves `SO_REUSEADDR` unset and sets `SO_EXCLUSIVEADDRUSE` before bind,
 /// so the listener bind is exclusive and cannot be hijacked. (A listening socket does not enter
 /// TIME_WAIT — that is the active-close side of an established connection, on an ephemeral port —
 /// so omitting `SO_REUSEADDR` on Windows does not impede rebinding the listener port on restart.)
@@ -301,12 +301,44 @@ pub(crate) fn new_listener_socket(addr: std::net::SocketAddr) -> Result<TcpSocke
         std::net::SocketAddr::V4(..) => TcpSocket::new_v4()?,
         std::net::SocketAddr::V6(..) => TcpSocket::new_v6()?,
     };
-    // NEVER SO_REUSEPORT (no load-balance group). SO_REUSEADDR for clean restart on non-Windows
-    // only — on Windows it is the bind-hijack enabler, so leave the listener bind exclusive there.
     #[cfg(not(windows))]
-    socket.set_reuseaddr(true).ok();
+    socket.set_reuseaddr(true)?;
+    #[cfg(windows)]
+    set_exclusive_addr_use(&socket)?;
     socket.bind(addr)?;
     Ok(socket)
+}
+
+#[cfg(windows)]
+fn set_exclusive_addr_use(socket: &TcpSocket) -> io::Result<()> {
+    use std::os::windows::io::AsRawSocket;
+    use winapi::shared::ws2def::{SOL_SOCKET, SO_EXCLUSIVEADDRUSE};
+
+    #[link(name = "Ws2_32")]
+    extern "system" {
+        fn setsockopt(
+            socket: usize,
+            level: i32,
+            option_name: i32,
+            option_value: *const i8,
+            option_length: i32,
+        ) -> i32;
+    }
+
+    let enabled: i32 = 1;
+    let result = unsafe {
+        setsockopt(
+            socket.as_raw_socket() as usize,
+            SOL_SOCKET,
+            SO_EXCLUSIVEADDRUSE,
+            (&enabled as *const i32).cast(),
+            std::mem::size_of::<i32>() as i32,
+        )
+    };
+    if result == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 impl FramedStream {
@@ -685,6 +717,14 @@ pub async fn new_listener<T: ToSocketAddrs>(addr: T, reuse: bool) -> ResultType<
     }
 }
 
+pub async fn new_exclusive_listener<T: ToSocketAddrs>(addr: T) -> ResultType<TcpListener> {
+    let addr = lookup_host(&addr)
+        .await?
+        .next()
+        .context("could not resolve exclusive listener address")?;
+    Ok(new_listener_socket(addr)?.listen(DEFAULT_BACKLOG)?)
+}
+
 pub async fn listen_any(port: u16) -> ResultType<TcpListener> {
     if let Ok(mut socket) = TcpSocket::new_v6() {
         #[cfg(unix)]
@@ -732,11 +772,10 @@ pub async fn listen_any(port: u16) -> ResultType<TcpListener> {
 /// connection.rs IPv6-prefix limiter (R-S10) as dead code by construction.
 pub async fn listen_any_v4(port: u16) -> ResultType<TcpListener> {
     // R-T11: the public listener uses the REUSEPORT-free, hijack-resistant constructor.
-    Ok(new_listener_socket(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-        port,
-    ))?
-    .listen(DEFAULT_BACKLOG)?)
+    Ok(
+        new_listener_socket(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))?
+            .listen(DEFAULT_BACKLOG)?,
+    )
 }
 
 impl Unpin for DynTcpStream {}
@@ -770,3 +809,47 @@ impl AsyncWrite for DynTcpStream {
 }
 
 impl<R: AsyncRead + AsyncWrite + Unpin> TcpStreamTrait for R {}
+
+#[cfg(all(
+    test,
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+mod exclusive_listener_tests {
+    use super::new_exclusive_listener;
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn second_exclusive_listener_bind_is_refused() {
+        let listener = new_exclusive_listener("127.0.0.1:0")
+            .await
+            .expect("first exclusive bind must succeed");
+        let addr = listener
+            .local_addr()
+            .expect("exclusive listener must have a local address");
+        let err = new_exclusive_listener(addr)
+            .await
+            .expect_err("second exclusive bind must be refused");
+        let io_error = err
+            .downcast_ref::<std::io::Error>()
+            .expect("bind failure must retain its io::Error");
+        assert_eq!(io_error.kind(), std::io::ErrorKind::AddrInUse);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn hostile_reuseaddr_socket_cannot_bind_exclusive_listener_port() {
+        let listener = new_exclusive_listener("127.0.0.1:0")
+            .await
+            .expect("first exclusive bind must succeed");
+        let addr = listener
+            .local_addr()
+            .expect("exclusive listener must have a local address");
+        let hostile = tokio::net::TcpSocket::new_v4().expect("hostile socket creation");
+        hostile
+            .set_reuseaddr(true)
+            .expect("hostile socket must explicitly set SO_REUSEADDR");
+        hostile
+            .bind(addr)
+            .expect_err("SO_REUSEADDR socket must not steal an exclusive listener port");
+    }
+}

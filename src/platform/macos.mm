@@ -239,11 +239,12 @@ extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm
                                 kAuthorizationFlagExtendRights;
     status = AuthorizationCopyRights(authRef, &authRights, kAuthorizationEmptyEnvironment, flags, NULL);
     if (status == errAuthorizationSuccess) {
-        AuthorizationExternalForm externalForm;
+        AuthorizationExternalForm externalForm = {};
         status = AuthorizationMakeExternalForm(authRef, &externalForm);
         if (status == errAuthorizationSuccess) {
             memcpy(buffer, &externalForm, sizeof(externalForm));
         }
+        explicit_bzero(&externalForm, sizeof(externalForm));
     }
 
     AuthorizationFree(authRef, kAuthorizationFlagDefaults);
@@ -259,11 +260,12 @@ extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm
         return false;
     }
 
-    AuthorizationExternalForm externalForm;
+    AuthorizationExternalForm externalForm = {};
     memcpy(&externalForm, buffer, sizeof(externalForm));
 
     AuthorizationRef authRef = NULL;
     OSStatus status = AuthorizationCreateFromExternalForm(&externalForm, &authRef);
+    explicit_bzero(&externalForm, sizeof(externalForm));
     if (status != errAuthorizationSuccess) {
         return false;
     }
@@ -460,8 +462,6 @@ extern "C" bool MacSetMode(CGDirectDisplayID display, uint32_t width, uint32_t h
     return ret;
 }
 
-static CFMachPortRef g_eventTap = NULL;
-static CFRunLoopSourceRef g_runLoopSource = NULL;
 static std::mutex g_privacyModeMutex;
 static bool g_privacyModeActive = false;
 
@@ -804,130 +804,6 @@ static void DisplayReconfigurationCallback(CGDirectDisplayID display, CGDisplayC
     }
 }
 
-CGEventRef MyEventTapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
-    (void)proxy;
-    (void)refcon;
-    
-    // Handle EventTap being disabled by system timeout
-    if (type == kCGEventTapDisabledByTimeout) {
-        NSLog(@"EventTap was disabled by timeout, re-enabling");
-        if (g_eventTap) {
-            CGEventTapEnable(g_eventTap, true);
-        }
-        return event;
-    }
-    
-    // Handle EventTap being disabled by user input
-    if (type == kCGEventTapDisabledByUserInput) {
-        NSLog(@"EventTap was disabled by user input, re-enabling");
-        if (g_eventTap) {
-            CGEventTapEnable(g_eventTap, true);
-        }
-        return event;
-    }
-    
-    // Allow events explicitly injected by enigo (remote input), identified via custom user data.
-    int64_t userData = CGEventGetIntegerValueField(event, kCGEventSourceUserData);
-    if (userData == ENIGO_INPUT_EXTRA_VALUE) {
-        return event;
-    }
-    // Block local physical HID input.
-    if (CGEventGetIntegerValueField(event, kCGEventSourceStateID) == kCGEventSourceStateHIDSystemState) {
-        return NULL;
-    }
-    return event;
-}
-
-// Helper function to set up EventTap on the main thread
-// Returns true if EventTap was successfully created and enabled
-static bool SetupEventTapOnMainThread() {
-    __block bool success = false;
-    
-    void (^setupBlock)(void) = ^{
-        if (g_eventTap) {
-            // Already set up
-            success = true;
-            return;
-        }
-        
-        // Note: kCGEventTapDisabledByTimeout and kCGEventTapDisabledByUserInput are special
-        // notification types (0xFFFFFFFE and 0xFFFFFFFF) that are delivered via the callback's
-        // type parameter, not through the event mask. They should NOT be included in eventMask
-        // as bit-shifting by these values causes undefined behavior.
-        CGEventMask eventMask = (1 << kCGEventKeyDown) | (1 << kCGEventKeyUp) |
-                                (1 << kCGEventLeftMouseDown) | (1 << kCGEventLeftMouseUp) |
-                                (1 << kCGEventRightMouseDown) | (1 << kCGEventRightMouseUp) |
-                                (1 << kCGEventOtherMouseDown) | (1 << kCGEventOtherMouseUp) |
-                                (1 << kCGEventLeftMouseDragged) | (1 << kCGEventRightMouseDragged) |
-                                (1 << kCGEventOtherMouseDragged) |
-                                (1 << kCGEventMouseMoved) | (1 << kCGEventScrollWheel);
-        
-        g_eventTap = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
-                                      eventMask, MyEventTapCallback, NULL);
-        if (g_eventTap) {
-            g_runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_eventTap, 0);
-            CFRunLoopAddSource(CFRunLoopGetMain(), g_runLoopSource, kCFRunLoopCommonModes);
-            CGEventTapEnable(g_eventTap, true);
-            success = true;
-        } else {
-            NSLog(@"MacSetPrivacyMode: Failed to create CGEventTap; input blocking not enabled.");
-            success = false;
-        }
-    };
-    
-    // Execute on main thread to ensure CFRunLoop operations are safe.
-    // Use dispatch_sync if not on main thread, otherwise execute directly to avoid deadlock.
-    //
-    // IMPORTANT: Potential deadlock consideration:
-    // Using dispatch_sync while holding g_privacyModeMutex could deadlock if the main thread
-    // tries to acquire g_privacyModeMutex. Currently this is safe because:
-    // 1. MacSetPrivacyMode (which holds the mutex) is only called from background threads
-    // 2. The main thread never directly calls MacSetPrivacyMode
-    // If this assumption changes in the future, consider releasing the mutex before dispatch_sync
-    // or restructuring the locking strategy.
-    if ([NSThread isMainThread]) {
-        setupBlock();
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), setupBlock);
-    }
-    
-    return success;
-}
-
-// Helper function to tear down EventTap on the main thread
-static void TeardownEventTapOnMainThread() {
-    void (^teardownBlock)(void) = ^{
-        if (g_eventTap) {
-            CGEventTapEnable(g_eventTap, false);
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), g_runLoopSource, kCFRunLoopCommonModes);
-            CFRelease(g_runLoopSource);
-            CFRelease(g_eventTap);
-            g_eventTap = NULL;
-            g_runLoopSource = NULL;
-        }
-    };
-    
-    // Execute on main thread to ensure CFRunLoop operations are safe.
-    //
-    // NOTE: We use dispatch_sync here instead of dispatch_async because:
-    // 1. TurnOffPrivacyModeInternal() expects EventTap to be fully torn down before
-    //    proceeding with gamma restoration - using async would cause race conditions.
-    // 2. The caller (MacSetPrivacyMode) needs deterministic cleanup order.
-    //
-    // IMPORTANT: Potential deadlock consideration (same as SetupEventTapOnMainThread):
-    // Using dispatch_sync while holding g_privacyModeMutex could deadlock if the main thread
-    // tries to acquire g_privacyModeMutex. Currently this is safe because:
-    // 1. MacSetPrivacyMode (which holds the mutex) is only called from background threads
-    // 2. The main thread never directly calls MacSetPrivacyMode
-    // If this assumption changes in the future, consider releasing the mutex before dispatch_sync
-    // or restructuring the locking strategy.
-    if ([NSThread isMainThread]) {
-        teardownBlock();
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), teardownBlock);
-    }
-}
-
 // Internal function to turn off privacy mode without acquiring the mutex
 // Must be called while holding g_privacyModeMutex
 static bool TurnOffPrivacyModeInternal() {
@@ -938,13 +814,10 @@ static bool TurnOffPrivacyModeInternal() {
     // 1. Unregister display reconfiguration callback
     CGDisplayRemoveReconfigurationCallback(DisplayReconfigurationCallback, NULL);
     
-    // 2. Input - restore (tear down EventTap on main thread)
-    TeardownEventTapOnMainThread();
-
-    // 3. Gamma - restore using UUID to find current DisplayID
+    // 2. Gamma - restore using UUID to find current DisplayID
     bool restoreSuccess = RestoreAllGammas();
     
-    // 4. Fallback: Always call CGDisplayRestoreColorSyncSettings as a safety net
+    // 3. Fallback: Always call CGDisplayRestoreColorSyncSettings as a safety net
     // This ensures displays return to normal even if our restoration failed or
     // if the system (ColorSync/Night Shift) modified gamma during privacy mode
     CGDisplayRestoreColorSyncSettings();
@@ -967,15 +840,10 @@ extern "C" bool MacSetPrivacyMode(bool on) {
             return true;
         }
         
-        // 1. Input Blocking - set up EventTap on main thread
-        if (!SetupEventTapOnMainThread()) {
-            return false;
-        }
-
-        // 2. Register display reconfiguration callback to handle hot-plug events
+        // 1. Register display reconfiguration callback to handle hot-plug events
         CGDisplayRegisterReconfigurationCallback(DisplayReconfigurationCallback, NULL);
 
-        // 3. Gamma Blackout
+        // 2. Gamma Blackout
         uint32_t count = 0;
         CGGetOnlineDisplayList(0, NULL, &count);
         std::vector<CGDirectDisplayID> displays(count);
@@ -994,9 +862,8 @@ extern "C" bool MacSetPrivacyMode(bool on) {
                 // to ensure user privacy. If we can't identify a display (no UUID), 
                 // we can't safely manage its state or restore it later.
                 // Therefore, we must abort the entire operation and clean up any resources
-                // already allocated (like event taps and reconfiguration callbacks).
+                // already allocated.
                 CGDisplayRemoveReconfigurationCallback(DisplayReconfigurationCallback, NULL);
-                TeardownEventTapOnMainThread();
                 // Restore gamma for displays that were already blacked out before this failure
                 if (!RestoreAllGammas()) {
                     // If any display failed to restore, use system reset as fallback
@@ -1047,9 +914,8 @@ extern "C" bool MacSetPrivacyMode(bool on) {
         // Return false if any display failed to blackout - privacy mode requires ALL displays to be blacked out
         if (blackoutAttemptCount > 0 && blackoutSuccessCount < blackoutAttemptCount) {
             NSLog(@"MacSetPrivacyMode: Failed to blackout all displays (%u/%u succeeded)", blackoutSuccessCount, blackoutAttemptCount);
-            // Clean up: unregister callback and disable event tap since we're failing
+            // Clean up the display callback before restoring gamma.
             CGDisplayRemoveReconfigurationCallback(DisplayReconfigurationCallback, NULL);
-            TeardownEventTapOnMainThread();
             // Restore gamma for displays that were successfully blacked out
             if (!RestoreAllGammas()) {
                 // If any display failed to restore, use system reset as fallback

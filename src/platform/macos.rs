@@ -1128,12 +1128,13 @@ pub fn ensure_service_owned_unattended_password_authorization_right() -> bool {
     unsafe { MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight() == YES }
 }
 
-pub fn service_owned_unattended_password_authorization() -> ResultType<Vec<u8>> {
+pub fn service_owned_unattended_password_authorization(
+) -> ResultType<crate::ipc::password::SensitiveAuthorization> {
     let len = authorization_external_form_len()?;
-    let mut authorization = vec![0u8; len];
+    let mut authorization = crate::ipc::password::SensitiveAuthorization::new(vec![0u8; len])?;
     if unsafe {
         MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm(
-            authorization.as_mut_ptr(),
+            authorization.as_mut_bytes().as_mut_ptr(),
             len,
         )
     } == YES

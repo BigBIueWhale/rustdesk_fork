@@ -1,5 +1,7 @@
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use hbb_common::password_security;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::sleep;
 use hbb_common::{
     allow_err,
     bytes::Bytes,
@@ -7,11 +9,6 @@ use hbb_common::{
     directories_next,
     futures::future::join_all,
     log, tokio,
-};
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::{
-    sleep,
-    tokio::{sync::mpsc, time},
 };
 use serde_derive::Serialize;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -53,9 +50,11 @@ lazy_static::lazy_static! {
 lazy_static::lazy_static! {
     static ref OPTION_SYNCED: Arc<Mutex<bool>> = Default::default();
     static ref OPTIONS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(Config::get_options()));
-    pub static ref SENDER : Mutex<mpsc::UnboundedSender<ipc::Data>> = Mutex::new(check_connect_status(true));
     static ref CHILDREN : Children = Default::default();
 }
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static OPTION_STATUS_SYNC: std::sync::Once = std::sync::Once::new();
 
 #[cfg(target_os = "windows")]
 lazy_static::lazy_static! {
@@ -508,16 +507,17 @@ pub fn can_set_permanent_password() -> bool {
 }
 
 pub fn set_permanent_password_with_result(password: String) -> bool {
-    if !can_set_permanent_password() {
-        return false;
-    }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
+        if !can_set_permanent_password() {
+            return false;
+        }
         return config::Config::set_permanent_password(&password);
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        match crate::ipc::set_permanent_password(password) {
+        let password = crate::ipc::SensitivePassword::new(password);
+        match crate::ipc::set_permanent_password_sensitive(password) {
             Ok(()) => true,
             Err(err) => {
                 log::warn!("Failed to set permanent password: {err}");
@@ -933,19 +933,17 @@ pub fn new_remote(id: String, remote_type: String, _force_relay: bool) {
     }
 }
 
-// Make sure `SENDER` is inited here.
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn start_option_status_sync() {
-    let _sender = SENDER.lock().unwrap();
-}
-
-// not call directly
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn check_connect_status(reconnect: bool) -> mpsc::UnboundedSender<ipc::Data> {
-    let (tx, rx) = mpsc::unbounded_channel::<ipc::Data>();
-    std::thread::spawn(move || check_connect_status_(reconnect, rx));
-    tx
+    OPTION_STATUS_SYNC.call_once(|| {
+        if let Err(err) = std::thread::Builder::new()
+            .name("main-ipc-status".to_owned())
+            .spawn(check_connect_status)
+        {
+            log::error!("Failed to start main IPC status synchronization: {err}");
+        }
+    });
 }
 
 #[cfg(feature = "flutter")]
@@ -975,82 +973,46 @@ pub fn get_login_device_info_json() -> String {
     serde_json::to_string(&get_login_device_info()).unwrap_or("{}".to_string())
 }
 
-// notice: avoiding create ipc connection repeatedly,
-// because windows named pipe has serious memory leak issue.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc::Data>) {
-    let mut rx = rx;
-    #[cfg(not(feature = "flutter"))]
-    let mut id = "".to_owned();
+async fn check_connect_status() {
     let is_cm = crate::common::is_cm();
+    let mut was_connected = false;
 
     loop {
-        if let Ok(mut c) = ipc::connect(1000, "").await {
-            let mut timer = crate::rustdesk_interval(time::interval(time::Duration::from_secs(1)));
-            loop {
-                tokio::select! {
-                    res = c.next() => {
-                        match res {
-                            Err(err) => {
-                                log::error!("ipc connection closed: {}", err);
-                                if is_cm {
-                                    crate::ui_cm_interface::quit_cm();
-                                }
-                                break;
-                            }
-                            Ok(Some(ipc::Data::Options(Some(v)))) => {
-                                *OPTIONS.lock().unwrap() = v;
-                                *OPTION_SYNCED.lock().unwrap() = true;
-                            }
-                            Ok(Some(ipc::Data::ConfigValue((name, Some(value))))) => {
-                                if name == "id" {
-                                    #[cfg(not(feature = "flutter"))]
-                                    {
-                                        id = value;
-                                    }
-                                }
-                                // R-X7: the "temporary-password" sync arm is removed; consume
-                                // `value` so it is not flagged unused on the flutter cfg (where the
-                                // only other reader, the `id = value` above, is compiled out).
-                                #[cfg(feature = "flutter")]
-                                let _ = value;
-                            }
-                            #[cfg(target_os = "windows")]
-                            Ok(Some(ipc::Data::FileTransferEnabledState(v))) => {
-                                if let Some(enabled) = v {
-                                    let mut lock = IS_FILE_TRANSFER_ENABLED.lock().unwrap();
-                                    if *lock != v {
-                                        clipboard::ContextSend::enable(enabled);
-                                        *lock = v;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
+        match ipc::get_main_status_snapshot(1000).await {
+            Ok(snapshot) => {
+                was_connected = true;
+                let options = match snapshot.options.into_map() {
+                    Ok(options) => options,
+                    Err(err) => {
+                        log::error!("Main IPC returned invalid status options: {err}");
+                        sleep(1.).await;
+                        continue;
                     }
-                    Some(data) = rx.recv() => {
-                        allow_err!(c.send(&data).await);
-                    }
-                    _ = timer.tick() => {
-                        c.send(&ipc::Data::Options(None)).await.ok();
-                        c.send(&ipc::Data::ConfigRequest("id".to_owned())).await.ok();
-                        #[cfg(target_os = "windows")]
-                        c.send(&ipc::Data::FileTransferEnabledState(None)).await.ok();
+                };
+                *OPTIONS.lock().unwrap() = options;
+                *OPTION_SYNCED.lock().unwrap() = true;
+                *UI_STATUS.lock().unwrap() = UiStatus {
+                    #[cfg(not(feature = "flutter"))]
+                    id: snapshot.id,
+                };
+                #[cfg(target_os = "windows")]
+                if let Some(enabled) = snapshot.file_transfer_enabled {
+                    let mut current = IS_FILE_TRANSFER_ENABLED.lock().unwrap();
+                    if *current != Some(enabled) {
+                        clipboard::ContextSend::enable(enabled);
+                        *current = Some(enabled);
                     }
                 }
             }
-        }
-        if !reconnect {
-            OPTIONS
-                .lock()
-                .unwrap()
-                .insert("ipc-closed".to_owned(), "Y".to_owned());
-            break;
-        }
-        *UI_STATUS.lock().unwrap() = UiStatus {
-            #[cfg(not(feature = "flutter"))]
-            id: id.clone(),
+            Err(err) => {
+                log::trace!("Main IPC status transaction failed: {err}");
+                if was_connected && is_cm {
+                    crate::ui_cm_interface::quit_cm();
+                    return;
+                }
+            }
         };
         sleep(1.).await;
     }

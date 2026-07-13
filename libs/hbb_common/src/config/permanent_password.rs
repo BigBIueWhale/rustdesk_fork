@@ -140,7 +140,9 @@ const CPACE_PRS_MEMLIMIT: usize = 64 * 1024 * 1024;
 /// This is the SINGLE source of truth for the PRS bytes — both the base64 PRS string
 /// and the at-rest storage are built from it.
 fn derive_cpace_prs_raw(password: &str) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> {
-    use sodiumoxide::crypto::pwhash::argon2id13::{derive_key, MemLimit, OpsLimit, Salt, SALTBYTES};
+    use sodiumoxide::crypto::pwhash::argon2id13::{
+        derive_key, MemLimit, OpsLimit, Salt, SALTBYTES,
+    };
     // R-P1: the IDENTICAL NFC (no case-fold) normalization the CPace path applies to
     // the password before the PAKE — so the Argon2id input and the PAKE input are the
     // same bytes. Empty after normalization ⇒ no credential (R-S9).

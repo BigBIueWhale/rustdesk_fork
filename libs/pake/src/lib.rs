@@ -27,7 +27,7 @@ use curve25519_dalek::traits::IsIdentity;
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha512};
-use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::{canonical_combining_class, compose, decompose_canonical};
 use zeroize::{Zeroize, Zeroizing};
 
 type HmacSha512 = Hmac<Sha512>;
@@ -310,6 +310,386 @@ fn verify_tag(mac_key: &[u8; 64], y: &[u8], ad: &[u8], tag: &[u8; 64]) -> bool {
     mac.verify_slice(tag).is_ok()
 }
 
+#[derive(Debug)]
+enum NfcNormalizeError {
+    Allocation,
+    LengthOverflow,
+    Invariant,
+}
+
+fn canonical_decomposition_len(password: &str) -> Result<usize, NfcNormalizeError> {
+    let mut len = Some(0usize);
+    for scalar in password.chars() {
+        decompose_canonical(scalar, |_| {
+            if let Some(current) = len {
+                len = current.checked_add(1);
+            }
+        });
+    }
+    len.ok_or(NfcNormalizeError::LengthOverflow)
+}
+
+fn allocate_zeroed_vec<T: Default>(len: usize) -> Result<Vec<T>, NfcNormalizeError> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(len)
+        .map_err(|_| NfcNormalizeError::Allocation)?;
+    values.resize_with(len, T::default);
+    Ok(values)
+}
+
+fn allocate_zeroizing_box<T>(len: usize) -> Result<Zeroizing<Box<[T]>>, NfcNormalizeError>
+where
+    T: Default + Zeroize,
+{
+    // Any capacity adjustment performed by into_boxed_slice sees only defaults.
+    // Once returned, the allocation is fixed and zeroizes its complete contents.
+    Ok(Zeroizing::new(allocate_zeroed_vec(len)?.into_boxed_slice()))
+}
+
+fn fill_canonical_decomposition(
+    password: &str,
+    scalars: &mut [u32],
+    classes: &mut [u8],
+) -> Result<(), NfcNormalizeError> {
+    if scalars.len() != classes.len() {
+        return Err(NfcNormalizeError::Invariant);
+    }
+
+    let mut next = 0usize;
+    let mut valid = true;
+    for scalar in password.chars() {
+        decompose_canonical(scalar, |decomposed| {
+            if !valid {
+                return;
+            }
+            match (scalars.get_mut(next), classes.get_mut(next)) {
+                (Some(scalar_slot), Some(class_slot)) => {
+                    *scalar_slot = decomposed as u32;
+                    *class_slot = canonical_combining_class(decomposed);
+                    if let Some(index) = next.checked_add(1) {
+                        next = index;
+                    } else {
+                        valid = false;
+                    }
+                }
+                _ => valid = false,
+            }
+        });
+    }
+
+    if valid && next == scalars.len() {
+        Ok(())
+    } else {
+        Err(NfcNormalizeError::Invariant)
+    }
+}
+
+fn add_order_work(work: &mut usize, amount: usize) -> Result<(), NfcNormalizeError> {
+    *work = work
+        .checked_add(amount)
+        .ok_or(NfcNormalizeError::LengthOverflow)?;
+    Ok(())
+}
+
+fn copy_ordered_scalar(
+    scalars: &[u32],
+    classes: &[u8],
+    ordered_scalars: &mut [u32],
+    ordered_classes: &mut [u8],
+    source: usize,
+    destination: usize,
+) -> Result<(), NfcNormalizeError> {
+    let scalar = *scalars.get(source).ok_or(NfcNormalizeError::Invariant)?;
+    let class = *classes.get(source).ok_or(NfcNormalizeError::Invariant)?;
+    let scalar_slot = ordered_scalars
+        .get_mut(destination)
+        .ok_or(NfcNormalizeError::Invariant)?;
+    let class_slot = ordered_classes
+        .get_mut(destination)
+        .ok_or(NfcNormalizeError::Invariant)?;
+    *scalar_slot = scalar;
+    *class_slot = class;
+    Ok(())
+}
+
+fn canonical_order(
+    scalars: &mut [u32],
+    classes: &mut [u8],
+    ordered_scalars: &mut [u32],
+    ordered_classes: &mut [u8],
+) -> Result<usize, NfcNormalizeError> {
+    let len = scalars.len();
+    if classes.len() != len || ordered_scalars.len() != len || ordered_classes.len() != len {
+        return Err(NfcNormalizeError::Invariant);
+    }
+
+    let mut counts = Zeroizing::new([0usize; 256]);
+    let mut positions = Zeroizing::new([0usize; 256]);
+    let mut used_classes = Zeroizing::new([0u64; 4]);
+    let mut segment_start = 0usize;
+    let mut work = 0usize;
+
+    while segment_start < len {
+        let first_class = *classes
+            .get(segment_start)
+            .ok_or(NfcNormalizeError::Invariant)?;
+        add_order_work(&mut work, 1)?;
+        let marks_start = if first_class == 0 {
+            copy_ordered_scalar(
+                scalars,
+                classes,
+                ordered_scalars,
+                ordered_classes,
+                segment_start,
+                segment_start,
+            )?;
+            add_order_work(&mut work, 1)?;
+            segment_start
+                .checked_add(1)
+                .ok_or(NfcNormalizeError::LengthOverflow)?
+        } else {
+            segment_start
+        };
+
+        let mut segment_end = marks_start;
+        while segment_end < len {
+            let class = *classes
+                .get(segment_end)
+                .ok_or(NfcNormalizeError::Invariant)?;
+            add_order_work(&mut work, 1)?;
+            if class == 0 {
+                break;
+            }
+            segment_end = segment_end
+                .checked_add(1)
+                .ok_or(NfcNormalizeError::LengthOverflow)?;
+        }
+
+        let marks_len = segment_end
+            .checked_sub(marks_start)
+            .ok_or(NfcNormalizeError::Invariant)?;
+        if marks_len <= 1 {
+            if marks_len == 1 {
+                copy_ordered_scalar(
+                    scalars,
+                    classes,
+                    ordered_scalars,
+                    ordered_classes,
+                    marks_start,
+                    marks_start,
+                )?;
+                add_order_work(&mut work, 1)?;
+            }
+        } else {
+            for source in marks_start..segment_end {
+                let class = *classes.get(source).ok_or(NfcNormalizeError::Invariant)?;
+                if class == 0 {
+                    return Err(NfcNormalizeError::Invariant);
+                }
+                let bucket = usize::from(class);
+                let count = counts.get_mut(bucket).ok_or(NfcNormalizeError::Invariant)?;
+                if *count == 0 {
+                    let word_index = bucket / 64;
+                    let bit_index = bucket % 64;
+                    let word = used_classes
+                        .get_mut(word_index)
+                        .ok_or(NfcNormalizeError::Invariant)?;
+                    *word |= 1u64 << bit_index;
+                }
+                *count = count
+                    .checked_add(1)
+                    .ok_or(NfcNormalizeError::LengthOverflow)?;
+                add_order_work(&mut work, 1)?;
+            }
+
+            let mut next = marks_start;
+            for word_index in 0usize..4 {
+                let word = used_classes
+                    .get_mut(word_index)
+                    .ok_or(NfcNormalizeError::Invariant)?;
+                let mut bits = *word;
+                *word = 0;
+                add_order_work(&mut work, 1)?;
+
+                while bits != 0 {
+                    let bit_index = bits.trailing_zeros() as usize;
+                    let bucket = word_index
+                        .checked_mul(64)
+                        .and_then(|base| base.checked_add(bit_index))
+                        .ok_or(NfcNormalizeError::LengthOverflow)?;
+                    let count = counts.get_mut(bucket).ok_or(NfcNormalizeError::Invariant)?;
+                    let position = positions
+                        .get_mut(bucket)
+                        .ok_or(NfcNormalizeError::Invariant)?;
+                    *position = next;
+                    next = next
+                        .checked_add(*count)
+                        .ok_or(NfcNormalizeError::LengthOverflow)?;
+                    *count = 0;
+                    bits &= bits - 1;
+                    add_order_work(&mut work, 1)?;
+                }
+            }
+            if next != segment_end {
+                return Err(NfcNormalizeError::Invariant);
+            }
+
+            // Reading source scalars in their original order makes placement
+            // stable for equal canonical combining classes.
+            for source in marks_start..segment_end {
+                let class = *classes.get(source).ok_or(NfcNormalizeError::Invariant)?;
+                let position = positions
+                    .get_mut(usize::from(class))
+                    .ok_or(NfcNormalizeError::Invariant)?;
+                let destination = *position;
+                copy_ordered_scalar(
+                    scalars,
+                    classes,
+                    ordered_scalars,
+                    ordered_classes,
+                    source,
+                    destination,
+                )?;
+                *position = position
+                    .checked_add(1)
+                    .ok_or(NfcNormalizeError::LengthOverflow)?;
+                add_order_work(&mut work, 1)?;
+            }
+        }
+
+        if segment_end <= segment_start {
+            return Err(NfcNormalizeError::Invariant);
+        }
+        segment_start = segment_end;
+    }
+
+    scalars.copy_from_slice(ordered_scalars);
+    classes.copy_from_slice(ordered_classes);
+    add_order_work(&mut work, len)?;
+    Ok(work)
+}
+
+fn canonical_compose(scalars: &mut [u32], classes: &mut [u8]) -> Result<usize, NfcNormalizeError> {
+    if scalars.len() != classes.len() {
+        return Err(NfcNormalizeError::Invariant);
+    }
+
+    let mut write = 0usize;
+    let mut starter = None;
+    let mut last_class = 0u8;
+
+    for read in 0..scalars.len() {
+        let scalar = scalars[read];
+        let class = classes[read];
+        let current = char::from_u32(scalar).ok_or(NfcNormalizeError::Invariant)?;
+
+        if let Some(starter_index) = starter {
+            if last_class == 0 || last_class < class {
+                let starter_scalar = scalars[starter_index];
+                let starter_char =
+                    char::from_u32(starter_scalar).ok_or(NfcNormalizeError::Invariant)?;
+                if let Some(composite) = compose(starter_char, current) {
+                    scalars[starter_index] = composite as u32;
+                    continue;
+                }
+            }
+        }
+
+        match (scalars.get_mut(write), classes.get_mut(write)) {
+            (Some(scalar_slot), Some(class_slot)) => {
+                *scalar_slot = scalar;
+                *class_slot = class;
+            }
+            _ => return Err(NfcNormalizeError::Invariant),
+        }
+        let destination = write;
+        write = write
+            .checked_add(1)
+            .ok_or(NfcNormalizeError::LengthOverflow)?;
+
+        if class == 0 {
+            starter = Some(destination);
+            last_class = 0;
+        } else if starter.is_some() {
+            last_class = class;
+        }
+    }
+
+    Ok(write)
+}
+
+fn normalized_utf8_len(scalars: &[u32], composed_len: usize) -> Result<usize, NfcNormalizeError> {
+    let composed = scalars
+        .get(..composed_len)
+        .ok_or(NfcNormalizeError::Invariant)?;
+    let mut utf8_len = 0usize;
+    for &scalar in composed {
+        let scalar = char::from_u32(scalar).ok_or(NfcNormalizeError::Invariant)?;
+        utf8_len = utf8_len
+            .checked_add(scalar.len_utf8())
+            .ok_or(NfcNormalizeError::LengthOverflow)?;
+    }
+    Ok(utf8_len)
+}
+
+fn encode_normalized_into(
+    scalars: &[u32],
+    composed_len: usize,
+    output: &mut [u8],
+) -> Result<(), NfcNormalizeError> {
+    let composed = scalars
+        .get(..composed_len)
+        .ok_or(NfcNormalizeError::Invariant)?;
+    let mut offset = 0usize;
+
+    for &scalar in composed {
+        let scalar = char::from_u32(scalar).ok_or(NfcNormalizeError::Invariant)?;
+        let end = offset
+            .checked_add(scalar.len_utf8())
+            .ok_or(NfcNormalizeError::LengthOverflow)?;
+        let destination = output
+            .get_mut(offset..end)
+            .ok_or(NfcNormalizeError::Invariant)?;
+        scalar.encode_utf8(destination);
+        offset = end;
+    }
+
+    if offset == output.len() {
+        Ok(())
+    } else {
+        Err(NfcNormalizeError::Invariant)
+    }
+}
+
+fn encode_normalized(
+    scalars: &[u32],
+    composed_len: usize,
+) -> Result<Zeroizing<Vec<u8>>, NfcNormalizeError> {
+    let utf8_len = normalized_utf8_len(scalars, composed_len)?;
+    let mut output = Zeroizing::new(allocate_zeroed_vec(utf8_len)?);
+    encode_normalized_into(scalars, composed_len, &mut output)?;
+    Ok(output)
+}
+
+fn try_nfc_normalize(password: &str) -> Result<Zeroizing<Vec<u8>>, NfcNormalizeError> {
+    let decomposed_len = canonical_decomposition_len(password)?;
+    let mut scalars = allocate_zeroizing_box::<u32>(decomposed_len)?;
+    let mut classes = allocate_zeroizing_box::<u8>(decomposed_len)?;
+    let mut ordered_scalars = allocate_zeroizing_box::<u32>(decomposed_len)?;
+    let mut ordered_classes = allocate_zeroizing_box::<u8>(decomposed_len)?;
+
+    fill_canonical_decomposition(password, &mut scalars, &mut classes)?;
+    canonical_order(
+        &mut scalars,
+        &mut classes,
+        &mut ordered_scalars,
+        &mut ordered_classes,
+    )?;
+    let composed_len = canonical_compose(&mut scalars, &mut classes)?;
+    encode_normalized(&scalars, composed_len)
+}
+
 /// R-P1: the EXACT NFC (no case-fold) password normalization the CPace PRS uses — a
 /// deliberate NFC-only subset of RFC 8265 OpaqueString. Exposed (and reused by
 /// `normalize_prs` below) so the at-rest memory-hard PRS derivation
@@ -318,10 +698,14 @@ fn verify_tag(mac_key: &[u8; 64], y: &[u8], ad: &[u8], tag: &[u8; 64]) -> bool {
 /// Argon2id MUST be the same, or the controlled side's stored PRS and the viewer's
 /// freshly-derived PRS would never agree. Returns the NFC bytes (may be empty after
 /// normalization — the caller enforces the non-empty/empty-PRS guard, R-S9). The
-/// result self-wipes (`Zeroizing`).
+/// result self-wipes (`Zeroizing`). Allocation is fixed before plaintext-derived
+/// values are written; an allocation or checked-length failure aborts only after
+/// every populated zeroizing allocation has been dropped.
 pub fn nfc_normalize(password: &str) -> Zeroizing<Vec<u8>> {
-    let prs: String = password.nfc().collect();
-    Zeroizing::new(prs.into_bytes())
+    match try_nfc_normalize(password) {
+        Ok(normalized) => normalized,
+        Err(_) => std::process::abort(),
+    }
 }
 
 /// PRS = NFC(password), no case-fold — a deliberate NFC-only subset of RFC 8265
@@ -628,6 +1012,329 @@ impl ResponderAwaitConfirm {
             },
             Step4 { tb },
         ))
+    }
+}
+
+#[cfg(test)]
+mod nfc_normalization_tests {
+    use super::*;
+    use unicode_normalization::UnicodeNormalization;
+
+    fn reference_nfc(input: &str) -> Vec<u8> {
+        input.nfc().collect::<String>().into_bytes()
+    }
+
+    fn assert_matches_reference(input: &str) {
+        let expected = reference_nfc(input);
+        let actual = nfc_normalize(input);
+        assert_eq!(&actual[..], expected.as_slice());
+    }
+
+    #[test]
+    fn nfc_matches_representative_unicode() {
+        for input in [
+            "",
+            "plain ASCII password",
+            "\0embedded\0null",
+            "\u{e9}",
+            "e\u{301}",
+            "\u{212b}",
+            "\u{2126}",
+            "\u{f900}",
+            "\u{1f71}",
+            "A\u{302}\u{301}",
+            "\u{1f469}\u{200d}\u{1f4bb}",
+            "\u{315}\u{300}\u{5ae}\u{301}\u{327}",
+        ] {
+            assert_matches_reference(input);
+        }
+    }
+
+    #[test]
+    fn nfc_orders_stably_and_obeys_composition_blocking() {
+        for input in [
+            "a\u{315}\u{300}\u{5ae}\u{301}\u{327}",
+            "\u{315}\u{300}\u{5ae}\u{301}\u{327}a",
+            "A\u{327}\u{30a}",
+            "A\u{305}\u{301}",
+            "x\u{317}\u{316}",
+            "a\u{301}\u{301}\u{300}\u{300}",
+        ] {
+            assert_matches_reference(input);
+        }
+
+        assert_eq!(
+            canonical_combining_class('\u{317}'),
+            canonical_combining_class('\u{316}')
+        );
+        assert_eq!(
+            &nfc_normalize("x\u{317}\u{316}")[..],
+            "x\u{317}\u{316}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("A\u{305}\u{301}")[..],
+            "A\u{305}\u{301}".as_bytes()
+        );
+    }
+
+    #[test]
+    fn nfc_handles_leading_nonstarters_and_cross_scalar_composition() {
+        for input in [
+            "\u{315}\u{300}A\u{30a}",
+            "\u{212b}\u{301}",
+            "D\u{307}\u{323}",
+            "A\u{30a}\u{301}B\u{327}\u{301}",
+            "\u{1100}\u{1161}\u{11a8}\u{1102}\u{1161}",
+        ] {
+            assert_matches_reference(input);
+        }
+
+        assert_eq!(
+            &nfc_normalize("\u{315}\u{300}A\u{30a}")[..],
+            "\u{300}\u{315}\u{c5}".as_bytes()
+        );
+        assert_eq!(&nfc_normalize("\u{212b}\u{301}")[..], "\u{1fa}".as_bytes());
+    }
+
+    #[test]
+    fn nfc_composes_and_decomposes_hangul_exactly() {
+        for input in [
+            "\u{1100}\u{1161}",
+            "\u{1100}\u{1161}\u{11a8}",
+            "\u{1100}\u{301}\u{1161}",
+            "\u{1112}\u{1175}\u{11c2}",
+            "\u{1113}\u{1161}",
+            "\u{1100}\u{1176}",
+            "\u{ac00}\u{11a7}",
+            "\u{d788}\u{11c2}",
+            "\u{d788}\u{11c3}",
+            "\u{ac00}",
+            "\u{ac01}",
+            "\u{d7a3}",
+            "\u{1102}\u{1161}\u{11ab}\u{1103}\u{1161}",
+            "\u{ac00}\u{11a8}",
+        ] {
+            assert_matches_reference(input);
+        }
+
+        assert_eq!(
+            &nfc_normalize("\u{1100}\u{1161}")[..],
+            "\u{ac00}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{1100}\u{1161}\u{11a8}")[..],
+            "\u{ac01}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{1100}\u{301}\u{1161}")[..],
+            "\u{1100}\u{301}\u{1161}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{1112}\u{1175}\u{11c2}")[..],
+            "\u{d7a3}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{1113}\u{1161}")[..],
+            "\u{1113}\u{1161}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{1100}\u{1176}")[..],
+            "\u{1100}\u{1176}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{ac00}\u{11a7}")[..],
+            "\u{ac00}\u{11a7}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{d788}\u{11c2}")[..],
+            "\u{d7a3}".as_bytes()
+        );
+        assert_eq!(
+            &nfc_normalize("\u{d788}\u{11c3}")[..],
+            "\u{d788}\u{11c3}".as_bytes()
+        );
+    }
+
+    #[test]
+    fn nfc_orders_reverse_class_run_with_linear_work_and_fixed_storage() {
+        let mut representatives = [None; 256];
+        for value in 0u32..=0x10_ffff {
+            let Some(scalar) = char::from_u32(value) else {
+                continue;
+            };
+            let class = usize::from(canonical_combining_class(scalar));
+            if class == 0 || representatives[class].is_some() {
+                continue;
+            }
+            let mut emitted = 0usize;
+            let mut decomposed = None;
+            decompose_canonical(scalar, |part| {
+                emitted += 1;
+                decomposed = Some(part);
+            });
+            if emitted == 1 && decomposed == Some(scalar) {
+                representatives[class] = Some(scalar);
+            }
+        }
+
+        let mut input = String::from("q");
+        let mut distinct_classes = 0usize;
+        for class in (1usize..=255).rev() {
+            if let Some(mark) = representatives[class] {
+                distinct_classes += 1;
+                for _ in 0..64 {
+                    input.push(mark);
+                }
+            }
+        }
+        assert!(distinct_classes > 16);
+        let mut previous_class = u8::MAX;
+        for mark in input.chars().skip(1) {
+            let class = canonical_combining_class(mark);
+            assert!(class <= previous_class);
+            previous_class = class;
+        }
+        assert_matches_reference(&input);
+
+        let decomposed_len = canonical_decomposition_len(&input).expect("bounded test input");
+        let mut scalars =
+            allocate_zeroizing_box::<u32>(decomposed_len).expect("bounded test allocation");
+        let mut classes =
+            allocate_zeroizing_box::<u8>(decomposed_len).expect("bounded test allocation");
+        let mut ordered_scalars =
+            allocate_zeroizing_box::<u32>(decomposed_len).expect("bounded test allocation");
+        let mut ordered_classes =
+            allocate_zeroizing_box::<u8>(decomposed_len).expect("bounded test allocation");
+        let scalar_ptr = scalars.as_ptr();
+        let class_ptr = classes.as_ptr();
+        let ordered_scalar_ptr = ordered_scalars.as_ptr();
+        let ordered_class_ptr = ordered_classes.as_ptr();
+
+        fill_canonical_decomposition(&input, &mut scalars, &mut classes)
+            .expect("decomposition count is deterministic");
+        assert_eq!(scalars.as_ptr(), scalar_ptr);
+        assert_eq!(classes.as_ptr(), class_ptr);
+        assert_eq!(scalars.len(), decomposed_len);
+        assert_eq!(classes.len(), decomposed_len);
+        assert_eq!(ordered_scalars.as_ptr(), ordered_scalar_ptr);
+        assert_eq!(ordered_classes.as_ptr(), ordered_class_ptr);
+
+        let work = canonical_order(
+            &mut scalars,
+            &mut classes,
+            &mut ordered_scalars,
+            &mut ordered_classes,
+        )
+        .expect("equal fixed scratch lengths");
+        let linear_work_bound = decomposed_len
+            .checked_mul(8)
+            .and_then(|bound| bound.checked_add(1_024))
+            .expect("bounded test work");
+        assert!(
+            work <= linear_work_bound,
+            "canonical ordering used {work} operations for {decomposed_len} scalars"
+        );
+        assert_eq!(scalars.as_ptr(), scalar_ptr);
+        assert_eq!(classes.as_ptr(), class_ptr);
+        assert_eq!(ordered_scalars.as_ptr(), ordered_scalar_ptr);
+        assert_eq!(ordered_classes.as_ptr(), ordered_class_ptr);
+
+        let composed_len =
+            canonical_compose(&mut scalars, &mut classes).expect("valid decomposed scalars");
+        assert!(composed_len <= decomposed_len);
+        assert_eq!(scalars.as_ptr(), scalar_ptr);
+        assert_eq!(classes.as_ptr(), class_ptr);
+        assert_eq!(scalars.len(), decomposed_len);
+        assert_eq!(classes.len(), decomposed_len);
+
+        let utf8_len = normalized_utf8_len(&scalars, composed_len).expect("valid scalars");
+        let mut output =
+            Zeroizing::new(allocate_zeroed_vec::<u8>(utf8_len).expect("bounded test allocation"));
+        let output_ptr = output.as_ptr();
+        encode_normalized_into(&scalars, composed_len, &mut output).expect("exact output length");
+        assert_eq!(output.as_ptr(), output_ptr);
+        assert_eq!(&output[..], reference_nfc(&input).as_slice());
+    }
+
+    #[test]
+    fn nfc_matches_generated_interacting_sequences() {
+        let alphabet = [
+            'A',
+            'a',
+            '\u{300}',
+            '\u{301}',
+            '\u{302}',
+            '\u{305}',
+            '\u{315}',
+            '\u{316}',
+            '\u{323}',
+            '\u{327}',
+            '\u{345}',
+            '\u{5ae}',
+            '\u{1100}',
+            '\u{1102}',
+            '\u{1161}',
+            '\u{11a8}',
+            '\u{11ab}',
+            '\u{ac00}',
+            '\u{ac01}',
+            '\u{e9}',
+            '\u{212b}',
+            '\u{f900}',
+            '\u{1f600}',
+        ];
+        let mut state = 0x6a09_e667_f3bc_c909u64;
+
+        for sequence in 0..256usize {
+            let mut input = String::new();
+            for _ in 0..(32 + sequence % 65) {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                input.push(alphabet[(state as usize) % alphabet.len()]);
+            }
+            assert_matches_reference(&input);
+        }
+    }
+
+    #[test]
+    fn nfc_matches_every_valid_unicode_scalar_in_bounded_batches() {
+        const BATCH_SCALARS: usize = 4096;
+        const VALID_SCALARS: usize = 0x11_0000 - 0x800;
+
+        let mut batch = String::with_capacity(BATCH_SCALARS * 5);
+        let mut in_batch = 0usize;
+        let mut total = 0usize;
+
+        for value in 0u32..=0x10_ffff {
+            let Some(scalar) = char::from_u32(value) else {
+                continue;
+            };
+            batch.push(scalar);
+            // Bound combining runs while still checking every scalar's canonical
+            // decomposition and composition behavior in surrounding text.
+            batch.push('\0');
+            in_batch += 1;
+            total += 1;
+
+            if in_batch == BATCH_SCALARS {
+                assert_matches_reference(&batch);
+                batch.clear();
+                in_batch = 0;
+            }
+        }
+
+        if !batch.is_empty() {
+            assert_matches_reference(&batch);
+        }
+        assert_eq!(total, VALID_SCALARS);
+    }
+
+    #[test]
+    fn fixed_allocations_reject_capacity_overflow_before_fill() {
+        assert!(allocate_zeroed_vec::<u32>(usize::MAX).is_err());
+        let empty = nfc_normalize("");
+        assert!(empty.is_empty());
     }
 }
 

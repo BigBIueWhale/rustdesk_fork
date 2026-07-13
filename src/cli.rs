@@ -22,7 +22,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(id: &str, sender: mpsc::UnboundedSender<Data>) -> Self {
+    pub fn new(id: &str, conn_type: ConnType, sender: mpsc::UnboundedSender<Data>) -> Self {
         let mut password = "".to_owned();
         if PeerConfig::load(id).password.is_empty() {
             match rpassword::prompt_password("Enter password: ") {
@@ -39,14 +39,11 @@ impl Session {
             password,
             lc: Default::default(),
         };
-        session.lc.write().unwrap().initialize(
-            id.to_owned(),
-            ConnType::PORT_FORWARD,
-            None,
-            false,
-            None,
-            None,
-        );
+        session
+            .lc
+            .write()
+            .unwrap()
+            .initialize(id.to_owned(), conn_type, None, false, None, None);
         session
     }
 }
@@ -96,8 +93,8 @@ impl Interface for Session {
 #[tokio::main(flavor = "current_thread")]
 pub async fn connect_test(id: &str, key: String, token: String) {
     let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
-    let handler = Session::new(&id, sender);
-    match crate::client::Client::start(id, &key, &token, ConnType::PORT_FORWARD, handler).await {
+    let handler = Session::new(&id, ConnType::DEFAULT_CONN, sender);
+    match crate::client::Client::start(id, &key, &token, ConnType::DEFAULT_CONN, handler).await {
         Err(err) => {
             log::error!("Failed to connect {}: {}", &id, err);
         }
@@ -135,21 +132,18 @@ pub async fn start_one_port_forward(
     key: String,
     token: String,
 ) {
-    let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
-    let handler = Session::new(&id, sender);
+    let (sender, _receiver) = mpsc::unbounded_channel::<Data>();
+    let handler = Session::new(&id, ConnType::PORT_FORWARD, sender);
+    let (_control, receiver) = crate::port_forward::port_forward_control();
     if let Err(err) = crate::port_forward::listen(
         handler.id.clone(),
-        handler.password.clone(),
         port,
         handler.clone(),
         receiver,
         &key,
         &token,
-        handler.lc.clone(),
         remote_host,
         remote_port,
-        String::new(),
-        String::new(),
     )
     .await
     {

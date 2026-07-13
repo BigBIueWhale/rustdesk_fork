@@ -29,9 +29,17 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::io::RawFd;
 #[cfg(windows)]
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
 #[cfg(windows)]
-use std::{collections::BTreeSet, ffi::c_void};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    ffi::{c_void, OsString},
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use std::{
     fs,
@@ -40,21 +48,30 @@ use std::{
 };
 #[cfg(windows)]
 use windows::{
-    core::PWSTR,
+    core::{PCWSTR, PWSTR},
     Win32::{
-        Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL},
+        Foundation::{
+            CloseHandle, DuplicateHandle, LocalFree, DUPLICATE_SAME_ACCESS, FILETIME, HANDLE,
+            HLOCAL, UNICODE_STRING, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        },
         Security::{
             Authorization::ConvertSidToStringSidW, GetTokenInformation, RevertToSelf,
-            TokenElevation, TokenGroups, TokenUser, PSID, TOKEN_ELEVATION, TOKEN_GROUPS,
-            TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER,
+            TokenElevation, TokenGroups, TokenSessionId, TokenUser, PSID, SID_AND_ATTRIBUTES,
+            TOKEN_ELEVATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER,
         },
         System::{
             Pipes::{
                 GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
                 ImpersonateNamedPipeClient,
             },
-            Threading::{GetCurrentProcess, GetCurrentThread, OpenProcessToken, OpenThreadToken},
+            Threading::{
+                ExitThread, GetCurrentProcess, GetCurrentThread, GetProcessTimes, OpenProcess,
+                OpenProcessToken, OpenThreadToken, QueryFullProcessImageNameW, WaitForSingleObject,
+                INFINITE, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+                PROCESS_SYNCHRONIZE,
+            },
         },
+        UI::Shell::CommandLineToArgvW,
     },
 };
 
@@ -65,7 +82,11 @@ const WINDOWS_URL_IPC_POSTFIX: &str = "_url";
 #[inline]
 pub(crate) fn windows_privileged_ipc_uses_restricted_dacl(postfix: &str) -> bool {
     postfix.is_empty()
+        || postfix == super::password::USER_PASSWORD_IPC_POSTFIX
         || hbb_common::config::is_service_ipc_postfix(postfix)
+        || postfix == super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX
+        || postfix == super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
+        || postfix == super::WINDOWS_SERVICE_SAS_IPC_POSTFIX
         || postfix == WINDOWS_URL_IPC_POSTFIX
 }
 
@@ -75,6 +96,16 @@ pub(crate) const WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b;
 const SE_GROUP_LOGON_ID: u32 = 0xc000_0000;
 #[cfg(windows)]
 const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
+#[cfg(windows)]
+const INTERACTIVE_USERS_SID: &str = "S-1-5-4";
+#[cfg(windows)]
+const WINDOWS_PROCESS_IDENTITY_CACHE_CAPACITY: usize = 128;
+#[cfg(windows)]
+const WINDOWS_PROCESS_COMMAND_LINE_MAX_BYTES: usize = 128 * 1024;
+#[cfg(windows)]
+const WINDOWS_PROCESS_COMMAND_LINE_INFORMATION: u32 = 60;
+#[cfg(windows)]
+const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xc000_0004u32 as i32;
 
 #[cfg(target_os = "macos")]
 const MACOS_PRIVILEGED_HELPER_EXEC: &str =
@@ -155,6 +186,101 @@ impl Drop for MacosAclGuard {
 struct WindowsHandle(HANDLE);
 
 #[cfg(windows)]
+unsafe impl Send for WindowsHandle {}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsProcessIdentityKey {
+    pub(crate) pid: u32,
+    pub(crate) creation_time: u64,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WindowsProcessImmutableIdentity {
+    key: WindowsProcessIdentityKey,
+    executable: PathBuf,
+    argv: Vec<String>,
+}
+
+#[cfg(windows)]
+struct WindowsPeerProcess {
+    key: WindowsProcessIdentityKey,
+    handle: WindowsHandle,
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsSasPipeDispatch {
+    pipe: WindowsHandle,
+    requester: WindowsPeerProcess,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct WindowsLiveTokenAuthority {
+    is_local_system: bool,
+    is_elevated: bool,
+    session_id: u32,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsTokenPrincipal {
+    user_sid: String,
+    logon_sid: Option<String>,
+    session_id: u32,
+}
+
+#[cfg(windows)]
+impl WindowsTokenPrincipal {
+    fn boundary_sid(&self) -> &str {
+        self.logon_sid.as_deref().unwrap_or(&self.user_sid)
+    }
+}
+
+#[cfg(windows)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsSensitivePipeSecurity {
+    pub(crate) sddl: String,
+    pub(crate) expected_client_principal: Option<WindowsTokenPrincipal>,
+    pub(crate) expected_session_id: Option<u32>,
+}
+
+#[cfg(windows)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WindowsLiveTokenProof {
+    authority: WindowsLiveTokenAuthority,
+    principal: WindowsTokenPrincipal,
+}
+
+#[cfg(windows)]
+struct WindowsProcessIdentityCache {
+    capacity: usize,
+    entries: VecDeque<Arc<WindowsProcessImmutableIdentity>>,
+}
+
+#[cfg(windows)]
+type NtQueryInformationProcessFn =
+    unsafe extern "system" fn(HANDLE, u32, *mut c_void, u32, *mut u32) -> i32;
+
+#[cfg(windows)]
+static WINDOWS_PROCESS_IDENTITY_CACHE: OnceLock<Mutex<WindowsProcessIdentityCache>> =
+    OnceLock::new();
+
+#[cfg(windows)]
+static NT_QUERY_INFORMATION_PROCESS: OnceLock<Option<NtQueryInformationProcessFn>> =
+    OnceLock::new();
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+extern "system" {
+    #[link_name = "GetModuleHandleW"]
+    fn windows_get_module_handle_w(module_name: *const u16) -> *mut c_void;
+    #[link_name = "GetProcAddress"]
+    fn windows_get_proc_address(module: *mut c_void, procedure_name: *const u8) -> *mut c_void;
+}
+
+#[cfg(windows)]
 impl Drop for WindowsHandle {
     fn drop(&mut self) {
         if !self.0.is_invalid() {
@@ -166,7 +292,630 @@ impl Drop for WindowsHandle {
 }
 
 #[cfg(windows)]
+fn duplicate_windows_handle(handle: HANDLE, context: &str) -> ResultType<WindowsHandle> {
+    if handle.is_invalid() {
+        bail!("Cannot duplicate invalid {context} handle");
+    }
+    let mut duplicate = HANDLE::default();
+    unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            handle,
+            GetCurrentProcess(),
+            &mut duplicate,
+            0,
+            false,
+            DUPLICATE_SAME_ACCESS,
+        )
+        .map_err(|err| anyhow::anyhow!("Failed to duplicate {context} handle: {err}"))?;
+    }
+    Ok(WindowsHandle(duplicate))
+}
+
+#[cfg(windows)]
+fn run_windows_pipe_client_impersonation<T, F>(
+    pipe: HANDLE,
+    context: &'static str,
+    operation: F,
+) -> ResultType<T>
+where
+    T: Send + 'static,
+    F: FnOnce(HANDLE) -> ResultType<T> + Send + 'static,
+{
+    run_windows_pipe_client_impersonation_inner(pipe, context, None, operation)
+}
+
+#[cfg(windows)]
+fn run_windows_pipe_client_impersonation_until<T, F>(
+    pipe: HANDLE,
+    context: &'static str,
+    deadline: Instant,
+    operation: F,
+) -> ResultType<T>
+where
+    T: Send + 'static,
+    F: FnOnce(HANDLE) -> ResultType<T> + Send + 'static,
+{
+    windows_sensitive_auth_deadline_live(deadline, context)?;
+    run_windows_pipe_client_impersonation_inner(pipe, context, Some(deadline), operation)
+}
+
+#[cfg(windows)]
+fn windows_sensitive_auth_deadline_live(deadline: Instant, context: &str) -> ResultType<()> {
+    if Instant::now() >= deadline {
+        bail!("{context} exceeded the sensitive IPC deadline");
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn windows_sensitive_auth_remaining_millis(deadline: Instant, context: &str) -> ResultType<u32> {
+    let remaining = deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| anyhow::anyhow!("{context} exceeded the sensitive IPC deadline"))?;
+    Ok(remaining.as_millis().max(1).min((u32::MAX - 1) as u128) as u32)
+}
+
+#[cfg(windows)]
+fn run_windows_pipe_client_impersonation_inner<T, F>(
+    pipe: HANDLE,
+    context: &'static str,
+    deadline: Option<Instant>,
+    operation: F,
+) -> ResultType<T>
+where
+    T: Send + 'static,
+    F: FnOnce(HANDLE) -> ResultType<T> + Send + 'static,
+{
+    const RUNNING: u8 = 0;
+    const COMPLETE: u8 = 1;
+    const RESTORATION_FAILED: u8 = 2;
+    const RESULT_STORAGE_FAILED: u8 = 3;
+
+    let pipe = duplicate_windows_handle(pipe, context)?;
+    let pipe_value = (pipe.0).0 as usize;
+    let state = Arc::new(AtomicU8::new(RUNNING));
+    let result = Arc::new(Mutex::new(None::<std::result::Result<T, String>>));
+    let worker_state = Arc::clone(&state);
+    let worker_result = Arc::clone(&result);
+    let worker = std::thread::Builder::new()
+        .name("windows-pipe-impersonation".to_owned())
+        .spawn(move || {
+            let pipe_handle = HANDLE(pipe_value as *mut c_void);
+            let impersonated = unsafe { ImpersonateNamedPipeClient(pipe_handle) };
+            if let Err(err) = impersonated {
+                if let Ok(mut slot) = worker_result.lock() {
+                    *slot = Some(Err(format!("Failed to impersonate {context}: {err}")));
+                    worker_state.store(COMPLETE, Ordering::Release);
+                } else {
+                    worker_state.store(RESULT_STORAGE_FAILED, Ordering::Release);
+                }
+                return;
+            }
+
+            let operation_result = operation(pipe_handle).map_err(|err| err.to_string());
+            let stored = if let Ok(mut slot) = worker_result.lock() {
+                *slot = Some(operation_result);
+                true
+            } else {
+                false
+            };
+            if unsafe { RevertToSelf() }.is_err() {
+                worker_state.store(RESTORATION_FAILED, Ordering::Release);
+                unsafe { ExitThread(1) };
+            }
+            worker_state.store(
+                if stored {
+                    COMPLETE
+                } else {
+                    RESULT_STORAGE_FAILED
+                },
+                Ordering::Release,
+            );
+        })
+        .map_err(|err| anyhow::anyhow!("Failed to start {context} impersonation worker: {err}"))?;
+
+    let (wait_timeout, deadline_expired_before_wait) = match deadline {
+        Some(deadline) => match windows_sensitive_auth_remaining_millis(deadline, context) {
+            Ok(timeout) => (timeout, false),
+            Err(_) => (INFINITE, true),
+        },
+        None => (INFINITE, false),
+    };
+    let wait = unsafe { WaitForSingleObject(HANDLE(worker.as_raw_handle()), wait_timeout) };
+    let deadline_expired = deadline_expired_before_wait
+        || deadline.is_some()
+            && (wait == WAIT_TIMEOUT
+                || deadline.is_some_and(|deadline| Instant::now() >= deadline));
+    if wait != WAIT_OBJECT_0 {
+        let drained = unsafe { WaitForSingleObject(HANDLE(worker.as_raw_handle()), INFINITE) };
+        if drained != WAIT_OBJECT_0 {
+            log::error!(
+                "Could not conclusively drain {context} impersonation worker: initial_status={}, drain_status={}",
+                wait.0,
+                drained.0
+            );
+            std::process::abort();
+        }
+    }
+    match state.load(Ordering::Acquire) {
+        RESTORATION_FAILED => {
+            drop(worker);
+            bail!("Failed to restore {context} impersonation; the disposable worker was terminated")
+        }
+        COMPLETE => {
+            if worker.join().is_err() {
+                bail!("{context} impersonation worker panicked");
+            }
+        }
+        RESULT_STORAGE_FAILED => {
+            if worker.join().is_err() {
+                bail!("{context} impersonation worker panicked");
+            }
+            bail!("{context} impersonation worker could not retain its result");
+        }
+        status => {
+            drop(worker);
+            bail!("{context} impersonation worker ended in invalid state {status}");
+        }
+    }
+    if deadline_expired {
+        bail!("{context} exceeded the sensitive IPC deadline");
+    }
+    let mut result = result
+        .lock()
+        .map_err(|_| anyhow::anyhow!("{context} impersonation result lock poisoned"))?;
+    match result.take() {
+        Some(Ok(value)) => Ok(value),
+        Some(Err(err)) => Err(anyhow::anyhow!(err)),
+        None => bail!("{context} impersonation worker returned no result"),
+    }
+}
+
+#[cfg(windows)]
+fn windows_named_pipe_client_pid(pipe: HANDLE) -> ResultType<u32> {
+    let mut pid = 0u32;
+    unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) }
+        .map_err(|err| anyhow::anyhow!("Failed to resolve Windows named-pipe client pid: {err}"))?;
+    if pid == 0 {
+        bail!("Windows named-pipe client pid is zero");
+    }
+    Ok(pid)
+}
+
+#[cfg(windows)]
+fn windows_named_pipe_client_token_proof(
+    pipe: HANDLE,
+    deadline: Instant,
+) -> ResultType<WindowsLiveTokenProof> {
+    run_windows_pipe_client_impersonation_until(
+        pipe,
+        "Windows sensitive IPC client",
+        deadline,
+        move |_pipe_handle| {
+            let mut token = HANDLE::default();
+            unsafe {
+                OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token).map_err(
+                    |err| {
+                        anyhow::anyhow!("Failed to open Windows sensitive IPC client token: {err}")
+                    },
+                )?;
+            }
+            let _token_guard = WindowsHandle(token);
+            windows_live_token_proof(token)
+        },
+    )
+}
+
+#[cfg(windows)]
+impl WindowsSasPipeDispatch {
+    pub(crate) fn dispatch(
+        self,
+        expected_requester: WindowsProcessIdentityKey,
+        expected_session_id: u32,
+    ) -> ResultType<()> {
+        let peer_pid = windows_named_pipe_client_pid(self.pipe.0)?;
+        if peer_pid != expected_requester.pid || self.requester.key != expected_requester {
+            bail!(
+                "Windows SAS requester process identity changed: expected {}:{}, got {}:{}",
+                expected_requester.pid,
+                expected_requester.creation_time,
+                self.requester.key.pid,
+                self.requester.key.creation_time
+            );
+        }
+        self.requester.require_running("Windows SAS requester")?;
+        let WindowsSasPipeDispatch { pipe, requester } = self;
+        run_windows_pipe_client_impersonation(pipe.0, "Windows SAS requester", move |pipe_handle| {
+            if windows_named_pipe_client_pid(pipe_handle)? != peer_pid {
+                bail!(
+                    "Windows SAS requester named-pipe pid changed during authorization: expected {}",
+                    peer_pid
+                );
+            }
+            if windows_process_creation_time(requester.handle.0)?
+                != expected_requester.creation_time
+            {
+                bail!("Windows SAS requester process generation changed before dispatch");
+            }
+            requester.require_running("Windows SAS requester")?;
+            let mut token = HANDLE::default();
+            unsafe {
+                OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token).map_err(
+                    |err| {
+                        anyhow::anyhow!(
+                            "Failed to open Windows SAS requester impersonation token: {err}"
+                        )
+                    },
+                )?;
+            }
+            let _token_guard = WindowsHandle(token);
+            let authority = windows_token_authority(token)?;
+            if !windows_token_authority_matches_sas_session(authority, expected_session_id) {
+                if !authority.is_local_system {
+                    bail!(
+                        "Windows SAS requester impersonation token is not LocalSystem: peer_pid={}",
+                        peer_pid
+                    );
+                }
+                bail!(
+                    "Windows SAS requester session mismatch: peer_pid={}, expected={}, actual={}",
+                    peer_pid,
+                    expected_session_id,
+                    authority.session_id
+                );
+            }
+            requester.require_running("Windows SAS requester")?;
+            crate::platform::send_sas()
+        })
+    }
+}
+
+#[cfg(windows)]
+impl WindowsPeerProcess {
+    fn open(pid: u32) -> ResultType<Self> {
+        Self::open_with_access(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE)
+    }
+
+    fn open_for_sas_dispatch(pid: u32) -> ResultType<Self> {
+        Self::open_with_access(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE)
+    }
+
+    fn open_with_access(
+        pid: u32,
+        access: windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS,
+    ) -> ResultType<Self> {
+        if pid == 0 {
+            bail!("Refused to open Windows IPC peer process with pid 0");
+        }
+        let handle = unsafe { OpenProcess(access, false, pid) }
+            .map_err(|err| anyhow::anyhow!("Failed to open Windows IPC peer pid {pid}: {err}"))?;
+        let handle = WindowsHandle(handle);
+        let creation_time = windows_process_creation_time(handle.0)?;
+        Ok(Self {
+            key: WindowsProcessIdentityKey { pid, creation_time },
+            handle,
+        })
+    }
+
+    fn require_running(&self, context: &str) -> ResultType<()> {
+        match unsafe { WaitForSingleObject(self.handle.0, 0) } {
+            WAIT_TIMEOUT => Ok(()),
+            WAIT_OBJECT_0 => bail!("{context} process exited"),
+            WAIT_FAILED => bail!("Failed to query {context} process liveness"),
+            status => bail!("Unexpected {context} process wait status: {}", status.0),
+        }
+    }
+
+    fn inspect_identity(&self) -> ResultType<WindowsProcessImmutableIdentity> {
+        let executable = windows_process_executable_path(self.handle.0)?;
+        let executable = fs::canonicalize(&executable).map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to canonicalize Windows IPC peer executable '{}': {}",
+                executable.display(),
+                err
+            )
+        })?;
+        let argv = windows_process_command_line_args(self.handle.0)?;
+        let creation_time_after = windows_process_creation_time(self.handle.0)?;
+        if creation_time_after != self.key.creation_time {
+            bail!(
+                "Windows IPC peer process identity changed while being inspected: pid={}",
+                self.key.pid
+            );
+        }
+        Ok(WindowsProcessImmutableIdentity {
+            key: self.key,
+            executable,
+            argv,
+        })
+    }
+
+    fn immutable_identity(&self) -> ResultType<Arc<WindowsProcessImmutableIdentity>> {
+        let cache = WINDOWS_PROCESS_IDENTITY_CACHE.get_or_init(|| {
+            Mutex::new(WindowsProcessIdentityCache::new(
+                WINDOWS_PROCESS_IDENTITY_CACHE_CAPACITY,
+            ))
+        });
+        if let Some(identity) = cache
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Windows IPC process identity cache lock poisoned"))?
+            .get(self.key)
+        {
+            return Ok(identity);
+        }
+
+        let identity = Arc::new(self.inspect_identity()?);
+        cache
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Windows IPC process identity cache lock poisoned"))?
+            .insert(identity.clone());
+        Ok(identity)
+    }
+
+    fn fresh_identity(&self) -> ResultType<WindowsProcessImmutableIdentity> {
+        self.inspect_identity()
+    }
+
+    fn live_token_authority(&self) -> ResultType<WindowsLiveTokenAuthority> {
+        Ok(self.live_token_proof()?.authority)
+    }
+
+    fn live_token_proof(&self) -> ResultType<WindowsLiveTokenProof> {
+        let mut token = HANDLE::default();
+        unsafe {
+            OpenProcessToken(self.handle.0, TOKEN_QUERY, &mut token).map_err(|err| {
+                anyhow::anyhow!(
+                    "Failed to open Windows IPC peer process token: pid={}, err={}",
+                    self.key.pid,
+                    err
+                )
+            })?;
+        }
+        let _token_guard = WindowsHandle(token);
+        windows_live_token_proof(token)
+    }
+}
+
+#[cfg(windows)]
+impl WindowsProcessIdentityCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            entries: VecDeque::with_capacity(capacity),
+        }
+    }
+
+    fn get(
+        &mut self,
+        key: WindowsProcessIdentityKey,
+    ) -> Option<Arc<WindowsProcessImmutableIdentity>> {
+        let index = self.entries.iter().position(|entry| entry.key == key)?;
+        let entry = self.entries.remove(index)?;
+        self.entries.push_back(entry.clone());
+        Some(entry)
+    }
+
+    fn insert(&mut self, identity: Arc<WindowsProcessImmutableIdentity>) {
+        if self.capacity == 0 {
+            return;
+        }
+        self.entries
+            .retain(|entry| entry.key.pid != identity.key.pid);
+        self.entries.push_back(identity);
+        while self.entries.len() > self.capacity {
+            self.entries.pop_front();
+        }
+    }
+}
+
+#[cfg(windows)]
+fn windows_process_creation_time(process: HANDLE) -> ResultType<u64> {
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    unsafe {
+        GetProcessTimes(process, &mut creation, &mut exit, &mut kernel, &mut user)
+            .map_err(|err| anyhow::anyhow!("GetProcessTimes failed for Windows IPC peer: {err}"))?;
+    }
+    let creation_time = ((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64;
+    if creation_time == 0 {
+        bail!("GetProcessTimes returned a zero creation time for Windows IPC peer");
+    }
+    Ok(creation_time)
+}
+
+#[cfg(windows)]
+pub(crate) fn current_windows_process_identity_key() -> ResultType<WindowsProcessIdentityKey> {
+    let pid = std::process::id();
+    let process = WindowsPeerProcess::open(pid)?;
+    Ok(process.key)
+}
+
+#[cfg(windows)]
+fn windows_process_executable_path(process: HANDLE) -> ResultType<PathBuf> {
+    const PROCESS_IMAGE_PATH_BUFFER_LEN: usize = 32 * 1024;
+    let mut buffer = vec![0u16; PROCESS_IMAGE_PATH_BUFFER_LEN];
+    let mut length = PROCESS_IMAGE_PATH_BUFFER_LEN as u32;
+    unsafe {
+        QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_FORMAT(0),
+            PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+        .map_err(|err| {
+            anyhow::anyhow!("QueryFullProcessImageNameW failed for Windows IPC peer: {err}")
+        })?;
+    }
+    if length == 0 || length as usize > buffer.len() {
+        bail!(
+            "QueryFullProcessImageNameW returned an invalid length for Windows IPC peer: {}",
+            length
+        );
+    }
+    buffer.truncate(length as usize);
+    Ok(PathBuf::from(OsString::from_wide(&buffer)))
+}
+
+#[cfg(windows)]
+fn resolve_nt_query_information_process() -> Option<NtQueryInformationProcessFn> {
+    const NTDLL: [u16; 10] = [
+        b'n' as u16,
+        b't' as u16,
+        b'd' as u16,
+        b'l' as u16,
+        b'l' as u16,
+        b'.' as u16,
+        b'd' as u16,
+        b'l' as u16,
+        b'l' as u16,
+        0,
+    ];
+    let module = unsafe { windows_get_module_handle_w(NTDLL.as_ptr()) };
+    if module.is_null() {
+        return None;
+    }
+    let procedure =
+        unsafe { windows_get_proc_address(module, b"NtQueryInformationProcess\0".as_ptr()) };
+    if procedure.is_null() {
+        return None;
+    }
+    Some(unsafe { std::mem::transmute::<*mut c_void, NtQueryInformationProcessFn>(procedure) })
+}
+
+#[cfg(windows)]
+fn windows_process_command_line(process: HANDLE) -> ResultType<Vec<u16>> {
+    let query = NT_QUERY_INFORMATION_PROCESS
+        .get_or_init(resolve_nt_query_information_process)
+        .as_ref()
+        .copied()
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "NtQueryInformationProcess is unavailable for Windows IPC peer verification"
+            )
+        })?;
+    let mut required = 0u32;
+    let initial_status = unsafe {
+        query(
+            process,
+            WINDOWS_PROCESS_COMMAND_LINE_INFORMATION,
+            std::ptr::null_mut(),
+            0,
+            &mut required,
+        )
+    };
+    if initial_status != STATUS_INFO_LENGTH_MISMATCH || required == 0 {
+        bail!(
+            "NtQueryInformationProcess command-line size query failed: status=0x{:08x}, required={}",
+            initial_status as u32,
+            required
+        );
+    }
+    let required = required as usize;
+    if required < std::mem::size_of::<UNICODE_STRING>()
+        || required > WINDOWS_PROCESS_COMMAND_LINE_MAX_BYTES
+    {
+        bail!(
+            "NtQueryInformationProcess returned an invalid command-line buffer size: {}",
+            required
+        );
+    }
+    let words = required
+        .checked_add(std::mem::size_of::<usize>() - 1)
+        .and_then(|size| size.checked_div(std::mem::size_of::<usize>()))
+        .ok_or_else(|| anyhow::anyhow!("Windows IPC command-line buffer size overflow"))?;
+    let mut buffer = vec![0usize; words];
+    let buffer_bytes = buffer
+        .len()
+        .checked_mul(std::mem::size_of::<usize>())
+        .ok_or_else(|| anyhow::anyhow!("Windows IPC command-line allocation overflow"))?;
+    let mut returned = 0u32;
+    let status = unsafe {
+        query(
+            process,
+            WINDOWS_PROCESS_COMMAND_LINE_INFORMATION,
+            buffer.as_mut_ptr() as *mut c_void,
+            buffer_bytes as u32,
+            &mut returned,
+        )
+    };
+    if status < 0 {
+        bail!(
+            "NtQueryInformationProcess command-line query failed: status=0x{:08x}",
+            status as u32
+        );
+    }
+    if returned as usize > buffer_bytes
+        || (returned as usize) < std::mem::size_of::<UNICODE_STRING>()
+    {
+        bail!(
+            "NtQueryInformationProcess returned an invalid command-line result size: {}",
+            returned
+        );
+    }
+    let value = unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const UNICODE_STRING) };
+    let length = value.Length as usize;
+    if length == 0
+        || length % std::mem::size_of::<u16>() != 0
+        || length > value.MaximumLength as usize
+    {
+        bail!(
+            "NtQueryInformationProcess returned invalid command-line string lengths: length={}, maximum={}",
+            length,
+            value.MaximumLength
+        );
+    }
+    let start = buffer.as_ptr() as usize;
+    let end = start
+        .checked_add(returned as usize)
+        .ok_or_else(|| anyhow::anyhow!("Windows IPC command-line result range overflow"))?;
+    let string_start = value.Buffer.as_ptr() as usize;
+    let string_end = string_start
+        .checked_add(length)
+        .ok_or_else(|| anyhow::anyhow!("Windows IPC command-line string range overflow"))?;
+    if value.Buffer.is_null() || string_start < start || string_end > end {
+        bail!("NtQueryInformationProcess returned an out-of-buffer command-line string");
+    }
+    Ok(unsafe {
+        std::slice::from_raw_parts(value.Buffer.as_ptr(), length / std::mem::size_of::<u16>())
+            .to_vec()
+    })
+}
+
+#[cfg(windows)]
+fn windows_process_command_line_args(process: HANDLE) -> ResultType<Vec<String>> {
+    let mut command_line = windows_process_command_line(process)?;
+    command_line.push(0);
+    let mut count = 0i32;
+    let argv = unsafe { CommandLineToArgvW(PCWSTR(command_line.as_ptr()), &mut count) };
+    if argv.is_null() || count <= 0 || count > 256 {
+        bail!(
+            "CommandLineToArgvW returned an invalid argv for Windows IPC peer: count={}",
+            count
+        );
+    }
+    let _argv_guard = WindowsLocalMemory(argv as *mut c_void);
+    let mut args = Vec::with_capacity(count as usize);
+    for index in 0..count as usize {
+        let argument = unsafe { *argv.add(index) };
+        if argument.is_null() {
+            bail!("CommandLineToArgvW returned a null argument at index {index}");
+        }
+        args.push(unsafe { argument.to_string() }.map_err(|err| {
+            anyhow::anyhow!("Windows IPC peer argv[{index}] is invalid UTF-16: {err}")
+        })?);
+    }
+    Ok(args)
+}
+
+#[cfg(windows)]
 struct LocalString(PWSTR);
+
+#[cfg(windows)]
+struct WindowsLocalMemory(*mut c_void);
 
 #[cfg(windows)]
 impl Drop for LocalString {
@@ -180,8 +929,14 @@ impl Drop for LocalString {
 }
 
 #[cfg(windows)]
-struct ThreadImpersonationGuard {
-    active: bool,
+impl Drop for WindowsLocalMemory {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                let _ = LocalFree(Some(HLOCAL(self.0)));
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -200,40 +955,10 @@ impl WindowsPipeClientTokenRequirement {
         }
     }
 
-    fn is_satisfied(self, token: HANDLE) -> ResultType<bool> {
+    fn is_satisfied(self, authority: WindowsLiveTokenAuthority) -> bool {
         match self {
-            Self::Elevated => token_is_elevated(token),
-            Self::LocalSystem => Ok(token_user_sid_string(token)? == LOCAL_SYSTEM_SID),
-        }
-    }
-}
-
-#[cfg(windows)]
-impl ThreadImpersonationGuard {
-    fn new() -> Self {
-        Self { active: true }
-    }
-
-    fn restore(mut self) {
-        revert_thread_impersonation_or_abort();
-        self.active = false;
-    }
-}
-
-#[cfg(windows)]
-fn revert_thread_impersonation_or_abort() {
-    unsafe {
-        if RevertToSelf().is_err() {
-            std::process::abort();
-        }
-    }
-}
-
-#[cfg(windows)]
-impl Drop for ThreadImpersonationGuard {
-    fn drop(&mut self) {
-        if self.active {
-            revert_thread_impersonation_or_abort();
+            Self::Elevated => authority.is_elevated,
+            Self::LocalSystem => authority.is_local_system,
         }
     }
 }
@@ -251,8 +976,7 @@ pub(crate) fn windows_ipc_listener_security_attributes(
     if !windows_privileged_ipc_uses_restricted_dacl(postfix) {
         return Ok(parity_tokio_ipc::SecurityAttributes::empty());
     }
-    let sids = windows_ipc_dacl_sids_for_postfix(postfix)?;
-    let sddl = windows_restricted_ipc_sddl(&sids);
+    let sddl = windows_ipc_listener_sddl(postfix)?;
     parity_tokio_ipc::SecurityAttributes::from_sddl(&sddl).map_err(|err| {
         anyhow::anyhow!(
             "Failed to build Windows IPC security descriptor for '{}': {}",
@@ -264,7 +988,90 @@ pub(crate) fn windows_ipc_listener_security_attributes(
 }
 
 #[cfg(windows)]
+pub(crate) fn windows_ipc_listener_sddl(postfix: &str) -> ResultType<String> {
+    if !windows_privileged_ipc_uses_restricted_dacl(postfix) {
+        bail!("Windows sensitive IPC endpoint requires a restricted DACL");
+    }
+    Ok(windows_restricted_ipc_sddl(
+        &windows_ipc_dacl_sids_for_postfix(postfix)?,
+    ))
+}
+
+#[cfg(windows)]
+pub(crate) fn windows_sensitive_pipe_security(
+    postfix: &str,
+) -> ResultType<WindowsSensitivePipeSecurity> {
+    windows_sensitive_pipe_security_inner(postfix, None)
+}
+
+#[cfg(windows)]
+fn windows_sensitive_pipe_security_at_deadline(
+    postfix: &str,
+    deadline: Instant,
+) -> ResultType<WindowsSensitivePipeSecurity> {
+    windows_sensitive_pipe_security_inner(postfix, Some(deadline))
+}
+
+#[cfg(windows)]
+fn windows_sensitive_pipe_security_inner(
+    postfix: &str,
+    deadline: Option<Instant>,
+) -> ResultType<WindowsSensitivePipeSecurity> {
+    if let Some(deadline) = deadline {
+        windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC security snapshot")?;
+    }
+    let current_token = current_process_token()?;
+    let current = windows_live_token_proof(current_token.0)?;
+    let mut sids = WindowsIpcDaclSids {
+        server_sids: Vec::new(),
+        client_sids: Vec::new(),
+    };
+
+    let (expected_client_principal, expected_session_id) = match postfix {
+        super::password::USER_PASSWORD_IPC_POSTFIX => {
+            if current.authority.is_local_system {
+                bail!("Windows user password endpoint cannot be owned by LocalSystem");
+            }
+            sids.server_sids
+                .push(current.principal.boundary_sid().to_owned());
+            (
+                Some(current.principal.clone()),
+                Some(current.principal.session_id),
+            )
+        }
+        super::password::SERVICE_PASSWORD_IPC_POSTFIX => {
+            if !current.authority.is_local_system {
+                bail!("Windows service password endpoint must be owned by LocalSystem");
+            }
+            sids.client_sids.push(INTERACTIVE_USERS_SID.to_owned());
+            match stable_active_session_principal(deadline)? {
+                Some((session_id, principal)) => (Some(principal), Some(session_id)),
+                None => (None, None),
+            }
+        }
+        _ => bail!("Unsupported Windows sensitive IPC endpoint"),
+    };
+
+    Ok(WindowsSensitivePipeSecurity {
+        sddl: windows_restricted_ipc_sddl(&sids),
+        expected_client_principal,
+        expected_session_id,
+    })
+}
+
+#[cfg(windows)]
 fn windows_ipc_dacl_sids_for_postfix(postfix: &str) -> ResultType<WindowsIpcDaclSids> {
+    if matches!(
+        postfix,
+        super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX
+            | super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
+            | super::WINDOWS_SERVICE_SAS_IPC_POSTFIX
+    ) {
+        return Ok(WindowsIpcDaclSids {
+            server_sids: Vec::new(),
+            client_sids: Vec::new(),
+        });
+    }
     let mut server_sids = BTreeSet::new();
     let mut client_sids = BTreeSet::new();
 
@@ -324,6 +1131,52 @@ fn active_session_user_token(session_id: u32) -> ResultType<WindowsHandle> {
 }
 
 #[cfg(windows)]
+fn stable_active_session_principal(
+    deadline: Option<Instant>,
+) -> ResultType<Option<(u32, WindowsTokenPrincipal)>> {
+    let read_session = || {
+        crate::platform::windows::get_current_session_id(crate::platform::windows::is_share_rdp())
+    };
+    let check_deadline = || match deadline {
+        Some(deadline) => windows_sensitive_auth_deadline_live(
+            deadline,
+            "Windows active-session principal snapshot",
+        ),
+        None => Ok(()),
+    };
+
+    check_deadline()?;
+    let session_before = read_session();
+    if session_before == u32::MAX {
+        check_deadline()?;
+        if read_session() != u32::MAX {
+            bail!("Windows active session appeared while its absence was being sampled");
+        }
+        return Ok(None);
+    }
+
+    let first_token = active_session_user_token(session_before)?;
+    let first_principal = windows_token_principal(first_token.0)?;
+    check_deadline()?;
+    let session_between = read_session();
+    if session_between != session_before || first_principal.session_id != session_before {
+        bail!("Windows active session changed during its first principal sample");
+    }
+
+    let second_token = active_session_user_token(session_between)?;
+    let second_principal = windows_token_principal(second_token.0)?;
+    check_deadline()?;
+    let session_after = read_session();
+    if session_after != session_before
+        || second_principal.session_id != session_before
+        || second_principal != first_principal
+    {
+        bail!("Windows active session or principal changed while being sampled");
+    }
+    Ok(Some((session_after, second_principal)))
+}
+
+#[cfg(windows)]
 fn preferred_token_boundary_sid(token: HANDLE) -> ResultType<Option<String>> {
     Ok(token_logon_sid_string(token)?.or(Some(token_user_sid_string(token)?)))
 }
@@ -359,13 +1212,28 @@ fn token_information_buffer(
             )
         })?;
     }
+    if len as usize > buffer.len() {
+        bail!(
+            "GetTokenInformation({:?}) returned an oversized length: {} > {}",
+            token_information_class,
+            len,
+            buffer.len()
+        );
+    }
+    buffer.truncate(len as usize);
     Ok(buffer)
 }
 
 #[cfg(windows)]
 fn token_user_sid_string(token: HANDLE) -> ResultType<String> {
     let buffer = token_information_buffer(token, TokenUser)?;
-    let token_user = unsafe { &*(buffer.as_ptr() as *const TOKEN_USER) };
+    if buffer.len() < std::mem::size_of::<TOKEN_USER>() {
+        bail!(
+            "GetTokenInformation(TokenUser) returned a short buffer: {}",
+            buffer.len()
+        );
+    }
+    let token_user = unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const TOKEN_USER) };
     sid_to_string(token_user.User.Sid)
 }
 
@@ -378,17 +1246,87 @@ fn token_is_elevated(token: HANDLE) -> ResultType<bool> {
             buffer.len()
         );
     }
-    let elevation = unsafe { &*(buffer.as_ptr() as *const TOKEN_ELEVATION) };
+    let elevation = unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const TOKEN_ELEVATION) };
     Ok(elevation.TokenIsElevated != 0)
+}
+
+#[cfg(windows)]
+fn token_session_id(token: HANDLE) -> ResultType<u32> {
+    let buffer = token_information_buffer(token, TokenSessionId)?;
+    if buffer.len() < std::mem::size_of::<u32>() {
+        bail!(
+            "GetTokenInformation(TokenSessionId) returned a short buffer: {}",
+            buffer.len()
+        );
+    }
+    Ok(unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const u32) })
+}
+
+#[cfg(windows)]
+fn windows_token_authority(token: HANDLE) -> ResultType<WindowsLiveTokenAuthority> {
+    Ok(windows_live_token_proof(token)?.authority)
+}
+
+#[cfg(windows)]
+fn windows_token_principal(token: HANDLE) -> ResultType<WindowsTokenPrincipal> {
+    Ok(WindowsTokenPrincipal {
+        user_sid: token_user_sid_string(token)?,
+        logon_sid: token_logon_sid_string(token)?,
+        session_id: token_session_id(token)?,
+    })
+}
+
+#[cfg(windows)]
+fn windows_live_token_proof(token: HANDLE) -> ResultType<WindowsLiveTokenProof> {
+    let principal = windows_token_principal(token)?;
+    Ok(WindowsLiveTokenProof {
+        authority: WindowsLiveTokenAuthority {
+            is_local_system: principal.user_sid == LOCAL_SYSTEM_SID,
+            is_elevated: token_is_elevated(token)?,
+            session_id: principal.session_id,
+        },
+        principal,
+    })
+}
+
+#[cfg(windows)]
+fn windows_token_authority_matches_sas_session(
+    authority: WindowsLiveTokenAuthority,
+    expected_session_id: u32,
+) -> bool {
+    authority.is_local_system && authority.session_id == expected_session_id
 }
 
 #[cfg(windows)]
 fn token_logon_sid_string(token: HANDLE) -> ResultType<Option<String>> {
     let buffer = token_information_buffer(token, TokenGroups)?;
-    let token_groups = unsafe { &*(buffer.as_ptr() as *const TOKEN_GROUPS) };
-    let groups = token_groups.Groups.as_ptr();
-    for index in 0..token_groups.GroupCount as usize {
-        let group = unsafe { *groups.add(index) };
+    if buffer.len() < std::mem::size_of::<TOKEN_GROUPS>() {
+        bail!(
+            "GetTokenInformation(TokenGroups) returned a short buffer: {}",
+            buffer.len()
+        );
+    }
+    let token_groups = buffer.as_ptr() as *const TOKEN_GROUPS;
+    let group_count =
+        unsafe { std::ptr::read_unaligned(std::ptr::addr_of!((*token_groups).GroupCount)) }
+            as usize;
+    let groups = unsafe { std::ptr::addr_of!((*token_groups).Groups) as *const SID_AND_ATTRIBUTES };
+    let groups_offset = (groups as usize)
+        .checked_sub(buffer.as_ptr() as usize)
+        .ok_or_else(|| anyhow::anyhow!("TokenGroups array offset underflow"))?;
+    let required = group_count
+        .checked_mul(std::mem::size_of::<SID_AND_ATTRIBUTES>())
+        .and_then(|size| groups_offset.checked_add(size))
+        .ok_or_else(|| anyhow::anyhow!("TokenGroups array size overflow"))?;
+    if required > buffer.len() {
+        bail!(
+            "GetTokenInformation(TokenGroups) returned a truncated group array: need {}, got {}",
+            required,
+            buffer.len()
+        );
+    }
+    for index in 0..group_count {
+        let group = unsafe { std::ptr::read_unaligned(groups.add(index)) };
         if (group.Attributes & SE_GROUP_LOGON_ID) == SE_GROUP_LOGON_ID {
             return sid_to_string(group.Sid).map(Some);
         }
@@ -426,7 +1364,7 @@ fn is_numeric_sid_string(sid: &str) -> bool {
 
 #[cfg(windows)]
 fn windows_restricted_ipc_sddl(sids: &WindowsIpcDaclSids) -> String {
-    let mut sddl = String::from("D:P(A;;GA;;;SY)");
+    let mut sddl = String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)");
     for sid in &sids.server_sids {
         sddl.push_str(&format!("(A;;GA;;;{})", sid));
     }
@@ -445,42 +1383,65 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
     postfix: &str,
 ) -> ResultType<()> {
     let server_pid = windows_named_pipe_server_pid(client)?;
-    ensure_peer_executable_matches_current_by_pid_opt(Some(server_pid), postfix)?;
-    if postfix.is_empty() && !peer_process_is_current_exe_server(server_pid) {
-        bail!("Windows main IPC server is not the current executable's --server process");
-    }
-    if hbb_common::config::is_service_ipc_postfix(postfix) {
-        let is_system = crate::platform::windows::is_process_running_as_system(server_pid)
-            .map_err(|err| {
-                anyhow::anyhow!("Failed to determine _service server identity: {}", err)
-            })?;
-        if !is_system {
-            bail!("Windows _service IPC server is not running as LocalSystem");
+    let process = WindowsPeerProcess::open(server_pid)?;
+    let identity = process.immutable_identity()?;
+    if matches!(
+        postfix,
+        super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX
+            | super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
+    ) {
+        ensure_windows_identity_matches_fixed_service(&identity, postfix)?;
+        if !process.live_token_authority()?.is_local_system {
+            bail!("Windows service-main IPC server is not running as LocalSystem");
         }
+        if !windows_identity_has_exact_role(&identity, &windows_service_owned_main_server_args()) {
+            bail!("Windows service-main IPC server has the wrong process role");
+        }
+    } else {
+        ensure_windows_identity_matches_current(&identity, postfix)?;
+        if postfix.is_empty() && !windows_identity_is_main_server(&identity) {
+            bail!("Windows main IPC server has the wrong exact --server process role");
+        }
+        if hbb_common::config::is_service_ipc_postfix(postfix)
+            || postfix == super::WINDOWS_SERVICE_SAS_IPC_POSTFIX
+        {
+            if !process.live_token_authority()?.is_local_system {
+                bail!("Windows _service IPC server is not running as LocalSystem");
+            }
+            if !windows_identity_has_exact_role(&identity, &["--service"]) {
+                bail!("Windows _service IPC server has the wrong exact process role");
+            }
+        }
+    }
+    if windows_named_pipe_server_pid(client)? != server_pid {
+        bail!("Windows IPC named-pipe server pid changed during identity verification");
     }
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn authenticate_windows_service_owned_main_server(
+pub(crate) fn ensure_windows_service_main_server_pid(
     stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
-) -> ResultType<u32> {
+    expected_identity: WindowsProcessIdentityKey,
+) -> ResultType<()> {
     let server_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
-    ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")?;
-    let is_system =
-        crate::platform::windows::is_process_running_as_system(server_pid).map_err(|err| {
-            anyhow::anyhow!(
-                "Failed to determine Windows service-owned main IPC server identity: {}",
-                err
-            )
-        })?;
-    if !is_system {
-        bail!("Windows service-owned main IPC server is not running as LocalSystem");
+    if server_pid != expected_identity.pid {
+        bail!(
+            "Windows service-main IPC server pid mismatch: expected {}, got {}",
+            expected_identity.pid,
+            server_pid
+        );
     }
-    if !peer_process_has_windows_service_owned_server_args(server_pid) {
-        bail!("Windows service-owned main IPC server is not the exact --server --service-owned-server process");
+    let process = WindowsPeerProcess::open(server_pid)?;
+    if process.key != expected_identity {
+        bail!(
+            "Windows service-main IPC server process generation mismatch: pid={}, expected_creation={}, actual_creation={}",
+            server_pid,
+            expected_identity.creation_time,
+            process.key.creation_time
+        );
     }
-    Ok(server_pid)
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -498,6 +1459,251 @@ fn windows_named_pipe_server_pid(client: &parity_tokio_ipc::ConnectionClient) ->
         bail!("GetNamedPipeServerProcessId returned pid 0");
     }
     Ok(server_pid)
+}
+
+#[cfg(windows)]
+fn windows_named_pipe_server_pid_from_handle(pipe: HANDLE) -> ResultType<u32> {
+    if pipe.is_invalid() {
+        bail!("Windows sensitive IPC client handle is invalid");
+    }
+    let mut server_pid = 0u32;
+    unsafe {
+        GetNamedPipeServerProcessId(pipe, &mut server_pid).map_err(|err| {
+            anyhow::anyhow!("Failed to resolve Windows sensitive IPC server pid: {err}")
+        })?;
+    }
+    if server_pid == 0 {
+        bail!("Windows sensitive IPC server pid is zero");
+    }
+    Ok(server_pid)
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsSensitivePipeClientProof {
+    process: WindowsPeerProcess,
+    identity: Arc<WindowsProcessImmutableIdentity>,
+    process_token: WindowsLiveTokenProof,
+    pipe_token: WindowsLiveTokenProof,
+    security: WindowsSensitivePipeSecurity,
+    require_elevated: bool,
+    postfix: &'static str,
+}
+
+#[cfg(windows)]
+impl WindowsSensitivePipeClientProof {
+    pub(crate) fn revalidate(&self, pipe: HANDLE, deadline: Instant) -> ResultType<()> {
+        windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC client proof")?;
+        if windows_named_pipe_client_pid(pipe)? != self.process.key.pid {
+            bail!("Windows sensitive IPC client pid changed before admission");
+        }
+        self.process
+            .require_running("Windows sensitive IPC client")?;
+        if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {
+            bail!("Windows sensitive IPC client process generation changed");
+        }
+        let current_identity = self.process.fresh_identity()?;
+        if current_identity != *self.identity {
+            bail!("Windows sensitive IPC client immutable identity changed");
+        }
+        require_windows_sensitive_password_client_role(&current_identity)?;
+        let process_token = self.process.live_token_proof()?;
+        let pipe_token = windows_named_pipe_client_token_proof(pipe, deadline)?;
+        let current_security = windows_sensitive_pipe_security_at_deadline(self.postfix, deadline)?;
+        if current_security != self.security {
+            bail!("Windows sensitive IPC endpoint principal or session changed before admission");
+        }
+        let expected_principal = current_security
+            .expected_client_principal
+            .as_ref()
+            .ok_or_else(|| {
+                anyhow::anyhow!("Windows sensitive IPC endpoint has no active principal")
+            })?;
+        let authority_allowed = process_token.principal == *expected_principal
+            && pipe_token.principal == *expected_principal
+            && process_token == pipe_token
+            && (!self.require_elevated
+                || (process_token.authority.is_elevated && pipe_token.authority.is_elevated));
+        if process_token != self.process_token
+            || pipe_token != self.pipe_token
+            || !authority_allowed
+        {
+            bail!("Windows sensitive IPC client authority changed before admission");
+        }
+        windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC client proof")?;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn preauthorize_windows_sensitive_pipe_client(
+    pipe: HANDLE,
+    postfix: &'static str,
+    security: &WindowsSensitivePipeSecurity,
+    deadline: Instant,
+) -> ResultType<()> {
+    windows_sensitive_auth_deadline_live(
+        deadline,
+        "Windows sensitive IPC client preauthorization",
+    )?;
+    let require_elevated = match postfix {
+        super::password::USER_PASSWORD_IPC_POSTFIX => false,
+        super::password::SERVICE_PASSWORD_IPC_POSTFIX => true,
+        _ => bail!("Unsupported Windows sensitive IPC server endpoint"),
+    };
+    if windows_sensitive_pipe_security_at_deadline(postfix, deadline)? != *security {
+        bail!(
+            "Windows sensitive IPC endpoint principal or session changed before preauthorization"
+        );
+    }
+    let expected_principal = security
+        .expected_client_principal
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Windows sensitive IPC endpoint has no active principal"))?;
+    let process = WindowsPeerProcess::open(windows_named_pipe_client_pid(pipe)?)?;
+    let identity = process.fresh_identity()?;
+    ensure_windows_identity_matches_current(&identity, postfix)?;
+    require_windows_sensitive_password_client_role(&identity)?;
+    let process_token = process.live_token_proof()?;
+    if process_token.principal != *expected_principal
+        || (require_elevated && !process_token.authority.is_elevated)
+    {
+        bail!("Windows sensitive IPC client process token is not authorized for the endpoint");
+    }
+    process.require_running("Windows sensitive IPC client")?;
+    windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC client preauthorization")
+}
+
+#[cfg(windows)]
+pub(crate) fn authorize_windows_sensitive_pipe_client(
+    pipe: HANDLE,
+    postfix: &'static str,
+    security: &WindowsSensitivePipeSecurity,
+    deadline: Instant,
+) -> ResultType<WindowsSensitivePipeClientProof> {
+    windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC client authorization")?;
+    let require_elevated = match postfix {
+        super::password::USER_PASSWORD_IPC_POSTFIX => false,
+        super::password::SERVICE_PASSWORD_IPC_POSTFIX => true,
+        _ => bail!("Unsupported Windows sensitive IPC server endpoint"),
+    };
+    if windows_sensitive_pipe_security_at_deadline(postfix, deadline)? != *security {
+        bail!("Windows sensitive IPC endpoint principal or session changed before authorization");
+    }
+    let expected_principal = security
+        .expected_client_principal
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Windows sensitive IPC endpoint has no active principal"))?;
+    let process = WindowsPeerProcess::open(windows_named_pipe_client_pid(pipe)?)?;
+    let identity = process.immutable_identity()?;
+    ensure_windows_identity_matches_current(&identity, postfix)?;
+    require_windows_sensitive_password_client_role(&identity)?;
+    let process_token = process.live_token_proof()?;
+    let pipe_token = windows_named_pipe_client_token_proof(pipe, deadline)?;
+    let authority_allowed = process_token.principal == *expected_principal
+        && pipe_token.principal == *expected_principal
+        && process_token == pipe_token
+        && (!require_elevated
+            || (process_token.authority.is_elevated && pipe_token.authority.is_elevated));
+    if !authority_allowed {
+        bail!("Windows sensitive IPC client token does not match the endpoint DACL principal");
+    }
+    process.require_running("Windows sensitive IPC client")?;
+    let proof = WindowsSensitivePipeClientProof {
+        process,
+        identity,
+        process_token,
+        pipe_token,
+        security: security.clone(),
+        require_elevated,
+        postfix,
+    };
+    proof.revalidate(pipe, deadline)?;
+    Ok(proof)
+}
+
+#[cfg(windows)]
+pub(crate) struct WindowsSensitivePipeServerProof {
+    process: WindowsPeerProcess,
+    identity: Arc<WindowsProcessImmutableIdentity>,
+    server_token: WindowsLiveTokenProof,
+    requester_principal: Option<WindowsTokenPrincipal>,
+    postfix: &'static str,
+}
+
+#[cfg(windows)]
+impl WindowsSensitivePipeServerProof {
+    pub(crate) fn revalidate(&self, pipe: HANDLE, deadline: Instant) -> ResultType<()> {
+        windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC server proof")?;
+        if windows_named_pipe_server_pid_from_handle(pipe)? != self.process.key.pid {
+            bail!("Windows sensitive IPC server pid changed during transaction");
+        }
+        self.process
+            .require_running("Windows sensitive IPC server")?;
+        if windows_process_creation_time(self.process.handle.0)? != self.process.key.creation_time {
+            bail!("Windows sensitive IPC server process generation changed");
+        }
+        let current_identity = self.process.fresh_identity()?;
+        if current_identity != *self.identity {
+            bail!("Windows sensitive IPC server immutable identity changed");
+        }
+        require_windows_sensitive_password_server_role(&current_identity, self.postfix)?;
+        if self.process.live_token_proof()? != self.server_token {
+            bail!("Windows sensitive IPC server authority changed during transaction");
+        }
+        if let Some(expected) = self.requester_principal.as_ref() {
+            let current_token = current_process_token()?;
+            if windows_token_principal(current_token.0)? != *expected {
+                bail!("Windows sensitive IPC requesting principal changed during transaction");
+            }
+        }
+        windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC server proof")?;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn authenticate_windows_sensitive_pipe_server(
+    pipe: HANDLE,
+    postfix: &'static str,
+    deadline: Instant,
+) -> ResultType<WindowsSensitivePipeServerProof> {
+    windows_sensitive_auth_deadline_live(deadline, "Windows sensitive IPC server authentication")?;
+    let process = WindowsPeerProcess::open(windows_named_pipe_server_pid_from_handle(pipe)?)?;
+    let identity = process.immutable_identity()?;
+    let server_token = process.live_token_proof()?;
+    let requester_principal = match postfix {
+        super::password::USER_PASSWORD_IPC_POSTFIX => {
+            ensure_windows_identity_matches_current(&identity, postfix)?;
+            require_windows_sensitive_password_server_role(&identity, postfix)?;
+            let current_token = current_process_token()?;
+            let requester = windows_token_principal(current_token.0)?;
+            if server_token.principal != requester {
+                bail!(
+                    "Windows sensitive main IPC server does not match the requesting user/logon/session principal"
+                );
+            }
+            Some(requester)
+        }
+        super::password::SERVICE_PASSWORD_IPC_POSTFIX => {
+            ensure_windows_identity_matches_fixed_service(&identity, postfix)?;
+            if !server_token.authority.is_local_system {
+                bail!("Windows sensitive service IPC server is not LocalSystem");
+            }
+            require_windows_sensitive_password_server_role(&identity, postfix)?;
+            None
+        }
+        _ => bail!("Unsupported Windows sensitive IPC client endpoint"),
+    };
+    process.require_running("Windows sensitive IPC server")?;
+    let proof = WindowsSensitivePipeServerProof {
+        process,
+        identity,
+        server_token,
+        requester_principal,
+        postfix,
+    };
+    proof.revalidate(pipe, deadline)?;
+    Ok(proof)
 }
 
 #[cfg(target_os = "macos")]
@@ -826,29 +2032,55 @@ fn macos_service_ipc_allows_installed_app_and_privileged_helper(
     current_exe: &Path,
     postfix: &str,
 ) -> bool {
-    postfix == crate::POSTFIX_SERVICE
+    hbb_common::config::is_service_ipc_postfix(postfix)
         && macos_peer_is_trusted_installed_app(peer_identity)
         && macos_privileged_helper_path_is_expected_and_trusted(current_exe)
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn ensure_macos_service_server_is_trusted<T>(
-    stream: &ConnectionTmpl<T>,
-) -> ResultType<()>
+pub(crate) struct MacosServiceServerAuthorization {
+    identity: MacosPeerProcessIdentity,
+    context: &'static str,
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_service_server_authorization_snapshot<T>(
+    stream: &T,
+    context: &'static str,
+) -> ResultType<MacosServiceServerAuthorization>
 where
-    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+    T: std::os::unix::io::AsRawFd,
 {
-    let identity = stream.macos_peer_process_identity("macOS _service server")?;
-    if identity.uid != 0 {
+    let fd = stream.as_raw_fd();
+    Ok(MacosServiceServerAuthorization {
+        identity: MacosPeerProcessIdentity {
+            uid: peer_uid_from_fd(fd)
+                .ok_or_else(|| anyhow::anyhow!("Failed to resolve {context} uid"))?,
+            pid: peer_pid_from_fd(fd)
+                .ok_or_else(|| anyhow::anyhow!("Failed to resolve {context} pid"))?,
+            audit_token: peer_audit_token_from_fd(fd)
+                .ok_or_else(|| anyhow::anyhow!("Failed to resolve {context} audit token"))?,
+        },
+        context,
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn authorize_macos_service_server_snapshot(
+    authorization: MacosServiceServerAuthorization,
+) -> ResultType<()> {
+    if authorization.identity.uid != 0 {
         bail!(
-            "macOS _service server is not root: peer_uid={}",
-            identity.uid
+            "{} is not root: peer_uid={}",
+            authorization.context,
+            authorization.identity.uid
         );
     }
-    if !macos_peer_is_trusted_privileged_helper(&identity) {
+    if !macos_peer_is_trusted_privileged_helper(&authorization.identity) {
         bail!(
-            "macOS _service server is not the trusted privileged helper: peer_pid={}",
-            identity.pid
+            "{} is not the trusted privileged helper: peer_pid={}",
+            authorization.context,
+            authorization.identity.pid
         );
     }
     Ok(())
@@ -1222,6 +2454,40 @@ where
     Ok(identity)
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn ensure_linux_service_password_server_is_trusted<T>(
+    stream: &T,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let identity =
+        peer_process_identity_from_stream(stream, super::password::SERVICE_PASSWORD_IPC_POSTFIX)?;
+    if identity.uid != 0 {
+        bail!(
+            "Linux service password server is not root: peer_uid={}",
+            identity.uid
+        );
+    }
+    let args = linux_proc_cmdline_args(identity.pid)?;
+    if !linux_service_process_argv_is_expected(&args) {
+        bail!(
+            "Linux service password server argv mismatch: pid={}, args={:?}",
+            identity.pid,
+            args
+        );
+    }
+    let peer_exe = peer_exe_canonical_path_by_pid(identity.pid)?;
+    if !linux_service_executable_is_trusted(&peer_exe) {
+        bail!(
+            "Linux service password server executable is not trusted root-owned state: pid={}, peer_exe='{}'",
+            identity.pid,
+            peer_exe.display()
+        );
+    }
+    Ok(identity)
+}
+
 #[cfg(target_os = "macos")]
 fn macos_process_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
     let mut sys = hbb_common::sysinfo::System::new_all();
@@ -1271,6 +2537,65 @@ where
     if !user_owned_main_server_argv_is_expected(&args) {
         bail!(
             "user-owned main IPC server argv mismatch: pid={}, args={:?}",
+            peer_pid,
+            args
+        );
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn ensure_user_owned_password_client_is_trusted<T>(
+    stream: &T,
+    postfix: &str,
+) -> ResultType<()>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let fd = stream.as_raw_fd();
+    let peer_uid = peer_uid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve user password IPC client uid"))?;
+    let current_uid = unsafe { libc::geteuid() as u32 };
+    if peer_uid != current_uid {
+        bail!(
+            "user password IPC client uid mismatch: peer_uid={}, current_uid={}",
+            peer_uid,
+            current_uid
+        );
+    }
+    let peer_pid = peer_pid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve user password IPC client pid"))?;
+    ensure_peer_executable_matches_current_by_pid(peer_pid, postfix)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn ensure_user_owned_password_server_is_trusted<T>(
+    stream: &T,
+    expected_uid: u32,
+) -> ResultType<()>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let fd = stream.as_raw_fd();
+    let peer_uid = peer_uid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve user password IPC server uid"))?;
+    if peer_uid != expected_uid {
+        bail!(
+            "user password IPC server uid mismatch: peer_uid={}, expected_uid={}",
+            peer_uid,
+            expected_uid
+        );
+    }
+    let peer_pid = peer_pid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve user password IPC server pid"))?;
+    ensure_peer_executable_matches_current_by_pid(
+        peer_pid,
+        super::password::USER_PASSWORD_IPC_POSTFIX,
+    )?;
+    let args = main_server_cmdline_args(peer_pid)?;
+    if !user_owned_main_server_argv_is_expected(&args) {
+        bail!(
+            "user password IPC server argv mismatch: pid={}, args={:?}",
             peer_pid,
             args
         );
@@ -1344,6 +2669,34 @@ where
         anyhow::anyhow!("Failed to resolve peer pid on ipc channel '{}'", postfix)
     })?;
     let peer_uid = stream.peer_uid().ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve peer uid on ipc channel '{}'", postfix)
+    })?;
+    let identity = linux_process_identity_by_pid(peer_pid, postfix)?;
+    if identity.uid != peer_uid {
+        bail!(
+            "Peer uid changed while authenticating ipc channel '{}': pid={}, socket_uid={}, proc_uid={}",
+            postfix,
+            peer_pid,
+            peer_uid,
+            identity.uid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn peer_process_identity_from_stream<T>(
+    stream: &T,
+    postfix: &str,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let fd = stream.as_raw_fd();
+    let peer_pid = peer_pid_from_fd(fd).ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve peer pid on ipc channel '{}'", postfix)
+    })?;
+    let peer_uid = peer_uid_from_fd(fd).ok_or_else(|| {
         anyhow::anyhow!("Failed to resolve peer uid on ipc channel '{}'", postfix)
     })?;
     let identity = linux_process_identity_by_pid(peer_pid, postfix)?;
@@ -1446,7 +2799,80 @@ where
 }
 
 #[cfg(target_os = "linux")]
+pub(crate) fn authenticate_linux_service_owned_password_parent<T>(
+    stream: &T,
+    postfix: &str,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let identity = peer_process_identity_from_stream(stream, postfix)?;
+    if identity.uid != 0 {
+        bail!("service-owned password parent is not root");
+    }
+    let args = linux_proc_cmdline_args(identity.pid)?;
+    if args.len() != 2 || args.get(1).map(String::as_str) != Some("--service") {
+        bail!(
+            "service-owned password parent argv mismatch: pid={}, args={:?}",
+            identity.pid,
+            args
+        );
+    }
+    let expected_parent = std::env::var(crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV)
+        .map_err(|_| anyhow::anyhow!("service-owned server launch parent is unavailable"))?
+        .parse::<u32>()
+        .map_err(|err| anyhow::anyhow!("service-owned server launch parent is invalid: {err}"))?;
+    if identity.pid != expected_parent
+        || !linux_process_has_ancestor(std::process::id(), expected_parent)
+    {
+        bail!(
+            "service-owned password parent identity mismatch: expected={}, actual={}",
+            expected_parent,
+            identity.pid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(
+    stream: &T,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let identity = peer_process_identity_from_stream(stream, "")?;
+    let args = linux_proc_cmdline_args(identity.pid)?;
+    if !linux_service_owned_server_argv_is_expected(&args) {
+        bail!(
+            "service-owned password replica argv mismatch: pid={}, args={:?}",
+            identity.pid,
+            args
+        );
+    }
+    let expected_parent = std::process::id();
+    let launch_parent = linux_proc_u32_env(
+        identity.pid,
+        crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
+    )?;
+    if launch_parent != expected_parent
+        || !linux_process_has_ancestor(identity.pid, expected_parent)
+    {
+        bail!(
+            "service-owned password replica launch parent mismatch: pid={}, expected_parent={}, launch_parent={}",
+            identity.pid,
+            expected_parent,
+            launch_parent
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
 pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, postfix: &str) -> bool {
+    if !is_allowed_service_peer_uid(identity.uid, active_uid_fresh()) {
+        return false;
+    }
     linux_process_identity_by_pid(identity.pid, postfix)
         .map(|live| {
             live == *identity
@@ -1540,20 +2966,6 @@ fn peer_exe_canonical_path_by_pid(peer_pid: u32) -> ResultType<PathBuf> {
     })
 }
 
-#[cfg(target_os = "windows")]
-#[inline]
-fn peer_exe_canonical_path_by_pid(peer_pid: u32) -> ResultType<PathBuf> {
-    let path = crate::platform::windows::get_process_executable_path(peer_pid)?;
-    fs::canonicalize(&path).map_err(|err| {
-        anyhow::anyhow!(
-            "Failed to canonicalize peer executable path '{}': {}",
-            path.display(),
-            err
-        )
-        .into()
-    })
-}
-
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[inline]
 pub(crate) fn executable_paths_match(left: &Path, right: &Path) -> bool {
@@ -1597,16 +3009,42 @@ fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[inline]
 fn ensure_peer_executable_matches_current_by_pid(peer_pid: u32, postfix: &str) -> ResultType<()> {
-    let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
+    #[cfg(target_os = "windows")]
+    {
+        let identity = WindowsPeerProcess::open(peer_pid)?.immutable_identity()?;
+        return ensure_windows_identity_matches_current(&identity, postfix);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
+        let current_exe = current_exe_canonical_path()?;
+        if executable_paths_match(&peer_exe, &current_exe) {
+            return Ok(());
+        }
+        bail!(
+        "Peer executable path mismatch on ipc channel '{}': peer_pid={}, peer_exe='{}', current_exe='{}'",
+        postfix,
+        peer_pid,
+        peer_exe.display(),
+        current_exe.display()
+    );
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_windows_identity_matches_current(
+    identity: &WindowsProcessImmutableIdentity,
+    postfix: &str,
+) -> ResultType<()> {
     let current_exe = current_exe_canonical_path()?;
-    if executable_paths_match(&peer_exe, &current_exe) {
+    if executable_paths_match(&identity.executable, &current_exe) {
         return Ok(());
     }
     bail!(
         "Peer executable path mismatch on ipc channel '{}': peer_pid={}, peer_exe='{}', current_exe='{}'",
         postfix,
-        peer_pid,
-        peer_exe.display(),
+        identity.key.pid,
+        identity.executable.display(),
         current_exe.display()
     );
 }
@@ -1621,7 +3059,7 @@ fn ensure_peer_executable_matches_current_macos_identity(
     let peer_exe = macos_peer_code_path(&code, "IPC peer")?;
     let current_exe = current_exe_canonical_path()?;
     if executable_paths_match(&peer_exe, &current_exe) {
-        if postfix != crate::POSTFIX_SERVICE
+        if !hbb_common::config::is_service_ipc_postfix(postfix)
             || (macos_peer_code_satisfies_requirement(
                 &code,
                 MACOS_PRIVILEGED_HELPER_REQUIREMENT,
@@ -1657,11 +3095,10 @@ pub(crate) fn ensure_peer_executable_matches_current_by_pid_opt(
 }
 
 #[cfg(target_os = "windows")]
-fn ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(
-    peer_pid: u32,
+fn ensure_windows_identity_matches_fixed_service(
+    identity: &WindowsProcessImmutableIdentity,
     postfix: &str,
 ) -> ResultType<()> {
-    let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
     let expected_exe = crate::platform::windows::fixed_service_install_exe_path()?;
     let expected_exe = fs::canonicalize(&expected_exe).map_err(|err| {
         anyhow::anyhow!(
@@ -1670,14 +3107,14 @@ fn ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(
             err
         )
     })?;
-    if executable_paths_match(&peer_exe, &expected_exe) {
+    if executable_paths_match(&identity.executable, &expected_exe) {
         return Ok(());
     }
     bail!(
         "Peer executable path mismatch on service-owned ipc channel '{}': peer_pid={}, peer_exe='{}', expected_exe='{}'",
         postfix,
-        peer_pid,
-        peer_exe.display(),
+        identity.key.pid,
+        identity.executable.display(),
         expected_exe.display()
     );
 }
@@ -1808,17 +3245,36 @@ pub(crate) fn service_scoped_ipc_authorization_snapshot(
     stream: &Connection,
     postfix: &str,
 ) -> ServiceScopedIpcAuthorization {
+    service_scoped_ipc_authorization_snapshot_from_stream(stream.inner.get_ref(), postfix)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream<T>(
+    stream: &T,
+    postfix: &str,
+) -> ServiceScopedIpcAuthorization
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let fd = stream.as_raw_fd();
     #[cfg(target_os = "linux")]
-    let peer_pid = stream.peer_pid();
+    let peer_pid = peer_pid_from_fd(fd);
     #[cfg(target_os = "macos")]
-    let macos_peer_identity = match stream.macos_peer_process_identity("macOS _service peer") {
-        Ok(identity) => Some(identity),
-        Err(err) => {
-            log::warn!("Rejected macOS _service IPC peer: {err}");
-            None
-        }
+    let macos_peer_identity = match (
+        peer_uid_from_fd(fd),
+        peer_pid_from_fd(fd),
+        peer_audit_token_from_fd(fd),
+    ) {
+        (Some(uid), Some(pid), Some(audit_token)) => Some(MacosPeerProcessIdentity {
+            uid,
+            pid,
+            audit_token,
+        }),
+        _ => None,
     };
-    let (uid_authorized, peer_uid, active_uid) = stream.service_authorization_status();
+    let peer_uid = peer_uid_from_fd(fd);
+    let active_uid = active_uid_fresh();
+    let uid_authorized = peer_uid.is_some_and(|uid| is_allowed_service_peer_uid(uid, active_uid));
     ServiceScopedIpcAuthorization {
         postfix: postfix.to_owned(),
         #[cfg(target_os = "linux")]
@@ -1894,14 +3350,47 @@ fn authorize_windows_session_current_exe_ipc_connection(
     postfix: &str,
     channel: &str,
 ) -> bool {
-    let (
-        authorized,
-        peer_pid,
-        peer_session_id,
-        server_session_id,
-        peer_is_system,
-        peer_is_elevated,
-    ) = stream.server_authorization_status();
+    let peer_pid = stream.peer_pid();
+    let server_session_id = crate::platform::windows::get_current_process_session_id();
+    let process = match peer_pid.map(WindowsPeerProcess::open) {
+        Some(Ok(process)) => Some(process),
+        Some(Err(err)) => {
+            log::debug!(
+                "Failed to open live Windows IPC peer process: postfix={}, peer_pid={:?}, err={}",
+                postfix,
+                peer_pid,
+                err
+            );
+            None
+        }
+        None => None,
+    };
+    let authority = match process
+        .as_ref()
+        .map(WindowsPeerProcess::live_token_authority)
+    {
+        Some(Ok(authority)) => Some(authority),
+        Some(Err(err)) => {
+            log::debug!(
+                "Failed to inspect live Windows IPC peer process token: postfix={}, peer_pid={:?}, err={}",
+                postfix,
+                peer_pid,
+                err
+            );
+            None
+        }
+        None => None,
+    };
+    let peer_session_id = authority.map(|value| value.session_id);
+    let peer_is_system = authority.map(|value| value.is_local_system);
+    let peer_is_elevated = authority.map(|value| value.is_elevated);
+    let authorized = process.is_some()
+        && authority.is_some()
+        && (is_allowed_windows_session_scoped_peer(
+            peer_is_system.unwrap_or(false),
+            peer_session_id,
+            server_session_id,
+        ) || peer_is_elevated.unwrap_or(false));
     if !authorized {
         log_rejected_windows_ipc_connection(
             postfix,
@@ -1913,13 +3402,38 @@ fn authorize_windows_session_current_exe_ipc_connection(
         );
         return false;
     }
-    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, postfix) {
+    let Some(process) = process else {
+        return false;
+    };
+    let identity = match process.immutable_identity() {
+        Ok(identity) => identity,
+        Err(err) => {
+            log::warn!(
+                "Rejected unauthorized connection on {} due to identity query failure: postfix={}, peer_pid={:?}, err={}",
+                channel,
+                postfix,
+                peer_pid,
+                err
+            );
+            return false;
+        }
+    };
+    if let Err(err) = ensure_windows_identity_matches_current(&identity, postfix) {
         log::warn!(
             "Rejected unauthorized connection on {} due to executable mismatch: postfix={}, peer_pid={:?}, err={}",
             channel,
             postfix,
             peer_pid,
             err
+        );
+        return false;
+    }
+    if peer_pid.is_none() || stream.peer_pid() != peer_pid {
+        log::warn!(
+            "Rejected unauthorized connection on {} after named-pipe peer pid changed: postfix={}, peer_pid={:?}",
+            channel,
+            postfix,
+            peer_pid
         );
         return false;
     }
@@ -1932,6 +3446,147 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
 }
 
 #[cfg(windows)]
+pub(crate) fn authorize_windows_service_main_ipc_connection(stream: &Connection) -> bool {
+    match stream.windows_pipe_client_token_is_local_system() {
+        Ok(true) => {}
+        Ok(false) => {
+            log::warn!("Rejected non-LocalSystem Windows service-main IPC client");
+            return false;
+        }
+        Err(err) => {
+            log::warn!("Rejected Windows service-main IPC client token: {err}");
+            return false;
+        }
+    }
+    let Some(peer_pid) = stream.peer_pid() else {
+        log::warn!("Rejected Windows service-main IPC client without a process id");
+        return false;
+    };
+    let identity =
+        match WindowsPeerProcess::open(peer_pid).and_then(|process| process.immutable_identity()) {
+            Ok(identity) => identity,
+            Err(err) => {
+                log::warn!("Rejected Windows service-main IPC client identity: {err}");
+                return false;
+            }
+        };
+    let expected_parent = (|| -> ResultType<WindowsProcessIdentityKey> {
+        let pid = std::env::var(super::WINDOWS_SERVICE_SUPERVISOR_PID_ENV)
+            .map_err(|err| anyhow::anyhow!("missing Windows service supervisor pid: {err}"))?
+            .parse::<u32>()
+            .map_err(|err| anyhow::anyhow!("invalid Windows service supervisor pid: {err}"))?;
+        let creation_time = std::env::var(super::WINDOWS_SERVICE_SUPERVISOR_CREATION_ENV)
+            .map_err(|err| {
+                anyhow::anyhow!("missing Windows service supervisor creation time: {err}")
+            })?
+            .parse::<u64>()
+            .map_err(|err| {
+                anyhow::anyhow!("invalid Windows service supervisor creation time: {err}")
+            })?;
+        if pid == 0 || creation_time == 0 {
+            bail!("invalid zero Windows service supervisor identity");
+        }
+        Ok(WindowsProcessIdentityKey { pid, creation_time })
+    })();
+    let expected_parent = match expected_parent {
+        Ok(identity) => identity,
+        Err(err) => {
+            log::warn!("Rejected Windows service-main IPC client without launch-bound supervisor identity: {err}");
+            return false;
+        }
+    };
+    if identity.key != expected_parent {
+        log::warn!(
+            "Rejected Windows service-main IPC client identity: expected {}:{}, got {}:{}",
+            expected_parent.pid,
+            expected_parent.creation_time,
+            identity.key.pid,
+            identity.key.creation_time
+        );
+        return false;
+    }
+    if let Err(err) = ensure_windows_identity_matches_fixed_service(
+        &identity,
+        super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX,
+    ) {
+        log::warn!("Rejected Windows service-main IPC client executable: {err}");
+        return false;
+    }
+    if !windows_identity_has_exact_role(&identity, &["--service"]) {
+        log::warn!("Rejected Windows service-main IPC client with the wrong process role");
+        return false;
+    }
+    if stream.peer_pid() != Some(peer_pid) {
+        log::warn!("Rejected Windows service-main IPC client after named-pipe peer pid changed");
+        return false;
+    }
+    true
+}
+
+#[cfg(windows)]
+pub(crate) fn authorize_windows_service_owned_sas_requester(
+    stream: &Connection,
+) -> Option<WindowsProcessIdentityKey> {
+    let peer_pid = stream.peer_pid()?;
+    match stream.windows_pipe_client_authority() {
+        Ok(authority) if authority.is_local_system => {}
+        Ok(_) => {
+            log::warn!(
+                "Rejected non-LocalSystem Windows service-owned SAS requester: peer_pid={peer_pid}"
+            );
+            return None;
+        }
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned SAS requester token: peer_pid={peer_pid}, err={err}"
+            );
+            return None;
+        }
+    }
+    let process = match WindowsPeerProcess::open(peer_pid) {
+        Ok(process) => process,
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned SAS requester identity: peer_pid={peer_pid}, err={err}"
+            );
+            return None;
+        }
+    };
+    let process_key = process.key;
+    let identity = match process.immutable_identity() {
+        Ok(identity) => identity,
+        Err(err) => {
+            log::warn!(
+                "Rejected Windows service-owned SAS requester identity: peer_pid={peer_pid}, err={err}"
+            );
+            return None;
+        }
+    };
+    if let Err(err) = ensure_windows_identity_matches_fixed_service(
+        &identity,
+        super::WINDOWS_SERVICE_SAS_IPC_POSTFIX,
+    ) {
+        log::warn!(
+            "Rejected Windows service-owned SAS requester executable: peer_pid={peer_pid}, err={err}"
+        );
+        return None;
+    }
+    if !windows_identity_has_exact_role(&identity, &windows_service_owned_main_server_args()) {
+        log::warn!(
+            "Rejected Windows service-owned SAS requester with the wrong process role: peer_pid={peer_pid}"
+        );
+        return None;
+    }
+    if stream.peer_pid() != Some(peer_pid) {
+        log::warn!(
+            "Rejected Windows service-owned SAS requester after named-pipe peer pid changed: peer_pid={peer_pid}"
+        );
+        return None;
+    }
+    Some(process_key)
+}
+
+#[cfg(windows)]
 pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix: &str) -> bool {
     authorize_windows_session_current_exe_ipc_connection(
         stream,
@@ -1940,7 +3595,7 @@ pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix:
     )
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn peer_process_is_current_exe_with_first_arg(peer_pid: u32, expected_arg: &str) -> bool {
     let Some(exe_name) = std::env::current_exe()
         .ok()
@@ -1954,26 +3609,96 @@ fn peer_process_is_current_exe_with_first_arg(peer_pid: u32, expected_arg: &str)
         .any(|pid| pid.as_u32() == peer_pid)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
-    peer_process_is_current_exe_with_first_arg(peer_pid, "--server")
+#[cfg(target_os = "windows")]
+fn windows_process_argv_is_exact(argv: &[String], expected_args: &[&str]) -> bool {
+    argv.len() == expected_args.len() + 1
+        && expected_args
+            .iter()
+            .enumerate()
+            .all(|(index, expected)| argv[index + 1].eq_ignore_ascii_case(expected))
 }
 
 #[cfg(target_os = "windows")]
-fn peer_process_has_windows_service_owned_server_args(peer_pid: u32) -> bool {
-    let Some(exe_name) = crate::platform::windows::fixed_service_install_exe_path()
-        .ok()
-        .and_then(|path| path.file_name().map(|name| name.to_owned()))
-    else {
-        return false;
-    };
-    let exe_name = exe_name.to_string_lossy();
-    crate::platform::get_pids_of_process_with_args(
-        exe_name.as_ref(),
-        &windows_service_owned_main_server_args(),
-    )
-    .iter()
-    .any(|pid| pid.as_u32() == peer_pid)
+fn windows_identity_has_exact_role(
+    identity: &WindowsProcessImmutableIdentity,
+    expected_args: &[&str],
+) -> bool {
+    windows_process_argv_is_exact(&identity.argv, expected_args)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_identity_is_main_server(identity: &WindowsProcessImmutableIdentity) -> bool {
+    windows_identity_has_exact_role(identity, &["--server"])
+        || windows_identity_has_exact_role(identity, &windows_service_owned_main_server_args())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_identity_is_sensitive_password_client(
+    identity: &WindowsProcessImmutableIdentity,
+) -> bool {
+    windows_process_argv_is_exact(&identity.argv, &[])
+        || windows_identity_has_exact_role(identity, &["--password"])
+        || windows_identity_has_exact_role(identity, &["--password-stdin"])
+}
+
+#[cfg(target_os = "windows")]
+fn require_windows_sensitive_password_client_role(
+    identity: &WindowsProcessImmutableIdentity,
+) -> ResultType<()> {
+    if windows_identity_is_sensitive_password_client(identity) {
+        Ok(())
+    } else {
+        bail!("Windows sensitive IPC client has the wrong exact process role")
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn require_windows_sensitive_password_server_role(
+    identity: &WindowsProcessImmutableIdentity,
+    postfix: &str,
+) -> ResultType<()> {
+    match postfix {
+        super::password::USER_PASSWORD_IPC_POSTFIX if windows_identity_is_main_server(identity) => {
+            Ok(())
+        }
+        super::password::SERVICE_PASSWORD_IPC_POSTFIX
+            if windows_identity_has_exact_role(identity, &["--service"]) =>
+        {
+            Ok(())
+        }
+        super::password::USER_PASSWORD_IPC_POSTFIX
+        | super::password::SERVICE_PASSWORD_IPC_POSTFIX => {
+            bail!("Windows sensitive IPC server has the wrong exact process role")
+        }
+        _ => bail!("Unsupported Windows sensitive IPC endpoint"),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let result = (|| -> ResultType<bool> {
+            let identity = WindowsPeerProcess::open(peer_pid)?.immutable_identity()?;
+            ensure_windows_identity_matches_current(&identity, "server role check")?;
+            Ok(windows_identity_is_main_server(&identity))
+        })();
+        return match result {
+            Ok(matches) => matches,
+            Err(err) => {
+                log::debug!(
+                    "Failed direct Windows main-server role check: pid={}, err={}",
+                    peer_pid,
+                    err
+                );
+                false
+            }
+        };
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        peer_process_is_current_exe_with_first_arg(peer_pid, "--server")
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -2005,9 +3730,13 @@ pub(crate) fn authenticate_windows_cm_endpoint(
     expected_arg: &str,
 ) -> ResultType<()> {
     let peer_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
-    ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?;
-    if !peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg) {
+    let identity = WindowsPeerProcess::open(peer_pid)?.immutable_identity()?;
+    ensure_windows_identity_matches_current(&identity, "_cm")?;
+    if !windows_identity_has_exact_role(&identity, &[expected_arg]) {
         bail!("_cm endpoint mode mismatch: expected {}", expected_arg);
+    }
+    if windows_named_pipe_server_pid(stream.inner.get_ref())? != peer_pid {
+        bail!("_cm endpoint named-pipe server pid changed during authentication");
     }
     Ok(())
 }
@@ -2144,7 +3873,14 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         &self,
         requirement: WindowsPipeClientTokenRequirement,
     ) -> ResultType<bool> {
-        let context = requirement.context();
+        let authority = self.windows_pipe_client_authority().map_err(|err| {
+            anyhow::anyhow!("Failed to authorize {}: {}", requirement.context(), err)
+        })?;
+        Ok(requirement.is_satisfied(authority))
+    }
+
+    fn windows_pipe_client_authority(&self) -> ResultType<WindowsLiveTokenAuthority> {
+        let context = "Windows named-pipe client";
         let pipe_handle = self.inner.get_ref().as_raw_handle();
         if pipe_handle.is_null() {
             bail!(
@@ -2152,12 +3888,7 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
                 context
             );
         }
-        unsafe {
-            ImpersonateNamedPipeClient(HANDLE(pipe_handle))
-                .map_err(|err| anyhow::anyhow!("Failed to impersonate {}: {}", context, err))?;
-        }
-        let revert = ThreadImpersonationGuard::new();
-        let result = (|| -> ResultType<bool> {
+        run_windows_pipe_client_impersonation(HANDLE(pipe_handle), context, move |_pipe_handle| {
             let mut token = HANDLE::default();
             unsafe {
                 OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, true, &mut token).map_err(
@@ -2167,10 +3898,8 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
                 )?;
             }
             let _token_guard = WindowsHandle(token);
-            requirement.is_satisfied(token)
-        })();
-        revert.restore();
-        result
+            windows_token_authority(token)
+        })
     }
 
     pub(crate) fn windows_pipe_client_token_is_elevated(&self) -> ResultType<bool> {
@@ -2181,77 +3910,33 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         self.windows_pipe_client_token_satisfies(WindowsPipeClientTokenRequirement::LocalSystem)
     }
 
-    fn server_authorization_status(
+    pub(crate) fn prepare_sas_as_windows_pipe_client(
         &self,
-    ) -> (
-        bool,
-        Option<u32>,
-        Option<u32>,
-        Option<u32>,
-        Option<bool>,
-        Option<bool>,
-    ) {
-        let peer_pid = self.peer_pid();
-        let server_session_id = crate::platform::windows::get_current_process_session_id();
-        let peer_session_id =
-            peer_pid.and_then(crate::platform::windows::get_session_id_of_process);
-        let peer_is_system_result =
-            peer_pid.map(crate::platform::windows::is_process_running_as_system);
-        let peer_is_system = peer_is_system_result
-            .as_ref()
-            .and_then(|r| r.as_ref().ok().copied());
-        let session_authorized = is_allowed_windows_session_scoped_peer(
-            peer_is_system.unwrap_or(false),
-            peer_session_id,
-            server_session_id,
-        );
-        let peer_is_elevated_result = if session_authorized {
-            None
-        } else {
-            peer_pid.map(|pid| crate::platform::windows::is_elevated(Some(pid)))
-        };
-        let peer_is_elevated = peer_is_elevated_result
-            .as_ref()
-            .and_then(|r| r.as_ref().ok().copied());
-        if server_session_id.is_none()
-            && !peer_is_system.unwrap_or(false)
-            && !peer_is_elevated.unwrap_or(false)
-        {
-            // When the server session id cannot be determined, the session-id allow-path is
-            // disabled and only privileged peers can be authorized.
-            log::debug!(
-                "IPC authorization: server session id unavailable; rejecting non-privileged peer, peer_pid={:?}, peer_session_id={:?}",
-                peer_pid,
-                peer_session_id
+        expected_requester: WindowsProcessIdentityKey,
+    ) -> ResultType<WindowsSasPipeDispatch> {
+        let peer_pid = self
+            .peer_pid()
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve Windows SAS requester pipe pid"))?;
+        let requester_process = WindowsPeerProcess::open_for_sas_dispatch(peer_pid)?;
+        if requester_process.key != expected_requester {
+            bail!(
+                "Windows SAS requester process identity changed: expected {}:{}, got {}:{}",
+                expected_requester.pid,
+                expected_requester.creation_time,
+                requester_process.key.pid,
+                requester_process.key.creation_time
             );
         }
-        // Main IPC trusts same-session peers, LocalSystem, and elevated administrators.
-        // Service-scoped IPC channels keep their own stricter authorization paths.
-        let authorized = session_authorized || peer_is_elevated.unwrap_or(false);
-        if !authorized {
-            if let (Some(pid), Some(Err(err))) = (peer_pid, peer_is_system_result.as_ref()) {
-                log::debug!(
-                    "Failed to determine whether peer process is SYSTEM, pid={}, err={}",
-                    pid,
-                    err
-                );
-            }
-            if let (Some(pid), Some(Err(err))) = (peer_pid, peer_is_elevated_result.as_ref()) {
-                log::debug!(
-                    "Failed to determine whether peer process is elevated, pid={}, err={}",
-                    pid,
-                    err
-                );
-            }
+        let pipe_handle = self.inner.get_ref().as_raw_handle();
+        if pipe_handle.is_null() {
+            bail!("Failed to retain Windows SAS requester: named pipe handle is null");
         }
-        (
-            authorized,
-            peer_pid,
-            peer_session_id,
-            server_session_id,
-            peer_is_system,
-            peer_is_elevated,
-        )
+        let pipe = duplicate_windows_handle(HANDLE(pipe_handle), "Windows SAS pipe")?;
+        requester_process.require_running("Windows SAS requester")?;
+        Ok(WindowsSasPipeDispatch {
+            pipe,
+            requester: requester_process,
+        })
     }
 
     pub(crate) fn service_authorization_status_for_session(
@@ -2259,23 +3944,25 @@ impl ConnectionTmpl<parity_tokio_ipc::Connection> {
         expected_active_session_id: Option<u32>,
     ) -> (bool, Option<u32>, Option<u32>, Option<bool>) {
         let peer_pid = self.peer_pid();
-        let peer_session_id =
-            peer_pid.and_then(crate::platform::windows::get_session_id_of_process);
-        let peer_is_system_result =
-            peer_pid.map(crate::platform::windows::is_process_running_as_system);
-        let peer_is_system = peer_is_system_result
-            .as_ref()
-            .and_then(|r| r.as_ref().ok().copied());
-        let authorized = is_allowed_windows_session_scoped_peer(
-            peer_is_system.unwrap_or(false),
-            peer_session_id,
-            expected_active_session_id,
-        );
+        let authority_result = peer_pid
+            .ok_or_else(|| anyhow::anyhow!("Windows service IPC peer pid unavailable"))
+            .and_then(WindowsPeerProcess::open)
+            .and_then(|process| process.live_token_authority());
+        let authority = authority_result.as_ref().ok().copied();
+        let peer_session_id = authority.map(|value| value.session_id);
+        let peer_is_system = authority.map(|value| value.is_local_system);
+        let authorized = peer_pid.is_some()
+            && authority.is_some()
+            && is_allowed_windows_session_scoped_peer(
+                peer_is_system.unwrap_or(false),
+                peer_session_id,
+                expected_active_session_id,
+            );
         if !authorized {
-            if let (Some(pid), Some(Err(err))) = (peer_pid, peer_is_system_result.as_ref()) {
+            if let Err(err) = authority_result {
                 log::debug!(
-                    "Failed to determine whether peer process is SYSTEM, pid={}, err={}",
-                    pid,
+                    "Failed to inspect live Windows service IPC client token, peer_pid={:?}, err={}",
+                    peer_pid,
                     err
                 );
             }
@@ -2343,6 +4030,130 @@ mod tests {
             ["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
             "R-S11e-11: the Windows service-owned main-server authenticator must require the exact service-owned server argv shape"
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    fn windows_identity_for_test(
+        pid: u32,
+        creation_time: u64,
+        args: &[&str],
+    ) -> std::sync::Arc<super::WindowsProcessImmutableIdentity> {
+        let mut argv = vec![r"C:\Program Files\RustDesk\RustDesk.exe".to_owned()];
+        argv.extend(args.iter().map(|arg| (*arg).to_owned()));
+        std::sync::Arc::new(super::WindowsProcessImmutableIdentity {
+            key: super::WindowsProcessIdentityKey { pid, creation_time },
+            executable: std::path::PathBuf::from(&argv[0]),
+            argv,
+        })
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_exact_role_policy_rejects_missing_and_extra_arguments() {
+        assert!(super::windows_process_argv_is_exact(
+            &["rustdesk.exe".to_owned(), "--SERVER".to_owned()],
+            &["--server"]
+        ));
+        assert!(!super::windows_process_argv_is_exact(
+            &["rustdesk.exe".to_owned()],
+            &["--server"]
+        ));
+        assert!(!super::windows_process_argv_is_exact(
+            &[
+                "rustdesk.exe".to_owned(),
+                "--server".to_owned(),
+                "--unexpected".to_owned(),
+            ],
+            &["--server"]
+        ));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_sensitive_password_client_roles_are_finite() {
+        for args in [&[][..], &["--password"][..], &["--password-stdin"][..]] {
+            let identity = windows_identity_for_test(1, 10, args);
+            assert!(super::windows_identity_is_sensitive_password_client(
+                &identity
+            ));
+        }
+        for args in [
+            &["--server"][..],
+            &["--service"][..],
+            &["--cm"][..],
+            &["--password", "extra"][..],
+        ] {
+            let identity = windows_identity_for_test(1, 10, args);
+            assert!(!super::windows_identity_is_sensitive_password_client(
+                &identity
+            ));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_main_server_role_allows_only_user_and_service_owned_shapes() {
+        let user = windows_identity_for_test(1, 10, &["--server"]);
+        let service_owned = windows_identity_for_test(
+            2,
+            20,
+            &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+        );
+        let extra = windows_identity_for_test(3, 30, &["--server", "--unexpected"]);
+        assert!(super::windows_identity_is_main_server(&user));
+        assert!(super::windows_identity_is_main_server(&service_owned));
+        assert!(!super::windows_identity_is_main_server(&extra));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_sas_token_authority_requires_local_system_in_exact_session() {
+        let valid = super::WindowsLiveTokenAuthority {
+            is_local_system: true,
+            is_elevated: true,
+            session_id: 7,
+        };
+        let user = super::WindowsLiveTokenAuthority {
+            is_local_system: false,
+            is_elevated: true,
+            session_id: 7,
+        };
+        assert!(super::windows_token_authority_matches_sas_session(valid, 7));
+        assert!(!super::windows_token_authority_matches_sas_session(
+            valid, 8
+        ));
+        assert!(!super::windows_token_authority_matches_sas_session(user, 7));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_identity_cache_is_bounded_and_lru() {
+        let mut cache = super::WindowsProcessIdentityCache::new(2);
+        let first = windows_identity_for_test(1, 10, &["--server"]);
+        let second = windows_identity_for_test(2, 20, &["--server"]);
+        let third = windows_identity_for_test(3, 30, &["--server"]);
+        cache.insert(first.clone());
+        cache.insert(second.clone());
+        assert!(cache.get(first.key).is_some());
+        cache.insert(third.clone());
+        assert!(cache.get(first.key).is_some());
+        assert!(cache.get(second.key).is_none());
+        assert!(cache.get(third.key).is_some());
+        assert_eq!(cache.entries.len(), 2);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_identity_cache_replaces_reused_pid_generation() {
+        let mut cache = super::WindowsProcessIdentityCache::new(4);
+        let old = windows_identity_for_test(7, 100, &["--server"]);
+        let reused = windows_identity_for_test(7, 200, &["--service"]);
+        cache.insert(old.clone());
+        cache.insert(reused.clone());
+        assert!(cache.get(old.key).is_none());
+        let observed = cache.get(reused.key).expect("reused pid generation cached");
+        assert_eq!(observed.key, reused.key);
+        assert_eq!(cache.entries.len(), 1);
     }
 
     #[test]
@@ -2475,10 +4286,41 @@ mod tests {
         assert!(super::windows_privileged_ipc_uses_restricted_dacl(
             "_service"
         ));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+            super::super::password::USER_PASSWORD_IPC_POSTFIX
+        ));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+            super::super::password::SERVICE_PASSWORD_IPC_POSTFIX
+        ));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+            super::super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX
+        ));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+            super::super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
+        ));
+        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+            super::super::WINDOWS_SERVICE_SAS_IPC_POSTFIX
+        ));
         assert!(super::windows_privileged_ipc_uses_restricted_dacl("_url"));
         assert!(!super::windows_privileged_ipc_uses_restricted_dacl(
             "_portable_service"
         ));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_service_control_and_sas_dacls_are_system_only() {
+        for postfix in [
+            super::super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX,
+            super::super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX,
+            super::super::WINDOWS_SERVICE_SAS_IPC_POSTFIX,
+        ] {
+            let sids = super::windows_ipc_dacl_sids_for_postfix(postfix).unwrap();
+            assert!(sids.server_sids.is_empty());
+            assert!(sids.client_sids.is_empty());
+            let sddl = super::windows_restricted_ipc_sddl(&sids);
+            assert_eq!(sddl, "D:P(D;;GA;;;NU)(A;;GA;;;SY)");
+        }
     }
 
     #[test]
@@ -2488,11 +4330,27 @@ mod tests {
             server_sids: vec!["S-1-5-5-100-200".to_owned()],
             client_sids: vec!["S-1-5-21-1-2-3-1001".to_owned()],
         });
-        assert!(sddl.starts_with("D:P(A;;GA;;;SY)"));
+        assert!(sddl.starts_with("D:P(D;;GA;;;NU)(A;;GA;;;SY)"));
+        assert_eq!(sddl.matches(";;;NU").count(), 1);
         assert!(sddl.contains("(A;;GA;;;S-1-5-5-100-200)"));
         assert!(sddl.contains("(A;;0x0012019b;;;S-1-5-21-1-2-3-1001)"));
         assert!(!sddl.contains(";;;BA"));
         assert!(!sddl.contains(";;;WD"));
+
+        let system_only = super::windows_restricted_ipc_sddl(&super::WindowsIpcDaclSids {
+            server_sids: Vec::new(),
+            client_sids: Vec::new(),
+        });
+        assert_eq!(system_only, "D:P(D;;GA;;;NU)(A;;GA;;;SY)");
+
+        let interactive_client = super::windows_restricted_ipc_sddl(&super::WindowsIpcDaclSids {
+            server_sids: Vec::new(),
+            client_sids: vec![super::INTERACTIVE_USERS_SID.to_owned()],
+        });
+        assert_eq!(
+            interactive_client,
+            "D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;0x0012019b;;;S-1-5-4)"
+        );
     }
 
     #[test]

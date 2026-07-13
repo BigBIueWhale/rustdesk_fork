@@ -1,52 +1,372 @@
-# scripts/run-build.ps1 -- the per-build job. Lives at the BUILD CD root; the golden's RustdeskPerBuild
-# logon task (via C:\golden-logon.ps1) runs it when an OUTPUT disk is attached (i.e. only for a per-build,
-# never during provisioning or a normal boot). Copies the committed repo off the BUILD CD into a writable
-# C:\src, runs build-windows.ps1 (cargo + flutter + the portable installer), writes the artifacts to the
-# OUTPUT disk the host reads, then shuts down so build-windows-vm.sh's wait returns. (R-B7/B9, sec12.2.)
-$ErrorActionPreference = 'Continue'
-$out = ((Get-Volume | Where-Object { $_.FileSystemLabel -eq 'OUTPUT' } | Select-Object -First 1).DriveLetter) + ':'
-$cd  = (Get-PSDrive -PSProvider FileSystem | Where-Object { Test-Path (Join-Path $_.Root 'build.py') } | Select-Object -First 1).Root
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-# Flushed progress markers to the OUTPUT disk: each phase appends one line (Out-File flushes + closes), so even
-# if the build stalls or the VM is force-destroyed the host can read run-build-progress.txt and see how far it
-# got -- Start-Transcript (below) BUFFERS and loses its tail on a hard power-off, which made the first stall
-# undiagnosable. $out is resolved before any marker so a wrong OUTPUT-letter is itself visible (out=:).
-function Mark($m) { try { "$(Get-Date -Format o) $m" | Out-File -Append -Encoding ascii "$out\run-build-progress.txt" } catch { } }
-Mark "RUN-BUILD START out=$out cd=$cd"
+function Fail([string]$Message) {
+    throw "[harness:FATAL] $Message"
+}
 
-# Windows Defender real-time scanning throttles the big OFFLINE repo copy + the cargo-vendor reads (thousands
-# of small crate files) to a crawl -- the build is fully offline from PINNED inputs, so there is nothing to
-# scan for. Disable it + exclude the build dirs (best-effort; the logon task runs elevated, RunLevel Highest).
-try { Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue } catch { }
-try { Add-MpPreference -ExclusionPath C:\src, C:\cargo-home -ErrorAction SilentlyContinue } catch { }
-Mark "defender-off"
-
-try { Start-Transcript -Path "$out\build-log.txt" -Force | Out-Null } catch { }
-try {
-    Remove-Item -Recurse -Force C:\src -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force C:\src | Out-Null
-    Copy-Item -Recurse "$($cd)*" C:\src
-    # The BUILD CD is a read-only ISO; Copy-Item carries the read-only attribute onto every copied file and
-    # directory, so generated build metadata such as .dart_tool/package_config.json cannot be written in C:\src.
-    # Clear read-only recursively; build-windows.ps1 separately asserts pubspec.lock stays byte-identical.
-    Get-ChildItem C:\src -Recurse -File -Force | Where-Object { $_.IsReadOnly } | ForEach-Object { $_.IsReadOnly = $false }
-    Mark "copied-repo-to-C:\src (read-only cleared)"
-    # R-B2 determinism: build-windows-vm.sh stamps the BUILD CD with SOURCE_DATE_EPOCH; build-windows.ps1
-    # reads it so gen_version bakes a reproducible BUILD_DATE.
-    if (Test-Path "$($cd).source_date_epoch") {
-        $env:SOURCE_DATE_EPOCH = (Get-Content "$($cd).source_date_epoch" -Raw).Trim()
+function Get-OneDrive([string]$Marker, [string]$Description) {
+    $matches = @(
+        Get-PSDrive -PSProvider FileSystem |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.Root $Marker) -PathType Leaf }
+    )
+    if ($matches.Count -ne 1) {
+        Fail "$Description drive count is $($matches.Count), expected exactly one"
     }
-    Set-Location C:\src
-    Mark "running build-windows.ps1"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\src\scripts\build-windows.ps1
-    Mark "build-windows.ps1 exit=$LASTEXITCODE"
-    if (Test-Path C:\src\dist) { Copy-Item C:\src\dist\* "$out\" -Force -ErrorAction SilentlyContinue }
-    Mark "artifacts-copied"
+    return $matches[0].Root
+}
+
+function Assert-Hex([string]$Value, [int[]]$Lengths, [string]$Description) {
+    if ($Value -cnotmatch '^[0-9a-f]+$' -or $Lengths -notcontains $Value.Length) {
+        Fail "$Description is not canonical lowercase hexadecimal"
+    }
+}
+
+function Get-JsonInt64([object]$Value, [string]$Description) {
+    if ($null -eq $Value -or -not ($Value -is [int] -or $Value -is [long])) {
+        Fail "$Description is not a JSON integer"
+    }
+    return [Int64]$Value
+}
+
+function Assert-SafeRelativePath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or [IO.Path]::IsPathRooted($Path)) {
+        Fail "source manifest has an empty or rooted path"
+    }
+    if ($Path.Contains('\') -or $Path.Contains(':') -or $Path.Contains(',') -or
+        $Path.StartsWith('/') -or $Path.EndsWith('/')) {
+        Fail "source manifest path is not canonical: $Path"
+    }
+    $components = @($Path.Split('/'))
+    foreach ($component in $components) {
+        if ([string]::IsNullOrEmpty($component) -or $component -ceq '.' -or $component -ceq '..' -or
+            $component.EndsWith(' ') -or $component.EndsWith('.')) {
+            Fail "source manifest path has an invalid component: $Path"
+        }
+        foreach ($character in $component.ToCharArray()) {
+            $value = [int]$character
+            if ($value -lt 0x20 -or $value -gt 0x7e -or '<>"|?*'.Contains($character)) {
+                Fail "source manifest path contains a Win32-forbidden character: $Path"
+            }
+        }
+        if ($component -imatch '^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$') {
+            Fail "source manifest path uses a reserved Win32 device name: $Path"
+        }
+    }
+    $reserved = @(
+        '.source-manifest.json',
+        '.source-identity.json',
+        '.source-date-epoch',
+        '.build-run-id',
+        '.source-manifest.json.tmp',
+        '.source-identity.json.tmp',
+        'run-build.ps1'
+    )
+    $rootComponent = $components[0]
+    foreach ($name in $reserved) {
+        if ([StringComparer]::OrdinalIgnoreCase.Equals($rootComponent, $name) -and
+            -not ($components.Count -eq 1 -and [StringComparer]::Ordinal.Equals($Path, 'run-build.ps1'))) {
+            Fail "source manifest path occupies a generated namespace: $Path"
+        }
+    }
+}
+
+function Assert-SourceManifest([string]$Root, [string]$ExpectedHash) {
+    $rootItem = Get-Item -LiteralPath $Root -Force
+    if (-not $rootItem.PSIsContainer -or
+        ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Fail "source root is not a regular directory: $Root"
+    }
+    $manifestPath = Join-Path $Root '.source-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        Fail "source manifest is missing at $manifestPath"
+    }
+    $actualHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -cne $ExpectedHash) {
+        Fail "source manifest hash mismatch: $actualHash != $ExpectedHash"
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $topLevel = @($manifest.PSObject.Properties.Name | Sort-Object)
+    if (($topLevel -join ',') -cne 'files,format' -or
+        $manifest.format -isnot [string] -or
+        $manifest.format -cne 'rustdesk-windows-source-manifest-v1' -or
+        $manifest.files -isnot [Array]) {
+        Fail 'source manifest schema is not exact'
+    }
+    $declared = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $declaredInsensitive = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $expectedDirectories = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($entry in @($manifest.files)) {
+        $properties = @($entry.PSObject.Properties.Name | Sort-Object)
+        if (($properties -join ',') -cne 'path,sha256,size') {
+            Fail 'source manifest file entry schema is not exact'
+        }
+        if ($entry.path -isnot [string] -or $entry.sha256 -isnot [string]) {
+            Fail 'source manifest path or digest is not a JSON string'
+        }
+        $relative = $entry.path
+        Assert-SafeRelativePath $relative
+        Assert-Hex $entry.sha256 @(64) "source hash for $relative"
+        if (-not $declared.Add($relative) -or -not $declaredInsensitive.Add($relative)) {
+            Fail "source manifest has a duplicate or Windows case-colliding path: $relative"
+        }
+        $declaredSize = Get-JsonInt64 $entry.size "source size for $relative"
+        if ($declaredSize -lt 0) {
+            Fail "source manifest has a negative size: $relative"
+        }
+        $native = $relative.Replace('/', '\')
+        $path = Join-Path $Root $native
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Fail "source manifest file is missing: $relative"
+        }
+        $item = Get-Item -LiteralPath $path -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "source manifest file is a reparse point: $relative"
+        }
+        if ($item.Length -ne $declaredSize) {
+            Fail "source manifest size mismatch: $relative"
+        }
+        $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($hash -cne $entry.sha256) {
+            Fail "source manifest hash mismatch: $relative"
+        }
+        $components = $relative.Split('/')
+        for ($index = 1; $index -lt $components.Count; $index++) {
+            [void]$expectedDirectories.Add(($components[0..($index - 1)] -join '/'))
+        }
+    }
+    if ($declared.Count -eq 0) {
+        Fail 'source manifest contains no files'
+    }
+
+    $excluded = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($name in @('.source-manifest.json', '.source-identity.json', '.source-date-epoch', '.build-run-id')) {
+        [void]$excluded.Add($name)
+    }
+    $actual = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $actualDirectories = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($directory in Get-ChildItem -LiteralPath $Root -Recurse -Directory -Force) {
+        if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "copied source contains a directory reparse point: $($directory.FullName)"
+        }
+        $relative = $directory.FullName.Substring($Root.TrimEnd('\').Length + 1).Replace('\', '/')
+        [void]$actualDirectories.Add($relative)
+    }
+    foreach ($file in Get-ChildItem -LiteralPath $Root -Recurse -File -Force) {
+        if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "copied source contains a reparse point: $($file.FullName)"
+        }
+        $relative = $file.FullName.Substring($Root.TrimEnd('\').Length + 1).Replace('\', '/')
+        if (-not $excluded.Contains($relative)) {
+            [void]$actual.Add($relative)
+        }
+    }
+    if ($actual.Count -ne $declared.Count) {
+        Fail 'source manifest file count does not match the copied tree'
+    }
+    foreach ($relative in $actual) {
+        if (-not $declared.Contains($relative)) {
+            Fail "copied source has an undeclared file: $relative"
+        }
+    }
+    if ($actualDirectories.Count -ne $expectedDirectories.Count) {
+        Fail 'source manifest directory count does not match the copied tree'
+    }
+    foreach ($relative in $actualDirectories) {
+        if (-not $expectedDirectories.Contains($relative)) {
+            Fail "copied source has an undeclared directory: $relative"
+        }
+    }
+}
+
+$out = $null
+$transcriptStarted = $false
+
+function Mark([string]$Message) {
+    "$(Get-Date -Format o) $Message" |
+        Out-File -LiteralPath (Join-Path $out 'run-build-progress.txt') -Append -Encoding ascii
+}
+
+try {
+    $outputRoots = @(
+        Get-Volume |
+            Where-Object { $_.FileSystemLabel -eq 'OUTPUT' -and $null -ne $_.DriveLetter } |
+            ForEach-Object { "$($_.DriveLetter):\" }
+    )
+    if ($outputRoots.Count -ne 1) {
+        Fail "OUTPUT volume count is $($outputRoots.Count), expected exactly one"
+    }
+    $out = $outputRoots[0]
+    $sourceMedia = Get-OneDrive '.source-identity.json' 'BUILD source'
+    $offlineMedia = Get-OneDrive '.offline-input-manifest.json' 'OFFLINE'
+    Mark "RUN-BUILD START out=$out source=$sourceMedia offline=$offlineMedia"
+    Start-Transcript -Path (Join-Path $out 'build-log.txt') -Force | Out-Null
+    $transcriptStarted = $true
+
+    $identityPath = Join-Path $sourceMedia '.source-identity.json'
+    $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+    $identityFields = @($identity.PSObject.Properties.Name | Sort-Object)
+    $expectedFields = @(
+        'base_manifest_sha256',
+        'build_run_id',
+        'fork_version',
+        'format',
+        'frb_manifest_sha256',
+        'offline_manifest_sha256',
+        'source_commit',
+        'source_date_epoch',
+        'source_manifest_sha256',
+        'source_mode',
+        'source_tree',
+        'target'
+    ) | Sort-Object
+    if (($identityFields -join ',') -cne ($expectedFields -join ',') -or
+        $identity.format -isnot [string] -or
+        $identity.format -cne 'rustdesk-windows-source-identity-v1') {
+        Fail 'source identity schema is not exact'
+    }
+    foreach ($field in $expectedFields) {
+        if ($identity.$field -isnot [string]) {
+            Fail "source identity field is not a JSON string: $field"
+        }
+    }
+    Assert-Hex $identity.source_commit @(40, 64) 'source commit'
+    Assert-Hex $identity.source_tree @(40, 64) 'source tree'
+    foreach ($field in @('base_manifest_sha256', 'frb_manifest_sha256', 'offline_manifest_sha256', 'source_manifest_sha256')) {
+        Assert-Hex $identity.$field @(64) $field
+    }
+    if ([string]$identity.source_mode -cnotin @('head', 'worktree')) {
+        Fail 'source mode is not canonical'
+    }
+    if ([string]$identity.fork_version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+-hardened\.[0-9]+$') {
+        Fail 'FORK_VERSION is not canonical'
+    }
+    if ([string]$identity.source_date_epoch -cnotmatch '^[0-9]+$') {
+        Fail 'SOURCE_DATE_EPOCH is not canonical'
+    }
+    if ([string]$identity.target -cne 'windows-x86_64') {
+        Fail 'source target is not windows-x86_64'
+    }
+    if ([string]$identity.build_run_id -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[AB]$') {
+        Fail 'build run ID is not canonical'
+    }
+    $identityHash = (Get-FileHash -LiteralPath $identityPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    $epochRaw = Get-Content -LiteralPath (Join-Path $sourceMedia '.source-date-epoch') -Raw
+    if ($epochRaw -cne "$($identity.source_date_epoch)$([char]10)") {
+        Fail 'source-date-epoch stamp does not exactly match source identity'
+    }
+    $runIdRaw = Get-Content -LiteralPath (Join-Path $sourceMedia '.build-run-id') -Raw
+    if ($runIdRaw -cne "$($identity.build_run_id)$([char]10)") {
+        Fail 'build-run-id stamp does not exactly match source identity'
+    }
+    $offlineManifest = Join-Path $offlineMedia '.offline-input-manifest.json'
+    $offlineHash = (Get-FileHash -LiteralPath $offlineManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($offlineHash -cne [string]$identity.offline_manifest_sha256) {
+        Fail 'OFFLINE media manifest hash does not match source identity'
+    }
+    Assert-SourceManifest $sourceMedia ([string]$identity.source_manifest_sha256)
+
+    $legacySource = 'C:\src'
+    if (Test-Path -LiteralPath $legacySource) {
+        $legacyItem = Get-Item -LiteralPath $legacySource -Force
+        if (-not $legacyItem.PSIsContainer -or
+            ($legacyItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail 'legacy C:\src is not a removable regular directory'
+        }
+        foreach ($entry in Get-ChildItem -LiteralPath $legacySource -Recurse -Force) {
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                Fail "legacy C:\src contains a reparse point: $($entry.FullName)"
+            }
+        }
+        Remove-Item -LiteralPath $legacySource -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $legacySource) {
+        Fail 'legacy C:\src was not fully removed'
+    }
+
+    $buildParent = 'C:\rustdesk-build'
+    if (-not (Test-Path -LiteralPath $buildParent)) {
+        New-Item -ItemType Directory -Path $buildParent | Out-Null
+    }
+    $parentItem = Get-Item -LiteralPath $buildParent -Force
+    if (-not $parentItem.PSIsContainer -or
+        ($parentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Fail 'C:\rustdesk-build is not a regular directory'
+    }
+    $source = Join-Path $buildParent ([string]$identity.build_run_id)
+    if (Test-Path -LiteralPath $source) {
+        Fail "unique source directory already exists: $source"
+    }
+    New-Item -ItemType Directory -Path $source | Out-Null
+    Get-ChildItem -LiteralPath $sourceMedia -Force |
+        Copy-Item -Destination $source -Recurse -Force
+    Get-ChildItem -LiteralPath $source -Recurse -File -Force |
+        Where-Object { $_.IsReadOnly } |
+        ForEach-Object { $_.IsReadOnly = $false }
+    Assert-SourceManifest $source ([string]$identity.source_manifest_sha256)
+    $copiedIdentityHash = (Get-FileHash -LiteralPath (Join-Path $source '.source-identity.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($copiedIdentityHash -cne $identityHash) {
+        Fail 'copied source identity differs from BUILD media'
+    }
+
+    $env:RUSTDESK_SOURCE_ROOT = $source
+    $env:RUSTDESK_SOURCE_COMMIT = [string]$identity.source_commit
+    $env:RUSTDESK_SOURCE_TREE = [string]$identity.source_tree
+    $env:RUSTDESK_SOURCE_MANIFEST_SHA256 = [string]$identity.source_manifest_sha256
+    $env:RUSTDESK_OFFLINE_MANIFEST_SHA256 = [string]$identity.offline_manifest_sha256
+    $env:RUSTDESK_FORK_VERSION = [string]$identity.fork_version
+    $env:RUSTDESK_BUILD_RUN_ID = [string]$identity.build_run_id
+    $env:RUSTDESK_TARGET = [string]$identity.target
+    $env:SOURCE_DATE_EPOCH = [string]$identity.source_date_epoch
+    Mark "source-verified commit=$($identity.source_commit) tree=$($identity.source_tree) manifest=$($identity.source_manifest_sha256)"
+
+    Set-Location $source
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\build-windows.ps1')
+    $buildExit = $LASTEXITCODE
+    Mark "build-windows.ps1 exit=$buildExit"
+    if ($buildExit -ne 0) {
+        Fail "build-windows.ps1 failed with exit $buildExit"
+    }
+    $dist = Join-Path $source 'dist'
+    foreach ($name in @('rustdesk-setup.exe', 'rustdesk-setup.exe.sha256', 'rustdesk.msi', 'rustdesk.msi.sha256')) {
+        $artifact = Join-Path $dist $name
+        if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {
+            Fail "validated guest artifact is missing: $name"
+        }
+        Copy-Item -LiteralPath $artifact -Destination (Join-Path $out $name) -Force
+    }
+    Mark 'artifacts-copied'
 } catch {
-    "RUN-BUILD ERROR: $_" | Out-File -Append "$out\build-log.txt"
-    Mark "ERROR $_"
+    $failure = $_.Exception.Message
+    [Console]::Error.WriteLine("RUN-BUILD ERROR: $failure")
+    if ($null -ne $out) {
+        try {
+            "RUN-BUILD ERROR: $failure" |
+                Out-File -LiteralPath (Join-Path $out 'build-log.txt') -Append -Encoding ascii
+        } catch {
+            [Console]::Error.WriteLine("RUN-BUILD ERROR LOG FAILURE: $($_.Exception.Message)")
+        }
+        try {
+            Mark "ERROR $failure"
+        } catch {
+            [Console]::Error.WriteLine("RUN-BUILD PROGRESS FAILURE: $($_.Exception.Message)")
+        }
+    }
 } finally {
-    try { Stop-Transcript | Out-Null } catch { }
-    Mark "shutting-down"
+    if ($transcriptStarted) {
+        try {
+            Stop-Transcript | Out-Null
+        } catch {
+            [Console]::Error.WriteLine("RUN-BUILD TRANSCRIPT-CLOSE FAILURE: $($_.Exception.Message)")
+        }
+    }
+    if ($null -ne $out) {
+        try {
+            Mark 'shutting-down'
+        } catch {
+            [Console]::Error.WriteLine("RUN-BUILD SHUTDOWN-MARKER FAILURE: $($_.Exception.Message)")
+        }
+    }
     Stop-Computer -Force
 }

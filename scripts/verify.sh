@@ -87,15 +87,35 @@ RUN=(docker run --rm
   -w /work "$IMG")
 rc=0
 
-echo "== (0) verifier scratch files use one private workspace (R-S11c-10w) =="
+echo "== (0) verifier workspace authority + release source/workflow ordering (R-S11c-10w/R-B2) =="
 r_s11c10w=
 if ! python3 scripts/verify-verifier-workspace.py --repo . --self-test; then
-  r_s11c10w="$r_s11c10w source-structure-or-mutation-gate-failed"
+  r_s11c10w="$r_s11c10w workspace-or-release-source-mutation-gate-failed"
 fi
 grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"
 grep -qF 'Verifier private scratch workspace authority' requirements.html || r_s11c10w="$r_s11c10w requirements-disposition-missing"
-if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w verifier private scratch workspace authority:$r_s11c10w"; rc=1; else
-  echo "  ok  R-S11c-10w verifier scratch output is confined to one current-UID mode-0700 workspace with fail-closed cleanup"; fi
+if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w/R-B2 verifier workspace or release source ordering:$r_s11c10w"; rc=1; else
+  echo "  ok  R-S11c-10w/R-B2 private verifier workspace + same-clean-HEAD release verification + publish/version workflow ordering"; fi
+
+echo "== (0a) dependency, workflow, build-script, and unsafe-source inventory =="
+inventory_gate=
+if ! python3 scripts/dependency-inventory.py --self-test; then
+  inventory_gate="$inventory_gate verifier-self-test-failed"
+fi
+inventory_status=0
+python3 scripts/dependency-inventory.py --text || inventory_status=$?
+case "$inventory_status" in
+  0) ;;
+  1) inventory_gate="$inventory_gate repository-inventory-drift" ;;
+  2) inventory_gate="$inventory_gate repository-inventory-error" ;;
+  *) inventory_gate="$inventory_gate repository-inventory-verifier-failed-$inventory_status" ;;
+esac
+if [ -n "$inventory_gate" ]; then
+  echo "  FAIL repository inventory:$inventory_gate"
+  rc=1
+else
+  echo "  ok  machine-derived dependency and executable build-surface inventory"
+fi
 
 echo "== building the compile-check image =="
 docker volume create rd-cargo-cache  >/dev/null
@@ -149,17 +169,14 @@ echo "== (3b-iv) trust-anchor option is pinned empty and get_key is constant (R-
 echo "== (3b-iv-a) custom-client app-name is a constrained system identifier (R-S11d-26) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::custom_client_app_name_identifier_contract --color never
 
-# (3b-iii) R-S11 / Appendix C #15: the MAIN IPC channel (UI⇄service, 0o0600 same-uid) is a config-
-# integrity boundary. main_channel_admits_state_mutation is a POSITIVE allowlist over mutating
-# arms. The legacy generic write shapes are absent: no Data::Config((name, Some(value))) for
-# id/salt/permanent-password/voice-call-input, no Data::Socks(Some) proxy mutation, and no generic
-# send_config/set_config helper. Config IPC is request/value only; remaining writes are typed:
-# voice-call-input, typed user-owned permanent password/options only for user-owned servers.
-# Service-owned servers reject typed user-owned voice/password/options writes and storage/salt sync (R-S11b-2a/R-S11b-3a). Behavior-tested AND the
-# loop routes through the allowlist before handle() (R-A6 reachability), AND the allowlist is asserted
-# POSITIVE. Whole-config IPC is not a gated variant: SyncConfig is absent.
-echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_channel_rejects_untyped_state_mutations --color never
+# (3b-iii) R-S11/R-S11g: ordinary main IPC is a closed, capped, one-request protocol. Password
+# values use separate raw endpoints with fixed canonical frames, proof-before-body admission, and
+# operation-bound finality; they are not variants of the serde/main/service protocols.
+echo "== (3b-iii) bounded closed main IPC transactions (R-S11/R-S11g) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_protocol_rejects_global_data_frames --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_authority_keeps_service_owned_mutations_closed --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::password::tests --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_id_is_side_effect_free --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_salt_is_side_effect_free --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_does_not_generate_id_for_empty_config --color never
@@ -169,12 +186,34 @@ echo "== (3b-iii) IPC main-channel state-mutation positive allowlist (R-S11) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_store_does_not_rewrite_existing_enc_id --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_preserves_existing_id_fields --color never
 r_s11=
-grep -q 'if !main_channel_admits_state_mutation(' src/ipc.rs                            || r_s11="$r_s11 loop-not-wired"
+grep -q 'pub enum MainIpcRequest' src/ipc.rs                                          || r_s11="$r_s11 closed-request-enum-missing"
+grep -q 'pub enum MainIpcResponse' src/ipc.rs                                         || r_s11="$r_s11 closed-response-enum-missing"
+grep -q 'const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 \* 1024;' src/ipc.rs             || r_s11="$r_s11 main-frame-cap-missing"
+grep -q 'const MAIN_IPC_TRANSACTION_BUDGET: usize = 16;' src/ipc.rs                   || r_s11="$r_s11 transaction-budget-missing"
+grep -q 'const PRIVILEGED_MAIN_IPC_TRANSACTION_BUDGET: usize = 2;' src/ipc.rs          || r_s11="$r_s11 privileged-budget-missing"
+grep -q 'const MAIN_IPC_BLOCKING_MUTATION_BUDGET: usize = 1;' src/ipc.rs              || r_s11="$r_s11 mutation-budget-missing"
+grep -q 'let mut transactions = JoinSet::new();' src/ipc.rs                           || r_s11="$r_s11 owned-task-set-missing"
+grep -q 'let stream = Connection::new_main(stream);' src/ipc.rs                      || r_s11="$r_s11 accept-codec-cap-missing"
+grep -q 'transactions.spawn(handle_main_ipc_transaction(stream, permit));' src/ipc.rs || r_s11="$r_s11 bounded-transaction-spawn-missing"
+main_transaction_handler=$(awk '/async fn handle_main_ipc_transaction/,/^}/' src/ipc.rs)
+grep -q 'next_main_timeout(MAIN_IPC_TRANSACTION_TIMEOUT_MS)' <<<"$main_transaction_handler" || r_s11="$r_s11 request-deadline-missing"
+grep -q 'write_response_with_deadline(&mut stream, &response, "main IPC")' src/ipc.rs || r_s11="$r_s11 typed-bounded-response-missing"
+grep -q 'while let Some(result) = transactions.join_next().await' src/ipc.rs           || r_s11="$r_s11 shutdown-task-drain-missing"
+grep -q 'password_mutations().drain().await;' src/ipc.rs                              || r_s11="$r_s11 password-mutation-drain-missing"
+grep -q 'PasswordMutation(PasswordMutationStatus)' src/ipc.rs                         || r_s11="$r_s11 typed-password-result-missing"
+grep -q 'new_listener(password::USER_PASSWORD_IPC_POSTFIX)' src/ipc.rs                || r_s11="$r_s11 raw-user-password-listener-missing"
+grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs             || r_s11="$r_s11 raw-service-password-listener-missing"
+grep -q 'connect_sensitive_unix(' src/ipc.rs                                           || r_s11="$r_s11 raw-password-client-missing"
+grep -q 'password::send_request_unix(' src/ipc.rs                                      || r_s11="$r_s11 raw-password-send-missing"
+grep -q 'password::receive_request_unix(' src/ipc.rs                                   || r_s11="$r_s11 raw-password-receive-missing"
+grep -q 'sensitive password endpoints require the raw transport' src/ipc.rs             || r_s11="$r_s11 generic-sensitive-endpoint-rejection-missing"
+grep -q 'REQUEST_HEADER_BYTES: usize = 36' src/ipc/password.rs                         || r_s11="$r_s11 raw-password-header-cap-missing"
+grep -q 'STATUS_FRAME_BYTES: usize = 32' src/ipc/password.rs                           || r_s11="$r_s11 raw-password-status-cap-missing"
+grep -q 'ACK_FRAME_BYTES: usize = 28' src/ipc/password.rs                              || r_s11="$r_s11 windows-password-ack-cap-missing"
+grep -q 'MainIpcRequest::SetOptions(value)' src/ipc.rs                                || r_s11="$r_s11 typed-options-arm-missing"
+grep -q 'MainIpcRequest::SetVoiceCallInput(value)' src/ipc.rs                         || r_s11="$r_s11 typed-voice-input-arm-missing"
 grep -q 'SyncConfig' src/ipc.rs && r_s11="$r_s11 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' src/server.rs && r_s11="$r_s11 server-whole-config-import-present"
-grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                    || r_s11="$r_s11 typed-user-owned-password-arm-missing"
-grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11="$r_s11 typed-user-owned-password-not-authority-gated"
-grep -q 'SetUserOwnedPermanentPasswordResult(bool)' src/ipc.rs                          || r_s11="$r_s11 typed-user-owned-password-result-missing"
 grep -q 'permanent-password-user-owned-writable' src/ipc.rs                            || r_s11="$r_s11 password-writability-receiver-missing"
 grep -q 'permanent-password-user-owned-writable' src/flutter_ffi.rs                    || r_s11="$r_s11 password-writability-ffi-missing"
 grep -q 'permanent-password-writable' src/flutter_ffi.rs                              || r_s11="$r_s11 owner-aware-password-writability-ffi-missing"
@@ -186,32 +225,13 @@ grep -q 'Data::Config((' src/ipc.rs && r_s11="$r_s11 config-write-shape-present"
 grep -q 'send_config(' src/ipc.rs && r_s11="$r_s11 generic-send-config-present"
 grep -q 'set_config_async' src/ipc.rs && r_s11="$r_s11 generic-set-config-async-present"
 grep -q 'pub async fn set_config' src/ipc.rs && r_s11="$r_s11 generic-set-config-present"
-grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11="$r_s11 options-authority-not-gated"
+grep -q 'current_process_allows_main_channel_options_write()' src/ipc.rs              || r_s11="$r_s11 options-authority-not-gated"
 grep -q 'fn allows_main_channel_voice_call_input_write' src/ipc.rs                     || r_s11="$r_s11 voice-input-authority-helper-missing"
-grep -q 'Data::SetVoiceCallInput(_) => authority.allows_main_channel_voice_call_input_write()' src/ipc.rs || r_s11="$r_s11 voice-input-not-authority-gated"
-if grep -q 'Data::SetVoiceCallInput(_) => true' src/ipc.rs; then
-  r_s11="$r_s11 voice-input-still-unconditionally-admitted"
-fi
-grep -q 'fn allows_service_owned_main_channel_close' src/ipc.rs                        || r_s11="$r_s11 service-owned-close-peer-authority-missing"
-grep -q 'fn allows_main_channel_close' src/ipc.rs                                      || r_s11="$r_s11 close-receiver-authority-missing"
-grep -q 'Data::Close => authority.allows_main_channel_close(peer_authority)' src/ipc.rs || r_s11="$r_s11 close-not-authority-gated"
-grep -q 'Windows service-owned IPC process-close actions' requirements.html           || r_s11="$r_s11 close-requirements-disposition-missing"
-grep -q 'R-S11c-13 — service-owned IPC close is receiver-authorized' HARDENING_STATUS.md || r_s11="$r_s11 close-hardening-ledger-missing"
-grep -q 'ConfigRequest(String)' src/ipc.rs                                             || r_s11="$r_s11 config-request-missing"
-grep -q 'ConfigValue((String, Option<String>))' src/ipc.rs                             || r_s11="$r_s11 config-value-missing"
 grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
 grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
-main_policy_body=$(sed -n '/pub(crate) fn main_channel_admits_state_mutation/,/^async fn send_main_channel_mutation_rejection_ack/p' src/ipc.rs)
-echo "$main_policy_body" | grep -q 'Data::Login { .. }' || r_s11="$r_s11 main-policy-explicit-nonmutating-classification-missing"
 if rg -n 'CheckHwcodec|HwCodecConfig|notify_server_to_check_hwcodec|get_hwcodec_config_from_server|client_get_hwcodec_config_thread|hwcodec_process|--check-hwcodec-config|start_check_process\(|check_available_hwcodec\(|HwCodecConfig::' \
   src >"$VERIFY_TMP/rd_verify_hwcodec_ipc"; then
   r_s11="$r_s11 hwcodec-ipc-probe-surface-present:$(tr '\n' ';' <"$VERIFY_TMP/rd_verify_hwcodec_ipc")"
-fi
-if echo "$main_policy_body" | grep -qE '^[[:space:]]*\| Data::Close([[:space:]]|$)'; then
-  r_s11="$r_s11 close-in-unconditional-main-policy-bucket"
-fi
-if echo "$main_policy_body" | grep -qE '^[[:space:]]*_ =>'; then
-  r_s11="$r_s11 main-policy-wildcard-fallback-present"
 fi
 config_get_id_body=$(awk '/pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
 echo "$config_get_id_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-id-not-reading-config"
@@ -254,39 +274,36 @@ if awk '/if !hbb_common::is_ip_str\(&lr\.username\)/,/send_login_error/' src/ser
 fi
 ipc_start_block=$(awk '/^pub async fn start\(postfix: &str\)/,/^}/' src/ipc.rs)
 echo "$ipc_start_block" | grep -q 'Config::ensure_loaded();' || r_s11="$r_s11 main-ipc-start-does-not-init-config"
-# R-S11 binds EVERY shipped artifact, not Linux/macOS alone (Windows .exe/.msi are shipped). The
-# allowlist MUST also guard the Windows main pipe (postfix == ""). Because the linux/macos gate logs
-# stream.peer_uid() (unix-only, SO_PEERCRED), Windows needs its OWN cfg(windows) gate calling the same
-# allowlist fn — so there must be >=2 gate call sites and the fn must be cfg'd for windows. Without this
-# a same-session/same-exe process could Config(id|salt) the host key_pair on the
-# Windows artifact (the linux-only gate + the linux-cfg unit test are blind to it).
-[ "$(grep -c 'if !main_channel_admits_state_mutation(' src/ipc.rs)" -ge 2 ]            || r_s11="$r_s11 windows-main-pipe-gate-missing"
-grep -B1 'pub(crate) fn main_channel_admits_state_mutation' src/ipc.rs | grep -q 'windows' || r_s11="$r_s11 allowlist-fn-not-cfg-windows"
-windows_main_peer_authority_block=$(awk '/let peer_authority = match &data/,/_ => MainIpcPeerAuthority::Ordinary/' src/ipc.rs)
-echo "$windows_main_peer_authority_block" | grep -q 'Data::Close' || r_s11="$r_s11 windows-close-peer-token-not-resolved"
-echo "$windows_main_peer_authority_block" | grep -q 'MainIpcPeerAuthority::for_windows_main_pipe(&stream)' || r_s11="$r_s11 windows-main-peer-token-helper-not-used"
+grep -q 'authorize_windows_main_ipc_connection(&stream, "")' src/ipc.rs              || r_s11="$r_s11 windows-main-peer-auth-missing"
+grep -q 'pub(crate) const WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX: &str = "_service_main_control";' src/ipc.rs || r_s11="$r_s11 windows-service-main-control-endpoint-missing"
+grep -q 'pub(crate) const WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";' src/ipc.rs || r_s11="$r_s11 windows-service-credential-endpoint-missing"
+grep -q 'WindowsServiceMainRequest' src/ipc.rs                                       || r_s11="$r_s11 windows-service-main-request-enum-missing"
+grep -q 'start_windows_service_main_ipc' src/server.rs                               || r_s11="$r_s11 windows-service-main-listener-not-started"
+grep -q 'authorize_windows_service_main_ipc_connection(&stream)' src/ipc.rs           || r_s11="$r_s11 windows-service-main-client-auth-missing"
+grep -q 'postfix == super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX' src/ipc/auth.rs   || r_s11="$r_s11 windows-service-main-dacl-not-specialized"
 windows_service_request_block=$(awk '/async fn handle_windows_service_ipc_request/,/^}/' src/platform/windows.rs)
 if echo "$windows_service_request_block" | grep -q 'ipc::Data::Close'; then
   r_s11="$r_s11 windows-service-still-accepts-ipc-close"
 fi
 linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
-macos_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_macos_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
 connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
 grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 linux-service-server-client-auth-missing"
 echo "$linux_service_server_client_auth_block" | grep -Fq 'identity.uid != 0' || r_s11="$r_s11 linux-service-server-client-auth-not-root-gated"
 echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_process_argv_is_expected(&args)' || r_s11="$r_s11 linux-service-server-client-auth-not-service-argv-gated"
 echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_executable_is_trusted(&peer_exe)' || r_s11="$r_s11 linux-service-server-client-auth-no-root-owned-exec-proof"
 echo "$connect_with_path_block" | grep -Fq 'ensure_linux_service_server_is_trusted(&connection)' || r_s11="$r_s11 linux-service-connect-not-client-authenticated"
-grep -Fq 'Linux _service client-side server authentication' requirements.html || r_s11="$r_s11 linux-service-client-auth-requirements-missing"
-grep -Fq 'R-S11e-6 — Linux _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
-grep -Fq 'pub(crate) fn ensure_macos_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-client-auth-missing"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'identity.uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_peer_process_identity("macOS _service server")' || r_s11="$r_s11 macos-service-server-client-auth-no-audit-token-identity"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_peer_is_trusted_privileged_helper(&identity)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
-echo "$connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
-echo "$connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
-grep -Fq 'macOS _service client-side server authentication' requirements.html || r_s11="$r_s11 macos-service-client-auth-requirements-missing"
-grep -Fq 'R-S11e-2 — macOS _service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
+grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
+grep -Fq 'R-S11e-6 — Linux `_service_password` client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
+macos_service_server_auth_block=$(awk '/pub\(crate\) fn authorize_macos_service_server_snapshot/,/^}/' src/ipc/auth.rs)
+grep -Fq 'pub(crate) struct MacosServiceServerAuthorization' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-snapshot-type-missing"
+grep -Fq 'pub(crate) fn macos_service_server_authorization_snapshot' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-snapshot-missing"
+echo "$macos_service_server_auth_block" | grep -Fq 'authorization.identity.uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
+echo "$macos_service_server_auth_block" | grep -Fq 'macos_peer_is_trusted_privileged_helper(&authorization.identity)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
+echo "$connect_with_path_block" | grep -Fq 'config::is_service_ipc_postfix(postfix)' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
+echo "$connect_with_path_block" | grep -Fq 'macos_service_server_authorization_snapshot' || r_s11="$r_s11 macos-service-connect-server-snapshot-missing"
+echo "$connect_with_path_block" | grep -Fq 'authorize_macos_service_server_snapshot_for_task' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
+grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
+grep -Fq 'R-S11e-2 — macOS service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
 grep -Fq 'pub(crate) fn ensure_user_owned_main_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-auth-missing"
 grep -Fq 'fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-helper-missing"
 grep -Fq 'args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-not-exact"
@@ -298,16 +315,16 @@ grep -Fq 'async fn connect_user_owned_password_main' src/ipc.rs || r_s11="$r_s11
 grep -Fq 'ensure_user_owned_main_server_is_trusted(&connection)' src/ipc.rs || r_s11="$r_s11 user-owned-password-main-connector-not-authenticated"
 grep -Fq 'user_owned_permanent_password_is_writable' src/ipc.rs || r_s11="$r_s11 user-owned-password-writable-auth-query-missing"
 grep -Fq 'test_user_owned_main_server_argv_is_exact' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-test-missing"
-grep -Fq 'User-owned permanent-password main IPC receiver authentication' requirements.html || r_s11="$r_s11 user-owned-password-main-auth-requirements-missing"
-grep -Fq 'R-S11e-7 — user-owned permanent-password main IPC receiver authentication' HARDENING_STATUS.md || r_s11="$r_s11 user-owned-password-main-auth-ledger-missing"
+grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
+grep -Fq 'R-S11e-7 — user-owned permanent-password receiver authentication' HARDENING_STATUS.md || r_s11="$r_s11 user-owned-password-auth-ledger-missing"
 if ! python3 - <<'PY'
 from pathlib import Path
 src = Path("src/ipc.rs").read_text()
 try:
     query_start = src.index("async fn user_owned_permanent_password_is_writable")
     query_end = src.index("async fn set_voice_call_input_device_async", query_start)
-    write_start = src.index("async fn set_user_owned_permanent_password_with_ack_async")
-    write_end = src.index("#[cfg(any(target_os = \"linux\", target_os = \"macos\", target_os = \"windows\"))]\npub fn set_service_owned_unattended_password", write_start)
+    write_start = src.index("async fn complete_main_password_mutation")
+    write_end = src.index("#[tokio::main(flavor = \"current_thread\")]\nasync fn user_owned_permanent_password_is_writable", write_start)
     can_start = src.index("pub fn can_set_permanent_password() -> bool")
     set_start = src.index("pub fn set_permanent_password(v: String) -> ResultType<()>")
     set_end = src.index("#[tokio::main(flavor = \"current_thread\")]\npub async fn set_user_owned_permanent_password_with_ack", set_start)
@@ -318,9 +335,9 @@ write = src[write_start:write_end]
 can_body = src[can_start:set_start]
 set_body = src[set_start:set_end]
 query_connect = query.find("connect_user_owned_password_main(ms_timeout).await?")
-query_send = query.find("Data::ConfigRequest(name.to_owned())")
-write_connect = write.find("connect_user_owned_password_main(ms_timeout).await?")
-write_send = write.find("Data::SetUserOwnedPermanentPassword(v)")
+query_send = query.find("MainIpcRequest::Config(MainConfigKey::UserOwnedPermanentPasswordWritable)")
+write_connect = write.find("connect_user_owned_password_stream(deadline).await")
+write_send = write.find("password::send_request_unix(")
 can_service = can_body.find("can_request_service_owned_unattended_password_change()")
 can_user = can_body.find("can_set_user_owned_permanent_password()")
 set_service = set_body.find("can_request_service_owned_unattended_password_change()")
@@ -334,10 +351,10 @@ ok = (
 raise SystemExit(0 if ok else 1)
 PY
 then
-  r_s11="$r_s11 user-owned-password-sends-before-main-server-proof-or-service-first-routing"
+  r_s11="$r_s11 user-owned-password-raw-send-before-server-proof-or-service-first-routing"
 fi
-if [ -n "$r_s11" ]; then echo "  FAIL R-S11 main-channel state-mutation allowlist:$r_s11"; rc=1; else
-  echo "  ok  R-S11/R-S11b/R-S11c main-channel state-mutation boundary (whole-config IPC, generic Config writes, generic config helpers, Socks IPC, and read-time identity/salt writes are absent; typed voice/password/options are user-owned scoped; user-owned password queries/writes authenticate the same-UID current-exe --server receiver before password traffic; service-owned close is root/LocalSystem-gated on main IPC and absent from Windows _service; Linux _service clients authenticate the connected root --service receiver before service-owned password traffic; macOS _service clients authenticate the connected privileged helper before service-owned password traffic; the policy table is exhaustive with no wildcard fallback; gate binds Linux/macOS AND the Windows main pipe)"; fi
+if [ -n "$r_s11" ]; then echo "  FAIL R-S11/R-S11g bounded main IPC:$r_s11"; rc=1; else
+  echo "  ok  R-S11/R-S11g main IPC is a capped, closed, one-request transaction protocol with owned tasks, typed responses, receiver-scoped mutations, authenticated clients, and a separate SYSTEM-only Windows service-control endpoint"; fi
 
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
@@ -363,8 +380,9 @@ grep -A18 'pub fn encrypt_vec_or_original' libs/hbb_common/src/password_security
 if [ -n "$r_s11b3f" ]; then echo "  FAIL R-S11b-3f desktop at-rest key/identity boundary:$r_s11b3f"; rc=1; else
   echo "  ok  R-S11b-3f desktop at-rest wrapping uses a fallible machine-UID key, never get_uuid/keypair generation; legacy keypair decrypt remains read-only and mobile-only generation is cfg-isolated"; fi
 
-echo "== (3b-iii-a1b) credential-bearing local stores use hardened raw-file writes (R-S11b-4d) =="
+echo "== (3b-iii-a1b) credential-bearing local stores use one durable transactional writer (R-S11b-4d) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::config_transaction --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_path_present_but_corrupt_is_preserved_not_overwritten --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::raw_encrypted_json_load_failure_preserves_payload_for_recovery --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::preserved_config_hardening_rejects_symlink_targets --color never
@@ -374,25 +392,54 @@ echo "== (3b-iii-a1b) credential-bearing local stores use hardened raw-file writ
 index_s11b4d=
 grep -q 'fn store_raw_config_bytes(path: PathBuf, data: &\[u8\]) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-helper-missing"
 grep -q 'fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-helper-missing"
-grep -q 'windows_config_acl::prepare_config_path_for_store(&path)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-acl-not-prepared"
+grep -q 'store_config_bytes_transaction(&path, data, ConfigStoreFault::None)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-not-routed-through-transaction"
+grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d toml-store-not-routed-through-transaction"
 grep -q 'windows_config_acl::prepare_config_path_for_load(path)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-load-windows-acl-not-prepared"
-grep -q 'options.mode(0o600)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-unix-mode-not-owner-only"
-grep -q 'fs::set_permissions(&path, fs::Permissions::from_mode(0o600))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-unix-final-mode-not-owner-only"
-grep -q 'file.sync_all()' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-sync-missing"
-grep -q 'fn replace_raw_config_file(tmp: &Path, path: &Path) -> Result<()>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-replace-helper-missing"
-grep -q 'MoveFileExW' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-replace-primitive-missing"
-grep -q 'MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d raw-store-windows-replace-flags-missing"
+unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)
+grep -q 'O_WRONLY' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-write-open-missing"
+grep -q 'O_CREAT' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-create-missing"
+grep -q 'O_EXCL' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-exclusive-create-missing"
+grep -q 'O_NOFOLLOW' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-nofollow-missing"
+grep -q '0o600 as crate::libc::mode_t' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-owner-mode-missing"
+grep -q 'crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t)' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-fd-mode-proof-missing"
+grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-owner-proof-missing"
+grep -q 'metadata.mode() & 0o777 != 0o600' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-mode-proof-missing"
+grep -q 'metadata.nlink() != 1' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-link-count-proof-missing"
+grep -q 'sync_temp_file(&temp)' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-file-sync-missing"
+grep -q 'crate::libc::renameat' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-atomic-replace-missing"
+grep -q 'parent.sync_all()' <<<"$unix_config_transaction" || index_s11b4d="$index_s11b4d unix-transaction-directory-sync-missing"
+windows_config_transaction=$(awk '
+  /^#\[cfg\(windows\)\]$/ { candidate=1; next }
+  candidate && /^fn store_config_bytes_transaction\(path:/ { flag=1; candidate=0 }
+  candidate { candidate=0 }
+  flag { print }
+  flag && /^}$/ { exit }
+' libs/hbb_common/src/config.rs)
+grep -q 'windows_config_acl::prepare_config_path_for_store(path)' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-acl-not-prepared"
+grep -q 'create_new(true)' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-exclusive-create-missing"
+grep -q 'windows_config_acl::harden_config_file(&temp_path)' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-temp-acl-not-hardened"
+grep -q 'windows_config_acl::verify_config_file(&temp_path)' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-temp-acl-not-verified"
+grep -q 'temp.sync_all()' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-file-sync-missing"
+grep -q 'MoveFileExW' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-replace-primitive-missing"
+grep -q 'MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-replace-flags-missing"
+grep -q 'std::process::abort()' <<<"$windows_config_transaction" || index_s11b4d="$index_s11b4d windows-transaction-ambiguous-result-not-fatal"
 grep -q 'enum ConfigLoadStatus' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-status-missing"
 grep -q 'fn load_path_with_status' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d typed-load-helper-missing"
 grep -q 'Self::load_path_with_status(Self::path(id), Some(id))' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-id-load-not-through-path-wrapper"
-grep -q 'fn load_path_with_status(path: PathBuf, stored_peer_id: Option<&str>) -> ConfigLoad<PeerConfig>' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d peer-config-exact-path-load-helper-missing"
+peer_config_load=$(awk '/^impl PeerConfig \{/,/^[[:space:]]*fn store_path_/' libs/hbb_common/src/config.rs)
+grep -q 'path: PathBuf' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-exact-path-input-missing"
+grep -q 'stored_peer_id: Option<&str>' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-stored-id-input-missing"
+grep -q 'load_path_with_status(path.clone())' <<<"$peer_config_load" || index_s11b4d="$index_s11b4d peer-config-exact-path-load-missing"
 grep -q 'fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-helper-missing"
 grep -q 'config == &PeerConfig::default()' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d semantic-empty-peer-not-default-comparison"
 grep -q 'fn should_remove_empty_peer_config(status: ConfigLoadStatus, config: &PeerConfig) -> bool' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-policy-missing"
 grep -q 'matches!(status, ConfigLoadStatus::Loaded) && is_semantically_empty_peer_config(config)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d empty-peer-cleanup-not-loaded-empty-only"
 grep -q 'if should_remove_empty_peer_config(status, &c)' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-status-and-content-gated"
 grep -q 'let loaded = PeerConfig::load_path_with_status(p.clone(), Some(id));' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d batch-peer-cleanup-not-bound-to-enumerated-path"
-grep -q 'with_rdp_password' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d rdp-password-peer-cleanup-regression-missing"
+grep -Fq 'const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-policy-missing"
+grep -Fq 'options.retain(|key, _| !RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&key.as_str()));' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-scrub-missing"
+grep -Fq 'peer_store_drops_retired_rdp_credential_options' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-store-test-missing"
+grep -Fq 'peer_load_removes_and_rewrites_legacy_rdp_credential_options' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d retired-rdp-credential-load-test-missing"
 grep -q 'peer_cleanup_decision_is_bound_to_the_enumerated_path' libs/hbb_common/src/config.rs || index_s11b4d="$index_s11b4d alias-path-cleanup-regression-missing"
 if grep -q 'let loaded = PeerConfig::load_with_status(&id)' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d batch-peer-cleanup-loads-canonical-id-path"
@@ -423,10 +470,10 @@ fi
 if grep -q 'fs::set_permissions(&backup, fs::Permissions::from_mode(0o600))' libs/hbb_common/src/config.rs; then
   index_s11b4d="$index_s11b4d corrupt-recovery-path-chmod-present"
 fi
-grep -q 'Local credential-bearing store file hardening' requirements.html || index_s11b4d="$index_s11b4d requirements-disposition-missing"
-grep -q 'R-S11b-4d — local credential-bearing store file hardening' HARDENING_STATUS.md || index_s11b4d="$index_s11b4d hardening-ledger-missing"
+grep -q 'R-S11b-4d' requirements.html || index_s11b4d="$index_s11b4d requirements-disposition-missing"
+grep -q 'R-S11b-4d' HARDENING_STATUS.md || index_s11b4d="$index_s11b4d hardening-ledger-missing"
 if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing store hardening:$index_s11b4d"; rc=1; else
-  echo "  ok  R-S11b-4d PeerConfig uses typed hardened load status so transient peer-read failures are not deleted and loaded peer files are removed only when semantically empty; raw encrypted address-book/group stores keep their byte format while using ACL/0600 replacing writes and corrupt-payload preservation without silent direct File::create/write_all drops"; fi
+  echo "  ok  R-S11b-4d TOML and raw encrypted stores share one no-follow, owner-only, synchronized temp-and-replace transaction; PeerConfig cleanup remains exact-path, loaded-only, and semantically-empty-only"; fi
 
 echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never
@@ -524,7 +571,7 @@ echo "== (3b-iii-a3) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
 r_s11c6=
 grep -q 'windows_ipc_listener_security_attributes(postfix)' src/ipc.rs              || r_s11c6="$r_s11c6 listener-not-dacl-routed"
 grep -q 'SecurityAttributes::from_sddl' src/ipc/auth.rs                            || r_s11c6="$r_s11c6 no-sddl-security-attributes"
-grep -q 'String::from("D:P(A;;GA;;;SY)")' src/ipc/auth.rs                         || r_s11c6="$r_s11c6 base-dacl-not-system-only"
+grep -q 'String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)")' src/ipc/auth.rs             || r_s11c6="$r_s11c6 base-dacl-not-system-only"
 grep -q 'WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b' src/ipc/auth.rs || r_s11c6="$r_s11c6 narrow-client-mask-missing"
 grep -q 'FILE_CREATE_PIPE_INSTANCE' src/ipc/auth.rs                                || r_s11c6="$r_s11c6 create-instance-negative-test-missing"
 grep -q 'open_windows_named_pipe_client' src/ipc.rs                                || r_s11c6="$r_s11c6 custom-client-open-missing"
@@ -834,7 +881,7 @@ if "std::process::exit(exit_code)" not in helper_entry or "Err(err)" not in help
 native_test = "cargo test --offline --locked --lib --features flutter --color never terminal_"
 if native_test not in windows_build:
     raise SystemExit("native Windows build does not execute the terminal runtime suite")
-artifact_build = "\n    python build.py --flutter"
+artifact_build = "\n    & $PYTHON_EXE build.py --flutter"
 if artifact_build not in windows_build or windows_build.index(native_test) > windows_build.index(artifact_build):
     raise SystemExit("native Windows terminal tests run after artifact compilation")
 PY
@@ -1123,10 +1170,10 @@ grep -Fq 'if current_exe_identity != expected_exe_identity' src/platform/windows
 grep -Fq 'crate::common::is_service_owned_server_process()' src/core_main.rs || r_s11d37="$r_s11d37 service-owned-server-entry-guard-missing"
 grep -Fq 'require_current_exe_is_fixed_service_runtime()' src/core_main.rs || r_s11d37="$r_s11d37 service-owned-server-entry-not-fixed-root-gated"
 grep -Fq 'Windows service-owned --server must run as LocalSystem' src/core_main.rs || r_s11d37="$r_s11d37 service-owned-server-localsystem-guard-missing"
-grep -Fq 'ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-not-fixed-exe-authenticated"
-grep -Fq 'fn ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-fixed-exe-helper-missing"
+grep -Fq 'ensure_windows_identity_matches_fixed_service(&identity, postfix)' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-not-fixed-exe-authenticated"
+grep -Fq 'fn ensure_windows_identity_matches_fixed_service(' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-fixed-exe-helper-missing"
 grep -Fq 'crate::platform::windows::fixed_service_install_exe_path()?' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-not-bound-to-fixed-exe"
-grep -Fq 'peer_process_has_windows_service_owned_server_args(server_pid)' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-exact-argv-helper-not-used"
+grep -Fq 'windows_identity_has_exact_role(&identity, &windows_service_owned_main_server_args())' src/ipc/auth.rs || r_s11d37="$r_s11d37 main-receiver-exact-argv-helper-not-used"
 if echo "$launch_server_body" | grep -Fq 'std::env::current_exe()'; then
   r_s11d37="$r_s11d37 launch-server-still-selects-current-exe-directly"
 fi
@@ -1176,19 +1223,15 @@ if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public 
 echo "== (3b-iii-a5d4g) Retained Windows process/helper provenance invariants (R-S11d-1/8/9/10/25/38) =="
 r_s11d_retained=
 grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:mstsc-not-system32-bound"
-grep -Fq 'const RDP_CREDENTIAL_TARGET: &str = "TERMSRV/localhost";' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:target-not-pinned"
-grep -Fq 'let has_complete_credentials = !username.is_empty() && !password.is_empty();' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:partial-credentials-not-rejected"
-grep -Fq 'args.push("/prompt".to_owned());' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:unseeded-launch-not-prompted"
-grep -Fq 'CredReadW(' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:prior-credential-not-read"
-grep -Fq 'CredWriteW(&raw, 0)' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-native-write"
-grep -Fq 'CredDeleteW(' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-native-delete"
-grep -Fq 'CRED_PERSIST_SESSION' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-session-scoped"
-grep -Fq 'struct RdpCredentialLease' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:lease-missing"
-grep -Fq 'impl Drop for RdpCredentialLease' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:lease-drop-missing"
-grep -Fq 'cleanup_rdp_credentials_when_mstsc_exits(lease, child);' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-restored-after-child"
-grep -Fq 'lease.restore()?' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:credential-not-restored-after-spawn-failure"
-if grep -Fq 'Command::new("mstsc")' src/port_forward.rs || grep -Fq 'Command::new("cmdkey")' src/port_forward.rs || grep -Fq '/pass:' src/port_forward.rs; then
-  r_s11d_retained="$r_s11d_retained rdp:ambient-tool-or-password-argv-leftover"
+grep -Fq 'format!("/v:localhost:{}", port)' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:loopback-endpoint-argument-missing"
+grep -Fq '[rdp_endpoint_arg(port), "/prompt".to_owned()]' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:prompt-only-argument-policy-missing"
+grep -Fq 'fn rdp_launch_only_passes_endpoint_and_prompt()' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:argument-policy-test-missing"
+grep -Fq 'const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];' libs/hbb_common/src/config.rs || r_s11d_retained="$r_s11d_retained rdp:retired-option-policy-missing"
+if grep -Eq 'Cred(Read|Write|Delete)W|TERMSRV/localhost|RdpCredentialLease|CRED_PERSIST_SESSION|Command::new\("mstsc"\)|Command::new\("cmdkey"\)|/pass:' src/port_forward.rs; then
+  r_s11d_retained="$r_s11d_retained rdp:credential-or-ambient-launch-path-leftover"
+fi
+if grep -Eq 'rdp_username|rdp_password' src/port_forward.rs src/ui_session_interface.rs flutter/lib/common/widgets/peer_card.dart; then
+  r_s11d_retained="$r_s11d_retained rdp:credential-ui-or-transport-leftover"
 fi
 
 grep -Fq 'pub fn get_default_shell() -> Result<String>' src/server/terminal_helper.rs || r_s11d_retained="$r_s11d_retained terminal-shell:helper-not-fallible"
@@ -1228,7 +1271,7 @@ if rg -n 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virt
 fi
 
 for disposition in \
-  'Windows RDP viewer credential command provenance' \
+  'Windows RDP viewer credential handling and command provenance' \
   'Windows terminal default-shell command provenance' \
   'Windows portable RuntimeBroker cleanup command provenance' \
   'Windows Amyuni IDD helper launch provenance' \
@@ -1301,24 +1344,20 @@ grep -Fq 'Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd" Impersonate="no" Execu
 grep -Fq '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>' "$windows_msi" || r_s11e20="$r_s11e20 amyuni-action-not-explicit-uninstall-commit-scheduled"
 if grep -Fq 'RemoveAmyuniIdd.SetParam' "$windows_msi"; then r_s11e20="$r_s11e20 amyuni-obsolete-install-root-data-leftover"; fi
 
-if grep -Eq 'reg[}"]?[[:space:]]+add[^\n]*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
+if grep -Eq 'reg[}"]?[[:space:]]+add.*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
   r_s11e20="$r_s11e20 persistent-sas-installer-write-leftover"
 fi
-grep -Fq 'enum OriginalSasPolicy' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-original-policy-state-missing"
-grep -Fq 'OriginalSasPolicy::Absent' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-absent-state-missing"
-grep -Fq 'Present(u32),' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-present-state-missing"
-grep -Fq 'static ref SEND_SAS_POLICY_MUTEX: Mutex<()> = Mutex::new(());' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-policy-mutex-missing"
-grep -Fq 'let _sas_policy_guard = SEND_SAS_POLICY_MUTEX.lock().unwrap();' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-policy-mutation-not-serialized"
-grep -Fq 'let temporary_value = value | SOFTWARE_SAS_GENERATION_SERVICES;' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-existing-policy-not-preserved"
-grep -Fq 'Ok(value) => bail!("Unsupported SoftwareSASGeneration value: {value}")' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-unknown-policy-not-rejected"
-grep -Fq 'Err(err) => bail!("Failed to read SoftwareSASGeneration: {err}")' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-read-error-not-fatal"
-grep -Fq '.map_err(|err| anyhow!("Failed to set SoftwareSASGeneration: {err}"))?' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-set-error-not-fatal"
-grep -Fq '.delete_value("SoftwareSASGeneration")' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-absent-restore-missing"
-grep -Fq '.set_value("SoftwareSASGeneration", &original)' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-present-restore-missing"
-grep -Fq 'crate::platform::send_sas()?;' src/server/input_service.rs || r_s11e20="$r_s11e20 sas-error-not-propagated"
-if grep -Eq 'original_value: Option<u32>|original == 0|log::error!\("Failed to (set|open|restore|delete) SoftwareSASGeneration' src/platform/windows.rs; then
-  r_s11e20="$r_s11e20 sas-hidden-fallback-or-zero-conflation-leftover"
+sas_policy_read=$(awk '/fn read_software_sas_generation_policy/,/^}/' src/platform/windows.rs)
+sas_policy_decision=$(awk '/fn send_sas_with/,/^}/' src/platform/windows.rs)
+printf '%s\n' "$sas_policy_read" | grep -Fq 'KEY_READ' || r_s11e20="$r_s11e20 sas-policy-not-read-only"
+printf '%s\n' "$sas_policy_decision" | grep -Fq 'Some(SOFTWARE_SAS_GENERATION_SERVICES)' || r_s11e20="$r_s11e20 sas-services-policy-not-accepted"
+printf '%s\n' "$sas_policy_decision" | grep -Fq 'Some(SOFTWARE_SAS_GENERATION_SERVICES_AND_EASE_OF_ACCESS)' || r_s11e20="$r_s11e20 sas-combined-policy-not-accepted"
+printf '%s\n' "$sas_policy_decision" | grep -Fq 'Some(value) => bail!("Unsupported SoftwareSASGeneration value: {value}")' || r_s11e20="$r_s11e20 sas-unknown-policy-not-rejected"
+printf '%s\n' "$sas_policy_decision" | grep -Fq 'None => bail!("SoftwareSASGeneration policy is not configured for services")' || r_s11e20="$r_s11e20 sas-absent-policy-not-rejected"
+if printf '%s\n%s\n' "$sas_policy_read" "$sas_policy_decision" | grep -Eq 'KEY_SET_VALUE|set_value|delete_value|remove_value|RegSetValue|RegDeleteValue'; then
+  r_s11e20="$r_s11e20 sas-runtime-policy-mutation-present"
 fi
+grep -Fq 'windows_sas_policy_matrix_is_read_only_and_fail_closed' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-read-only-policy-test-missing"
 
 if rg -n 'AddFirewallRules|RemoveFirewallRules|CreateStartService|TryStopDeleteService|TerminateProcesses|TerminateBrokers|MyCreateServiceW|AddFirewallRule|CC_CONNECTION_TYPE|--conn-type|STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >"$VERIFY_TMP/rd_verify_r_s11e20_custom_actions"; then
   r_s11e20="$r_s11e20 custom-service-firewall-or-basename-kill-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_custom_actions")"
@@ -1364,13 +1403,15 @@ if printf '%s\n' "$protected_installer" | grep -Eq 'payload\.exe|librustdesk|--i
 fi
 if grep -Fq 'ends_with("install.exe")' "$portable"; then r_s11e20="$r_s11e20 legacy-installer-name-fallback"; fi
 
-grep -Fq 'python build.py --flutter' "$windows_build" || r_s11e20="$r_s11e20 canonical-flutter-build-command-missing"
+grep -Fq '& $PYTHON_EXE build.py --flutter' "$windows_build" || r_s11e20="$r_s11e20 canonical-flutter-build-command-missing"
 if rg -n 'skip-portable-pack|skip_portable_pack|rustdesk_portable|rustdesk-\{version\}-install\.exe|rustdesk-\{version\}-win7-install\.exe|generate\.py' build.py >"$VERIFY_TMP/rd_verify_r_s11e20_legacy_build"; then
   r_s11e20="$r_s11e20 legacy-windows-installer-builder-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_legacy_build")"
 fi
 grep -Fq "\$setupPayloadDir = Join-Path \$SRC 'target\rustdesk-setup-payload'" "$windows_build" || r_s11e20="$r_s11e20 dedicated-one-file-payload-dir-missing"
-grep -Fq 'python scripts\canonicalize-msi.py $msiOut $productVersion' "$windows_build" || r_s11e20="$r_s11e20 msi-not-canonicalized-before-embed"
-canonicalize_line=$(grep -nF 'python scripts\canonicalize-msi.py $msiOut $productVersion' "$windows_build" | cut -d: -f1)
+grep -Fq "\$msiCanonicalizerArguments = @(" "$windows_build" || r_s11e20="$r_s11e20 msi-canonicalization-contract-missing"
+grep -Fq "'--output'" "$windows_build" || r_s11e20="$r_s11e20 msi-canonical-output-missing"
+grep -Fq "'--contract-out'" "$windows_build" || r_s11e20="$r_s11e20 msi-cabinet-contract-output-missing"
+canonicalize_line=$(grep -nF '& $PYTHON_EXE -I -S -c $isolatedOlefileRunner' "$windows_build" | cut -d: -f1)
 validation_line=$(grep -nF '$installer = New-Object -ComObject WindowsInstaller.Installer' "$windows_build" | cut -d: -f1)
 payload_copy_line=$(grep -nF 'Copy-Item -LiteralPath $msiOut -Destination $setupPayloadMsi' "$windows_build" | cut -d: -f1)
 if [ -z "$canonicalize_line" ] || [ -z "$validation_line" ] || [ -z "$payload_copy_line" ] || \
@@ -1381,12 +1422,15 @@ grep -Fq 'OLEFILE_VERSION="0.47"' scripts/pins.env || r_s11e20="$r_s11e20 olefil
 grep -Fq 'SHA256_OLEFILE_0_47="543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f"' scripts/pins.env || r_s11e20="$r_s11e20 olefile-digest-pin-missing"
 grep -Fq 'olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \' scripts/online-fetch.sh || r_s11e20="$r_s11e20 olefile-fetch-missing"
 grep -Fq '"${SHA256_OLEFILE_0_47}"' scripts/online-fetch.sh || r_s11e20="$r_s11e20 olefile-fetch-not-digest-checked"
-grep -Fq 'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "${SHA256_OLEFILE_0_47}"' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-vm-preflight-missing"
+grep -Fq 'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-vm-preflight-missing"
 grep -Fq '/python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-offline-media-graft-missing"
 grep -Fq "\$olefileWheel = Join-Path \$offline 'python-wheels\olefile-0.47-py2.py3-none-any.whl'" "$windows_build" || r_s11e20="$r_s11e20 olefile-offline-wheel-not-selected"
-grep -Fq 'python -m pip install --disable-pip-version-check --no-index --no-deps $olefileWheel' "$windows_build" || r_s11e20="$r_s11e20 olefile-install-not-offline-exact-wheel"
+grep -Fq "\$OLEFILE_SHA256  = '543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f'" "$windows_build" || r_s11e20="$r_s11e20 olefile-guest-digest-pin-missing"
+grep -Fq 'Get-FileHash -LiteralPath $olefileWheel -Algorithm SHA256' "$windows_build" || r_s11e20="$r_s11e20 olefile-guest-digest-check-missing"
+grep -Fq 'loader.archive' "$windows_build" || r_s11e20="$r_s11e20 olefile-isolated-wheel-authority-missing"
+if grep -Eq 'pip[[:space:]]+install|python[[:space:]]+-m[[:space:]]+pip' "$windows_build"; then r_s11e20="$r_s11e20 ambient-python-package-install-leftover"; fi
 grep -Fq 'Copy-Item -LiteralPath $msiOut -Destination $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 exact-msi-payload-copy-missing"
-grep -Fq 'python .\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 packer-not-fed-one-file-payload"
+grep -Fq '& $PYTHON_EXE .\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi' "$windows_build" || r_s11e20="$r_s11e20 packer-not-fed-one-file-payload"
 grep -Fq 'command = ["cargo", "build", "--offline", "--locked", "--release"]' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-build-not-offline-locked"
 grep -Fq 'subprocess.run(command, check=True)' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-failure-not-propagated"
 grep -Fq 'Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force' "$windows_build" || r_s11e20="$r_s11e20 payload-finally-cleanup-missing"
@@ -1482,29 +1526,27 @@ grep -Fq 'R-S11d-29 — Windows service-adjacent path known-folder authority' HA
 if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path known-folder authority:$r_s11d29"; rc=1; else
   echo "  ok  R-S11d-29 Windows service-adjacent profile and recording paths use known folders, not SystemDrive"; fi
 
-# (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a privileged service-control channel,
-# not a root<->user Config/Config2 bus. The world-connectable service socket may keep only narrow,
-# typed receiver-authorized traffic; it MUST NOT accept/return whole config, and stale-socket probing
-# must not read config.
+# (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a bounded
+# no-secret control channel. Password mutation exists only on raw `_service_password`.
 echo "== (3b-iii-b) IPC _service has no whole-config bus (R-S11b-1) =="
 "${RUN[@]}" cargo test -p hbb_common --lib bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_rejects_config_bus --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::protected_service_connection_uses_bounded_frame_codec --color never
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::protected_service_frame_cap_covers_escaped_password_request --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_owned_password_value_limit_is_common --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_service_owned_launch_agent_plist_validation --color never
 r_s11b=
 grep -q 'pub(crate) fn service_channel_admits_message' src/ipc.rs || r_s11b="$r_s11b no-service-message-gate"
 grep -q 'Data::Test => true' src/ipc.rs || r_s11b="$r_s11b service-gate-misses-test"
-grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => true' src/ipc.rs || r_s11b="$r_s11b linux-service-password-request-not-typed"
 service_message_gate=$(awk '/pub\(crate\) fn service_channel_admits_message/,/^}/' src/ipc.rs)
-echo "$service_message_gate" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b="$r_s11b macos-service-password-authorized-request-not-typed"
-echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPasswordRightReadyRequest' || r_s11b="$r_s11b macos-service-password-right-readiness-request-not-typed"
-echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-service-password-runtime-snapshot-not-typed"
-service_dispatch_block=$(awk '/stream.next_timeout\(SERVICE_IPC_REQUEST_TIMEOUT_MS\)\.await/{flag=1} flag{print} flag && /return;/{exit}' src/ipc.rs)
+echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPasswordRightReadyRequest' || r_s11b="$r_s11b macos-service-password-right-readiness-control-missing"
+echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-runtime-snapshot-control-missing"
+if echo "$service_message_gate" | grep -Eq 'Password.*Change|password:[[:space:]]*String|authorization:[[:space:]]*Vec'; then
+  r_s11b="$r_s11b generic-service-password-body-present"
+fi
+service_dispatch_block=$(awk '/async fn handle_service_ipc_transaction/,/^}/' src/ipc.rs)
 echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
 echo "$service_dispatch_block" | grep -q 'stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)' || r_s11b="$r_s11b service-read-not-deadline-bound"
-if echo "$service_dispatch_block" | grep -q 'loop {'; then
+if grep -q 'loop {' <<<"$service_dispatch_block"; then
   r_s11b="$r_s11b protected-service-still-persistent-loop"
 fi
 if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
@@ -1522,7 +1564,7 @@ grep -q 'fn try_acquire_windows_service_ipc_transaction_slot' src/platform/windo
 grep -q 'handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-one-shot-handler-missing"
 grep -q 'next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-read-not-deadline-bound"
 grep -q 'transaction_tasks.spawn(handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-tracked"
-grep -q 'transaction_tasks.abort_all()' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-aborted-on-stop"
+grep -q 'while !transaction_tasks.is_empty()' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-drained-on-stop"
 grep -Fq 'Protected service IPC resource boundary' requirements.html || r_s11b="$r_s11b service-resource-requirements-missing"
 grep -Fq 'R-S11c-26 — protected service IPC resource boundary' HARDENING_STATUS.md || r_s11b="$r_s11b service-resource-ledger-missing"
 if grep -q 'SyncConfig' src/ipc.rs; then
@@ -1544,543 +1586,384 @@ fi
 if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INTERVAL|INITIAL)' src/server.rs; then
   r_s11b="$r_s11b service-config-sync-loop-present"
 fi
-if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
-  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service admits liveness plus typed Linux service-owned password requests and macOS authorized request/runtime-snapshot service-owned password requests; stale-socket probe uses Test; root/user whole-config sync loop, SyncConfig IPC variant, and whole-config import are absent"; fi
-
-# (3b-iii-c) R-S11b-2a/R-S11b-2c/R-S11c-1a: service-owned unattended passwords are not ordinary config IPC.
-# Service launch paths mark their --server child; the receiver uses that marker to deny
-# generic config credential writes, typed user-owned password writes, whole-config snapshots, and every
-# password storage/salt sync over main IPC. Linux installed-service password changes use a typed `_service`
-# request authorized by polkit, then a root-service commit into the service-owned main server. Windows
-# installed-service password changes use the same typed request/commit split, but the `_service` receiver
-# proves an elevated RustDesk caller by named-pipe client-token impersonation and the main server accepts the
-# final commit only from a LocalSystem service peer. macOS installed-service password changes use a typed
-# `_service` request that carries the proposed password only after the client has obtained the nonshared
-# timeout-zero RustDesk Authorization Services right; the LaunchDaemon verifies that external form without
-# interaction before writing the value into the root LaunchDaemon credential store. The service-owned
-# LaunchAgent receives a runtime-only root-credential snapshot only when
-# launchd reports the requesting pid as the expected root-installed LaunchAgent job. The user-owned path remains user-owned, and --password
-# dispatches to the owner-aware typed operation.
-echo "== (3b-iii-c) service-owned permanent password rejects ordinary IPC (R-S11b-2a/R-S11c-1a) =="
-r_s11b2=
-grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs                                      || r_s11b2="$r_s11b2 no-service-owned-arg"
-linux_service_start=$(awk '/fn try_start_server_/,/^}/' src/platform/linux.rs)
-echo "$linux_service_start" | grep -Fq 'vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG]' || r_s11b2="$r_s11b2 linux-active-user-service-server-not-marked"
-echo "$linux_service_start" | grep -A4 'crate::run_me_with_env' | grep -q 'SERVICE_OWNED_SERVER_ARG' || r_s11b2="$r_s11b2 linux-root-service-server-not-marked"
-windows_launch_server=$(awk '/^fn launch_windows_service_server/,/^}/' src/platform/windows.rs)
-echo "$windows_launch_server" | grep -q 'SERVICE_OWNED_SERVER_ARG'                    || r_s11b2="$r_s11b2 windows-service-server-not-marked"
-grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-agent-server-not-marked"
-grep -q 'MainIpcAuthority::ServiceOwned' src/ipc.rs                                  || r_s11b2="$r_s11b2 service-owned-authority-missing"
-grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs                    || r_s11b2="$r_s11b2 typed-password-arm-missing"
-grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' src/ipc.rs | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
-grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' src/ipc.rs                || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
-grep -q 'RequestServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs             || r_s11b2="$r_s11b2 service-password-request-missing"
-grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange {' src/ipc.rs             || r_s11b2="$r_s11b2 macos-service-password-authorized-request-missing"
-grep -q 'password: String' src/ipc.rs                                               || r_s11b2="$r_s11b2 macos-service-password-request-value-missing"
-grep -q 'authorization: Vec<u8>' src/ipc.rs                                         || r_s11b2="$r_s11b2 macos-service-password-request-auth-missing"
-grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-snapshot-request-missing"
-grep -q 'MacosServiceOwnedPermanentPasswordSnapshot {' src/ipc.rs                   || r_s11b2="$r_s11b2 macos-service-password-snapshot-response-missing"
-grep -q 'CommitServiceOwnedUnattendedPasswordChange(String)' src/ipc.rs              || r_s11b2="$r_s11b2 service-password-commit-missing"
-grep -q 'ServiceOwnedUnattendedPasswordChangeResult(bool)' src/ipc.rs                || r_s11b2="$r_s11b2 service-password-result-missing"
-grep -q 'Data::RequestServiceOwnedUnattendedPasswordChange(_) => false' src/ipc.rs   || r_s11b2="$r_s11b2 service-password-request-not-denied-on-main"
-main_channel_mutation_policy=$(awk '/pub\(crate\) fn main_channel_admits_state_mutation/,/^}/' src/ipc.rs)
-echo "$main_channel_mutation_policy" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b2="$r_s11b2 macos-service-password-request-not-denied-on-main"
-echo "$main_channel_mutation_policy" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => false' || r_s11b2="$r_s11b2 macos-service-password-snapshot-not-denied-on-main"
-echo "$main_channel_mutation_policy" | grep -q 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => false' || r_s11b2="$r_s11b2 macos-service-password-commit-not-denied-on-main"
-grep -A5 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => {' src/ipc.rs | grep -q 'peer_authority.allows_service_owned_unattended_password_commit()' || r_s11b2="$r_s11b2 service-password-commit-not-root-peer-gated"
-grep -q 'current_process_allows_service_owned_unattended_password_commit' src/ipc.rs || r_s11b2="$r_s11b2 service-password-handler-commit-gate-missing"
-grep -q 'linux_peer_is_authorized_for_service_owned_password_change' src/ipc.rs      || r_s11b2="$r_s11b2 linux-polkit-authorizer-missing"
-grep -q 'const PKCHECK_PATH: &str = "/usr/bin/pkcheck";' src/ipc.rs                  || r_s11b2="$r_s11b2 linux-pkcheck-path-missing"
-grep -q 'fn trusted_linux_pkcheck_path() -> Option<PathBuf>' src/ipc.rs              || r_s11b2="$r_s11b2 linux-pkcheck-trusted-resolver-missing"
-grep -q 'fn linux_trusted_authority_command_path(path: &Path) -> Option<PathBuf>' src/ipc.rs || r_s11b2="$r_s11b2 linux-pkcheck-authority-command-resolver-missing"
-grep -q 'metadata.uid()' src/ipc.rs                                                  || r_s11b2="$r_s11b2 linux-pkcheck-root-owner-check-missing"
-grep -q 'mode & 0o022 == 0' src/ipc.rs                                               || r_s11b2="$r_s11b2 linux-pkcheck-writable-mode-check-missing"
-grep -q 'mode & 0o111 != 0' src/ipc.rs                                               || r_s11b2="$r_s11b2 linux-pkcheck-executable-mode-check-missing"
-grep -q 'let Some(pkcheck) = trusted_linux_pkcheck_path()' src/ipc.rs                || r_s11b2="$r_s11b2 linux-pkcheck-authorizer-not-using-trusted-path"
-grep -q 'linux_authority_command_path_rejects_relative_and_parent_paths' src/ipc.rs  || r_s11b2="$r_s11b2 linux-pkcheck-bad-path-test-missing"
-grep -q 'linux_trusted_command_metadata_requires_root_unwritable_executable_file' src/ipc.rs || r_s11b2="$r_s11b2 linux-pkcheck-file-metadata-test-missing"
-if grep -Fq 'Command::new("/usr/bin/pkcheck")' src/ipc.rs; then
-  r_s11b2="$r_s11b2 linux-pkcheck-absolute-string-launch-leftover"
+ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
+if echo "$ipc_data_enum" | grep -Eq 'Request(ServiceOwned|MacosServiceOwned)UnattendedPasswordChange|Begin(ServiceOwned|MacosServiceOwned)UnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult'; then
+  r_s11b="$r_s11b obsolete-password-mutation-data-variant-present"
 fi
-grep -q -- '.arg("--process")' src/ipc.rs                                            || r_s11b2="$r_s11b2 linux-pkcheck-process-subject-missing"
-grep -q -- '.arg("--allow-user-interaction")' src/ipc.rs                             || r_s11b2="$r_s11b2 linux-pkcheck-interaction-missing"
-grep -q 'rsplit_once(") ")' src/ipc/auth.rs                                          || r_s11b2="$r_s11b2 linux-proc-stat-safe-parse-missing"
-linux_polkit_subject_block=$(awk '/fn linux_polkit_subject_for_peer/,/^}/' src/ipc.rs)
-grep -q 'pub(crate) fn start_time(&self) -> &str' src/ipc/auth.rs                    || r_s11b2="$r_s11b2 linux-peer-start-time-accessor-missing"
-echo "$linux_polkit_subject_block" | grep -q 'peer_process_identity(stream, crate::POSTFIX_SERVICE)' || r_s11b2="$r_s11b2 linux-polkit-subject-not-live-peer-identity-backed"
-echo "$linux_polkit_subject_block" | grep -q 'identity.start_time()'                 || r_s11b2="$r_s11b2 linux-polkit-subject-start-time-not-from-identity"
-echo "$linux_polkit_subject_block" | grep -q 'identity.uid()'                        || r_s11b2="$r_s11b2 linux-polkit-subject-uid-not-from-identity"
-echo "$linux_polkit_subject_block" | grep -q 'linux_proc_start_time(peer_pid)' && r_s11b2="$r_s11b2 linux-polkit-subject-direct-start-time-read-regressed"
-grep -Fq 'Linux pkcheck request-time peer identity binding' requirements.html         || r_s11b2="$r_s11b2 linux-polkit-request-time-identity-requirements-missing"
-grep -Fq 'R-S11e-15 — Linux pkcheck request-time peer identity binding' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-polkit-request-time-identity-ledger-missing"
-grep -q 'UserMainIpcScope::new()' src/ipc.rs                                         || r_s11b2="$r_s11b2 linux-service-commit-not-main-server-scoped"
-grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/common.rs                       || r_s11b2="$r_s11b2 linux-service-server-launch-parent-env-missing"
-grep -q 'fn service_owned_server_launch_env()' src/platform/linux.rs                  || r_s11b2="$r_s11b2 linux-service-server-launch-env-helper-missing"
-grep -q 'envs.push(service_owned_server_launch_env())' src/platform/linux.rs          || r_s11b2="$r_s11b2 linux-active-user-service-server-launch-parent-not-passed"
-grep -A5 'crate::run_me_with_env' <<<"$linux_service_start" | grep -q 'service_owned_server_launch_env()' || r_s11b2="$r_s11b2 linux-root-service-server-launch-parent-not-passed"
-grep -q 'fn authenticate_linux_service_owned_main_server' src/ipc/auth.rs             || r_s11b2="$r_s11b2 linux-service-main-server-auth-missing"
-grep -q 'linux_service_owned_server_argv_is_expected' src/ipc/auth.rs                 || r_s11b2="$r_s11b2 linux-service-main-server-exact-argv-missing"
-grep -q 'SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 linux-service-main-server-launch-parent-env-not-checked"
-grep -q 'linux_process_has_ancestor(identity.pid, expected_parent)' src/ipc/auth.rs   || r_s11b2="$r_s11b2 linux-service-main-server-ancestor-proof-missing"
-grep -q 'test_linux_service_owned_server_argv_is_exact' src/ipc/auth.rs               || r_s11b2="$r_s11b2 linux-service-main-server-argv-test-missing"
+grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs || r_s11b="$r_s11b raw-service-password-listener-missing"
+grep -q 'password::SensitivePayloadKind::Password' src/ipc.rs || r_s11b="$r_s11b raw-service-password-kind-missing"
+if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
+  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service is bounded no-secret control IPC; password mutation uses the separate raw _service_password listener, and whole-config/password-bearing service variants are absent"; fi
+
+# (3b-iii-c) R-S11b/R-S11c/R-S11g/R-S11h/R-S11i: password values are not
+# ordinary IPC data. Desktop mutations use fixed raw _password/_service_password frames,
+# proof-before-secret admission, value-bound process-lifetime finality, and owner-specific sinks.
+echo "== (3b-iii-c) dedicated raw password IPC authority and finality (R-S11b/R-S11c/R-S11g/R-S11h/R-S11i) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config password_mutation --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config windows_credential_ --color never
+r_s11b2=
 if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >"$VERIFY_TMP/rd_verify_linux_service_password_ipc" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_linux_service_password_ipc"
-  r_s11b2="$r_s11b2 linux-service-password-ipc-structural-gate-failed"
-fi
-linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
-connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
-grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs       || r_s11b2="$r_s11b2 linux-service-server-client-auth-missing"
-echo "$linux_service_server_client_auth_block" | grep -Fq 'identity.uid != 0'         || r_s11b2="$r_s11b2 linux-service-server-client-auth-not-root-gated"
-echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_process_argv_is_expected(&args)' || r_s11b2="$r_s11b2 linux-service-server-client-auth-not-service-argv-gated"
-echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_executable_is_trusted(&peer_exe)' || r_s11b2="$r_s11b2 linux-service-server-client-auth-no-root-owned-exec-proof"
-grep -q 'test_linux_service_process_argv_is_exact' src/ipc/auth.rs                    || r_s11b2="$r_s11b2 linux-service-server-argv-test-missing"
-grep -q 'linux_trusted_service_executable_metadata_requires_root_unwritable_executable_file' src/ipc/auth.rs || r_s11b2="$r_s11b2 linux-service-server-exec-metadata-test-missing"
-grep -q 'linux_trusted_service_executable_parent_requires_root_unwritable_directory' src/ipc/auth.rs || r_s11b2="$r_s11b2 linux-service-server-parent-metadata-test-missing"
-echo "$connect_with_path_block" | grep -Fq 'ensure_linux_service_server_is_trusted(&connection)' || r_s11b2="$r_s11b2 linux-service-connect-not-client-authenticated"
-if ! python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-connect_start = src.index("async fn connect_with_path")
-connect_end = src.index("\n}\n\n#[cfg(windows)]\nasync fn connect_windows_named_pipe", connect_start) + 2
-connect_body = src[connect_start:connect_end]
-auth = connect_body.find("ensure_linux_service_server_is_trusted(&connection)?")
-ok = connect_body.find("Ok(connection)", auth)
-password_start = src.index("async fn set_service_owned_unattended_password_with_ack")
-password_end = src.index("#[cfg(target_os = \"windows\")]", password_start)
-password_body = src[password_start:password_end]
-connect = password_body.find("connect_service(ms_timeout).await?")
-send = password_body.find("Data::RequestServiceOwnedUnattendedPasswordChange(v)")
-raise SystemExit(0 if auth != -1 and ok != -1 and auth < ok and connect != -1 and send != -1 and connect < send else 1)
-PY
-then
-  r_s11b2="$r_s11b2 linux-service-password-request-sends-before-service-proof"
+  r_s11b2="$r_s11b2 linux-raw-password-semantic-verifier-failed"
 fi
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
 fi
-grep -Fq 'R-S11e — Linux polkit policy/package assurance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-polkit-assurance-ledger-missing"
-grep -Fq 'R-S11e-1 — Linux pkcheck executable provenance' HARDENING_STATUS.md        || r_s11b2="$r_s11b2 linux-pkcheck-provenance-ledger-missing"
-grep -Fq 'R-S11e-5 — Linux service-owned main-server commit receiver proof' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-service-main-server-proof-ledger-missing"
-grep -Fq 'R-S11e-6 — Linux _service client-side server authentication' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-service-client-auth-ledger-missing"
-grep -Fq 'Linux polkit policy/package assurance' requirements.html                   || r_s11b2="$r_s11b2 linux-polkit-assurance-requirements-missing"
-grep -Fq 'Linux pkcheck executable provenance' requirements.html                     || r_s11b2="$r_s11b2 linux-pkcheck-provenance-requirements-missing"
-grep -Fq 'Linux service-owned main-server commit receiver proof' requirements.html   || r_s11b2="$r_s11b2 linux-service-main-server-proof-requirements-missing"
-grep -Fq 'Linux _service client-side server authentication' requirements.html        || r_s11b2="$r_s11b2 linux-service-client-auth-requirements-missing"
-grep -q 'windows_peer_is_authorized_for_service_owned_password_change' src/ipc.rs    || r_s11b2="$r_s11b2 windows-service-password-authorizer-missing"
-grep -q 'windows_pipe_client_token_is_elevated' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 windows-service-password-token-elevation-missing"
-grep -q 'windows_pipe_client_token_is_local_system' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-password-localsystem-token-missing"
-grep -q 'ImpersonateNamedPipeClient' src/ipc/auth.rs                                || r_s11b2="$r_s11b2 windows-service-password-not-client-token-impersonated"
-grep -q 'RevertToSelf' src/ipc/auth.rs                                               || r_s11b2="$r_s11b2 windows-service-password-impersonation-not-reverted"
 if ! python3 - <<'PY'
 from pathlib import Path
 
-src = Path("src/ipc/auth.rs").read_text()
+ipc = Path("src/ipc.rs").read_text()
+password = Path("src/ipc/password.rs").read_text()
+auth = Path("src/ipc/auth.rs").read_text()
+windows = Path("src/platform/windows.rs").read_text()
+macos_mm = Path("src/platform/macos.mm").read_text()
+failures = []
 
-guard_start = src.index("struct ThreadImpersonationGuard")
-guard_end = src.index("pub(crate) fn windows_named_pipe_client_access_mask", guard_start)
-guard = src[guard_start:guard_end]
+def need(name, condition):
+    if not condition:
+        failures.append(name)
 
-wrapper_start = src.index("fn windows_pipe_client_token_satisfies(")
-wrapper_end = src.index("pub(crate) fn windows_pipe_client_token_is_elevated", wrapper_start)
-wrapper = src[wrapper_start:wrapper_end]
+def between(source, start, end):
+    try:
+        begin = source.index(start)
+        finish = source.index(end, begin)
+    except ValueError:
+        return ""
+    return source[begin:finish]
 
-primitive_start = guard.index("fn revert_thread_impersonation_or_abort()")
-primitive_end = guard.index("impl Drop for ThreadImpersonationGuard", primitive_start)
-primitive = guard[primitive_start:primitive_end]
-restore_start = guard.index("fn restore(mut self)")
-restore_end = guard.index("fn revert_thread_impersonation_or_abort()", restore_start)
-restore_body = guard[restore_start:restore_end]
-restore_call = restore_body.find("revert_thread_impersonation_or_abort();")
-deactivate = restore_body.find("self.active = false;")
-revert = primitive.find("if RevertToSelf().is_err()")
-abort = primitive.find("std::process::abort();")
-required_guard = (
-    "active: bool" in guard
-    and "fn restore(mut self)" in guard
-    and "if self.active" in guard
-    and guard.count("revert_thread_impersonation_or_abort();") == 2
-    and restore_call != -1
-    and deactivate != -1
-    and restore_call < deactivate
-    and revert != -1
-    and abort != -1
-    and revert < abort
-    and "log::" not in primitive
-    and "Failed to revert named-pipe client impersonation" not in guard
+def ordered(source, tokens):
+    offset = -1
+    for token in tokens:
+        offset = source.find(token, offset + 1)
+        if offset < 0:
+            return False
+    return True
+
+main_request = between(ipc, "pub enum MainIpcRequest {", "pub enum MainIpcResponse {")
+data_enum = between(ipc, "pub enum Data {", "pub struct FS")
+windows_control = between(
+    ipc,
+    "enum WindowsServiceMainRequest {",
+    "pub(crate) struct WindowsCredentialReplicaState",
 )
-result = wrapper.find("let result = (|| -> ResultType<bool>")
-restore = wrapper.find("revert.restore();")
-returned = wrapper.rfind("result")
-required_wrapper = (
-    "let revert = ThreadImpersonationGuard::new();" in wrapper
-    and "requirement.is_satisfied(token)" in wrapper
-    and "FnOnce" not in wrapper
-    and result != -1
-    and restore != -1
-    and returned != -1
-    and result < restore < returned
+obsolete_variants = (
+    "BeginUserOwnedPermanentPassword",
+    "BeginServiceOwnedUnattendedPasswordChange",
+    "RequestServiceOwnedUnattendedPasswordChange",
+    "RequestMacosServiceOwnedUnattendedPasswordChange",
+    "ServiceOwnedUnattendedPasswordChangeResult",
 )
-required_vocabulary = (
-    "enum WindowsPipeClientTokenRequirement" in src
-    and "Self::Elevated => token_is_elevated(token)" in src
-    and "Self::LocalSystem => Ok(token_user_sid_string(token)? == LOCAL_SYSTEM_SID)" in src
-    and "WindowsPipeClientTokenRequirement::Elevated" in src
-    and "WindowsPipeClientTokenRequirement::LocalSystem" in src
-    and "with_impersonated_client_token" not in src
+need(
+    "obsolete-password-bearing-ordinary-ipc-variant-present",
+    not any(token in main_request + data_enum + windows_control for token in obsolete_variants),
 )
-raise SystemExit(0 if required_guard and required_wrapper and required_vocabulary else 1)
-PY
-then
-  r_s11b2="$r_s11b2 windows-client-impersonation-restoration-not-process-fatal"
-fi
-grep -Fq 'R-S11e-18 — Windows named-pipe impersonation restoration' HARDENING_STATUS.md || r_s11b2="$r_s11b2 windows-client-impersonation-restoration-ledger-missing"
-grep -Fq 'Windows named-pipe impersonation restoration' requirements.html             || r_s11b2="$r_s11b2 windows-client-impersonation-restoration-requirements-missing"
-grep -Fq '<tr><td>123</td>' requirements.html                                         || r_s11b2="$r_s11b2 windows-client-impersonation-restoration-appendix-missing"
-grep -q 'pub(crate) fn get_pids_of_process_with_args' src/platform/mod.rs            || r_s11b2="$r_s11b2 exact-process-args-helper-not-exported"
-grep -q 'fn peer_process_has_windows_service_owned_server_args' src/ipc/auth.rs      || r_s11b2="$r_s11b2 windows-service-main-server-exact-argv-proof-missing"
-grep -q 'fn windows_service_owned_main_server_args' src/ipc/auth.rs                  || r_s11b2="$r_s11b2 windows-service-main-server-expected-args-helper-missing"
-grep -q 'get_pids_of_process_with_args' src/ipc/auth.rs                              || r_s11b2="$r_s11b2 windows-service-main-server-not-using-exact-argv-lookup"
-grep -q 'authenticate_windows_service_owned_main_server' src/ipc/auth.rs              || r_s11b2="$r_s11b2 windows-service-main-server-auth-missing"
-grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'ensure_peer_executable_matches_fixed_windows_service_exe_by_pid(server_pid, "")' || r_s11b2="$r_s11b2 windows-service-main-server-not-fixed-exe-proven"
-grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'is_process_running_as_system(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-localsystem-proven"
-grep -A30 'pub(crate) fn authenticate_windows_service_owned_main_server' src/ipc/auth.rs | grep -q 'peer_process_has_windows_service_owned_server_args(server_pid)' || r_s11b2="$r_s11b2 windows-service-main-server-not-service-argv-proven"
-grep -q 'test_windows_service_owned_server_args_are_exact' src/ipc/auth.rs            || r_s11b2="$r_s11b2 windows-service-main-server-argv-test-missing"
-if ! python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-start = src.index("async fn commit_service_owned_unattended_password_change")
-end = src.index("\n}\n\n#[cfg(target_os = \"macos\")]", start) + 2
-body = src[start:end]
-connect = body.find('connect(ms_timeout, "").await?')
-auth = body.find('authenticate_windows_service_owned_main_server(&c)?')
-send = body.find('Data::CommitServiceOwnedUnattendedPasswordChange(value)')
-raise SystemExit(0 if connect != -1 and auth != -1 and send != -1 and connect < auth < send else 1)
-PY
-then
-  r_s11b2="$r_s11b2 windows-service-password-commit-sends-before-main-receiver-proof"
-fi
-grep -q 'Self::WindowsLocalSystemPeer => true' src/ipc.rs                            || r_s11b2="$r_s11b2 windows-service-password-commit-not-localsystem-gated"
-grep -q 'handle_windows_service_owned_unattended_password_request' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-service-loop-not-wired"
-grep -q 'RequestServiceOwnedUnattendedPasswordChange(value)' src/platform/windows.rs || r_s11b2="$r_s11b2 windows-service-password-request-not-dispatched"
-grep -q 'crate::platform::is_elevated(None).unwrap_or(false)' src/ipc.rs             || r_s11b2="$r_s11b2 windows-service-password-ui-not-elevation-gated"
-if grep -qE 'BeginMacosServiceOwnedUnattendedPasswordChange|MacosServiceOwnedUnattendedPasswordChallenge|FinishMacosServiceOwnedUnattendedPasswordChange' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-old-begin-finish-flow-present"
-fi
-if grep -qE 'MACOS_SERVICE_OWNED_PASSWORD_PENDING|MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING|MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|macos_schedule_service_owned_password_request_expiry|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password: Option<String>' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-pending-cache-present"
-fi
-grep -q 'const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;' src/ipc.rs            || r_s11b2="$r_s11b2 service-password-value-cap-missing"
-grep -q 'password.len() > UNATTENDED_PASSWORD_MAX_BYTES' src/ipc.rs                || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
-grep -q 'service_owned_password_value_is_valid("Linux", &value)' src/ipc.rs        || r_s11b2="$r_s11b2 linux-service-password-value-cap-not-wired"
-grep -q 'service_owned_password_value_is_valid("macOS", &password)' src/ipc.rs     || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
-grep -q 'service_owned_password_value_is_valid("Windows", &value)' src/ipc.rs      || r_s11b2="$r_s11b2 windows-service-password-value-cap-not-wired"
-grep -q 'handle_macos_service_owned_unattended_password_request' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
-grep -q 'Config::set_permanent_password(&password)' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-request-not-writing-root-store"
-if grep -q 'commit_service_owned_unattended_password_change(password).await' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-stale-main-server-commit"
-fi
-if grep -q 'get_preset_password_storage_and_salt' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-snapshot-preset-fallback"
-fi
-grep -q 'handle_macos_service_owned_permanent_password_snapshot_request' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-handler-missing"
-grep -q 'macos_peer_is_service_owned_server' src/ipc.rs                            || r_s11b2="$r_s11b2 macos-service-password-snapshot-peer-shape-missing"
-grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-pid-proof-missing"
-macos_snapshot_peer_block=$(awk '/async fn macos_peer_is_service_owned_server/,/fn macos_service_owned_server_launch_agent_label/' src/ipc.rs)
-macos_blocking_peer_block=$(awk '/fn macos_peer_is_service_owned_server_blocking/,/fn macos_service_owned_server_launch_agent_label/' src/ipc.rs)
-macos_launch_agent_proof_block=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/async fn handle_macos_service_owned_permanent_password_snapshot_request/' src/ipc.rs)
-macos_plist_parser_block=$(awk '/fn macos_service_owned_server_launch_agent_plist_value_is_expected/,/fn macos_service_owned_server_launch_agent_plist_content_is_expected/' src/ipc.rs)
-macos_plist_content_block=$(awk '/fn macos_service_owned_server_launch_agent_plist_content_is_expected/,/fn macos_launchctl_print_value/' src/ipc.rs)
-macos_snapshot_handler_block=$(awk '/async fn handle_macos_service_owned_permanent_password_snapshot_request/,/async fn permanent_password_is_set_for_current_process/' src/ipc.rs)
-grep -q 'MACOS_LAUNCHCTL: &str = "/bin/launchctl"' src/ipc.rs                      || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchctl-fixed-path-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'format!("gui/{peer_uid}/{label}")' || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-domain-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'reported_pid != Some(peer_pid)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-pid-compare-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'reported_path != Some(expected_plist.as_str())' || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-path-compare-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'macos_service_owned_server_launch_agent_plist_is_trusted' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-trust-missing"
-grep -q 'macos_service_owned_server_launch_agent_plist_is_trusted' src/ipc.rs      || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-trust-function-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'macos_service_owned_server_launch_agent_plist_content_is_expected' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-content-proof-not-wired"
-grep -q 'macos_root_wheel_path_is_trusted(parent, MacosTrustedPathKind::Directory)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-parent-trust-missing"
-grep -q 'std::fs::symlink_metadata(path)' src/ipc.rs                               || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-symlink-gate-missing"
-grep -q 'metadata.uid() == 0' src/ipc.rs                                           || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-root-missing"
-grep -q 'metadata.gid() == 0' src/ipc.rs                                           || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-wheel-missing"
-grep -q 'metadata.permissions().mode() & 0o022 == 0' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-mode-missing"
-grep -q 'macos_path_has_no_extended_acl' src/ipc.rs                                || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-acl-missing"
-echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_process_identity("macOS service-owned password snapshot requester")' || r_s11b2="$r_s11b2 macos-service-password-snapshot-audit-token-identity-missing"
-echo "$macos_snapshot_peer_block" | grep -q 'tokio::task::spawn_blocking'          || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-not-spawn-blocking"
-echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(identity)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-blocking-target-missing"
-if echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)'; then
-  r_s11b2="$r_s11b2 macos-service-password-snapshot-old-pid-target-present"
-fi
-grep -Fq 'fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-missing"
-grep -Fq 'cmd.len() == 3' src/ipc.rs                                             || r_s11b2="$r_s11b2 macos-service-password-live-argv-not-exact-length"
-echo "$macos_snapshot_peer_block" | grep -Fq 'macos_service_owned_server_live_argv_is_expected(process.cmd())' || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-not-wired"
-grep -q 'macos_service_owned_server_live_argv_rejects_extra_arg' src/ipc.rs       || r_s11b2="$r_s11b2 macos-service-password-live-argv-extra-test-missing"
-grep -q 'macos_service_owned_server_live_argv_rejects_wrong_service_arg' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-live-argv-wrong-marker-test-missing"
-if echo "$macos_blocking_peer_block" | grep -qE 'process\.cmd\(\)\.get\([12]\)'; then
-  r_s11b2="$r_s11b2 macos-service-password-live-argv-prefix-proof-present"
-fi
-grep -q 'macos_service_owned_server_launch_agent_executable' src/ipc.rs            || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-exec-proof-missing"
-grep -q 'macos_service_owned_server_launch_agent_plist_content_is_expected' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-content-proof-missing"
-grep -q 'macos_service_owned_server_launch_agent_plist_value_is_expected' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-parser-missing"
-echo "$macos_plist_content_block" | grep -q 'plist::Value::from_file'             || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-not-parsed"
-echo "$macos_plist_parser_block" | grep -q 'ProgramArguments'                     || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-programargs-missing"
-echo "$macos_plist_parser_block" | grep -q 'RunAtLoad'                            || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-runatload-missing"
-echo "$macos_plist_parser_block" | grep -q 'SuccessfulExit'                       || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-successful-exit-missing"
-echo "$macos_plist_parser_block" | grep -q 'AfterInitialDemand'                   || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-initial-demand-missing"
-echo "$macos_plist_parser_block" | grep -q 'keep_alive.len() != 2'                || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-exact-shape-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_missing_service_arg' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-validation-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_extra_arg' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-extra-arg-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_run_at_load_false' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-runatload-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_missing_keep_alive' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_extra_keep_alive_key' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-exact-test-missing"
-echo "$macos_snapshot_handler_block" | grep -q 'if storage.is_empty()'             || r_s11b2="$r_s11b2 macos-service-password-empty-snapshot-storage-gate-missing"
-echo "$macos_snapshot_handler_block" | grep -q '(String::new(), String::new())'    || r_s11b2="$r_s11b2 macos-service-password-empty-snapshot-not-cleared"
-grep -q 'refresh_macos_service_owned_permanent_password_snapshot' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-snapshot-client-missing"
-grep -q 'Config::set_permanent_password_storage_for_runtime(&storage, &salt)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-runtime-apply-missing"
-grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs             || r_s11b2="$r_s11b2 macos-service-password-runtime-overlay-missing"
-grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b2="$r_s11b2 macos-service-password-runtime-nonpersist-test-missing"
-grep -q 'test_set_permanent_password_persists_when_value_matches_preset' libs/hbb_common/src/config.rs || r_s11b2="$r_s11b2 explicit-password-set-preset-noop-test-missing"
-grep -q 'effective_permanent_password_prs' src/direct_service.rs                   || r_s11b2="$r_s11b2 macos-service-password-listener-not-effective-prs"
-grep -q 'let prs = effective_permanent_password_prs().await' src/server.rs         || r_s11b2="$r_s11b2 macos-service-password-cpace-not-effective-prs"
-grep -q 'service_owned_unattended_password_authorization()' src/ipc.rs             || r_s11b2="$r_s11b2 macos-service-password-ui-auth-not-action-only"
-if grep -q 'authorization: Vec::new()' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-auth-failure-cancel-fallback-present"
-fi
-if ! python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-start = src.index("async fn set_service_owned_unattended_password_with_ack")
-end = src.index("#[cfg(target_os = \"windows\")]", start)
-body = src[start:end]
-ready = body.find("macos_service_owned_password_authorization_right_ready(ms_timeout).await?")
-auth = body.find("service_owned_unattended_password_authorization()")
-connect_after_auth = body.find("let mut c = connect_service(ms_timeout).await?", auth)
-send = body.find("Data::RequestMacosServiceOwnedUnattendedPasswordChange")
-raise SystemExit(0 if ready != -1 and auth != -1 and connect_after_auth != -1 and send != -1 and ready < auth < connect_after_auth < send else 1)
-PY
-then
-  r_s11b2="$r_s11b2 macos-service-password-ui-skips-right-readiness-or-reuses-readiness-connection"
-fi
-if grep -qE 'macos_service_owned_unattended_password_digest|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT|password_digest' src/ipc.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-stale-digest-binding"
-fi
-grep -q 'macos_service_owned_password_authorization_right_is_ready' src/ipc.rs      || r_s11b2="$r_s11b2 macos-service-password-right-readiness-gate-missing"
-grep -q 'MacosServiceOwnedPasswordRightReadyRequest' src/ipc.rs                    || r_s11b2="$r_s11b2 macos-service-password-right-readiness-request-missing"
-grep -q 'MacosServiceOwnedPasswordRightReadyResult(bool)' src/ipc.rs               || r_s11b2="$r_s11b2 macos-service-password-right-readiness-result-missing"
-grep -q 'macos_service_owned_password_authorization_right_ready' src/ipc.rs        || r_s11b2="$r_s11b2 macos-service-password-right-readiness-client-missing"
-grep -q 'MacosServiceOwnedPasswordRightReadyResult(ready)' src/ipc.rs              || r_s11b2="$r_s11b2 macos-service-password-right-readiness-handler-result-missing"
-grep -q 'MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-setup-missing"
-grep -q 'AuthorizationRightSet(NULL' src/platform/macos.mm                         || r_s11b2="$r_s11b2 macos-service-password-right-set-missing"
-grep -q 'AuthorizationRightGet(RustDeskSetUnattendedPasswordRight()' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-existence-check-missing"
-grep -q 'RustDeskSetUnattendedPasswordRightMatchesExpected' src/platform/macos.mm  || r_s11b2="$r_s11b2 macos-service-password-right-exact-definition-check-missing"
-grep -q 'DictionaryStringEquals(rightDefinition, CFSTR("class"), CFSTR("user"))' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-class-not-validated"
-grep -q 'DictionaryStringEquals(rightDefinition, CFSTR("group"), CFSTR("admin"))' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-group-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("shared"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-shared-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("allow-root"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-allow-root-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("authenticate-user"), true)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-authenticate-user-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("session-owner"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-session-owner-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("extract-password"), false)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-extract-password-not-validated"
-grep -q 'DictionaryInt32Equals(rightDefinition, CFSTR("timeout"), 0)' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-validated"
-grep -q 'CFDictionaryGetValue' src/platform/macos.mm                              || r_s11b2="$r_s11b2 macos-service-password-right-dictionary-read-missing"
-grep -q 'CFStringCompare' src/platform/macos.mm                                   || r_s11b2="$r_s11b2 macos-service-password-right-string-compare-missing"
-grep -q 'CFBooleanGetValue' src/platform/macos.mm                                 || r_s11b2="$r_s11b2 macos-service-password-right-bool-compare-missing"
-grep -q 'CFNumberGetValue' src/platform/macos.mm                                  || r_s11b2="$r_s11b2 macos-service-password-right-number-compare-missing"
-grep -q 'CFSTR("shared")' src/platform/macos.mm                                    || r_s11b2="$r_s11b2 macos-service-password-right-shared-key-missing"
-grep -q 'kCFBooleanFalse' src/platform/macos.mm                                    || r_s11b2="$r_s11b2 macos-service-password-right-not-nonshared"
-grep -q 'CFSTR("allow-root")' src/platform/macos.mm                                || r_s11b2="$r_s11b2 macos-service-password-right-allow-root-key-missing"
-grep -q 'CFSTR("authenticate-user")' src/platform/macos.mm                         || r_s11b2="$r_s11b2 macos-service-password-right-authenticate-user-key-missing"
-grep -q 'CFSTR("session-owner")' src/platform/macos.mm                             || r_s11b2="$r_s11b2 macos-service-password-right-session-owner-key-missing"
-grep -q 'CFSTR("extract-password")' src/platform/macos.mm                          || r_s11b2="$r_s11b2 macos-service-password-right-extract-password-key-missing"
-grep -q 'CFSTR("timeout")' src/platform/macos.mm                                   || r_s11b2="$r_s11b2 macos-service-password-right-timeout-key-missing"
-grep -q 'const int32_t timeout = 0' src/platform/macos.mm                          || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-zero"
-grep -q 'CFSTR("group")' src/platform/macos.mm                                     || r_s11b2="$r_s11b2 macos-service-password-right-group-key-missing"
-grep -q 'CFSTR("admin")' src/platform/macos.mm                                     || r_s11b2="$r_s11b2 macos-service-password-right-admin-group-missing"
-grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-auth-create-missing"
-grep -q 'AuthorizationMakeExternalForm' src/platform/macos.mm                        || r_s11b2="$r_s11b2 macos-service-password-externalize-missing"
-grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' src/platform/macos.mm || r_s11b2="$r_s11b2 macos-service-password-auth-verify-missing"
-grep -q 'AuthorizationCreateFromExternalForm' src/platform/macos.mm                  || r_s11b2="$r_s11b2 macos-service-password-internalize-missing"
-grep -q 'kAuthorizationFlagDefaults, NULL' src/platform/macos.mm                     || r_s11b2="$r_s11b2 macos-service-password-daemon-verification-may-interact"
-grep -q 'RustDeskSetUnattendedPasswordRight' src/platform/macos.mm                  || r_s11b2="$r_s11b2 macos-service-password-custom-right-missing"
-grep -q 'com.carriez.RustDesk.set-unattended-password' src/platform/macos.mm        || r_s11b2="$r_s11b2 macos-service-password-right-name-missing"
-if grep -qE 'RequestDigestIsValid|kAuthorizationEnvironmentPrompt|MacCreateAdminAuthorizationExternalFormForRequest|MacVerifyAdminAuthorizationExternalFormForRequest' src/platform/macos.mm; then
-  r_s11b2="$r_s11b2 macos-service-password-stale-digest-native-auth"
-fi
-if grep -q 'RustDeskSetUnattendedPasswordRightExists' src/platform/macos.mm; then
-  r_s11b2="$r_s11b2 macos-service-password-existence-only-right-check-present"
-fi
-if grep -q 'request_digest' src/platform/macos.rs; then
-  r_s11b2="$r_s11b2 macos-service-password-rust-api-still-digest-bound"
-fi
-grep -q 'ensure_service_owned_unattended_password_authorization_right' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-rust-right-setup-missing"
-grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-rust-auth-create-missing"
-grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' src/platform/macos.rs || r_s11b2="$r_s11b2 macos-service-password-rust-auth-verify-missing"
-grep -q 'handle_macos_service_owned_unattended_password_request' src/ipc.rs         || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
-grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
-grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs              || r_s11b2="$r_s11b2 macos-service-ipc-helper-const-missing"
-grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-path-missing"
-grep -Fq 'fn macos_installed_app_executable_path() -> PathBuf' src/ipc/auth.rs      || r_s11b2="$r_s11b2 macos-service-ipc-installed-app-path-missing"
-grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-trust-missing"
-grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-trust-missing"
-grep -Fq 'fs::symlink_metadata(path)' src/ipc/auth.rs                            || r_s11b2="$r_s11b2 macos-service-ipc-symlink-metadata-missing"
-grep -Fq 'metadata.file_type().is_symlink()' src/ipc/auth.rs                     || r_s11b2="$r_s11b2 macos-service-ipc-symlink-gate-missing"
-grep -Fq 'macos_root_wheel_not_group_world_writable(&metadata)' src/ipc/auth.rs  || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-mode-missing"
-grep -Fq 'macos_root_owned_not_group_world_writable(&metadata)' src/ipc/auth.rs  || r_s11b2="$r_s11b2 macos-service-ipc-app-root-owned-mode-missing"
-grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-check-missing"
-grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-native"
-grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
-grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-entry-check-missing"
-grep -Fq 'MacosAclGuard' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-free-guard-missing"
-if grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs \
-  || grep -Fq 'const MACOS_LS' src/ipc/auth.rs \
-  || grep -Fq 'Command::new("/bin/ls")' src/platform/macos.rs src/ipc.rs src/ipc/auth.rs \
-  || grep -Fq 'Command::new("ls")' src/platform/macos.rs src/ipc.rs src/ipc/auth.rs; then
-  r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-ls-parser-present"
-fi
-grep -Fq 'security-framework = "2.10"' Cargo.toml || r_s11b2="$r_s11b2 macos-security-framework-direct-dependency-missing"
-grep -Fq 'const MACOS_AUDIT_TOKEN_BYTES: usize = 32;' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-audit-token-size-missing"
-grep -Fq 'libc::LOCAL_PEEREPID' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-effective-peer-pid-missing"
-grep -Fq 'libc::LOCAL_PEERTOKEN' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-audit-token-missing"
-if grep -Fq 'libc::LOCAL_PEERPID' src/ipc/auth.rs; then
-  r_s11b2="$r_s11b2 macos-legacy-peerpid-present"
-fi
-grep -Fq 'pub(crate) struct MacosPeerProcessIdentity' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-identity-type-missing"
-grep -Fq 'fn peer_audit_token_from_fd(fd: RawFd) -> Option<[u8; MACOS_AUDIT_TOKEN_BYTES]>' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-audit-token-reader-missing"
-grep -Fq 'pub(crate) fn macos_peer_process_identity' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-peer-identity-capture-missing"
-grep -Fq 'attributes.set_audit_token(audit_token.as_concrete_TypeRef())' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-sec-guest-audit-attribute-missing"
-grep -Fq 'MacosSecCode::copy_guest_with_attribues' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-sec-code-audit-token-lookup-missing"
-grep -Fq 'code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-sec-code-strict-validation-missing"
-grep -Fq 'requirement.strip_prefix' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-code-requirement-normalization-missing"
-grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-helper-code-requirement-missing"
-grep -Fq 'macos_installed_app_satisfies_code_requirement(&app_bundle)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-app-code-requirement-missing"
-grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
-grep -Fq 'struct ServiceScopedIpcAuthorization' src/ipc/auth.rs                    || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-type-missing"
-grep -Fq 'pub(crate) fn service_scoped_ipc_authorization_snapshot' src/ipc/auth.rs || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-capture-missing"
-grep -Fq 'pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot' src/ipc/auth.rs || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-verifier-missing"
-grep -Fq 'const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;' src/ipc.rs     || r_s11b2="$r_s11b2 macos-service-ipc-auth-budget-missing"
-grep -Fq 'static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-ipc-auth-slots-missing"
-grep -Fq 'fn try_acquire_macos_service_ipc_authorization_slot() -> Option<OwnedSemaphorePermit>' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-ipc-auth-slot-acquire-missing"
-grep -Fq 'async fn authorize_macos_service_scoped_ipc_connection_for_task' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-ipc-task-authorizer-missing"
-grep -Fq 'tokio::task::spawn_blocking(move ||' src/ipc.rs                         || r_s11b2="$r_s11b2 macos-service-ipc-auth-not-spawn-blocking"
-if ! python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-try:
-    start = src.index("pub async fn start")
-    end = src.index("pub async fn new_listener", start)
-except ValueError:
-    raise SystemExit(1)
-body = src[start:end]
-spawn = body.find("tokio::spawn(async move")
-mac_slot = body.find("let macos_service_ipc_authorization_slot")
-slot_acquire = body.find("try_acquire_macos_service_ipc_authorization_slot()", 0, spawn)
-task_auth = body.find("authorize_macos_service_scoped_ipc_connection_for_task", spawn)
-first_read = body.find("stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await", spawn)
-direct = body.find("authorize_service_scoped_ipc_connection(&stream, &postfix)")
-linux_cfg = body.rfind('#[cfg(target_os = "linux")]', 0, direct)
-old_joint_cfg = body.rfind('#[cfg(any(target_os = "linux", target_os = "macos"))]', 0, direct)
-macos_auth_before_spawn = body.find("authorize_macos_service_scoped_ipc_connection_for_task", 0, spawn) != -1
-macos_snapshot_before_spawn = body.find("service_scoped_ipc_authorization_snapshot", 0, spawn) != -1
-ok = (
-    spawn != -1
-    and mac_slot != -1
-    and slot_acquire != -1
-    and task_auth != -1
-    and first_read != -1
-    and mac_slot < slot_acquire < spawn
-    and spawn < task_auth < first_read
-    and direct != -1
-    and linux_cfg != -1
-    and linux_cfg < direct
-    and (old_joint_cfg == -1 or old_joint_cfg < linux_cfg)
-    and not macos_auth_before_spawn
-    and not macos_snapshot_before_spawn
+need(
+    "ordinary-main-password-surface-not-status-only",
+    "PasswordMutationStatus" in main_request
+    and not any(token in main_request for token in ("SensitivePassword", "password: String", "authorization: Vec<u8>")),
 )
-raise SystemExit(0 if ok else 1)
-PY
-then
-  r_s11b2="$r_s11b2 macos-service-ipc-authorization-not-task-scoped-before-read"
-fi
-if ! python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-try:
-    start = src.index("async fn authorize_macos_service_scoped_ipc_connection_for_task")
-    end = src.index("#[inline]", start)
-except ValueError:
-    raise SystemExit(1)
-body = src[start:end]
-snapshot = body.find("service_scoped_ipc_authorization_snapshot")
-blocking = body.find("tokio::task::spawn_blocking")
-verify = body.find("authorize_service_scoped_ipc_authorization_snapshot", blocking)
-permit = body.find("_authorization_slot: OwnedSemaphorePermit")
-ok = permit != -1 and snapshot != -1 and blocking != -1 and verify != -1 and permit < snapshot < blocking < verify
-raise SystemExit(0 if ok else 1)
-PY
-then
-  r_s11b2="$r_s11b2 macos-service-ipc-blocking-proof-not-budgeted-or-snapshot-backed"
-fi
-grep -Fq 'macOS _service accept-loop blocking-proof offload' requirements.html || r_s11b2="$r_s11b2 macos-service-ipc-offload-requirements-missing"
-grep -Fq 'R-S11e-4 — macOS _service accept-loop blocking-proof offload' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-service-ipc-offload-ledger-missing"
-grep -Fq 'macOS _service audit-token peer code identity' requirements.html || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-requirements-missing"
-grep -Fq 'R-S11e-9 — macOS _service audit-token peer code identity' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-ledger-missing"
-macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' src/ipc/auth.rs)
-echo "$macos_service_identity_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
-echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_path_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
-echo "$macos_service_identity_block" | grep -Fq 'macos_peer_is_trusted_installed_app(peer_identity)' || r_s11b2="$r_s11b2 macos-service-ipc-peer-app-not-verified"
-grep -Fq 'ensure_peer_executable_matches_current_macos_identity(&identity' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-snapshot-not-audit-token-backed"
-grep -Fq 'macos_peer_process_identity("macOS _service peer")' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-snapshot-identity-capture-missing"
-grep -Fq 'macos_peer_process_identity("macOS _service server")' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-client-server-identity-capture-missing"
-grep -Fq 'macos_peer_process_identity("macOS service-owned password snapshot requester")' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-runtime-snapshot-identity-capture-missing"
-grep -Fq 'ipc_auth::macos_peer_is_trusted_installed_app(&identity)' src/ipc.rs || r_s11b2="$r_s11b2 macos-service-runtime-snapshot-not-audit-token-backed"
-if grep -q 'macos_service_ipc_allows_gui_and_service_binaries' src/ipc/auth.rs; then
-  r_s11b2="$r_s11b2 macos-service-ipc-old-gui-service-binary-model-present"
-fi
-if echo "$macos_service_identity_block" | grep -qE 'peer_dir|current_dir|OsStr::new\("service"\)|executable_paths_match\(peer_dir, current_dir\)'; then
-  r_s11b2="$r_s11b2 macos-service-ipc-old-same-directory-model-present"
-fi
-grep -q 'Self::RootUnixPeer => true' src/ipc.rs                                      || r_s11b2="$r_s11b2 unix-service-password-commit-not-root-gated"
-macos_auth_create_block=$(awk '/MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' src/platform/macos.mm)
-macos_auth_verify_block=$(awk '/MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' src/platform/macos.mm)
-if echo "$macos_auth_create_block$macos_auth_verify_block" | grep -q 'kAuthorizationRightExecute'; then
-  r_s11b2="$r_s11b2 macos-service-password-uses-generic-execute-right"
-fi
-if echo "$macos_auth_verify_block" | grep -q 'kAuthorizationFlagInteractionAllowed'; then
-  r_s11b2="$r_s11b2 macos-service-password-daemon-verification-can-interact"
-fi
-if grep -qE 'extern "C" bool MacCreateAdminAuthorizationExternalForm\(|extern "C" bool MacVerifyAdminAuthorizationExternalForm\(' src/platform/macos.mm; then
-  r_s11b2="$r_s11b2 macos-service-password-old-auth-present"
-fi
-windows_password_authorizer=$(awk '/fn windows_peer_is_authorized_for_service_owned_password_change/,/^}/' src/ipc.rs)
-if echo "$windows_password_authorizer" | grep -q 'is_elevated(Some'; then
-  r_s11b2="$r_s11b2 windows-service-password-authorizer-uses-pid-elevation"
-fi
-grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
-grep -q '"permanent-password" => authority.allows_main_channel_password_write()' src/ipc.rs && r_s11b2="$r_s11b2 password-still-generic-config-key"
-grep -q 'Data::Config((' src/ipc.rs && r_s11b2="$r_s11b2 generic-config-write-shape-present"
-grep -q 'send_config(' src/ipc.rs && r_s11b2="$r_s11b2 generic-send-config-present"
-ipc_main_authority=$(awk '/impl MainIpcAuthority/,/^}/' src/ipc.rs)
-echo "$ipc_main_authority" | grep -B1 'crate::platform::is_root()' | grep -q 'target_os = "windows"' || r_s11b2="$r_s11b2 windows-system-fallback-not-windows-cfg"
-awk '/pub fn is_root\(\)/,/^}/' src/platform/windows.rs | grep -q 'is_local_system'    || r_s11b2="$r_s11b2 windows-root-fallback-not-local-system"
-grep -q 'SyncConfig' src/ipc.rs && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
-grep -q 'SyncConfig' src/server.rs && r_s11b2="$r_s11b2 server-whole-config-import-present"
-grep -q 'allows_main_channel_password_storage_sync' src/ipc.rs                        || r_s11b2="$r_s11b2 storage-sync-policy-missing"
-grep -q 'Rejected permanent password storage sync from service-owned server' src/ipc.rs || r_s11b2="$r_s11b2 handler-storage-sync-not-denied"
-grep -q 'Rejected permanent password salt sync from service-owned server' src/ipc.rs   || r_s11b2="$r_s11b2 handler-standalone-salt-sync-not-denied"
-grep -q 'send_main_channel_mutation_rejection_ack' src/ipc.rs                         || r_s11b2="$r_s11b2 mutation-reject-nack-missing"
-grep -q 'permanent-password-user-owned-writable' src/ipc.rs                            || r_s11b2="$r_s11b2 password-writability-receiver-missing"
-grep -q 'permanent-password-user-owned-writable' src/flutter_ffi.rs                    || r_s11b2="$r_s11b2 password-writability-ffi-missing"
-grep -q 'permanent-password-writable' src/flutter_ffi.rs                              || r_s11b2="$r_s11b2 owner-aware-password-writability-ffi-missing"
-grep -q 'canSetPermanentPassword' flutter/lib/desktop/pages/desktop_home_page.dart    || r_s11b2="$r_s11b2 home-owner-aware-password-writability-ui-missing"
-grep -q 'canSetPermanentPassword' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b2="$r_s11b2 settings-owner-aware-password-writability-ui-missing"
-grep -Fq 'Windows service-owned password commit receiver proof' requirements.html     || r_s11b2="$r_s11b2 windows-service-main-server-proof-requirements-missing"
-grep -Fq 'R-S11e-11 — Windows service-owned password commit receiver proof' HARDENING_STATUS.md || r_s11b2="$r_s11b2 windows-service-main-server-proof-ledger-missing"
-user_scope_fn=$(awk '/fn is_user_main_ipc_scope_cli_command/,/^}/' src/core_main.rs)
-if echo "$user_scope_fn" | grep -q '"--password"'; then
-  r_s11b2="$r_s11b2 password-still-root-routes-to-user-main-ipc"
-fi
-if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 service-owned password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b-2 service-launched --server is marked; ordinary password config writes are absent; typed user-owned password writes are denied for service-owned receivers; Linux client-authenticates the connected root --service receiver before sending a service-owned password request, then uses polkit/root-service commit with structured policy/package assurance; Windows uses pipe-client token elevation plus sender-side LocalSystem/exact-argv main-receiver proof before LocalSystem service commit; macOS admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old macOS main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied; --password dispatches through the owner-aware typed operation"; fi
+need(
+    "raw-wire-shape-missing",
+    all(
+        token in password
+        for token in (
+            'USER_PASSWORD_IPC_POSTFIX: &str = "_password"',
+            'SERVICE_PASSWORD_IPC_POSTFIX: &str = "_service_password"',
+            'REQUEST_MAGIC: [u8; 8] = *b"RDPWREQ\\0"',
+            'STATUS_MAGIC: [u8; 8] = *b"RDPWSTS\\0"',
+            'ACK_MAGIC: [u8; 8] = *b"RDPWACK\\0"',
+            "REQUEST_HEADER_BYTES: usize = 36",
+            "STATUS_FRAME_BYTES: usize = 32",
+            "ACK_FRAME_BYTES: usize = 28",
+        )
+    ),
+)
+need(
+    "raw-secret-ownership-or-erasure-missing",
+    all(
+        token in password
+        for token in (
+            "struct SensitivePassword(Arc<SensitivePasswordStorage>)",
+            "struct FixedSensitiveBody",
+            "try_reserve_exact(REQUEST_BODY_MAX_BYTES)",
+            "impl Drop for SensitivePasswordStorage",
+            "impl Drop for SensitiveAuthorization",
+            "zeroize_sensitive_bytes(&mut body.bytes[password_len..])",
+        )
+    ),
+)
+need(
+    "password-ledger-not-process-keyed-hmac",
+    all(
+        token in ipc
+        for token in (
+            "PASSWORD_MUTATION_RESULT_BUDGET: usize = 64",
+            "hmacsha256::gen_key()",
+            "hmacsha256::authenticate(value.as_bytes(), key)",
+            "PasswordMutationState::Prepared",
+            "PasswordMutationState::Pending",
+            "PasswordMutationState::Complete",
+        )
+    )
+    and ipc.count("fn evict_oldest_complete(&mut self) -> bool") == 3
+    and ipc.count("&& !ledger.evict_oldest_complete()") == 2
+    and "&& !self.evict_oldest_complete()" in ipc
+    and "PasswordMutationState::Complete(_, completed_at)" in ipc
+    and "LinuxPasswordAdmissionState::Complete(_, completed_at)" in ipc
+    and "WindowsCredentialOperationState::Complete(_, completed_at)" in ipc
+    and "PasswordMutationState::Prepared | PasswordMutationState::Pending => None" in ipc
+    and "LinuxPasswordAdmissionState::Recoverable => None" in ipc
+    and "WindowsCredentialOperationState::Active => None" in ipc,
+)
+start_main = between(ipc, "async fn start_main_ipc()", "fn sensitive_main_ipc_authority")
+start_service = between(ipc, "async fn start_service_ipc(postfix: &str)", "async fn handle_sensitive_linux_service_ipc_transaction")
+need(
+    "password-ledger-shutdown-order-invalid",
+    ordered(
+        start_main,
+        (
+            "password_mutations().begin_shutdown();",
+            "while let Some(result) = transactions.join_next().await",
+            "password_mutations().drain().await;",
+            "password_mutations().clear_after_transactions_drain();",
+        ),
+    )
+    and ordered(
+        start_service,
+        (
+            "password_mutations().begin_shutdown();",
+            "while let Some(result) = transactions.join_next().await",
+            "password_mutations().drain().await;",
+            "password_mutations().clear_after_transactions_drain();",
+        ),
+    ),
+)
 
+mac_worker = between(ipc, "struct MacosSecurityProofWorker", "fn try_acquire_service_ipc_transaction_slot")
+mac_proof = between(ipc, "async fn run_bounded_macos_security_proof", "fn try_acquire_service_ipc_transaction_slot")
+need(
+    "macos-proof-worker-not-exactly-owned-and-joined",
+    all(
+        token in mac_worker + mac_proof
+        for token in (
+            "worker: Option<std::thread::JoinHandle<()>>",
+            "let Some(worker) = self.worker.take()",
+            "worker.join()",
+            "if self.worker.is_some()",
+            "std::process::abort()",
+            "std::thread::Builder::new()",
+            "tokio::sync::oneshot::channel()",
+            "tokio::time::timeout_at(deadline",
+            "owner.finish()",
+        )
+    )
+    and "spawn_blocking" not in mac_proof,
+)
+mac_password_accept = between(
+    start_service,
+    "result = password_incoming.next()",
+    "result = incoming.next()",
+)
+need(
+    "macos-peer-proof-not-before-raw-read",
+    ordered(
+        mac_password_accept,
+        (
+            "try_acquire_service_password_ipc_transaction_slot()",
+            "try_acquire_macos_service_password_ipc_authorization_slot()",
+            "authorize_macos_service_scoped_password_stream_for_task(",
+            "if authorized",
+            "handle_sensitive_macos_service_ipc_transaction(",
+        ),
+    )
+    and "receive_request_unix" not in mac_password_accept,
+)
+mac_sensitive = between(
+    ipc,
+    "async fn handle_sensitive_macos_service_ipc_transaction",
+    "async fn handle_main_ipc_transaction",
+)
+need(
+    "macos-capability-proof-or-secret-ownership-order-invalid",
+    ordered(
+        mac_sensitive,
+        (
+            "password::receive_request_unix(",
+            "SensitivePayloadKind::PasswordWithAuthorization",
+            "try_acquire_macos_service_password_ipc_authorization_slot()",
+            "run_bounded_macos_security_proof(",
+            "request.authorization()",
+            "Ok((request, authority_allowed))",
+            "request.into_password()",
+            "handle_macos_service_owned_unattended_password_request(",
+        ),
+    ),
+)
+service_client = between(
+    ipc,
+    "async fn set_service_owned_unattended_password_with_ack",
+    "async fn set_windows_service_owned_unattended_password_with_ack",
+)
+need(
+    "macos-readiness-prompt-fresh-transport-order-invalid",
+    ordered(
+        service_client,
+        (
+            "macos_service_owned_password_authorization_right_ready(readiness_deadline).await",
+            "tokio::task::spawn_blocking(||",
+            "service_owned_unattended_password_authorization()",
+            'let deadline = tokio::time::Instant::now()',
+            "connect_sensitive_unix(deadline, password::SERVICE_PASSWORD_IPC_POSTFIX",
+            "password::send_request_unix(",
+        ),
+    ),
+)
+need(
+    "macos-native-authorization-copy-not-wiped",
+    macos_mm.count("AuthorizationExternalForm externalForm = {};") >= 2
+    and macos_mm.count("explicit_bzero(&externalForm, sizeof(externalForm));") >= 2,
+)
+
+pipe_create = between(
+    windows,
+    "fn create_initial_server(postfix: &'static str)",
+    "fn current_server_security",
+)
+pipe_handler = between(
+    windows,
+    "fn handle_windows_sensitive_password_pipe",
+    "pub(crate) fn start_windows_sensitive_password_listener",
+)
+pipe_listener = between(
+    windows,
+    "pub(crate) fn start_windows_sensitive_password_listener",
+    "fn transact_windows_sensitive_password_blocking",
+)
+pipe_client = between(windows, "fn connect_client(postfix: &str", "fn accept(&self")
+need(
+    "windows-retained-first-instance-message-pipe-missing",
+    all(
+        token in pipe_create
+        for token in (
+            "FILE_FLAG_FIRST_PIPE_INSTANCE",
+            "PIPE_REJECT_REMOTE_CLIENTS",
+            "PIPE_TYPE_MESSAGE",
+            "PIPE_READMODE_MESSAGE",
+            "WINDOWS_SENSITIVE_PIPE_MAX_INSTANCES",
+            "windows_sensitive_pipe_kernel_sddl",
+        )
+    )
+    and "WINDOWS_SENSITIVE_PIPE_MAX_INSTANCES: u32 = 1" in windows
+    and "ensure_kernel_dacl_retained()" in pipe_listener
+    and "retain_windows_sensitive_password_listener(worker)" in windows,
+)
+need(
+    "windows-sensitive-client-access-too-broad",
+    "GENERIC_READ.0 | FILE_WRITE_DATA.0 | FILE_WRITE_ATTRIBUTES.0" in pipe_client
+    and "GENERIC_WRITE" not in pipe_client
+    and "FILE_CREATE_PIPE_INSTANCE" not in pipe_client,
+)
+need(
+    "windows-proof-before-body-or-final-revalidation-order-invalid",
+    ordered(
+        pipe_handler,
+        (
+            "current_server_security(postfix)",
+            "preauthorize_windows_sensitive_pipe_client(",
+            "read_message(&mut header_bytes.0",
+            "authorize_windows_sensitive_pipe_client(",
+            "InboundSensitiveRequest::allocate(header)",
+            "read_message(request.body_mut()",
+            "proof.revalidate(pipe.handle.0, deadline)",
+            "requests.try_send(request)",
+            "encode_status(operation_id, status)",
+            "decode_ack(&acknowledgement.0, operation_id)",
+        ),
+    ),
+)
+impersonation = between(
+    auth,
+    "fn run_windows_pipe_client_impersonation_inner",
+    "fn windows_named_pipe_client_pid",
+)
+need(
+    "windows-impersonation-restoration-not-confined-and-drained",
+    ordered(
+        impersonation,
+        (
+            "duplicate_windows_handle(pipe, context)",
+            "std::thread::Builder::new()",
+            "ImpersonateNamedPipeClient(pipe_handle)",
+            "let operation_result = operation(pipe_handle)",
+            "RevertToSelf()",
+            "RESTORATION_FAILED",
+            "ExitThread(1)",
+            "WaitForSingleObject(HANDLE(worker.as_raw_handle()), wait_timeout)",
+            "WaitForSingleObject(HANDLE(worker.as_raw_handle()), INFINITE)",
+            "match state.load(Ordering::Acquire)",
+        ),
+    )
+    and auth.count("ImpersonateNamedPipeClient(") == 1
+    and auth.count("RevertToSelf()") == 1,
+)
+windows_transaction = between(
+    windows,
+    "async fn query_exact_windows_credential_replica",
+    "fn create_windows_service_process_job",
+)
+need(
+    "windows-scm-durable-password-sink-missing",
+    all(
+        token in windows_transaction
+        for token in (
+            "Config::set_permanent_password_persisted(value.as_str())",
+            "quiesce_exact_windows_credential_replica",
+            "apply_exact_windows_credential_replica",
+            "query_exact_windows_credential_replica",
+            "resume_exact_windows_credential_replica",
+            "stop_apply",
+        )
+    ),
+)
+need(
+    "windows-service-password-client-not-raw",
+    all(
+        token in ipc
+        for token in (
+            "set_windows_service_owned_unattended_password_with_ack",
+            "transact_sensitive_password(",
+            "password::SERVICE_PASSWORD_IPC_POSTFIX",
+            "windows_credential_client_decision(status, recovery_required)",
+        )
+    ),
+)
+
+for failure in failures:
+    print(failure)
+raise SystemExit(1 if failures else 0)
+PY
+then
+  r_s11b2="$r_s11b2 common-windows-macos-raw-password-architecture-gate-failed"
+fi
+for requirement_id in R-S11g R-S11h R-S11i; do
+  grep -Fq "<span class=\"id\">$requirement_id</span>" requirements.html ||
+    r_s11b2="$r_s11b2 requirements-$requirement_id-missing"
+done
+for ledger_id in R-S11e-4 R-S11e-5 R-S11e-6 R-S11e-9 R-S11e-11 R-S11e-21; do
+  grep -Fq "$ledger_id" HARDENING_STATUS.md ||
+    r_s11b2="$r_s11b2 ledger-$ledger_id-missing"
+done
+grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs || r_s11b2="$r_s11b2 service-owned-role-marker-missing"
+grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-service-owned-role-marker-missing"
+if grep -Eq 'BeginUserOwnedPermanentPassword|BeginServiceOwnedUnattendedPasswordChange|RequestServiceOwnedUnattendedPasswordChange|RequestMacosServiceOwnedUnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult' src/ipc.rs src/platform/windows.rs; then
+  r_s11b2="$r_s11b2 obsolete-password-mutation-protocol-present"
+fi
+if grep -Eq 'MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password_digest|request_digest' src/ipc.rs src/platform/macos.rs; then
+  r_s11b2="$r_s11b2 obsolete-macos-password-cache-or-digest-protocol-present"
+fi
+if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 raw password IPC closure:$r_s11b2"; rc=1; else
+  echo "  ok  R-S11b/R-S11c/R-S11g/R-S11h/R-S11i password bodies use only fixed raw _password/_service_password frames; Linux proof/polkit/replica authority, macOS exactly-owned native proof and wiping authorization, Windows retained first-instance pipe and SCM durability, keyed replay finality, and shutdown drain are source-gated"; fi
 echo "== (3b-iii-c-1) Windows service-owned child tree supervision (R-S11e-19) =="
 r_s11e19=
 windows_launch_native=$(awk '/HANDLE LaunchProcessWin/,/^    }/' src/platform/windows.cc)
@@ -2094,71 +1977,166 @@ echo "$windows_launch_native" | grep -q 'CreateProcessAsUserW(hToken, applicatio
 if echo "$windows_launch_native" | grep -Eq 'CREATE_SUSPENDED|AssignProcessToJobObject'; then
   r_s11e19="$r_s11e19 post-create-job-assignment-path-present"
 fi
-for required in CreateJobObjectW JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE QueryInformationJobObject ActiveProcesses TerminateJobObject WaitForSingleObject; do
-  echo "$windows_service_source" | grep -q "$required" || r_s11e19="$r_s11e19 service-tree-$required-missing"
+for required in \
+  'struct WindowsServiceProcessTree' \
+  'CreateJobObjectW' \
+  'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' \
+  'QueryInformationJobObject' \
+  'ActiveProcesses' \
+  'TerminateJobObject' \
+  'WaitForSingleObject' \
+  'WindowsProcessIdentityKey' \
+  'get_windows_service_owned_port_forward_session_count' \
+  'close_windows_service_owned_main_server' \
+  'WindowsServicePortForwardState::Unknown | WindowsServicePortForwardState::Active' \
+  'WindowsServiceProcessDecision::RetireThenLaunch' \
+  '*tree = Some(old_tree)'; do
+  grep -Fq "$required" <<<"$windows_service_source" || r_s11e19="$r_s11e19 service-tree-symbol-missing:${required// /_}"
 done
-echo "$windows_service_source" | grep -q 'get_windows_service_owned_port_forward_session_count' || r_s11e19="$r_s11e19 port-forward-query-not-exact-child-bound"
-echo "$windows_service_source" | grep -q 'close_windows_service_owned_main_server' || r_s11e19="$r_s11e19 graceful-close-not-exact-child-bound"
-echo "$windows_service_source" | grep -q 'WindowsServicePortForwardState::Unknown | WindowsServicePortForwardState::Active' || r_s11e19="$r_s11e19 unknown-port-forward-state-not-preserved"
-echo "$windows_service_source" | grep -q 'RetireThenLaunch' || r_s11e19="$r_s11e19 retire-before-replacement-state-missing"
-echo "$windows_service_source" | grep -q '\*tree = Some(old_tree)' || r_s11e19="$r_s11e19 failed-retirement-loses-tree-ownership"
-echo "$windows_service_source" | grep -q '!stop_latched.load(Ordering::Acquire)' || r_s11e19="$r_s11e19 stop-during-handoff-can-launch-replacement"
-echo "$windows_service_run" | grep -q 'mpsc::unbounded_channel()' || r_s11e19="$r_s11e19 scm-stop-not-capacity-independent"
-echo "$windows_service_run" | grep -q 'ServiceControl::Stop | ServiceControl::Preshutdown' || r_s11e19="$r_s11e19 scm-stop-preshutdown-handler-missing"
-echo "$windows_service_run" | grep -q 'ServiceControlAccept::STOP | ServiceControlAccept::PRESHUTDOWN' || r_s11e19="$r_s11e19 scm-running-controls-incomplete"
-echo "$windows_service_run" | grep -q 'ServiceState::StartPending' || r_s11e19="$r_s11e19 scm-start-pending-missing"
-[ "$(echo "$windows_service_run" | grep -c 'ServiceState::StopPending')" -ge 2 ] || r_s11e19="$r_s11e19 scm-stop-pending-checkpoints-missing"
-echo "$windows_service_run" | grep -q 'transaction_tasks.abort_all()' || r_s11e19="$r_s11e19 service-transactions-not-cancelled"
-echo "$windows_service_run" | grep -q 'while let Some(result) = transaction_tasks.join_next().await' || r_s11e19="$r_s11e19 service-transactions-not-drained"
-if echo "$windows_service_run" | grep -Eq 'ServiceControl::Shutdown|send_close|unwrap_or\(0\)|tokio::spawn'; then
-  r_s11e19="$r_s11e19 obsolete-or-unsafe-service-lifecycle-path-present"
+grep -q 'mpsc::unbounded_channel()' <<<"$windows_service_run" || r_s11e19="$r_s11e19 scm-stop-not-capacity-independent"
+grep -q 'biased;' <<<"$windows_service_run" || r_s11e19="$r_s11e19 scm-stop-not-prioritized"
+grep -q 'ServiceControl::Stop | ServiceControl::Preshutdown' <<<"$windows_service_run" || r_s11e19="$r_s11e19 scm-stop-preshutdown-handler-missing"
+grep -q 'ServiceControlAccept::STOP | ServiceControlAccept::PRESHUTDOWN' <<<"$windows_service_run" || r_s11e19="$r_s11e19 scm-running-controls-incomplete"
+grep -q 'ServiceState::StartPending' <<<"$windows_service_run" || r_s11e19="$r_s11e19 scm-start-pending-missing"
+[ "$(grep -c 'ServiceState::StopPending' <<<"$windows_service_run")" -ge 2 ] || r_s11e19="$r_s11e19 scm-stop-pending-checkpoints-missing"
+grep -q 'let status_transition = Arc::new(Mutex::new(()))' <<<"$windows_service_run" || r_s11e19="$r_s11e19 stop-admission-transition-lock-missing"
+[ "$(grep -c 'let _admission = status_transition.lock().unwrap()' <<<"$windows_service_run")" -ge 3 ] || r_s11e19="$r_s11e19 service-endpoint-admission-not-linearized"
+grep -q 'password_listener.quiesce().await' <<<"$windows_service_run" || r_s11e19="$r_s11e19 raw-password-listener-not-quiesced"
+grep -q 'credential_ledger.begin_shutdown()' <<<"$windows_service_run" || r_s11e19="$r_s11e19 credential-ledger-shutdown-not-closed"
+grep -q 'while !credential_tasks.is_empty()' <<<"$windows_service_run" || r_s11e19="$r_s11e19 admitted-credential-transactions-not-drained"
+grep -q 'while !transaction_tasks.is_empty()' <<<"$windows_service_run" || r_s11e19="$r_s11e19 accepted-control-transactions-not-tracked-for-drain"
+grep -q 'stop_reporter.report_progress()' <<<"$windows_service_run" || r_s11e19="$r_s11e19 stop-progress-reporting-missing"
+if echo "$windows_service_run" | grep -q 'credential_tasks.abort_all()'; then
+  r_s11e19="$r_s11e19 admitted-credential-transaction-abort-present"
 fi
-if echo "$windows_service_request_block" | grep -q 'ipc::Data::Close'; then
-  r_s11e19="$r_s11e19 service-ipc-close-command-present"
+if echo "$windows_service_run" | grep -Eq 'ServiceControl::Shutdown|Data::Close|tokio::spawn'; then
+  r_s11e19="$r_s11e19 obsolete-or-detached-service-lifecycle-path-present"
 fi
+for test_name in \
+  windows_service_launches_only_for_a_current_target_session \
+  windows_service_preserves_live_port_forwards_during_session_handoff \
+  windows_service_retires_idle_child_before_replacement \
+  windows_service_reaps_a_dead_main_process_regardless_of_forward_state \
+  windows_service_keeps_the_tree_for_its_current_session \
+  windows_service_child_shutdown_has_a_fixed_deadline; do
+  grep -q "fn $test_name" src/platform/windows.rs || r_s11e19="$r_s11e19 test-missing:$test_name"
+done
+for test_name in \
+  windows_credential_stop_before_apply_prevents_replica_admission \
+  windows_credential_apply_before_stop_is_awaited_before_stop_linearizes \
+  windows_credential_job_stop_retries_until_empty_and_aborts_on_lost_authority \
+  windows_credential_model_stop_after_admission_finishes_commit_and_skips_replica; do
+  grep -q "fn $test_name" src/ipc.rs || r_s11e19="$r_s11e19 test-missing:$test_name"
+done
 if ! python3 - <<'PY'
 from pathlib import Path
+
 src = Path("src/platform/windows.rs").read_text()
-start = src.index("async fn run_service")
-end = src.index("\nfn windows_path_identity_from_info", start)
-body = src[start:end]
-stop = body.rfind("stop_windows_service_process_tree(&tree).await")
-stopped = body.rfind("ServiceState::Stopped")
-raise SystemExit(0 if stop != -1 and stopped != -1 and stop < stopped else 1)
+failures = []
+
+def between(start, end):
+    try:
+        begin = src.index(start)
+        finish = src.index(end, begin)
+    except ValueError:
+        return ""
+    return src[begin:finish]
+
+def ordered(body, tokens):
+    offset = -1
+    for token in tokens:
+        offset = body.find(token, offset + 1)
+        if offset < 0:
+            return False
+    return True
+
+runtime_stop = between(
+    "async fn stop_windows_service_process_tree(",
+    "async fn stop_windows_service_process_tree_for_scm(",
+)
+scm_stop = between(
+    "async fn stop_windows_service_process_tree_for_scm(",
+    "async fn reconcile_windows_service_process(",
+)
+run_service = between("async fn run_service(", "struct WindowsPathIdentity")
+if not ordered(
+    runtime_stop,
+    (
+        "tree.main_process_is_running()?",
+        "close_windows_service_owned_main_server(",
+        "wait_until_main_exit(",
+        "tree.active_process_count()? == 0",
+        "tree.terminate()?",
+        "wait_until_empty(",
+    ),
+):
+    failures.append("runtime-retirement-not-main-exit-before-descendant-termination")
+if not all(
+    token in scm_stop
+    for token in (
+        "close_windows_service_owned_main_server(",
+        "main_process_is_running()",
+        "active_process_count_io()",
+        "WindowsJobStopDecision::Empty",
+        "WindowsJobStopDecision::Retry",
+        "WindowsJobStopDecision::Abort",
+        "std::process::abort()",
+        "reporter.report_progress()",
+    )
+):
+    failures.append("scm-job-accounting-retry-or-fail-stop-missing")
+if not ordered(
+    run_service,
+    (
+        "stop_apply.lock().unwrap().request_stop();",
+        "password_listener.quiesce().await;",
+        "credential_ledger.begin_shutdown();",
+        "while !credential_tasks.is_empty()",
+        "while !transaction_tasks.is_empty()",
+        "stop_windows_service_process_tree(&tree, Some(&mut stop_reporter)).await",
+        "stop_apply.lock().unwrap().complete_stop()",
+        "ServiceState::Stopped",
+    ),
+):
+    failures.append("scm-finality-drain-tree-zero-stopped-order-invalid")
+if "credential_tasks.abort_all()" in run_service:
+    failures.append("credential-finality-can-be-aborted")
+failure_code = run_service.rfind("ServiceExitCode::ServiceSpecific(1)")
+stopped = run_service.rfind("ServiceState::Stopped")
+if failure_code < 0 or stopped < 0 or failure_code > stopped:
+    failures.append("service-specific-failure-code-not-selected-before-stopped")
+for failure in failures:
+    print(failure)
+raise SystemExit(1 if failures else 0)
 PY
 then
-  r_s11e19="$r_s11e19 service-stopped-precedes-child-tree-absence-proof"
+  r_s11e19="$r_s11e19 windows-service-supervision-order-gate-failed"
 fi
-grep -q 'windows_service_' scripts/build-windows.ps1 || r_s11e19="$r_s11e19 windows-runtime-test-filter-missing"
-grep -Fq 'R-S11e-19 — Windows service-owned child tree supervision' HARDENING_STATUS.md || r_s11e19="$r_s11e19 supervision-ledger-missing"
-grep -Fq 'Windows service-owned child lifetime and SCM completion authority' requirements.html || r_s11e19="$r_s11e19 supervision-requirements-missing"
-grep -Fq '<tr><td>124</td>' requirements.html || r_s11e19="$r_s11e19 supervision-appendix-missing"
+grep -q 'windows_service_' scripts/build-windows.ps1 || r_s11e19="$r_s11e19 windows-native-runtime-test-filter-missing"
+grep -Fq 'R-S11e-19' HARDENING_STATUS.md || r_s11e19="$r_s11e19 supervision-ledger-missing"
+grep -Fq '<span class="id">R-S11g</span>' requirements.html || r_s11e19="$r_s11e19 transaction-and-service-finality-requirement-missing"
 if [ -n "$r_s11e19" ]; then echo "  FAIL R-S11e-19 Windows service-owned child tree supervision:$r_s11e19"; rc=1; else
-  echo "  ok  R-S11e-19 Windows SCM owns one creation-time job-bound server tree; stop, liveness, port-forward deferral, replacement, transaction drain, and SERVICE_STOPPED are tied to exact-tree absence"
-fi
-
+  echo "  ok  R-S11e-19 Windows SCM owns one creation-time job-bound server tree; raw credential admission linearizes with stop, admitted credential work drains before child shutdown, runtime replacement follows main-exit and job-zero proof, and SERVICE_STOPPED follows exact job accounting"; fi
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:
 #   * no PRS/key material is exported over main IPC;
 #   * service-owned receivers deny generic main-IPC password-storage/salt snapshots;
-#   * macOS's service-owned LaunchAgent receives the root credential only through a typed
-#     audit-token-verified _service runtime snapshot that never enters persisted Config;
-#   * Unix config writes create owner-only files;
-#   * Windows config paths get a protected current-user/SYSTEM DACL instead of inheriting broad parent ACLs.
+#   * macOS's service-owned LaunchAgent receives only an audit-token/launchd-proved runtime
+#     snapshot that never enters persisted Config;
+#   * every TOML/raw config writer uses the same durable platform transaction.
 echo "== R-S11b-4 config/PRS secrecy boundary =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_path_writes_owner_only_permissions --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::windows_config_acl_sddl_is_protected_owner_system_only --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::runtime_password_snapshot_does_not_persist --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_when_value_matches_preset --color never
 r_s11b4=""
-r_s11b4_storage_block=$(awk '/name == "permanent-password-storage-and-salt"/,/name == "permanent-password-set"/' src/ipc.rs)
-r_s11b4_salt_block=$(awk '/name == "salt"/,/name == "hide_cm"/' src/ipc.rs)
-r_s11b4_store_path=$(awk '/pub fn store_path/,/^impl Config/' libs/hbb_common/src/config.rs)
-r_s11b4_load_path=$(awk '/pub fn load_path/,/match confy::load_path/' libs/hbb_common/src/config.rs)
+r_s11b4_storage_block=$(awk '/MainConfigKey::PermanentPasswordStorageAndSalt =>/,/MainConfigKey::PermanentPasswordSet =>/' src/ipc.rs)
+r_s11b4_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' src/ipc.rs)
 grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-not-authority-gated"
-grep -q 'Rejected permanent password storage sync from service-owned server' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-service-deny-log-missing"
-grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_salt_block" || r_s11b4="$r_s11b4 salt-read-not-authority-gated"
-grep -q 'Rejected permanent password salt sync from service-owned server' <<<"$r_s11b4_salt_block" || r_s11b4="$r_s11b4 salt-read-service-deny-log-missing"
+grep -q 'Rejected permanent-password storage read from service-owned main IPC' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-service-deny-log-missing"
+if echo "$r_s11b4_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)'; then
+  r_s11b4="$r_s11b4 standalone-salt-main-config-key-present"
+fi
 grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-request-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-launchd-proof-missing"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
@@ -2167,12 +2145,28 @@ grep -q 'test_set_permanent_password_persists_when_value_matches_preset' libs/hb
 if grep -InE 'password_prs|get_permanent_password_prs|get_existing_key_pair|get_key_pair|key_pair' src/ipc.rs >"$VERIFY_TMP/rd_verify_r_s11b4"; then
   r_s11b4="$r_s11b4 ipc-exports-prs-or-key-material"
 fi
-grep -q 'confy::store_path_perms' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-path-perms-wrapper-missing"
-grep -q 'fs::Permissions::from_mode(0o600)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-0600-missing"
+grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 toml-store-transaction-missing"
+grep -q 'store_config_bytes_transaction(&path, data, ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 raw-store-transaction-missing"
+unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)
+grep -q 'crate::libc::O_NOFOLLOW' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-nofollow-missing"
+grep -q '0o600 as crate::libc::mode_t' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-owner-mode-missing"
+grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-owner-proof-missing"
+grep -q 'metadata.mode() & 0o777 != 0o600' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-mode-proof-missing"
+grep -q 'sync_temp_file(&temp)' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-file-sync-missing"
+grep -q 'parent.sync_all()' <<<"$unix_config_transaction" || r_s11b4="$r_s11b4 unix-store-directory-sync-missing"
 grep -q 'store_path_writes_owner_only_permissions' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 unix-store-mode-test-missing"
-grep -q 'windows_config_acl::prepare_config_path_for_load(&file)' <<<"$r_s11b4_load_path" || r_s11b4="$r_s11b4 windows-load-acl-gate-missing"
-grep -q 'windows_config_acl::prepare_config_path_for_store(&path)' <<<"$r_s11b4_store_path" || r_s11b4="$r_s11b4 windows-store-acl-prep-missing"
-grep -q 'windows_config_acl::harden_config_file(&path)' <<<"$r_s11b4_store_path" || r_s11b4="$r_s11b4 windows-store-final-file-acl-missing"
+grep -q 'windows_config_acl::prepare_config_path_for_load(&file)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-load-acl-gate-missing"
+windows_config_transaction=$(awk '
+  /^#\[cfg\(windows\)\]$/ { candidate=1; next }
+  candidate && /^fn store_config_bytes_transaction\(path:/ { flag=1; candidate=0 }
+  candidate { candidate=0 }
+  flag { print }
+  flag && /^}$/ { exit }
+' libs/hbb_common/src/config.rs)
+grep -q 'windows_config_acl::prepare_config_path_for_store(path)' <<<"$windows_config_transaction" || r_s11b4="$r_s11b4 windows-store-acl-prep-missing"
+grep -q 'windows_config_acl::harden_config_file(&temp_path)' <<<"$windows_config_transaction" || r_s11b4="$r_s11b4 windows-temp-file-acl-missing"
+grep -q 'windows_config_acl::verify_config_file(&temp_path)' <<<"$windows_config_transaction" || r_s11b4="$r_s11b4 windows-temp-file-acl-proof-missing"
+grep -q 'MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH' <<<"$windows_config_transaction" || r_s11b4="$r_s11b4 windows-durable-replacement-missing"
 grep -q 'ConvertStringSecurityDescriptorToSecurityDescriptorW' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-sddl-conversion-missing"
 grep -q 'SetNamedSecurityInfoW' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-setnamedsecurityinfo-missing"
 grep -q 'DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 windows-protected-dacl-missing"
@@ -2187,18 +2181,17 @@ if grep -InE ';;;(BA|BU|AU|WD|CO)' libs/hbb_common/src/config.rs >"$VERIFY_TMP/r
   r_s11b4="$r_s11b4 windows-config-acl-grants-broad-or-inherited-principal"
 fi
 if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_s11b4"; rc=1; else
-  echo "  ok  R-S11b-4 main IPC exports no PRS/key material, generic service-owned storage/salt sync is denied, macOS root credential snapshots are launchd-bound runtime overlays, Unix config writes are behavior-tested owner-only, and Windows config paths use an explicit protected current-user/SYSTEM DACL"; fi
+  echo "  ok  R-S11b-4 main IPC exports no PRS/key material, service-owned storage/salt reads are denied, macOS snapshots are launchd-bound runtime overlays, and TOML/raw stores share owner-proved durable Unix or protected-DACL Windows transactions"; fi
 
 # (3b-iii-d) R-S11b-3a/R-S11b-3d: service-owned machine policy is not an ordinary
-# Data::Options write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;
+# main IPC policy write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;
 # IPC callers persist only after an accepted ACK and never fall back to hidden local persistence when the
 # daemon is unreachable. Windows share_rdp is a typed _service action committed by the LocalSystem service.
 echo "== (3b-iii-d) service-owned policy writes reject ordinary IPC (R-S11b-3a/R-S11b-3d) =="
 r_s11b3=
 grep -q 'allows_main_channel_options_write' src/ipc.rs                                || r_s11b3="$r_s11b3 options-policy-missing"
-grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' src/ipc.rs || r_s11b3="$r_s11b3 options-main-gate-missing"
+grep -q 'MainIpcRequest::SetOptions(value)' src/ipc.rs                                || r_s11b3="$r_s11b3 options-main-gate-missing"
 grep -q 'current_process_allows_main_channel_options_write()' src/ipc.rs              || r_s11b3="$r_s11b3 options-handler-gate-missing"
-grep -q 'Rejected options write over ordinary IPC for service-owned server' src/ipc.rs || r_s11b3="$r_s11b3 options-handler-reject-log-missing"
 grep -qF '(OPTION_KEY, "")' libs/hbb_common/src/config.rs                             || r_s11b3="$r_s11b3 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-username-not-pinned-empty"
 grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-password-not-pinned-empty"
@@ -2207,15 +2200,17 @@ grep -qF 'fn overlay_pinned_settings(options: &mut HashMap<String, String>)' lib
 if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs --glob '*.rs' >"$VERIFY_TMP/r_s11b3_trust_writers"; then
   r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11b3_trust_writers")"
 fi
-grep -q 'OptionsSetResult(bool)' src/ipc.rs                                           || r_s11b3="$r_s11b3 options-typed-result-missing"
-grep -q 'Data::OptionsSetResult(false)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-reject-nack-missing"
-grep -q 'Some(Data::OptionsSetResult(true))' src/ipc.rs                               || r_s11b3="$r_s11b3 caller-accepted-ack-missing"
-grep -q 'Some(Data::OptionsSetResult(false))' src/ipc.rs                              || r_s11b3="$r_s11b3 caller-reject-nack-missing"
+grep -q 'OptionsSet(IpcMutationResult)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-typed-result-missing"
+grep -q 'MainIpcResponse::OptionsSet(IpcMutationResult::Rejected)' src/ipc.rs          || r_s11b3="$r_s11b3 options-reject-nack-missing"
+grep -q 'Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Applied))' src/ipc.rs       || r_s11b3="$r_s11b3 caller-accepted-ack-missing"
+grep -q 'Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Rejected))' src/ipc.rs      || r_s11b3="$r_s11b3 caller-reject-nack-missing"
 grep -q 'Options write requires daemon ACK' src/ipc.rs                                || r_s11b3="$r_s11b3 local-fallback-not-blocked"
 grep -q 'RequestServiceOwnedShareRdp(bool)' src/ipc.rs                                || r_s11b3="$r_s11b3 windows-share-rdp-request-missing"
 grep -q 'ServiceOwnedShareRdpResult(bool)' src/ipc.rs                                 || r_s11b3="$r_s11b3 windows-share-rdp-result-missing"
-grep -q 'Data::RequestServiceOwnedShareRdp(_) => false' src/ipc.rs                    || r_s11b3="$r_s11b3 windows-share-rdp-main-gate-missing"
-grep -q 'Data::ServiceOwnedShareRdpResult(false)' src/ipc.rs                          || r_s11b3="$r_s11b3 windows-share-rdp-main-reject-nack-missing"
+main_request_enum=$(awk '/pub enum MainIpcRequest {/,/^}/' src/ipc.rs)
+if echo "$main_request_enum" | grep -q 'RequestServiceOwnedShareRdp'; then
+  r_s11b3="$r_s11b3 windows-share-rdp-present-on-main-protocol"
+fi
 grep -q 'windows_peer_is_authorized_for_service_owned_share_rdp_change' src/ipc.rs     || r_s11b3="$r_s11b3 windows-share-rdp-elevated-peer-gate-missing"
 grep -q 'Some(Data::ServiceOwnedShareRdpResult(ok))' src/ipc.rs                       || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
 grep -q 'RequestServiceOwnedShareRdp(enable)' src/platform/windows.rs                  || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
@@ -2230,18 +2225,20 @@ set_options_fn=$(awk '/pub async fn set_options/,/^}/' src/ipc.rs)
 if echo "$set_options_fn" | grep -q 'crate::platform::is_installed'; then
   r_s11b3="$r_s11b3 options-fallback-uses-install-heuristic"
 fi
-if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ]; then
-  r_s11b3="$r_s11b3 options-caller-persistence-not-ack-only"
+if grep -q 'Config::set_options' <<<"$set_options_fn"; then
+  r_s11b3="$r_s11b3 options-caller-persists-without-daemon-authority"
 fi
+grep -q 'MainIpcRequest::SetOptions(wire_options)' <<<"$set_options_fn" || r_s11b3="$r_s11b3 options-caller-typed-request-missing"
 grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs                 || r_s11b3="$r_s11b3 ui-cache-accepted-branch-missing"
 grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
-  echo "  ok  R-S11b-3 service-owned --server rejects Data::Options(Some) before privacy/config side effects; IPC options writes require typed ACK before caller persistence; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; Windows share_rdp is a typed elevated _service action with no UI-side shell writer"; fi
+  echo "  ok  R-S11b-3 service-owned --server rejects typed option writes before privacy/config side effects; callers require typed ACK before persistence; Windows share_rdp remains only a typed elevated _service action"; fi
 
-# (3b-iii-e) R-S11c-2/R-S11c-3: Windows `_service` is not a raw privileged-action bus.
-# Session switching and SAS/HKLM-touching actions require a receiver-authorized capability API; until that
-# exists, the raw local service messages are absent and the caller-side request paths fail closed.
-echo "== (3b-iii-e) Windows _service raw privileged commands absent (R-S11c-2/R-S11c-3) =="
+# (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
+# SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
+# supervised child are bound by immutable pid+creation-time identity. Policy is read-only.
+echo "== (3b-iii-e) bounded input lifecycle and service-owned Windows SAS (R-S11c-2/R-S11c-3/R-S11g) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::desktop_input_queue_tests --color never
 r_s11c23=
 if rg -n 'Data::SAS|Data::UserSid|connect_to_user_session|UserSid\(Option' src/ipc.rs src/platform/windows.rs src/server >"$VERIFY_TMP/r_s11c23_hits.txt"; then
   r_s11c23="$r_s11c23 raw-service-message-symbol-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11c23_hits.txt")"
@@ -2253,13 +2250,80 @@ fi
 windows_service_loop=$(awk '/async fn run_service/,/^fn windows_path_identity_from_info/' src/platform/windows.rs)
 echo "$windows_service_loop" | grep -q 'ipc::new_listener(crate::POSTFIX_SERVICE)' || r_s11c23="$r_s11c23 service-loop-range-missed-listener"
 echo "$windows_service_loop" | grep -q 'authorize_service_scoped_ipc_connection' || r_s11c23="$r_s11c23 service-loop-range-missed-auth"
-if echo "$windows_service_loop" | grep -Eq 'Data::(SAS|UserSid)|send_sas|SoftwareSASGeneration'; then
-  r_s11c23="$r_s11c23 service-loop-still-dispatches-raw-session-or-sas"
+general_service_handler=$(awk '/async fn handle_windows_service_ipc_request/,/^}/' src/platform/windows.rs)
+if echo "$general_service_handler" | grep -Eq 'RequestServiceOwnedSasDispatch|send_sas|SoftwareSASGeneration'; then
+  r_s11c23="$r_s11c23 general-service-endpoint-still-dispatches-sas"
 fi
 grep -q 'service-owned session switching requires a receiver-authorized capability' src/server/connection.rs || r_s11c23="$r_s11c23 selected-sid-not-fail-closed"
-grep -q 'SAS in the physical console session requires a receiver-authorized service capability' src/server/input_service.rs || r_s11c23="$r_s11c23 sas-not-fail-closed"
+grep -q 'const INPUT_QUEUE_CAPACITY: usize = 256;' src/server/connection.rs            || r_s11c23="$r_s11c23 input-queue-cap-missing"
+grep -Fq 'const INPUT_QUEUE_MAX_BYTES: usize = 256 * 1024;' src/server/connection.rs  || r_s11c23="$r_s11c23 input-byte-cap-missing"
+grep -q 'std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY)' src/server/connection.rs       || r_s11c23="$r_s11c23 input-queue-not-bounded"
+grep -q 'self.sender.try_send(queued)' src/server/connection.rs                       || r_s11c23="$r_s11c23 input-queue-not-fail-fast"
+grep -q 'struct InputExecutionGate' src/server/connection.rs                         || r_s11c23="$r_s11c23 input-execution-gate-missing"
+grep -q 'execution: Arc<InputExecutionGate>' src/server/connection.rs                 || r_s11c23="$r_s11c23 input-execution-gate-not-shared"
+grep -q 'execution.cancel();' src/server/connection.rs                               || r_s11c23="$r_s11c23 input-cancellation-not-wired"
+grep -q 'struct InputWorkerCleanup' src/server/connection.rs                         || r_s11c23="$r_s11c23 input-raii-cleanup-missing"
+grep -q 'struct InputBlockOwnerRegistry' src/server/connection.rs                    || r_s11c23="$r_s11c23 block-input-owner-registry-missing"
+block_owner_registry=$(awk '/impl InputBlockOwnerRegistry/,/^}/' src/server/connection.rs)
+grep -q 'state.owners.remove(&conn_id)' <<<"$block_owner_registry"                  || r_s11c23="$r_s11c23 block-input-owner-removal-missing"
+grep -q 'state.owners.is_empty() && state.applied' <<<"$block_owner_registry"        || r_s11c23="$r_s11c23 block-input-final-owner-transition-missing"
+grep -q 'let result = apply(false)' <<<"$block_owner_registry"                      || r_s11c23="$r_s11c23 block-input-native-release-missing"
+grep -q 'if result.0' <<<"$block_owner_registry"                                    || r_s11c23="$r_s11c23 block-input-success-proof-missing"
+grep -q 'state.applied = false' <<<"$block_owner_registry"                          || r_s11c23="$r_s11c23 block-input-applied-state-not-cleared"
+grep -q 'release_block_owner_with_retry(&INPUT_BLOCK_OWNERS, self.conn_id, apply_block_input)' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-cleanup-not-retry-and-fail-stop-wired"
+grep -q 'desktop_block_input_is_released_only_by_the_final_owner' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-owner-test-missing"
+grep -q 'desktop_block_input_failed_release_remains_retryable' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-release-retry-test-missing"
+grep -q 'desktop_block_cleanup_failure_retains_applied_state_for_fail_stop' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-cleanup-fail-stop-test-missing"
+grep -q 'clear_remapped_keycode' src/server/connection.rs                            || r_s11c23="$r_s11c23 linux-remap-cleanup-missing"
+grep -q 'drop(receiver);' src/server/connection.rs                                   || r_s11c23="$r_s11c23 input-backlog-not-drained"
+grep -q 'async fn stop_input_worker' src/server/connection.rs                        || r_s11c23="$r_s11c23 normal-input-worker-stop-missing"
+grep -q 'struct InputWorkerCompletion' src/server/connection.rs                       || r_s11c23="$r_s11c23 input-worker-completion-state-missing"
+grep -q 'SyncSender<std::thread::JoinHandle<()>>' src/server/connection.rs            || r_s11c23="$r_s11c23 supervisor-handle-handoff-missing"
+grep -q 'join_rx.recv()' src/server/connection.rs                                     || r_s11c23="$r_s11c23 supervisor-not-sole-join-receiver"
+grep -q 'Condvar' src/server/connection.rs                                            || r_s11c23="$r_s11c23 cancellation-safe-input-join-wait-missing"
+grep -q 'join.join()' src/server/connection.rs                                       || r_s11c23="$r_s11c23 input-worker-join-missing"
+grep -q 'impl Drop for Connection' src/server/connection.rs                          || r_s11c23="$r_s11c23 connection-drop-backstop-missing"
+grep -q 'finish_owned_input_dispatch' src/server/connection.rs                       || r_s11c23="$r_s11c23 macos-input-barrier-missing"
+grep -q 'QUEUE.exec_sync' src/server/input_service.rs                                || r_s11c23="$r_s11c23 macos-input-dispatch-not-synchronous"
+grep -q 'desktop_input_cancellation_is_nonblocking_and_closes_admission' src/server/connection.rs || r_s11c23="$r_s11c23 input-linearization-test-missing"
+grep -q 'desktop_input_join_ownership_survives_cancelled_async_wait' src/server/connection.rs || r_s11c23="$r_s11c23 input-join-cancellation-test-missing"
+grep -q 'auth_conn_type == AuthConnType::Remote && !self.start_input_worker().await' src/server/connection.rs || r_s11c23="$r_s11c23 input-worker-not-remote-auth-bound"
+if grep -Eq 'CGEventTap|SetupEventTap|TeardownEventTap|MyEventTapCallback|g_eventTap|g_runLoopSource' src/platform/macos.mm; then
+  r_s11c23="$r_s11c23 macos-privacy-input-event-tap-present"
+fi
+grep -q 'pub enum OwnedPhysicalKey' src/server/input_service.rs                       || r_s11c23="$r_s11c23 canonical-physical-key-id-missing"
+grep -q 'pub fn owned_physical_key' src/server/input_service.rs                      || r_s11c23="$r_s11c23 backend-key-resolution-missing"
+grep -q 'desktop_legacy_and_raw_control_share_backend_physical_key_identity' src/server/connection.rs || r_s11c23="$r_s11c23 cross-mode-key-identity-test-missing"
+grep -q 'keyboard input mode and payload are inconsistent' src/server/connection.rs   || r_s11c23="$r_s11c23 input-mode-payload-validation-missing"
+grep -q 'desktop_key_state_survives_unwind_until_cleanup_release' src/server/connection.rs || r_s11c23="$r_s11c23 input-unwind-ownership-test-missing"
+grep -q 'pub(crate) const WINDOWS_SERVICE_SAS_IPC_POSTFIX: &str = "_service_sas";' src/ipc.rs || r_s11c23="$r_s11c23 dedicated-sas-endpoint-missing"
+grep -q 'const WINDOWS_SERVICE_SAS_IPC_TRANSACTION_BUDGET: usize = 1;' src/platform/windows.rs || r_s11c23="$r_s11c23 dedicated-sas-budget-missing"
+grep -q 'handle_windows_service_sas_ipc_request' src/platform/windows.rs              || r_s11c23="$r_s11c23 dedicated-sas-handler-missing"
+grep -q 'name("windows-service-sas".to_owned())' src/platform/windows.rs              || r_s11c23="$r_s11c23 sas-dedicated-worker-missing"
+grep -q 'RequestServiceOwnedSasDispatch' src/ipc.rs                                  || r_s11c23="$r_s11c23 typed-sas-request-missing"
+grep -q 'ServiceOwnedSasDispatchAccepted(bool)' src/ipc.rs                           || r_s11c23="$r_s11c23 truthful-sas-result-missing"
+grep -q 'authorize_windows_service_owned_sas_requester' src/ipc/auth.rs               || r_s11c23="$r_s11c23 sas-requester-proof-missing"
+grep -q 'WindowsProcessIdentityKey' src/platform/windows.rs                          || r_s11c23="$r_s11c23 sas-generation-identity-missing"
+grep -q 'prepare_sas_as_windows_pipe_client(requester)' src/platform/windows.rs       || r_s11c23="$r_s11c23 sas-retained-pipe-dispatch-not-wired"
+grep -q 'dispatch(requester, session_id)' src/platform/windows.rs                     || r_s11c23="$r_s11c23 sas-final-generation-check-not-wired"
+grep -q 'require_running("Windows SAS requester")' src/ipc/auth.rs                   || r_s11c23="$r_s11c23 sas-final-liveness-check-missing"
+grep -q 'windows_service_control_and_sas_dacls_are_system_only' src/ipc/auth.rs        || r_s11c23="$r_s11c23 sas-system-only-dacl-test-missing"
+grep -q 'windows_service_sas_client_deadline_covers_server_admission_and_response' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-deadline-order-test-missing"
+grep -q 'windows_service_sas_targets_only_the_live_supervised_child' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-supervisor-test-missing"
+sas_policy_body=$(awk '/fn read_software_sas_generation_policy/,/^}/' src/platform/windows.rs)
+echo "$sas_policy_body" | grep -q 'KEY_READ' || r_s11c23="$r_s11c23 sas-policy-not-read-only"
+if echo "$sas_policy_body" | grep -Eq 'KEY_SET_VALUE|set_value|delete_value|remove_value|RegSetValue|RegDeleteValue'; then
+  r_s11c23="$r_s11c23 sas-policy-runtime-mutation-present"
+fi
+grep -q 'windows_sas_policy_matrix_is_read_only_and_fail_closed' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-policy-matrix-test-missing"
+grep -Fq '<span class="id">R-S11g</span>' requirements.html                         || r_s11c23="$r_s11c23 transaction-finality-requirement-missing"
+grep -Fq '<span class="id">R-S19a</span>' requirements.html                         || r_s11c23="$r_s11c23 input-lifecycle-requirement-missing"
+grep -Fq '<tr><td>126</td>' requirements.html                                         || r_s11c23="$r_s11c23 transaction-input-appendix-missing"
+grep -Fq 'R-S11e-21 — raw password transaction finality and service-owned SAS' HARDENING_STATUS.md || r_s11c23="$r_s11c23 transaction-finality-ledger-missing"
+grep -Fq 'R-S19a — connection-owned controlled-input execution' HARDENING_STATUS.md || r_s11c23="$r_s11c23 input-ownership-ledger-missing"
+grep -Fq 'privacy blackout contains no `CGEventTap` callback or run-loop source' HARDENING_STATUS.md || r_s11c23="$r_s11c23 macos-privacy-input-disposition-missing"
 if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-2/R-S11c-3 Windows _service raw privileged command closure:$r_s11c23"; rc=1; else
-  echo "  ok  R-S11c-2/R-S11c-3 Windows _service has no raw UserSid/SAS commands; session-switch and SAS requests fail closed pending a typed capability API"; fi
+  echo "  ok  R-S11c-2/R-S11c-3/R-S11g input dispatch is connection-owned, capacity-bounded, cancellation-linearized, and cleanup-joined; Windows SAS uses a dedicated bounded SYSTEM-only endpoint, immutable process-generation authority, exact supervised-child authorization, and read-only administrator policy"; fi
 
 # (3b-iii-f) R-S11c-4a/R-S11c-4b: `_cm` is a helper authority boundary. Desktop CM accepts
 # filesystem work only after the main server validates the CM stream's connection id/type/token
@@ -2375,7 +2439,10 @@ echo "== (3b-iii-f1) Windows CM non-file clipboard requires connection-bound aut
 r_s11c22=
 grep -Fq 'pub struct CmClipboardAuthority' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-authority-type-missing"
 grep -Fq 'AuthorizedClipboardNonFile {' src/ipc.rs || r_s11c22="$r_s11c22 authorized-clipboard-request-variant-missing"
-grep -Fq '| Data::AuthorizedClipboardNonFile { .. }' src/ipc.rs || r_s11c22="$r_s11c22 main-channel-mutation-classification-missing"
+clipboard_main_request_enum=$(awk '/pub enum MainIpcRequest {/,/^}/' src/ipc.rs)
+if grep -q 'AuthorizedClipboardNonFile' <<<"$clipboard_main_request_enum"; then
+  r_s11c22="$r_s11c22 clipboard-authority-present-on-main-protocol"
+fi
 grep -Fq 'pub clipboard: bool' src/ipc.rs || r_s11c22="$r_s11c22 cm-authority-clipboard-bit-missing"
 grep -Fq 'fn allows_clipboard_authority' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-conn-type-helper-missing"
 grep -Fq 'matches!(self, Self::Remote)' src/ipc.rs || r_s11c22="$r_s11c22 clipboard-authority-not-remote-only"
@@ -2503,18 +2570,17 @@ if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 desktop CM endpoint-selection
 
 echo "== R-S11b/R-S11c ledger consistency =="
 r_s11_docs=
-grep -q 'status: CLOSED / GATED (2026-07-09)' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs hardening-status-not-closed"
-grep -q 'Release-blocking items .*closed' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs release-blocking-heading-not-closed"
-grep -q 'Current implementation is compliant with this R-S11b/R-S11c stronger requirement' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs compliance-summary-missing"
-grep -q 'R-S11c-11 closes the remaining fixed-path <code>_cm</code> endpoint-selection class' requirements.html || r_s11_docs="$r_s11_docs appendix-c28-r-s11c11-closure-missing"
-if grep -q 'status: OPEN / RELEASE-BLOCKING' HARDENING_STATUS.md; then
-  r_s11_docs="$r_s11_docs stale-open-status"
-fi
-if grep -q 'p-block">OPEN</span> R-S11c-11' requirements.html; then
-  r_s11_docs="$r_s11_docs stale-r-s11c11-open-in-requirements"
+grep -Fq 'R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs service-authority-source-status-missing"
+grep -Fq 'R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs raw-password-finality-source-status-missing"
+grep -Fq 'R-S19a — connection-owned controlled-input execution — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs controlled-input-source-status-missing"
+for requirement_id in R-S11g R-S11h R-S11i R-S19a; do
+  grep -Fq "<span class=\"id\">$requirement_id</span>" requirements.html || r_s11_docs="$r_s11_docs requirements-$requirement_id-missing"
+done
+if grep -Eq 'status: OPEN / RELEASE-BLOCKING|p-block">OPEN</span> R-S11c-11' HARDENING_STATUS.md requirements.html; then
+  r_s11_docs="$r_s11_docs stale-open-service-authority-status"
 fi
 if [ -n "$r_s11_docs" ]; then echo "  FAIL R-S11b/R-S11c ledger consistency:$r_s11_docs"; rc=1; else
-  echo "  ok  R-S11b/R-S11c ledger and Appendix C match the gated service-authority closure"; fi
+  echo "  ok  R-S11b/R-S11c/R-S11i ledger and requirements match the implemented raw password, platform authority, finality, and controlled-input architecture while native/cold validation remains explicitly pending"; fi
 
 # (3b-iii-f3) R-S11c-8: whiteboard is a helper authority boundary. It must not accept
 # bare same-UID events, stale fixed-path listeners, caller-supplied display keys, or arbitrary Exit.
@@ -2623,8 +2689,8 @@ grep -Fq 'command.env(key, value.as_ref())' "$macos_rs" || r_s11c5="$r_s11c5 mac
 if grep -Fq '/usr/bin/env' "$macos_rs"; then
   r_s11c5="$r_s11c5 macos-run-as-user-env-helper-present"
 fi
-grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
-grep -Fq 'Command::new(MACOS_OPEN)' src/ipc.rs || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
+grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/platform/macos.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
+grep -Fq 'Command::new(MACOS_OPEN)' src/platform/macos.rs || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-path-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-dir-const-missing"
@@ -3440,16 +3506,19 @@ grep -qF 'Obsolete generated Docker build helper' requirements.html || r_s11c10v
 if [ -n "$r_s11c10v" ]; then echo "  FAIL R-S11c-10v obsolete generated Docker build helper excision:$r_s11c10v"; rc=1; else
   echo "  ok  R-S11c-10v build.py has no unreachable generated Docker script or unpinned bootstrap path"; fi
 
-# (3b-iv) R-S11/R-A6 config-write REACHABILITY tripwire (the audit's "positive AST reachability" gap):
-# the is_option_can_save-BYPASSING config writes inside handle() are now only typed password
-# operations: user-owned direct commit and Linux/Windows service-owned service commit. set_socks /
-# set_id / set_salt and generic Config writes are absent, not denied. The main-channel policy table has no
-# wildcard arm, so any NEW Data variant must be classified before the code compiles; this count catches a
-# newly classified bypassing write that reaches Config unguarded on the main channel — the exact regression.
+# (3b-iv) R-S11/R-A6 config-write reachability tripwire: the closed ordinary main request handler
+# contains no credential writer. Password commits terminate only behind dedicated raw endpoints;
+# generic config, identity, salt, and proxy writes remain absent.
 # set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16, including trust-anchor/proxy
 # credential option keys). Pin the count: a new bypassing write trips this, forcing the author to deny
 # its Data variant in main_channel_admits.
-hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set\(|\bConfig2::set\(')
+hb_cfg_writes=$(
+  awk '/^async fn handle_main_ipc_request\(/,/^}/' src/ipc.rs |
+    grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set\(|\bConfig2::set\(' || {
+      grep_status=$?
+      [ "$grep_status" -eq 1 ] || exit "$grep_status"
+    }
+)
 # I-1 (2026-07-03): was 9; the id-write arm's set_key_confirmed(false) was excised with the dead
 # rendezvous key_confirmed cluster (the setter no longer exists), 9->8.
 # I-2 (2026-07-07): was 8; T2/b1c243c excised the local unlock-PIN subsystem end-to-end, removing the
@@ -3458,36 +3527,47 @@ hb_cfg_writes=$(awk '/^async fn handle\(/,/^}/' src/ipc.rs | grep -cE '\bConfig:
 # deleting Config::set + Config2::set from handle(), so the count is 7->5.
 # I-4 (2026-07-09): was 5; R-S11b-3c deleted Data::Socks and the generic Data::Config write arm,
 # removing Config::set_socks, Config::set_id, and Config::set_salt from handle(), so the count is 5->1.
-# I-5 (2026-07-09): was 1; R-S11b-2c/R-S11b-2d added the service-owned password commit arm with
-# receiver-side service-owned + root/LocalSystem service-peer authority, so the count is 1->2.
-if [ "$hb_cfg_writes" != "2" ]; then
-  echo "  FAIL R-S11/R-A6: handle() now has $hb_cfg_writes is_option_can_save-bypassing config-writes (expected 2). A config-write was added/removed — make it a typed operation with explicit authority or keep it outside IPC, then update this count."; rc=1
+# I-5 (2026-07-13): dedicated raw password endpoints removed the remaining credential write from
+# the ordinary main request handler, so the count is now zero.
+if [ "$hb_cfg_writes" != "0" ]; then
+  echo "  FAIL R-S11/R-A6: handle_main_ipc_request() now has $hb_cfg_writes direct credential/config writes (expected 0)."; rc=1
 else
-  echo "  ok  R-S11/R-A6 handle() has only typed permanent-password config writes with explicit authority; generic Config writes, Socks IPC, and whole-config IPC are absent"
+  echo "  ok  R-S11/R-A6 ordinary closed main IPC has no direct credential/config writer; password mutations use their dedicated admitted-operation handler and generic Config, Socks, and whole-config IPC are absent"
 fi
 
-# R-D8/R-S11b: both safe password-input modes dispatch to the same owner-aware permanent-password operation as
-# the GUI. Path/root checks are not authority: user-owned servers accept the user-owned typed request; installed
-# service mode uses the platform-specific privileged operation.
+# R-D8/R-S11b: both safe password-input modes dispatch through the sensitive owner-aware operation.
+# Path/root checks are not authority: service-owned and user-owned storage select their dedicated raw
+# owner endpoint and platform proof inside the common operation.
 pw_arm=$(awk '/matches!\(args\[0\]\.as_str\(\), "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
-if echo "$pw_arm" | grep -q 'set_permanent_password' && ! echo "$pw_arm" | grep -q 'is_root' && ! echo "$pw_arm" | grep -q 'is_installed'; then
-  echo "  ok  R-D8/R-S11b safe password input uses the owner-aware typed operation, not root-gated or install-path-gated"
+pw_cli_helper=$(awk '/fn set_cli_permanent_password\(/,/^}/' src/core_main.rs)
+pw_sensitive_dispatch=$(awk '/pub\(crate\) fn set_permanent_password_sensitive\(/,/^}/' src/ipc.rs)
+if grep -q 'set_cli_permanent_password(password)' <<<"$pw_arm" \
+  && grep -q 'crate::ipc::set_permanent_password_sensitive(password)' <<<"$pw_cli_helper" \
+  && grep -q 'can_request_service_owned_unattended_password_change()' <<<"$pw_sensitive_dispatch" \
+  && grep -q 'set_service_owned_unattended_password_sensitive(v)' <<<"$pw_sensitive_dispatch" \
+  && grep -q 'can_set_user_owned_permanent_password()' <<<"$pw_sensitive_dispatch" \
+  && grep -q 'set_user_owned_permanent_password_sensitive(v)' <<<"$pw_sensitive_dispatch" \
+  && ! grep -qE 'is_root|is_installed' <<<"$pw_arm$pw_cli_helper$pw_sensitive_dispatch"; then
+  echo "  ok  R-D8/R-S11b safe password input reaches the sensitive owner-aware raw operation, with no root/install-path authority shortcut"
 else
-  echo "  FAIL R-D8/R-S11b: password CLI dispatch is missing set_permanent_password or still uses root/install-path authority"; rc=1
+  echo "  FAIL R-D8/R-S11b: password CLI dispatch does not reach the sensitive owner-aware service/user operation or still uses root/install-path authority"; rc=1
 fi
 
 echo "== (3b-v) R-S11e-16 permanent-password CLI never accepts a secret in argv =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config core_main::tests --color never
 r_s11e16=
 pw_cli_helpers=$(awk '/const PASSWORD_CLI_USAGE/,/pub fn core_main\(\)/' src/core_main.rs)
+pw_cli_prompt=$(awk '/fn prompt_unattended_password\(\)/,/fn set_cli_permanent_password/' src/core_main.rs)
 grep -Fq 'usage: rustdesk --password | rustdesk --password-stdin' src/core_main.rs || r_s11e16="$r_s11e16 exact-safe-command-usage-missing"
 echo "$pw_cli_helpers" | grep -Fq 'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)' || r_s11e16="$r_s11e16 terminal-command-not-exact"
 echo "$pw_cli_helpers" | grep -Fq 'Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin)' || r_s11e16="$r_s11e16 stdin-command-not-exact"
 echo "$pw_cli_helpers" | grep -Fq '_ => Err(PASSWORD_CLI_USAGE)' || r_s11e16="$r_s11e16 extra-argument-rejection-missing"
-[ "$(echo "$pw_cli_helpers" | grep -c 'rpassword::prompt_password')" -eq 2 ] || r_s11e16="$r_s11e16 hidden-prompt-confirmation-missing"
+[ "$(echo "$pw_cli_prompt" | grep -c 'rpassword::prompt_password')" -eq 2 ] || r_s11e16="$r_s11e16 hidden-prompt-confirmation-missing"
 echo "$pw_cli_helpers" | grep -Fq 'if stdin.is_terminal()' || r_s11e16="$r_s11e16 password-stdin-terminal-refusal-missing"
 echo "$pw_cli_helpers" | grep -Fq 'reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)' || r_s11e16="$r_s11e16 password-stdin-bounded-read-missing"
-echo "$pw_cli_helpers" | grep -Fq 'String::from_utf8(bytes)' || r_s11e16="$r_s11e16 password-stdin-utf8-validation-missing"
+echo "$pw_cli_helpers" | grep -Fq 'String::from_utf8(std::mem::take(&mut bytes.0))' || r_s11e16="$r_s11e16 password-stdin-utf8-validation-missing"
+echo "$pw_cli_helpers" | grep -Fq 'struct SensitivePasswordInput(Vec<u8>)' || r_s11e16="$r_s11e16 password-stdin-wiping-buffer-missing"
+echo "$pw_cli_helpers" | grep -Fq 'confirmation.zeroize()' || r_s11e16="$r_s11e16 password-confirmation-erasure-missing"
 echo "$pw_cli_helpers" | grep -Eq 'std::env|var_os|var\(' && r_s11e16="$r_s11e16 password-environment-input-present"
 echo "$pw_arm" | grep -Fq 'PasswordCliInput::Terminal => prompt_unattended_password()' || r_s11e16="$r_s11e16 terminal-input-not-dispatched"
 echo "$pw_arm" | grep -Fq 'PasswordCliInput::Stdin => read_unattended_password_from_stdin()' || r_s11e16="$r_s11e16 stdin-input-not-dispatched"
@@ -5811,17 +5891,21 @@ if [ "${r_a2_n:-99}" -ne 1 ]; then
 else
   echo "  ok  R-A2/R-S2 single authorization choke-point (self.authorized=true x1; privileged handlers gated)"
 fi
-# Secrets-at-rest: the config writer `store_path` MUST create files mode 0o600 (owner-only). Every
-# password-equivalent lives in a config file — the box's permanent-password PRS (main Config) and the
-# viewer's per-peer password/password_prs + os/rdp creds (PeerConfig), all encrypted under the
-# machine-UUID wrapper, but the FILE MODE is the at-rest perimeter against other local users. Audited:
-# both go through `store_path` -> `confy::store_path_perms(.., from_mode(0o600))`. Assert it survives;
-# a regression to a world/group-readable mode would expose the password-equivalent to any local account.
-r_secrets_n=$(grep -c 'from_mode(0o600)' libs/hbb_common/src/config.rs 2>/dev/null || true)
-if [ "${r_secrets_n:-0}" -lt 1 ]; then
-  echo "  FAIL secrets-at-rest: config store_path must write mode 0o600 (from_mode(0o600) missing in config.rs)"; rc=1
+# Secrets-at-rest: TOML and raw credential-bearing config use the same durable transaction. On Unix
+# the transaction creates an exclusive no-follow temporary file at 0600, reapplies 0600 to the opened
+# descriptor, proves exact owner/mode/link count, and only then writes and replaces the final file.
+store_path_body=$(awk '/pub fn store_path<T: serde::Serialize>/,/^}/' libs/hbb_common/src/config.rs)
+if ! grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' <<<"$store_path_body" \
+  || ! grep -q 'crate::libc::O_EXCL' <<<"$unix_config_transaction" \
+  || ! grep -q 'crate::libc::O_NOFOLLOW' <<<"$unix_config_transaction" \
+  || ! grep -q '0o600 as crate::libc::mode_t' <<<"$unix_config_transaction" \
+  || ! grep -q 'crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t)' <<<"$unix_config_transaction" \
+  || ! grep -q 'metadata.uid() != unsafe { crate::libc::geteuid() }' <<<"$unix_config_transaction" \
+  || ! grep -q 'metadata.mode() & 0o777 != 0o600' <<<"$unix_config_transaction" \
+  || ! grep -q 'metadata.nlink() != 1' <<<"$unix_config_transaction"; then
+  echo "  FAIL secrets-at-rest: config store_path is not routed through the owner-only verified transaction"; rc=1
 else
-  echo "  ok  secrets-at-rest config files written mode 0o600 (owner-only; permanent-password PRS + peer creds)"
+  echo "  ok  secrets-at-rest config files use the unified exclusive no-follow transaction with verified owner-only mode and single-link authority"
 fi
 # R-SV4(b)/R-S13(d)/R-SV10 (no rendezvous path in either role): the initiator-side
 # rendezvous/relay/NAT-punch cluster (Client::_start_inner / secure_connection /
@@ -6635,6 +6719,72 @@ else
 fi
 # (The former R-X7a SCITER-parity OTP gate on src/ui/index.tis is retired — the entire Sciter UI is
 # deleted, R-B6, so its excised-OTP controls are gone by construction; the flutter R-X7a gate above stays.)
+echo "== (PF) desktop port-forward mapping authority, ownership, admission, and exclusive bind (R-T17) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config port_forward::tests --color never
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config client::tests::concurrent_port_forward_targets_are_connection_owned --color never
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config client::tests::port_forward_target_validation_fails_closed --color never
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config ui_session_interface::port_forward_mapping_tests --color never
+"${RUN[@]}" cargo test --offline --locked -p hbb_common --lib exclusive_listener_tests::second_exclusive_listener_bind_is_refused --color never
+r_t17_missing=
+grep -qF 'pub struct PortForwardTarget' src/client.rs || r_t17_missing="$r_t17_missing immutable-target-type"
+grep -qF 'const MAX_PORT_FORWARD_HOST_BYTES: usize = 253;' src/client.rs || r_t17_missing="$r_t17_missing host-byte-cap"
+grep -qF "strip_prefix('[')" src/client.rs || r_t17_missing="$r_t17_missing bracketed-ipv6-only"
+grep -qF 'parse::<std::net::Ipv6Addr>()' src/client.rs || r_t17_missing="$r_t17_missing ipv6-parse"
+grep -qF 'pub async fn start_port_forward' src/client.rs || r_t17_missing="$r_t17_missing explicit-tunnel-login-api"
+if grep -qE 'pub port_forward:[[:space:]]*\(' src/client.rs; then r_t17_missing="$r_t17_missing shared-target-state"; fi
+grep -qF 'tcp::new_exclusive_listener' src/port_forward.rs || r_t17_missing="$r_t17_missing exclusive-loopback-listener"
+grep -qF 'pub async fn new_exclusive_listener' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing exclusive-listener-helper"
+grep -qF 'socket.set_reuseaddr(true)?;' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing socket-option-error-not-propagated"
+grep -qF 'set_exclusive_addr_use(&socket)?;' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing windows-exclusive-option"
+grep -qF 'SO_EXCLUSIVEADDRUSE' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing windows-exclusive-constant"
+grep -qF 'hostile_reuseaddr_socket_cannot_bind_exclusive_listener_port' libs/hbb_common/src/tcp.rs || r_t17_missing="$r_t17_missing windows-hostile-second-bind-test"
+if grep -qE 'new_listener\([^\n]*true' src/port_forward.rs; then r_t17_missing="$r_t17_missing reusable-mapping-listener"; fi
+grep -qF 'const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING: usize = 32;' src/port_forward.rs || r_t17_missing="$r_t17_missing per-mapping-connection-cap"
+grep -qF 'const MAX_PORT_FORWARD_CONNECTIONS_PROCESS: usize = 128;' src/port_forward.rs || r_t17_missing="$r_t17_missing process-connection-cap"
+grep -qF 'let Some(permits) = admission.try_admit()' src/port_forward.rs || r_t17_missing="$r_t17_missing nonblocking-connection-admission"
+grep -qF 'let _permits = permits;' src/port_forward.rs || r_t17_missing="$r_t17_missing lifetime-connection-permits"
+grep -qF 'let cancellation = CancellationToken::new();' src/port_forward.rs || r_t17_missing="$r_t17_missing mapping-cancellation"
+grep -qF 'let mut tasks = JoinSet::<ConnectionTaskResult>::new();' src/port_forward.rs || r_t17_missing="$r_t17_missing mapping-joinset"
+grep -qF 'reap_ready_tasks(&mut tasks' src/port_forward.rs || r_t17_missing="$r_t17_missing eager-completion-reaping"
+grep -qF 'drain_join_set(&mut tasks' src/port_forward.rs || r_t17_missing="$r_t17_missing connection-task-drain"
+pf_setup=$(awk '/async fn connect_and_login/,/^}/' src/port_forward.rs)
+if grep -qE 'forward\.next|Data::Login|Data::Message|Vec::new' <<<"$pf_setup"; then r_t17_missing="$r_t17_missing prelogin-local-read-or-obsolete-control"; fi
+grep -qF 'relay_after_authorization(setup' src/port_forward.rs || r_t17_missing="$r_t17_missing authorization-before-relay"
+if grep -qF 'allow_err!' src/port_forward.rs; then r_t17_missing="$r_t17_missing silent-tunnel-io-error"; fi
+grep -qF 'pub(crate) const MAX_OWNED_PORT_FORWARD_MAPPINGS: usize = 32;' src/port_forward.rs || r_t17_missing="$r_t17_missing process-mapping-cap"
+grep -qF 'fn try_acquire() -> Result<Self, String>' src/port_forward.rs || r_t17_missing="$r_t17_missing opaque-process-mapping-admission"
+if grep -qE 'PortForwardMappingPermit::try_acquire\([^)]' src/port_forward.rs src/ui_session_interface.rs; then r_t17_missing="$r_t17_missing caller-selected-mapping-semaphore"; fi
+grep -qF 'mpsc::channel(1)' src/port_forward.rs || r_t17_missing="$r_t17_missing one-slot-mapping-control"
+if grep -qE 'listen(_admitted)?\([^)]*UnboundedReceiver<Data>' src/port_forward.rs; then r_t17_missing="$r_t17_missing general-data-listener-control"; fi
+grep -qF 'mpsc::channel::<PortForwardSupervisorCommand>(MAX_OWNED_PORT_FORWARD_MAPPINGS)' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing bounded-supervisor-command-channel"
+grep -qF '.name("rustdesk-port-forward-owner".to_owned())' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing dedicated-owner-thread"
+grep -qF 'tokio::runtime::Builder::new_current_thread()' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing independent-owner-runtime"
+grep -qF '.name("rustdesk-port-forward-one-off".to_owned())' src/port_forward.rs || r_t17_missing="$r_t17_missing cli-dedicated-owner-thread"
+grep -qF 'const PORT_FORWARD_OWNER_REAPER_CAPACITY: usize = MAX_OWNED_PORT_FORWARD_MAPPINGS;' src/port_forward.rs || r_t17_missing="$r_t17_missing bounded-owner-reaper-capacity"
+grep -qF 'std::sync::mpsc::sync_channel(PORT_FORWARD_OWNER_REAPER_CAPACITY)' src/port_forward.rs || r_t17_missing="$r_t17_missing bounded-owner-reaper-channel"
+grep -qF '.name("rustdesk-port-forward-owner-reaper".to_owned())' src/port_forward.rs || r_t17_missing="$r_t17_missing process-owner-reaper"
+grep -qF 'ensure_port_forward_owner_reaper();' src/port_forward.rs || r_t17_missing="$r_t17_missing one-off-reaper-prebootstrap"
+grep -qF 'ensure_port_forward_owner_reaper();' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing supervisor-reaper-prebootstrap"
+grep -qF 'PORT_FORWARD_OWNER_REAPER.try_send(request)' src/port_forward.rs || r_t17_missing="$r_t17_missing nonblocking-owner-handoff"
+[ "$(grep -cF 'std::process::abort();' src/port_forward.rs)" -ge 2 ] || r_t17_missing="$r_t17_missing fail-stop-owner-handoff"
+grep -qF 'while let Some(command) = commands.recv().await' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing supervisor-eof-terminal"
+grep -qF 'drain_owned_port_forwards(&mut mappings).await;' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing supervisor-eof-drain"
+grep -qF 'join_port_forward_supervisor_off_runtime(thread).await' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing normal-owner-reaper-join"
+grep -qF 'reap_port_forward_supervisor(thread);' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing cancellation-owner-reaper-handoff"
+one_off_join=$(awk '/async fn join_one_off_owner_off_runtime/,/^}/' src/port_forward.rs)
+ui_owner_impl=$(awk '/impl PortForwardSupervisorOwner/,/^}/' src/ui_session_interface.rs)
+ui_owner_drop=$(awk '/impl Drop for PortForwardSupervisorOwner/,/^}/' src/ui_session_interface.rs)
+if grep -qF '.join()' <<<"$one_off_join$ui_owner_impl$ui_owner_drop"; then r_t17_missing="$r_t17_missing synchronous-join-fallback"; fi
+grep -qF 'drain_replaced_port_forward(mappings, port).await;' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing duplicate-old-drain"
+for test_name in cancellation_covers_connect_keying_login_and_relay control_eof_and_close_are_terminal_and_rdp_launch_coalesces mapping_shutdown_drains_every_owned_task process_reaper_joins_one_off_owner_and_reports_result cancellation_reaper_handoff_returns_before_owner_exit local_relay_is_not_entered_before_authorization mapping_admission_rejects_literal_33rd_and_recovers connection_admission_enforces_literal_32_and_128_boundaries_and_recovers sustained_ready_completion_reaping_keeps_join_set_bounded duplicate_replacement_drains_old_mapping_before_returning outer_owner_drop_closes_and_drains_independent_runtime_mappings second_exclusive_listener_bind_is_refused hostile_reuseaddr_socket_cannot_bind_exclusive_listener_port; do
+  rg -q "fn $test_name" src libs/hbb_common/src || r_t17_missing="$r_t17_missing test:$test_name"
+done
+if [ -n "$r_t17_missing" ]; then
+  echo "  FAIL R-T17/PF-1..PF-5 tunnel mapping closure incomplete:$r_t17_missing"; rc=1
+else
+  echo "  ok  R-T17/PF-1..PF-5 immutable bounded targets, exclusive loopback bind, EOF-driven owned supervisor, bounded mapping/connection admission, full cancellation/drain, and post-PeerInfo local reads"
+fi
+
 # R-S5 / R-A3 / R-A9 / R-F1 / R-D6 (the port-forward/RDP tunnel rides the SEALED session stream): the
 # tunnel is RESTORED and WORKS ENCRYPTED. R-F1 makes "port-forward (incl. RDP) fully available" a MUST;
 # R-D6 pins enable-tunnel ON and requires the forward to "ride the sealed encrypted channel (R-S5)"; R-A9
@@ -6768,20 +6918,12 @@ if [ -n "$r_b2msi" ]; then echo "  FAIL R-B2 .msi-generator determinism:$r_b2msi
   echo "  ok  R-B2 .msi generator -> deterministic GUIDs+order (ProductCode/component/upgrade uuid5, sorted glob, no uuid4 calls, Package.wxs pins ProductCode; InstallDate+revision from SOURCE_DATE_EPOCH, no wall-clock date)"; fi
 
 echo "== (6b) R-B2 post-process canonicalizers (.exe + .msi) =="
-# The host-side canonicalizers (run in build-windows-vm.sh extract()) MUST normalize the residual
-# build-non-determinism a same-commit double-build exposed AFTER the vendor-path fix: (1) canonicalize-pe.py
-# recomputes the VS_VERSION_INFO StringFileInfo/StringTable parent wLengths AFTER sorting the String
-# children -- winres 0.1.12 HashMap-orders them AND computes those wLengths excluding the last child's
-# trailing pad, so the order shifts them +/-2 (commit b7feea2); (2) canonicalize-msi.py zeroes every CAB
-# CFFILE DOS date/time + the OLE2 Root Entry modify FILETIME, both WiX build wall-clock (commit aa8e65a).
-# Proven: with these the real double-build .exe AND .msi converge byte-identically.
 r_b2post=
-grep -qF 'new_st_len' scripts/canonicalize-pe.py          || r_b2post="$r_b2post pe-no-wLength-recompute"
-grep -qF 'sfi_start' scripts/canonicalize-pe.py           || r_b2post="$r_b2post pe-no-sfi-recompute"
-grep -qF '_zero_cab_filetimes' scripts/canonicalize-msi.py || r_b2post="$r_b2post msi-no-cab-zero"
-grep -qF '_zero_root_filetime' scripts/canonicalize-msi.py || r_b2post="$r_b2post msi-no-root-zero"
+python3 scripts/canonicalize-pe.py --self-test >/dev/null 2>&1 || r_b2post="$r_b2post pe-self-test"
+python3 scripts/canonicalize-msi.py --self-test >/dev/null 2>&1 || r_b2post="$r_b2post msi-self-test"
+python3 scripts/verify-windows-harness.py >/dev/null 2>&1 || r_b2post="$r_b2post windows-harness-contract"
 if [ -n "$r_b2post" ]; then echo "  FAIL R-B2 post-process canonicalizers:$r_b2post"; rc=1; else
-  echo "  ok  R-B2 post-process -> canonicalize-pe recomputes VS_VERSION_INFO wLengths; canonicalize-msi zeroes CAB+OLE2-root timestamps"; fi
+  echo "  ok  R-B2 post-process -> authorized PE fields and canonical MSI cabinet/OLE metadata are normalized through absent no-clobber outputs"; fi
 # (6c) R-B5b/B8/B9/B10 build-reproducibility STRUCTURE (MUST): each automated build splits a network-on
 # fetch from a `--network=none` COMPILE (so "no fetch at compile time", R-B5b, is structural not
 # trusted), off a DIGEST-pinned base image (R-B8), resolves cargo from the vendored lockfile set
@@ -6815,12 +6957,18 @@ grep -qF 'legacy root Docker builder is absent' HARDENING_STATUS.md || rb_struct
 grep -q 'cargo-vendor' scripts/build-debian.sh                     || rb_struct="$rb_struct debian:no-vendored-cargo"
 grep -qE 'sha256sum|\.sha256' scripts/build-android.sh             || rb_struct="$rb_struct android:no-self-verify"
 grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/build-windows.ps1 scripts/run-build.ps1 2>/dev/null && rb_struct="$rb_struct external-listener-in-build"
-# R-B2: Debian AND Windows MUST assert byte-reproducibility by a DOUBLE BUILD (build the same source
-# twice, require byte-identical SHA-256). Android is EXEMPT (§12.1 line: "Integrity is the recorded
-# SHA-256, NOT cross-rebuild byte-identity" — apksigner re-padding makes byte-identity impractical).
+# R-B2: every shipped target MUST assert byte-reproducibility by two independent builds of the same
+# exact source and immutable input closure, followed by byte-identical SHA-256 comparison.
 { grep -q 'DOUBLE_BUILD' scripts/build-debian.sh    && grep -q 'double-build SHA mismatch' scripts/build-debian.sh; }        || rb_struct="$rb_struct debian:no-double-build-assert"
+{ grep -q 'DOUBLE_BUILD' scripts/build-android.sh   && grep -q 'double-build APK SHA mismatch' scripts/build-android.sh; }   || rb_struct="$rb_struct android:no-double-build-assert"
 { grep -q 'DOUBLE_BUILD' scripts/build-windows-vm.sh && grep -q 'double-build .* SHA mismatch' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-double-build-assert"
-{ grep -q 'WINDOWS_BUILD_SOURCE' scripts/build-windows-vm.sh && grep -qE 'git ls-files .*--cached .*--others .*--exclude-standard .* -z|git ls-files --cached --others --exclude-standard -z' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-worktree-source-mode"
+{ grep -Fq 'A GitHub release' docs/RELEASE-VERIFICATION.md && grep -Fq 'one channel, not two.' docs/RELEASE-VERIFICATION.md; } || rb_struct="$rb_struct release-verification:no-independent-manifest-channel"
+grep -Fq 'sha256sum --check --strict SHA256SUMS' docs/RELEASE-VERIFICATION.md || rb_struct="$rb_struct release-verification:no-strict-artifact-check"
+{ grep -Fq 'A newly generated key' docs/ANDROID-SIGNING-RECOVERY.md && grep -Fq 'is not a recovery of that identity' docs/ANDROID-SIGNING-RECOVERY.md; } || rb_struct="$rb_struct android:no-key-loss-fail-closed-procedure"
+grep -Fq 'No old-key, old-package, or pin-override fallback is allowed.' docs/ANDROID-SIGNING-RECOVERY.md || rb_struct="$rb_struct android:no-compromise-fail-closed-procedure"
+grep -Fq 'ANDROID-SIGNING-RECOVERY.md' docs/VERSIONING.md || rb_struct="$rb_struct versioning:no-android-recovery-link"
+if grep -Fq 'the residual is real and currently unaddressed' requirements.html; then rb_struct="$rb_struct requirements:android-break-glass-unaddressed"; fi
+{ grep -q 'WINDOWS_BUILD_SOURCE' scripts/build-windows-vm.sh && grep -qF 'GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" -c core.hooksPath=/dev/null add -A -- .' scripts/build-windows-vm.sh && grep -qF 'git -C "$REPO_ROOT" archive --format=tar "$SOURCE_TREE"' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-immutable-worktree-source-mode"
 grep -qF 'Dockerfile.win-helper' scripts/online-fetch.sh          || rb_struct="$rb_struct windows:helper-image-not-built-online"
 git ls-files --error-unmatch scripts/Dockerfile.win-helper >/dev/null 2>&1 || rb_struct="$rb_struct windows:helper-dockerfile-not-tracked"
 [ -s scripts/Dockerfile.win-helper ]                              || rb_struct="$rb_struct windows:helper-dockerfile-missing"
@@ -6856,11 +7004,13 @@ if grep -qE 'debian:stable-slim|ubuntu:24\.04' scripts/build-windows-vm.sh scrip
   rb_struct="$rb_struct windows:ad-hoc-helper-base-present"
 fi
 grep -q '^SHA256_WIN11_GOLDEN_QCOW2=' scripts/pins.env                                                  || rb_struct="$rb_struct windows:golden-hash-unpinned"
-grep -qF 'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"' scripts/build-windows-vm.sh            || rb_struct="$rb_struct windows:build-no-golden-hash"
+grep -qF 'verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"' scripts/build-windows-vm.sh              || rb_struct="$rb_struct windows:build-no-golden-hash"
+grep -qF 'snapshot_golden' scripts/build-windows-vm.sh                                                   || rb_struct="$rb_struct windows:build-no-private-golden-snapshot"
+grep -qF 'verify_private_golden' scripts/build-windows-vm.sh                                             || rb_struct="$rb_struct windows:build-no-private-golden-postcondition"
 grep -qF 'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"' scripts/provision-windows-vm.sh        || rb_struct="$rb_struct windows:provision-no-golden-hash"
 grep -qF 'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"' scripts/verify-windows-golden.sh       || rb_struct="$rb_struct windows:verify-no-golden-hash"
 if [ -n "$rb_struct" ]; then echo "  FAIL R-B5b/B8/B9/B10 build-reproducibility structure regressed:$rb_struct"; rc=1; else
-  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile + SHA self-verify + R-B2 double-build A==B assertion (debian & windows; android exempt §12.1); Windows helper image is built only during online-fetch then used offline; golden qcow2 hash is enforced; Windows can validate tracked worktree snapshots; no 0.0.0.0 (R-D3)"; fi
+  echo "  ok  R-B5b/B8/B9/B10 builds: digest-pinned base + --network=none offline compile + SHA self-verify + mandatory Debian/Android/Windows A==B assertion; Windows helper image is built only during online-fetch then used offline; golden qcow2 hash is enforced; Windows can validate tracked worktree snapshots; no 0.0.0.0 (R-D3)"; fi
 
 echo "== (6c-b) Flutter/Dart lockfile is authoritative (R-R1/R-B12) =="
 dart_lock_bad=
@@ -7025,6 +7175,6 @@ echo "== pending excisions =="
 echo "  ok  no pending excisions (R-X4 custom_server removed + hard-gated; R-X8 terminal granted to the owner, second-credential path still excised)"
 
 if [ "$rc" -ne 0 ]; then
-  echo "VERIFY: FAILED (a completed-excision R-A6 gate regressed)"; exit 1
+  echo "VERIFY: FAILED (one or more required gates failed)"; exit 1
 fi
-echo "VERIFY: all gates green (KATs + handshake + policy funnel + main-crate compile + R-A6 done-set)"
+echo "VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green"

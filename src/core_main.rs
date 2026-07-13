@@ -28,43 +28,64 @@ fn password_cli_input(args: &[String]) -> Result<PasswordCliInput, &'static str>
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn validate_unattended_password_input(password: String) -> Result<String, String> {
+fn validate_unattended_password(password: &str) -> Result<(), String> {
     if password.len() > crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES {
         return Err(format!(
             "permanent password exceeds {} bytes",
             crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES
         ));
     }
-    Ok(password)
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn read_unattended_password_line(reader: &mut impl BufRead) -> Result<String, String> {
-    let mut bytes = Vec::with_capacity(crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2);
+struct SensitivePasswordInput(Vec<u8>);
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for SensitivePasswordInput {
+    fn drop(&mut self) {
+        crate::ipc::zeroize_sensitive_bytes(&mut self.0);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn read_unattended_password_line(
+    reader: &mut impl BufRead,
+) -> Result<crate::ipc::SensitivePassword, String> {
+    let mut bytes = SensitivePasswordInput(Vec::with_capacity(
+        crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2,
+    ));
     let mut bounded = reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64);
     let read = bounded
-        .read_until(b'\n', &mut bytes)
+        .read_until(b'\n', &mut bytes.0)
         .map_err(|err| format!("failed to read permanent password from stdin: {err}"))?;
     if read == 0 {
         return Err("stdin ended before a permanent password line was read".to_owned());
     }
-    if bytes.last() == Some(&b'\n') {
-        bytes.pop();
-        if bytes.last() == Some(&b'\r') {
-            bytes.pop();
+    if bytes.0.last() == Some(&b'\n') {
+        bytes.0.pop();
+        if bytes.0.last() == Some(&b'\r') {
+            bytes.0.pop();
         }
     }
-    if bytes.len() > crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES {
+    if bytes.0.len() > crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES {
         return Err(format!(
             "permanent password exceeds {} bytes",
             crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES
         ));
     }
-    String::from_utf8(bytes).map_err(|_| "permanent password is not valid UTF-8".to_owned())
+    match String::from_utf8(std::mem::take(&mut bytes.0)) {
+        Ok(password) => Ok(crate::ipc::SensitivePassword::new(password)),
+        Err(err) => {
+            let mut invalid = err.into_bytes();
+            crate::ipc::zeroize_sensitive_bytes(&mut invalid);
+            Err("permanent password is not valid UTF-8".to_owned())
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn read_unattended_password_from_stdin() -> Result<String, String> {
+fn read_unattended_password_from_stdin() -> Result<crate::ipc::SensitivePassword, String> {
     let stdin = std::io::stdin();
     if stdin.is_terminal() {
         return Err("--password-stdin requires redirected standard input".to_owned());
@@ -73,17 +94,33 @@ fn read_unattended_password_from_stdin() -> Result<String, String> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn prompt_unattended_password() -> Result<String, String> {
-    let password = rpassword::prompt_password("New permanent password: ")
-        .map_err(|err| format!("failed to read permanent password from the terminal: {err}"))?;
-    let password = validate_unattended_password_input(password)?;
-    let confirmation = rpassword::prompt_password("Confirm permanent password: ")
-        .map_err(|err| format!("failed to read password confirmation from the terminal: {err}"))?;
-    let confirmation = validate_unattended_password_input(confirmation)?;
-    if password != confirmation {
+fn prompt_unattended_password() -> Result<crate::ipc::SensitivePassword, String> {
+    let password = crate::ipc::SensitivePassword::new(
+        rpassword::prompt_password("New permanent password: ")
+            .map_err(|err| format!("failed to read permanent password from the terminal: {err}"))?,
+    );
+    validate_unattended_password(password.as_str())?;
+    let mut confirmation = crate::ipc::SensitivePassword::new(
+        rpassword::prompt_password("Confirm permanent password: ").map_err(|err| {
+            format!("failed to read password confirmation from the terminal: {err}")
+        })?,
+    );
+    validate_unattended_password(confirmation.as_str())?;
+    let matches = password == confirmation;
+    if !confirmation.zeroize() {
+        return Err("password confirmation could not be erased".to_owned());
+    }
+    if !matches {
         return Err("permanent password confirmation does not match".to_owned());
     }
     Ok(password)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn set_cli_permanent_password(
+    password: crate::ipc::SensitivePassword,
+) -> hbb_common::ResultType<()> {
+    crate::ipc::set_permanent_password_sensitive(password)
 }
 
 /// shared by flutter and sciter main function
@@ -372,7 +409,7 @@ pub fn core_main() -> Option<Vec<String>> {
                     std::process::exit(1);
                 }
             };
-            if let Err(err) = crate::ipc::set_permanent_password(password) {
+            if let Err(err) = set_cli_permanent_password(password) {
                 eprintln!("{err}");
                 std::process::exit(1);
             }
@@ -714,19 +751,27 @@ mod tests {
         use std::io::Cursor;
 
         assert_eq!(
-            read_unattended_password_line(&mut Cursor::new(b"secret\n")).unwrap(),
+            read_unattended_password_line(&mut Cursor::new(b"secret\n"))
+                .unwrap()
+                .as_str(),
             "secret"
         );
         assert_eq!(
-            read_unattended_password_line(&mut Cursor::new(b"secret\r\n")).unwrap(),
+            read_unattended_password_line(&mut Cursor::new(b"secret\r\n"))
+                .unwrap()
+                .as_str(),
             "secret"
         );
         assert_eq!(
-            read_unattended_password_line(&mut Cursor::new(b"secret")).unwrap(),
+            read_unattended_password_line(&mut Cursor::new(b"secret"))
+                .unwrap()
+                .as_str(),
             "secret"
         );
         assert_eq!(
-            read_unattended_password_line(&mut Cursor::new(b"\n")).unwrap(),
+            read_unattended_password_line(&mut Cursor::new(b"\n"))
+                .unwrap()
+                .as_str(),
             ""
         );
         assert!(read_unattended_password_line(&mut Cursor::new(Vec::<u8>::new())).is_err());
@@ -735,7 +780,8 @@ mod tests {
         let maximum = "a".repeat(crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES);
         assert_eq!(
             read_unattended_password_line(&mut Cursor::new(format!("{maximum}\n").into_bytes()))
-                .unwrap(),
+                .unwrap()
+                .as_str(),
             maximum
         );
         let oversized = "a".repeat(crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 1);

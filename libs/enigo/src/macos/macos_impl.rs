@@ -11,7 +11,7 @@ use std::os::raw::*;
 use std::ptr::null_mut;
 
 use crate::macos::keycodes::*;
-use crate::{Key, KeyboardControllable, MouseButton, MouseControllable};
+use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable};
 use objc::runtime::Class;
 
 struct MyCGEvent;
@@ -22,6 +22,7 @@ type OSStatus = i32;
 type UniChar = u16;
 type UniCharCount = usize;
 type Boolean = c_uchar;
+const MAX_SCROLL_LENGTH: i32 = 64;
 type CFStringEncoding = u32;
 
 #[repr(C)]
@@ -165,6 +166,8 @@ impl Enigo {
             event.set_flags(self.flags);
         }
         event.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, ENIGO_INPUT_EXTRA_VALUE);
+        // CGEventPost has no synchronous delivery acknowledgement. Successful event
+        // construction followed by this call is the strongest native acceptance contract.
         event.post(CGEventTapLocation::HID);
     }
 }
@@ -207,13 +210,13 @@ impl MouseControllable for Enigo {
         self
     }
 
-    fn mouse_move_to(&mut self, x: i32, y: i32) {
+    fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         // For absolute movement, we don't set delta values
         // This maintains backward compatibility
-        self.mouse_move_to_impl(x, y, None);
+        self.mouse_move_to_impl(x, y, None)
     }
 
-    fn mouse_move_relative(&mut self, x: i32, y: i32) {
+    fn mouse_move_relative(&mut self, x: i32, y: i32) -> crate::ResultType {
         let (display_width, display_height) = Self::main_display_size();
         let (current_x, y_inv) = Self::mouse_location_raw_coords();
         let current_y = (display_height as i32) - y_inv;
@@ -234,10 +237,7 @@ impl MouseControllable for Enigo {
         // Use saturating_sub to prevent negative thresholds on very small displays
         let right = (display_width as i32).saturating_sub(margin);
         let bottom = (display_height as i32).saturating_sub(margin);
-        let near_edge = new_x < margin
-            || new_x > right
-            || new_y < margin
-            || new_y > bottom;
+        let near_edge = new_x < margin || new_x > right || new_y < margin || new_y > bottom;
 
         if near_edge {
             // Reset cursor to screen center to allow continuous movement
@@ -257,7 +257,7 @@ impl MouseControllable for Enigo {
         // This is critical for browser Pointer Lock API support
         // The delta fields (MOUSE_EVENT_DELTA_X/Y) are used by browsers
         // to calculate movementX/Y in Pointer Lock mode
-        self.mouse_move_to_impl(new_x, new_y, Some((x, y)));
+        self.mouse_move_to_impl(new_x, new_y, Some((x, y)))
     }
 
     fn mouse_down(&mut self, button: MouseButton) -> crate::ResultType {
@@ -286,29 +286,26 @@ impl MouseControllable for Enigo {
                 Some(MOUSE_EVENT_BUTTON_NUMBER_FORWARD),
             ),
             _ => {
-                log::info!("Unsupported button {:?}", button);
-                return Ok(());
+                return Err(format!("unsupported mouse button {button:?}").into());
             }
         };
         let dest = CGPoint::new(current_x as f64, current_y as f64);
-        if let Some(src) = self.event_source.as_ref() {
-            if let Ok(event) = CGEvent::new_mouse_event(src.clone(), event_type, dest, button) {
-                if self.multiple_click > 1 {
-                    event.set_integer_value_field(
-                        EventField::MOUSE_EVENT_CLICK_STATE,
-                        self.multiple_click,
-                    );
-                }
-                if let Some(v) = btn_value {
-                    event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, v);
-                }
-                self.post(event, None);
-            }
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        let event = CGEvent::new_mouse_event(src.clone(), event_type, dest, button)
+            .map_err(|err| format!("could not construct macOS mouse-down event: {err:?}"))?;
+        if self.multiple_click > 1 {
+            event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, self.multiple_click);
         }
+        if let Some(v) = btn_value {
+            event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, v);
+        }
+        self.post(event, None);
         Ok(())
     }
 
-    fn mouse_up(&mut self, button: MouseButton) {
+    fn mouse_up(&mut self, button: MouseButton) -> crate::ResultType {
         let (current_x, current_y) = Self::mouse_location();
         let (button, event_type, btn_value) = match button {
             MouseButton::Left => (CGMouseButton::Left, CGEventType::LeftMouseUp, None),
@@ -325,83 +322,83 @@ impl MouseControllable for Enigo {
                 Some(MOUSE_EVENT_BUTTON_NUMBER_FORWARD),
             ),
             _ => {
-                log::info!("Unsupported button {:?}", button);
-                return;
+                return Err(format!("unsupported mouse button {button:?}").into());
             }
         };
         let dest = CGPoint::new(current_x as f64, current_y as f64);
-        if let Some(src) = self.event_source.as_ref() {
-            if let Ok(event) = CGEvent::new_mouse_event(src.clone(), event_type, dest, button) {
-                if self.multiple_click > 1 {
-                    event.set_integer_value_field(
-                        EventField::MOUSE_EVENT_CLICK_STATE,
-                        self.multiple_click,
-                    );
-                }
-                if let Some(v) = btn_value {
-                    event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, v);
-                }
-                self.post(event, None);
-            }
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        let event = CGEvent::new_mouse_event(src.clone(), event_type, dest, button)
+            .map_err(|err| format!("could not construct macOS mouse-up event: {err:?}"))?;
+        if self.multiple_click > 1 {
+            event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, self.multiple_click);
         }
+        if let Some(v) = btn_value {
+            event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, v);
+        }
+        self.post(event, None);
+        Ok(())
     }
 
-    fn mouse_click(&mut self, button: MouseButton) {
-        self.mouse_down(button).ok();
-        self.mouse_up(button);
+    fn mouse_click(&mut self, button: MouseButton) -> crate::ResultType {
+        self.mouse_down(button)?;
+        if let Err(err) = self.mouse_up(button) {
+            log::error!("macOS mouse click could not submit its release: {err}");
+            std::process::abort();
+        }
+        Ok(())
     }
 
-    fn mouse_scroll_x(&mut self, length: i32) {
-        let mut scroll_direction = -1; // 1 left -1 right;
-        let mut length = length;
+    fn mouse_scroll_x(&mut self, length: i32) -> crate::ResultType {
+        let scroll_direction = if length < 0 { 1 } else { -1 };
+        let length = checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
 
-        if length < 0 {
-            length *= -1;
-            scroll_direction *= -1;
-        }
-
-        if let Some(src) = self.event_source.as_ref() {
-            for _ in 0..length {
-                unsafe {
-                    let mouse_ev = CGEventCreateScrollWheelEvent(
-                        &src,
-                        ScrollUnit::Line,
-                        2, // CGWheelCount 1 = y 2 = xy 3 = xyz
-                        0,
-                        scroll_direction,
-                    );
-
-                    CGEventPost(CGEventTapLocation::HID, mouse_ev);
-                    CFRelease(mouse_ev as *const std::ffi::c_void);
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        for _ in 0..length {
+            unsafe {
+                let mouse_ev = CGEventCreateScrollWheelEvent(
+                    &src,
+                    ScrollUnit::Line,
+                    2, // CGWheelCount 1 = y 2 = xy 3 = xyz
+                    0,
+                    scroll_direction,
+                );
+                if mouse_ev.is_null() {
+                    return Err("could not construct macOS horizontal scroll event".into());
                 }
+                CGEventPost(CGEventTapLocation::HID, mouse_ev);
+                CFRelease(mouse_ev as *const std::ffi::c_void);
             }
         }
+        Ok(())
     }
 
-    fn mouse_scroll_y(&mut self, length: i32) {
-        let mut scroll_direction = -1; // 1 left -1 right;
-        let mut length = length;
+    fn mouse_scroll_y(&mut self, length: i32) -> crate::ResultType {
+        let scroll_direction = if length < 0 { 1 } else { -1 };
+        let length = checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
 
-        if length < 0 {
-            length *= -1;
-            scroll_direction *= -1;
-        }
-
-        if let Some(src) = self.event_source.as_ref() {
-            for _ in 0..length {
-                unsafe {
-                    let mouse_ev = CGEventCreateScrollWheelEvent(
-                        &src,
-                        ScrollUnit::Line,
-                        1, // CGWheelCount 1 = y 2 = xy 3 = xyz
-                        scroll_direction,
-                    );
-
-                    CGEventPost(CGEventTapLocation::HID, mouse_ev);
-                    CFRelease(mouse_ev as *const std::ffi::c_void);
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        for _ in 0..length {
+            unsafe {
+                let mouse_ev = CGEventCreateScrollWheelEvent(
+                    &src,
+                    ScrollUnit::Line,
+                    1, // CGWheelCount 1 = y 2 = xy 3 = xyz
+                    scroll_direction,
+                );
+                if mouse_ev.is_null() {
+                    return Err("could not construct macOS vertical scroll event".into());
                 }
+                CGEventPost(CGEventTapLocation::HID, mouse_ev);
+                CFRelease(mouse_ev as *const std::ffi::c_void);
             }
         }
+        Ok(())
     }
 }
 
@@ -493,7 +490,12 @@ impl Enigo {
     /// When a browser enters Pointer Lock mode, it reads mouse delta values
     /// (MOUSE_EVENT_DELTA_X/Y) directly from CGEvent to calculate movementX/Y.
     /// Without setting these fields, the browser sees zero movement.
-    fn mouse_move_to_impl(&mut self, x: i32, y: i32, delta: Option<(i32, i32)>) {
+    fn mouse_move_to_impl(
+        &mut self,
+        x: i32,
+        y: i32,
+        delta: Option<(i32, i32)>,
+    ) -> crate::ResultType {
         let pressed = Self::pressed_buttons();
 
         // Determine event type and corresponding mouse button based on pressed buttons.
@@ -509,19 +511,17 @@ impl Enigo {
         };
 
         let dest = CGPoint::new(x as f64, y as f64);
-        if let Some(src) = self.event_source.as_ref() {
-            if let Ok(event) =
-                CGEvent::new_mouse_event(src.clone(), event_type, dest, button)
-            {
-                // Set delta fields for relative mouse movement
-                // This is essential for Pointer Lock API in browsers
-                if let Some((dx, dy)) = delta {
-                    event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, dx as i64);
-                    event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, dy as i64);
-                }
-                self.post(event, None);
-            }
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        let event = CGEvent::new_mouse_event(src.clone(), event_type, dest, button)
+            .map_err(|err| format!("could not construct macOS mouse-move event: {err:?}"))?;
+        if let Some((dx, dy)) = delta {
+            event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, dx as i64);
+            event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, dy as i64);
         }
+        self.post(event, None);
+        Ok(())
     }
 
     /// Fetches the `(width, height)` in pixels of the main display
@@ -714,55 +714,78 @@ impl Enigo {
     }
 
     #[inline]
-    fn mouse_scroll_impl(&mut self, length: i32, is_track_pad: bool, is_horizontal: bool) {
-        let mut scroll_direction = -1; // 1 left -1 right;
-        let mut length = length;
+    fn mouse_scroll_impl(
+        &mut self,
+        length: i32,
+        is_track_pad: bool,
+        is_horizontal: bool,
+    ) -> crate::ResultType {
+        let scroll_direction = if length < 0 { 1 } else { -1 };
+        let length = checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
 
-        if length < 0 {
-            length *= -1;
-            scroll_direction *= -1;
-        }
-
-        if let Some(src) = self.event_source.as_ref() {
-            for _ in 0..length {
-                unsafe {
-                    let units = if is_track_pad {
-                        ScrollUnit::Pixel
-                    } else {
-                        ScrollUnit::Line
-                    };
-                    let mouse_ev = if is_horizontal {
-                        CGEventCreateScrollWheelEvent(
-                            &src,
-                            units,
-                            2, // CGWheelCount 1 = y 2 = xy 3 = xyz
-                            0,
-                            scroll_direction,
-                        )
-                    } else {
-                        CGEventCreateScrollWheelEvent(
-                            &src,
-                            units,
-                            1, // CGWheelCount 1 = y 2 = xy 3 = xyz
-                            scroll_direction,
-                        )
-                    };
-
-                    CGEventPost(CGEventTapLocation::HID, mouse_ev);
-                    CFRelease(mouse_ev as *const std::ffi::c_void);
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        for _ in 0..length {
+            unsafe {
+                let units = if is_track_pad {
+                    ScrollUnit::Pixel
+                } else {
+                    ScrollUnit::Line
+                };
+                let mouse_ev = if is_horizontal {
+                    CGEventCreateScrollWheelEvent(
+                        &src,
+                        units,
+                        2, // CGWheelCount 1 = y 2 = xy 3 = xyz
+                        0,
+                        scroll_direction,
+                    )
+                } else {
+                    CGEventCreateScrollWheelEvent(
+                        &src,
+                        units,
+                        1, // CGWheelCount 1 = y 2 = xy 3 = xyz
+                        scroll_direction,
+                    )
+                };
+                if mouse_ev.is_null() {
+                    return Err("could not construct macOS scroll event".into());
                 }
+                CGEventPost(CGEventTapLocation::HID, mouse_ev);
+                CFRelease(mouse_ev as *const std::ffi::c_void);
             }
         }
+        Ok(())
     }
 
     /// handle scroll vertically
-    pub fn mouse_scroll_y(&mut self, length: i32, is_track_pad: bool) {
+    pub fn mouse_scroll_y(&mut self, length: i32, is_track_pad: bool) -> crate::ResultType {
         self.mouse_scroll_impl(length, is_track_pad, false)
     }
 
     /// handle scroll horizontally
-    pub fn mouse_scroll_x(&mut self, length: i32, is_track_pad: bool) {
+    pub fn mouse_scroll_x(&mut self, length: i32, is_track_pad: bool) -> crate::ResultType {
         self.mouse_scroll_impl(length, is_track_pad, true)
+    }
+
+    /// Submits text as matched key-down/key-up pairs after constructing both events.
+    pub fn key_sequence_complete(&mut self, sequence: &str) -> crate::ResultType {
+        use unicode_segmentation::UnicodeSegmentation;
+
+        let Some(src) = self.event_source.as_ref() else {
+            return Err("macOS event source is unavailable".into());
+        };
+        for cluster in UnicodeSegmentation::graphemes(sequence, true) {
+            let down = CGEvent::new_keyboard_event(src.clone(), 0, true)
+                .map_err(|err| format!("could not construct macOS text key-down: {err:?}"))?;
+            let up = CGEvent::new_keyboard_event(src.clone(), 0, false)
+                .map_err(|err| format!("could not construct macOS text key-up: {err:?}"))?;
+            down.set_string(cluster);
+            self.post(down, None);
+            self.post(up, None);
+        }
+        Ok(())
     }
 }
 

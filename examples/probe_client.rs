@@ -37,10 +37,16 @@ fn main() {
     let pw = a.get(2).cloned().expect("password");
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
-    let do_read = mode == "read" || mode == "login" || mode == "inject" || mode == "portforward" || mode == "filetransfer";
+    let do_read = mode == "read"
+        || mode == "login"
+        || mode == "inject"
+        || mode == "portforward"
+        || mode == "filetransfer";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
-    let local = a.get(5).and_then(|s| s.parse::<std::net::SocketAddr>().ok());
+    let local = a
+        .get(5)
+        .and_then(|s| s.parse::<std::net::SocketAddr>().ok());
 
     // R-P1: the CPace PRS is base64(Argon2id(NFC(pw), fixed salt)) — a faithful viewer derives it
     // from the password alone (nothing per-box in the salt). This loopback probe shares the server's
@@ -77,8 +83,7 @@ fn main() {
                             .map(|(h, p)| (h.to_string(), p.parse::<i32>().unwrap_or(0)))
                             .unwrap_or_default();
                         let mut lr = LoginRequest::new();
-                        // The box's own id, so the responder's username guard admits the login.
-                        lr.username = hbb_common::config::Config::get_id();
+                        lr.username = addr.clone();
                         lr.my_id = "pf-probe".to_string();
                         lr.my_name = "pf-probe".to_string();
                         lr.version = "1.4.0".to_string();
@@ -147,6 +152,7 @@ fn main() {
                     if mode == "login" {
                         use hbb_common::message_proto::LoginRequest;
                         let mut lr = LoginRequest::new();
+                        lr.username = addr.clone();
                         // A distinctive ASCII canary so the R-A9 wire-capture test can assert it
                         // NEVER appears on the wire (the post-key LoginRequest is encrypted).
                         lr.my_id = "PLAINTEXT-CANARY-DEADBEEF".to_string();
@@ -167,8 +173,7 @@ fn main() {
                         // dir FileResponse is reported if the CM round-trips).
                         use hbb_common::message_proto::{file_response, login_response, message, FileAction, FileTransfer, LoginRequest, ReadDir};
                         let mut lr = LoginRequest::new();
-                        // The box's own id, so the responder's username guard admits the login.
-                        lr.username = hbb_common::config::Config::get_id();
+                        lr.username = addr.clone();
                         lr.my_id = "ft-probe".to_string();
                         lr.my_name = "ft-probe".to_string();
                         lr.version = "1.4.0".to_string();

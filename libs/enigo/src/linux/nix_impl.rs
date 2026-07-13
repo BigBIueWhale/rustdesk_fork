@@ -1,10 +1,13 @@
 use super::xdo::EnigoXdo;
-use crate::{Key, KeyboardControllable, MouseButton, MouseControllable, ResultType};
+use crate::{
+    checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable, ResultType,
+};
 use std::io::Read;
 use tfc::{traits::*, Context as TFC_Context, Key as TFC_Key};
 
 pub type CustomKeyboard = Box<dyn KeyboardControllable + Send>;
 pub type CustomMouce = Box<dyn MouseControllable + Send>;
+const MAX_SCROLL_LENGTH: i32 = 64;
 
 /// The main struct for handling the event emitting
 // #[derive(Default)]
@@ -145,21 +148,25 @@ impl MouseControllable for Enigo {
         self
     }
 
-    fn mouse_move_to(&mut self, x: i32, y: i32) {
+    fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         if self.is_x11 {
-            self.xdo.mouse_move_to(x, y);
+            self.xdo.mouse_move_to(x, y)
         } else {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_move_to(x, y)
+            } else {
+                Err("no mouse injector is available".into())
             }
         }
     }
-    fn mouse_move_relative(&mut self, x: i32, y: i32) {
+    fn mouse_move_relative(&mut self, x: i32, y: i32) -> crate::ResultType {
         if self.is_x11 {
-            self.xdo.mouse_move_relative(x, y);
+            self.xdo.mouse_move_relative(x, y)
         } else {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_move_relative(x, y)
+            } else {
+                Err("no mouse injector is available".into())
             }
         }
     }
@@ -170,44 +177,65 @@ impl MouseControllable for Enigo {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_down(button)
             } else {
-                Ok(())
+                Err("no mouse injector is available".into())
             }
         }
     }
-    fn mouse_up(&mut self, button: MouseButton) {
+    fn mouse_up(&mut self, button: MouseButton) -> crate::ResultType {
         if self.is_x11 {
             self.xdo.mouse_up(button)
         } else {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_up(button)
+            } else {
+                Err("no mouse injector is available".into())
             }
         }
     }
-    fn mouse_click(&mut self, button: MouseButton) {
+    fn mouse_click(&mut self, button: MouseButton) -> crate::ResultType {
         if self.is_x11 {
             self.xdo.mouse_click(button)
         } else {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_click(button)
+            } else {
+                Err("no mouse injector is available".into())
             }
         }
     }
-    fn mouse_scroll_x(&mut self, length: i32) {
+    fn mouse_scroll_x(&mut self, length: i32) -> crate::ResultType {
+        checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
         if self.is_x11 {
             self.xdo.mouse_scroll_x(length)
         } else {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_scroll_x(length)
+            } else {
+                Err("no mouse injector is available".into())
             }
         }
     }
-    fn mouse_scroll_y(&mut self, length: i32) {
+    fn mouse_scroll_y(&mut self, length: i32) -> crate::ResultType {
+        checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
         if self.is_x11 {
             self.xdo.mouse_scroll_y(length)
         } else {
             if let Some(mouse) = &mut self.custom_mouse {
                 mouse.mouse_scroll_y(length)
+            } else {
+                Err("no mouse injector is available".into())
             }
+        }
+    }
+}
+
+impl Enigo {
+    /// Types text and returns the X11 injector's synchronous submission status.
+    pub fn key_sequence_result(&mut self, sequence: &str) -> crate::ResultType {
+        if self.is_x11 {
+            self.xdo.key_sequence_result(sequence)
+        } else {
+            Err("result-bearing text input is unavailable outside X11".into())
         }
     }
 }
@@ -224,7 +252,10 @@ fn get_led_state(key: Key) -> bool {
 
     let status = if let Ok(mut file) = std::fs::File::open(&led_file) {
         let mut content = String::new();
-        file.read_to_string(&mut content).ok();
+        if let Err(err) = file.read_to_string(&mut content) {
+            log::warn!("Could not read keyboard LED state from {led_file}: {err}");
+            return false;
+        }
         let status = content.trim_end().to_string().parse::<i32>().unwrap_or(0);
         status
     } else {
@@ -302,8 +333,10 @@ impl KeyboardControllable for Enigo {
         if self.is_x11 {
             // X11: try tfc first, then fallback to key_down/key_up
             if self.tfc_key_click(key).is_err() {
-                self.key_down(key).ok();
-                self.key_up(key);
+                match self.key_down(key) {
+                    Ok(()) => self.key_up(key),
+                    Err(err) => log::warn!("Enigo::key_click fallback key-down failed: {err}"),
+                }
             }
         } else {
             if let Some(keyboard) = &mut self.custom_keyboard {

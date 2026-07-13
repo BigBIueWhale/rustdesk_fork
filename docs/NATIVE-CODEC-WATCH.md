@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: 367cd517960457be0df6ac9b303670c1f6bf7520b702adcb9289baf7589cdb95
+Requirements hash: 57550c3d5d2ca20c064f41bb078cede0f4ee505a7ed1d76b8dbb7dceafc5a295
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++
@@ -55,31 +55,42 @@ permanent linked quarantine.
 ## Overlay-Pinned Libraries
 
 Package: libvpx
-Status: reviewed — OPEN ADVISORY (CVE-2026-1861, see below)
-Disposition: source-pinned overlay; monitor upstream libvpx advisories and treat
-VP8/VP9 decoder-memory-safety advisories as release-blocking until patched or
-isolated by the decoder sandbox.
+Status: source remediated 2026-07-13; current .6 cold artifact validation has not run
+Disposition: R-B13 / Appendix C #129 source-pinned, security-backported overlay; monitor upstream libvpx
+advisories and treat applicable encoder or decoder memory-safety advisories as
+release-blocking until patched or isolated as appropriate.
 libvpx version: 1.15.2
+libvpx port-version: 1
+LIBVPX_SOURCE_REF: v1.15.2
 libvpx SHA512: 824fe8719e4115ec359ae0642f5e1cea051d458f09eb8c24d60858cf082f66e411215e23228173ab154044bafbdfbb2d93b589bb726f55b233939b91f928aae0
+LIBVPX_FIX_COMMIT: d5f35ac8d93cba7f7a3f7ddb8f9dc8bd28f785e1
+libvpx patch SHA512: 2980e0504e207047d55e6c98dcc55c2a3c06315b4ec04d59c42d786657e03ba0e1c73a0718ac6635990aac25fc642b204a1d56e13501ce2bd9625996ad0310d8
 Watch sources: webmproject/libvpx release/security notes, NVD/CVE, OSV, distro
 security trackers.
-OPEN ADVISORY (recorded 2026-06-29): CVE-2026-1861 — a VP8/VP9 *decoder* heap
-buffer overflow (malformed video -> out-of-bounds heap write), fixed in Chrome
-144.0.7559.132 via "enhanced bounds checking in the libvpx decoder". The exact
-fixed libvpx version is not published in the CVE (Chrome bundles its own libvpx),
-so the pinned 1.15.2 (a 2025 release) most likely predates the fix. This is the
-Appendix C #2b viewer-side native-decode surface, which the spec ACCEPTS (bounded
-operationally — connect only to peers you trust — + SHOULD-sandbox), so it is NOT
-a spec-MUST blocker; but per this watch's release-blocking-until-updated policy it
-is an ACTION ITEM (a deliberate build-infra change, deferred):
-  (1) determine the CVE-2026-1861-fixed libvpx commit/version (webmproject/libvpx
-      git history + the Chromium issue tracker referenced from the CVE);
-  (2) bump the overlay pin (res/vcpkg) + re-capture the SHA512 archive into
-      ./online per the R-B12(a) git-archive-capture pattern;
-  (3) re-test the vcpkg `libvpx` build and re-run the reproducible release builds.
-  (CVE-2025-5283, a libvpx *encoder* double-free in WebRTC's enc_init_multi, is
-   N/A: the encoder processes the box's own screen, not attacker data, and the
-   WebRTC path it lives in is excised — R-SV4.)
+CVE-2026-1861, also assigned CVE-2026-2447 by Ubuntu, is a heap-buffer overflow
+in the VP9 encoder's `write_superframe_index` path. It is not evidence of a
+viewer decoder vulnerability. Upstream commit
+`d5f35ac8d93cba7f7a3f7ddb8f9dc8bd28f785e1` fixes the full-buffer and off-by-one
+checks and returns zero when no superframe index fits. Both v1.15.2 and v1.16.0
+predate that fix. This fork conservatively retains v1.15.2 and applies the exact
+upstream patch as port revision 1.
+
+The v1.15.2 archive, upstream patch bytes, and the complete Windows vcpkg acquisition
+closure are SHA512-verified captures. The libvpx port accepts only the captured
+`file://` inputs. Linux x64 and Android arm64 staged native trees carry a key over
+the baseline, source/ref hashes, and complete libvpx overlay; a key mismatch
+forces replacement rather than an existence-only skip. Each offline Windows
+build verifies the same key and inputs, clears binary caching, removes a stale
+installed libvpx, and rebuilds port revision 1 before Rust compilation. The
+golden image supplies the toolchain but is not trusted to supply the compiled
+libvpx or its acquisition archives.
+
+The broader Appendix C #2b in-process decoder residual remains separately
+accepted and SHOULD-sandbox. Closing this encoder CVE makes no claim that VP8/VP9
+decoder memory-safety risk has been removed.
+
+CVE-2025-5283, a libvpx encoder double-free in WebRTC's `enc_init_multi`, remains
+N/A because the WebRTC path is excised (R-SV4).
 
 Package: libyuv
 Status: reviewed

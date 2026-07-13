@@ -726,7 +726,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                                     #[cfg(all(windows, feature = "vram"))]
                                     VRamEncoder::set_not_use(sp.name(), true);
                                     screenshot.restore_vram = true;
-                                    SCREENSHOTS.lock().unwrap().insert((source, display_idx), screenshot);
+                                    SCREENSHOTS
+                                        .lock()
+                                        .unwrap()
+                                        .insert((source, display_idx), screenshot);
                                     _raii.try_vram = false;
                                     bail!("SWITCH");
                                 }

@@ -5,6 +5,8 @@ use crate::clipboard::try_empty_clipboard_files;
 use crate::clipboard::{update_clipboard, ClipboardSide};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use crate::clipboard_file::*;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::input::{MOUSE_TYPE_MASK, MOUSE_TYPE_TRACKPAD, MOUSE_TYPE_WHEEL};
 #[cfg(target_os = "android")]
 use crate::keyboard::client::map_key_to_control_key;
 #[cfg(target_os = "linux")]
@@ -48,13 +50,13 @@ use scrap::camera;
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::sync::atomic::Ordering;
+use std::sync::{atomic::AtomicUsize, mpsc as std_mpsc, Condvar, Mutex as StdMutex};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
     num::NonZeroI64,
     path::PathBuf,
-    sync::{atomic::AtomicI64, mpsc as std_mpsc},
+    sync::atomic::{AtomicI64, Ordering},
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
@@ -72,6 +74,12 @@ const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_CM_FILE_ERROR_BYTES: usize = 4096;
 const MAX_PENDING_CM_FILE_REQUESTS: usize = 32;
 const CM_FILE_BLOCK_READ_TIMEOUT_MS: u64 = 5_000;
+const INPUT_QUEUE_CAPACITY: usize = 256;
+const INPUT_QUEUE_MAX_BYTES: usize = 256 * 1024;
+const INPUT_EVENT_MAX_BYTES: usize = 4 * 1024;
+const INPUT_KEY_SEQUENCE_MAX_BYTES: usize = 1024;
+const INPUT_MODIFIER_MAX_ENTRIES: usize = 16;
+const INPUT_SCROLL_MAX_DELTA: i32 = 64;
 
 #[derive(Default)]
 struct DisplayControlRejectLog {
@@ -387,6 +395,7 @@ pub struct ConnInner {
     cm_clipboard_authority: Option<ipc::CmClipboardAuthority>,
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct InputMouse {
     msg: MouseEvent,
     conn_id: i32,
@@ -396,15 +405,1991 @@ struct InputMouse {
     show_cursor: bool,
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 enum MessageInput {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Mouse(InputMouse),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Key((KeyEvent, bool)),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    SpecialKey(KeyEvent),
     Pointer((PointerDeviceEvent, i32)),
     BlockOn,
     BlockOff,
+}
+
+fn protobuf_input_size<M: hbb_common::protobuf::Message>(message: &M) -> ResultType<usize> {
+    usize::try_from(message.compute_size())
+        .map_err(|_| hbb_common::anyhow::anyhow!("remote input event size is not representable"))
+}
+
+fn validate_mouse_input(event: &MouseEvent) -> ResultType<usize> {
+    if event.modifiers.len() > INPUT_MODIFIER_MAX_ENTRIES {
+        bail!("mouse input has too many modifiers");
+    }
+    let event_type = event.mask & MOUSE_TYPE_MASK;
+    if event_type == MOUSE_TYPE_WHEEL || event_type == MOUSE_TYPE_TRACKPAD {
+        for delta in [event.x, event.y] {
+            let magnitude = delta
+                .checked_abs()
+                .ok_or_else(|| hbb_common::anyhow::anyhow!("scroll delta is not representable"))?;
+            if magnitude > INPUT_SCROLL_MAX_DELTA {
+                bail!("scroll delta exceeds its protocol limit");
+            }
+        }
+    }
+    validate_input_size(protobuf_input_size(event)?)
+}
+
+fn validate_key_input(event: &KeyEvent) -> ResultType<usize> {
+    if event.modifiers.len() > INPUT_MODIFIER_MAX_ENTRIES {
+        bail!("keyboard input has too many modifiers");
+    }
+    let mode = event
+        .mode
+        .enum_value()
+        .map_err(|_| hbb_common::anyhow::anyhow!("keyboard input has an unknown mode"))?;
+    let structurally_valid = match (mode, &event.union) {
+        (KeyboardMode::Map, Some(key_event::Union::Chr(_))) => true,
+        (
+            KeyboardMode::Translate,
+            Some(
+                key_event::Union::Chr(_)
+                | key_event::Union::Seq(_)
+                | key_event::Union::ControlKey(_),
+            ),
+        ) => true,
+        (KeyboardMode::Translate, Some(key_event::Union::Win2winHotkey(_))) => {
+            cfg!(target_os = "windows")
+        }
+        (
+            KeyboardMode::Legacy,
+            Some(
+                key_event::Union::Chr(_)
+                | key_event::Union::Unicode(_)
+                | key_event::Union::Seq(_)
+                | key_event::Union::ControlKey(_),
+            ),
+        ) => true,
+        _ => false,
+    };
+    if !structurally_valid {
+        bail!("keyboard input mode and payload are inconsistent");
+    }
+    if let Some(key_event::Union::Win2winHotkey(code)) = &event.union {
+        if event.press
+            || (event.down && code & 0x0000_FFFF == 0)
+            || (!event.down && code & 0x0000_FFFF != 0)
+        {
+            bail!("Win2win hotkey down/release shape is inconsistent");
+        }
+    }
+    if matches!(
+        &event.union,
+        Some(key_event::Union::Seq(sequence)) if sequence.len() > INPUT_KEY_SEQUENCE_MAX_BYTES
+    ) {
+        bail!("keyboard sequence exceeds its structural limit");
+    }
+    validate_input_size(protobuf_input_size(event)?)
+}
+
+fn validate_pointer_input(event: &PointerDeviceEvent) -> ResultType<usize> {
+    if event.modifiers.len() > INPUT_MODIFIER_MAX_ENTRIES {
+        bail!("pointer input has too many modifiers");
+    }
+    validate_input_size(protobuf_input_size(event)?)
+}
+
+fn validate_input_size(payload_bytes: usize) -> ResultType<usize> {
+    if payload_bytes > INPUT_EVENT_MAX_BYTES {
+        bail!("remote input event exceeds its byte limit");
+    }
+    Ok(payload_bytes.max(1))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl MessageInput {
+    fn validated_weight(&self) -> ResultType<usize> {
+        let payload_bytes = match self {
+            Self::Mouse(input) => validate_mouse_input(&input.msg)?
+                .checked_add(input.username.len())
+                .ok_or_else(|| hbb_common::anyhow::anyhow!("remote mouse input size overflow"))?,
+            Self::Key((event, _)) => validate_key_input(event)?,
+            Self::SpecialKey(event) => validate_key_input(event)?,
+            Self::Pointer((event, _)) => validate_pointer_input(event)?,
+            Self::BlockOn | Self::BlockOff => 1,
+        };
+        validate_input_size(payload_bytes)
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct QueuedInput {
+    input: Option<MessageInput>,
+    weight: usize,
+    queued_bytes: Arc<AtomicUsize>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for QueuedInput {
+    fn drop(&mut self) {
+        self.queued_bytes.fetch_sub(self.weight, Ordering::AcqRel);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct InputQueue {
+    sender: std_mpsc::SyncSender<QueuedInput>,
+    queued_bytes: Arc<AtomicUsize>,
+    execution: Arc<InputExecutionGate>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputQueue {
+    fn try_enqueue(&self, input: MessageInput) -> ResultType<()> {
+        if self.execution.is_cancelled() {
+            bail!("remote input worker is stopping");
+        }
+        let weight = input.validated_weight()?;
+        let mut current = self.queued_bytes.load(Ordering::Acquire);
+        loop {
+            let Some(next) = current.checked_add(weight) else {
+                bail!("remote input queue byte accounting overflow");
+            };
+            if next > INPUT_QUEUE_MAX_BYTES {
+                bail!("remote input queue reached its byte capacity");
+            }
+            match self.queued_bytes.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(observed) => current = observed,
+            }
+        }
+        let queued = QueuedInput {
+            input: Some(input),
+            weight,
+            queued_bytes: Arc::clone(&self.queued_bytes),
+        };
+        match self.sender.try_send(queued) {
+            Ok(()) => Ok(()),
+            Err(std_mpsc::TrySendError::Full(_)) => {
+                bail!("remote input queue reached its item capacity")
+            }
+            Err(std_mpsc::TrySendError::Disconnected(_)) => {
+                bail!("remote input worker is unavailable")
+            }
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct InputWorker {
+    execution: Arc<InputExecutionGate>,
+    completion: Arc<InputWorkerCompletion>,
+}
+
+const INPUT_EXECUTION_CANCELLED: usize = 1;
+const INPUT_EXECUTION_ACTIVE: usize = 2;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct InputWorkerCompletion {
+    result: StdMutex<Option<bool>>,
+    changed: Condvar,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputWorkerCompletion {
+    fn new() -> Self {
+        Self {
+            result: StdMutex::new(None),
+            changed: Condvar::new(),
+        }
+    }
+
+    fn complete(&self, succeeded: bool) {
+        let mut result = self.lock_result();
+        *result = Some(succeeded);
+        self.changed.notify_all();
+    }
+
+    fn wait(&self) -> bool {
+        let mut result = self.lock_result();
+        loop {
+            if let Some(succeeded) = *result {
+                return succeeded;
+            }
+            result = match self.changed.wait(result) {
+                Ok(result) => result,
+                Err(poisoned) => {
+                    log::error!("remote input worker completion wait was poisoned");
+                    poisoned.into_inner()
+                }
+            };
+        }
+    }
+
+    fn lock_result(&self) -> std::sync::MutexGuard<'_, Option<bool>> {
+        match self.result.lock() {
+            Ok(result) => result,
+            Err(poisoned) => {
+                log::error!("remote input worker completion state was poisoned");
+                poisoned.into_inner()
+            }
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn spawn_input_worker_supervisor(
+    name: String,
+    queued_bytes: Arc<AtomicUsize>,
+) -> std::io::Result<(
+    std_mpsc::SyncSender<std::thread::JoinHandle<()>>,
+    Arc<InputWorkerCompletion>,
+)> {
+    let (join_tx, join_rx) = std_mpsc::sync_channel::<std::thread::JoinHandle<()>>(1);
+    let completion = Arc::new(InputWorkerCompletion::new());
+    let supervisor_completion = Arc::clone(&completion);
+    std::thread::Builder::new().name(name).spawn(move || {
+        let succeeded = match join_rx.recv() {
+            Ok(join) => {
+                let succeeded = join.join().is_ok();
+                if !succeeded {
+                    log::error!("remote input worker panicked before supervisor join");
+                }
+                succeeded
+            }
+            Err(_) => {
+                log::error!("remote input worker handle was not delivered to its supervisor");
+                false
+            }
+        };
+        let remaining = queued_bytes.load(Ordering::Acquire);
+        if remaining != 0 {
+            log::error!(
+                "remote input worker exited with {remaining} bytes still charged to its queue"
+            );
+        }
+        supervisor_completion.complete(succeeded);
+    })?;
+    Ok((join_tx, completion))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct InputExecutionGate {
+    state: AtomicUsize,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct InputDispatchGuard<'a> {
+    gate: &'a InputExecutionGate,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for InputDispatchGuard<'_> {
+    fn drop(&mut self) {
+        self.gate
+            .state
+            .fetch_sub(INPUT_EXECUTION_ACTIVE, Ordering::AcqRel);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputExecutionGate {
+    fn is_cancelled(&self) -> bool {
+        self.state.load(Ordering::Acquire) & INPUT_EXECUTION_CANCELLED != 0
+    }
+
+    fn cancel(&self) {
+        // Revocation is nonblocking. A successful dispatch CAS defines an operation as
+        // started/admitted even if its native body enters later; no operation can start after this.
+        self.state
+            .fetch_or(INPUT_EXECUTION_CANCELLED, Ordering::AcqRel);
+    }
+
+    fn dispatch(&self, action: impl FnOnce()) -> bool {
+        self.dispatch_with_admission_hook(|| {}, action)
+    }
+
+    fn dispatch_with_admission_hook(&self, admitted: impl FnOnce(), action: impl FnOnce()) -> bool {
+        let mut state = self.state.load(Ordering::Acquire);
+        loop {
+            if state & INPUT_EXECUTION_CANCELLED != 0 {
+                return false;
+            }
+            let Some(active) = state.checked_add(INPUT_EXECUTION_ACTIVE) else {
+                log::error!("remote input execution admission overflow");
+                return false;
+            };
+            match self.state.compare_exchange_weak(
+                state,
+                active,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(observed) => state = observed,
+            }
+        }
+        // This CAS is the operation's start/admission point; native execution may follow later.
+        admitted();
+        let _dispatch = InputDispatchGuard { gate: self };
+        action();
+        true
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct InputOwnerState {
+    count: usize,
+    transition_uncertain: bool,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct InputKeyOwnerRegistry {
+    owners: StdMutex<HashMap<OwnedPhysicalKey, InputOwnerState>>,
+    mouse_buttons: StdMutex<HashMap<OwnedMouseButton, InputOwnerState>>,
+    workers: StdMutex<usize>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputKeyOwnerRegistry {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<OwnedPhysicalKey, InputOwnerState>> {
+        match self.owners.lock() {
+            Ok(owners) => owners,
+            Err(poisoned) => {
+                log::error!("remote input key-owner registry was poisoned");
+                poisoned.into_inner()
+            }
+        }
+    }
+
+    fn lock_mouse_buttons(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<OwnedMouseButton, InputOwnerState>> {
+        match self.mouse_buttons.lock() {
+            Ok(buttons) => buttons,
+            Err(poisoned) => {
+                log::error!("remote input mouse-button owner registry was poisoned");
+                poisoned.into_inner()
+            }
+        }
+    }
+
+    fn register_worker(&self) {
+        let mut workers = match self.workers.lock() {
+            Ok(workers) => workers,
+            Err(poisoned) => {
+                log::error!("remote input worker registry was poisoned");
+                poisoned.into_inner()
+            }
+        };
+        if *workers == 0 {
+            initialize_owned_input_dispatch();
+        }
+        *workers += 1;
+    }
+
+    fn unregister_worker(&self, on_last_worker: impl FnOnce()) -> bool {
+        let mut workers = match self.workers.lock() {
+            Ok(workers) => workers,
+            Err(poisoned) => {
+                log::error!("remote input worker registry was poisoned");
+                poisoned.into_inner()
+            }
+        };
+        if *workers == 0 {
+            log::error!("remote input worker registry underflow");
+            return false;
+        }
+        *workers -= 1;
+        if *workers == 0 {
+            // Keep registration excluded until process-global injector state has been retired.
+            on_last_worker();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+lazy_static::lazy_static! {
+    static ref INPUT_KEY_OWNERS: Arc<InputKeyOwnerRegistry> = Default::default();
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct InputKeyOwnership {
+    registry: Arc<InputKeyOwnerRegistry>,
+    held: HashMap<OwnedPhysicalKey, KeyEvent>,
+    held_mouse_buttons: HashSet<OwnedMouseButton>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputKeyOwnership {
+    fn new(registry: Arc<InputKeyOwnerRegistry>) -> Self {
+        registry.register_worker();
+        Self::unregistered(registry)
+    }
+
+    fn unregistered(registry: Arc<InputKeyOwnerRegistry>) -> Self {
+        Self {
+            registry,
+            held: HashMap::new(),
+            held_mouse_buttons: HashSet::new(),
+        }
+    }
+
+    fn dispatch(
+        &mut self,
+        event: &KeyEvent,
+        mut action: impl FnMut(&KeyEvent, &[ControlKey]) -> ResultType<()>,
+    ) -> ResultType<bool> {
+        let registry = Arc::clone(&self.registry);
+        let mut owners = registry.lock();
+        let key = owned_physical_key(event);
+        let releasing_uncertain_key = key.as_ref().map_or(false, |key| {
+            !event.down
+                && self.held.contains_key(key)
+                && owners
+                    .get(key)
+                    .map_or(false, |state| state.transition_uncertain)
+        });
+        if owners.values().any(|state| state.transition_uncertain) && !releasing_uncertain_key {
+            bail!("an aggregate physical key transition is uncertain");
+        }
+        if registry
+            .lock_mouse_buttons()
+            .values()
+            .any(|state| state.transition_uncertain)
+        {
+            bail!("an aggregate mouse-button transition is uncertain");
+        }
+        let Some(key) = key else {
+            self.dispatch_action(event, &owners, &mut action)?;
+            return Ok(true);
+        };
+        if event.down {
+            if self.held.contains_key(&key) {
+                if owners
+                    .get(&key)
+                    .map_or(true, |state| state.transition_uncertain)
+                {
+                    bail!("physical key transition is uncertain");
+                }
+                self.dispatch_action(event, &owners, &mut action)?;
+                return Ok(true);
+            }
+            if owners
+                .get(&key)
+                .map_or(false, |state| state.transition_uncertain)
+            {
+                bail!("physical key transition is uncertain");
+            }
+            let first_owner = !owners.contains_key(&key);
+            self.held.insert(key.clone(), event.clone());
+            let state = owners.entry(key.clone()).or_default();
+            state.count += 1;
+            if first_owner {
+                state.transition_uncertain = true;
+                self.dispatch_action(event, &owners, &mut action)?;
+                let Some(state) = owners.get_mut(&key) else {
+                    bail!("physical key ownership disappeared after key-down");
+                };
+                state.transition_uncertain = false;
+            }
+            return Ok(first_owner);
+        }
+        if !self.held.contains_key(&key) {
+            return Ok(false);
+        }
+        let final_owner = owners.get(&key).map(|state| state.count) == Some(1);
+        if final_owner {
+            // Do not retire either ownership record until native release reports success.
+            if let Some(state) = owners.get_mut(&key) {
+                state.transition_uncertain = true;
+            }
+            self.dispatch_action(event, &owners, &mut action)?;
+        }
+        self.held.remove(&key);
+        Self::release_owner(&mut owners, &key);
+        Ok(final_owner)
+    }
+
+    fn dispatch_press(
+        &mut self,
+        event: &KeyEvent,
+        mut action: impl FnMut(&KeyEvent, &[ControlKey]) -> ResultType<()>,
+    ) -> ResultType<()> {
+        let registry = Arc::clone(&self.registry);
+        let mut owners = registry.lock();
+        if owners.values().any(|state| state.transition_uncertain) {
+            bail!("an aggregate physical key transition is uncertain");
+        }
+        if registry
+            .lock_mouse_buttons()
+            .values()
+            .any(|state| state.transition_uncertain)
+        {
+            bail!("an aggregate mouse-button transition is uncertain");
+        }
+        let mut event = event.clone();
+        event.press = false;
+        event.down = true;
+        let Some(key) = owned_physical_key(&event) else {
+            return self.dispatch_action(&event, &owners, &mut action);
+        };
+        if self.held.contains_key(&key) || owners.contains_key(&key) {
+            bail!("physical press is ambiguous while the key is already owned");
+        }
+        self.held.insert(key.clone(), event.clone());
+        owners.insert(
+            key.clone(),
+            InputOwnerState {
+                count: 1,
+                transition_uncertain: true,
+            },
+        );
+        self.dispatch_action(&event, &owners, &mut action)?;
+        if let Some(state) = owners.get_mut(&key) {
+            state.transition_uncertain = false;
+        }
+        event.down = false;
+        if let Some(state) = owners.get_mut(&key) {
+            state.transition_uncertain = true;
+        }
+        self.dispatch_action(&event, &owners, &mut action)?;
+        self.held.remove(&key);
+        Self::release_owner(&mut owners, &key);
+        Ok(())
+    }
+
+    fn dispatch_action(
+        &self,
+        event: &KeyEvent,
+        owners: &HashMap<OwnedPhysicalKey, InputOwnerState>,
+        action: &mut impl FnMut(&KeyEvent, &[ControlKey]) -> ResultType<()>,
+    ) -> ResultType<()> {
+        let preserve_modifiers = owners
+            .keys()
+            .filter_map(owned_physical_modifier)
+            .collect::<Vec<_>>();
+        let mut event = event.clone();
+        for modifier in &preserve_modifiers {
+            if !event
+                .modifiers
+                .iter()
+                .any(|candidate| candidate.value() == modifier.value())
+            {
+                event.modifiers.push((*modifier).into());
+            }
+        }
+        action(&event, &preserve_modifiers)
+    }
+
+    fn dispatch_mouse(
+        &mut self,
+        event: &MouseEvent,
+        native: bool,
+        action: impl FnOnce(&MouseEvent, &[ControlKey], bool) -> ResultType<()>,
+    ) -> ResultType<()> {
+        let registry = Arc::clone(&self.registry);
+        let owners = registry.lock();
+        if owners.values().any(|state| state.transition_uncertain) {
+            bail!("an aggregate physical key transition is uncertain");
+        }
+        let mut event = event.clone();
+        Self::merge_owned_modifiers(&mut event.modifiers, &owners);
+        let preserve_modifiers = owners
+            .keys()
+            .filter_map(owned_physical_modifier)
+            .collect::<Vec<_>>();
+        if !native {
+            return action(&event, &preserve_modifiers, true);
+        }
+        let mut button_owners = registry.lock_mouse_buttons();
+        let transition = owned_mouse_button(&event);
+        let releasing_uncertain_button = transition.map_or(false, |(button, down)| {
+            !down
+                && self.held_mouse_buttons.contains(&button)
+                && button_owners
+                    .get(&button)
+                    .map_or(false, |state| state.transition_uncertain)
+        });
+        if button_owners
+            .values()
+            .any(|state| state.transition_uncertain)
+            && !releasing_uncertain_button
+        {
+            bail!("an aggregate mouse-button transition is uncertain");
+        }
+        let Some((button, down)) = transition else {
+            return action(&event, &preserve_modifiers, true);
+        };
+        if down {
+            if button_owners
+                .get(&button)
+                .map_or(false, |state| state.transition_uncertain)
+            {
+                bail!("mouse-button transition is uncertain");
+            }
+            if !self.held_mouse_buttons.insert(button) {
+                return action(&event, &preserve_modifiers, false);
+            }
+            let first_owner = !button_owners.contains_key(&button);
+            let state = button_owners.entry(button).or_default();
+            state.count += 1;
+            if first_owner {
+                state.transition_uncertain = true;
+                action(&event, &preserve_modifiers, true)?;
+                let Some(state) = button_owners.get_mut(&button) else {
+                    bail!("mouse-button ownership disappeared after button-down");
+                };
+                state.transition_uncertain = false;
+            } else {
+                action(&event, &preserve_modifiers, false)?;
+            }
+            return Ok(());
+        }
+        if !self.held_mouse_buttons.contains(&button) {
+            return action(&event, &preserve_modifiers, false);
+        }
+        let final_owner = button_owners.get(&button).map(|state| state.count) == Some(1);
+        if final_owner {
+            if let Some(state) = button_owners.get_mut(&button) {
+                state.transition_uncertain = true;
+            }
+        }
+        action(&event, &preserve_modifiers, final_owner)?;
+        self.held_mouse_buttons.remove(&button);
+        Self::release_mouse_button_owner(&mut button_owners, button);
+        Ok(())
+    }
+
+    fn dispatch_pointer(
+        &self,
+        event: &PointerDeviceEvent,
+        action: impl FnOnce(&PointerDeviceEvent) -> ResultType<()>,
+    ) -> ResultType<()> {
+        let registry = Arc::clone(&self.registry);
+        let owners = registry.lock();
+        if owners.values().any(|state| state.transition_uncertain) {
+            bail!("an aggregate physical key transition is uncertain");
+        }
+        if registry
+            .lock_mouse_buttons()
+            .values()
+            .any(|state| state.transition_uncertain)
+        {
+            bail!("an aggregate mouse-button transition is uncertain");
+        }
+        let mut event = event.clone();
+        Self::merge_owned_modifiers(&mut event.modifiers, &owners);
+        action(&event)
+    }
+
+    fn merge_owned_modifiers(
+        modifiers: &mut Vec<hbb_common::protobuf::EnumOrUnknown<ControlKey>>,
+        owners: &HashMap<OwnedPhysicalKey, InputOwnerState>,
+    ) {
+        for modifier in owners.keys().filter_map(owned_physical_modifier) {
+            if !modifiers
+                .iter()
+                .any(|candidate| candidate.value() == modifier.value())
+            {
+                modifiers.push(modifier.into());
+            }
+        }
+    }
+
+    fn release_all(
+        &mut self,
+        mut action: impl FnMut(&KeyEvent, &[ControlKey]) -> ResultType<()>,
+    ) -> ResultType<()> {
+        let registry = Arc::clone(&self.registry);
+        let mut owners = registry.lock();
+        let held_keys = self.held.keys().cloned().collect::<Vec<_>>();
+        for key in held_keys {
+            let final_owner = owners.get(&key).map(|state| state.count) == Some(1);
+            if final_owner {
+                let Some(mut event) = self.held.get(&key).cloned() else {
+                    bail!("remote input key disappeared during teardown");
+                };
+                event.press = false;
+                event.down = false;
+                let preserve_modifiers = owners
+                    .keys()
+                    .filter(|owned| *owned != &key)
+                    .filter_map(owned_physical_modifier)
+                    .collect::<Vec<_>>();
+                // A failure or unwind leaves both maps intact so cleanup can retry or fail fatal.
+                if let Some(state) = owners.get_mut(&key) {
+                    state.transition_uncertain = true;
+                }
+                action(&event, &preserve_modifiers)?;
+            }
+            self.held.remove(&key);
+            Self::release_owner(&mut owners, &key);
+        }
+        Ok(())
+    }
+
+    fn release_all_mouse_buttons(
+        &mut self,
+        mut action: impl FnMut(OwnedMouseButton) -> ResultType<()>,
+    ) -> ResultType<()> {
+        let registry = Arc::clone(&self.registry);
+        let mut owners = registry.lock_mouse_buttons();
+        let held_buttons = self.held_mouse_buttons.iter().copied().collect::<Vec<_>>();
+        for button in held_buttons {
+            if owners.get(&button).map(|state| state.count) == Some(1) {
+                if let Some(state) = owners.get_mut(&button) {
+                    state.transition_uncertain = true;
+                }
+                action(button)?;
+            }
+            self.held_mouse_buttons.remove(&button);
+            Self::release_mouse_button_owner(&mut owners, button);
+        }
+        Ok(())
+    }
+
+    fn finish_worker(&self, on_last_worker: impl FnOnce()) -> bool {
+        self.registry.unregister_worker(on_last_worker)
+    }
+
+    fn release_remaining(&mut self) -> ResultType<()> {
+        self.release_all(handle_owned_key)?;
+        self.release_all_mouse_buttons(|button| {
+            if let Err(first_err) = release_owned_mouse_button(button) {
+                if let Err(retry_err) = release_owned_mouse_button(button) {
+                    bail!(
+                        "mouse-button release failed twice: first={first_err}, retry={retry_err}"
+                    );
+                }
+                log::warn!("mouse-button release required a retry: {first_err}");
+            }
+            Ok(())
+        })
+    }
+
+    fn release_mouse_button_owner(
+        owners: &mut HashMap<OwnedMouseButton, InputOwnerState>,
+        button: OwnedMouseButton,
+    ) -> bool {
+        let Some(count) = owners.get_mut(&button) else {
+            log::error!("remote mouse-button ownership was released without an aggregate owner");
+            return false;
+        };
+        if count.count <= 1 {
+            owners.remove(&button);
+            true
+        } else {
+            count.count -= 1;
+            false
+        }
+    }
+
+    fn release_owner(
+        owners: &mut HashMap<OwnedPhysicalKey, InputOwnerState>,
+        key: &OwnedPhysicalKey,
+    ) -> bool {
+        let Some(count) = owners.get_mut(key) else {
+            log::error!("remote input key ownership was released without an aggregate owner");
+            return false;
+        };
+        match count.count {
+            0 => {
+                log::error!("remote input key ownership aggregate reached zero prematurely");
+                owners.remove(key);
+                false
+            }
+            1 => {
+                owners.remove(key);
+                true
+            }
+            _ => {
+                count.count -= 1;
+                false
+            }
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct InputWorkerCleanup {
+    conn_id: i32,
+    keys: InputKeyOwnership,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct InputBlockState {
+    owners: HashSet<i32>,
+    applied: bool,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct InputBlockOwnerRegistry {
+    state: StdMutex<InputBlockState>,
+}
+
+#[cfg(target_os = "windows")]
+fn apply_block_input(blocked: bool) -> (bool, String) {
+    match dispatch_windows_owned_input(move || Ok(crate::platform::block_input(blocked))) {
+        Ok(result) => result,
+        Err(err) => (false, format!("Windows owned-input executor failed: {err}")),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_block_input(blocked: bool) -> (bool, String) {
+    crate::platform::block_input(blocked)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InputBlockOwnerRegistry {
+    fn set(&self, conn_id: i32, blocked: bool) -> (bool, String) {
+        self.set_with(conn_id, blocked, apply_block_input)
+    }
+
+    fn set_with(
+        &self,
+        conn_id: i32,
+        blocked: bool,
+        mut apply: impl FnMut(bool) -> (bool, String),
+    ) -> (bool, String) {
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                log::error!("remote block-input owner registry was poisoned");
+                poisoned.into_inner()
+            }
+        };
+        if blocked {
+            if state.owners.contains(&conn_id) {
+                return (true, String::new());
+            }
+            if !state.applied {
+                let result = apply(true);
+                if !result.0 {
+                    return result;
+                }
+                state.applied = true;
+            }
+            state.owners.insert(conn_id);
+            return (true, String::new());
+        }
+        state.owners.remove(&conn_id);
+        if state.owners.is_empty() && state.applied {
+            let result = apply(false);
+            if result.0 {
+                state.applied = false;
+            }
+            return result;
+        }
+        (true, String::new())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn release_block_owner_with_retry(
+    registry: &InputBlockOwnerRegistry,
+    conn_id: i32,
+    mut apply: impl FnMut(bool) -> (bool, String),
+) -> ResultType<()> {
+    let (released, details) = registry.set_with(conn_id, false, &mut apply);
+    if released {
+        return Ok(());
+    }
+    log::error!("Failed to release local input; retrying aggregate transition: {details}");
+    let (retried, retry_details) = registry.set_with(conn_id, false, apply);
+    if retried {
+        Ok(())
+    } else {
+        bail!("could not prove local input was unblocked: {retry_details}")
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+lazy_static::lazy_static! {
+    static ref INPUT_BLOCK_OWNERS: InputBlockOwnerRegistry = Default::default();
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn run_input_cleanup_action(context: &str, action: impl FnOnce()) -> bool {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)).is_ok() {
+        true
+    } else {
+        log::error!("remote input cleanup panicked while {context}");
+        false
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for InputWorkerCleanup {
+    fn drop(&mut self) {
+        if !run_input_cleanup_action("releasing blocked local input", || {
+            if let Err(err) =
+                release_block_owner_with_retry(&INPUT_BLOCK_OWNERS, self.conn_id, apply_block_input)
+            {
+                log::error!("Could not prove local input was unblocked during teardown: {err}");
+                std::process::abort();
+            }
+        }) {
+            std::process::abort();
+        }
+        if let Err(err) = self.keys.release_remaining() {
+            log::error!("Could not prove release of all remote-owned keys: {err}");
+            std::process::abort();
+        }
+        #[cfg(target_os = "macos")]
+        if !run_input_cleanup_action(
+            "finishing macOS input dispatch",
+            finish_owned_input_dispatch,
+        ) {
+            std::process::abort();
+        }
+        #[cfg(target_os = "linux")]
+        self.keys.finish_worker(|| {
+            if !run_input_cleanup_action("clearing remapped keycodes", clear_remapped_keycode) {
+                std::process::abort();
+            }
+        });
+        #[cfg(not(target_os = "linux"))]
+        self.keys.finish_worker(|| {});
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SpecialKeyAction {
+    CtrlAltDel,
+    LockScreen,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct SpecialKeyState {
+    ctrl_alt_del_down: bool,
+    lock_screen_down: bool,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl SpecialKeyState {
+    fn action(event: &KeyEvent) -> Option<SpecialKeyAction> {
+        let Some(key_event::Union::ControlKey(key)) = &event.union else {
+            return None;
+        };
+        if key.value() == ControlKey::CtrlAltDel.value() {
+            Some(SpecialKeyAction::CtrlAltDel)
+        } else if key.value() == ControlKey::LockScreen.value() {
+            Some(SpecialKeyAction::LockScreen)
+        } else {
+            None
+        }
+    }
+
+    fn observe(&mut self, event: &KeyEvent) -> Option<Option<SpecialKeyAction>> {
+        let action = Self::action(event)?;
+        let held = match action {
+            SpecialKeyAction::CtrlAltDel => &mut self.ctrl_alt_del_down,
+            SpecialKeyAction::LockScreen => &mut self.lock_screen_down,
+        };
+        if event.press {
+            return Some(Some(action));
+        }
+        if event.down {
+            if *held {
+                Some(None)
+            } else {
+                *held = true;
+                Some(Some(action))
+            }
+        } else {
+            *held = false;
+            Some(None)
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn dispatch_windows_service_owned_sas(
+    runtime: &tokio::runtime::Handle,
+    execution: &InputExecutionGate,
+) {
+    let (result_tx, result_rx) = std_mpsc::sync_channel(1);
+    let task = runtime.spawn(async move {
+        let result = ipc::request_windows_service_owned_sas().await;
+        if result_tx.send(result).is_err() {
+            log::debug!("Ctrl+Alt+Del result receiver ended before service dispatch completed");
+        }
+    });
+    let mut cancellation_requested = false;
+    loop {
+        match result_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok(Ok(())) => return,
+            Ok(Err(err)) => {
+                log::warn!(
+                    "Service-owned Ctrl+Alt+Del dispatch did not reach a known accepted result: {err}"
+                );
+                return;
+            }
+            Err(std_mpsc::RecvTimeoutError::Disconnected) => return,
+            Err(std_mpsc::RecvTimeoutError::Timeout) => {
+                if execution.is_cancelled() && !cancellation_requested {
+                    cancellation_requested = true;
+                    task.abort();
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn try_enqueue_input(queue: &InputQueue, input: MessageInput) -> ResultType<()> {
+    queue.try_enqueue(input)
+}
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+mod desktop_input_queue_tests {
+    use super::*;
+    use crate::input::{
+        MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_MASK,
+        MOUSE_TYPE_TRACKPAD, MOUSE_TYPE_UP, MOUSE_TYPE_WHEEL,
+    };
+
+    #[test]
+    fn desktop_input_queue_fails_closed_when_full_or_disconnected() {
+        let (sender, receiver) = std_mpsc::sync_channel(1);
+        let queued_bytes = Arc::new(AtomicUsize::new(0));
+        let queue = InputQueue {
+            sender,
+            queued_bytes: Arc::clone(&queued_bytes),
+            execution: Arc::new(InputExecutionGate::default()),
+        };
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOn).is_ok());
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOff).is_err());
+
+        let received = receiver.recv().unwrap();
+        assert!(matches!(
+            received.input.as_ref(),
+            Some(MessageInput::BlockOn)
+        ));
+        drop(received);
+        assert_eq!(queued_bytes.load(Ordering::Acquire), 0);
+        drop(receiver);
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOff).is_err());
+        assert_eq!(queued_bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn desktop_input_queue_rejects_oversized_key_sequences() {
+        let (sender, _receiver) = std_mpsc::sync_channel(1);
+        let queue = InputQueue {
+            sender,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            execution: Arc::new(InputExecutionGate::default()),
+        };
+        let mut event = KeyEvent::new();
+        event.set_seq("x".repeat(INPUT_KEY_SEQUENCE_MAX_BYTES + 1));
+        assert!(try_enqueue_input(&queue, MessageInput::Key((event, false))).is_err());
+    }
+
+    #[test]
+    fn desktop_input_validators_enforce_structural_and_serialized_boundaries() {
+        let mut mouse = MouseEvent::new();
+        let mut key = KeyEvent::new();
+        key.set_control_key(ControlKey::Alt);
+        let mut pointer = PointerDeviceEvent::new();
+        for _ in 0..INPUT_MODIFIER_MAX_ENTRIES {
+            mouse.modifiers.push(ControlKey::Alt.into());
+            key.modifiers.push(ControlKey::Alt.into());
+            pointer.modifiers.push(ControlKey::Alt.into());
+        }
+        assert!(validate_mouse_input(&mouse).is_ok());
+        assert!(validate_key_input(&key).is_ok());
+        assert!(validate_pointer_input(&pointer).is_ok());
+
+        mouse.modifiers.push(ControlKey::Alt.into());
+        key.modifiers.push(ControlKey::Alt.into());
+        pointer.modifiers.push(ControlKey::Alt.into());
+        assert!(validate_mouse_input(&mouse).is_err());
+        assert!(validate_key_input(&key).is_err());
+        assert!(validate_pointer_input(&pointer).is_err());
+
+        let mut sequence = KeyEvent::new();
+        sequence.set_seq("x".repeat(INPUT_KEY_SEQUENCE_MAX_BYTES));
+        assert!(validate_key_input(&sequence).is_ok());
+        sequence.set_seq("x".repeat(INPUT_KEY_SEQUENCE_MAX_BYTES + 1));
+        assert!(validate_key_input(&sequence).is_err());
+        let mut inconsistent = KeyEvent::new();
+        inconsistent.mode = KeyboardMode::Map.into();
+        inconsistent.set_seq("not a raw-position key".to_owned());
+        assert!(validate_key_input(&inconsistent).is_err());
+        assert_eq!(
+            validate_input_size(INPUT_EVENT_MAX_BYTES).unwrap(),
+            INPUT_EVENT_MAX_BYTES
+        );
+        assert!(validate_input_size(INPUT_EVENT_MAX_BYTES + 1).is_err());
+    }
+
+    #[test]
+    fn desktop_scroll_validation_enforces_checked_protocol_bounds() {
+        for event_type in [MOUSE_TYPE_WHEEL, MOUSE_TYPE_TRACKPAD] {
+            for delta in [-INPUT_SCROLL_MAX_DELTA, INPUT_SCROLL_MAX_DELTA] {
+                let mut event = MouseEvent::new();
+                event.mask = event_type;
+                event.x = delta;
+                event.y = -delta;
+                assert!(validate_mouse_input(&event).is_ok());
+            }
+
+            for delta in [
+                INPUT_SCROLL_MAX_DELTA + 1,
+                -INPUT_SCROLL_MAX_DELTA - 1,
+                i32::MIN,
+            ] {
+                let mut event = MouseEvent::new();
+                event.mask = event_type;
+                event.x = delta;
+                assert!(validate_mouse_input(&event).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn desktop_input_queue_enforces_item_capacity_and_releases_all_charges() {
+        let (sender, receiver) = std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
+        let queued_bytes = Arc::new(AtomicUsize::new(0));
+        let queue = InputQueue {
+            sender,
+            queued_bytes: Arc::clone(&queued_bytes),
+            execution: Arc::new(InputExecutionGate::default()),
+        };
+        for _ in 0..INPUT_QUEUE_CAPACITY {
+            try_enqueue_input(&queue, MessageInput::BlockOn).unwrap();
+        }
+        assert_eq!(queued_bytes.load(Ordering::Acquire), INPUT_QUEUE_CAPACITY);
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOff).is_err());
+        assert_eq!(queued_bytes.load(Ordering::Acquire), INPUT_QUEUE_CAPACITY);
+
+        assert_eq!(receiver.try_iter().count(), INPUT_QUEUE_CAPACITY);
+        assert_eq!(queued_bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn desktop_input_queue_byte_accounting_is_checked_and_rolls_back_on_failure() {
+        let (sender, receiver) = std_mpsc::sync_channel(1);
+        let queued_bytes = Arc::new(AtomicUsize::new(INPUT_QUEUE_MAX_BYTES - 1));
+        let execution = Arc::new(InputExecutionGate::default());
+        let queue = InputQueue {
+            sender,
+            queued_bytes: Arc::clone(&queued_bytes),
+            execution: Arc::clone(&execution),
+        };
+        try_enqueue_input(&queue, MessageInput::BlockOn).unwrap();
+        assert_eq!(queued_bytes.load(Ordering::Acquire), INPUT_QUEUE_MAX_BYTES);
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOff).is_err());
+        assert_eq!(queued_bytes.load(Ordering::Acquire), INPUT_QUEUE_MAX_BYTES);
+        drop(receiver.recv().unwrap());
+        assert_eq!(
+            queued_bytes.load(Ordering::Acquire),
+            INPUT_QUEUE_MAX_BYTES - 1
+        );
+
+        queued_bytes.store(usize::MAX, Ordering::Release);
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOff).is_err());
+        assert_eq!(queued_bytes.load(Ordering::Acquire), usize::MAX);
+        queued_bytes.store(0, Ordering::Release);
+
+        execution.cancel();
+        assert!(try_enqueue_input(&queue, MessageInput::BlockOff).is_err());
+        assert_eq!(queued_bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn desktop_input_cancellation_is_nonblocking_and_closes_admission() {
+        let gate = Arc::new(InputExecutionGate::default());
+        let (admitted_tx, admitted_rx) = std_mpsc::channel();
+        let (started_tx, started_rx) = std_mpsc::channel();
+        let (release_tx, release_rx) = std_mpsc::channel();
+        let dispatch_gate = Arc::clone(&gate);
+        let dispatch = std::thread::spawn(move || {
+            dispatch_gate.dispatch_with_admission_hook(
+                || {
+                    admitted_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                },
+                || {
+                    started_tx.send(()).unwrap();
+                },
+            )
+        });
+        admitted_rx.recv().unwrap();
+
+        gate.cancel();
+        assert!(gate.is_cancelled());
+        assert!(!gate.dispatch(|| panic!("work was admitted after cancellation")));
+        assert!(started_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err());
+
+        release_tx.send(()).unwrap();
+        started_rx.recv().unwrap();
+        assert!(dispatch.join().unwrap());
+    }
+
+    #[test]
+    fn desktop_special_keys_are_structurally_validated_and_queue_accounted() {
+        let (sender, receiver) = std_mpsc::sync_channel(1);
+        let queued_bytes = Arc::new(AtomicUsize::new(0));
+        let queue = InputQueue {
+            sender,
+            queued_bytes: Arc::clone(&queued_bytes),
+            execution: Arc::new(InputExecutionGate::default()),
+        };
+        let mut oversized = special_key(ControlKey::LockScreen, true, false);
+        for _ in 0..=INPUT_MODIFIER_MAX_ENTRIES {
+            oversized.modifiers.push(ControlKey::Alt.into());
+        }
+        assert!(try_enqueue_input(&queue, MessageInput::SpecialKey(oversized)).is_err());
+        assert_eq!(queued_bytes.load(Ordering::Acquire), 0);
+
+        let valid = special_key(ControlKey::LockScreen, true, false);
+        let expected_weight = validate_key_input(&valid).unwrap();
+        try_enqueue_input(&queue, MessageInput::SpecialKey(valid)).unwrap();
+        assert_eq!(queued_bytes.load(Ordering::Acquire), expected_weight);
+        let queued = receiver.recv().unwrap();
+        assert!(matches!(queued.input, Some(MessageInput::SpecialKey(_))));
+        drop(queued);
+        assert_eq!(queued_bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn desktop_key_teardown_releases_only_the_last_connection_owner() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut first = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut second = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut down = KeyEvent::new();
+        down.set_control_key(ControlKey::Control);
+        down.down = true;
+
+        assert!(first.dispatch(&down, |_, _| Ok(())).unwrap());
+        assert!(!second.dispatch(&down, |_, _| Ok(())).unwrap());
+        let mut releases = Vec::new();
+        first
+            .release_all(|event, _| {
+                releases.push(event.clone());
+                Ok(())
+            })
+            .unwrap();
+        assert!(releases.is_empty());
+        second
+            .release_all(|event, _| {
+                releases.push(event.clone());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(releases.len(), 1);
+        assert!(!releases[0].down);
+        assert!(registry.lock().is_empty());
+
+        let mut stray_up = down;
+        stray_up.down = false;
+        assert!(!first.dispatch(&stray_up, |_, _| Ok(())).unwrap());
+    }
+
+    #[test]
+    fn desktop_map_and_translate_share_backend_physical_key_identity() {
+        let mut map = KeyEvent::new();
+        map.mode = KeyboardMode::Map.into();
+        map.set_chr(42);
+        let mut translate = map.clone();
+        translate.mode = KeyboardMode::Translate.into();
+        assert_eq!(owned_physical_key(&map), owned_physical_key(&translate));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_win2win_click_and_source_release_have_no_physical_owner() {
+        let mut down = KeyEvent::new();
+        down.mode = KeyboardMode::Translate.into();
+        down.set_win2win_hotkey((0x41 << 16) | ('a' as u32));
+        down.down = true;
+        assert!(validate_key_input(&down).is_ok());
+        assert!(owned_physical_key(&down).is_none());
+
+        let mut up = down;
+        up.set_win2win_hotkey(0x41 << 16);
+        up.down = false;
+        assert!(validate_key_input(&up).is_ok());
+        assert!(owned_physical_key(&up).is_none());
+    }
+
+    #[test]
+    fn desktop_legacy_and_raw_control_share_backend_physical_key_identity() {
+        #[cfg(target_os = "linux")]
+        let code = rdev::linux_keycode_from_key(rdev::Key::ControlLeft).unwrap() as u32;
+        #[cfg(target_os = "windows")]
+        let code = rdev::win_scancode_from_key(rdev::Key::ControlLeft).unwrap() as u32;
+        #[cfg(target_os = "macos")]
+        let code = rdev::macos_keycode_from_key(rdev::Key::ControlLeft).unwrap() as u32;
+
+        let mut legacy = KeyEvent::new();
+        legacy.set_control_key(ControlKey::Control);
+        let mut raw = KeyEvent::new();
+        raw.mode = KeyboardMode::Map.into();
+        raw.set_chr(code);
+        assert_eq!(owned_physical_key(&legacy), owned_physical_key(&raw));
+    }
+
+    #[test]
+    fn desktop_dispatch_preserves_modifiers_owned_by_other_connections() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut first = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut second = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut control = KeyEvent::new();
+        control.set_control_key(ControlKey::Control);
+        control.down = true;
+        assert!(first.dispatch(&control, |_, _| Ok(())).unwrap());
+
+        let mut character = KeyEvent::new();
+        character.set_chr('x' as u32);
+        character.down = true;
+        assert!(second
+            .dispatch(&character, |event, preserve_modifiers| {
+                assert!(preserve_modifiers.contains(&ControlKey::Control));
+                assert!(event
+                    .modifiers
+                    .iter()
+                    .any(|modifier| modifier.value() == ControlKey::Control.value()));
+                Ok(())
+            })
+            .unwrap());
+        first.release_all(|_, _| Ok(())).unwrap();
+        second.release_all(|_, _| Ok(())).unwrap();
+        assert!(registry.lock().is_empty());
+    }
+
+    #[test]
+    fn desktop_dispatch_preserves_exact_right_side_modifiers() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        for modifier in [
+            ControlKey::RShift,
+            ControlKey::RControl,
+            ControlKey::RAlt,
+            ControlKey::RWin,
+        ] {
+            let mut event = KeyEvent::new();
+            event.set_control_key(modifier);
+            event.down = true;
+            assert!(owner.dispatch(&event, |_, _| Ok(())).unwrap());
+        }
+
+        let mut other = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut character = KeyEvent::new();
+        character.set_chr('x' as u32);
+        character.down = true;
+        other
+            .dispatch(&character, |event, preserve_modifiers| {
+                for modifier in [
+                    ControlKey::RShift,
+                    ControlKey::RControl,
+                    ControlKey::RAlt,
+                    ControlKey::RWin,
+                ] {
+                    assert!(preserve_modifiers.contains(&modifier));
+                    assert!(event
+                        .modifiers
+                        .iter()
+                        .any(|candidate| candidate.value() == modifier.value()));
+                }
+                Ok(())
+            })
+            .unwrap();
+        owner.release_all(|_, _| Ok(())).unwrap();
+        other.release_all(|_, _| Ok(())).unwrap();
+        assert!(registry.lock().is_empty());
+    }
+
+    #[test]
+    fn desktop_key_failure_retains_ownership_until_release_succeeds() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut event = KeyEvent::new();
+        event.set_control_key(ControlKey::Control);
+        event.down = true;
+        assert!(owner.dispatch(&event, |_, _| Ok(())).unwrap());
+
+        event.down = false;
+        assert!(owner
+            .dispatch(&event, |_, _| bail!("injected key-up failure"))
+            .is_err());
+        assert_eq!(owner.held.len(), 1);
+        let owners = registry.lock();
+        assert_eq!(owners.values().map(|state| state.count).sum::<usize>(), 1);
+        assert!(owners.values().all(|state| state.transition_uncertain));
+        drop(owners);
+        let mut other = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut other_down = KeyEvent::new();
+        other_down.set_control_key(ControlKey::Shift);
+        other_down.down = true;
+        assert!(other.dispatch(&other_down, |_, _| Ok(())).is_err());
+
+        assert!(owner.dispatch(&event, |_, _| Ok(())).unwrap());
+        assert!(owner.held.is_empty());
+        assert!(registry.lock().is_empty());
+    }
+
+    #[test]
+    fn desktop_key_teardown_failure_keeps_registry_for_fail_stop() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut event = KeyEvent::new();
+        event.set_control_key(ControlKey::RControl);
+        event.down = true;
+        owner.dispatch(&event, |_, _| Ok(())).unwrap();
+
+        assert!(owner
+            .release_all(|_, _| bail!("injected teardown release failure"))
+            .is_err());
+        assert_eq!(owner.held.len(), 1);
+        let owners = registry.lock();
+        assert_eq!(owners.values().map(|state| state.count).sum::<usize>(), 1);
+        assert!(owners.values().all(|state| state.transition_uncertain));
+        drop(owners);
+
+        owner.release_all(|_, _| Ok(())).unwrap();
+        assert!(owner.held.is_empty());
+        assert!(registry.lock().is_empty());
+    }
+
+    fn mouse_button_event(button: i32, down: bool) -> MouseEvent {
+        let mut event = MouseEvent::new();
+        event.mask = (button << 3) | if down { MOUSE_TYPE_DOWN } else { MOUSE_TYPE_UP };
+        event
+    }
+
+    #[test]
+    fn desktop_mouse_button_uses_aggregate_multi_connection_transitions() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut first = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut second = InputKeyOwnership::new(Arc::clone(&registry));
+        let down = mouse_button_event(MOUSE_BUTTON_LEFT, true);
+        let up = mouse_button_event(MOUSE_BUTTON_LEFT, false);
+        let transitions = Arc::new(StdMutex::new(Vec::new()));
+
+        let dispatch = |owner: &mut InputKeyOwnership, event: &MouseEvent| {
+            let transitions = Arc::clone(&transitions);
+            owner
+                .dispatch_mouse(event, true, move |event, _, inject_native| {
+                    if inject_native {
+                        transitions
+                            .lock()
+                            .unwrap()
+                            .push((event.mask & MOUSE_TYPE_MASK) == MOUSE_TYPE_DOWN);
+                    }
+                    Ok(())
+                })
+                .unwrap();
+        };
+        dispatch(&mut first, &down);
+        dispatch(&mut second, &down);
+        dispatch(&mut first, &up);
+        dispatch(&mut second, &up);
+        assert_eq!(*transitions.lock().unwrap(), vec![true, false]);
+        assert!(registry.lock_mouse_buttons().is_empty());
+    }
+
+    #[test]
+    fn desktop_mouse_button_failures_retain_ownership_until_proven_release() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        let down = mouse_button_event(MOUSE_BUTTON_LEFT, true);
+        let up = mouse_button_event(MOUSE_BUTTON_LEFT, false);
+
+        assert!(owner
+            .dispatch_mouse(&down, true, |_, _, inject_native| {
+                assert!(inject_native);
+                bail!("injected mouse-down failure")
+            })
+            .is_err());
+        assert!(owner.held_mouse_buttons.contains(&OwnedMouseButton::Left));
+        assert_eq!(
+            registry
+                .lock_mouse_buttons()
+                .get(&OwnedMouseButton::Left)
+                .map(|state| state.count),
+            Some(1)
+        );
+        assert!(registry
+            .lock_mouse_buttons()
+            .values()
+            .all(|state| state.transition_uncertain));
+        let mut other = InputKeyOwnership::new(Arc::clone(&registry));
+        let movement = MouseEvent::new();
+        assert!(other
+            .dispatch_mouse(&movement, true, |_, _, _| Ok(()))
+            .is_err());
+
+        owner
+            .dispatch_mouse(&up, true, |_, _, inject_native| {
+                assert!(inject_native);
+                bail!("injected mouse-up failure")
+            })
+            .unwrap_err();
+        assert!(owner.held_mouse_buttons.contains(&OwnedMouseButton::Left));
+
+        owner
+            .dispatch_mouse(&up, true, |_, _, inject_native| {
+                assert!(inject_native);
+                Ok(())
+            })
+            .unwrap();
+        assert!(owner.held_mouse_buttons.is_empty());
+        assert!(registry.lock_mouse_buttons().is_empty());
+    }
+
+    #[test]
+    fn desktop_mouse_disconnect_failure_keeps_registry_for_fail_stop() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        let down = mouse_button_event(MOUSE_BUTTON_RIGHT, true);
+        owner.dispatch_mouse(&down, true, |_, _, _| Ok(())).unwrap();
+
+        assert!(owner
+            .release_all_mouse_buttons(|_| bail!("injected disconnect release failure"))
+            .is_err());
+        assert!(owner.held_mouse_buttons.contains(&OwnedMouseButton::Right));
+        assert_eq!(
+            registry
+                .lock_mouse_buttons()
+                .get(&OwnedMouseButton::Right)
+                .map(|state| state.count),
+            Some(1)
+        );
+        assert!(registry
+            .lock_mouse_buttons()
+            .values()
+            .all(|state| state.transition_uncertain));
+
+        owner.release_all_mouse_buttons(|_| Ok(())).unwrap();
+        assert!(owner.held_mouse_buttons.is_empty());
+        assert!(registry.lock_mouse_buttons().is_empty());
+    }
+
+    #[test]
+    fn desktop_key_state_survives_unwind_until_cleanup_release() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut down = KeyEvent::new();
+        down.set_control_key(ControlKey::Control);
+        down.down = true;
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = owner.dispatch(&down, |_, _| panic!("injected key-down panic"));
+        }));
+        assert!(panic.is_err());
+        assert_eq!(owner.held.len(), 1);
+        assert!(registry
+            .lock()
+            .values()
+            .all(|state| state.transition_uncertain));
+
+        let mut releases = Vec::new();
+        owner
+            .release_all(|event, _| {
+                releases.push(event.clone());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(releases.len(), 1);
+        assert!(!releases[0].down);
+        assert!(registry.lock().is_empty());
+
+        let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
+        assert!(owner.dispatch(&down, |_, _| Ok(())).unwrap());
+        let mut up = down;
+        up.down = false;
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = owner.dispatch(&up, |_, _| panic!("injected key-up panic"));
+        }));
+        assert!(panic.is_err());
+        assert_eq!(owner.held.len(), 1);
+        assert!(registry
+            .lock()
+            .values()
+            .all(|state| state.transition_uncertain));
+        let mut releases = Vec::new();
+        owner
+            .release_all(|event, _| {
+                releases.push(event.clone());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(releases.len(), 1);
+        assert!(registry.lock().is_empty());
+    }
+
+    #[test]
+    fn desktop_block_input_is_released_only_by_the_final_owner() {
+        let registry = InputBlockOwnerRegistry::default();
+        let transitions = Arc::new(StdMutex::new(Vec::new()));
+        let apply = |blocked, transitions: &Arc<StdMutex<Vec<bool>>>| {
+            transitions.lock().unwrap().push(blocked);
+            (true, String::new())
+        };
+        assert!(
+            registry
+                .set_with(1, true, |blocked| apply(blocked, &transitions))
+                .0
+        );
+        assert!(
+            registry
+                .set_with(2, true, |blocked| apply(blocked, &transitions))
+                .0
+        );
+        assert!(
+            registry
+                .set_with(1, false, |blocked| apply(blocked, &transitions))
+                .0
+        );
+        assert_eq!(*transitions.lock().unwrap(), vec![true]);
+        assert!(
+            registry
+                .set_with(2, false, |blocked| apply(blocked, &transitions))
+                .0
+        );
+        assert_eq!(*transitions.lock().unwrap(), vec![true, false]);
+    }
+
+    #[test]
+    fn desktop_block_input_failed_release_remains_retryable() {
+        let registry = InputBlockOwnerRegistry::default();
+        assert!(registry.set_with(1, true, |_| (true, String::new())).0);
+        assert!(
+            !registry
+                .set_with(1, false, |_| (false, "injected failure".to_owned()))
+                .0
+        );
+        assert!(registry.set_with(1, false, |_| (true, String::new())).0);
+        let state = registry.state.lock().unwrap();
+        assert!(!state.applied);
+        assert!(state.owners.is_empty());
+    }
+
+    #[test]
+    fn desktop_block_cleanup_failure_retains_applied_state_for_fail_stop() {
+        let registry = InputBlockOwnerRegistry::default();
+        assert!(registry.set_with(7, true, |_| (true, String::new())).0);
+        let attempts = AtomicUsize::new(0);
+        let result = release_block_owner_with_retry(&registry, 7, |_| {
+            attempts.fetch_add(1, Ordering::AcqRel);
+            (false, "injected unblock failure".to_owned())
+        });
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::Acquire), 2);
+        let state = registry.state.lock().unwrap();
+        assert!(state.applied);
+        assert!(state.owners.is_empty());
+    }
+
+    #[test]
+    fn desktop_owned_executor_orders_block_and_input_on_one_stable_thread() {
+        let executor = Arc::new(OwnedInputExecutor::spawn("owned-input-test").unwrap());
+        let registry = Arc::new(InputBlockOwnerRegistry::default());
+        let operations = Arc::new(StdMutex::new(Vec::new()));
+        let (blocked_tx, blocked_rx) = std_mpsc::channel();
+        let (second_owned_tx, second_owned_rx) = std_mpsc::channel();
+        let (first_released_tx, first_released_rx) = std_mpsc::channel();
+
+        let first_executor = Arc::clone(&executor);
+        let first_registry = Arc::clone(&registry);
+        let first_operations = Arc::clone(&operations);
+        let first = std::thread::spawn(move || {
+            let caller = std::thread::current().id();
+            assert!(
+                first_registry
+                    .set_with(1, true, move |blocked| {
+                        let operations = Arc::clone(&first_operations);
+                        first_executor
+                            .dispatch(move || {
+                                operations
+                                    .lock()
+                                    .unwrap()
+                                    .push(("block-on", std::thread::current().id()));
+                                Ok((blocked, String::new()))
+                            })
+                            .unwrap()
+                    })
+                    .0
+            );
+            blocked_tx.send(()).unwrap();
+            second_owned_rx.recv().unwrap();
+            assert!(first_registry.set_with(1, false, |_| unreachable!()).0);
+            first_released_tx.send(()).unwrap();
+            caller
+        });
+
+        let second_executor = Arc::clone(&executor);
+        let second_registry = Arc::clone(&registry);
+        let second_operations = Arc::clone(&operations);
+        let second = std::thread::spawn(move || {
+            let caller = std::thread::current().id();
+            blocked_rx.recv().unwrap();
+            assert!(second_registry.set_with(2, true, |_| unreachable!()).0);
+            let operations = Arc::clone(&second_operations);
+            second_executor
+                .dispatch(move || {
+                    operations
+                        .lock()
+                        .unwrap()
+                        .push(("input", std::thread::current().id()));
+                    Ok(())
+                })
+                .unwrap();
+            second_owned_tx.send(()).unwrap();
+            first_released_rx.recv().unwrap();
+            let off_executor = Arc::clone(&second_executor);
+            assert!(
+                second_registry
+                    .set_with(2, false, move |blocked| {
+                        let operations = Arc::clone(&second_operations);
+                        off_executor
+                            .dispatch(move || {
+                                operations
+                                    .lock()
+                                    .unwrap()
+                                    .push(("block-off", std::thread::current().id()));
+                                Ok((!blocked, String::new()))
+                            })
+                            .unwrap()
+                    })
+                    .0
+            );
+            caller
+        });
+
+        let first_caller = first.join().unwrap();
+        let second_caller = second.join().unwrap();
+        let operations = operations.lock().unwrap();
+        assert_eq!(
+            operations.iter().map(|entry| entry.0).collect::<Vec<_>>(),
+            vec!["block-on", "input", "block-off"]
+        );
+        let executor_thread = operations[0].1;
+        assert!(operations.iter().all(|entry| entry.1 == executor_thread));
+        assert_ne!(first_caller, executor_thread);
+        assert_ne!(second_caller, executor_thread);
+        assert_ne!(first_caller, second_caller);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_last_worker_cleanup_excludes_concurrent_registration() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        registry.register_worker();
+        let (cleanup_entered_tx, cleanup_entered_rx) = std_mpsc::channel();
+        let (allow_cleanup_tx, allow_cleanup_rx) = std_mpsc::channel();
+        let final_registry = Arc::clone(&registry);
+        let final_worker = std::thread::spawn(move || {
+            assert!(final_registry.unregister_worker(|| {
+                cleanup_entered_tx.send(()).unwrap();
+                allow_cleanup_rx.recv().unwrap();
+            }));
+        });
+        cleanup_entered_rx.recv().unwrap();
+
+        let (registered_tx, registered_rx) = std_mpsc::channel();
+        let registering_registry = Arc::clone(&registry);
+        let registering = std::thread::spawn(move || {
+            registering_registry.register_worker();
+            registered_tx.send(()).unwrap();
+        });
+        assert!(registered_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err());
+        allow_cleanup_tx.send(()).unwrap();
+        registered_rx.recv().unwrap();
+        final_worker.join().unwrap();
+        registering.join().unwrap();
+        assert!(registry.unregister_worker(|| {}));
+    }
+
+    #[test]
+    fn desktop_key_owner_transition_is_linearized_with_physical_dispatch() {
+        let registry = Arc::new(InputKeyOwnerRegistry::default());
+        let mut first = InputKeyOwnership::new(Arc::clone(&registry));
+        let second = InputKeyOwnership::new(Arc::clone(&registry));
+        let mut down = KeyEvent::new();
+        down.set_control_key(ControlKey::Control);
+        down.down = true;
+        assert!(first.dispatch(&down, |_, _| Ok(())).unwrap());
+
+        let mut up = down.clone();
+        up.down = false;
+        let (up_entered_tx, up_entered_rx) = std_mpsc::channel();
+        let (release_up_tx, release_up_rx) = std_mpsc::channel();
+        let dispatch_order = Arc::new(StdMutex::new(Vec::new()));
+        let up_order = Arc::clone(&dispatch_order);
+        let first_thread = std::thread::spawn(move || {
+            assert!(first
+                .dispatch(&up, |_, _| {
+                    up_order.lock().unwrap().push(false);
+                    up_entered_tx.send(()).unwrap();
+                    release_up_rx.recv().unwrap();
+                    Ok(())
+                })
+                .unwrap());
+            first
+        });
+        up_entered_rx.recv().unwrap();
+
+        let (down_dispatched_tx, down_dispatched_rx) = std_mpsc::channel();
+        let down_order = Arc::clone(&dispatch_order);
+        let second_thread = std::thread::spawn(move || {
+            let mut second = second;
+            assert!(second
+                .dispatch(&down, |_, _| {
+                    down_order.lock().unwrap().push(true);
+                    down_dispatched_tx.send(()).unwrap();
+                    Ok(())
+                })
+                .unwrap());
+            second
+        });
+        assert!(down_dispatched_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err());
+        release_up_tx.send(()).unwrap();
+        down_dispatched_rx.recv().unwrap();
+
+        let first = first_thread.join().unwrap();
+        let mut second = second_thread.join().unwrap();
+        assert_eq!(*dispatch_order.lock().unwrap(), vec![false, true]);
+        assert!(first.held.is_empty());
+        let mut final_releases = Vec::new();
+        second
+            .release_all(|event, _| {
+                final_releases.push(event.clone());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(final_releases.len(), 1);
+        assert!(registry.lock().is_empty());
+    }
+
+    #[test]
+    fn desktop_input_cleanup_contains_panics() {
+        assert!(!run_input_cleanup_action(
+            "testing panic containment",
+            || { panic!("expected cleanup panic") }
+        ));
+        assert!(run_input_cleanup_action(
+            "testing successful cleanup",
+            || {}
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn desktop_input_join_ownership_survives_cancelled_async_wait() {
+        let (release_tx, release_rx) = std_mpsc::channel();
+        let (join_tx, completion) = spawn_input_worker_supervisor(
+            "test-input-supervisor".to_owned(),
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .unwrap();
+        let worker = std::thread::spawn(move || {
+            let _ = release_rx.recv();
+        });
+        join_tx.try_send(worker).unwrap();
+        let first_completion = Arc::clone(&completion);
+        let first_wait = tokio::task::spawn_blocking(move || first_completion.wait());
+        tokio::task::yield_now().await;
+        first_wait.abort();
+
+        let final_completion = Arc::clone(&completion);
+        let final_wait = tokio::task::spawn_blocking(move || final_completion.wait());
+        tokio::task::yield_now().await;
+        assert!(!final_wait.is_finished());
+        release_tx.send(()).unwrap();
+        assert!(final_wait.await.unwrap());
+    }
+
+    #[test]
+    fn desktop_input_drop_delegates_join_without_waiting_for_dispatch() {
+        let execution = Arc::new(InputExecutionGate::default());
+        let worker_execution = Arc::clone(&execution);
+        let (entered_tx, entered_rx) = std_mpsc::channel();
+        let (release_tx, release_rx) = std_mpsc::channel();
+        let (join_tx, completion) = spawn_input_worker_supervisor(
+            "test-input-supervisor".to_owned(),
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .unwrap();
+        let worker = std::thread::spawn(move || {
+            worker_execution.dispatch(|| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            });
+        });
+        join_tx.try_send(worker).unwrap();
+        entered_rx.recv().unwrap();
+
+        let input_worker = InputWorker {
+            execution,
+            completion: Arc::clone(&completion),
+        };
+        input_worker.execution.cancel();
+        drop(input_worker);
+        assert!(completion.lock_result().is_none());
+
+        release_tx.send(()).unwrap();
+        assert!(completion.wait());
+    }
+
+    fn special_key(key: ControlKey, down: bool, press: bool) -> KeyEvent {
+        let mut event = KeyEvent::new();
+        event.set_control_key(key);
+        event.down = down;
+        event.press = press;
+        event
+    }
+
+    #[test]
+    fn desktop_special_keys_are_consumed_and_trigger_only_on_edges() {
+        let mut state = SpecialKeyState::default();
+        assert_eq!(
+            state.observe(&special_key(ControlKey::CtrlAltDel, true, false)),
+            Some(Some(SpecialKeyAction::CtrlAltDel))
+        );
+        assert_eq!(
+            state.observe(&special_key(ControlKey::CtrlAltDel, true, false)),
+            Some(None)
+        );
+        assert_eq!(
+            state.observe(&special_key(ControlKey::CtrlAltDel, false, false)),
+            Some(None)
+        );
+        assert_eq!(
+            state.observe(&special_key(ControlKey::CtrlAltDel, true, false)),
+            Some(Some(SpecialKeyAction::CtrlAltDel))
+        );
+        assert_eq!(
+            state.observe(&special_key(ControlKey::LockScreen, false, true)),
+            Some(Some(SpecialKeyAction::LockScreen))
+        );
+
+        let mut ordinary = KeyEvent::new();
+        ordinary.set_control_key(ControlKey::Return);
+        assert_eq!(state.observe(&ordinary), None);
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
@@ -489,6 +2474,7 @@ pub struct Connection {
     port_forward_address: String,
     tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
     authorized: bool,
+    credential_generation: u64,
     keyboard: bool,
     clipboard: bool,
     audio: bool,
@@ -521,7 +2507,12 @@ pub struct Connection {
     // audio by the remote peer/client
     audio_format: Option<(u32, u32)>,
     // audio format accepted from the remote peer/client
-    tx_input: std_mpsc::Sender<MessageInput>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    tx_input: InputQueue,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    rx_input: Option<std_mpsc::Receiver<QueuedInput>>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    input_worker: Option<InputWorker>,
     // handle input messages
     video_ack_required: bool,
     lr: LoginRequest,
@@ -534,7 +2525,7 @@ pub struct Connection {
     voice_call_request_timestamp: Option<NonZeroI64>,
     voice_calling: bool,
     options_in_login: Option<OptionMessage>,
-    #[cfg(not(any(target_os = "ios")))]
+    #[cfg(target_os = "android")]
     pressed_modifiers: HashSet<rdev::Key>,
     #[cfg(target_os = "linux")]
     linux_headless_handle: LinuxHeadlessHandle,
@@ -635,6 +2626,7 @@ impl Connection {
         id: i32,
         server: super::ServerPtrWeak,
         control_permissions: Option<ControlPermissions>,
+        credential_generation: u64,
     ) {
         // Android is not supported yet, so we always set control_permissions to None.
         #[cfg(target_os = "android")]
@@ -649,7 +2641,16 @@ impl Connection {
         let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel::<ipc::Data>();
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
-        let (tx_input, _rx_input) = std_mpsc::channel();
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let (tx_input, rx_input) = std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let input_execution = Arc::new(InputExecutionGate::default());
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let tx_input = InputQueue {
+            sender: tx_input,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            execution: Arc::clone(&input_execution),
+        };
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (tx_cm_stream_ready, _rx_cm_stream_ready) = mpsc::channel(1);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -658,8 +2659,6 @@ impl Connection {
         let linux_headless_handle =
             LinuxHeadlessHandle::new(_rx_cm_stream_ready, _tx_desktop_ready);
 
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let tx_cloned = tx.clone();
         let cm_auth_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
         let mut conn = Self {
             inner: ConnInner::new(id, Some(tx), Some(tx_video)),
@@ -675,6 +2674,7 @@ impl Connection {
             port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
+            credential_generation,
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
             clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
             audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
@@ -700,7 +2700,12 @@ impl Connection {
             disable_keyboard: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             show_my_cursor: false,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             tx_input,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            rx_input: Some(rx_input),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            input_worker: None,
             video_ack_required: false,
             lr: Default::default(),
             peer_argb: 0u32,
@@ -714,7 +2719,7 @@ impl Connection {
             voice_call_request_timestamp: None,
             voice_calling: false,
             options_in_login: None,
-            #[cfg(not(any(target_os = "ios")))]
+            #[cfg(target_os = "android")]
             pressed_modifiers: Default::default(),
             #[cfg(target_os = "linux")]
             linux_headless_handle,
@@ -790,8 +2795,6 @@ impl Connection {
             crate::rustdesk_interval(time::interval_at(Instant::now(), TEST_DELAY_TIMEOUT));
         let mut last_recv_time = Instant::now();
 
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        std::thread::spawn(move || Self::handle_input(_rx_input, tx_cloned));
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
 
         #[cfg(feature = "unix-file-copy-paste")]
@@ -1157,81 +3160,201 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn handle_input(receiver: std_mpsc::Receiver<MessageInput>, tx: Sender) {
-        let mut block_input_mode = false;
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
-        {
-            rdev::set_mouse_extra_info(enigo::ENIGO_INPUT_EXTRA_VALUE);
-            rdev::set_keyboard_extra_info(enigo::ENIGO_INPUT_EXTRA_VALUE);
+    async fn start_input_worker(&mut self) -> bool {
+        if self.input_worker.is_some() {
+            return true;
         }
-        #[cfg(target_os = "macos")]
-        reset_input_ondisconn();
+        let Some(receiver) = self.rx_input.take() else {
+            log::error!("remote input receiver is unavailable before worker startup");
+            return false;
+        };
+        let Some(tx) = self.inner.tx.clone() else {
+            log::error!("remote input response sender is unavailable before worker startup");
+            return false;
+        };
+        let execution = Arc::clone(&self.tx_input.execution);
+        let queued_bytes = Arc::clone(&self.tx_input.queued_bytes);
+        let id = self.inner.id();
+        let (join_tx, completion) = match spawn_input_worker_supervisor(
+            format!("remote-input-supervisor-{id}"),
+            queued_bytes,
+        ) {
+            Ok(supervisor) => supervisor,
+            Err(err) => {
+                log::error!("Failed to start remote input worker supervisor: {err}");
+                return false;
+            }
+        };
+        let worker_execution = Arc::clone(&execution);
+        #[cfg(target_os = "windows")]
+        let input_runtime = tokio::runtime::Handle::current();
+        let join = match std::thread::Builder::new()
+            .name(format!("remote-input-{id}"))
+            .spawn(move || {
+                Self::handle_input(
+                    id,
+                    receiver,
+                    tx,
+                    worker_execution,
+                    #[cfg(target_os = "windows")]
+                    input_runtime,
+                )
+            }) {
+            Ok(join) => join,
+            Err(err) => {
+                log::error!("Failed to start remote input worker: {err}");
+                drop(join_tx);
+                let completion = Arc::clone(&completion);
+                let _ = tokio::task::spawn_blocking(move || completion.wait()).await;
+                return false;
+            }
+        };
+        if let Err(err) = join_tx.try_send(join) {
+            log::error!("Failed to transfer remote input worker to its supervisor");
+            execution.cancel();
+            let join = match err {
+                std_mpsc::TrySendError::Full(join) | std_mpsc::TrySendError::Disconnected(join) => {
+                    join
+                }
+            };
+            let _ = tokio::task::spawn_blocking(move || join.join()).await;
+            let completion = Arc::clone(&completion);
+            let _ = tokio::task::spawn_blocking(move || completion.wait()).await;
+            return false;
+        }
+        self.input_worker = Some(InputWorker {
+            execution,
+            completion,
+        });
+        true
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn handle_input(
+        conn_id: i32,
+        receiver: std_mpsc::Receiver<QueuedInput>,
+        tx: Sender,
+        execution: Arc<InputExecutionGate>,
+        #[cfg(target_os = "windows")] runtime: tokio::runtime::Handle,
+    ) {
+        let mut cleanup = InputWorkerCleanup {
+            conn_id,
+            keys: InputKeyOwnership::new(Arc::clone(&INPUT_KEY_OWNERS)),
+        };
+        let mut special_keys = SpecialKeyState::default();
         loop {
-            match receiver.recv_timeout(std::time::Duration::from_millis(500)) {
-                Ok(v) => match v {
-                    MessageInput::Mouse(mouse_input) => {
-                        handle_mouse(
-                            &mouse_input.msg,
-                            mouse_input.conn_id,
-                            mouse_input.username,
-                            mouse_input.argb,
-                            mouse_input.simulate,
-                            mouse_input.show_cursor,
+            if execution.is_cancelled() {
+                break;
+            }
+            match receiver.recv_timeout(std::time::Duration::from_millis(50)) {
+                Ok(mut queued) => {
+                    let Some(v) = queued.input.take() else {
+                        log::error!("remote input queue yielded an empty item");
+                        break;
+                    };
+                    let mut input_result = Ok(());
+                    let dispatched = execution.dispatch(|| {
+                        input_result = match v {
+                            MessageInput::Mouse(mouse_input) => cleanup.keys.dispatch_mouse(
+                                &mouse_input.msg,
+                                mouse_input.simulate,
+                                |event, preserve_modifiers, inject_native| {
+                                    handle_owned_mouse(
+                                        event,
+                                        mouse_input.conn_id,
+                                        mouse_input.username,
+                                        mouse_input.argb,
+                                        mouse_input.simulate && inject_native,
+                                        mouse_input.show_cursor,
+                                        preserve_modifiers,
+                                    )
+                                },
+                            ),
+                            MessageInput::Key((mut msg, press)) => {
+                                msg.press = false;
+                                if press {
+                                    cleanup.keys.dispatch_press(&msg, handle_owned_key)
+                                } else {
+                                    cleanup.keys.dispatch(&msg, handle_owned_key).map(|_| ())
+                                }
+                            }
+                            MessageInput::SpecialKey(event) => {
+                                if let Some(Some(action)) = special_keys.observe(&event) {
+                                    match action {
+                                        SpecialKeyAction::CtrlAltDel => {
+                                            #[cfg(target_os = "windows")]
+                                            dispatch_windows_service_owned_sas(
+                                                &runtime, &execution,
+                                            );
+                                            Ok(())
+                                        }
+                                        SpecialKeyAction::LockScreen => {
+                                            handle_owned_lock_screen(|event| {
+                                                cleanup
+                                                    .keys
+                                                    .dispatch(event, handle_owned_key)
+                                                    .map(|_| ())
+                                            })
+                                        }
+                                    }
+                                } else {
+                                    Ok(())
+                                }
+                            }
+                            MessageInput::Pointer((msg, id)) => cleanup
+                                .keys
+                                .dispatch_pointer(&msg, |event| handle_owned_pointer(event, id)),
+                            MessageInput::BlockOn => {
+                                let (ok, msg) = INPUT_BLOCK_OWNERS.set(conn_id, true);
+                                if !ok {
+                                    Self::send_block_input_error(
+                                        &tx,
+                                        back_notification::BlockInputState::BlkOnFailed,
+                                        msg,
+                                    );
+                                    Err(hbb_common::anyhow::anyhow!(
+                                        "Windows owned-input executor could not block local input"
+                                    ))
+                                } else {
+                                    Ok(())
+                                }
+                            }
+                            MessageInput::BlockOff => {
+                                let (ok, msg) = INPUT_BLOCK_OWNERS.set(conn_id, false);
+                                if !ok {
+                                    Self::send_block_input_error(
+                                        &tx,
+                                        back_notification::BlockInputState::BlkOffFailed,
+                                        msg,
+                                    );
+                                    Err(hbb_common::anyhow::anyhow!(
+                                    "Windows owned-input executor could not unblock local input"
+                                ))
+                                } else {
+                                    Ok(())
+                                }
+                            }
+                        };
+                    });
+                    if !dispatched {
+                        break;
+                    }
+                    if let Err(err) = input_result {
+                        log::error!(
+                            "remote input dispatch failed; stopping worker for cleanup: {err}"
                         );
+                        break;
                     }
-                    MessageInput::Key((mut msg, press)) => {
-                        // Set the press state to false, use `down` only in `handle_key()`.
-                        msg.press = false;
-                        if press {
-                            msg.down = true;
-                        }
-                        handle_key(&msg);
-                        if press {
-                            msg.down = false;
-                            handle_key(&msg);
-                        }
-                    }
-                    MessageInput::Pointer((msg, id)) => {
-                        handle_pointer(&msg, id);
-                    }
-                    MessageInput::BlockOn => {
-                        let (ok, msg) = crate::platform::block_input(true);
-                        if ok {
-                            block_input_mode = true;
-                        } else {
-                            Self::send_block_input_error(
-                                &tx,
-                                back_notification::BlockInputState::BlkOnFailed,
-                                msg,
-                            );
-                        }
-                    }
-                    MessageInput::BlockOff => {
-                        let (ok, msg) = crate::platform::block_input(false);
-                        if ok {
-                            block_input_mode = false;
-                        } else {
-                            Self::send_block_input_error(
-                                &tx,
-                                back_notification::BlockInputState::BlkOffFailed,
-                                msg,
-                            );
-                        }
-                    }
-                },
+                }
                 Err(err) => {
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    if block_input_mode {
-                        let _ = crate::platform::block_input(true);
-                    }
                     if std_mpsc::RecvTimeoutError::Disconnected == err {
                         break;
                     }
                 }
             }
         }
-        #[cfg(target_os = "linux")]
-        clear_remapped_keycode();
+        drop(receiver);
+        drop(cleanup);
         log::debug!("Input thread exited");
     }
 
@@ -1285,6 +3408,23 @@ impl Connection {
         if self.authorized {
             return true;
         }
+        #[cfg(target_os = "macos")]
+        if super::effective_permanent_password_credential_snapshot()
+            .await
+            .generation()
+            != self.credential_generation
+        {
+            self.send_login_error("Permanent password changed during authorization")
+                .await;
+            return false;
+        }
+        if Config::with_current_permanent_password_generation(self.credential_generation, || ())
+            .is_none()
+        {
+            self.send_login_error("Permanent password changed during authorization")
+                .await;
+            return false;
+        }
         // R-X7 / §18: the responder 2FA gate is removed. 2FA was pinned-off-dead
         // (`2fa` ∈ PINNED_SETTINGS = "" ⇒ `require_2fa` always None ⇒ this branch never
         // executed), so the whole responder 2FA machinery — the `require_2fa` field, the
@@ -1303,7 +3443,25 @@ impl Connection {
         if !self.connect_port_forward_if_needed().await {
             return false;
         }
-        self.authorized = true;
+        #[cfg(target_os = "macos")]
+        if super::effective_permanent_password_credential_snapshot()
+            .await
+            .generation()
+            != self.credential_generation
+        {
+            self.send_login_error("Permanent password changed during authorization")
+                .await;
+            return false;
+        }
+        if Config::with_current_permanent_password_generation(self.credential_generation, || {
+            self.authorized = true;
+        })
+        .is_none()
+        {
+            self.send_login_error("Permanent password changed during authorization")
+                .await;
+            return false;
+        }
         let auth_conn_type = if self.file_transfer.is_some() {
             AuthConnType::FileTransfer
         } else if self.port_forward_socket.is_some() {
@@ -1322,6 +3480,13 @@ impl Connection {
         // the pinned access-mode=full (R-S16) every capability boolean is seeded true, so this
         // derivation is the ONLY real session-type confinement.
         self.confine_capabilities_to_conn_type(auth_conn_type);
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if auth_conn_type == AuthConnType::Remote && !self.start_input_worker().await {
+            self.authorized = false;
+            self.send_login_error("Remote input service is unavailable")
+                .await;
+            return false;
+        }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let cm_file = self.file && auth_conn_type == AuthConnType::FileTransfer;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1904,33 +4069,35 @@ impl Connection {
         argb: u32,
         simulate: bool,
         show_cursor: bool,
-    ) {
-        self.tx_input
-            .send(MessageInput::Mouse(InputMouse {
+    ) -> ResultType<()> {
+        try_enqueue_input(
+            &self.tx_input,
+            MessageInput::Mouse(InputMouse {
                 msg,
                 conn_id,
                 username,
                 argb,
                 simulate,
                 show_cursor,
-            }))
-            .ok();
+            }),
+        )
     }
 
     #[inline]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn input_pointer(&self, msg: PointerDeviceEvent, conn_id: i32) {
-        self.tx_input
-            .send(MessageInput::Pointer((msg, conn_id)))
-            .ok();
+    fn input_pointer(&self, msg: PointerDeviceEvent, conn_id: i32) -> ResultType<()> {
+        try_enqueue_input(&self.tx_input, MessageInput::Pointer((msg, conn_id)))
     }
 
     #[inline]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn input_key(&self, msg: KeyEvent, press: bool) {
-        // to-do: if is the legacy mode, and the key is function key "LockScreen".
-        // Switch to the primary display.
-        self.tx_input.send(MessageInput::Key((msg, press))).ok();
+    fn input_key(&self, msg: KeyEvent, press: bool) -> ResultType<()> {
+        try_enqueue_input(&self.tx_input, MessageInput::Key((msg, press)))
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn input_special_key(&self, event: KeyEvent) -> ResultType<()> {
+        try_enqueue_input(&self.tx_input, MessageInput::SpecialKey(event))
     }
 
     // R-X7: check_update_temporary_password (the consecutive-wrong-attempt OTP rotation — a
@@ -2391,35 +4558,61 @@ impl Connection {
                         return true;
                     }
                     #[cfg(target_os = "android")]
-                    if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
-                        log::debug!("call_main_service_pointer_input fail:{}", e);
+                    {
+                        if let Err(err) = validate_mouse_input(&me) {
+                            log::warn!(
+                                "Closing Android connection after invalid mouse input: {err}"
+                            );
+                            return false;
+                        }
+                        if let Err(e) =
+                            call_main_service_pointer_input("mouse", me.mask, me.x, me.y)
+                        {
+                            log::debug!("call_main_service_pointer_input fail:{}", e);
+                        }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    if self.peer_keyboard_enabled() {
+                    if self.is_authed_remote_conn() && self.peer_keyboard_enabled() {
                         if is_left_up(&me) {
                             CLICK_TIME.store(get_time(), Ordering::SeqCst);
                         }
                         #[cfg(target_os = "macos")]
                         self.retina.on_mouse_event(&mut me, self.display_idx);
-                        self.input_mouse(
+                        if let Err(err) = self.input_mouse(
                             me,
                             self.inner.id(),
                             self.lr.my_name.clone(),
                             self.peer_argb,
                             true,
                             self.show_my_cursor,
-                        );
+                        ) {
+                            log::warn!(
+                                "Closing connection after mouse input queue failure: ip={} conn_id={} err='{}'",
+                                self.ip,
+                                self.inner.id(),
+                                err
+                            );
+                            return false;
+                        }
                     } else if self.show_my_cursor {
                         #[cfg(target_os = "macos")]
                         self.retina.on_mouse_event(&mut me, self.display_idx);
-                        self.input_mouse(
+                        if let Err(err) = self.input_mouse(
                             me,
                             self.inner.id(),
                             self.lr.my_name.clone(),
                             self.peer_argb,
                             false,
                             true,
-                        );
+                        ) {
+                            log::warn!(
+                                "Closing connection after cursor input queue failure: ip={} conn_id={} err='{}'",
+                                self.ip,
+                                self.inner.id(),
+                                err
+                            );
+                            return false;
+                        }
                     }
                     self.update_auto_disconnect_timer();
                 }
@@ -2428,36 +4621,56 @@ impl Connection {
                         return true;
                     }
                     #[cfg(target_os = "android")]
-                    if let Err(e) = match pde.union {
-                        Some(pointer_device_event::Union::TouchEvent(touch)) => match touch.union {
-                            Some(touch_event::Union::PanStart(pan_start)) => {
-                                call_main_service_pointer_input(
-                                    "touch",
-                                    4,
-                                    pan_start.x,
-                                    pan_start.y,
-                                )
-                            }
-                            Some(touch_event::Union::PanUpdate(pan_update)) => {
-                                call_main_service_pointer_input(
-                                    "touch",
-                                    5,
-                                    pan_update.x,
-                                    pan_update.y,
-                                )
-                            }
-                            Some(touch_event::Union::PanEnd(pan_end)) => {
-                                call_main_service_pointer_input("touch", 6, pan_end.x, pan_end.y)
+                    {
+                        if let Err(err) = validate_pointer_input(&pde) {
+                            log::warn!(
+                                "Closing Android connection after invalid pointer input: {err}"
+                            );
+                            return false;
+                        }
+                        if let Err(e) = match pde.union {
+                            Some(pointer_device_event::Union::TouchEvent(touch)) => {
+                                match touch.union {
+                                    Some(touch_event::Union::PanStart(pan_start)) => {
+                                        call_main_service_pointer_input(
+                                            "touch",
+                                            4,
+                                            pan_start.x,
+                                            pan_start.y,
+                                        )
+                                    }
+                                    Some(touch_event::Union::PanUpdate(pan_update)) => {
+                                        call_main_service_pointer_input(
+                                            "touch",
+                                            5,
+                                            pan_update.x,
+                                            pan_update.y,
+                                        )
+                                    }
+                                    Some(touch_event::Union::PanEnd(pan_end)) => {
+                                        call_main_service_pointer_input(
+                                            "touch", 6, pan_end.x, pan_end.y,
+                                        )
+                                    }
+                                    _ => Ok(()),
+                                }
                             }
                             _ => Ok(()),
-                        },
-                        _ => Ok(()),
-                    } {
-                        log::debug!("call_main_service_pointer_input fail:{}", e);
+                        } {
+                            log::debug!("call_main_service_pointer_input fail:{}", e);
+                        }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    if self.peer_keyboard_enabled() {
-                        self.input_pointer(pde, self.inner.id());
+                    if self.is_authed_remote_conn() && self.peer_keyboard_enabled() {
+                        if let Err(err) = self.input_pointer(pde, self.inner.id()) {
+                            log::warn!(
+                                "Closing connection after pointer input queue failure: ip={} conn_id={} err='{}'",
+                                self.ip,
+                                self.inner.id(),
+                                err
+                            );
+                            return false;
+                        }
                     }
                     self.update_auto_disconnect_timer();
                 }
@@ -2467,6 +4680,12 @@ impl Connection {
                 Some(message::Union::KeyEvent(mut me)) => {
                     if self.is_authed_view_camera_conn() {
                         return true;
+                    }
+                    if let Err(err) = validate_key_input(&me) {
+                        log::warn!(
+                            "Closing Android connection after invalid raw keyboard input: {err}"
+                        );
+                        return false;
                     }
                     let key = match me.mode.enum_value() {
                         Ok(KeyboardMode::Map) => {
@@ -2504,6 +4723,13 @@ impl Connection {
 
                     me.modifiers = modifiers;
 
+                    if let Err(err) = validate_key_input(&me) {
+                        log::warn!(
+                            "Closing Android connection after invalid keyboard input: {err}"
+                        );
+                        return false;
+                    }
+
                     let encode_result = me.write_to_bytes();
 
                     match encode_result {
@@ -2523,7 +4749,20 @@ impl Connection {
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }
-                    if self.peer_keyboard_enabled() {
+                    if self.is_authed_remote_conn() && self.peer_keyboard_enabled() {
+                        if SpecialKeyState::action(&me).is_some() {
+                            if let Err(err) = self.input_special_key(me) {
+                                log::warn!(
+                                    "Closing connection after special-key input queue failure: ip={} conn_id={} err='{}'",
+                                    self.ip,
+                                    self.inner.id(),
+                                    err
+                                );
+                                return false;
+                            }
+                            self.update_auto_disconnect_timer();
+                            return true;
+                        }
                         if is_enter(&me) {
                             CLICK_TIME.store(get_time(), Ordering::SeqCst);
                         }
@@ -2553,26 +4792,23 @@ impl Connection {
                             me.press
                         };
 
-                        if let Some(key) = key {
-                            if is_press {
-                                self.pressed_modifiers.insert(key);
-                            } else {
-                                self.pressed_modifiers.remove(&key);
-                            }
-                        }
-
-                        if is_press {
+                        let input_result = if is_press {
                             match me.union {
                                 Some(key_event::Union::Unicode(_))
-                                | Some(key_event::Union::Seq(_)) => {
-                                    self.input_key(me, false);
-                                }
-                                _ => {
-                                    self.input_key(me, true);
-                                }
+                                | Some(key_event::Union::Seq(_)) => self.input_key(me, false),
+                                _ => self.input_key(me, true),
                             }
                         } else {
-                            self.input_key(me, false);
+                            self.input_key(me, false)
+                        };
+                        if let Err(err) = input_result {
+                            log::warn!(
+                                "Closing connection after keyboard input queue failure: ip={} conn_id={} err='{}'",
+                                self.ip,
+                                self.inner.id(),
+                                err
+                            );
+                            return false;
                         }
                     }
                     self.update_auto_disconnect_timer();
@@ -4302,14 +6538,15 @@ impl Connection {
                 }
             }
         }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if let Ok(q) = o.block_input.enum_value() {
             if self.keyboard && self.block_input {
                 match q {
                     BoolOption::Yes => {
-                        self.tx_input.send(MessageInput::BlockOn).ok();
+                        try_enqueue_input(&self.tx_input, MessageInput::BlockOn)?;
                     }
                     BoolOption::No => {
-                        self.tx_input.send(MessageInput::BlockOff).ok();
+                        try_enqueue_input(&self.tx_input, MessageInput::BlockOff)?;
                     }
                     _ => {}
                 }
@@ -4520,18 +6757,65 @@ impl Connection {
         }
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn stop_input_worker(&mut self) {
+        let Some(worker) = self.input_worker.as_ref() else {
+            return;
+        };
+        worker.execution.cancel();
+        let completion = Arc::clone(&worker.completion);
+        match tokio::task::spawn_blocking(move || completion.wait()).await {
+            Ok(true) => {
+                self.input_worker.take();
+            }
+            Ok(false) => {
+                self.input_worker.take();
+                log::error!("remote input worker panicked while stopping");
+            }
+            Err(err) => log::error!("remote input worker join task failed: {err}"),
+        }
+        if self.input_worker.is_none() {
+            let queued_bytes = self.tx_input.queued_bytes.load(Ordering::Acquire);
+            if queued_bytes != 0 {
+                log::error!(
+                    "remote input worker stopped with {queued_bytes} bytes still charged to its queue"
+                );
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn lock_screen_with_input_arbiter() {
+        let mut keys = InputKeyOwnership::unregistered(Arc::clone(&INPUT_KEY_OWNERS));
+        let lock_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            handle_owned_lock_screen(|event| keys.dispatch(event, handle_owned_key).map(|_| ()))
+        }));
+        let result = match lock_result {
+            Ok(result) => result,
+            Err(_) => Err(hbb_common::anyhow::anyhow!(
+                "lock-screen input dispatch unwound"
+            )),
+        };
+        if let Err(err) = result.and_then(|_| keys.release_remaining()) {
+            log::error!("Could not prove lock-screen input cleanup: {err}");
+            std::process::abort();
+        }
+    }
+
     async fn on_close(&mut self, reason: &str, lock: bool) {
         if self.closed {
             return;
         }
         self.closed = true;
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        self.stop_input_worker().await;
         if self.voice_calling {
             crate::audio_service::set_voice_call_input_device(None, true);
         }
         log::info!("#{} Connection closed: {}", self.inner.id(), reason);
         if lock && self.lock_after_session_end && self.keyboard {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            lock_screen().await;
+            Self::lock_screen_with_input_arbiter();
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let data = if self.chat_unanswered || self.file_transferred && cfg!(feature = "flutter") {
@@ -5528,14 +7812,6 @@ impl Connection {
                 self.inner.send(msg.into());
             }
         }
-    }
-
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn release_pressed_modifiers(&mut self) {
-        for modifier in self.pressed_modifiers.iter() {
-            rdev::simulate(&rdev::EventType::KeyRelease(*modifier)).ok();
-        }
-        self.pressed_modifiers.clear();
     }
 
     fn get_auto_disconenct_timer() -> Option<(Instant, u64)> {
@@ -6557,6 +8833,11 @@ impl Default for PortableState {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if let Some(worker) = self.input_worker.take() {
+            worker.execution.cancel();
+            drop(worker);
+        }
         // R-T4 (§20): the per-connection cleanup that was previously straight-line AFTER the
         // run-loop — and so LOST on cancellation (a dropped session could leave the physical
         // console BLANKED, a local-security regression; and the `Server`'s own connection map
@@ -6585,9 +8866,6 @@ impl Drop for Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             try_stop_record_cursor_pos();
         }
-
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        self.release_pressed_modifiers();
 
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         drop(self.terminal_service_lease.take());

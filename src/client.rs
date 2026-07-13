@@ -177,14 +177,21 @@ pub fn get_key_state(key: enigo::Key) -> bool {
 impl Client {
     const CLIENT_CLIPBOARD_NAME: &'static str = "client-clipboard";
 
-    /// Start a new connection.
-    pub async fn start(
+    async fn start_with_port_forward_target(
         peer: &str,
         key: &str,
         token: &str,
         conn_type: ConnType,
+        port_forward_target: Option<&PortForwardTarget>,
         interface: impl Interface,
     ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
+        let is_port_forward = matches!(conn_type, ConnType::PORT_FORWARD | ConnType::RDP);
+        if is_port_forward != port_forward_target.is_some() {
+            bail!("port-forward and RDP connections require an explicit immutable target");
+        }
+        if interface.get_lch().read().unwrap().conn_type != conn_type {
+            bail!("connection type does not match the login configuration");
+        }
         debug_assert!(peer == interface.get_id());
         interface.update_direct(None);
         interface.update_received(false);
@@ -214,10 +221,34 @@ impl Client {
                 // (handle_hash) is gone. Send the login PROACTIVELY now that the stream is keyed, with
                 // no password field (no salted-hash second credential). The `probe_client login` smoke
                 // mode proves the server authorizes this keyed empty-pw login.
-                send_login(interface.get_lch(), &mut x.0 .0).await;
+                send_login(interface.get_lch(), port_forward_target, &mut x.0 .0).await?;
                 Ok((x.0, x.1))
             }
         }
+    }
+
+    /// Start a new non-tunnel connection.
+    pub async fn start(
+        peer: &str,
+        key: &str,
+        token: &str,
+        conn_type: ConnType,
+        interface: impl Interface,
+    ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
+        Self::start_with_port_forward_target(peer, key, token, conn_type, None, interface).await
+    }
+
+    /// Start a port-forward or RDP connection with a connection-owned login target.
+    pub async fn start_port_forward(
+        peer: &str,
+        key: &str,
+        token: &str,
+        conn_type: ConnType,
+        target: PortForwardTarget,
+        interface: impl Interface,
+    ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
+        Self::start_with_port_forward_target(peer, key, token, conn_type, Some(&target), interface)
+            .await
     }
 
     /// Start a new connection.
@@ -227,11 +258,7 @@ impl Client {
         token: &str,
         conn_type: ConnType,
         interface: impl Interface,
-    ) -> ResultType<(
-        (Stream, bool, &'static str),
-        (i32, String),
-        bool,
-    )> {
+    ) -> ResultType<((Stream, bool, &'static str), (i32, String), bool)> {
         if config::is_incoming_only() {
             bail!("Incoming only mode");
         }
@@ -1251,6 +1278,70 @@ struct ConnToken {
     session_id: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortForwardTarget {
+    host: String,
+    port: i32,
+}
+
+const MAX_PORT_FORWARD_HOST_BYTES: usize = 253;
+
+impl PortForwardTarget {
+    pub fn new(host: String, port: i32) -> ResultType<Self> {
+        if host.is_empty()
+            || host.len() > MAX_PORT_FORWARD_HOST_BYTES
+            || host.chars().any(|c| c.is_whitespace() || c.is_control())
+        {
+            bail!("port-forward target host is empty or invalid");
+        }
+        let Some(host) = Self::normalize_host(&host) else {
+            bail!("port-forward target host is empty or invalid");
+        };
+        if !(1..=u16::MAX as i32).contains(&port) {
+            bail!("port-forward target port is outside 1..=65535");
+        }
+        Ok(Self { host, port })
+    }
+
+    fn normalize_host(host: &str) -> Option<String> {
+        if host.contains(':') || host.starts_with('[') || host.ends_with(']') {
+            let Some(ipv6) = host
+                .strip_prefix('[')
+                .and_then(|host| host.strip_suffix(']'))
+            else {
+                return None;
+            };
+            return ipv6
+                .parse::<std::net::Ipv6Addr>()
+                .ok()
+                .map(|address| format!("[{address}]"));
+        }
+        if let Ok(address) = host.parse::<std::net::Ipv4Addr>() {
+            return Some(address.to_string());
+        }
+        let dns = host.strip_suffix('.').unwrap_or(host);
+        let valid = !dns.is_empty()
+            && dns.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            });
+        valid.then(|| dns.to_ascii_lowercase())
+    }
+
+    fn to_message(&self) -> PortForward {
+        PortForward {
+            host: self.host.clone(),
+            port: self.port,
+            ..Default::default()
+        }
+    }
+}
+
 /// Login config handler for [`Client`].
 #[derive(Default)]
 pub struct LoginConfigHandler {
@@ -1274,7 +1365,6 @@ pub struct LoginConfigHandler {
     pub connect_password: String,
     pub remember: bool,
     config: PeerConfig,
-    pub port_forward: (String, i32),
     pub version: i64,
     features: Option<Features>,
     pub session_id: u64, // used for local <-> server communication
@@ -1519,7 +1609,6 @@ impl LoginConfigHandler {
         }
         self.save_config(config);
     }
-
 
     /// Get a ui config of flutter for handler's [`PeerConfig`].
     /// Return String if the option is found, otherwise return "".
@@ -2107,7 +2196,10 @@ impl LoginConfigHandler {
     }
 
     /// Create a [`Message`] for login.
-    fn create_login_msg(&self) -> Message {
+    fn create_login_msg(
+        &self,
+        port_forward_target: Option<&PortForwardTarget>,
+    ) -> ResultType<Message> {
         // R-S18 / R-T15c: CPace at keying is the SOLE authenticator. LoginRequest is only
         // post-key session metadata; it carries no salted-hash password, peer OS credential,
         // or stable HWID field.
@@ -2200,11 +2292,12 @@ impl LoginConfigHandler {
                 ..Default::default()
             }),
             ConnType::VIEW_CAMERA => lr.set_view_camera(Default::default()),
-            ConnType::PORT_FORWARD | ConnType::RDP => lr.set_port_forward(PortForward {
-                host: self.port_forward.0.clone(),
-                port: self.port_forward.1,
-                ..Default::default()
-            }),
+            ConnType::PORT_FORWARD | ConnType::RDP => {
+                let Some(target) = port_forward_target else {
+                    bail!("port-forward login is missing its immutable target");
+                };
+                lr.set_port_forward(target.to_message());
+            }
             ConnType::TERMINAL => {
                 let mut terminal = Terminal::new();
                 terminal.service_id = self.get_option(self.get_key_terminal_service_id());
@@ -2215,7 +2308,7 @@ impl LoginConfigHandler {
 
         let mut msg_out = Message::new();
         msg_out.set_login_request(lr);
-        msg_out
+        Ok(msg_out)
     }
 
     pub fn update_supported_decodings(&self) -> Message {
@@ -2516,22 +2609,9 @@ fn sync_cpu_usage() {
 #[cfg(windows)]
 #[tokio::main(flavor = "current_thread")]
 async fn do_sync_cpu_usage() {
-    use crate::ipc::{connect, Data};
     let start = std::time::Instant::now();
-    match connect(50, "").await {
-        Ok(mut conn) => {
-            if conn.send(&&Data::SyncWinCpuUsage(None)).await.is_ok() {
-                if let Ok(Some(data)) = conn.next_timeout(50).await {
-                    match data {
-                        Data::SyncWinCpuUsage(cpu_usage) => {
-                            hbb_common::platform::windows::sync_cpu_usage(cpu_usage);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        _ => {}
+    if let Ok(cpu_usage) = crate::ipc::get_windows_cpu_usage(50).await {
+        hbb_common::platform::windows::sync_cpu_usage(cpu_usage);
     }
     log::info!("{:?} used to sync cpu usage", start.elapsed());
 }
@@ -2843,9 +2923,13 @@ pub fn handle_login_error(err: &str, interface: &impl Interface) -> bool {
 ///
 /// * `lc` - Login config.
 /// * `peer` - [`Stream`] for communicating with peer.
-async fn send_login(lc: Arc<RwLock<LoginConfigHandler>>, peer: &mut Stream) {
-    let msg_out = lc.read().unwrap().create_login_msg();
-    allow_err!(peer.send(&msg_out).await);
+async fn send_login(
+    lc: Arc<RwLock<LoginConfigHandler>>,
+    port_forward_target: Option<&PortForwardTarget>,
+    peer: &mut Stream,
+) -> ResultType<()> {
+    let msg_out = lc.read().unwrap().create_login_msg(port_forward_target)?;
+    peer.send(&msg_out).await
 }
 
 /// Handle login request made from ui.
@@ -2879,7 +2963,9 @@ pub async fn handle_login_from_ui(
         w.password_prs = prs.into_bytes();
         w.remember = remember;
     }
-    send_login(lc.clone(), peer).await;
+    if let Err(err) = send_login(lc.clone(), None, peer).await {
+        log::error!("failed to send login message: {}", err);
+    }
 }
 
 /// Interface for client to send data and commands.
@@ -3338,5 +3424,77 @@ mod tests {
             sender.try_send(MediaData::VideoQueue),
             Err(mpsc::TrySendError::Full(_))
         ));
+    }
+
+    fn login_port_forward_target(message: Message) -> (String, i32) {
+        let login = match message.union {
+            Some(message::Union::LoginRequest(login)) => login,
+            _ => panic!("expected login request"),
+        };
+        match login.union {
+            Some(login_request::Union::PortForward(target)) => (target.host, target.port),
+            _ => panic!("expected port-forward login target"),
+        }
+    }
+
+    #[test]
+    fn concurrent_port_forward_targets_are_connection_owned() {
+        let mut handler = handler("127.0.0.1");
+        handler.conn_type = ConnType::PORT_FORWARD;
+        let first = PortForwardTarget::new("database.internal".to_owned(), 5432).unwrap();
+        let second = PortForwardTarget::new("cache.internal".to_owned(), 6379).unwrap();
+
+        let first_login = handler.create_login_msg(Some(&first)).unwrap();
+        let second_login = handler.create_login_msg(Some(&second)).unwrap();
+
+        assert_eq!(
+            login_port_forward_target(first_login),
+            ("database.internal".to_owned(), 5432)
+        );
+        assert_eq!(
+            login_port_forward_target(second_login),
+            ("cache.internal".to_owned(), 6379)
+        );
+    }
+
+    #[test]
+    fn port_forward_target_validation_fails_closed() {
+        assert!(PortForwardTarget::new(String::new(), 22).is_err());
+        assert!(PortForwardTarget::new("localhost".to_owned(), 0).is_err());
+        assert!(PortForwardTarget::new("localhost".to_owned(), 65536).is_err());
+        assert!(PortForwardTarget::new("host name".to_owned(), 22).is_err());
+        assert!(PortForwardTarget::new("host\tname".to_owned(), 22).is_err());
+        assert!(PortForwardTarget::new("host\0name".to_owned(), 22).is_err());
+        assert!(PortForwardTarget::new("2001:db8::1".to_owned(), 22).is_err());
+
+        let max_dns = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(61)
+        );
+        assert_eq!(max_dns.len(), MAX_PORT_FORWARD_HOST_BYTES);
+        assert!(PortForwardTarget::new(max_dns.clone(), 22).is_ok());
+        assert!(PortForwardTarget::new(format!("x{max_dns}"), 22).is_err());
+
+        let ipv6 = PortForwardTarget::new("[2001:0DB8:0:0::1]".to_owned(), 3389).unwrap();
+        let ipv6_message = ipv6.to_message();
+        assert_eq!(ipv6_message.host, "[2001:db8::1]");
+        assert_eq!(
+            format!("{}:{}", ipv6_message.host, ipv6_message.port),
+            "[2001:db8::1]:3389"
+        );
+        assert_eq!(
+            PortForwardTarget::new("Example.COM.".to_owned(), 443)
+                .unwrap()
+                .to_message()
+                .host,
+            "example.com"
+        );
+
+        let mut handler = handler("127.0.0.1");
+        handler.conn_type = ConnType::RDP;
+        assert!(handler.create_login_msg(None).is_err());
     }
 }

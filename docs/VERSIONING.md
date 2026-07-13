@@ -5,7 +5,7 @@ The hardened fork carries **two** version identities, deliberately kept separate
 | Identity | Value | Lives in | Purpose |
 |---|---|---|---|
 | **App / wire / package version** | `1.4.7` | `Cargo.toml` `version` (→ generated `src/version.rs` `VERSION`; `flutter/pubspec.yaml`; the `.deb`/`.apk`/`.exe`/`.msi` package version) | The upstream RustDesk base the fork derives from. It is the **wire/protocol version** peers exchange for feature-negotiation (`hbb_common::get_version_number`), so it must track the upstream base. **Do not** change it to encode fork releases. |
-| **Fork release** | `1.4.7-hardened.N` | `FORK_VERSION` (repo root — the single source of truth) | The fork's own release identity, distinguishing successive releases built on the same upstream base. It is the human-readable NAME of a release: the release title, the `CHANGELOG.md` heading, the `dist/SHA256SUMS` header, and `rustdesk --fork-version` (embedded via `build.rs` → `RUSTDESK_FORK_VERSION`). It is **not** a git tag. A release is identified by the **commit** it was built from — the GitHub tag is `commit-<short-sha>` (a bare pointer, not a version) and the release notes link that commit, so there is one source of truth. `rustdesk --version` prints the **app** version (`1.4.7`) — the machine/tooling contract (e.g. the MSI build). |
+| **Fork release** | `1.4.7-hardened.N` | `FORK_VERSION` (repo root — the single source of truth) | The fork's own release identity, distinguishing successive releases built on the same upstream base. It is the human-readable NAME of a release: the release title, the `CHANGELOG.md` heading, the `dist/SHA256SUMS` header, and `rustdesk --fork-version` (embedded via `build.rs` → `RUSTDESK_FORK_VERSION`). The canonical GitHub release tag is `fork-version-<version>-commit-<full-sha>`; it binds the fork identity and exact source commit in one ref. `rustdesk --version` prints the **app** version (`1.4.7`) — the machine/tooling contract (e.g. the MSI build). |
 
 ## The fork-release string
 
@@ -20,6 +20,9 @@ The hardened fork carries **two** version identities, deliberately kept separate
 - `N` increments by 1 for every release and never resets while the base is unchanged.
 - When the fork rebases onto a newer upstream (say `1.4.8`), bump `Cargo.toml` to `1.4.8`, set
   `FORK_VERSION` to `1.4.8-hardened.1`, and record the rebase in the changelog.
+- Every `CHANGELOG.md` release heading is parsed, calendar-validated, and checked newest-first.
+  Releases on one app-version base advance by exactly one. A newer app-version base starts at
+  `hardened.1`; skipped counters, duplicate versions, invalid dates, and base regressions fail.
 
 Why two identities: the wire version must stay a plain upstream `M.m.p` so peer feature-negotiation
 keeps working, while releases of the fork on that same base still need to be told apart. Encoding the
@@ -28,16 +31,53 @@ indistinguishable — so they are separate, and `FORK_VERSION` is the one you bu
 
 ## Cutting a release
 
-1. **Bump** `FORK_VERSION` (increment `N`) and add a top entry to
-   [`CHANGELOG.md`](../CHANGELOG.md) whose heading is the new `<app>-hardened.<N>` and the date.
-2. `bash scripts/verify.sh` — the versioning gate checks the `FORK_VERSION` format, the
-   base-matches-`Cargo.toml` invariant, and that `CHANGELOG.md`'s top heading matches `FORK_VERSION`.
-3. `bash scripts/build-release.sh` — builds the reproducible artifact set into `dist/`, stamping the
-   fork version into `dist/SHA256SUMS`.
-4. `bash scripts/publish-github-release.sh --push` — publishes a GitHub **prerelease** whose tag is the
-   commit (`commit-<short-sha>`) and whose notes link that exact commit (the one source of truth). The
-   title + notes come from `CHANGELOG.md`. Pass `--final` for a matured, non-prerelease cut. It refuses
-   to re-release a commit that is already released.
+1. **Settle source and normative requirements first.** Finish implementation and finalize
+   [`requirements.html`](../requirements.html); no release identity changes occur while architecture is moving.
+2. **Update the machine inventory expectation.** Re-run the inventory mechanism and settle its expected counts
+   against the same source tree that will be released.
+3. **Finalize the requirements hash.** Compute the final `requirements.html` SHA-256 and write the identical
+   value to the active codec ledger and hardening-status ledger. Run the native-codec watcher against that state.
+4. **Bump `FORK_VERSION` last.** Increment `N` only after source, requirements, inventory, and linked hashes
+   are settled; update the matching top `CHANGELOG.md` heading/date in the release-preparation change.
+5. **Verify the complete tree.** Run `bash scripts/verify-release.sh` and resolve every failure without weakening
+   a gate. Any source or requirements change returns the sequence to step 1; any requirements change also
+   invalidates the hashes from step 3.
+6. **Commit the complete release source.** The commit contains the settled implementation, documentation,
+   inventory expectation, linked hash, version, and changelog. The worktree must then be clean.
+7. **Push the exact clean `HEAD`.** Use `git push origin HEAD:master`. The build reads live `refs/heads/master` from `origin`
+   and requires that full commit ID to equal the pinned local `HEAD` before
+   and after verification and target builds.
+8. **Run the full cold build.** Execute `./scripts/build-release.sh`. Its entrypoint starts from an empty
+   environment, binds Docker to the local Unix socket, and supplies each child through an `env -i`
+   allowlist. It creates two private mode-0700 detached exact-commit worktrees. Debian, Android, and Windows
+   each run once in each worktree with independent target, Flutter, generated, output, and Windows state.
+   The orchestrator requires byte-identical SHA-256 values for all four artifacts across the two snapshots.
+   Direct target scripts retain their own default internal double build; only this structural A/B
+   orchestrator passes `DOUBLE_BUILD=0` to a direct target invocation.
+9. **Install one immutable local release set.** The exact A/B-equal files and nine-line manifest are copied
+   into a private sibling staging directory. The directory is atomically exchanged into `dist/`, then
+   revalidated for exact names, regular-file types, checksums, metadata, and read-only modes. Clean source
+   and live `origin/master` equality are proved again after the exchange. There is no partial release mode.
 
+The Android signing identity is the public certificate SHA-256 pinned in `scripts/pins.env`. The build
+requires the keystore and password to be current-UID, non-symlink, mode-0600 files beneath two mode-0700
+current-UID directories. The private key is never an argument or environment value. Both the keystore
+certificate and the final APK certificate must match the pin exactly. Artifact authentication and Android
+key-loss/compromise handling are normative operational procedures in
+[`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md) and
+[`ANDROID-SIGNING-RECOVERY.md`](./ANDROID-SIGNING-RECOVERY.md); neither permits a pin bypass.
+
+Publication is a separate optional action after a verified build:
+`./scripts/publish-github-release.sh`. It never builds or pushes source. It independently locks publication,
+binds every GitHub CLI command to the owner/repository derived from the exact Git `origin`, snapshots metadata
+from the pinned commit and artifacts from the immutable five-file `dist/`, includes drafts in uniqueness checks,
+and resolves every existing release tag to a commit. Publication is allowed only when the repository's GitHub
+immutable-release policy is enabled. It atomically creates the one canonical
+`fork-version-<version>-commit-<full-sha>` tag before creating a draft. All five assets are uploaded to that draft,
+queried by numeric release and asset IDs for exact names, nonzero sizes, and server digests, downloaded, and
+SHA-256 compared with the private snapshot. The policy, source, origin, tag, manifest, and remote inventory are
+reproved immediately before publication. Only then is the draft published; the publisher requires the resulting
+release to report immutable and revalidates metadata and downloaded assets. A failure leaves the explicit
+tag/draft state for reconciliation; it never deletes uncertain remote state or exposes a partial non-draft release.
 Everything downstream derives from `FORK_VERSION` — read it once via `scripts/fork-version.sh`
 (`fork_version`), never re-hardcode the string.

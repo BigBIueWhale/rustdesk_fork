@@ -8,7 +8,9 @@
 		</StandardDirectory>
 
 		<StandardDirectory Id="CommonAppDataFolder">
-			<Directory Id="App.Data.Folder" Name="$(var.Product)" />
+			<Directory Id="App.Data.Folder" Name="$(var.Product)">
+				<Directory Id="App.MachineConfigFolder" Name="config" />
+			</Directory>
 		</StandardDirectory>
 
 		<StandardDirectory Id="ProgramMenuFolder">
@@ -16,5 +18,16 @@
 		</StandardDirectory>
 
 		<StandardDirectory Id="DesktopFolder" />
+	</Fragment>
+
+	<Fragment>
+		<DirectoryRef Id="App.MachineConfigFolder">
+			<Component Id="App.MachineConfigFolder" Guid="2ED9DF43-C560-488F-BF28-A5D049504A37">
+				<CreateFolder>
+					<PermissionEx Sddl="O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+				</CreateFolder>
+				<RegistryValue Root="HKLM" Key="Software\$(var.Product)" Name="MachineConfigRoot" Type="string" Value="[App.MachineConfigFolder]" KeyPath="yes" />
+			</Component>
+		</DirectoryRef>
 	</Fragment>
 </Wix>

@@ -50,7 +50,10 @@ So the service is **already running after install** — but, being fail-closed, 
 not listen until you complete step 2.
 
 > Reproducibility: the `.deb` is byte-reproducible (R-B2, `scripts/build-debian.sh`
-> double-build). Verify your artifact against `dist/SHA256SUMS-HEAD.txt`.
+> double-build). Authenticate `dist/SHA256SUMS` through an independent trusted channel and then
+> verify the complete release set exactly as specified in
+> [`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md). A checksum downloaded beside the package
+> from the same host is not independent authentication.
 
 ---
 

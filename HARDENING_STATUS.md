@@ -9,7 +9,17 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> ⚠️ **Qualified by live QA (2026-07-06), with the service-boundary audit now closed and gated (2026-07-09) — see the _Live acceptance-testing regressions_ and _R-S11b/R-S11c service-owned IPC authority_ sections below.** Hands-on acceptance testing of the deployed `v1.4.7-hardened.1` prerelease surfaced connection-lifecycle, settings-control, desktop-shutdown, and UI↔excision-coherence regressions this verdict does not yet reflect. The follow-on IPC audit reclassified service-owned unattended credentials and privileged service actions as a blocking authority-boundary item; those R-S11b/R-S11c items are now implemented and verifier-gated. The cryptographic / transport core and the direct-IP posture hold; the build is **not release-ready**, and the prerelease is not to be promoted until the separate live-QA/build/release items below are closed.
+> **Current `.6` verdict (2026-07-13): source implementation exists, but documentation and inventory settlement plus a clean committed cold build remain required. No current `.6` artifact, reproducibility, publication, or release proof exists yet.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
+
+**Current machine inventory expectation.** `Cargo.lock` has 910 package records: 38 git-sourced records from
+27 unique git source URLs, including 28 rustdesk-org records from 21 unique rustdesk-org URLs.
+`flutter/pubspec.lock` has 199 package records, including 8 git records and 7 rustdesk-org records;
+`flutter/pubspec.yaml` declares 58 main and 6 dev dependencies, a 64-name union. `.github/workflows/` has
+zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
+regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
+has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 766 lexical `unsafe {`
+blocks across 242 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -46,9 +56,64 @@ file-clipboard serve/confirm paths are additionally arithmetic/index-safe — th
 peer-supplied `file_num` is bounded before indexing in `set_stream_offset`, the
 CLIPRDR file-read clamps `length` to the remaining bytes with no `offset+length`
 wrap, and the descriptor serializer truncates an over-long name with no
-`520 - name_len` underflow (each overflow-safe, unit-tested). The
-build is reproducible for Debian/Android/Windows (R-B2), and the Apple
-SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2).
+`520 - name_len` underflow (each overflow-safe, unit-tested). The release harness
+defines the required Debian/Android/Windows R-B2 cold double-build, and the Apple
+SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2). The final
+current `.6` cold artifact build has not run.
+
+## RESOLVED — TCP tunneling hardening (2026-07-13)
+
+PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the
+sealed framed tunnel and `AuthConnType::PortForward` remain unchanged.
+
+- **PF-1 — FIXED.** `LoginConfigHandler.port_forward` is deleted. The tunnel-only
+  `Client::start_port_forward` API requires a private-field `PortForwardTarget`
+  whose host is at most 253 bytes and is exactly an ASCII DNS name, IPv4 literal,
+  or bracketed parseable IPv6 literal; whitespace, control bytes, NUL, empty hosts,
+  unbracketed IPv6, and ports outside 1–65535 fail before connect/login. The target
+  is passed by value through setup and directly into that connection's proactive
+  login. Ordinary `Client::start` rejects `PORT_FORWARD`/`RDP` without the target.
+- **PF-2 — FIXED.** Mapping listeners use `tcp::new_exclusive_listener` on
+  `127.0.0.1`: no `SO_REUSEPORT` on Unix; Windows leaves `SO_REUSEADDR` unset and
+  sets `SO_EXCLUSIVEADDRUSE` before bind. The shared exclusive socket path
+  propagates option errors. Linux/macOS test a second exclusive bind; the native
+  Windows test explicitly enables `SO_REUSEADDR` on a hostile second socket and
+  proves that it cannot bind the occupied port.
+- **PF-3/PF-4 — FIXED.** Every mapping owns one cancellation token and a `JoinSet`
+  containing all accepted setup and relay work. A closed cancellation control and
+  one-slot coalescing RDP-launch channel replace general `Data` lifecycle queues.
+  Control close and sender EOF stop acceptance, cancel connect/CPace/login/relay,
+  and join every task. The bounded-command supervisor, mapping tasks, and all joins
+  live on a named OS thread with its own current-thread Tokio runtime. One
+  process-lifetime reaper owns a closed 32-slot handoff queue and is the only code
+  that calls `JoinHandle::join`. Normal close submits ownership with a completion
+  reply; outer-future cancellation and startup failure submit ownership without a
+  waiter. Every handoff is nonblocking. Reaper bootstrap failure, a full queue, or a
+  disconnected queue is process-fatal rather than blocking an executor or detaching
+  ownership. Command EOF globally closes and drains mappings before that independent
+  runtime is destroyed. No claim extends past process death. Removal replies only
+  after drain, and duplicate replacement creates/inserts the new mapping only after
+  the old mapping and all its children have completed.
+  Mapping ownership is process-bounded to 32 permits. Accepted connections are
+  nonblockingly bounded to 32 per mapping and 128 process-wide; both permits live
+  through setup and relay, and over-limit accepted sockets are dropped immediately.
+  Completed connection tasks are eagerly reaped before another accept so sustained
+  ready listeners cannot accumulate completed `JoinSet` entries.
+- **PF-5 — FIXED.** Setup no longer receives or polls the local application stream.
+  The local `Framed<TcpStream, BytesCodec>` reader is created only after `PeerInfo`;
+  before authorization, buffering is limited to the kernel socket receive buffer.
+  The obsolete pre-login `Vec`, `Data::Login`, and `Data::Message` setup paths are
+  deleted. Local/remote read and write errors terminate the connection explicitly.
+
+Deterministic Rust tests cover immutable interleaved targets, bounded host/port and
+bracketed-IPv6 validation, cancellation in connect/keying/login/relay, control EOF,
+owned-task drain, duplicate replacement ordering, the literal 32/33 mapping boundary,
+the literal 32-per-mapping and 128-process connection boundaries with permit recovery,
+sustained completion reaping, authorization-before-relay, and exclusive second bind.
+Linux runs the shared native behavior tests. macOS and Windows retain source and
+cross-compile gates for the same implementation; their native builders must execute
+the platform bind test, including the Windows hostile-`SO_REUSEADDR` case. This Linux
+host does not claim native Windows execution.
 
 **RESOLVED (2026-07-04) — the GUI/coherence backlog is CLOSED.** The six-audit sweep found the
 cryptographic/transport core clean (0 security hazards) and enumerated the surrounding
@@ -229,7 +294,7 @@ Platform: Android release APK. Endpoint/action: package-manager signature verifi
 Boundary: Android 5.x/6.x v1/JAR signing compatibility ↔ runtime Java resources packaged under `META-INF/`.
 Attack surface closed: the fork no longer ships an APK whose supported platform set includes API 22/23, where
 v2/v3 APK signatures are ignored and arbitrary runtime `META-INF/` entries can remain outside the JAR-signature
-integrity model. The current artifact demonstrated the issue with `apksigner verify --verbose` warnings for
+integrity model. A historical prerelease artifact demonstrated the issue with `apksigner verify --verbose` warnings for
 AndroidX/kotlinx metadata plus R8-shrunk `kotlinx.coroutines` service-loader resources; mutating
 `META-INF/services/p5.v` still verified for an API 22/23 range, while API 24+ rejected the modified APK through
 v2/v3 whole-APK verification. Those coroutine service resources are runtime library behavior, not removable
@@ -276,162 +341,91 @@ test covers fully provisioned, PRS-empty half-state, and undecryptable current-f
 gates the typed enum, the undecryptable branch, the server status helper, the direct-listener diagnostic, the
 requirements/status disposition, and absence of a silent `unwrap_or_default()` collapse in the PRS string accessor.
 
-**R-S11b/R-S11c — service-owned IPC authority — status: CLOSED / GATED (2026-07-09).**
-The 2026-07-08 service-boundary audit supersedes the earlier narrow "IPC transport is local and
-write-allowlisted" conclusion for installed-service mode. The issue is not socket locality; it is authority
-ownership. In installed mode the unattended password/PRS and machine remote-access policy are owned by the
-root/SYSTEM/LaunchDaemon service because that service will honor them later over the network. Therefore a
-normal user-session IPC config write is the wrong primitive even if it is same-session, same-UID, or
-executable-path matched. The old R-S11 allowlist and R-S11a transport/parent-dir hardening remain useful
-prerequisites; they do not close the service-owned credential/action class.
+**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS WORKTREE VALIDATION AND FINAL CLEAN COLD RELEASE BUILD PENDING.**
+Installed-service unattended credentials and machine remote-access policy are owned by the root,
+LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
+`_service_password` protocols. Ordinary main and `_service` IPC contain no password-bearing request, generic
+credential writer, whole-config import, or fallback. Path locality and executable equality are prerequisites,
+not authority by themselves.
 
 Tracking rule for this block: every remediation item must name the platform(s), endpoint/message/action,
 privilege boundary, exact attack surface, and closure condition. A fix is not complete until the old path is
 unreachable and a source/test/AST gate prevents reintroduction.
 
-**Completed slices:**
-- **R-S11b-1 — Linux/macOS `_service` whole-config boundary — CLOSED 2026-07-08.** Platforms: Linux installed
-  service and macOS LaunchDaemon/source-conformance path. Endpoint: AF_UNIX `_service` formerly carrying
-  `Data::SyncConfig(None)` and `Data::SyncConfig(Some(_))`, including stale-socket probes that read config.
-  Boundary: active user ↔ root/LaunchDaemon service. Attack surface closed: a local active-user process no
-  longer receives or replaces whole service `Config`/`Config2` over `_service`. Source closure:
-  `src/ipc.rs` admits only narrow typed messages on `_service` via `service_channel_admits_message`
-  (`Data::Test`, Linux's R-S11b-2c service-owned unattended-password request, and macOS's
-  authorized request/runtime-snapshot service-owned unattended-password messages);
-  `src/ipc.rs` deletes the `Data::SyncConfig` IPC variant; `src/ipc/fs.rs` probes `_service`
-  liveness with `Data::Test`, not config reads; `src/server.rs` deletes
-  `wait_initial_config_sync`/`sync_and_watch_config_dir` and the root↔user service-config watch loop.
-  Verification closure: `scripts/verify.sh` runs `ipc::test::service_channel_rejects_config_bus` and asserts
-  the service loop, stale-socket probe, server startup, handler, and `Data` enum do not reintroduce the
-  whole-config bus;
-  `scripts/apple-conform-check.sh` mirrors the source assertions for the macOS conformance path.
-- **R-S11b-2a/R-S11c-1a — service-marked server rejects ordinary password IPC — CLOSED 2026-07-08.**
-  Platforms: Windows installed service-launched `--server`, Linux root-service-launched root or active-user
-  `--server`, and macOS LaunchAgent `--server` source path. Endpoint/action: historical main IPC
-  generic config credential writes and password storage/salt read snapshots. Boundary: user-owned IPC caller ↔
-  service-owned unattended credential. Attack surface closed:
-  the service-launched server is marked with `--service-owned-server`; `src/ipc.rs` classifies that receiver
-  as `MainIpcAuthority::ServiceOwned` (with a Windows LocalSystem fallback); main-channel allowlisting rejects
-  ordinary password writes and returns an explicit NACK; the handler also rejects password writes and refuses
-  whole-config, standalone salt, and storage/salt sync snapshots if reached directly. Linux `--password` is no
-  longer routed through `UserMainIpcScope`, so root does not cross-write a service-owned user server through the
-  legacy CLI path.
-  Verification closure: `scripts/verify.sh` asserts user-owned vs service-owned IPC policy, service launch
-  markers on Linux/Windows/macOS, no `--password` root-to-user routing, and handler-level whole-config,
-  standalone salt, and storage-sync denial; `scripts/apple-conform-check.sh` asserts the macOS LaunchAgent marker and
-  source policy.
-- **R-S11b-2b/R-S11c-1b — user-owned password mutation is typed, not a config write — CLOSED 2026-07-08.**
-  Platforms: Linux, Windows, and macOS desktop main IPC; Android/iOS remain app-owned in-process paths rather
-  than installed desktop service boundaries. Endpoint/action: `Data::SetUserOwnedPermanentPassword(String)` and
-  `Data::SetUserOwnedPermanentPasswordResult(bool)` replace the old in-tree
-  generic permanent-password config writer; `permanent-password-user-owned-writable` is a
-  read-only receiver capability query. Boundary: user-owned daemon credential state vs installed-service
-  unattended credential state. Attack surface closed: CLI, FFI, and Flutter desktop password setters no longer
-  send the permanent password as a generic config-key mutation; the generic config write shape is absent;
-  service-owned receivers reject and NACK the typed user-owned operation; desktop UI exposes the password setter only when the
-  receiver advertises user-owned writability. Changing or removing a password does not prove knowledge of the
-  old RustDesk password; authority is daemon ownership now, and OS-admin authorization for future service-owned
-  provisioning. Verification closure: `scripts/verify.sh` runs
-  `ipc::test::main_channel_rejects_untyped_state_mutations` and
-  `ipc::test::service_channel_rejects_config_bus`, asserts the typed operation/result, asserts absence of the
-  old generic password config-key send/gate, and checks the desktop writability query;
-  `scripts/apple-conform-check.sh` mirrors the macOS source assertions; `scripts/smoke-server.sh` exercises
-  the typed user-owned CLI path.
-- **R-S11b-2c/R-S11c-1d — Linux service-owned unattended password provisioning — CLOSED 2026-07-09.**
-  Platform: Linux installed service. Endpoint/action:
-  `Data::RequestServiceOwnedUnattendedPasswordChange(String)` over `_service`, followed by
-  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the root service into the service-owned
-  main server. Boundary: active user process ↔ root `_service` ↔ service-owned `--server` process that honors
-  the unattended credential. Attack surface closed: the desktop UI, FFI, and `--password` CLI no longer need the
-  old RustDesk password and do not write a service-owned credential over ordinary main IPC. In installed Linux
-  mode they request the narrow `_service` operation; the root service authorizes the caller with polkit action
-  `com.carriez.RustDesk.set-unattended-password`, deriving the subject from SO_PEERCRED
-  `(pid, uid)` plus `/proc/<pid>/stat` start time and invoking `pkcheck --process pid,start-time,uid
-  --allow-user-interaction`; only after that does it forward a separate commit message. The service-owned main
-  server accepts that commit only when the receiver is `MainIpcAuthority::ServiceOwned` and the committing peer
-  is root. Main-channel service-owned password requests are denied, ordinary user-owned password writes remain
-  denied for service-owned receivers, and rejection ACKs fail closed. Packaging closure: the `.deb` build paths
-  install `res/com.carriez.RustDesk.policy` under `/usr/share/polkit-1/actions/` with `auth_admin` defaults.
-  Verification closure: `scripts/verify.sh` asserts the request/commit/result variants, service-channel
-  allowlist, main-channel denial/commit gates, peer pid/uid/start-time subject construction, `pkcheck` arguments,
-  polkit policy packaging, owner-aware UI/FFI/CLI routing, and the updated two-write handler reachability count;
-  `ipc::test::main_channel_rejects_untyped_state_mutations`,
-  `ipc::test::service_channel_rejects_config_bus`, and Linux `/proc` parser tests cover the source policy.
-- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-11.**
-  Platform: Windows installed service. Endpoint/action:
-  `Data::RequestServiceOwnedUnattendedPasswordChange(String)` over `_service`, followed by
-  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from the LocalSystem service into the
-  service-owned main server. Boundary: active desktop process ↔ LocalSystem `_service` ↔ service-owned
-  `--server` process that honors the unattended credential. Attack surface closed: a medium-integrity
-  same-session process cannot mint the privileged unattended password through ordinary main IPC or by forging
-  the service request. The desktop/CLI service-owned setter is exposed on Windows only when the caller process
-  is already elevated; the service receiver still performs the load-bearing check itself by impersonating the
-  connected named-pipe client and requiring an elevated client token before forwarding the commit. Before
-  serializing the password-bearing main-IPC commit, the LocalSystem service now authenticates the connected
-  main-pipe receiver as the current executable, running as LocalSystem, with the exact
-  `--server --service-owned-server` argv shape. The main server accepts the final commit only when the receiver
-  is service-owned and the committing pipe client token is LocalSystem. The service loop handles only `Close`,
-  `Test`, and the typed password request; it does not
-  forward arbitrary `_service` traffic into the main IPC handler. Main-channel service-owned password requests
-  remain denied, ordinary user-owned password writes remain denied for service-owned receivers, and rejection
-  ACKs fail closed. Verification closure: `scripts/verify.sh` asserts the Windows typed request dispatch,
-  pipe-client token impersonation, `RevertToSelf`, elevated-token request gate, sender-side service-owned
-  main-receiver proof before the password-bearing send, LocalSystem-token commit gate, already-elevated UI/CLI
-  exposure, and absence of PID-based elevation proof for this operation; the Windows source tests cover the
-  exact service-owned server argv shape and main-channel policy.
-- **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — CLOSED 2026-07-09; tightened 2026-07-11.**
-  Platform: macOS LaunchDaemon/LaunchAgent installed service. Endpoint/action:
-  `Data::RequestMacosServiceOwnedUnattendedPasswordChange { password, authorization }` over `_service`,
-  followed by root LaunchDaemon storage and a typed `Data::MacosServiceOwnedPermanentPasswordSnapshotRequest`
-  runtime refresh from the service-owned LaunchAgent. Boundary: active desktop/CLI process ↔ root LaunchDaemon `_service`
-  ↔ service-owned `--server` process that honors the unattended credential. The `_service` executable identity gate models the deployed
-  installation: the peer is the installed app executable under `/Applications/<App>.app/Contents/MacOS/<App>`,
-  with root-owned, non-symlink, non-group/world-writable bundle/executable components and the pinned Developer ID
-  Team ID plus app identifier requirement, and the receiver is the root-owned, non-symlink,
-  non-group/world-writable, ACL-free executable at
-  `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service`; the old same-directory app-bundle `service`
-  exception is absent. Attack surface closed: service-owned password provisioning no
-  longer fails closed on macOS for lack of a privileged path, and it does not fall back to ordinary main IPC,
-  generic config writes, or the Authorization Services generic rule. The UI connects to `_service` through the
-  authenticated trusted-helper client path, obtains an Authorization Services external form for the RustDesk-specific
-  `com.carriez.RustDesk.set-unattended-password` right, and only then sends the proposed password and external
-  form in one typed request. The LaunchDaemon creates/updates that right as admin-only, non-shared, and timeout
-  zero, internalizes the external form, verifies the right without interaction, destroys the rights, enforces the
-  password-size bound, and writes the authorized password directly into the root LaunchDaemon credential store;
-  no request-id state machine or pending plaintext secret cache exists. An explicit set is persisted as local
-  durable storage even when the value equals a preset. The old macOS main-server
-  `Data::CommitServiceOwnedUnattendedPasswordChange` path rejects and cannot write. The service-owned
-  LaunchAgent receives the root credential only as a runtime snapshot after the LaunchDaemon proves that the
-  `_service` peer is the installed app/trusted-helper pair, has the exact live `--server --service-owned-server`
-  command vector, is the pid launchd reports for the expected root-owned
-  `/Library/LaunchAgents/..._server.plist` label in `gui/<uid>/<label>`, and is bound to a parsed plist
-  whose parent and file are root:wheel, non-symlink, non-group/world-writable, ACL-free, and whose
-  `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive` shape exactly describe the service-owned
-  LaunchAgent. Empty root local storage returns an empty snapshot; preset/hard-settings
-  fallback is absent. The LaunchAgent applies the snapshot to an in-memory PRS overlay that is read by listener
-  parking, CPace, and password-set status, and that overlay is never written into user config. Main-channel
-  macOS service-owned password flow messages are denied, ordinary user-owned password writes remain denied for
-  service-owned receivers, and rejection ACKs fail closed. Verification closure:
-  `scripts/verify.sh` and `scripts/apple-conform-check.sh`
-  assert the macOS single authorized request shape, `_service` allowlist, main-channel denial, absence of the old
-  begin/challenge/finish and pending-cache machinery, authorization-before-send ordering, password-size bound,
-  explicit non-shared timeout-zero Authorization Services right, no
-  request-digest prompt/verification API, no `kAuthorizationRightExecute` fallback in the service password
-  functions, non-interactive `AuthorizationCreateFromExternalForm` verification, signed/root-owned installed-app
-  peer identity, trusted PrivilegedHelperTools `_service` current-helper identity, absence of the old same-directory
-  `service` binary exception, budgeted macOS `_service` blocking-proof offload, root-store write,
-  launchd-owned runtime snapshot with exact live argv plus parsed
-  root-owned plist command-shape proof, runtime overlay non-persistence,
-  installed-daemon exposure gate, and service handler wiring; the Unix source tests cover main-channel commit
-  rejection and `_service` request admission.
+**Completed source slices:**
+- **R-S11b-1 — Linux/macOS generic `_service` boundary — SOURCE IMPLEMENTED.** `_service` is a narrow,
+  frame/deadline/capacity-bounded control protocol. It carries no password body, whole `Config`/`Config2`, generic
+  config mutation, storage/salt write, or password mutation request. Linux service password mutation is on raw
+  `_service_password`. macOS generic `_service` retains only no-secret right readiness and the narrow read-only
+  runtime snapshot request/response, plus unrelated explicitly admitted service controls.
+- **R-S11b-2a/R-S11c-1a — ordinary main IPC cannot mutate passwords — SOURCE IMPLEMENTED.** Service-owned
+  receivers are marked by exact process role and reject user-owned mutation authority. Ordinary main IPC has no
+  password-bearing request or write. Its password-related surface is limited to nonsecret capability/status data
+  used before disclosure or after raw-operation admission. Whole-config, standalone salt, and storage/salt import
+  paths remain absent.
+- **R-S11b-2b/R-S11c-1b — user-owned raw password mutation — SOURCE IMPLEMENTED.** Linux and macOS use
+  `_password`; Windows uses the same postfix as a first-instance local-only message pipe. The fixed raw protocol
+  is outside serde, JSON, `Bytes`, `BytesMut`, `BytesCodec`, and `Framed`: a canonical 36-byte header identifies
+  version, kind, UUID, and exact lengths; one bounded body follows; status is a canonical 32-byte operation-bound
+  frame; Windows additionally requires a canonical 28-byte operation-bound ACK before disconnect. Peer authority
+  is proved before secret-body transfer. Inbound bytes remain in one fixed 5120-byte wiping allocation transferred
+  into redacted `SensitivePassword`; retries share its `Arc`. Temporary raw frames, unused tails, and
+  `SensitiveAuthorization` wipe on drop/error. Android/iOS remain app-owned in-process paths.
+- **R-S11b-2c/R-S11c-1d — Linux service-owned unattended password provisioning — SOURCE IMPLEMENTED.** The
+  caller authenticates the root `--service` receiver before writing raw `_service_password`. The root listener
+  snapshots and proves the caller from `SO_PEERCRED` before reading the secret body. The polkit subject is the
+  socket-derived PID, UID, and `/proc/<pid>/stat` start time; only the exact trusted absolute `/usr/bin/pkcheck`
+  and `com.carriez.RustDesk.set-unattended-password` action are admitted. `pkcheck` is polled under a 120-second
+  bound and is killed and reaped on timeout, shutdown, or status failure. A 64-entry no-eviction admission ledger,
+  keyed by process-random HMAC-SHA256 fingerprints, serializes one matching caller through `Authorizing`,
+  `Committing`, `Recoverable`, and `Complete`. After authorization the root service authenticates the exact
+  service-owned replica by uid, executable, argv, launch-parent environment, and live ancestry before sending the
+  same UUID/value on raw `_password`; the child independently proves the root parent before reading it. Ordinary
+  main IPC carries no password fallback. A nonsecret status query is used only for admitted uncertainty. The
+  packaged polkit policy remains administrator-authenticated.
+- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; CURRENT
+  NATIVE WINDOWS WORKTREE VALIDATION PENDING.** The stable LocalSystem SCM service is the sole durable credential
+  writer and replay/finality owner. Mutation enters through raw `_service_password`, not `_service` or an old
+  service-main credential endpoint. One `FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_REJECT_REMOTE_CLIENTS`,
+  max-instances-one message pipe is held for process life and serially reused. The service DACL admits Interactive
+  Users only to reach preauthorization; exact executable, finite client role, process generation, active principal,
+  and process token are proved before header wait, so arbitrary Interactive Users cannot hold the server in a
+  header read. Header-message impersonation precedes body allocation/read; body-message impersonation plus fresh
+  executable/role, generation, process token, and stable active-session/principal proof precedes direct
+  nonblocking admission. The active principal is sampled session-before, between, and after two token reads.
+  Process handles include `SYNCHRONIZE`; clients request `FILE_WRITE_ATTRIBUTES` without `GENERIC_WRITE` or
+  `FILE_CREATE_PIPE_INSTANCE`. `GetSecurityInfo` exact-matches the live kernel owner/group/DACL to the retained
+  creation descriptor before reuse. Status must receive the matching operation ACK before `DisconnectNamedPipe`.
+  Overlapped timeout performs `CancelIoEx` and exact `GetOverlappedResultEx` drain. Listener workers and the
+  first-instance sentinel are process-lifetime owned; each client transaction has a dedicated supervisor that owns
+  and joins the blocking worker across async cancellation. The exact service-owned child receives only a
+  generation-bound read-only replica over `_service_credential`; `_service_main_control` remains independent.
+  An authorized active-principal exact RustDesk role may consume bounded local work; arbitrary Interactive Users
+  are rejected before header wait, and no password or administrator authority is exposed by either case.
+- **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — SOURCE IMPLEMENTED; APPLE
+  SOURCE-CONFORMANCE GATE AVAILABLE.** Generic `_service` proof and password `_service_password` proof use separate
+  fixed capacities. The accepted socket's uid, effective-pid metadata, and `LOCAL_PEERTOKEN` audit token are
+  captured immediately. Root PrivilegedHelperTools and installed-app code identities are checked from that audit
+  token plus trusted installed path; no PID-only, path-only, or subprocess-code-signing fallback exists.
+  Security.framework/code/launchd proofs run on exactly owned OS threads, return through one-shot ownership, and
+  are synchronously joined; timeout, cancellation, panic, lost result, or lost join ownership aborts the process.
+  The authenticated no-secret right-readiness exchange precedes the user-paced Authorization Services prompt; a
+  fresh one-second raw transport deadline begins after the prompt. The dedicated right is admin-only, nonshared,
+  and timeout zero. The external capability is self-wiping in Rust, and native create/verify stack copies use
+  `explicit_bzero`. The root LaunchDaemon verifies the capability and commits the raw password operation. The
+  64-entry no-eviction replay ledger uses a process-random HMAC-SHA256 key and retains no plaintext. The
+  service-owned LaunchAgent receives only a nonpersistent runtime snapshot after installed-app audit-token proof,
+  exact `--server --service-owned-server` live argv, launchd PID/path, and root:wheel non-writable ACL-free parsed
+  plist proof for exact `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive`. Password mutation has no JSON
+  request and no ordinary-main fallback. Shutdown closes admission, drains accepted tasks and mutations, then
+  clears entries, HMAC key, and tags.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
-  and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `Data::Options(Some(_))`.
+  and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `MainIpcRequest::SetOptions`.
   Boundary: user-owned IPC caller ↔ service-owned remote-access policy. Attack surface closed: service-owned
-  receivers reject whole-options writes in the main-channel allowlist and in the handler before
-  `privacy_mode::switch` or `Config::set_options`; the daemon returns `Data::OptionsSetResult(false)` rather
-  than the old overloaded `Data::Options(None)` sentinel; IPC callers persist/cache option writes only after
-  `Data::OptionsSetResult(true)` and do not locally persist options when the daemon is unreachable. User-owned
+  receivers reject typed option writes before `privacy_mode::switch` or `Config::set_options`; the daemon returns
+  `MainIpcResponse::OptionsSet(IpcMutationResult::{Applied,Rejected,InternalFailure})`; IPC callers persist/cache
+  only after `Applied` and do not locally persist when the daemon is unreachable. User-owned
   `--server` option writes remain user-owned through the same typed ACK path. Verification
   closure: `scripts/verify.sh` tests the user-owned vs service-owned allowlist and asserts the typed ACK/NACK,
   no-local-fallback rule, receiver gate, and UI cache ordering; `scripts/apple-conform-check.sh` mirrors
@@ -458,9 +452,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `Config::set_socks` reach; voice-call input is the typed `SetVoiceCallInput` operation; `_pa` no longer
   reuses any generic config write payload; and the proxy IPC variant is absent rather than denied. Verification closure:
   `scripts/verify.sh` runs the main-channel mutation test, asserts absence of the legacy generic config write
-  shape, generic config helpers, and proxy IPC variant, and pins the handler's
-  `is_option_can_save`-bypassing config-write count to the two typed password operations (user-owned direct
-  commit and Linux/Windows service-owned service commit);
+  shape, generic config helpers, proxy IPC variant, and every password-bearing main request or handler sink;
   `scripts/apple-conform-check.sh` mirrors the source absence assertions for macOS.
 - **R-S11b-3d — Windows service-owned RDP session-sharing policy — CLOSED 2026-07-09.** Platform:
   Windows installed service. Endpoint/action: the desktop Security page's "Enable RDP session sharing" toggle,
@@ -513,7 +505,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   plaintext.
 - **R-S11b-3g — trust-anchor/proxy-shaped option writes are pinned empty — CLOSED 2026-07-09.**
   Platforms: all desktop main IPC and every shared `Config` option write path. Endpoint/action:
-  `Config::set_option`, `Config::set_options`, `Data::Options(Some(_))`, and callers that sync or cache
+  `Config::set_option`, `Config::set_options`, `MainIpcRequest::SetOptions`, and callers that sync or cache
   the shared options map. Boundary: local option writers ↔ trust-anchor and proxy credential material.
   Attack surface closed: the legacy `key` option cannot persist a rendezvous trust-anchor override, and
   `proxy-username`/`proxy-password` cannot persist proxy credential material through ordinary options IPC,
@@ -526,13 +518,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/apple-conform-check.sh` assert the source pins and the absence of trusted-device/key-confirmation
   writer symbols.
 - **R-S11b-3h — main IPC mutation policy has no permissive fallback — CLOSED 2026-07-09.**
-  Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action:
-  `main_channel_admits_state_mutation` over every `Data` variant. Boundary: local IPC caller ↔ daemon-owned
-  credential, identity, proxy, trust-anchor, and machine-policy state. Attack surface closed: adding a future
-  IPC message can no longer inherit ordinary main-channel authority through `_ => true`; the policy match is
-  exhaustive and classifies every current message as a named typed mutation, a denied service-owned request,
-  an authority-gated options/password write, or a non-mutating message. Any new `Data` variant now fails
-  compilation until it is classified, and `scripts/verify.sh` fails if a wildcard arm is reintroduced. The
+  Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action: the closed
+  `MainIpcRequest`/`MainIpcResponse` protocol. Boundary: local IPC caller ↔ daemon-owned credential, identity,
+  proxy, trust-anchor, and machine-policy state. Attack surface closed: adding a future IPC request cannot inherit
+  authority through `_ => true`; the exhaustive handler classifies every request as a typed read, an
+  authority-gated mutation, or a platform-specific validation. Any new `MainIpcRequest` variant fails compilation
+  until it is classified, and `scripts/verify.sh` rejects wildcard handler arms. The
   existing handle-level config-write count remains pinned to the two typed permanent-password writers, so a
   newly classified identity/salt/key/proxy/trust-store writer must be introduced as an explicit
   receiver-authorized operation with its own gate rather than as an ordinary IPC write.
@@ -548,31 +539,26 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` rejects any reintroduced hardware-codec IPC message, handler helper,
   client/server sync helper, core `--check-hwcodec-config` entry, or direct helper-process/probe caller anywhere
   in the application source.
-- **R-S11c-13 — service-owned IPC close is receiver-authorized — CLOSED 2026-07-09; tightened 2026-07-12.**
-  Platforms: Windows installed service-owned main server; Linux/macOS main-channel policy covered by the same
-  source rule. Endpoint/action: `Data::Close` on desktop main IPC. Windows `_service` lifecycle close is deleted.
-  Boundary: same-session/same-executable IPC peer ↔ service-owned process-control action. Attack surface
-  closed: `Data::Close` is no longer classified as an unconditional main-channel message. User-owned receivers
-  still accept user-owned close, but service-owned receivers accept main-channel close only from the owning
-  root/LocalSystem service peer. On Windows the main IPC loop resolves the named-pipe client token for
-  `Data::Close` before calling `main_channel_admits_state_mutation`, so a normal same-session installed
-  executable cannot trigger service-owned server exit/restart through transport identity alone. The Windows
-  service authenticates its connected main IPC server as the exact retained child PID before requesting graceful
-  close. Windows `_service` has no close dispatch; SCM stop/preshutdown is the sole service-loop stop authority.
-  Verification closure: `scripts/verify.sh` runs the main-channel mutation policy test, asserts the close
-  authority helper, the `Data::Close => authority.allows_main_channel_close(peer_authority)` policy arm, the
-  Windows main-pipe token resolution and exact-child client paths, absence of Windows `_service` close and an
-  unconditional close bucket, and the Appendix C #31 disposition.
+- **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
+  Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
+  request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
+  SYSTEM-only `_service_main_control` endpoint with typed `WindowsServiceMainRequest::Shutdown` /
+  `ShutdownAccepted`. Boundary: local IPC peer ↔ service-owned process-control action. Attack surface closed: an
+  ordinary main-channel or `_service` peer has no close vocabulary. SCM stop/preshutdown is the sole service-loop
+  stop authority; the service authenticates `_service_main_control` as the exact retained child PID and creation
+  time before requesting graceful shutdown. The child acknowledges on the control endpoint, closes admission,
+  drains owned transactions and password finality, and only then exits. Verification asserts the closed main
+  protocol, dedicated control endpoint and budget, exact-child authentication, absence of general `_service`
+  close, and Appendix C #31.
 - **R-S11c-14 — service-owned voice-call input IPC mutation gate — CLOSED 2026-07-10.**
   Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action:
-  `Data::SetVoiceCallInput`. Boundary: ordinary local main-IPC peer ↔ service-owned runtime audio-selection
+  `MainIpcRequest::SetVoiceCallInput`. Boundary: ordinary local main-IPC peer ↔ service-owned runtime audio-selection
   state. Attack surface closed: the last unconditional typed main-channel state mutation is no longer admitted
   for service-owned receivers. User-owned receivers keep the operation; service-owned receivers reject it
   regardless of ordinary/same-service peer identity because there is no service-owned voice-input control path
   that should ride the ordinary main IPC channel. Verification closure: `scripts/verify.sh` asserts the
   `allows_main_channel_voice_call_input_write` receiver-authority helper, the gated
-  `Data::SetVoiceCallInput` policy arm, and absence of the old unconditional
-  `Data::SetVoiceCallInput(_) => true` arm.
+  `MainIpcRequest::SetVoiceCallInput` handler arm, and absence of an unconditional service-owned write path.
 - **R-S11c-15 — Windows helper launch environment authority — CLOSED 2026-07-10.**
   Platform: Windows token-switched helper launches. Endpoint/action: `LaunchProcessWin` environment construction
   for helper processes that carry CM/whiteboard launch-token and launch-parent proof variables. Boundary:
@@ -608,18 +594,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   corrupt-payload preservation and hardening, absence of direct `File::create(Self::path())` / ignored `write_all`
   in those stores, and the raw/TOML recovery permission, symlink-rejection, replacement, transient-load,
   RDP-password, and alias-path cleanup-policy regression tests.
-- **R-S11c-2a/R-S11c-3a — Windows `_service` raw session/SAS commands removed — CLOSED 2026-07-08.**
-  Platform: Windows installed service. Endpoint/action: `_service` named pipe messages formerly carrying
-  `Data::UserSid(Some(_))` for service-owned session switching and `Data::SAS` for SYSTEM-mediated
-  Ctrl+Alt+Del / temporary HKLM `SoftwareSASGeneration` changes. Boundary: local same-session process or
-  user-launched `--server` ↔ SYSTEM service. Attack surface closed: `src/ipc.rs` no longer defines
-  `Data::UserSid`, `Data::SAS`, or `connect_to_user_session`; `src/platform/windows.rs` no longer dispatches
-  either raw command in the service loop; selected-session requests in `src/server/connection.rs` fail closed
-  instead of asking `_service` to launch a target session; physical-console SAS in `src/server/input_service.rs`
-  fails closed instead of sending a generic service command. Service-owned session switching and service-mediated
-  SAS may be reintroduced only as a typed receiver-authorized capability tied to an authenticated Remote
-  connection and current policy state. Verification closure: `scripts/verify.sh` asserts the raw message/API
-  symbols and receiver dispatch are absent and the caller paths fail closed.
+- **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
+  Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
+  deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
+  `RequestServiceOwnedSasDispatch` on the dedicated one-slot SYSTEM-only `_service_sas` endpoint. General
+  `_service` cannot dispatch SAS. The requester must be the exact live LocalSystem
+  `--server --service-owned-server` generation retained by the SCM supervisor; the final dedicated worker retains
+  a duplicate pipe handle and process handle, rechecks PID, creation time, liveness, token session, and LocalSystem
+  under impersonation, reads `SoftwareSASGeneration` without mutation, and accepts only documented service values.
+  `ServiceOwnedSasDispatchAccepted(true)` means the void `SendSAS` call was dispatched, not that secure-desktop
+  activation was observed. Verification covers endpoint separation/budgets, SYSTEM-only DACLs, exact generation,
+  final liveness, dedicated worker ownership, read-only policy, deadline ordering, and native Windows tests.
 - **R-S11c-4a/R-S11c-4b — `_cm` file authority bound to a server-validated connection — CLOSED 2026-07-08.**
   Platforms: Linux, Windows, and macOS desktop CM paths; Android in-process CM. Endpoint/action:
   `_cm` / CM file read/write/delete/rename/digest operations. Boundary: helper client ↔ file-transfer
@@ -779,27 +764,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and job ABI layout. `scripts/build-windows.ps1` runs the terminal suite natively, offline and locked, before every
   artifact build; `scripts/verify.sh` runs the Linux-visible suite and gates that native-Windows step plus the source
   contracts above. The committed Windows VM double build remains the platform runtime and deterministic-artifact proof.
-- **R-S11c-26 — protected service IPC resource boundary — CLOSED 2026-07-12; tightened 2026-07-12.** Platforms: Linux, macOS,
-  and Windows installed-service IPC. Endpoint/action: the protected `_service` channel for liveness, service-owned
-  unattended-password requests, macOS password snapshots/readiness, and Windows RDP sharing.
-  Boundary: local peer admitted by transport identity ↔ root/LaunchDaemon/LocalSystem service resources before
-  receiver-authorized action dispatch. Attack surface closed: `_service` no longer uses the generic uncapped IPC
-  frame envelope or a persistent Unix service bus. Service clients and service receivers construct
-  `ConnectionTmpl::new_protected_service`, which sets `BytesCodec::max_packet_length` to
-  `SERVICE_IPC_MAX_FRAME_BYTES` before any service frame is read. Linux/macOS service tasks are admitted only under
-  `SERVICE_IPC_TRANSACTION_SLOTS`, read exactly one request with `SERVICE_IPC_REQUEST_TIMEOUT_MS`, dispatch only
-  `service_channel_admits_message` traffic, and close after that operation's response. The macOS password setter no
-  longer keeps readiness and password submission on the same service connection: readiness is a no-secret one-shot
-  RPC, local Authorization Services runs after readiness, and the password-bearing request opens a fresh bounded
-  service connection. Windows `_service` uses the same capped constructor and moves one-request handling into a
-  four-slot bounded tracked worker; service lifecycle close is absent from `_service`, while password/RDP requests
-  still require the existing elevated-client checks. SCM shutdown aborts and drains every tracked transaction.
-  Linux, macOS, and Windows now share `UNATTENDED_PASSWORD_MAX_BYTES = 4096`, checked before polkit,
-  Authorization Services verification, named-pipe elevation checks, hashing, or service-to-main password forwarding.
-  Verification closure: `scripts/verify.sh` runs the codec over-cap rejection test plus IPC constructor/envelope/value
-  cap tests and gates protected service client/server constructor wiring, one-shot read-timeout shape, Unix and Windows
-  transaction semaphores, Windows transaction cancellation/drain, common password-cap wiring, and this requirements/ledger
-  disposition. `scripts/apple-conform-check.sh` mirrors the macOS source gates.
+- **R-S11c-26 — protected service IPC resource boundary — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS WORKTREE
+  VALIDATION AND FINAL CLEAN COLD BUILD PENDING.** Platforms: Linux, macOS, and Windows installed-service IPC.
+  Endpoint/action: generic `_service` controls and read-only snapshots, raw `_service_password` mutation, Windows
+  `_service_credential`, `_service_main_control`, and `_service_sas`. Boundary: kernel-proved local peer ↔ bounded
+  root/LaunchDaemon/LocalSystem work ownership before receiver-authorized dispatch. Generic `_service` uses the
+  32 KiB protected codec, one request, bounded read/write deadlines, and fixed transaction capacity; it contains no
+  password body. Raw `_password`/`_service_password` are outside serde/`Bytes`/`Framed`, use canonical fixed frames
+  and one fixed wiping body allocation, and require mutual endpoint proof before secret transfer. macOS keeps generic
+  and password proof capacities separate: no-secret right readiness completes, the user-paced Authorization Services
+  prompt runs, and only then does a fresh one-second raw transport deadline begin. Linux binds raw service-password
+  admission to socket identity and bounded polkit. Windows holds one first-instance max-instances-one local message
+  pipe for process life, serially reuses it, rejects wrong principal/role before header wait, and retains exact
+  listener/client supervisor and overlapped-cancellation ownership. Service control, read-only replica, and SAS use
+  independent endpoints and budgets. Linux/macOS task owners and Windows supervisors drain every accepted operation
+  during shutdown; admitted password mutation is not aborted, and replay entries, tags, and keys are cleared only
+  after drain. Passwords are capped at 4096 bytes and macOS authorization at 1024 bytes. Verification closure:
+  `scripts/verify.sh` gates the generic protected-service envelope, raw protocol, endpoint separation, capacities,
+  timeout/admission ownership, and non-aborting drain; `scripts/apple-conform-check.sh` mirrors the macOS source gates.
 - **R-S11c-5 — macOS privileged service packaging — CLOSED 2026-07-09; tightened 2026-07-11.** Platform: macOS
   source-conformance and any future macOS artifact. Surfaces: `src/platform/privileges_scripts/daemon.plist`,
   `install.scpt`, deleted `update.scpt`, `uninstall.scpt`, and their `osascript` call sites in
@@ -931,7 +913,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Attack surface closed: service install/uninstall can no longer hide failure behind a started helper process,
   ignored status, partial plist state, or a discarded wrapper return. The CLI exits nonzero when service lifecycle
   wrappers report failure. Linux service install no longer imports active-user `Config`/`Config2` files into
-  root service state; service-owned unattended password provisioning remains the typed `_service` + polkit path.
+  root service state; service-owned unattended password provisioning remains the raw `_service_password` plus
+  socket-bound polkit path.
   `systemctl enable`, `start`, `disable`, and `stop` failures are fatal wrapper failures with logged status.
   macOS checks AppleScript exit status, verifies both daemon and agent plist
   postconditions, propagates synchronous uninstall result, verifies current-session
@@ -1013,7 +996,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `systemctl` through `which`/`PATH`. The service helper selects only fixed root-owned non-group/world-writable
   `/usr/bin/systemctl` or `/bin/systemctl` candidates and invokes `enable`, `disable`, `start`, and `stop`
   as direct argv. Linux service install no longer imports active-user `Config`/`Config2` files into root service
-  state; service-owned unattended password provisioning remains the typed `_service` + polkit path. Verification
+  state; service-owned unattended password provisioning remains the raw `_service_password` plus socket-bound
+  polkit path. Verification
   closure: `scripts/verify.sh` runs the `r_s11c10_service_*` unit tests and asserts the lifecycle block uses fixed
   `systemctl` paths, the argv helper, no user-config import into root service state, and no stale
   `run_cmds_status`, `has_cmd`, `which`, `cp -f`, shell, or inline `systemctl ...` command text.
@@ -1193,21 +1177,19 @@ unreachable and a source/test/AST gate prevents reintroduction.
   execute sequence. Verification closure: `scripts/verify.sh` asserts the checked broker-delete branch, fatal
   cleanup message, checked WiX return, absence of the old ignored return, absence of the sample custom action,
   and this ledger/requirements disposition.
-- **R-S11d-8 — Windows RDP viewer credential command provenance — CLOSED 2026-07-10.** Platform: Windows
-  viewer-side RDP tunnel convenience. Endpoint/action: launching `mstsc.exe` to connect to the loopback tunnel
-  and temporarily seeding the current user's Windows Credential Manager entry for `TERMSRV/localhost`. Boundary:
-  same-user viewer credential handling and local command provenance, not a service/SYSTEM escalation path. Attack
-  surface closed: the RDP helper no longer resolves `cmdkey` or `mstsc` through the caller's current directory or
-  PATH, no longer passes the saved RDP password through `cmdkey /pass:` argv, and no longer moves RDP credentials
-  through process-global environment variables. It binds `mstsc.exe` through the checked `GetSystemDirectoryW`
-  resolver, writes the temporary credential with native `CredWriteW` only when both username and password are
-  present, snapshots any pre-existing `TERMSRV/localhost` generic credential with `CredReadW`, serializes
-  in-process seeded launches with a credential lease, prompts `mstsc` when no complete credential was seeded, and
-  restores the previous credential state or deletes the temporary credential after `mstsc` exits or if launch
-  fails. Verification closure: `scripts/verify.sh` asserts trusted `mstsc` resolution, absence of `cmdkey` and
-  bare RDP command launch, absence of password argv/env plumbing, native `CredReadW`/`CredWriteW`/`CredDeleteW`
-  use, session-scoped generic credential policy, lease/drop restoration, prompt fallback, and this
-  ledger/requirements disposition.
+- **R-S11d-8 — Windows RDP viewer credential handling and command provenance — CLOSED 2026-07-13.** Platform:
+  Windows viewer-side RDP tunnel convenience. Endpoint/action: launching `mstsc.exe` for an ephemeral loopback
+  tunnel. Boundary: same-user viewer credential handling and local command provenance, not a service/SYSTEM
+  escalation path. Attack surface closed: RustDesk no longer accepts, stores, transports, seeds, snapshots,
+  restores, or deletes an RDP username or password. The legacy `rdp_username` and `rdp_password` peer options are
+  retired and removed whenever peer configuration is loaded or stored, with the legacy file rewritten without
+  them. The tunnel supervisor receives only the remote port. It resolves `mstsc.exe` through the checked
+  `GetSystemDirectoryW` trusted-tool resolver and launches it with exactly the ephemeral
+  `/v:localhost:<port>` endpoint and `/prompt`; authentication and any OS-approved credential retention remain in
+  the trusted Windows RDP client UI. Verification closure: `scripts/verify.sh` asserts the exact argument set,
+  trusted executable resolution, retired-option scrubbing and rewrite tests, absence of credential UI and
+  transport, and absence of `cmdkey`, ambient `mstsc`, Credential Manager APIs, `TERMSRV/localhost`, password
+  arguments, environment plumbing, and credential leases.
 - **R-S11d-9 — Windows terminal default-shell command provenance — CLOSED 2026-07-10.** Platform:
   Windows terminal helper and direct terminal service. Endpoint/action: opening the default shell for an
   authenticated terminal session. Boundary: remote-triggered only after Terminal authorization; installed-service
@@ -1419,52 +1401,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `SetPropertyFromConfig`, `SetPropertyIsServiceRunning`, `TryDeleteStartupShortcut`, and `ReadConfig` custom
   action surfaces are deleted. Persistent installer writes to `SoftwareSASGeneration` are deleted from both MSI
   installer paths; no uninstall-time blind delete is added because prior installers did not record
-  ownership or the original machine-policy value. Runtime SAS is the sole remaining `SoftwareSASGeneration`
-  mutation path: it serializes local policy mutation, accepts only the documented policy values, distinguishes
-  absent from present values, fails before `SendSAS` on open/read/set failure, preserves administrator value
-  `0` as `0`, preserves the Ease of Access allowance by temporarily changing value `2` to `3`, restores or
-  deletes after `SendSAS`, and returns an error if restoration fails. Verification closure:
+  ownership or the original machine-policy value. Runtime SAS does not mutate `SoftwareSASGeneration`: it opens
+  the policy read-only, accepts only the documented service-enabled values `1` and `3`, and rejects absent,
+  malformed, unsupported, Ease-of-Access-only, or disabled policy before `SendSAS`. Verification closure:
   `scripts/verify.sh` asserts declarative MSI service ownership, absence of the deleted service/config/SAS custom
   actions and persistent installer SAS writes, the runtime
-  original-policy state machine, serialized known-value-only temporary policy mutation, fail-closed
-  read/set/restore handling, caller error propagation, and this ledger/requirements disposition.
-**Release-blocking items — closed:**
-- **R-S11b-2 — installed-service unattended password ownership.** Platforms: Windows installed service,
-  Linux installed service, macOS LaunchDaemon/source path. Android is app-UID/service-owned rather than
-  root/SYSTEM, and non-installed/portable user-mode remains user-owned. Endpoints: any service-owned password
-  provisioning operation, historical generic config permanent-password writes, CLI/FFI/UI password setters, and
-  any whole-config IPC path that carries password storage/salt. Boundary: user-session process ↔ privileged
-  unattended host. Attack surface: any unprivileged local caller path that can mint or replace the credential
-  the privileged host later accepts remotely. Current state: the ordinary IPC password config-key write is absent
-  from the data model and in-tree setters after R-S11b-2b/R-S11c-1b and R-S11b-3c; typed user-owned password writes
-  are accepted only by user-owned receivers; service-marked receivers reject typed user-owned writes, the
-  whole-config IPC variant is absent, and standalone salt read/storage-salt sync are denied by
-  R-S11b-2a/R-S11c-1a. User-owned `--server` paths remain
-  user-owned; R-S11e-7 binds their password capability query and password-bearing write to an authenticated
-  same-UID current-executable `--server` receiver before any user-owned password value is sent. Linux
-  installed-service provisioning is closed by R-S11b-2c/R-S11c-1d plus R-S11e-6:
-  clients authenticate the connected root `--service` receiver before sending the service-owned password
-  request, that request is the only enabled service-owned password path, polkit authorizes it, and the final
-  commit is accepted only by a service-owned server from a root peer. Windows installed-service provisioning is closed by
-  R-S11b-2d/R-S11c-1e: the `_service` request requires an elevated connected pipe-client token, and the final
-  main-server commit is accepted only from a LocalSystem service peer. macOS installed-service provisioning is
-  closed by R-S11b-2e/R-S11c-1f: the `_service` path authenticates the connected root helper, asks that helper to
-  normalize the explicit non-shared timeout-zero RustDesk Authorization Services right before the UI obtains an
-  external form, verifies that exact-definition external form noninteractively in the LaunchDaemon, writes the
-  authorized value directly into the root LaunchDaemon credential
-  store without a pending plaintext cache, rejects the old
-  macOS main-server commit fallback, and serves that root credential to the service-owned LaunchAgent only as a
-  launchd-owned runtime snapshot after socket audit-token installed-app code proof, exact live argv, and parsed
-  root-owned plist command-shape proof; macOS `_service` clients also authenticate the connected server as the root
-  trusted privileged helper with audit-token code identity before sending password-change or runtime-snapshot messages,
-  and the snapshot cannot be persisted into user config.
+  known-value-only read-only policy decision, caller result propagation, and this ledger/requirements disposition.
+**Release-blocking source items — implemented; final validation remains open:**
+- **R-S11b-2 — installed-service unattended password ownership.** Windows installed service, Linux installed
+  service, and macOS LaunchDaemon mode terminate credential mutation in the privileged authority that enforces the
+  credential. Android is app-UID/service-owned; portable desktop mode remains user-owned. Password bodies exist
+  only on raw `_password`/`_service_password`, after mutual endpoint proof. Ordinary main and `_service` IPC carry
+  no password mutation, generic credential/config write, whole-config import, or storage/salt write. Linux adds
+  socket-bound polkit authorization and exact root-parent/service-replica proof. macOS adds a dedicated
+  nonshared timeout-zero Authorization Services capability, root helper/installed-app audit-token proof, and exact
+  LaunchAgent runtime-snapshot proof. Windows terminates mutation in the stable LocalSystem SCM authority and gives
+  the retained child only a generation-bound read-only replica. The final clean committed cold release build and
+  current native Windows worktree validation are still required.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
   service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy
   state ↔ root service credential commit. Attack surface closed: no new credential mutation path is added;
-  the existing R-S11b-2c `_service` request remains the only Linux service-owned password path, still using
+  raw `_service_password` remains the only Linux service-owned password ingress, using
   the SO_PEERCRED-derived peer process subject, `/usr/bin/pkcheck --action-id ... --process ... --allow-user-interaction`,
-  and a root-service final commit into the service-owned main server. This slice closes the residual assurance
+  and a root-service raw `_password` commit into the proved service-owned replica. This slice closes the residual assurance
   gap around what the repo ships: `res/com.carriez.RustDesk.policy` is now structurally verified as exactly
   one action, `com.carriez.RustDesk.set-unattended-password`, with `allow_any`, `allow_inactive`, and
   `allow_active` all set to `auth_admin`, with no `yes`, `auth_self`, or keep-style authorizations. The
@@ -1491,21 +1451,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   systems. Verification closure: `scripts/verify.sh` requires the trusted resolver, root/mode/executable checks, pure
   metadata/path regression tests, the requirements/ledger disposition, and absence of the old direct
   `Command::new("/usr/bin/pkcheck")` launch shape.
-- **R-S11e-2 — macOS _service client-side server authentication — CLOSED 2026-07-11.**
-  Platform: macOS installed-service mode. Endpoint/action: clients of the shared `_service` IPC socket, including
-  the service-owned unattended-password authorized request and the LaunchAgent runtime password snapshot request. Boundary:
-  installed app / service-owned LaunchAgent ↔ root privileged helper credential authority. Attack surface closed:
-  `_service` clients no longer trust the socket path alone. A local same-user fake server that wins the
-  `/tmp/<app>-service/ipc_service` race cannot receive the plaintext candidate password before authorization, and
-  cannot feed attacker-chosen runtime password storage/salt to the service-owned LaunchAgent. `connect_with_path()`
-  authenticates the macOS `POSTFIX_SERVICE` peer before any service protocol message is sent or read: peer uid must
-  be root, the socket-bound `LOCAL_PEERTOKEN` must resolve through Security.framework to live peer code satisfying
-  the pinned helper requirement with strict validation, and the resulting code path must be the trusted
-  `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` helper with root:wheel ownership, non-writable
-  helper directory/file, executable bit, no symlinks, and no extended ACLs. The effective peer pid is logged metadata,
-  not the code authority. There is no unauthenticated compatibility fallback. Verification closure: `scripts/verify.sh`
-  and `scripts/apple-conform-check.sh` require the client-side helper proof, root uid gate, audit-token code proof,
-  connect-path wiring, and requirements/ledger disposition.
+- **R-S11e-2 — macOS service client-side server authentication — SOURCE IMPLEMENTED.** Generic `_service`
+  carries only no-secret readiness/runtime-snapshot control; raw `_service_password` carries mutation. Both client
+  paths snapshot peer uid, effective-pid metadata, and `LOCAL_PEERTOKEN` immediately and prove a root peer whose
+  Security.framework live code satisfies the pinned privileged-helper requirement at the exact trusted
+  `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` path. Root:wheel ownership, non-writable
+  directory/file mode, executable type, no symlinks, and no extended ACLs are required. Effective pid is metadata,
+  not code authority. No unauthenticated, PID-only, path-only, or subprocess-code-signing fallback exists, and no
+  password body is sent before the raw endpoint proof completes.
 - **R-S11e-3 — Linux helper canonical target provenance — CLOSED 2026-07-11.**
   Platform: Linux `.deb` installed-service mode and shared Linux helper paths when invoked by privileged processes.
   Endpoint/action: fixed helper launches such as the root-to-user `sudo`/`env` server launch, `w`/`xrandr`/
@@ -1519,72 +1472,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   target-swap class for privileged helper launches without changing helper command semantics. Verification closure:
   `scripts/verify.sh` runs app-side and shared helper resolver tests and requires canonicalization, candidate/canonical
   parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition.
-- **R-S11e-4 — macOS _service accept-loop blocking-proof offload — CLOSED 2026-07-11.**
-  Platform: macOS installed-service mode. Endpoint/action: receiver-side admission for the world-connectable
-  `_service` IPC listener. Boundary: local IPC connect attempts ↔ root LaunchDaemon service availability and
-  credential-authority admission. Attack surface closed: the current-thread `_service` listener no longer performs
-  filesystem metadata, ACL, peer executable, and code-signing proof inline before spawning the per-connection task.
-  The accepted socket's uid and `MacosPeerProcessIdentity` are captured as a typed `ServiceScopedIpcAuthorization`
-  snapshot; the accept path obtains a nonblocking bounded authorization slot and passes it to the macOS connection
-  task, which runs the fail-closed audit-token executable/code-signing proof in `tokio::task::spawn_blocking` and
-  returns before the first `stream.next().await` if authorization fails. If the
-  authorization budget is exhausted, the listener drops the connection before spawning a task. No `_service` message is read before that
-  proof succeeds, Linux keeps its existing synchronous service admission path, and the `_url` sender proof remains
-  separate. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` require the snapshot type,
-  snapshot verifier, macOS authorization-slot budget, `spawn_blocking` task authorizer, start-loop ordering
-  (nonblocking slot before `tokio::spawn`, blocking proof inside the task, and authorization before first read), absence of the old combined
-  Linux/macOS pre-spawn service gate, and requirements/ledger disposition.
-- **R-S11e-5 — Linux service-owned main-server commit receiver proof — CLOSED 2026-07-11.**
-  Platform: Linux `.deb` installed-service mode. Endpoint/action: the root service's final
-  `Data::CommitServiceOwnedUnattendedPasswordChange` send into the uid-scoped main IPC server after polkit
-  authorizes a local service-owned unattended-password request. Boundary: root `_service` credential authority ↔
-  service-owned `--server` receiver identity. Attack surface closed: requester authorization and receiver
-  authentication are now separate proofs. The root service launches both active-user and headless/root
-  service-owned servers with a service-parent environment claim, and
-  `commit_service_owned_unattended_password_change` calls
-  `authenticate_linux_service_owned_main_server` before sending the password. That receiver proof derives pid/uid
-  from SO_PEERCRED, rechecks the peer as the current executable, requires the exact three-entry
-  `--server --service-owned-server` argv shape, requires the service-parent environment value to name the
-  current root service process, and requires the live `/proc` parent chain to include that service process.
-  Missing, stale, wrong-argv, wrong-parent, or non-descendant receivers fail closed before the password leaves the
-  root service. Verification closure: `scripts/verify.sh` gates launch-parent propagation in both Linux
-  service-server launch paths, the receiver authenticator, exact argv helper, live ancestor proof, structural
-  commit-path ordering from scoped connect to receiver proof to password-bearing send, the argv regression test,
-  and this requirements/ledger disposition.
-- **R-S11e-6 — Linux _service client-side server authentication — CLOSED 2026-07-11.**
-  Platform: Linux `.deb` installed-service mode. Endpoint/action: GUI/CLI service-owned unattended-password
-  requests over the shared `_service` Unix socket. Boundary: user-session password setter ↔ root service credential
-  authority. Attack surface closed: the client no longer sends `Data::RequestServiceOwnedUnattendedPasswordChange`
-  to a socket-path peer before proving that the connected receiver is the root RustDesk service. A local fake
-  `_service` listener that wins the shared socket path while the legitimate root-owned service socket/parent is
-  absent cannot receive the proposed plaintext password. `connect_with_path` authenticates Linux
-  `POSTFIX_SERVICE` peers before returning the connection: SO_PEERCRED-derived pid/uid must prove uid 0, the peer
-  executable must match the current executable, live argv must be exactly the service command shape
-  `argv[1] == "--service"`, and the peer executable plus parent directory must be root-owned, executable where
-  applicable, and not group/world-writable. Missing, non-root, wrong-executable, wrong-argv, or writable-path
-  receivers fail closed before any `_service` frame carrying the password leaves the client. Verification closure:
-  `scripts/verify.sh` gates the Linux `_service` client authenticator, root uid gate, exact service argv helper,
-  root-owned executable/parent trust predicates and tests, `connect_with_path` wiring, request-before-send ordering
-  through authenticated `connect_service`, and this requirements/ledger disposition.
-- **R-S11e-7 — user-owned permanent-password main IPC receiver authentication — CLOSED 2026-07-11.**
-  Platforms: Linux and macOS desktop user-owned main IPC, with the same password-route ordering applied across
-  Windows/Linux/macOS desktop setters. Endpoint/action: `permanent-password-user-owned-writable` capability query and
-  `Data::SetUserOwnedPermanentPassword(String)` write. Boundary: local GUI/CLI password entry ↔ same-UID main IPC
-  receiver. Attack surface closed: a same-UID fake main IPC listener that wins the per-user socket path while the real
-  user-owned daemon is absent or stale can no longer answer "user-owned password writable" and then receive the
-  proposed plaintext password. The user-owned password connector proves the connected receiver before either the
-  capability query or the password-bearing write: the peer uid must equal the caller's effective uid, the peer pid must
-  resolve to the current executable, and the live argv must be the exact user-owned `argv[1] == "--server"` shape,
-  rejecting service-owned markers and extra mode args. The generic desktop password setter also prefers the
-  service-owned path whenever that path is available, so an installed-service password change does not consult
-  user-owned main IPC to choose where the service-owned credential should go. This is local credential-secrecy and
-  route-correctness hardening, not a root/SYSTEM privilege-escalation bypass. Verification closure: `scripts/verify.sh`
-  gates the receiver authenticator, exact argv helper and test, same-uid/executable/argv checks, authenticated
-  password query/write connector, service-owned-first routing in both capability and setter functions, and this
-  requirements/ledger disposition.
-- **R-S11e-8 — macOS service-owned password right normalization before authorization — CLOSED 2026-07-11.**
-  Platform: macOS installed-service mode. Endpoint/action: service-owned unattended-password authorization through
-  Authorization Services and the root `_service` helper. Boundary: UI/CLI password entry and Authorization Services
+- **R-S11e-4 — macOS service proof ownership — SOURCE IMPLEMENTED.** Generic `_service` and password
+  `_service_password` have independent proof capacities. The accepted socket's uid, effective-pid metadata, and
+  `LOCAL_PEERTOKEN` are captured immediately. Security.framework proof executes on a dedicated exactly owned OS
+  thread and is synchronously joined; timeout, cancellation, panic, lost result, or lost join ownership aborts the
+  process. No generic frame or raw password header/body is read before endpoint proof succeeds.
+- **R-S11e-5 — Linux service-owned replica receiver proof — SOURCE IMPLEMENTED.** After polkit authorization,
+  the root service connects to raw `_password` and authenticates the replica from `SO_PEERCRED`, current executable,
+  exact `--server --service-owned-server` argv, service-parent environment, expected uid, and live ancestry before
+  sending the body. The child independently authenticates the root `--service` parent before reading it. No
+  password value is constructed in or sent through ordinary main IPC; that channel can only recover nonsecret
+  status after admission.
+- **R-S11e-6 — Linux `_service_password` client-side server authentication — SOURCE IMPLEMENTED.** The caller
+  connects to raw `_service_password` and proves the receiver is uid 0, the current trusted executable, exact
+  `--service` role, and rooted in non-writable trusted path metadata before sending the canonical header/body. A
+  path squatter or non-root/wrong-role process receives no password bytes. Generic `_service` carries no password
+  request.
+- **R-S11e-7 — user-owned permanent-password receiver authentication — SOURCE IMPLEMENTED.** Linux/macOS
+  `_password` mutually proves same uid, current executable, and exact user-owned server role before secret-body
+  transfer. Windows `_password` mutually proves exact executable/role/generation/token on the retained first-instance
+  pipe. The nonsecret writability query cannot redirect the subsequent raw operation, installed-service routing is
+  preferred, and status recovery reuses the same UUID/value without an ordinary-main password write.
+- **R-S11e-8 — macOS service-owned password right normalization before authorization — SOURCE IMPLEMENTED.**
+  Platform: macOS installed-service mode. Endpoint/action: no-secret right readiness through authenticated generic
+  `_service`, followed by user-paced Authorization Services and raw `_service_password`. Boundary: UI/CLI password entry and Authorization Services
   policy database ↔ root LaunchDaemon credential authority. Attack surface closed: the UI no longer calls
   `AuthorizationCopyRights` against a merely existing or stale `com.carriez.RustDesk.set-unattended-password` right.
   After authenticating the connected `_service` peer as the trusted privileged helper, the client sends a no-secret
@@ -1595,13 +1506,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `class=user`, `group=admin`, `shared=false`, `allow-root=false`, `authenticate-user=true`,
   `session-owner=false`, `extract-password=false`, and `timeout=0` before prompting. Fresh authdb first use is
   therefore seeded by the trusted helper before the prompt, and stale/weaker definitions fail closed instead of being used for
-  the authorization grant. Verification closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` gate the
-  readiness request/result, service-channel allowlist, client ordering from authenticated `_service` connect to
-  readiness to `AuthorizationCopyRights` to password send, exact native dictionary validation, absence of the old
-  existence-only helper, and this requirements/ledger disposition.
-- **R-S11e-9 — macOS _service audit-token peer code identity — CLOSED 2026-07-11.**
-  Platform: macOS installed-service mode. Endpoint/action: `_service` client-side server authentication,
-  receiver-side service-scoped admission, and the service-owned password runtime snapshot requester. Boundary:
+  the authorization grant. The prompt is intentionally outside the bounded proof worker; a fresh one-second raw
+  transport deadline starts after it returns. Verification closure: `scripts/verify.sh` and
+  `scripts/apple-conform-check.sh` gate the readiness request/result, generic service allowlist, ordering from
+  authenticated readiness through `AuthorizationCopyRights` to fresh raw transport, exact native dictionary
+  validation, absence of the old existence-only helper, and this requirements/ledger disposition.
+- **R-S11e-9 — macOS service audit-token peer code identity — SOURCE IMPLEMENTED.**
+  Platform: macOS installed-service mode. Endpoint/action: generic `_service` and raw `_service_password`
+  client-side server authentication, receiver-side admission, and the read-only runtime snapshot requester. Boundary:
   local Unix-domain socket peers ↔ root privileged helper/app credential authority. Attack surface closed: macOS
   `_service` code identity no longer depends on re-observing an effective pid/path or shelling out to filesystem
   `codesign` after accept. The connected socket's uid, `LOCAL_PEEREPID` metadata, and `LOCAL_PEERTOKEN` are captured
@@ -1609,13 +1521,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `SecCodeCopyGuestWithAttributes(kSecGuestAttributeAudit)`; app/helper requirements are validated with
   `SecCodeCheckValidity(..., STRICT_VALIDATE)`; and the path from `SecCodeCopyPath` is used only for secondary
   installed-location, owner, mode, symlink, and ACL checks. `_service` client auth now requires a root peer whose
-  audit-token code is the trusted privileged helper; receiver admission snapshots carry the audit token into the
-  blocking verifier before any `_service` frame is read; and the password runtime snapshot requester must be the
+  audit-token code is the trusted privileged helper; receiver admission snapshots carry the audit token into an
+  exactly owned OS-thread proof that is synchronously joined before any generic frame or raw password header is read;
+  timeout, cancellation, panic, lost result, or lost join ownership is process-fatal. The runtime snapshot requester must be the
   audit-token trusted installed app before launchd argv/plist proof is considered. There is no unauthenticated,
   PID-only, path-only, or subprocess-code-signing fallback. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` gate the direct `security-framework` dependency, `LOCAL_PEERTOKEN`,
   `LOCAL_PEEREPID`, legacy `LOCAL_PEERPID` absence, audit-token identity capture, native strict validation, Rust
-  `MACOS_CODESIGN` absence, service-client/server/snapshot wiring, and this requirements/ledger disposition.
+  `MACOS_CODESIGN` absence, service-client/server/snapshot wiring, exactly owned proof-thread joins, and this
+  requirements/ledger disposition.
 - **R-S11e-10 — macOS residual process launch provenance — CLOSED 2026-07-11.**
   Platform: macOS desktop/server source. Endpoint/action: post-keying wake/user-activity notification and
   root-capable `launchctl asuser` helper launch for CM/whiteboard bootstrap. Boundary: authenticated Remote
@@ -1632,21 +1546,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` gate the explicit IOKit link, native
   user-activity helper, remote-user activity type, server wiring, absence of `caffeinate`, absence of the
   `/usr/bin/env` bridge, the environment-key allowlist, and this requirements/ledger disposition.
-- **R-S11e-11 — Windows service-owned password commit receiver proof — CLOSED 2026-07-11.**
-  Platform: Windows installed service. Endpoint/action:
-  `Data::CommitServiceOwnedUnattendedPasswordChange(String)` from LocalSystem `_service` into main IPC.
-  Boundary: authorized elevated local password-change request ↔ the main-pipe receiver that will receive the
-  plaintext service-owned credential. Attack surface closed: the receiver-side main-channel policy already
-  rejected a user-owned server before writing the password, but the LocalSystem sender still connected to the
-  generic main pipe and serialized the password before proving that receiver was the service-owned server. The
-  sender now calls `authenticate_windows_service_owned_main_server` immediately after connecting and before
-  sending the password-bearing frame. That authenticator resolves the named-pipe server pid, requires the exact
-  current executable path, requires the process token to be LocalSystem, and requires the exact
-  `--server --service-owned-server` process shape through the exact-argv process lookup. If any proof is missing,
-  the service fails closed and returns the existing typed rejection ACK. Verification closure: `scripts/verify.sh`
-  gates the authenticator, exact-argv helper, LocalSystem receiver proof, source ordering before
-  `Data::CommitServiceOwnedUnattendedPasswordChange(value)`, the retained receiver-side LocalSystem commit gate,
-  and this requirements/ledger disposition.
+- **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS
+  WORKTREE VALIDATION PENDING.** Mutation terminates directly in the stable LocalSystem SCM service on raw
+  `_service_password`. The client authenticates the fixed service image, LocalSystem token, exact service role,
+  and process generation before sending. The process-lifetime first-instance listener preauthorizes the exact
+  active-principal RustDesk role before header wait, proves the header message by impersonation before body read,
+  and revalidates the body message plus fresh process/token/session identity immediately before nonblocking
+  admission. The retained child is never a durable commit receiver; `_service_credential` supplies only its
+  generation-bound read-only replica.
 - **R-S11e-12 — macOS clipboard-file paste no-follow finalize — CLOSED 2026-07-11.**
   Platform: macOS desktop with `unix-file-copy-paste`. Endpoint/action: CLIPRDR file paste after a local
   Finder/pasteboard paste operation asks the authenticated peer for `FILEDESCRIPTOR` metadata and file contents.
@@ -1701,13 +1608,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   actual filesystem operations. Verification closure: `scripts/verify.sh` gates this requirements/ledger disposition,
   the FileTransfer login shape, CM FileTransfer-only file-authority binding, Unix headless username/refusal
   guards, and the FileTransfer capability confinement set. No runtime behavior changed in this slice.
-- **R-S11e-15 — Linux pkcheck request-time peer identity binding — CLOSED 2026-07-11.**
+- **R-S11e-15 — Linux pkcheck request-time peer identity binding — SOURCE IMPLEMENTED.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: local admin-authorized
-  service-owned unattended-password changes through the shared `_service` socket. Boundary: untrusted local IPC
+  service-owned unattended-password changes through raw `_service_password`. Boundary: untrusted local IPC
   subject ↔ root service polkit authorization and credential commit authority. Attack surface closed: the root
   service no longer builds the `pkcheck --process pid,start-time,uid` subject from split observations after the
   accept-time executable proof. `linux_polkit_subject_for_peer` now derives the subject from
-  `peer_process_identity(stream, POSTFIX_SERVICE)`, so the request-time subject proof revalidates the SO_PEERCRED
+  the accepted raw socket identity, so the request-time subject proof revalidates the `SO_PEERCRED`
   pid/uid, proves the connected peer is still the current executable, checks the live `/proc` uid still matches the
   socket uid, and uses that same identity's process start time for the race-resistant polkit subject. This is
   correctness hardening rather than a newly proven default LPE: the old path still had the active-user/root UID gate,
@@ -1716,7 +1623,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   requirements/ledger disposition, and absence of the old direct `linux_proc_start_time(peer_pid)` subject assembly.
 - **R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12.** Platforms: Linux, macOS,
   and Windows desktop CLI, including installed-service and user-owned headless operation. Endpoint/action:
-  `rustdesk --password` and the value passed into the existing typed owner-aware password setter. Boundary:
+  `rustdesk --password` and the value passed into owner-aware raw password routing. Boundary:
   operator-entered CPace owner credential ↔ OS process metadata, shell history, and local process observers.
   Attack surface closed: the permanent password is no longer accepted as a positional process argument. Bare
   `--password` reads and confirms the value with echo disabled from the controlling terminal;
@@ -1755,19 +1662,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/apple-conform-check.sh` gate the complete session/generation/phase/size model and absence of every raw or
   legacy response surface; Appendix C #122 records CWE-441/CWE-863 and the all-platform impact.
 - **R-S11e-18 — Windows named-pipe impersonation restoration — CLOSED 2026-07-12.** Platform: Windows
-  installed-service and service-owned main IPC. Endpoint/action: connected-client token impersonation for
-  elevated `_service` password/RDP requests and LocalSystem service-owned credential commits. Boundary:
+  installed-service IPC. Endpoint/action: connected-client token impersonation for raw `_service_password`,
+  elevated `_service` RDP requests, and LocalSystem service credential control. Boundary:
   client-token authorization proof ↔ reuse of the privileged IPC runtime thread. Attack surface closed: the
   former `Drop`-only guard logged `RevertToSelf` failure and returned, although Windows leaves the thread in the
   client context after that failure. The IPC listener runs a current-thread Tokio runtime, so subsequent service
-  tasks could execute under the stale client token. `windows_pipe_client_token_satisfies` accepts only the closed
-  `Elevated`/`LocalSystem` requirement enum, captures its complete result, explicitly restores impersonation, and
-  returns only after successful restoration. No generic callback can add work inside the impersonation window.
-  Token-open errors and
-  unwinds retain an active guard that invokes the same restoration primitive. A failed `RevertToSelf` immediately
-  aborts the process; no error return, logging fallback, or reusable impersonated thread remains. Verification
-  closure: `scripts/verify.sh` parses the guard and wrapper to require the shared process-fatal primitive,
-  explicit-before-return ordering, active unwind fallback, and absence of the old log-and-continue path;
+  tasks could execute under the stale client token. Every named-pipe impersonation now runs on a dedicated,
+  disposable OS thread over a duplicated parent-owned pipe handle. The service waits for that thread before using
+  any result. Successful and ordinary `Result`-failed token checks call `RevertToSelf` before normal thread return.
+  The release profile remains globally process-fatal on panic and makes no panic-containment claim. A failed
+  `RevertToSelf` records no usable result and calls `ExitThread`, so no reusable impersonated thread reaches the
+  Tokio runtime while the service process and its sole child-job handle remain alive. Verification closure:
+  `scripts/verify.sh` parses the helper, token-authority wrapper, and SAS
+  dispatch to require one confined impersonation site, duplicated-handle lifetime, restore-before-normal-return,
+  disposable-thread termination on restoration failure, parent wait-before-result, and absence of process abort;
   Appendix C #123 records the Windows-only impact; the repository Windows build gate compiles the target API shape.
 - **R-S11e-19 — Windows service-owned child tree supervision — CLOSED 2026-07-12.** Platform: Windows
   installed service. Endpoint/action: SCM start, stop, preshutdown, per-session service-owned server launch,
@@ -1779,21 +1687,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   non-inheritable `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` job first; `LaunchProcessWin` uses `STARTUPINFOEXW`, a
   one-entry `PROC_THREAD_ATTRIBUTE_JOB_LIST`, `EXTENDED_STARTUPINFO_PRESENT`, and disabled handle inheritance so
   `CreateProcessAsUserW` creates the child under job ownership before its initial thread can run. The service retains
-  RAII job/process handles, exact PID, and served session; job accounting proves aggregate active-process absence.
+  RAII job/process handles, immutable PID/creation-time identity, and served session; job accounting proves aggregate active-process absence.
   Desired, listener, and served sessions are separate. Active or unknown port-forward state preserves the old child
   and is re-queried; zero permits retirement; a dead main child retires remaining descendants regardless of the
   count. Port-forward queries and graceful close authenticate the connected main IPC server as the retained PID.
-  Graceful exit is bounded, remaining descendants are terminated through the exact job, and replacement starts only
-  after zero active processes. SCM Stop/Preshutdown uses a capacity-independent in-process channel, reports
+  Runtime handoff has a bounded wait per attempt and retains a still-live main child for a later authenticated
+  shutdown retry. Only after the main child has observably exited are remaining descendants terminated through the
+  exact job, replacement starts only after zero active processes, and every child launch shares the stop-transition
+  lock. SCM Stop/Preshutdown uses a capacity-independent in-process channel, reports
   StartPending/StopPending checkpoints, and advertises STOP plus PRESHUTDOWN; `_service Data::Close`, nested runtime
-  stop, Shutdown handling, and detached transaction tasks are deleted. Every accepted `_service` transaction is
-  tracked, aborted, and drained. `SERVICE_STOPPED` follows exact-tree absence; cleanup failure returns without a
-  clean-stopped claim. Verification closure: pure `windows_service_` transition tests cover no-target launch,
+  stop, Shutdown handling, and detached transaction tasks are deleted. Every accepted service transaction is
+  tracked and drained without aborting an admitted password mutation. SCM retries authenticated exact-child
+  shutdown while the main child is live and retains the job through status/accounting failures. Checkpoints may
+  advance periodically while active retry, transaction drain, child shutdown, or job-empty accounting continues;
+  they do not claim that a transaction or process count decreased. Accounting and descendant-termination failures retain the sole job handle and retry. `SERVICE_STOPPED`
+  follows exact-tree absence; a prior loop or status error uses a service-specific failure code rather than a clean
+  stop. Verification closure: pure `windows_service_` transition tests cover no-target launch,
   active/unknown deferral, idle replacement, dead-main reaping, and same-session stability; the repository Windows
   build runs that suite natively before artifacts; `scripts/verify.sh` gates creation-time job assignment, exact-child
   IPC, job accounting/termination, SCM status ordering, transaction drain, deleted paths, requirements, ledger, and
   Appendix C #124.
-- **R-S11e-20 — Windows Installer sole machine-state authority — IMPLEMENTED 2026-07-12; WINDOWS VM VALIDATION PENDING.** Platform: Windows
+- **R-S11e-20 — Windows Installer sole machine-state authority — SOURCE IMPLEMENTED; `.6` NATIVE/COLD ARTIFACT VALIDATION NOT YET PERFORMED.** Platform: Windows
   setup, install, repair, upgrade, and uninstall. Endpoint/action: UAC-approved setup bootstrap, Program Files
   payload deployment, LocalSystem service ownership, firewall authorization, machine registry/shortcuts, fixed
   certificate/driver/runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
@@ -1814,7 +1728,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   code. The Windows build compiles only the Flutter distribution, builds, canonicalizes, and validates the MSI first,
   creates a dedicated one-file setup payload from those final MSI bytes, hash-checks it, packs it offline/locked,
   removes staging in `finally`, and emits only exact output paths.
-  WiX `ServiceInstall` with the documented null-StartName LocalSystem default, `ServiceControl`, nested
+  The MSI alone creates and ACLs `ProgramData\<Product>\config`; runtime code has no authority to create or
+  repair that machine credential root. WiX `ServiceInstall` with the documented null-StartName LocalSystem default, `ServiceControl`, nested
   `ServiceConfigFailureActions` preserving 5/10/30-second restart backoff, and a file-bound inbound TCP/21118
   `fire:FirewallException` transactionally own service and firewall state. The basename process killer and custom
   service/firewall source, exports, and schedules are deleted. Exact test-certificate and fixed-root Amyuni cleanup run
@@ -1826,9 +1741,68 @@ unreachable and a source/test/AST gate prevents reintroduction.
   replacement is atomic when a prior broker exists, and the launch path propagates verification failure. It uses no
   shell, UAC, or basename kill. Verification closure:
   portable pure tests cover exact setup-name and 0/3010 status policy; a Windows-target isolated portable compile
-  passed; `scripts/verify.sh` gates the sole-authority topology, deleted paths, declarative MSI resources, exact
-  one-file build payload, broker provenance, R-S11f, this ledger entry, and Appendix C #125. The full Windows VM
-  artifact build remains the repository's authoritative native packaging test and was not run in this slice.
+  passed historically for an earlier source state; `scripts/verify.sh` gates the sole-authority topology, deleted
+  paths, declarative MSI resources, exact one-file build payload, broker provenance, R-S11f, this ledger entry,
+  and Appendix C #125. The final current `.6` Windows VM cold artifact build has not run.
+- **R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED; CURRENT NATIVE
+  WINDOWS WORKTREE VALIDATION AND FINAL CLEAN COLD BUILD PENDING.** Ordinary main IPC remains a closed bounded
+  nonsecret protocol. Password bodies use only raw `_password`/`_service_password` with canonical header/body/status
+  frames and a Windows operation-bound ACK. Each operation UUID is bound to owner kind and an HMAC-SHA256 value
+  fingerprint under a process-random key. `Prepared`/`Pending` admission is irrevocable; a mismatched replay rejects;
+  the admitted worker owns completion; and `Applied` follows successful durable storage. Each transport and
+  authorization attempt is deadline-bounded. Exact ownership drain is not detached, while uncertain client recovery
+  reuses the same UUID/value for at most 600 seconds before returning an explicit unknown-outcome error.
+  `Rejected`, `InternalFailure`, and `ShuttingDown` are terminal; only explicit `Unknown` continues recovery. Each
+  64-entry process-lifetime ledger admits new work by evicting only its oldest terminal result and never evicts
+  `Prepared`, `Pending`, `Authorizing`, `Committing`, `Recoverable`, or Windows `Active` work. A denied Linux
+  pre-admission authorization is removed immediately and consumes no replay capacity. Evicted IDs become `Unknown`;
+  retained terminal IDs remain value-bound, and restart is not durable exactly-once. Linux's outer admission
+  separately serializes one caller through `Authorizing`, `Committing`, `Recoverable`, and `Complete`. Shutdown
+  closes admission, drains transactions and workers, then wipes entries, tags, and HMAC keys. Windows SAS remains
+  on its independent one-slot endpoint, bound to the retained LocalSystem child generation through supervisor proof
+  and final impersonated dispatch; its result proves dispatch acceptance, not secure-desktop activation. SCM may
+  remain `STOP_PENDING`, and `SERVICE_STOPPED` follows exact-job zero.
+
+- **R-S19a — connection-owned controlled-input execution — SOURCE IMPLEMENTED; `.6` NATIVE/COLD ARTIFACT VALIDATION NOT YET PERFORMED.**
+  Windows, Linux, and macOS Remote connections each own one bounded input worker from authorization through joined
+  teardown. Android validates both the raw inbound key and the modifier-rewritten event; iOS has no controlled-input
+  server and retains source-conformance scope only. Item/byte caps, bounded wheel and gesture magnitudes, structural
+  event validation, nonblocking admission, and atomic cancellation/dispatch admission make malformed, full, or
+  disconnected queues fail closed. Final physical key and mouse-button ownership is process-wide and
+  reference-counted by connection: physical down occurs only on the first owner, physical up only after the final
+  owner, and teardown releases exactly the closing connection's ownership. Temporary modifiers participate in the
+  same ownership model and are released on every Result/error path. Native backends are Result-bearing; uncertainty
+  after a native dispatch or release failure is fail-stop rather than guessed state or continued injection.
+  Windows uses one stable executor for injection and BlockInput so aggregate BlockInput acquire/release ordering,
+  physical dispatch, and cleanup cannot cross threads or reorder. macOS completes its synchronous dispatch-queue
+  barrier before worker completion; its privacy blackout contains no `CGEventTap` callback or run-loop source and
+  cannot implicitly suppress local input. Explicit BlockInput remains a separate Remote-only connection capability.
+  Linux clears global remaps only after the final worker exits. Worker supervision
+  owns joins from creation, queued events are destroyed without execution after cancellation, and no Tokio executor
+  is synchronously blocked by native completion. Source gates, Linux tests, Apple conformance, Android validation,
+  and native Windows input-lifecycle suites cover the platform contracts. Appendix C #126 and R-S19a are the
+  normative closure; the final current `.6` cold artifact build has not run.
+
+- **R-S11e-22 — Windows machine credential store and former local-authority/LPE class — SOURCE IMPLEMENTED; `.6` NATIVE/COLD ARTIFACT VALIDATION NOT YET PERFORMED.**
+  The MSI alone provisions `ProgramData\<Product>\config` with a protected inheritable DACL containing only
+  SYSTEM and Administrators full-control ACEs; accepted owner is SYSTEM or Administrators. Runtime has no create,
+  ACL repair, profile fallback/rewrite, alternate root, or pathname fallback. The stable LocalSystem SCM supervisor
+  retains handle-relative `NtCreateFile` traversal with `FILE_OPEN_REPARSE_POINT`; every component rejects
+  reparse points and is post-open checked for identity, type, owner, and DACL. Startup fails unless the existing
+  root, ACL, persistent-ACL volume, supervisor read/write authority, and matching-serial volume durability handle
+  are all proved. Only SCM has durable write authority and owns that volume handle; the exact retained child has a
+  generation-bound read-only runtime replica. Mutation performs pre-rename file sync, handle-relative replacement,
+  renamed-file `NtFlushBuffersFile`, then `FlushFileBuffers` on the matching volume. Any post-replacement
+  durability or identity ambiguity is process-fatal, never false success or false failure. The intentional cost is
+  a potentially blocking whole-volume flush and administrative volume access for every credential namespace
+  mutation. Stop/apply drains admitted work and may remain `STOP_PENDING`; stopped follows exact-job zero, with
+  periodic checkpoints permitted during active retry/drain. Credential transport uses a redacted
+  `SensitivePassword` that owns either the originating string or one fixed inbound raw allocation through an `Arc`;
+  retries clone only that `Arc`. The final secret allocation, raw stack frames, fixed body, unused tail, and
+  authorization capability are zeroized on drop/error; Windows public setters wrap before policy/authorization
+  failure paths. This scoped guarantee does not claim that every allocator, kernel, transport, or OS copy is wiped. This
+  closes the former Windows machine-credential local-authority/LPE/storage class described by Appendix C #128 at
+  source level; final native/cold validation remains outstanding.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -1842,7 +1816,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
-  remains high risk because main IPC is same-session. Endpoints: `Data::Options`, trusted-device removals,
+  remains high risk because main IPC is same-session. Endpoints: `MainIpcRequest::SetOptions`, trusted-device removals,
   remaining server/direct-listener policy writers, and any hidden UI/CLI/FFI path that persists
   controlled-side policy. Boundary: user-session process ↔ privileged host policy. Attack surface: a local
   caller can alter who can reach the service, how it binds, which trust/identity state it uses, or which
@@ -1854,7 +1828,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
   reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
   R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g; whole-map option reads
-  (`Config::get_options`, the UI cache, CLI `--option`, and IPC `Data::Options(None)`) now overlay
+  (`Config::get_options`, the UI cache, CLI `--option`, and `MainIpcRequest::StatusSnapshot`) now overlay
   `PINNED_SETTINGS` last after R-S11b-3i, so broad reads cannot surface stale default/stored/signed-custom
   values for pinned policy keys; and the main IPC mutation
   policy is exhaustive after R-S11b-3h, with no wildcard arm that could admit a future
@@ -1872,32 +1846,6 @@ unreachable and a source/test/AST gate prevents reintroduction.
   verify the connected server PID/executable, with `_service` additionally requiring a LocalSystem server.
   The long-lived `_service` listener is recreated on active-session changes so its DACL and the runtime
   expected-session check do not drift. Status: closed for the named-pipe endpoint boundary.
-- **R-S11c-12 — Windows terminal helper pipe binding.** Status: closed by the completed R-S11c-12 slice above.
-  The Windows terminal helper pipes are transport only: they are first-instance, local-only, DACL-restricted,
-  and post-connect bound to the exact helper PID returned by `CreateProcessAsUserW`; same-user pipe-name
-  knowledge, log scraping, or first-client racing cannot select the terminal helper endpoint.
-- **R-S11c-7 — Linux `_pa` audio helper ambient same-UID trust.** Status: closed by the completed
-  R-S11c-7 slice above. `_pa` capture requires an owner-identity/token lease minted from the active audio
-  subscriber set and bound to the authenticated live `_cm`/`_pa` process identity plus the server-scoped CM
-  launch token and server-parent ancestry; missing, wrong, wrong-peer, launch-tokenless, non-descendant, and stale capabilities are rejected before
-  PulseAudio capture starts.
-- **R-S11c-11 — Unix `_cm` endpoint-selection identity.** Status: closed by the completed
-  R-S11c-11 slice above. Fixed-path `_cm` selection is now authority-bearing before the server discloses
-  `cm_auth_token`, file/chat/voice-call state, or future downstream helper leases: macOS requires mutual
-  server/endpoint launch-token proof via separate HMAC-SHA256 contexts after process-shape checks, and Linux
-  keeps its live process identity checks plus the same mutual pre-disclosure proof.
-- **R-S11c-22 — Windows CM non-file clipboard authority.** Status: closed by the completed R-S11c-22
-  slice above. The Windows root clipboard service no longer treats authenticated `_cm` endpoint proof as
-  authority to read the desktop clipboard; it carries a subscribed Remote connection's CM token, and CM
-  validates the live Remote-only clipboard capability before `check_clipboard_cm()`.
-- **R-S11c-23 — Windows Flutter runner Rust core DLL load provenance.** Status: closed by the completed
-  R-S11c-23 slice above. The Windows runner resolves the running executable directory and loads the sibling
-  Rust core DLL through `LoadLibraryExW` with restricted search flags instead of a bare DLL-name search.
-- **R-S11c-8 — `_whiteboard` helper ambient same-UID trust.** Status: closed by the completed R-S11c-8
-  slice above. Whiteboard helper IPC now uses a launch-scoped endpoint, mutual whiteboard-specific launch
-  proof, parent-pid admission, and per-connection event tokens; arbitrary same-UID clients, fixed-path
-  squatters, caller-supplied render keys, wrong-token events, and stale `Exit` are rejected before overlay
-  state changes.
 - **R-S11c-9 — Windows URL forwarding via unauthenticated window messages — CLOSED 2026-07-09.**
   Platform: Windows desktop. Endpoint: `WM_COPYDATA` / `WM_USER+2` URL forwarding to an existing UI
   window. Boundary: local process ↔ URL/deep-link dispatcher. Closure: the Rust helper
@@ -2121,432 +2069,44 @@ requirements/fixes; the newly proven Windows service-terminal principal flaw is 
 R-R3/Appendix D gated class: Rust and Dart package advisories are checked by the pinned advisory gates, while
 native vcpkg codec advisories remain the Appendix C #2b watch/residual.
 
-Current implementation is compliant with this R-S11b/R-S11c stronger requirement as of 2026-07-12. No
-release or prerelease should be promoted on that fact alone; the separate live-QA, build, dependency, and
-release-readiness items below still govern promotion.
-
-**R-B2 — the reproducible release is produced + published by DEFAULT script runs, no manual step.** The
-whole flow is opinionated + self-validating end to end, so an operator (not an AI agent) produces AND
-uploads an official GitHub release with bare commands and NO env vars:
-
-```
-scripts/online-fetch.sh            # once: fetch + stage the digest-pinned toolchains / caches / VM helper
-scripts/gen-android-keystore.sh    # once: mint the stable R-B2 signing key at its default location
-scripts/provision-windows-vm.sh    # once: build the §12.2 Windows golden VM
-scripts/build-release.sh           # each release: cold, all 3 platforms, double-build A==B -> dist/ + SHA256SUMS
-scripts/publish-github-release.sh  # each release: upload dist/ as a GitHub release (draft; --publish to go live)
-```
-
-`build-release.sh` cleans from scratch and builds Debian/Android/Windows each **byte-identical
-double-build A==B**, pins the release commit so the set is **coherent** (it rejects itself if HEAD moves
-mid-build), and writes the authoritative manifest `dist/SHA256SUMS` (HEAD + `SOURCE_DATE_EPOCH` + the
-four SHAs) — so the per-release SHAs live THERE and in the published GitHub release, never hand-copied
-into this ledger. `publish-github-release.sh` refuses to publish anything not matching a clean
-committed+pushed HEAD and its recorded SHAs. Three build-integrity fixes make that trust sound (each
-was caught fail-loud during development, not shipped):
-- **`.msi` cross-day reproducibility (`c47bca8`)** — `res/msi/preprocess.py` had stamped the wall-clock
-  build date into an ARP `InstallDate` (DATE-granular: it passed a same-day double-build but differed
-  across calendar days). Now `SOURCE_DATE_EPOCH`-derived (UTC, timezone-independent); verify.sh §(6) gates it.
-- **clean-worktree assertion (`99fcadd`)** — deb/apk refuse a dirty/stale tree (`ALLOW_DIRTY_TREE=1` for a
-  deliberate local build); the keystore + every other input default correctly, so no env var is required.
-- **concurrent-commit coherence (`1405369`)** — Windows pins the commit for both double-build passes, and
-  build-release.sh rejects the set if HEAD moves mid-build, so the manifest can never mislabel a
-  mixed-commit set.
-- **R-B9/R-B10 legacy root Docker builder retirement (closed/gated 2026-07-11)** — the legacy root
-  `Dockerfile`, its `entrypoint.sh`, and the translated upstream `docs/README-*.md` build instructions are
-  deleted. The only supported Docker builders are the digest-pinned `scripts/Dockerfile.*` images created by
-  `scripts/online-fetch.sh`; the legacy root Docker builder is absent, and `verify.sh` rejects any return of
-  the root Dockerfile/entrypoint, translated upstream README build path, raw Sciter/rustup live-fetch snippets,
-  unchecked CMake download, or `rustdesk-builder` root-Docker command.
-`verify-release.sh` (8 source gates: compile/KATs/policy, runtime smoke, Flutter/Dart analyze,
-native-codec watch, Apple source conformance, Rust advisory audit, Dart advisory audit, and the
-build-harness fail-loud suite) is the source-side confirmation. The reproducible set folds in the
-R-S19 structural closure of CWE-863 / CVE-2026-58056 (every peer-triggerable capability derived from
-`AuthConnType` by construction).
-
-Prior re-prove (superseded; its `.msi` `2d8b8aed` was later found NOT cross-day reproducible — fixed
-`c47bca8` above; exe/deb/apk WERE reproducible): **R-B2 at HEAD `5e03011` (2026-07-02)** after the R-V3
-crypto-audit publication (`docs/CRYPTO-AUDIT-2026-07-02.md`, VERDICT **SOUND**): deb `d15c6ed5…` / apk
-`6d06a547…` / exe `beed598c…` / msi `2d8b8aed…`.
-
-Prior re-prove (superseded): **R-B2 re-proven on all three platforms at HEAD `a5bd577` (2026-07-02)**, after the
-autonomous-session change batch: the mobile **QR-scanner excision** (R-G1/R-G2 — page + button +
-the `qr_code_scanner`/`zxing2`/`image_picker` deps), the **encrypted port-forward/RDP tunnel
-RESTORATION** (R-S5 option 1 / R-F1 / R-D6 / R-A9 — the relay was wrongly refused; it now rides the
-sealed session stream, proven ciphertext by the R-A9 wire-capture test), and the **AppCompat-theme
-build fix** (R-B2 — the QR-plugin excision dropped the transitive `androidx.appcompat` the
-permission activity's theme referenced; reparented to the platform translucent theme). The binaries
-change; **A==B at this HEAD is the proof, not a match to older hashes.** New byte-identical (A==B)
-double-build SHA-256s:
-
-```
-ad70b491597a5dbd59c8bdbbd3596999bfe95c6fe156da7954ea3d88df03d30e  rustdesk-x86_64.deb
-eee3cad7f4837ce2537facd29409c11cd831e2f16ed83bf22be66a114dc71db1  rustdesk-arm64.apk
-c68fb11ea3d25945a014c15ced26f534ba9f8ceb2f871b02a6623ba8d4a46932  rustdesk-setup.exe
-8795007d56006038448026b35bf3d08b85c30e2bd04b77f64a74b136bde3b739  rustdesk.msi
-```
-
-Debian = offline `DOUBLE_BUILD` `dist` vs `dist/_rebuild`; Android = two independent offline CLEAN
-builds proven byte-identical (signed apksigner v2, RSA-4096, cert `10:91:32:2B:A0:42:5A:FA:…`);
-Windows = §12.2 KVM golden-VM `DOUBLE_BUILD` A==B (exe + msi). `verify-release.sh` ALL 8 source gates
-GREEN at this HEAD (incl. the port-forward runtime smoke, Apple source conformance, and the R-A9
-wire-ciphertext test).
-
-Prior re-prove (superseded): **R-B2 re-proven on all three platforms at HEAD `ede091e` (2026-07-01), after the
-completion-review fix batch (R-G6 additive error copy + R-X7/R-G3/R-S18 letter-of-spec
-closures).** That batch changed app source (client.rs error surfaces, en.rs keys, the
-flutter `_secure`/`_direct` badge-state removal, the `use-temporary-password`/os-cred
-dead-code excision), so the binaries change; **A==B at this HEAD is the proof, not a
-match to older hashes**. A latent **R-B9 idempotency** bug surfaced during the re-prove
-and was fixed in `build-debian.sh`: it now `rm`s the stale ephemeral plugin symlinks
-(`flutter/linux/flutter/ephemeral/.plugin_symlinks` + `.flutter-plugins{,-dependencies}`)
-before the flutter plugin re-injection — a prior build leaves them dangling at its own
-PUB_CACHE and `flutter pub get` does NOT overwrite them, so `flutter build linux`
-CMake-aborted on a non-pristine tree ("re-running is safe" now holds). It is a
-build-harness fix only — no artifact payload changes. New byte-identical (A==B)
-double-build SHA-256s:
-
-```
-4187b8e196047c1c1ab96610562806da396512282bcb8790f32918e49a3a396a  rustdesk-x86_64.deb
-4a9d7fad89547fdd58ef98eddbcfae8af0a1a9653d14b561e6348f578155c77e  rustdesk-arm64.apk
-d8a4417010d1a22a94826b9d3bde59e308aa08dd9911a650385abf5b85a7d15d  rustdesk-setup.exe
-dff1205c76308a6999e9e5a57790a29876d1e859be660cf487804211abb6cb65  rustdesk.msi
-```
-
-Debian = offline DOUBLE_BUILD `dist` vs `dist/_rebuild`; Android = two independent
-offline builds proven byte-identical (signed apksigner v2+v3, RSA-4096); Windows =
-§12.2 KVM golden-VM DOUBLE_BUILD A==B. This confirms the completion-review source
-changes compile cleanly end-to-end on **all three** targets — the full `flutter build`
-validation beyond `flutter analyze`.
-
-Prior re-prove (superseded): **R-B2 was re-proven on all three platforms at HEAD
-`6fbae50`** — after this session's two *source-changing* commits: the full-access
-pin reversal (`9a83b50`, one controlled-side mode for the authenticated owner)
-and the at-rest credential change (`6fbae50`, the CPace PRS now stored as a
-memory-hard Argon2id hash, never the plaintext — R-P1).
-Those genuinely change the binaries, so the new hashes differ from the prior
-doc-only-stable `313f776` set — **A==B at this HEAD is the proof, not a match to
-the old hashes**. The new byte-identical (A==B) double-build SHA-256s:
-
-```
-7cadaaab23788b73417ebd6348290dd1e5831ff088bee9826ded834c32a22472  rustdesk-x86_64.deb
-9468236ab2f2eff7ad71b63339e21705cd7fabc650ca871fa906ec10f6254d2d  rustdesk-setup.exe
-bc5135c5c738908ba5a454a70331103dab44bb10405bf7fff20384d70dea23d8  rustdesk.msi
-54e26d37e46bdc3a788972df57fd1848b4df0403b10c0bd01d555b9083f6c593  rustdesk-arm64.apk
-```
-
-The Debian `.deb` is an offline `DOUBLE_BUILD` A==B (`build-debian.sh`, `dist`
-vs `dist/_rebuild`); the Windows `.exe`/`.msi` are a §12.2 KVM golden-VM
-`DOUBLE_BUILD` A==B (a fresh CoW overlay cloned from the byte-identical golden
-*per cycle*, the in-VM `build-windows.ps1 exit=0` honesty gate confirming a real
-compile rather than a stale artifact); the Android `.apk` is two independent
-offline builds proven byte-identical, signed (apksigner v2+v3, RSA-4096). So
-**all three platforms are byte-reproducible (A==B) at HEAD `6fbae50`**, and the
-full-access + Argon2id-PRS changes compile cleanly on every target — including
-the `cfg(windows)` path that only an actual build can validate.
-`dist/SHA256SUMS-HEAD.txt` is regenerated as the consistent full **3/3** manifest
-at `6fbae50`, superseding the `313f776` set (deb `c2d9aa04…` / exe `5f280a07…` /
-msi `48a301bb…` / apk `b49c4f20…`). The Windows VM build — the only path that
-compiles the `cfg(windows)` code — remains the sole validator there (it earlier
-caught a dropped `as Box<_>` trait-object coercion in the CLIPRDR clipboard
-dispatch, `libs/clipboard/src/platform/mod.rs`, that the Linux gates structurally
-cannot see; fixed 008e2ba), and the in-VM honesty gate prevents any stale
-artifact from shipping.
-
-## Live acceptance-testing regressions — damage-control investigation (2026-07-06, IN PROGRESS)
-
-The deployed `v1.4.7-hardened.1` prerelease (`commit-7c16d75…`) was put through hands-on acceptance
-testing across three real hosts — the **haggai_computer** Debian/Docker box (controlled side), a
-**Windows 11** machine (both roles), and an **Android** phone (both roles). The operator, acting as QA,
-surfaced a set of correctness and coherence defects that the `## Current Verdict` above does not reflect.
-
-**What this means for the verdict:** the cryptographic / transport core and the direct-IP-only posture
-hold (CPace auth, fail-closed, the excisions, reproducible builds — all confirmed working in the field).
-But the **connection lifecycle**, the **settings / security-settings controls**, the **desktop process &
-shutdown model**, and **UI ↔ excision coherence** are not release-ready. The 2026-07-04 "GUI/coherence
-backlog CLOSED / RESOLVED" claim is **qualified**: it closed the *dead-scaffolding* stratum, not the
-*behavioral* correctness of the surfaces a real user exercises. The prerelease is **not to be promoted**.
-
-**Mode (operator directive):** investigation and damage-control, **not implementation**. One Opus 1M
-subagent at a time; each **begins by reading `requirements.html` in full**; first-principles against the
-upstream 1.4.7 baseline; **read-only**. Each cavity is drilled to its true depth before any treatment is
-named; findings are appended here per item; nothing is called fixed until proven end-to-end. No verdict unearned.
-
-**Every audit carries two mandatory sweeps** — the reported symptom is a starting point, never the whole finding:
-1. **Anything-else-wrong sweep.** Beyond confirming the report, hunt the surrounding code for other defects
-   of the same class or nearby — the sibling bug the operator hasn't hit yet. Damage-control, not symptom-confirmation.
-2. **Cross-platform sweep.** Determine whether the defect is that-platform-only or also present on the others —
-   never stop at the platform where it was observed. **For any server / controlled-side question, actively
-   research ALL FOUR server-capable platforms — Windows, Debian/Linux, macOS, AND Android** (iOS is viewer-only) —
-   reading each one's platform-specific source (`cfg(windows)` / `cfg(target_os="linux")` / `cfg(target_os="macos")` /
-   `cfg(target_os="android")`), client AND server. Deliver the full per-platform matrix, not a spot check.
-
-### The operator's bug reports — verbatim (cleaned of typos, as reported)
-
-**BR-1 · File transfer to the Linux box (haggai) is broken.**
-> File transfer works perfectly between Windows and Android, and so does copy-paste. However, file transfer to haggai_computer shows no files on the remote end, and creating a folder doesn't actually create a folder, and the home folder is essentially… no path? Going "back" doesn't help either. It's almost like something is very broken with file transfer on a system without systemd, possibly.
-
-> (earlier, related) Connect works great for screen control, and terminal control works great. But "transfer file" says: *error no active console user logged on, please connect and log on first* — on the same currently-served haggai computer that works for screen control just fine, where I see the desktop and am able to control perfectly.
-
-**BR-2 · Windows: "Enable changing settings" is a one-way trap.**
-> On Windows, initially there's an option to "Enable changing settings". I pressed the button, then the button disappeared, the contents of the screen rearranged themselves, and now I can't press that button again ever, and I can't change settings.
-
-**BR-3 · Windows: can't use or control RustDesk itself while a session is connected.**
-> On Windows there's no default to enable remote control of RustDesk itself. It's kind of annoying that I can't control or use RustDesk itself, or its settings, for as long as somebody is connected via RustDesk.
-
-**BR-4 · Windows: the app says "Listening on :21118" before any password is set.**
-> When I open the Windows app it seems to immediately say "Listening on :21118", which is a bit weird — but whatever; then when I set a password it's actually possible to connect and control / transfer files.
-
-**BR-5 · Connections never close / don't clean up (bidirectional).**
-> The Windows app, at a certain point: "Unlock security settings" just doesn't work — it becomes corrupted or something. It started with a connection from the Android phone to the Windows machine never closing. Even after force-shutting-down the Android app on the phone side, the Windows side still showed a connected file transfer, or a different type of connection or something. The same type of issue existed when controlling the Android phone from the Windows computer. Something with the connection closing doesn't quite work or clean up.
-
-**BR-6 · Windows: the security-settings corruption worsens — can't unlock, can't set the password, can't toggle remote-config.**
-> Then it became so much worse. The "Unlock Security Settings" button on Windows is now not disappeared, but clicking it does nothing — and I can't unlock security settings, and I can't change or set the RustDesk password either. And of course I can't "Enable remote configuration modification" (I was never able to toggle any of those, for some reason).
-
-**BR-7 · The dead "Unlock security settings" control is identical on both platforms.**
-> To be clear: in both the Windows 11 machine and in the Debian haggai_computer, the "Unlock security settings" blue button is visually clickable, and I click it, but it does nothing.
-
-**BR-8 · Windows: no clear way to shut RustDesk down; no tray; the process persists.**
-> I don't know how to shut down RustDesk on the Windows client. I made sure to not only launch RustDesk but also install it on the system using the built-in capability I was suggested — and that worked — but when I close the RustDesk window on Windows 11 I don't see any tray menu, so it's very unclear whether I truly shut it down. It seems not, because it's still visible in Task Manager.
-
-**BR-9 · Windows: the listener wedges — killing the process and relaunching doesn't recover it.**
-> Even closing RustDesk, killing it from Task Manager, then relaunching on Windows, was not enough to get RustDesk connections into the Windows machine to work again. So obviously something there is very broken.
-
-**BR-10 · Windows: after disconnecting, the box can't accept connections again (intermittent).**
-> After the whole issue with the Windows connection staying open, I obviously shut it off by clicking "disconnect client" or something — then even restarting RustDesk on the Windows machine didn't help, and nobody can connect to the Windows machine at all. This doesn't happen always; often disconnecting does actually disconnect.
-
-**BR-11 · The Android side cleans up, but the Windows listener stays wedged; clearing the Android side doesn't help.**
-> I just pressed X on the connection to the Android phone (on Windows), and RustDesk on Android does show disconnected — that's actually good, it doesn't show anyone connected to me. But I still can't connect from Android to Windows now. It worked perfectly before. Forgetting the password on the Android didn't help at all, and neither did pressing "Delete" on the saved profile (or whatever the list of known addresses is) in the Android app.
-
-**BR-12 · Debian stays stable and reachable; Windows corrupts to the point of being unreachable — possibly because the Debian settings couldn't be touched.**
-> The Debian I'm still able to connect to. The Windows is corrupted to a point where I'm not even able to connect to it. The Debian seems pretty stable — maybe because I wasn't able to freely touch the Debian's info. (Think about it: if I turned off RustDesk's ability to accept a connection, or touched another important setting, I wouldn't be able to get back to control inside that Docker image.)
-
-**BR-13 · Completely irrelevant menus that shouldn't be there.**
-> There are completely irrelevant menus that don't work and shouldn't be there — such as "Install RustDesk printer", which I'm glad doesn't work, but of course it shouldn't be there.
-
-**BR-14 · Many settings, on both Windows and Debian, make no sense given the fork's excisions.**
-> Many of the actual settings displayed — both in the Windows and in the Debian RustDesk GUI — don't make any sense given our fork's excisions and goals, almost like nobody even took a second look to determine what works in the settings controls.
-
-**BR-15 · Android: "Start service" is mislabeled; the port is open whenever a password is set.**
-> The Android screen sharing works perfectly — but only when clicking "Start service" before actually connecting from the Windows computer. When doing the opposite, it still allows me to connect. So it shouldn't be called "Start service"; it should be called "start listening for screen control" or something, on the Android phone. Because file transfer works as long as there's a password set, without needing "Start service" at all. If there's no "Start service", however, the remote-control screen to control the Android phone never actually loads. I actually like that suite of behaviours on Android, but it has to be renamed — and it should be explicit, in general, that as long as there's a password, the port is open for connections.
-
-**BR-16 · Android: the Terminal (Beta) is whitewashed / too transparent.**
-> The Terminal (Beta) on Android has opacity such that it feels white-washed — kind of like an American flag on the moon after half a year.
-
-**BR-17 · Android: the screen-capture consent popup appears unprompted on boot/unlock.**
-> I just ran out of battery on my Android phone and booted it back up after charging a lot. Then when I unlocked my phone screen, I got a pop-up — without consent, really — "Share your screen with RustDesk?", "Share one app" or entire screen, with Cancel and Next buttons. That's part of a series of conceptual issues I described earlier. Our RustDesk fork is so secure that I'd *love* for it to be open to connections to the Android phone all the time, believe me — I'm the first to say the Android security model is idiotic; but the fact is it's there, so we have to deal with it and design things that actually make sense. Getting that popup on startup is very problematic.
->
-> _(Design direction the operator is drawing — CONFIRMED as desired, to be validated & designed in cavity #4, not yet implemented: **(1)** the password-gated **listener / foreground-service staying active in the background is GOOD and wanted** — file transfer over it (with a password) needs no screen-capture consent at all and works today; **(2)** what must NEVER happen is auto-requesting the **MediaProjection capture** consent on boot / unprompted; **(3) preferred design — fire the capture-consent popup lazily, specifically WHEN a connecting peer initiates a screen-view/control session**, so consent is requested exactly when it is actually needed, tied to a real incoming session — never on boot, never speculatively. Net: listener/file-transfer = always-on-with-password in the background; capture consent = on-demand at peer-connect. **Feasibility caveat for cavity #4 to PROVE from the Android API, not assume:** MediaProjection consent has foreground-context constraints — cavity #4 must establish whether raising the dialog at connect-time is permissible (e.g. via a full-screen-intent notification that surfaces consent when a session arrives) and design the best achievable version.)_
-
-### Confirmed WORKING in the same QA pass (context, not defects)
-- Android phone remote control (controlled from Windows): *"works perfectly … the instructions about sideloaded apps and the entire flow are literally perfect."*
-- Audio, including Android → Windows while controlling the phone: *"audio does work … which is pretty impressive."*
-- CPace/password auth + direct-IP connect on all three hosts; screen control; clipboard/copy-paste; terminal control; Windows↔Android file transfer.
-
-### Investigation plan — drilled ONE Opus 1M subagent at a time; findings appended per cavity
-1. **Session & connection lifecycle** (BR-5, BR-9, BR-10, BR-11, BR-12; root of BR-6's corruption) — teardown on graceful close / abrupt kill / net-drop; the reaper mechanics (removed send-timeout, keepalive, `test_delay`, the `MAX_AUTHED_SESSIONS` cap) vs upstream; CM / `AUTHED_CONNS` lingering; the Windows `--service`-vs-GUI process model.
-2. **Settings write-path & the dead security controls** (BR-2, BR-6, BR-7; part of BR-3) — the GUI→FFI/IPC→config option-write path, and whether the R-S16 lockdown reject-set / `is_option_can_save` is swallowing the unlock / password / remote-config writes on both desktops.
-3. **UI ↔ excision coherence** (BR-4, BR-13, BR-14; the "Start service" label in BR-15) — the full extent of inert / misleading / incoherent controls, menus, labels, and status text across desktop + mobile (settings, tray, peer/context menus, home/connection).
-4. **Android controlled-side model** (BR-15, BR-16, **BR-17**) — service / listener / capture lifecycle from first principles, the honest "port-open-when-password-set" model, R-D7a reconciliation, **and the boot/unlock behavior: what auto-starts on boot (BootReceiver? a persisted "was-serving" re-arm? `MainService.onCreate` requesting MediaProjection?) such that the capture-consent popup fires unprompted — the app must NOT auto-request screen-capture on boot; capture consent must be tied to an explicit user action / an actual incoming session, while the password-gated listener may stay open.**
-5. **File-transfer host session/user context** (BR-1) — the "no files / no path / no active console user" breakage on the headless, systemd-less Linux host.
-
-### Cavity 1 — Session & connection lifecycle: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source
-
-**Headline.** The Rust transport/connection core is **SOUND** — no permanent leak or wedge lives in it; a dead peer reaps in **≤~31 s** on every controlled platform (an improvement over upstream's removed 12–120 s per-write timeout). The permanent Windows unreachability is a **service-supervision** defect *outside* the connection loop; there is also a second, **reboot-proof silent-park** path. Two operator hypotheses are refuted from source. Exactly one honest NEEDS-RUNTIME remains (which trigger the operator's box hit).
-
-**DRILL A — Windows process model & every wedge trigger (CONFIRMED from source).** Only a `--server` (SYSTEM, winlogon-token) binds :21118 (`server.rs:761,784`→`direct_service::start_direct_only`); the GUI's `start_server(false)` (`core_main.rs:185`→`server.rs:748,808-816`) **never binds** — the fork deleted upstream's in-GUI self-heal (R-X10). A `--server` is spawned **only** by the installed `--service` monitor (`windows.rs:667,682,720,753`), which **SELF-HEALS a dead `--server`** (`GetExitCodeProcess`→relaunch within `SERVICE_INTERVAL=300ms`, `:748-761`; `--server` exits cleanly on IPC `Data::Close` via `process::exit(-1)`, releasing the port; `panic='abort'` → respawn in 300 ms). **So a `--server` crash/panic/kill self-heals — the wedge requires the `--SERVICE` itself to die**, and the SCM has **no recovery** (`sc create … start=auto`, no `SetServiceFailureActions`, `:2963-2967` → restarts only at BOOT).
-
-Every `--service`-death trigger, ranked (from source):
-| # | Trigger | Reachability | Recovery |
-|---|---|---|---|
-| 1 | **Elevated kill of BOTH `--service`+`--server`** (Task Manager) | needs elevation; killing `--server` alone → respawn 300 ms; killing `--service` alone → the winlogon-token `--server` is independent → keeps serving until it dies | :21118 unbound, no respawn → **wedge until REBOOT** (`start=auto`) / manual `sc start` |
-| 2 | **Tray "Stop service"** → `sc stop`+**`sc delete`**+`taskkill` (`windows.rs:2823-2843`, `tray.rs:184`) | UI (BR-8: operator saw no tray) | **wedge until REINSTALL** (service deleted) |
-| 3 | **`--service` panic** (`panic='abort'`) in `run_service` | reachable | abort → no SCM recovery → **wedge until REBOOT** |
-| 4 | **SCM / `services.msc` stop** | admin tool | **wedge until REBOOT / `sc start`** |
-| — | session change / logoff | relaunch `close_first=true` (`windows.rs:677-684`) | **transient, self-heals** |
-| — | machine shutdown | clean stop | **restarts next boot (`start=auto`)** |
-
-**Amplifier:** the Windows public bind is exclusive (no `SO_REUSEADDR`, `tcp.rs:299-310`) and `direct_server` retries the identical bind **forever** on `EADDRINUSE` (`direct_service.rs:516-552`) — a lingering :21118 holder is a permanent bind-lock. **Net (from source, not runtime):** the wedge survives an *app* restart (R-X10), but a machine **REBOOT recovers triggers 1/3/4** (`start=auto`); only the tray `sc delete` (2) needs reinstall. **BR-11 fully resolved:** client (GUI) and listener (`--server`) share no in-memory state → a client "X" cannot wedge the server. The one genuine **NEEDS-RUNTIME**: *which* trigger the operator's box hit (a user action absent from the tree; the code constrains it to exactly this table).
-
-**DRILL B — no AUTHED_CONNS slot leak (CONFIRMED, exhaustive).** The slot exists only from `connection.rs:1087` (`AuthedConnID::new`) to `Connection::Drop` (`:5204`→`:5502-5514`). Before `:1087` no slot is held (every pre-auth bail/`break`/cap-reject/login-fail/`wait_desktop_cm_ready`-timeout enumerated). After `:1087` the slot is a `Connection` field owned by the `start()` future → Rust runs `Drop` on **every** completion/`break`/`return`/`?`-unwind/cancellation; the **only** skip is `process::exit`/`abort` (incl. `panic='abort'`), which kills the process → OS reaps everything + the `--service` respawns a fresh `--server`. No `mem::forget`/`Box::leak`. **`panic='abort'` corollary: a poisoned-mutex wedge is impossible.** The `MAX_AUTHED_SESSIONS=16` cap (fork addition) can only **transiently** saturate (16 reaping sessions → "Too many active sessions" `:1034`; BR-10 contributor) and is a **soft** cap (pre-slot check → K racing connections can over-shoot by K; benign, not a leak).
-
-**DRILL C — exact worst-case reap per session type (from constants).** Remote/view-camera/file-transfer/terminal/pre-auth: **≤~31 s** (`test_delay` `SEC30`+`ThrottledInterval`, `connection.rs:357-358,867-871`); pre-key handshake stall ≤~23 s (CPace steps `cpace.rs:36,47`); **port-forward ≤~60 s** (no `test_delay` → TCP keepalive `direct_service.rs:604-608` kills the idle socket; the 3600 s idle-timer is a rarely-reached fallback). FIN/RST → immediate. Improvement over upstream's removed 12–120 s `SEND_TIMEOUT`.
-
-**DRILL D — machine-UUID PRS decrypt-fail → typed unavailable PRS → diagnosed park (CONFIRMED trigger; reboot-proof; closure gated by R-S9 PRS read-state).** `read_permanent_password_prs()` preserves the reason as `PermanentPasswordPrsRead::UndecryptableStorage`; `get_permanent_password_prs()` collapses it to empty only at the legacy CPace string boundary, where empty fails closed before keying. `direct_server` drops or parks the listener and logs undecryptable stored PRS distinctly from an intentionally missing/cleared password; `has_permanent_password()` returns false because the auth boundary has no usable PRS. Park triggers remain: (1) machine GUID changed (MachineGuid / `/etc/machine-id` / IOPlatformUUID differs from set-time); (2) `machine_uid::get()` fails at read-time, so the desktop at-rest key is unavailable and the machine-UUID-sealed PRS cannot open; (3) corrupted `password_prs` bytes. **Survives a restart** while stored bytes remain unchanged; recovery requires the machine key to become readable again or the password to be provisioned again. Windows/Linux/macOS only for the machine-UID failure case; Android/iOS use the documented mobile persisted-key wrapper. NEEDS-RUNTIME (justified): whether the GUID changed / `machine_uid` failed on the operator's box — the code fully determines the consequence and now surfaces it honestly.
-
-**DRILL E — platform supervision matrix (each cell from its own cfg-gated source) — this IS BR-12.**
-| | Listener owner | Respawns `--server` | Supervises the service tier | Permanent wedge on service death |
-|---|---|---|---|---|
-| **Windows** | `--server` (SYSTEM) | monitor 300 ms (`windows.rs:748-761`) | **NO** — `start=auto`, no failure actions (`:2963-2967`) | **YES** — until reboot (reinstall if `sc delete`d) |
-| **Linux** | `--server` (session user) | monitor `try_wait` (`linux.rs:758-768`) | **YES** — systemd `Restart=on-failure`/`RestartSec=2` (`res/rustdesk.service`) | **NO** — self-heals ~2 s (a deliberate `systemctl stop` stays stopped) |
-| **macOS** | `--server` (LaunchAgent) | **launchd** `KeepAlive{SuccessfulExit=false}` (`agent.plist`); in-proc monitor commented out (`macos.rs:737-793`) | **YES** — daemon `KeepAlive=true` (`daemon.plist`); `--server`'s `exit(-1)` is *designed* to trigger restart (`ipc.rs:766`) | **NO** |
-| **Android** | foreground `MainService` (R-D7a) via JNI (`flutter_ffi.rs:2502-2537`) | n/a | user-controlled FGS lifecycle; `stopServer`→generation bump→accept loop unwinds→socket closes; `START_NOT_STICKY` | **NO** — dies with the process; re-created on next `onCreate` (R-T13 Doze caveat → cavity #4) |
-| **iOS** | — viewer only (`connection.rs:282` `cfg(not(ios))`) | — | — | n/a |
-
-Shared un-cfg'd reap loop (`connection.rs`) + writer task (`tcp.rs`) → the ≤~31 s reap holds identically on all four servers. **BR-12 = the SCM-vs-systemd/launchd supervision asymmetry, proven from all four sources.**
-
-**DRILL F — sweep (other leak/linger paths).**
-- **`--cm` orphan on Windows-root (CONFIRMED):** `run_as_user`→`run_exe_in_session` returns `Ok(None)` (`windows.rs:894`) → the `if let Some(task)` push is skipped (`connection.rs:4892`) → the `--cm` handle is untracked, never reaped by `check_zombie` (`server.rs:707-722`). Ghost CM window if it fails to self-exit. Not a listener wedge. (Linux/non-root path IS tracked, `:4904`.)
-- **Windows clean-stop skips the R-T9 drain (CONFIRMED):** the SIGTERM drain is Unix-only (`direct_service.rs:355-377`); a Windows `--server` stop is IPC `Data::Close`→`exit(-1)` → an in-flight file block truncates on a Windows service stop/upgrade (cleanliness, not a wedge). Conversely macOS `exit(0)` would NOT restart the agent (`SuccessfulExit=false`) → the `exit(-1)` design is load-bearing there.
-- Persistent terminal holds a root PTY but is bounded (`MAX_SERVICES=100` + `cleanup_inactive_services`, `terminal_service.rs`); port-forward 3600 s idle-timer (bounded to ~60 s by keepalive); the generation-bound terminal lease joins its inactive output pump in `Drop` (~30–60 ms). Terminal preparation reserves authority before authorization but has no subscriber/output path until login success, so no pre-auth content leak exists. All are LOW/by-design.
-
-**Blast radius (all CONFIRMED-from-source).** BR-9/10/11/12 + persistent root of BR-6 = the Windows `--service`-death wedge (Drill A/E); BR-10 intermittency also from the 16-cap transient (B) + the session-change sub-second gap. BR-5 = the CM `Data::Disconnected` lingering row (`connection.rs:4059-4066`, `ui_cm_interface.rs:302-311`). BR-4 = cosmetic `stop-service` label + the empty-PRS park (D) both show green "Listening" while unable to accept. **BR-6 connection→settings link REFUTED** (the `videoConnCount>0` gate is dead — `canBeBlocked()` always false under pinned `access-mode=full` + no direct `control_permissions`) → real cause is cavity #2.
-
-**Options (NOT-YET-DECIDED).** Windows service resilience is load-bearing: SCM failure/recovery actions (`SetServiceFailureActions`), a rebinding watchdog, or a controlled GUI/in-process re-arm — each trading against R-X9/R-X10. Secondary: replace the cosmetic "Listening" with an honest-reachability signal + make the empty-PRS case fail loud (or repair the PRS) instead of silently parking; the Windows-stop R-T9-drain gap. Treatment chosen later.
-
-### Cavity 2 — Settings write-path & the dead security controls: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source
-
-**Headline (CONFIRMED).** The desktop "Unlock Security Settings" button gates the Safety tab — including the settings-page **"Set permanent password"** button — on `check_super_user_permission()`. The fork excised the *active* elevation ceremonies (R-X9 `run_uac`/`elevate` Windows; R-X11 `gtk_sudo` Linux) and rewired that check into a **passive "am I already elevated/root?" probe**, leaving the unlock button + ordinary settings controls behind it. The desktop GUI is **proven never-elevated**, so the probe always returns false, `onUnlock()` never fires, the click is silently swallowed — identically on Windows and Linux (BR-7). macOS diverges (genuine interactive admin dialog → works); Android has no such gate. One mechanism → BR-7, BR-2, settings-half of BR-3.
-
-**The exact break — full chain (cfg-gated source).** `desktop_setting_page.dart:749-752` `locked=mainIsInstalled()`; `:766-778` `preventMouseKeyBuilder = ExcludeFocus+AbsorbPointer(absorbing:locked)`; `:1979-2020` `_lock.onPressed`: `unlockPin` empty → `callMainCheckSuperUserPermission()` **false** → `if(checked) onUnlock()` never runs, **no else** → silent no-op. → `flutter_ffi.rs:1918` → `ui_interface.rs:917` → `platform::check_super_user_permission()`: **Windows** `is_elevated(None)` (passive `TokenElevation`, `windows.rs:2335-2370`; `run_uac`/`elevate` excised) → false; **Linux** `Ok(is_root())`=`username()=="root"` (`linux.rs:1400,1052`) → false; **macOS** `MacCheckAdminAuthorization()` (`macos.mm:84`) → true; **Android/iOS** returns true but mobile UI has **no `_lock` at all**.
-
-**GUI PROVEN never-elevated on Win/Linux.** Windows exe manifest is **asInvoker** — `res/manifest.xml` (via `build.rs:35`) + `runner.exe.manifest` have **no `<requestedExecutionLevel>`** → medium-integrity, no auto-UAC; installation is a separate Windows Installer transaction and the service is a separate LocalSystem process. Linux GUI runs as the desktop user; root is the separate systemd `--service`. → `is_elevated`/`is_root`=false every ordinary launch → permanent silent no-op (matches BR-7).
-
-**macOS unlock PROVEN WORKS from the framework contract (NOT NEEDS-RUNTIME).** `macos.mm:84-101`: fresh `AuthorizationCreate`+`AuthorizationCopyRights(kAuthorizationRightExecute, flags=InteractionAllowed|PreAuthorize|ExtendRights)`, returns `status==errAuthorizationSuccess`. Apple's Authorization Services contract: InteractionAllowed → the Security Server presents the admin dialog; the `kAuthorizationRightExecute` rule requires admin auth; returns success **only when the user authenticates as admin** (else Denied/Canceled). Fresh authRef per call → dialog every click. → macOS unlock **WORKS**; inert only on cancel/non-admin.
-
-**Platform matrix (each cell from its own cfg-gated source).**
-| Control | Windows | Linux/Debian | macOS | Android | iOS |
-|---|---|---|---|---|---|
-| Unlock Security Settings | **DEAD** (passive `is_elevated`, asInvoker) | **DEAD** (passive `is_root`, non-root) | **WORKS** (interactive admin dialog) | N/A (no `_lock`) | viewer-only |
-| Set permanent password (GUI/CLI) | Settings button locked; home dialog/CLI work when user-owned writable | Settings button locked; home dialog/CLI work when user-owned writable | works after unlock or home dialog when user-owned writable | **WORKS** (menu+auto-prompt, no lock) | no controlled service |
-| Pinned security toggles | greyed + locked | greyed + locked | greyed (pinned) even after unlock | greyed | n/a |
-| Non-pinned Safety prefs | locked out | locked out | editable after unlock | editable | n/a |
-
-**BR-6 consequences (CONFIRMED).** *Set password*: settings-page button (`:889`, inside locked card) `enabled=!locked=false`→`onPressed:null`+AbsorbPointer; desktop auto-prompt guarded `isAndroid||isIOS` (`server_model.dart:393`). The current home-dialog and CLI user-owned path is the typed `SetUserOwnedPermanentPassword` IPC operation gated by `permanent-password-user-owned-writable`; service-owned password provisioning remains closed until an admin-authorized service operation exists. *"Enable remote config modification"*: pinned `Y` (`config.rs:3265`), quadruple-inert (AbsorbPointer + `enabled=false` + `fakeValue=true` checked + `isOptionFixed→onChanged:null`) — already ON by policy, shown greyed.
-
-**Complete R-S16 pinned set — 28 keys classified (CONFIRMED).**
-- **(A) Correctly pinned AND UI-conformant, removed/hidden per R-G1 (13):** `verification-method`, `approve-mode` (R-X7a), `2fa`, `bot` (R-X7), `api-server`, `custom-rendezvous-server`, `relay-server`, `proxy-url` (Network/SOCKS removed R-G4), `enable-virtual-display`, `allow-websocket`, `allow-insecure-tls-fallback`, `allow-linux-headless`, `stop-service` (Stop button correctly **hidden**, `:430-454`).
-- **(B) Correctly pinned BUT shown as greyed live-looking toggle — R-G1 VIOLATION (15):** `access-mode`=full, `enable-{keyboard,clipboard,file-transfer,audio,camera,terminal,tunnel,remote-restart,record-session,block-input(Win),privacy-mode,remote-printer(Win)}`, `allow-remote-config-modification`, `allow-only-conn-window-open` (greyed+fakeValue checkboxes `:813-905`); `enable-record-session` also greyed on Android. **This 15-toggle set is the concrete backbone of BR-14.**
-- **Verdict:** the reject-set is **correctly scoped**; the defect is UI honesty — 15/28 rendered as greyed *actuating* toggles instead of read-only/removed (§19 live-looking-dead), compounded by the dead lock.
-
-**Password PROVEN structurally excluded from the reject-set (CONFIRMED).** `is_option_can_save` operates only on the options HashMap; the password is `config.password`/`password_prs` — **struct fields** (`config.rs:236,1425`) written via `Config::set_permanent_password`. The user-owned typed IPC operation reaches that setter directly after the receiver ownership gate, bypassing `set_options`/`purify_options` by design, so the option reject-set **structurally cannot swallow the password.** BUILTIN/HARD funnels empty on a fork build (R-A4) → `is_disable_change_permanent_password`/`isUnlockPinDisabled`/`is_disable_settings` all false. The lockout is entirely the Dart `locked` gate. (Corrects the pre-audit hypothesis.)
-
-**Every control trapped behind `locked` (exhaustive) — 5 non-pinned victims beyond the password:** `share-rdp` (Win), `allow-auto-disconnect`+timeout+Apply, `keep-awake-during-incoming-sessions`, the `unlock-pin` setter — all non-pinned/writable but locked out on Win/Linux. The **unlock-PIN is chicken-and-egg dead** (its only setter lives inside the card it would unlock).
-
-**BR-2 one-way trap — fully source-determined; installer-elevation REFUTED.** `locked` is a non-persisted `_SafetyState` field; success `Offstage`-hides the button + releases AbsorbPointer ("disappeared"/"rearranged"), re-inits `true` on next tab build. The button can only vanish via a successful unlock (needs `is_elevated=true`), and the app **never produces an elevated GUI** → the "installer→elevated GUI" theory is **REFUTED**; the one success could only be a manual **"Run as administrator"** launch. Every ordinary launch → inert.
-
-**BR-3 reconciliation (re-proven).** The connection-gated block is dead (`canBeBlocked()` always false — `IS_REMOTE_MODIFY_…` None for direct + `access-mode` pinned full). A live connection does NOT block settings; BR-3's "while connected" is a **misattribution** of the always-on `locked` gate; "no default to enable remote control" is moot (pinned ON, shown greyed).
-
-**Sweep 1 — siblings.** (1) 5 non-pinned controls trapped by the lock; (2) unlock-PIN chicken-and-egg; (3) **`hide_cm()` orphaned dead code** — defined `desktop_setting_page.dart:937-975`, **never called** (§19); (4) the 15 greyed pinned toggles (R-G1). Verified-CLEAN (don't re-flag): Network/Account + SOCKS/ID-Relay removed (R-G4); Android verification/approve/OTP removed (R-X7a); `service()` hides "Stop" when pinned; typed user-owned password IPC arm + home dialog sound.
-
-**Sweep 2 — platform (per cfg).** Win/Linux: unlock DEAD, settings-page password button locked, home password dialog works only when the receiver is user-owned writable, 15 greyed toggles, 5 non-pinned locked out. macOS: unlock WORKS then password+non-pinned editable, and the home password dialog works when user-owned writable; pinned stay greyed. Android: no lock, password works (`server_page.dart:60`+auto-prompt), pinned greyed. iOS: viewer-only. Shared `_Safety`/`_lock` on Win/Linux/macOS — only `check_super_user_permission` diverges.
-
-**NEEDS-RUNTIME: none** source/framework-derivable. Sole residual is a *user-action* fact (whether the operator's one BR-2 success was a manual Run-as-admin launch — the only source-consistent path).
-
-**Superseded by R-S11b/R-S11c for installed-service password setting.** User-owned mode may keep the
-typed GUI/CLI password setter; installed service-owned mode requires a typed, admin-authorized service
-operation and must not use the old ordinary IPC write. The remaining UI work here is R-G1 honesty for the
-pinned/non-pinned controls, not a relaxation of the service-owned credential boundary.
-
-### Cavity 3 — UI ↔ excision coherence: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source
-
-**Headline.** The Flutter front-end already has **substantial** §19 work done (far more than "nobody looked"): R-G2 (ID board/status/connect-box → direct-address), R-G3 (security badge), R-G4 (account-login/server/proxy/update/elevation editors, OTP board), R-G5 (fingerprint), R-G6 (relay/WOL actions), most of R-G7 (CM click-to-accept + read-only chips) are **done + verified absent from source**. The surviving iceberg = **five clusters** (below). No live security-egress UI found.
-
-**BR-13 Printer (CONFIRMED broken + self-contradictory).** The Printer tab is Windows-only (`desktop_setting_page.dart:68`) → absent on Debian/macOS/Android (operator saw it on Windows). "Install {App} Printer" (`:1465`→`mainSetCommon('install-printer')`→`remote_printer::install_update_printer`, `flutter_ffi.rs:2400`) loads `drivers/RustDeskPrinterDriver/RustDeskPrinterDriver.inf` — **payload exists NOWHERE in the tree** (no `.inf`/`drivers/`/WiX ref) → the click errors (the operator's "glad it doesn't work"). **Novel contradiction:** `enable-remote-printer` pinned **ON** (`config.rs:3262`), but `enable-virtual-display` pinned **OFF** with the rationale it "drives a native display-DRIVER API … the native-code surface the fork minimizes" (`config.rs:3257-3261`) — a print driver is the *same* class, so pinning printer ON (no driver shipped) contradicts the fork's own logic. Class C. Option: ship driver+WiX, OR excise the tab + `enable-remote-printer=Y` pin + `remote_printer` capability (reconcile R-G7).
-
-**Tray (CONFIRMED — `src/tray.rs` read in full).** Two items: "Open" (A) + "Stop service" (C). Neither `OPTION_HIDE_TRAY=Y` nor `OPTION_HIDE_STOP_SERVICE=Y` is set anywhere in `res/`/`build.py` → both render by default. **"Stop service" is a mislabel on all 3 desktops — it UNINSTALLS, not pauses:** Windows `sc stop`+`sc delete` (the cavity-1 self-DoS wedge); Linux `systemctl disable`+`stop`+`exit(0)` (kills boot-autostart, `linux.rs:2065-2084`); macOS osascript-admin uninstall + `launchctl remove` (`macos.rs:315`). **Inconsistency (novel):** the in-app Service card IS hidden under the `stop-service` pin (`desktop_setting_page.dart:430-440`) but the tray keys on the DIFFERENT, unset `hide-stop-service` buildin → hid the in-app button, left the destructive tray item live (BR-8). **No non-destructive quit** in the tray. (I own the label; cav 1 owns the Windows wedge.)
-
-**BR-4 desktop honest-status (CONFIRMED — own the *should-reflect*).** `connection_page.dart:110-120` renders "Listening on :21118" whenever `_svcStopped==false`, and `_svcStopped` is the pinned `stop-service` RxBool (always false) → **green/"Listening" unconditionally** — reflects neither the real socket, the R-S9 empty-PRS park (`direct_service.rs:492`), nor a Windows wedge. **The GUI CAN cheaply observe the truth** — `is_permanent_password_set()` (`ui_interface.rs:522`; FFI `permanent-password-set`) → the lie is derivable-away. **The mobile side already solved it:** `ServerInfo` shows two honest facts — "Reachable on :21118 while this app is open" + "Screen capture ready/not ready" (`server_page.dart:358-386`) — a ready-made desktop template.
-
-**BR-15 "Start service" label (CONFIRMED — own wording; capture model = cavity #4).** Three Android mislabels keying the *listener* to the *capture* toggle: "Start service" (`mobile/server_page.dart:144`), "Service is not running" (`:123`), "Stop service" (`:434`) — frame the listener as off when the port is reachable whenever a password is set. The honest 2-fact `ServerInfo` card already exists but is contradicted by the "service" wording. Option: relabel to "Start screen sharing" + explicit "port open whenever a password is set."
-
-**(E) Pinned-but-shown-as-greyed-live-toggle — R-G1 violations.**
-- **NOVEL: "Allow linux headless" checkbox** (`desktop_setting_page.dart:536-538` + `flutter_ffi.rs:930-936` `main_show_option→true` on Linux + pin `config.rs:3278`) — pinned `N` (R-X14/R-S16) yet SHOWN → greyed-unchecked, **DIRECTLY VISIBLE on the Debian box (NOT behind the Safety lock)** — the clearest live R-G1 violation. Linux desktop only.
-- Cavity 2's Safety-tab set (access-mode combo + 13 capability checkboxes) — greyed + `fakeValue`-checked + behind the dead `_lock`.
-
-**(B) Dead — backend excised, present-but-inert (hygiene removals, not security hazards).**
-- **Account + address-book/my-group subsystem** (~1,200 lines): tab off (`peer_tab_model.dart:37-52` `isEnabled=[T,T,F,F]`), `isLogin` permanently false, `loginDialog` shim (`login.dart:25`); `address_book.dart` (898 ln) + `my_group.dart` (309 ln); `AddressBookPeerCard`/`MyGroupPeerCard` (`peer_card.dart:1030-1222`) never instantiated. Triple-locked dead; **explicitly deferred** (`login.dart:19-22`).
-- **WaylandCard** (General tab, `desktop_setting_page.dart:392,1768-1925`): Wayland/pipewire excised (R-X12) → restore-token always empty → whole card `Offstage`. The "hidden ≠ removed" trap the fork's own hwcodec comment (`:387`) calls out.
-- Linux home Wayland help cards (`desktop_home_page.dart:397-407`); `formatID` numeric-ID grouping vestige; `Peer.sameServer` relay-hint field; **`hide_cm()` orphan** (`:937-975`); `bind.isDisableAccount()` FFI (zero call sites).
-
-**(C, minor).** Android scam-warning dialog on Start (userName always empty; sovereign fork has no rustdesk.com scam context, `mobile/server_page.dart:136-139`). Legacy numeric-ID recent card renders "connectable" but fails closed (SUSPECTED/NEEDS-RUNTIME — needs a pre-fork on-disk config; fork-native peers unaffected).
-
-**R-G8 branding residuals (SHOULD, minor).** "Powered by RustDesk" (`desktop_home_page.dart:85`, `mobile/settings_page.dart:149`); About "About RustDesk"/"Purslane Ltd."/`Slogan_tip` (`desktop_setting_page.dart:1572-1604`). rustdesk.com links already removed.
-
-**(A) Keep — coherent (representative).** General (theme/lang/audio-input/recording-dir/bitrate/render/DirectX-capture(Win)/keep-awake/wallpaper/new-tab), Display (view-style/scroll/quality/codec/trackpad/privacy), the full in-session toolbar (all act on an already-authed peer), connect box (direct address), peer context menus (funnel through `connect()`→`isDirectAddress` fail-closed; Forget-Password clears password + CPace PRS), CM read-only chips, the Android permission ceremony, About.
-
-**Options (NOT-YET-DECIDED).** Printer: ship-driver vs excise (reconcile R-G7 + the native-driver-minimization precedent — leans excise). Tray: relabel/suppress/non-destructive-exit (interlock with cav 1's Windows resilience). BR-4: mirror the mobile 2-fact model via `permanent-password-set` (+ optional real bind probe). BR-15: relabel to "Start screen sharing" + port-open messaging. (E): remove or render read-only "set by policy" (the Linux "Allow linux headless" most urgent). (B): the deferred ~1,200-line account/AB compile-out.
-
-**Confidence.** All CONFIRMED-from-source except: legacy-numeric-ID card (NEEDS-RUNTIME — migrated config), the exact Install-Printer error *string* (that it fails is CONFIRMED via absent payload), and ruling out an out-of-tree CI injection of the INF / `hide-stop-service=Y` (none in-tree).
-
-### Cavity 4 — Android controlled-side model: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ EXHAUSTIVE — every claim proven from source / API contract
-
-**BR-17 — exact boot-consent mechanism (CONFIRMED).** Chain: `BootReceiver.onReceive` (`BootReceiver.kt:18-44`, `ACTION_BOOT_COMPLETED` if battery-opt exempt) → `startForegroundService(MainService, action=ACT_INIT_MEDIA_PROJECTION_AND_SERVICE, EXT_INIT_FROM_BOOT=true)` → `MainService.onCreate` starts the **listener only** (`FFI.startServer`, `:312`, no projection) → `onStartCommand` (`:402-424`): the projection-result extra is **null** on boot → the `?: let { requestMediaProjection() }` branch fires (`:420`) → `PermissionRequestTransparentActivity` → `createScreenCaptureIntent()`+`startActivityForResult` = the system dialog. Surfaces on **unlock** (can't draw over the keyguard at boot). **Two root causes:** (1) **`EXT_INIT_FROM_BOOT` is SET but NEVER READ** (`common.kt:32`) → boot is indistinguishable from a deliberate "Start service"; both request projection — a plumbed-but-unwired boot/start split. (2) Neither boot nor `onStartCommand` gates on the password → the consent fires **even with no password set** (listener would just park, R-S9).
-
-**Listener-vs-capture model (CONFIRMED) — three distinct states.** (a) **Listener** (:21118 → file-transfer/clipboard/terminal): binds iff a permanent password is set (R-S9 park, `direct_service.rs:492-529`); owned by the FGS (R-D7a); persists from boot/Start until an explicit Stop or process kill (`START_NOT_STICKY` + generation teardown → "service stopped ⇒ socket closed"). (b) **MediaProjection consent** (`_isReady`): from Start-service, boot, or a stale-token retry. (c) **Capture** (`_isStart`): needs the token; fires from `add_connection` for **screen sessions only** (`MainService.kt:130-134`). **File transfer needs only the listener** (no capture) — exactly the operator's observation; it works "without Start service" because the FGS was already running (boot autostart / a prior start); a *fresh* app-open with no prior FGS does NOT auto-start the listener (`runMobileApp` doesn't call `startService`).
-
-**Consent-on-connect FEASIBILITY — VERDICT: FEASIBLE (key deliverable).** Feasible as a **notification-launched** consent at connect-time; not as a silent background auto-prompt — but that isn't wanted (attended; the human approves). **Controlling constraint (API contract):** a foreground service does NOT grant background-activity-launch (BAL); the consent dialog is a system Activity. `SYSTEM_ALERT_WINDOW` dropped (R-X6) → unavailable. **BAL-exempt paths that ARE available:** an Activity from a **notification-tap `PendingIntent`** (all versions, no permission) or a **full-screen-intent** notification (auto-surfaces even over the keyguard). FSI on Android 14+ is restricted **by the Play Store at install, not AOSP** — the fork is **sideloaded** → ≤13 auto-grants and 14+ likely retains it (NEEDS-RUNTIME per OEM; runtime-detectable via `canUseFullScreenIntent()`), degrading to tap-to-consent where unavailable. **So the operator's design is correct + achievable** (may present as tap-to-consent vs auto-surface on some 14+ OEMs); strictly better than the boot-time speculative prompt.
-
-**Best-achievable design (direction, NOT-YET-DECIDED).** (1) **Decouple boot from capture (BR-17 core fix):** boot starts the listener/FGS ONLY — honor the already-plumbed `EXT_INIT_FROM_BOOT` in `onStartCommand` to skip `requestMediaProjection()`. Preserves the always-on password-gated listener the operator *wants*; kills the boot popup. (2) **Lazy consent at connect:** when an authorized **screen** session arrives (`add_connection`) with no token, post a HIGH-importance notification (channel already `IMPORTANCE_HIGH`) with a content `PendingIntent`→`PermissionRequestTransparentActivity` (tap) **and** `setFullScreenIntent`+`CATEGORY_CALL` (auto-surface where granted). (3) **New edge required:** wire "consent-granted ⇒ `startCapture()` for the waiting session" — today `add_connection` starts capture only if the token is *already* present, no retry when consent lands after. (4) **Keep** the foreground "Start screen sharing" tap as the direct path. **Hard constraints (CONFIRMED from API contract):** C1 no zero-touch background prompt (must ride a notification); C2 device unlocked + human present (Android 15 auto-stops capture on lock + per-session re-consent — *helps* this design); C3 targetSdk 33 → token reusable within the FGS lifetime → consent only on the **first** screen session after start (if bumped ≥34, add `FOREGROUND_SERVICE_MEDIA_PROJECTION`+ordering, per R-X6); C4 the session must be **held** during "waiting for consent," not failed (today `startCapture` returns false and gives up).
-
-**BR-16 Terminal (Beta) whitewash — ALREADY FIXED AT HEAD (CONFIRMED).** Upstream `backgroundOpacity: 0.7` on the mobile `TerminalView` → `theme.background.withOpacity(0.7)` over the light `scaffoldBackgroundColor` bled through. Fixed to `1.0` (solid dark) at `terminal_page.dart:172` (+ desktop twin `:198`) in commit `8c0180d` (2026-07-05), **after** the tested release `ab084e3` (2026-07-04, carried `0.7`). **Ship-forward: no code change; lands in the next build.**
-
-**Sweep 1 — other Android-model defects.**
-- **Scam-warning dialog on every "Start service" (CONFIRMED).** `ScamWarningDialog` (`mobile/server_page.dart:136-144,150-340`) shows when `userName.isEmpty && show-scam-warning!="N"` — accounts excised → `userName` **always empty** → the 12-second-countdown "I Agree" dialog fires on the first Start-service + the Screen-Capture permission tap. Upstream's public-relay social-engineering warning — incoherent for the sovereign direct-IP+password fork (mobile BR-14 sibling). Treatment: excise or pin `show-scam-warning=N`.
-- **`ServerInfo` fact (1) is an unconditional green lie (CONFIRMED — mobile BR-4 analog).** `server_page.dart:367-373` hardcodes a green check + "Reachable on :21118 while this app is open" reading **no runtime state** — wrong both ways (up while the app is *closed* since the FGS persists; down while *open* if no FGS/no password). Fact (2) "capture ready" (reads `mediaOk`) is honest. Direction: gate fact (1) on `permanent-password-set` + service-running.
-- Fresh-install no-password crash **FIXED** (`process::exit` removed; Dart gate + R-S9 park). R-D7a SHOULD residuals DONE (keep-screen-on pinned, dead `useVP9` excised). No other unprompted boot permission. Minor: BootReceiver shows a `Toast "RustDesk is Open"` on every boot.
-
-**Sweep 2 — cross-platform contrast.** iOS: no controlled side (viewer-only). **Desktop capture has NO per-session OS consent** (Linux X11/`scrap` + Windows DXGI capture with no dialog; macOS = persistent app-wide TCC) — **Android is the sole outlier** (mandatory per-session, human-tapped, un-persistable `MediaProjection`), which is *why* consent-on-connect is an Android-only design problem. Shared invariant (already correct on Android): capture begins only inside a confirmed PAKE session (R-S14/R-A1; `startCapture` only via authorized `add_connection`).
-
-**NEEDS-RUNTIME (minimal).** FSI auto-surface retention on the operator's specific 14+ OEM (doesn't block the design — the tap path works everywhere); whether consent auto-surfaced over the keyguard (cosmetic); BR-16's APK-provenance link (the tested prerelease carried `0.7`, git-confirmed).
-
-### Cavity 5 — File-transfer host session/user context (BR-1): superseded Linux findings from 2026-07-07
-
-**Status.** The original finding was correct for the then-current Linux path: file transfer, host audio,
-chat, and voice depended on a desktop `--cm` process, while a headless/logind-less direct `--server`
-could wait forever on a console session that would not arrive. The current Linux bootstrap no longer
-uses `is_prelogin()` as that sole decision. `start_ipc` first recognizes `is_headless_no_console_user()`;
-when no console user exists, the CM is launched as the authenticated `--server` process owner instead
-of through `run_as_user(None)`.
-
-**Current shape.** Linux still uses `loginctl` for seat0 discovery when logind exists, but the no-logind
-case is now an explicit headless service-user case rather than a CM-spawn deadlock. R-S11c-10m also
-removes the stale shared `run_cmds` shell API and keeps `loginctl` behind fixed, trusted executable
-candidates. Windows pre-logon file transfer remains refused by design. Android remains in-process for
-file operations. macOS headless is not converted by the Linux headless rule because `/dev/console`
-does not give the same cheap no-console signal without risking login-window behavior.
-
-### Adversarial-verification + completeness pass: FINDINGS (Opus 1M, read-only, 2026-07-07) ✅ — investigation confidence HIGH
-
-**Verdict: all five cavities' core claims remain CONFIRMED** (independently re-traced). Net = two corrections, a materially larger cavity-5 scope, three cross-cavity misses, and one spec-violating treatment flag.
-
-**Cavity 5 UNDER-COUNTED — the headless CM-spawn hang breaks a CLUSTER, not just file-transfer (CONFIRMED).** The `is_prelogin()`-gated `--cm` dependency also kills, on a logind-less Linux box:
-- **F2 — Host audio** (`audio_service.rs:98-99` → `ipc::connect("_pa")`; the `_pa` server is CM-spawned only, `flutter.rs:1588`) → host→viewer audio breaks on headless Linux via the SAME hang. (Clipboard-text stays clean — in-process `arboard`.)
-- **F3 — Whiteboard is no longer part of this hang cluster:** R-S11c-8 removed the prelogin wait and fixed `_whiteboard` connect/listen path; the helper now uses a launch-scoped endpoint and per-connection authority.
-- **F4 — Chat + voice-call** are CM-hosted (`connection.rs:2782` `send_to_cm(ChatMessage)`; voice-accept via `rx_from_cm`) → non-functional with no CM.
-So T5 fixes more than BR-1 (file-transfer + audio + chat/voice) without counting whiteboard as a remaining CM-spawn hang site.
-
-**Cavity 4 consent-on-connect DOWNGRADED to TAP-TO-CONSENT-ONLY (CONFIRMED).** A foreground service does not grant background-activity-launch; `SYSTEM_ALERT_WINDOW` is dropped; `USE_FULL_SCREEN_INTENT` is **absent from the manifest** and FSI is restricted to calling/alarm apps on 14+; the hold+resume edge doesn't exist. **Net: consent-on-connect is achievable only as a notification the user must TAP** — not the auto-surfacing full-screen-intent the cavity floated (it hedged, so this sharpens). T4 scopes to tap-to-consent (or accept adding `USE_FULL_SCREEN_INTENT` + its 14+ limits). BR-17 nuance: on API≥29 the boot-path speculative dialog is itself BAL-restricted (may not surface on modern devices; operator's device = API 22–28 or an OEM allowance) — either way the fix (honor `EXT_INIT_FROM_BOOT`) is robust.
-
-**New completeness findings (cross-cavity misses).**
-- **N1/F1 — Android orphaned-listener race (CONFIRMED; reopens "Stop doesn't stop"):** the R-D7a generation-snapshot has a race where the listener can survive a "Stop" — reopening the very issue R-D7a was meant to close. HIGH; T4 must close it (exact mechanism to pin during implementation).
-- **N3 — Linux fast-crash-loop start-limit lockout (CONFIRMED) defeats R-T1(a):** a fast `--server`/service crash loop trips the systemd start-limit and locks out restart. Interacts with the T1 Windows-resilience decision (both are "supervisor recovery" questions).
-- **F5 — Android MediaProjection release asymmetry (SUSPECTED→CONFIRMED):** `MainService.onDestroy()` (`MainService.kt:319-331`) tears down the listener but NOT `mediaProjection` (null'd only in the app-driven `destroy()` `:549`; `.stop()` never called) → a system-initiated `onDestroy` leaks the projection until process death (R-S14 SHOULD "release when not running"). Bounded (start-capture stays auth-gated; new instance = null token) → hygiene gap, not a live capture-after-stop hole. Inherited from upstream.
-
-**Reconciliation (verifier more precise).** Cavity 5's `try_start_desktop` "latent over-broad headless gate" is **neutralized on the shipped build**: `allow-linux-headless` pinned `N` → `is_headless_allowed()==false` → `try_start_desktop` returns `""` with no refusal (`config.rs:3278`; `connection.rs:1950`). Moot for haggai.
-
-**⚠️ SPEC-VIOLATING TREATMENT FLAG — HELD FOR OPERATOR RECONCILIATION (NOT decided autonomously).** **Excising the `enable-remote-printer=Y` pin (the leaning T3 printer fix) CONTRADICTS R-S16/R-D8/R-G7** (which retain remote-printer as a Y capability). The printer must NOT be autonomously excised. Options for the operator: (a) ship the `RustDeskPrinterDriver.inf` payload + WiX (make it work, per the spec's retention); (b) keep the capability but hide/relabel the broken Install button honestly when no driver is present (spec-consistent honest-status); (c) reconcile the spec to drop it. **Held for operator decision.**
-
-**Verified-CLEAN (corroborating).** Android manifest R-X6-conformant (SYSTEM_ALERT_WINDOW / legacy-storage / DEBUG_BOOT_COMPLETED absent, `allowBackup=false`, cleartext denied, BootReceiver `exported=false`, targetSdk 33); no auto-restart surface (START_NOT_STICKY; no WorkManager/AlarmManager/JobScheduler); `startService` hard-gated on a complexity-validated password; on headless Linux screen/cursor/keyboard-mouse/clipboard-text/CLIPRDR/port-forward/RDP/terminal all work; BR-16 confirmed HEAD-only.
-
-**Overall confidence: HIGH.** All five cavity cores confirmed; the corrections make T5 larger (both hang sites + the audio/whiteboard/chat-voice cluster) and T4 tighter (tap-to-consent); the strongest added issues are N1/F1 (Android orphaned-listener race), N3 (crash-loop lockout), F5 (projection leak); the one spec-violating lean (printer excision) is held for operator reconciliation.
-
-### Implementation plan — treatments (sequential Opus 1M; each: implement → find-the-flaw review → my review → commit ONLY if it verifies clean; decisions per requirements.html principles)
-
-Order = highest real-world value + spec-clear first; each verified (verify.sh / smoke-server.sh / dart-verify / apk / Win-VM as applicable) before commit:
-- **T5 — Headless CM cluster (cavity 5 + F2/F3/F4):** spawn the file-transfer `--cm` as the `--server` owner on a logind-less host (per R-S8/R-F1), patching BOTH `is_prelogin()` hang sites (`connection.rs:4783`, `whiteboard/client.rs:144`). Restores file-transfer + audio + whiteboard + chat/voice on the haggai deployment. ✅ **DONE `98fc028`** — new `platform::is_headless_no_console_user()` helper drives one factored decision at both sites; verify.sh + smoke-server.sh 9/9 + cargo-check(both) green; find-the-flaw review APPROVE (no Crit/High/Med; 1 Low comment-accuracy fixed, 1 Low pre-existing noted). Runtime dir round-trip to confirm on a rebuilt flutter `.deb` on haggai (docker smoke is a CM-less compile-proxy).
-- **T2 — Settings unlock/password (cavity 2):** drop the dead elevation `_lock` gate → Set-Password settable on Win/Linux; free the 5 trapped non-pinned prefs; R-G1-render the 15 pinned toggles read-only "set by policy"; delete `hide_cm()`; fix the home pencil. ✅ **DONE `b1c243c`** — + excised the now-dead unlock-PIN subsystem end-to-end (Dart/FFI/IPC/config/CLI — its consumer the lock was gone → inert R-G1 control; the find-the-flaw review drove it); flutter-verify + dart-verify + verify.sh green, unlock-pin tokens grep-zero. Runtime desktop render to confirm on the rebuild.
-- **T4 — Android (cavity 4 + N1/F1/F5):** honor `EXT_INIT_FROM_BOOT` (decouple boot from capture — the BR-17 core fix); close the N1/F1 orphaned-listener race; F5 projection release on `onDestroy`; excise the scam-dialog; honest ServerInfo status; relabel "Start service"→"Start screen sharing" (BR-15). ✅ **DONE `66ec419`** (fixes only) — BR-17 boot-decouple; N1/F1 fixed by capturing the R-D7a generation **by value** (the thread was re-reading it late → a Stop was adopted not obeyed); F5 onDestroy release; scam-dialog excised end-to-end (3 keys × 51 locales + 642KB `scam.png`); a **real `DIRECT_LISTENER_BOUND` RAII signal** (set at bind, cleared on every teardown incl. the tokio runtime-abort) now drives honest mobile status (replaced the optimistic `isStart` lie). Two find-the-flaw passes drove the isStart→real-signal fix + the RAII abort-safe teardown; apk + dart-verify + flutter-verify + verify.sh + smoke ALL green. **Consent-on-connect SPLIT OUT** → flagged for operator UX review (feasibility = tap-to-consent, design in cavity 4).
-- **T1 — Windows resilience + honest status (cavity 1 + N3):** ✅ **DONE `741d3b1`** — Windows `sc failure` crash/kill auto-restart (OS-supervisor parity with systemd/launchd, R-X9/R-X10-clean, clean-stop-stays-stopped verified from the SCM handler); non-destructive tray "Exit" (cfg'd OUT on macOS, where the tray shares the `--server` process → `process::exit(0)` would self-DoS the listener with no launchd restart — a find-the-flaw catch) replacing the destructive `sc delete` "Stop service"; honest desktop status bridged **cross-process** (the real `DIRECT_LISTENER_BOUND` lives in the `--server`, read via a new read-only IPC GET arm — a wedged/down daemon reads not-reachable, BR-4); N3 `StartLimitIntervalSec=0`. verify.sh + dart-verify + flutter-verify + apple-conform green; Windows compile/runtime deferred to the `.msi` rebuild / a real Windows box. (empty-PRS auto-repair deliberately NOT done — honestly surfaced instead; re-setting the password rebuilds the PRS.)
-  Follow-up 2026-07-11: macOS explicit service uninstall no longer writes the dead `stop-service` option, and `verify.sh` rejects desktop production Config/IPC writers for that key.
-- **T3 — UI coherence remainder (cavity 3):** ✅ **DONE `79078c0`** — removed the directly-visible Linux "Allow linux headless" R-G1 toggle (it gates the compiled-out R-X14 subsystem → R-G1 *delete*, not read-only) + the dead WaylandCard (R-X12, verified-Offstage, −159 ln) + the §19 no-leftovers sweep of the orphaned Wayland/headless backends (`main_show_option`; the Wayland restore-token FFI/IPC chain + its `Data` variant + web stubs; 3 lang keys × 51 locales); kept the conditionally-live home-page Wayland cards + their keys. R-G8 branding flagged for operator (NOT rebranded; "Powered by RustDesk" already de-branded); ~1,200-line account/AB compile-out deferred. dart-verify + flutter-verify + verify.sh green; find-the-flaw APPROVE + reviewed the §19 sweep.
-- **HELD for operator reconciliation:** the Printer (excising `enable-remote-printer` contradicts R-S16/R-D8/R-G7). BR-16 = already fixed at HEAD (ship-forward, no code).
-
-### Deferred (post-treatment) audits — run AFTER the cavity decisions are made and the changes implemented
-- **Android background battery-drain audit.** Once the Android controlled-side model (cavity #4) is finalized and built, specifically audit the battery cost of keeping the listener / foreground-service active in the background — Doze / App-Standby behavior, any wakelock / the R-T13 CPU-keepalive, the persistent FGS notification, and network-wake — to confirm that treating the phone as an always-reachable host does not hurt background battery life too much. The operator is pro-"Android-as-a-computer" but wants this validated. By nature partly a real-device measurement (NEEDS-RUNTIME), paired with a from-source review of what stays awake.
-
-_Status (2026-07-07): **cavities 1 & 2 re-drills = EXHAUSTIVE / done** (all proven from source). Cav 1 = the Windows `--service`-death wedge (no SCM recovery; reboot recovers most triggers) + reboot-proof PRS-unavailable park (now diagnosed/gated by R-S9 read-state) + no slot leak possible. Cav 2 = the dead elevation-gated unlock on Win/Linux (macOS works, Android has no lock), the 28-key pinned set with **15 greyed R-G1 toggles = BR-14's backbone**, the password proven structurally un-swallowable, `hide_cm()` dead. **Cavity 3 = EXHAUSTIVE / done** (§19 largely already done R-G2..G7; surviving iceberg = 5 clusters: the unshipped-driver Printer BR-13 self-contradictory vs the native-driver-minimization pin; the tray "Stop service" mislabel+self-DoS shown-by-default with no non-destructive quit; the NOVEL directly-visible Linux "Allow linux headless" greyed R-G1 toggle; the desktop "Listening" config-lie [mobile has the honest 2-fact template]; the Android "Start service" mislabels; + ~1,200 ln deferred account/AB scaffolding + dead WaylandCard). **Cavity 4 = EXHAUSTIVE / done** (BR-17 boot-consent = `onStartCommand` requesting MediaProjection because the plumbed-but-unread `EXT_INIT_FROM_BOOT` never splits boot from Start; consent-on-connect PROVEN FEASIBLE via a notification / full-screen-intent [BAL constraint; sideloaded FSI]; BR-16 Terminal-opacity ALREADY FIXED at HEAD `8c0180d`, ship-forward; scam-dialog + ServerInfo-green-lie siblings). **ALL 5 CAVITIES = EXHAUSTIVE / done.** Cav 5 = BR-1 is only HALF-fixed: `8ec46d3` closed the "No active console user" refusal but NOT the real breakage — the file-transfer `--cm` process never spawns on a logind-less host because `start_ipc` hangs in `loop{if !is_prelogin() break}` and `is_prelogin()==true` with no seat0 (the fork's own smoke test asserts it); terminal/screen work in-process/X11; Android works because its CM is in-process. **The adversarial-verification pass = done; investigation confidence HIGH.** It confirmed every cavity core, EXTENDED cav 5 (the headless CM-hang breaks a cluster — file-transfer + audio + whiteboard [2nd hang site] + chat/voice), TIGHTENED cav 4 (consent-on-connect = tap-to-consent only), and found 3 cross-cavity misses (N1/F1 Android orphaned-listener race reopening "Stop-doesn't-stop"; N3 Linux crash-loop start-limit lockout; F5 MediaProjection release leak). One spec-tension HELD for operator reconciliation: excising `enable-remote-printer` contradicts R-S16/R-D8/R-G7. **Ledger `f0f4037` + T5 `98fc028` + T2 `b1c243c` pushed.** SEQUENTIAL IMPLEMENTATION (each: Opus 1M → find-the-flaw → my review → commit only if clean). **T5 DONE** (`98fc028`, headless CM cluster). **T2 DONE** (`b1c243c`, settings unlock/password + unlock-PIN excision). **T4 DONE** (`66ec419`). **T1 DONE** (`741d3b1`). **T3 DONE** (`79078c0`). ✅ **ALL 5 TREATMENTS COMPLETE** (T5 `98fc028`, T2 `b1c243c`, T4 `66ec419`, T1 `741d3b1`, T3 `79078c0` — each verified + adversarially reviewed + pushed to origin/master). **NEXT: Phase 4 — the full R-B2 rebuild** (cold double-build Debian/Android/Windows via `build-release.sh` + the gate suite) to byte-reproducibly confirm the whole implementation. **HELD for operator:** the Printer (R-S16/R-D8/R-G7 tension); consent-on-connect (UX, tap-to-consent design in cavity 4); the ~1,200-line account/AB compile-out (deferred); the R-G8 About-page branding (SHOULD). **Runtime confirmations that need real hardware:** the Windows `windows.rs` compile + SCM-restart (VM `.msi` build / a Windows box); the T5 file-transfer round-trip + the honest status (a rebuilt haggai `.deb`). Plus the deferred Android battery audit._
-
+The R-S11b/R-S11c source topology is implemented. That source status is not artifact or release proof; the
+current `.6` native validation and clean committed cold build remain outstanding.
+
+**R-B2 — release harness source implemented; current `.6` artifact proof absent.**
+`scripts/build-release.sh` is the sole release-build entry point. It requires a clean committed source tree,
+runs the release gates, performs cold Debian/Android/Windows double-builds, requires A==B for each target, and
+writes the coherent commit/version/artifact identity to `dist/SHA256SUMS`. Publication is a separate optional
+action through `scripts/publish-github-release.sh`; it is not part of building or verifying `.6`.
+
+`docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
+same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
+`docs/ANDROID-SIGNING-RECOVERY.md` closes the Android break-glass obligation: verified offline backup is the
+only loss recovery for the existing identity; suspected compromise retires that package identity and requires
+a new package name, new key/pin, clean build, authenticated notice, and data-wiping uninstall/reinstall. The
+current pipeline has no ad hoc certificate-lineage or pin-bypass path.
+
+Historical double-builds at older named commits exercised the harness and produced byte-identical artifacts.
+Those commits include `6fbae50`, `ede091e`, and `a5bd577`; their artifact hashes are intentionally not
+repeated in this live ledger because they prove only those old source states. The `5e03011` MSI proof was later
+invalidated across calendar days and led to the `SOURCE_DATE_EPOCH` fix. These records establish historical
+harness behavior, not current `.6` release evidence.
+
+The final sequence remains: settle source and normative documentation, update inventory and codec/status hashes,
+bump `FORK_VERSION` last, verify, commit, push the exact clean HEAD, then run the full cold build. The final
+current `.6` cold artifact build has not run, and no `.6` release or publication is claimed.
+## Historical live-QA closure (2026-07-06 through 2026-07-07)
+
+Acceptance testing of the old `v1.4.7-hardened.1` prerelease exposed five clusters: Windows service/status
+resilience, desktop settings/password coherence, stale UI surfaces, Android boot/capture lifecycle, and
+logind-less Linux connection-manager startup. The investigation log and its temporary present-tense
+investigation and treatment notes are superseded by the implemented closure rows in this ledger.
+
+The corresponding source treatments landed historically as `98fc028` (headless CM startup), `b1c243c`
+(settings/password and unlock-PIN excision), `66ec419` (Android boot/capture/listener teardown and honest
+status), `741d3b1` (Windows resilience and honest desktop status), and `79078c0` (remaining UI coherence).
+Later service, IPC, installer, input, and tunnel hardening further supersedes that snapshot. These old commits and
+their tests are historical traceability only; they do not prove the current `.6` artifacts. The final current
+`.6` clean committed cold build and native Windows validation remain unperformed.
 ## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory
 
 Cross-checked (2026-06-29) the fork's hardening against the **complete public 2026
@@ -2608,21 +2168,32 @@ rather than a watched package, and `verify.sh` fails if a future source module,
 FFI binding, bindgen package, overlay path, manifest entry, build-Dockerfile,
 build-scaffold, or ledger shape reintroduces libaom.
 
-**The remaining native-decode residual is still armed, not latent (recorded 2026-07-05 under the universal-deployment re-rating).**
-The pinned in-process decoders on the peer-reachable **viewer** path still carry
-open native-memory-safety risk (see `docs/NATIVE-CODEC-WATCH.md`):
-- **libvpx 1.15.2** — the VP8/VP9 decoder: **CVE-2026-1861**, a decoder heap buffer overflow (malformed
-  video → OOB heap write; fixed in Chrome 144.0.7559.132 via "enhanced bounds checking in the libvpx
-  decoder"). The pinned 1.15.2 (a 2025 release) predates the fix; the fixed libvpx commit is not yet pinned.
-So the spec's "pinned ≠ CVE-free" caveat is **not hypothetical**: there is live
-native codec risk on bytes an in-process viewer decodes when connected to a
-hostile-but-password-correct box — in **every** binary (every build ships the
-full viewer, R-R2b). This does not change the `ACCEPT`/SHOULD disposition, but
-it keeps the SHOULD-sandbox a high-value open hardening item for the remaining
-viewer decode/compression paths. The controlled/`--server` role is
-**unaffected** by video decode: it encodes its own screen; its only inbound
-native decode is Opus, gated behind an operator-accepted voice call (R-S19), plus
-64 MiB-bounded zstd.
+**R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; `.6` COLD ARTIFACT VALIDATION NOT YET PERFORMED.**
+The advisory affects the VP9 encoder's `write_superframe_index` path, not the
+VP8/VP9 viewer decoder. The prior decoder characterization was incorrect.
+libvpx v1.15.2 and v1.16.0 both predate the fix. The fork retains v1.15.2 and
+applies canonical upstream commit
+`d5f35ac8d93cba7f7a3f7ddb8f9dc8bd28f785e1` as overlay port revision 1. The
+source archive and exact patch bytes are independently SHA512-pinned and captured
+for offline builds. Linux x64 and Android arm64 staged native trees are keyed to
+the baseline plus complete libvpx source/overlay identity. Windows verifies the
+same inputs and an exact 25-package MSYS2 plus pinned native-tool acquisition closure, disables
+binary caching, and rebuilds changed libvpx in each clean offline build overlay;
+it cannot silently retain the vulnerable library from the golden image.
+R-B13 and Appendix C #129 are the normative pin, cache-identity, forced-rebuild,
+encoder-finding, and accepted-decoder-residual disposition.
+`scripts/native-codec-watch.sh` rejects pin/patch/ref drift, network source
+fallback, existence-only Linux/Android caches, missing Windows rebuild plumbing,
+or any unresolved advisory ledger entry, and its mutation self-test proves those
+rejections.
+
+**The remaining native-decode residual is distinct (recorded 2026-07-05 under the universal-deployment re-rating).**
+The in-process VP8/VP9, image, audio, clipboard, and compression decode paths on
+the peer-reachable **viewer** surface retain the general native-memory-safety
+residual accepted by Appendix C #2b. Closing this VP9 encoder CVE does not claim
+those decoders are vulnerability-free. The controlled/`--server` role encodes
+its own screen; its inbound native decode remains Opus behind an
+operator-accepted voice call (R-S19), plus 64 MiB-bounded zstd.
 
 A prior session (2026-06-26→28) built a large worker-subprocess sandbox for #2b —
 hidden same-artifact `--native-*-worker` roles, a `native_worker_sandbox` helper
@@ -2719,18 +2290,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   file unreadable whenever the device is locked — breaking backgrounded/locked config writes and
   reconnect — and it addresses only physical seizure of an unlocked-since-boot device, which §2 scopes
   out as endpoint compromise.)
-- **R-V3 independent CPace audit — ✅ PERFORMED 2026-07-02; VERDICT SOUND (findings
-  resolved @4eb6912).** An independent expert review (docs/CRYPTO-AUDIT-2026-07-02.md):
-  the §10.4 construction reproduced byte-for-byte by an INDEPENDENT implementation
+- **R-V3 independent CPace audit — ⛔ OUTSTANDING; AI REVIEW PERFORMED 2026-07-02 (findings
+  resolved @4eb6912).** The published AI-conducted review (docs/CRYPTO-AUDIT-2026-07-02.md)
+  reproduced the §10.4 construction byte-for-byte with a separately implemented stack
   (libsodium ristretto255 + from-scratch encoding/HKDF) against the published CFRG
   draft-21 vector AND both fork anchors; first-principles analysis of the state machine,
   two-key secretbox, constant-time paths, R-P3 MAC composition, R-S17 host-proof, and
   Argon2id PRS. Three findings raised and RESOLVED: F-1 (viewer stored plaintext → now
   the derived Argon2id PRS), F-2 (constant-time gate added to verify.sh + ignored dudect
-  probe), F-3 (deps already resolved in-tree). **HONEST CAVEAT:** this was an AI-conducted
-  (Claude Opus) SINGLE-reviewer review — rigorous, but not the multi-party/decades
-  third-party scrutiny SSH has (the honest boundary of this audit; scope + limitations in
-  the report).
+  probe), F-3 (deps already resolved in-tree). This was a Claude Opus single-model review,
+  not organizationally independent and not a professional external cryptographic audit.
+  It therefore does not satisfy R-V3's required independent expert sign-off. The external
+  audit remains a production-exposure blocker; scope and limitations of the completed AI
+  review are recorded in the report.
 - **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
   not cover (both endpoints' keying paths traced in source): confirm-before-key
@@ -2753,7 +2325,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   memory-hard PRS; (DiD-3) the host-proof signs `DSI‖sid‖CI‖Ya‖Yb` (not the literal
   ISK) but is key-bound because it travels encrypted as the first post-key frame with
   session-unique CPace-authenticated `sid/Ya/Yb` (test `r_s17_host_proof_binds_pk_to_the_session`).
-  The R-V3 independent expert review (above) is now DONE (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md).
+  The AI review above is complete (2026-07-02, docs/CRYPTO-AUDIT-2026-07-02.md); the independent
+  external expert audit required by R-V3 remains outstanding.
   **Superseded (2026-07-04, host-key retirement):** the host-proof / no-TOFU host-key-pin elements
   these two audits reviewed (the `HostIdentity` Ed25519 proof, the viewer pin-compare, the DiD-1
   `set_pinned_pk` confinement gate, DiD-3's host-proof signing, and the host-key-derived PRS salt) are
@@ -3143,49 +2716,22 @@ arrays are consistent at 4, no out-of-bounds risk.)
 
 ### Discipline for closing this
 
-Excise by root cause, not by scattered line; each removal carries its own **R-B2 reproducible-build
-re-prove** (Debian/Android/Windows double-build A==B) and re-runs `verify.sh` plus the out-of-loop
-gates (`audit.sh`, `dart-audit.sh`, `apple-conform-check.sh`, the smoke harness). Any code-audit help
+Excise by root cause, not by scattered line. Each source change reruns the applicable focused gates; R-B2
+reproducibility is established only by the final clean committed Debian/Android/Windows cold double-build, not
+separately claimed for every `.6` removal. Any code-audit help
 uses **Opus-1M subagents told to research extensively** — the recurring failure mode in this very
 sweep was agents trusting a stale comment (e.g. "the dialog shows the fingerprint" — it does not), so
 every claim must be verified against source. Tiers 1–2 are the priority (a user sees them / a box can
 mis-pin); Tiers 3–4 are the coherence work that lets this tree finally read as
 correct-from-the-first-place. This section supersedes the "Inert dead-code leftovers" sample above.
 
-The requirements snapshot reviewed in prior passes (2026-07-01 completion review at
-HEAD 358a4b9) was `67dbbba4…`. On 2026-07-02 the spec was updated to reflect the R-V3
-independent expert review: the §11 caveat, the SSH-bar maturity row, acceptance #6, and
-the R-V3 body were flipped from "not independently audited" to "reviewed 2026-07-02,
-findings resolved — docs/CRYPTO-AUDIT-2026-07-02.md." Two 2026-07-03 follow-ups: the
-recommendation-of-further-audit hedge was removed (maintainer decision — a funded firm is not
-a reachable gate for a solo fork; the factual limitations were kept), and Appendix C gained
-rows #23–#24 for the two RustDesk items in the June-2026 "Exploitarium" public zero-day dump
-(#23 relay-downgrade = already REPLACED by construction; #24 CVE-2026-58056 FileTransfer
-scope-bypass = inherited but moot under §2, now **FIXED** in connection.rs — an AuthConnType
-allowlist in on_message (input=Remote-only, desktop-capture=Remote|ViewCamera) + a FileTransfer
-capability-flag clear (keyboard/block_input/privacy_mode), verify.sh-gated). A further 2026-07-03
-edit **added a normative requirement** — §7 **R-S19** (capability confinement by `AuthConnType`:
-the CWE-863 class of which CVE-2026-58056 is one instance; see the R-S19 status note above) — the
-first spec change in this run that is not disclosure-only. The 2026-07-10 IPC/options audit added the
-second normative closure in this area: R-S16's read funnel now explicitly includes whole-map option reads
-(`Config::get_options` / UI cache / CLI `--option` / IPC `Data::Options(None)`), with pinned policy
-overlaid last. The 2026-07-11 macOS service-owned-password hardening added parsed
-LaunchAgent plist command-shape proof, R-S11e-2 client-side `_service` server authentication, and direct
-  authorization-before-password service requests with no pending plaintext cache; the Linux helper-provenance
-  follow-up added R-S11e-3 canonical target binding for fixed helper launches; the Windows elevated command-file
-  service-resource follow-up added R-S11c-26's bounded one-request protected service IPC envelope; the password-input
-  follow-up added R-S11e-16's no-argv hidden-terminal/bounded-stdin provisioning contract; the CM-response
-  authority follow-up added R-S11e/R-S11e-17's typed session/generation/operation-bound result contract and
-  Appendix C #122. The other
-requirements.html edits are disclosure/inventory updates, and the
-native-codec-watch ledger is re-confirmed valid against each.
-The current snapshot (matching the `docs/NATIVE-CODEC-WATCH.md` pin consumed by
-`scripts/native-codec-watch.sh`) is:
+**Active native-codec requirements ledger.** The SHA-256 consumed by
+`scripts/native-codec-watch.sh` and recorded identically in
+`docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-367cd517960457be0df6ac9b303670c1f6bf7520b702adcb9289baf7589cdb95  requirements.html
+57550c3d5d2ca20c064f41bb078cede0f4ee505a7ed1d76b8dbb7dceafc5a295  requirements.html
 ```
 
-`requirements.html` is not edited by routine implementation work; the only deliberate
-exception is an audit-status disclosure update like this one, which re-pins the hash here,
-and in `docs/NATIVE-CODEC-WATCH.md`.
+This hash binds the final normative requirements text, including R-B13 and Appendix C #129. It is a
+source-ledger identity, not proof that the current `.6` cold artifacts have been built.

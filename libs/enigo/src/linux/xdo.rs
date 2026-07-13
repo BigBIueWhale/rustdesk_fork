@@ -3,9 +3,9 @@
 //! This module uses libxdo-sys (patched to use dynamic loading stub) for input emulation.
 //! The stub handles dynamic loading of libxdo, so we just call the functions directly.
 //!
-//! If libxdo is not available at runtime, all operations become no-ops.
+//! If libxdo is not available at runtime, operations return errors.
 
-use crate::{Key, KeyboardControllable, MouseButton, MouseControllable};
+use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable};
 
 use hbb_common::libc::c_int;
 use hbb_common::x11::xlib::{Display, XCloseDisplay, XGetPointerMapping, XOpenDisplay};
@@ -18,6 +18,7 @@ const DEFAULT_DELAY: u64 = 12000;
 
 /// Maximum allowed delay value (u32::MAX as u64).
 const MAX_DELAY: u64 = u32::MAX as u64;
+const MAX_SCROLL_LENGTH: i32 = 64;
 
 fn mousebutton(button: MouseButton) -> c_int {
     match button {
@@ -33,6 +34,16 @@ fn mousebutton(button: MouseButton) -> c_int {
     }
 }
 
+fn xdo_result(operation: &str, status: c_int) -> crate::ResultType {
+    // libxdo's status reports request submission/flush acceptance, not eventual X server delivery;
+    // asynchronous X protocol errors remain outside this synchronous API contract.
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(format!("libxdo {operation} failed with status {status}").into())
+    }
+}
+
 /// Minimum number of buttons the X11 core pointer must support.
 /// Buttons 8 (Back) and 9 (Forward) are needed for mouse side buttons.
 const MIN_POINTER_BUTTONS: usize = 9;
@@ -40,10 +51,8 @@ const MIN_POINTER_BUTTONS: usize = 9;
 /// Check that the X11 core pointer's button map includes at least 9 buttons
 /// so that `XTestFakeButtonEvent` can simulate Back (8) and Forward (9).
 ///
-/// RustDesk's uinput "Mouse passthrough" device normally provides enough
-/// buttons, but we log a warning if the map is too small so the issue is
-/// diagnosable. `XSetPointerMapping` cannot extend the button count (its
-/// length must match `XGetPointerMapping`), so we only diagnose here.
+/// `XSetPointerMapping` cannot extend the button count, so this only diagnoses
+/// configurations where side-button injection cannot work.
 fn check_x11_button_map() {
     // Skip on non-X11 sessions to avoid noisy "XOpenDisplay failed" warnings
     // on pure Wayland or headless environments without $DISPLAY.
@@ -90,8 +99,7 @@ unsafe impl Send for EnigoXdo {}
 impl Default for EnigoXdo {
     /// Create a new EnigoXdo instance.
     ///
-    /// If libxdo is not available, the xdo pointer will be null and all
-    /// input operations will be no-ops.
+    /// If libxdo is unavailable, input operations return errors.
     fn default() -> Self {
         let xdo = unsafe { libxdo_sys::xdo_new(std::ptr::null()) };
         if xdo.is_null() {
@@ -144,6 +152,24 @@ impl Drop for EnigoXdo {
     }
 }
 
+impl EnigoXdo {
+    pub(crate) fn key_sequence_result(&mut self, sequence: &str) -> crate::ResultType {
+        if self.xdo.is_null() {
+            return Err("libxdo is unavailable".into());
+        }
+        let string = CString::new(sequence)?;
+        let status = unsafe {
+            libxdo_sys::xdo_enter_text_window(
+                self.xdo as *const _,
+                CURRENTWINDOW,
+                string.as_ptr(),
+                self.delay as libxdo_sys::useconds_t,
+            )
+        };
+        xdo_result("text entry", status)
+    }
+}
+
 impl MouseControllable for EnigoXdo {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -153,88 +179,82 @@ impl MouseControllable for EnigoXdo {
         self
     }
 
-    fn mouse_move_to(&mut self, x: i32, y: i32) {
+    fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
         if self.xdo.is_null() {
-            return;
+            return Err("libxdo is unavailable".into());
         }
-        unsafe {
-            libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y, 0);
-        }
+        let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y, 0) };
+        xdo_result("mouse move", status)
     }
 
-    fn mouse_move_relative(&mut self, x: i32, y: i32) {
+    fn mouse_move_relative(&mut self, x: i32, y: i32) -> crate::ResultType {
         if self.xdo.is_null() {
-            return;
+            return Err("libxdo is unavailable".into());
         }
-        unsafe {
-            libxdo_sys::xdo_move_mouse_relative(self.xdo as *const _, x, y);
-        }
+        let status = unsafe { libxdo_sys::xdo_move_mouse_relative(self.xdo as *const _, x, y) };
+        xdo_result("relative mouse move", status)
     }
 
     fn mouse_down(&mut self, button: MouseButton) -> crate::ResultType {
         if self.xdo.is_null() {
-            return Ok(());
+            return Err("libxdo is unavailable".into());
         }
-        unsafe {
-            libxdo_sys::xdo_mouse_down(self.xdo as *const _, CURRENTWINDOW, mousebutton(button));
+        let status = unsafe {
+            libxdo_sys::xdo_mouse_down(self.xdo as *const _, CURRENTWINDOW, mousebutton(button))
+        };
+        xdo_result("mouse down", status)
+    }
+
+    fn mouse_up(&mut self, button: MouseButton) -> crate::ResultType {
+        if self.xdo.is_null() {
+            return Err("libxdo is unavailable".into());
+        }
+        let status = unsafe {
+            libxdo_sys::xdo_mouse_up(self.xdo as *const _, CURRENTWINDOW, mousebutton(button))
+        };
+        xdo_result("mouse up", status)
+    }
+
+    fn mouse_click(&mut self, button: MouseButton) -> crate::ResultType {
+        self.mouse_down(button)?;
+        if let Err(first_err) = self.mouse_up(button) {
+            if let Err(retry_err) = self.mouse_up(button) {
+                log::error!(
+                    "X11 mouse-click release submission failed twice: first={first_err}, retry={retry_err}"
+                );
+                std::process::abort();
+            }
+            log::warn!("X11 mouse-click release submission required a retry: {first_err}");
         }
         Ok(())
     }
 
-    fn mouse_up(&mut self, button: MouseButton) {
-        if self.xdo.is_null() {
-            return;
-        }
-        unsafe {
-            libxdo_sys::xdo_mouse_up(self.xdo as *const _, CURRENTWINDOW, mousebutton(button));
-        }
-    }
-
-    fn mouse_click(&mut self, button: MouseButton) {
-        if self.xdo.is_null() {
-            return;
-        }
-        unsafe {
-            libxdo_sys::xdo_click_window(self.xdo as *const _, CURRENTWINDOW, mousebutton(button));
-        }
-    }
-
-    fn mouse_scroll_x(&mut self, length: i32) {
-        let button;
-        let mut length = length;
-
-        if length < 0 {
-            button = MouseButton::ScrollLeft;
+    fn mouse_scroll_x(&mut self, length: i32) -> crate::ResultType {
+        let button = if length < 0 {
+            MouseButton::ScrollLeft
         } else {
-            button = MouseButton::ScrollRight;
-        }
-
-        if length < 0 {
-            length = -length;
-        }
+            MouseButton::ScrollRight
+        };
+        let length = checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
 
         for _ in 0..length {
-            self.mouse_click(button);
+            self.mouse_click(button)?;
         }
+        Ok(())
     }
 
-    fn mouse_scroll_y(&mut self, length: i32) {
-        let button;
-        let mut length = length;
-
-        if length < 0 {
-            button = MouseButton::ScrollUp;
+    fn mouse_scroll_y(&mut self, length: i32) -> crate::ResultType {
+        let button = if length < 0 {
+            MouseButton::ScrollUp
         } else {
-            button = MouseButton::ScrollDown;
-        }
-
-        if length < 0 {
-            length = -length;
-        }
+            MouseButton::ScrollDown
+        };
+        let length = checked_scroll_magnitude(length, MAX_SCROLL_LENGTH)?;
 
         for _ in 0..length {
-            self.mouse_click(button);
+            self.mouse_click(button)?;
         }
+        Ok(())
     }
 }
 
@@ -378,18 +398,8 @@ impl KeyboardControllable for EnigoXdo {
     }
 
     fn key_sequence(&mut self, sequence: &str) {
-        if self.xdo.is_null() {
-            return;
-        }
-        if let Ok(string) = CString::new(sequence) {
-            unsafe {
-                libxdo_sys::xdo_enter_text_window(
-                    self.xdo as *const _,
-                    CURRENTWINDOW,
-                    string.as_ptr(),
-                    self.delay as libxdo_sys::useconds_t,
-                );
-            }
+        if let Err(err) = self.key_sequence_result(sequence) {
+            log::warn!("EnigoXdo::key_sequence failed: {err}");
         }
     }
 

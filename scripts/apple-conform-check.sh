@@ -260,39 +260,487 @@ else
   rc=1
 fi
 
-echo "== (2b-i) R-S11b-1 macOS _service has no whole-config bus =="
-r_s11b=
-grep -q 'pub(crate) fn service_channel_admits_message' "$REPO/src/ipc.rs" || r_s11b="$r_s11b no-service-message-gate"
-grep -q 'Data::Test => true' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-gate-misses-test"
-service_message_gate=$(awk '/pub\(crate\) fn service_channel_admits_message/,/^}/' "$REPO/src/ipc.rs")
-echo "$service_message_gate" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b="$r_s11b macos-service-password-authorized-request-not-typed"
-echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPasswordRightReadyRequest' || r_s11b="$r_s11b macos-service-password-right-readiness-request-not-typed"
-echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-service-password-runtime-snapshot-not-typed"
-service_dispatch_block=$(awk '/stream.next_timeout\(SERVICE_IPC_REQUEST_TIMEOUT_MS\)\.await/{flag=1} flag{print} flag && /return;/{exit}' "$REPO/src/ipc.rs")
-echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
-echo "$service_dispatch_block" | grep -q 'stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)' || r_s11b="$r_s11b service-read-not-deadline-bound"
-if echo "$service_dispatch_block" | grep -q 'loop {'; then
-  r_s11b="$r_s11b protected-service-still-persistent-loop"
+apple_password_gate_dir="$APPLE_CHECK_TMP/apple-password-gate"
+mkdir -m 0700 "$apple_password_gate_dir"
+if ! python3 - "$REPO" "$apple_password_gate_dir" <<'PY'
+import functools
+import re
+import sys
+from pathlib import Path
+
+repo = Path(sys.argv[1])
+out_dir = Path(sys.argv[2])
+paths = {
+    "ipc": "src/ipc.rs",
+    "password": "src/ipc/password.rs",
+    "auth": "src/ipc/auth.rs",
+    "core": "src/core_main.rs",
+    "macos_rs": "src/platform/macos.rs",
+    "macos_mm": "src/platform/macos.mm",
+}
+original = {name: (repo / path).read_text() for name, path in paths.items()}
+
+
+@functools.lru_cache(maxsize=None)
+def mask_noncode(source):
+    masked = list(source)
+    i = 0
+    while i < len(source):
+        if source.startswith("//", i):
+            end = source.find("\n", i + 2)
+            end = len(source) if end < 0 else end
+            masked[i:end] = " " * (end - i)
+            i = end
+            continue
+        if source.startswith("/*", i):
+            depth = 1
+            end = i + 2
+            while end < len(source) and depth:
+                if source.startswith("/*", end):
+                    depth += 1
+                    end += 2
+                elif source.startswith("*/", end):
+                    depth -= 1
+                    end += 2
+                else:
+                    end += 1
+            masked[i:end] = " " * (end - i)
+            i = end
+            continue
+        raw = re.match(r'(?:b?r)(#*)"', source[i:])
+        if raw:
+            close = '"' + raw.group(1)
+            end = source.find(close, i + raw.end())
+            end = len(source) if end < 0 else end + len(close)
+            masked[i:end] = " " * (end - i)
+            i = end
+            continue
+        if source[i] == '"':
+            end = i + 1
+            while end < len(source):
+                if source[end] == "\\":
+                    end += 2
+                elif source[end] == '"':
+                    end += 1
+                    break
+                else:
+                    end += 1
+            masked[i:end] = " " * (end - i)
+            i = end
+            continue
+        if source[i] == "'":
+            end = i + 1
+            if end < len(source) and source[end] == "\\":
+                end += 2
+            else:
+                end += 1
+            if end < len(source) and source[end] == "'":
+                end += 1
+                masked[i:end] = " " * (end - i)
+                i = end
+                continue
+        i += 1
+    return "".join(masked)
+
+
+def item(source, needle, start=0):
+    begin = source.find(needle, start)
+    if begin < 0:
+        raise ValueError(f"missing item marker: {needle}")
+    masked = mask_noncode(source)
+    brace = masked.find("{", begin + len(needle))
+    if brace < 0:
+        raise ValueError(f"missing item body: {needle}")
+    depth = 0
+    for index in range(brace, len(masked)):
+        if masked[index] == "{":
+            depth += 1
+        elif masked[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[begin:index + 1]
+    raise ValueError(f"unterminated item body: {needle}")
+
+
+def ordered(body, markers):
+    cursor = 0
+    for marker in markers:
+        position = body.find(marker, cursor)
+        if position < 0:
+            return False
+        cursor = position + len(marker)
+    return True
+
+
+def analyze(sources):
+    findings = {"b1": [], "b2": [], "cli": []}
+
+    def need(group, label, condition):
+        if not condition:
+            findings[group].append(label)
+
+    ipc = sources["ipc"]
+    password = sources["password"]
+    auth = sources["auth"]
+    core = sources["core"]
+    macos_rs = sources["macos_rs"]
+    macos_mm = sources["macos_mm"]
+
+    try:
+        gate = item(ipc, "pub(crate) fn service_channel_admits_message")
+        admitted = set(re.findall(r"Data::([A-Za-z0-9_]+)", gate))
+        need("b1", "service-admission-not-exact", admitted == {
+            "Test",
+            "MacosServiceOwnedPasswordRightReadyRequest",
+            "MacosServiceOwnedPermanentPasswordSnapshotRequest",
+        } and "Data::Test => true" in gate)
+        need("b1", "service-admission-not-fail-closed", "_ => false" in gate)
+        dispatch = item(ipc, "async fn handle_service_ipc_transaction")
+        need("b1", "service-dispatch-not-single-bounded-frame", dispatch.count("next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)") == 1 and "loop {" not in dispatch)
+        need("b1", "service-admission-not-before-dispatch", ordered(dispatch, ["next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", "service_channel_admits_message(&data)", "handle_service_request(data, &mut stream).await"]))
+        data = item(ipc, "pub enum Data")
+        main_request = item(ipc, "pub enum MainIpcRequest")
+        need("b1", "password-secret-present-on-serde-protocol", not any(token in data + main_request for token in ["SensitivePassword", "PasswordWithAuthorization", "RequestMacosServiceOwnedUnattendedPasswordChange"]))
+        need("b1", "service-resource-boundary-missing", all(token in ipc for token in [
+            "pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;",
+            "pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;",
+            "const SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;",
+            "fn try_acquire_service_ipc_transaction_slot()",
+        ]))
+        connect = item(ipc, "pub async fn connect(ms_timeout")
+        connect_path = item(ipc, "async fn connect_with_path")
+        raw_guard = "password::USER_PASSWORD_IPC_POSTFIX | password::SERVICE_PASSWORD_IPC_POSTFIX"
+        need("b1", "generic-connect-allows-password-endpoint", raw_guard in connect and raw_guard in connect_path and "sensitive password endpoints require the raw transport" in connect and "sensitive password endpoints require the raw transport" in connect_path)
+        password_prod = password.rsplit("#[cfg(test)]", 1)[0]
+        forbidden_framing = ["serde::", "Serialize", "Deserialize", "serde_json", "Framed", "BytesCodec", "BytesMut", "tokio_util"]
+        need("b1", "raw-password-module-uses-generic-framing", not any(token in password_prod for token in forbidden_framing))
+    except ValueError as error:
+        findings["b1"].append(f"structural-parse:{error}")
+
+    try:
+        start_main = item(ipc, "async fn start_main_ipc")
+        start_service = item(ipc, "async fn start_service_ipc")
+        main_sensitive = item(ipc, "async fn handle_sensitive_main_ipc_transaction")
+        mac_sensitive = item(ipc, "async fn handle_sensitive_macos_service_ipc_transaction")
+        mac_password_mutation = item(ipc, "async fn handle_macos_service_owned_unattended_password_request")
+        mac_service_auth = item(ipc, "async fn authorize_macos_service_scoped_ipc_connection_for_task")
+        mac_password_auth = item(ipc, "async fn authorize_macos_service_scoped_password_stream_for_task")
+        bounded_proof = item(ipc, "async fn run_bounded_macos_security_proof")
+        proof_finish = item(ipc, "impl MacosSecurityProofWorker")
+        proof_drop = item(ipc, "impl Drop for MacosSecurityProofWorker")
+        readiness_server = item(ipc, "async fn macos_service_owned_password_authorization_right_is_ready")
+        snapshot_peer = item(ipc, "async fn macos_peer_is_service_owned_server")
+        snapshot_identity = item(ipc, "fn macos_peer_is_service_owned_server_blocking")
+        snapshot_argv = item(ipc, "fn macos_service_owned_server_live_argv_is_expected")
+        snapshot_path = item(ipc, "fn macos_root_wheel_path_is_trusted")
+        snapshot_plist = item(ipc, "fn macos_service_owned_server_launch_agent_plist_value_is_expected")
+        snapshot_launchd = item(ipc, "fn macos_launch_agent_owns_service_owned_server_pid")
+        snapshot_handler = item(ipc, "async fn handle_macos_service_owned_permanent_password_snapshot_request")
+        client = item(ipc, "async fn set_service_owned_unattended_password_with_ack")
+        connect_sensitive = item(ipc, "async fn connect_sensitive_unix")
+        connect_service = item(ipc, "async fn connect_with_path")
+        coordinator = item(ipc, "impl PasswordMutationCoordinator")
+        ledger = item(ipc, "impl PasswordMutationLedger")
+        fingerprint_drop = item(ipc, "impl Drop for PasswordMutationFingerprint")
+        service_setter = item(ipc, "fn set_service_owned_unattended_password_sensitive")
+        service_client_wrapper = item(ipc, "async fn set_service_owned_unattended_password_with_ack")
+
+        need("b2", "raw-endpoints-not-dedicated", all(token in password for token in [
+            'USER_PASSWORD_IPC_POSTFIX: &str = "_password"',
+            'SERVICE_PASSWORD_IPC_POSTFIX: &str = "_service_password"',
+        ]) and "new_listener(password::USER_PASSWORD_IPC_POSTFIX)" in start_main and "new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)" in start_service)
+        need("b2", "raw-wire-shape-not-fixed", all(token in password for token in [
+            'const REQUEST_MAGIC: [u8; 8] = *b"RDPWREQ\\0";',
+            'const STATUS_MAGIC: [u8; 8] = *b"RDPWSTS\\0";',
+            "const PROTOCOL_VERSION: u8 = 1;",
+            "pub(crate) const REQUEST_HEADER_BYTES: usize = 36;",
+            "pub(crate) const STATUS_FRAME_BYTES: usize = 32;",
+            "const REQUEST_BODY_MAX_BYTES: usize = UNATTENDED_PASSWORD_MAX_BYTES + MACOS_AUTHORIZATION_MAX_BYTES;",
+        ]))
+        header_decode = item(password, "pub(crate) fn decode(")
+        header_validate = item(password, "fn validate(&self)")
+        need("b2", "raw-header-not-canonical-or-endpoint-bound", all(token in header_decode for token in [
+            "bytes[..8] != REQUEST_MAGIC", "bytes[8] != PROTOCOL_VERSION",
+            "bytes[9] != 0 || bytes[11] != 0", "kind != expected_kind", "Self::new(",
+        ]) and all(token in header_validate for token in [
+            "nil operation UUID", "UNATTENDED_PASSWORD_MAX_BYTES", "MACOS_AUTHORIZATION_MAX_BYTES", "checked_add",
+        ]))
+        receive_request = item(password, "pub(crate) async fn receive_request_unix")
+        receive_status = item(password, "pub(crate) async fn receive_status_unix")
+        send_request = item(password, "pub(crate) async fn send_request_unix")
+        decode_status = item(password, "pub(crate) fn decode_status")
+        need("b2", "raw-request-not-exact-eof-utf8", ordered(receive_request, [
+            "read_exact(&mut header_bytes.0)", "SensitiveRequestHeader::decode(&header_bytes.0, expected_kind)",
+            "InboundSensitiveRequest::allocate(header)", "read_exact(request.body_mut())",
+            "request.validate_utf8()", "stream.read(&mut trailing.0)", "if read != 0",
+        ]))
+        need("b2", "raw-status-not-canonical-exact-eof", all(token in decode_status for token in [
+            "bytes[..8] != STATUS_MAGIC", "bytes[8] != PROTOCOL_VERSION", "bytes[9] != 0",
+            "bytes[11] != 0", "bytes[28..].iter().any", "expected_operation_id.as_bytes()",
+        ]) and ordered(receive_status, ["read_exact(&mut bytes.0)", "decode_status(&bytes.0, operation_id)", "stream.read(&mut trailing.0)", "!= 0"]))
+        need("b2", "raw-send-not-header-body-shutdown-deadline", ordered(send_request, [
+            "SensitiveRequestHeader::new(", "remaining_millis(deadline)", "stream.write_all(&header)",
+            "stream.write_all(password.as_bytes())", "stream.write_all(authorization_bytes)", "stream.shutdown()",
+        ]) and send_request.count("with_deadline(deadline") >= 4)
+        password_prod = password.rsplit("#[cfg(test)]", 1)[0]
+        need("b2", "sensitive-buffers-not-self-zeroizing", all(token in password_prod for token in [
+            "impl Drop for SensitivePasswordStorage", "value.erase();", "impl Drop for FixedSensitiveBody",
+            "zeroize_sensitive_bytes(&mut self.bytes);", "impl Drop for SensitiveAuthorization",
+            "zeroize_sensitive_bytes(&mut self.0);", "impl<const N: usize> Drop for SensitiveStackBytes",
+            "SensitivePassword([REDACTED])", "zeroize_sensitive_bytes(&mut body.bytes[password_len..]);",
+        ]) and "Serialize for SensitivePassword" not in password_prod and "Deserialize" not in password_prod)
+        need("b2", "main-peer-auth-not-before-secret-read", ordered(start_main, [
+            "SensitiveMainListenerEvent::Accepted(stream)", "sensitive_main_ipc_authority(&stream)",
+            "try_acquire_sensitive_main_ipc_transaction_slot(authority)", "handle_sensitive_main_ipc_transaction(",
+        ]) and "SensitivePayloadKind::Password" in main_sensitive)
+        password_accept = start_service[start_service.find("result = password_incoming.next()") : start_service.find("result = incoming.next()")]
+        need("b2", "macos-peer-auth-not-before-secret-read", ordered(password_accept, [
+            "try_acquire_service_password_ipc_transaction_slot()", "try_acquire_macos_service_password_ipc_authorization_slot()",
+            "transactions.spawn(async move", "let deadline = tokio::time::Instant::now()",
+            "authorize_macos_service_scoped_password_stream_for_task(", "if authorized",
+            "handle_sensitive_macos_service_ipc_transaction(",
+        ]) and "receive_request_unix" not in password_accept and ordered(mac_sensitive, [
+            "SensitivePayloadKind::PasswordWithAuthorization", "try_acquire_macos_service_password_ipc_authorization_slot()",
+            "run_bounded_macos_security_proof(", "request.into_password()", "handle_macos_service_owned_unattended_password_request(",
+            "send_status_unix",
+        ]))
+        need("b2", "macos-audit-snapshot-not-immediate", ordered(mac_password_auth, [
+            "service_scoped_ipc_authorization_snapshot_from_stream(stream, postfix)",
+            "run_bounded_macos_security_proof(deadline", "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
+        ]) and ordered(mac_service_auth, [
+            "service_scoped_ipc_authorization_snapshot(stream, postfix)",
+            "run_bounded_macos_security_proof(deadline", "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
+        ]))
+        need("b2", "macos-budgets-not-separated", all(token in ipc for token in [
+            "const SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 4;",
+            "static SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>>",
+            "const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;",
+            "static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>",
+            "const MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_BUDGET: usize = 4;",
+            "static MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>",
+        ]) and "MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_ipc_authorization_slot") and "MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_password_ipc_authorization_slot"))
+        need("b2", "macos-proof-worker-ownership-not-exact", all(token in bounded_proof for token in [
+            "std::thread::Builder::new()", "tokio::sync::oneshot::channel()", "MacosSecurityProofWorker",
+            "tokio::time::timeout_at(deadline, result_rx)", "std::process::abort();", "owner.finish();",
+        ]) and "spawn_blocking" not in bounded_proof and all(token in proof_finish for token in [
+            "self.worker.take()", "worker.join().is_err()", "std::process::abort();",
+        ]) and all(token in proof_drop for token in ["self.worker.is_some()", "std::process::abort();"]))
+        need("b2", "macos-security-proof-not-absolute-deadline", "timeout_at(deadline" in bounded_proof and "timeout_at(deadline" in item(password, "async fn with_deadline"))
+        proof_callers = readiness_server + snapshot_peer + mac_password_auth + mac_service_auth + mac_sensitive + connect_sensitive + connect_service
+        need("b2", "macos-native-proof-detached-spawn-blocking", "spawn_blocking" not in proof_callers)
+        need("b2", "readiness-snapshot-not-password-budgeted", ordered(readiness_server, [
+            "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "ensure_service_owned_unattended_password_authorization_right()",
+        ]) and ordered(snapshot_peer, [
+            'macos_peer_process_identity("macOS service-owned password snapshot requester")',
+            "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "macos_peer_is_service_owned_server_blocking(identity)",
+        ]))
+
+        server_snapshot = item(auth, "pub(crate) fn macos_service_server_authorization_snapshot")
+        server_verify = item(auth, "pub(crate) fn authorize_macos_service_server_snapshot")
+        scoped_snapshot = item(auth, "pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream")
+        scoped_verify = item(auth, "pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot")
+        identity_pair = item(auth, "fn macos_service_ipc_allows_installed_app_and_privileged_helper")
+        identity_match = item(auth, "fn ensure_peer_executable_matches_current_macos_identity")
+        need("b2", "macos-peer-identity-not-audit-token-snapshot", all(token in scoped_snapshot for token in [
+            "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)", "peer_audit_token_from_fd(fd)", "MacosPeerProcessIdentity",
+        ]) and "ensure_peer_executable_matches_current_macos_identity(&identity" in scoped_verify and all(token in auth for token in [
+            "libc::LOCAL_PEEREPID", "libc::LOCAL_PEERTOKEN", "attributes.set_audit_token(audit_token.as_concrete_TypeRef())",
+            "MacosSecCode::copy_guest_with_attribues", "MacosCodeSigningFlags::STRICT_VALIDATE",
+        ]) and "libc::LOCAL_PEERPID" not in auth)
+        need("b2", "macos-installed-app-helper-identity-not-exact", all(token in auth for token in [
+            '"/Library/PrivilegedHelperTools/com.carriez.rustdesk_service"',
+            'identifier "com.carriez.rustdesk"', 'identifier "com.carriez.rustdesk_service"',
+            "macos_privileged_helper_path_is_expected_and_trusted", "macos_installed_app_path_is_expected_and_trusted",
+            "macos_path_has_no_extended_acl", "macos_peer_code_satisfies_requirement",
+        ]) and all(token in identity_pair for token in [
+            "hbb_common::config::is_service_ipc_postfix(postfix)", "macos_peer_is_trusted_installed_app(peer_identity)",
+            "macos_privileged_helper_path_is_expected_and_trusted(current_exe)",
+        ]) and "macos_service_ipc_allows_installed_app_and_privileged_helper(identity, &current_exe, postfix)" in identity_match)
+        need("b2", "client-server-auth-not-before-send", ordered(connect_sensitive, [
+            "Endpoint::connect(path)", "password::SERVICE_PASSWORD_IPC_POSTFIX =>", "macos_service_server_authorization_snapshot(",
+            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await", "password::remaining_millis(deadline)", "Ok(stream)",
+        ]) and ordered(server_snapshot, [
+            "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)", "peer_audit_token_from_fd(fd)",
+        ]) and ordered(server_verify, ["identity.uid != 0", "macos_peer_is_trusted_privileged_helper(&authorization.identity)"]) and ordered(service_client_wrapper, [
+            "connect_sensitive_unix(deadline", "password::send_request_unix(",
+        ]))
+
+        prompt_call = "tokio::task::spawn_blocking(|| {\n                crate::platform::service_owned_unattended_password_authorization()"
+        readiness = client.find("macos_service_owned_password_authorization_right_ready(readiness_deadline).await")
+        prompt = client.find(prompt_call)
+        fresh_deadline = client.find("let deadline = tokio::time::Instant::now()", prompt)
+        raw_connect = client.find("connect_sensitive_unix(deadline", fresh_deadline)
+        need("b2", "macos-user-prompt-sequence-not-readiness-prompt-fresh-deadline", -1 not in (readiness, prompt, fresh_deadline, raw_connect) and readiness < prompt < fresh_deadline < raw_connect and "timeout_at" not in client[prompt:fresh_deadline])
+        platform_prompt = item(macos_rs, "pub fn service_owned_unattended_password_authorization")
+        sensitive_authorization = item(password, "impl SensitiveAuthorization")
+        need("b2", "macos-authorization-capability-not-self-owned", "ResultType<crate::ipc::password::SensitiveAuthorization>" in platform_prompt and ordered(platform_prompt, [
+            "SensitiveAuthorization::new(vec![0u8; len])", "authorization.as_mut_bytes().as_mut_ptr()", "Ok(authorization)",
+        ]) and "pub(crate) fn as_mut_bytes" in sensitive_authorization and "impl Drop for SensitiveAuthorization" in password)
+        native_create = item(macos_mm, 'extern "C" bool MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm')
+        native_verify = item(macos_mm, 'extern "C" bool MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm')
+        need("b2", "macos-native-authorization-not-explicitly-wiped", ordered(native_create, [
+            "AuthorizationExternalForm externalForm = {};", "AuthorizationMakeExternalForm", "memcpy(buffer", "explicit_bzero(&externalForm",
+        ]) and ordered(native_verify, [
+            "AuthorizationExternalForm externalForm = {};", "memcpy(&externalForm", "AuthorizationCreateFromExternalForm", "explicit_bzero(&externalForm",
+        ]))
+        right_match = item(macos_mm, "static bool RustDeskSetUnattendedPasswordRightMatchesExpected")
+        need("b2", "macos-authorization-right-not-exact", all(token in right_match for token in [
+            'CFSTR("class"), CFSTR("user")', 'CFSTR("group"), CFSTR("admin")',
+            'CFSTR("shared"), false', 'CFSTR("allow-root"), false',
+            'CFSTR("authenticate-user"), true', 'CFSTR("session-owner"), false',
+            'CFSTR("extract-password"), false', 'CFSTR("timeout"), 0',
+        ]) and "kAuthorizationFlagInteractionAllowed" not in native_verify and "kAuthorizationRightExecute" not in native_create + native_verify)
+
+        need("b2", "password-finality-ledger-not-keyed-hmac", all(token in ipc for token in [
+            "hmacsha256::gen_key()", "hmacsha256::authenticate(value.as_bytes(), key)",
+            "PASSWORD_MUTATION_RESULT_BUDGET: usize = 64", "password_mutation_id_is_valid(operation_id)",
+        ]) and "zeroize_sensitive_bytes(&mut self.fingerprint_key.0);" in ledger and "zeroize_sensitive_bytes(&mut self.0 .0);" in fingerprint_drop and not any(token in coordinator for token in ["entries.remove", "pop_front", "completed.clear"]))
+        need("b2", "password-finality-control-flow-invalid", all(token in coordinator for token in [
+            "prepare_if_allowed", "entry.kind != kind || entry.fingerprint != fingerprint", "PasswordMutationState::Prepared",
+            "fn acknowledge", "PasswordMutationState::Pending", "fn complete", "PasswordMutationState::Complete(result, std::time::Instant::now())",
+            "async fn wait_for_complete", "async fn drain", "fn clear_after_transactions_drain",
+        ]) and ordered(mac_password_mutation, [
+            "prepare_if_allowed(", "preparation.owns_preparation", "acknowledge(&operation_id", "spawn_password_mutation(",
+            "worker.await", "PasswordMutationStatus::Complete(result)",
+        ]))
+        uuid = client.find("let operation_id = hbb_common::uuid::Uuid::new_v4();")
+        retry_loop = client.find("loop {", uuid)
+        need("b2", "password-client-retry-not-stable-finality", uuid >= 0 and retry_loop > uuid and client.count("Uuid::new_v4") == 1 and all(token in client for token in [
+            "recovery_required = true", "UnixSensitivePasswordSendError::Uncertain", "receive_status_unix(&mut stream, operation_id, deadline)",
+            "windows_credential_client_decision(status, recovery_required)", "Retrying service-owned password operation until its final state is known",
+        ]))
+        service_shutdown = [
+            "password_mutations().begin_shutdown();", "while let Some(result) = transactions.join_next().await",
+            "password_mutations().drain().await;", "password_mutations().clear_after_transactions_drain();",
+        ]
+        need("b2", "password-ledger-shutdown-not-drained-cleared", ordered(start_service, service_shutdown) and ordered(start_main, service_shutdown))
+
+        need("b2", "snapshot-requester-argv-not-exact", all(token in snapshot_argv for token in [
+            "cmd.len() == 3", 'Some("--server")', "Some(crate::common::SERVICE_OWNED_SERVER_ARG)",
+        ]) and "macos_service_owned_server_live_argv_is_expected(process.cmd())" in snapshot_identity)
+        need("b2", "snapshot-requester-not-installed-launchd-plist-proven", all(token in snapshot_identity for token in [
+            "macos_peer_is_trusted_installed_app(&identity)", "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid)",
+        ]) and all(token in snapshot_path for token in [
+            "std::fs::symlink_metadata(path)", "!metadata.file_type().is_symlink()", "metadata.uid() == 0",
+            "metadata.gid() == 0", "mode() & 0o022 == 0", "macos_path_has_no_extended_acl(path)",
+        ]) and all(token in snapshot_plist for token in [
+            'dict.get("Label")', '"ProgramArguments"', "program_arguments.len() != expected_arguments.len()",
+            '"--server"', "SERVICE_OWNED_SERVER_ARG", '"RunAtLoad"', '"KeepAlive"',
+            "keep_alive.len() != 2", 'get("SuccessfulExit")', 'get("AfterInitialDemand")',
+        ]) and ordered(snapshot_launchd, [
+            "macos_service_owned_server_launch_agent_plist_is_trusted", "macos_service_owned_server_launch_agent_plist_content_is_expected",
+            'format!("gui/{peer_uid}/{label}")', "Command::new(MACOS_LAUNCHCTL)", "reported_pid != Some(peer_pid)",
+            "reported_path != Some(expected_plist.as_str())",
+        ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(snapshot_handler, [
+            "let deadline = tokio::time::Instant::now()", "macos_peer_is_service_owned_server(stream, deadline).await",
+            "Config::get_local_permanent_password_storage_and_salt()", "password::remaining_millis(deadline)", "send_json_timeout(",
+        ]))
+        need("b2", "service-password-ordinary-fallback-present", not any(token in service_setter + service_client_wrapper for token in [
+            "set_user_owned_permanent_password", "Config::set_permanent_password", "main_ipc_request(",
+            "connect_service(", "send_json_timeout(", "RequestMacosServiceOwnedUnattendedPasswordChange",
+        ]) and "connect_sensitive_unix(deadline, password::SERVICE_PASSWORD_IPC_POSTFIX" in service_client_wrapper)
+        obsolete = [
+            "RequestMacosServiceOwnedUnattendedPasswordChange", "BeginMacosServiceOwnedUnattendedPasswordChange",
+            "MacosServiceOwnedUnattendedPasswordChallenge", "FinishMacosServiceOwnedUnattendedPasswordChange",
+            "MACOS_SERVICE_OWNED_PASSWORD_PENDING", "MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING",
+            "MacosServiceOwnedPasswordRequest", "macos_store_service_owned_password_request",
+            "macos_take_service_owned_password_request", "macos_schedule_service_owned_password_request_expiry",
+            "MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL", "password_digest", "request_digest",
+            "authorization: Vec::new()", "RootUnixPeer",
+        ]
+        need("b2", "obsolete-json-password-protocol-present", not any(token in ipc + macos_rs for token in obsolete))
+    except ValueError as error:
+        findings["b2"].append(f"structural-parse:{error}")
+
+    try:
+        cli_parse = item(core, "fn password_cli_input")
+        cli_read = item(core, "fn read_unattended_password_line")
+        cli_stdin = item(core, "fn read_unattended_password_from_stdin")
+        cli_prompt = item(core, "fn prompt_unattended_password")
+        cli_set = item(core, "fn set_cli_permanent_password")
+        core_main = item(core, "pub fn core_main()")
+        password_arm_start = core_main.find('matches!(args[0].as_str(), "--password" | "--password-stdin")')
+        password_arm_end = core_main.find('args[0] == "--get-id"', password_arm_start)
+        password_arm = core_main[password_arm_start:password_arm_end]
+        need("cli", "cli-password-command-not-exact", all(token in cli_parse for token in [
+            'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)',
+            'Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin)',
+            "_ => Err(PASSWORD_CLI_USAGE)",
+        ]) and not re.search(r"args\s*\[\s*1\s*\]|args\.get\(1\)", cli_parse + password_arm))
+        need("cli", "cli-hidden-confirmed-prompt-not-wiping", "Result<crate::ipc::SensitivePassword, String>" in cli_prompt and cli_prompt.count("rpassword::prompt_password") == 2 and ordered(cli_prompt, [
+            'prompt_password("New permanent password: ")', "validate_unattended_password(password.as_str())",
+            'prompt_password("Confirm permanent password: ")', "validate_unattended_password(confirmation.as_str())",
+            "let matches = password == confirmation", "confirmation.zeroize()", "if !matches", "Ok(password)",
+        ]))
+        need("cli", "cli-stdin-not-terminal-refused", ordered(cli_stdin, ["std::io::stdin()", "stdin.is_terminal()", "return Err(", "read_unattended_password_line(&mut stdin.lock())"]))
+        need("cli", "cli-stdin-not-bounded-utf8-zeroized", all(token in core for token in [
+            "struct SensitivePasswordInput(Vec<u8>)", "impl Drop for SensitivePasswordInput",
+            "zeroize_sensitive_bytes(&mut self.0)",
+        ]) and ordered(cli_read, [
+            "UNATTENDED_PASSWORD_MAX_BYTES + 2", "reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)",
+            "read_until(b'\\n'", "bytes.0.len() > crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES",
+            "String::from_utf8", "err.into_bytes()", "zeroize_sensitive_bytes(&mut invalid)",
+        ]))
+        need("cli", "cli-password-secret-read-from-env", not any(token in cli_parse + cli_read + cli_stdin + cli_prompt + cli_set + password_arm for token in [
+            "std::env::var", "std::env::var_os", "env::var(", "env::var_os(",
+        ]))
+        need("cli", "cli-sensitive-value-not-passed-directly", "crate::ipc::set_permanent_password_sensitive(password)" in cli_set and ordered(password_arm, [
+            "password_cli_input(&args)", "PasswordCliInput::Terminal => prompt_unattended_password()",
+            "PasswordCliInput::Stdin => read_unattended_password_from_stdin()", "set_cli_permanent_password(password)",
+        ]))
+        need("cli", "cli-negative-regression-tests-missing", all(token in core for token in [
+            "fn password_cli_rejects_positional_secrets", "fn password_stdin_reader_is_line_bounded_and_utf8_only",
+            'password_cli_input(&args(&["--password", "secret"]))',
+            'password_cli_input(&args(&["--password-stdin", "secret"]))',
+        ]))
+    except ValueError as error:
+        findings["cli"].append(f"structural-parse:{error}")
+
+    return findings
+
+
+findings = analyze(original)
+
+
+def mutation(name, file_name, old, new, group, expected):
+    if old not in original[file_name]:
+        findings[group].append(f"mutation-self-test-{name}-fixture-missing")
+        return
+    changed = dict(original)
+    changed[file_name] = changed[file_name].replace(old, new, 1)
+    observed = analyze(changed)[group]
+    if expected not in observed:
+        findings[group].append(f"mutation-self-test-{name}-not-detected")
+
+
+mutation("service-admission", "ipc", "Data::Test => true", "Data::Test => false", "b1", "service-admission-not-exact")
+mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
+mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
+mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
+mutation("proof-worker-owner", "ipc", "std::thread::Builder::new()", "tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
+mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
+mutation("fresh-transport-deadline", "ipc", '#[cfg(target_os = "macos")]\n        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);', '#[cfg(target_os = "macos")]\n        let deadline = readiness_deadline;', "b2", "macos-user-prompt-sequence-not-readiness-prompt-fresh-deadline")
+mutation("ledger-clear", "ipc", "password_mutations().clear_after_transactions_drain();", "password_mutations().begin_shutdown();", "b2", "password-ledger-shutdown-not-drained-cleared")
+mutation("snapshot-exact-argv", "ipc", "cmd.len() == 3", "cmd.len() >= 3", "b2", "snapshot-requester-argv-not-exact")
+mutation("cli-exact-arity", "core", 'Some("--password") if args.len() == 1', 'Some("--password") if !args.is_empty()', "cli", "cli-password-command-not-exact")
+mutation("cli-stdin-bound", "core", "reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)", "reader.take(u64::MAX)", "cli", "cli-stdin-not-bounded-utf8-zeroized")
+mutation("cli-confirmation-wipe", "core", "if !confirmation.zeroize()", "if confirmation.as_str().is_empty()", "cli", "cli-hidden-confirmed-prompt-not-wiping")
+
+for name, group in [("r_s11b", "b1"), ("r_s11b2", "b2"), ("r_s11e16", "cli")]:
+    (out_dir / name).write_text(" ".join(findings[group]))
+PY
+then
+  printf '%s\n' 'apple-password-structural-checker-failed' >"$apple_password_gate_dir/r_s11b"
+  printf '%s\n' 'apple-password-structural-checker-failed' >"$apple_password_gate_dir/r_s11b2"
+  printf '%s\n' 'apple-password-structural-checker-failed' >"$apple_password_gate_dir/r_s11e16"
 fi
-if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
-  r_s11b="$r_s11b service-loop-still-admits-syncconfig"
-fi
-grep -q 'pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 \* 1024;' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-frame-cap-constant-missing"
-grep -q 'pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-read-timeout-constant-missing"
-grep -q 'fn try_acquire_service_ipc_transaction_slot' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-transaction-budget-missing"
-grep -q 'Connection::new_protected_service(stream)' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-accept-not-capped"
-grep -q 'ConnectionTmpl::new_protected_service(client)' "$REPO/src/ipc.rs" || r_s11b="$r_s11b service-client-connect-not-capped"
+
+echo "== (2b-i) R-S11b-1 macOS _service is bounded control IPC, never a password/config bus =="
+r_s11b=$(<"$apple_password_gate_dir/r_s11b")
 grep -Fq 'Protected service IPC resource boundary' "$REPO/requirements.html" || r_s11b="$r_s11b service-resource-requirements-missing"
 grep -Fq 'R-S11c-26 — protected service IPC resource boundary' "$REPO/HARDENING_STATUS.md" || r_s11b="$r_s11b service-resource-ledger-missing"
-if grep -q 'SyncConfig' "$REPO/src/ipc.rs"; then
-  r_s11b="$r_s11b whole-config-ipc-variant-present"
-fi
-if awk '/^async fn handle\(/,/^}/' "$REPO/src/ipc.rs" | grep -qE 'Data::SyncConfig\(Some\([^)]*\)\)[[:space:]]*=>'; then
-  r_s11b="$r_s11b whole-config-write-handler-present"
-fi
-if grep -q 'SyncConfig' "$REPO/src/server.rs"; then
-  r_s11b="$r_s11b server-whole-config-import-present"
-fi
+grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b="$r_s11b whole-config-ipc-variant-present"
+grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b="$r_s11b server-whole-config-import-present"
 if awk '/probe_existing_listener/,/^}/' "$REPO/src/ipc/fs.rs" | grep -q 'Data::SyncConfig'; then
   r_s11b="$r_s11b service-probe-reads-config"
 fi
@@ -304,370 +752,87 @@ if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INT
   r_s11b="$r_s11b service-config-sync-loop-present"
 fi
 if [ -n "$r_s11b" ]; then
-  echo "  FAIL R-S11b-1 macOS _service whole-config bus removal:$r_s11b"
+  echo "  FAIL R-S11b-1 macOS service IPC closure:$r_s11b"
   rc=1
 else
-  note "ok  R-S11b-1/R-S11c-1f macOS _service admits liveness plus typed authorized service-owned password/runtime-snapshot requests; whole-config IPC and imports are absent"
+  note "ok  R-S11b-1/R-S11c-1f _service is a one-frame bounded liveness/readiness/root-snapshot control channel; _password and _service_password are raw-only endpoints; generic serde/framing and whole-config traffic are excluded"
 fi
 
-echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS service-owned password/options are not ordinary IPC =="
-r_s11b2=
+echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="
+r_s11b2=$(<"$apple_password_gate_dir/r_s11b2")
 grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"
-grep -q 'MainIpcAuthority::ServiceOwned' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-owned-authority-missing"
-grep -q 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-arm-missing"
-grep -A3 'Data::SetUserOwnedPermanentPassword(_) => {' "$REPO/src/ipc.rs" | grep -q 'authority.allows_main_channel_user_owned_password_write()' || r_s11b2="$r_s11b2 typed-password-write-not-authority-gated"
-grep -q 'Data::SetUserOwnedPermanentPasswordResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-reject-nack-missing"
-grep -q 'RequestMacosServiceOwnedUnattendedPasswordChange {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-authorized-request-missing"
-grep -q 'password: String' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-value-missing"
-grep -q 'authorization: Vec<u8>' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-auth-missing"
-grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-request-missing"
-grep -q 'MacosServiceOwnedPermanentPasswordSnapshot {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-response-missing"
-main_channel_mutation_policy=$(awk '/pub\(crate\) fn main_channel_admits_state_mutation/,/^}/' "$REPO/src/ipc.rs")
-echo "$main_channel_mutation_policy" | grep -q 'Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }' || r_s11b2="$r_s11b2 macos-service-password-request-not-denied-on-main"
-echo "$main_channel_mutation_policy" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => false' || r_s11b2="$r_s11b2 macos-service-password-snapshot-not-denied-on-main"
-echo "$main_channel_mutation_policy" | grep -q 'Data::CommitServiceOwnedUnattendedPasswordChange(_) => false' || r_s11b2="$r_s11b2 macos-service-password-commit-not-denied-on-main"
-if grep -qE 'BeginMacosServiceOwnedUnattendedPasswordChange|MacosServiceOwnedUnattendedPasswordChallenge|FinishMacosServiceOwnedUnattendedPasswordChange' "$REPO/src/ipc.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-old-begin-finish-flow-present"
-fi
-if grep -qE 'MACOS_SERVICE_OWNED_PASSWORD_PENDING|MACOS_SERVICE_OWNED_PASSWORD_MAX_PENDING|MacosServiceOwnedPasswordRequest|macos_store_service_owned_password_request|macos_take_service_owned_password_request|macos_schedule_service_owned_password_request_expiry|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_TTL|password: Option<String>' "$REPO/src/ipc.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-pending-cache-present"
-fi
-grep -q 'const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-password-value-cap-missing"
-grep -q 'password.len() > UNATTENDED_PASSWORD_MAX_BYTES' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 service-password-value-cap-not-enforced"
-grep -q 'service_owned_password_value_is_valid("macOS", &password)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-value-cap-not-wired"
-grep -q 'handle_macos_service_owned_unattended_password_request' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
-grep -q 'Config::set_permanent_password(&password)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-not-writing-root-store"
-if grep -q 'commit_service_owned_unattended_password_change(password).await' "$REPO/src/ipc.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-stale-main-server-commit"
-fi
-if grep -q 'get_preset_password_storage_and_salt' "$REPO/src/ipc.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-snapshot-preset-fallback"
-fi
-grep -q 'handle_macos_service_owned_permanent_password_snapshot_request' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-handler-missing"
-grep -q 'macos_peer_is_service_owned_server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-peer-shape-missing"
-grep -q 'macos_launch_agent_owns_service_owned_server_pid' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-pid-proof-missing"
-macos_snapshot_peer_block=$(awk '/async fn macos_peer_is_service_owned_server/,/fn macos_service_owned_server_launch_agent_label/' "$REPO/src/ipc.rs")
-macos_blocking_peer_block=$(awk '/fn macos_peer_is_service_owned_server_blocking/,/fn macos_service_owned_server_launch_agent_label/' "$REPO/src/ipc.rs")
-macos_launch_agent_proof_block=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/async fn handle_macos_service_owned_permanent_password_snapshot_request/' "$REPO/src/ipc.rs")
-macos_plist_parser_block=$(awk '/fn macos_service_owned_server_launch_agent_plist_value_is_expected/,/fn macos_service_owned_server_launch_agent_plist_content_is_expected/' "$REPO/src/ipc.rs")
-macos_plist_content_block=$(awk '/fn macos_service_owned_server_launch_agent_plist_content_is_expected/,/fn macos_launchctl_print_value/' "$REPO/src/ipc.rs")
-macos_snapshot_handler_block=$(awk '/async fn handle_macos_service_owned_permanent_password_snapshot_request/,/async fn permanent_password_is_set_for_current_process/' "$REPO/src/ipc.rs")
-grep -q 'MACOS_LAUNCHCTL: &str = "/bin/launchctl"' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchctl-fixed-path-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'format!("gui/{peer_uid}/{label}")' || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-domain-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'reported_pid != Some(peer_pid)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-pid-compare-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'reported_path != Some(expected_plist.as_str())' || r_s11b2="$r_s11b2 macos-service-password-snapshot-launchd-path-compare-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'macos_service_owned_server_launch_agent_plist_is_trusted' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-trust-missing"
-grep -q 'macos_service_owned_server_launch_agent_plist_is_trusted' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-trust-function-missing"
-echo "$macos_launch_agent_proof_block" | grep -q 'macos_service_owned_server_launch_agent_plist_content_is_expected' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-content-proof-not-wired"
-grep -q 'macos_root_wheel_path_is_trusted(parent, MacosTrustedPathKind::Directory)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-parent-trust-missing"
-grep -q 'std::fs::symlink_metadata(path)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-symlink-gate-missing"
-grep -q 'metadata.uid() == 0' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-root-missing"
-grep -q 'metadata.gid() == 0' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-wheel-missing"
-grep -q 'metadata.permissions().mode() & 0o022 == 0' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-mode-missing"
-grep -q 'macos_path_has_no_extended_acl' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-acl-missing"
-echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_process_identity("macOS service-owned password snapshot requester")' || r_s11b2="$r_s11b2 macos-service-password-snapshot-audit-token-identity-missing"
-echo "$macos_snapshot_peer_block" | grep -q 'tokio::task::spawn_blocking' || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-not-spawn-blocking"
-echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(identity)' || r_s11b2="$r_s11b2 macos-service-password-snapshot-proof-blocking-target-missing"
-if echo "$macos_snapshot_peer_block" | grep -q 'macos_peer_is_service_owned_server_blocking(peer_uid, peer_pid)'; then
-  r_s11b2="$r_s11b2 macos-service-password-snapshot-old-pid-target-present"
-fi
-grep -Fq 'fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-missing"
-grep -Fq 'cmd.len() == 3' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-live-argv-not-exact-length"
-echo "$macos_snapshot_peer_block" | grep -Fq 'macos_service_owned_server_live_argv_is_expected(process.cmd())' || r_s11b2="$r_s11b2 macos-service-password-live-argv-helper-not-wired"
-grep -q 'macos_service_owned_server_live_argv_rejects_extra_arg' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-live-argv-extra-test-missing"
-grep -q 'macos_service_owned_server_live_argv_rejects_wrong_service_arg' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-live-argv-wrong-marker-test-missing"
-if echo "$macos_blocking_peer_block" | grep -qE 'process\.cmd\(\)\.get\([12]\)'; then
-  r_s11b2="$r_s11b2 macos-service-password-live-argv-prefix-proof-present"
-fi
-grep -q 'macos_service_owned_server_launch_agent_executable' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-exec-proof-missing"
-grep -q 'macos_service_owned_server_launch_agent_plist_content_is_expected' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-content-proof-missing"
-grep -q 'macos_service_owned_server_launch_agent_plist_value_is_expected' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-parser-missing"
-echo "$macos_plist_content_block" | grep -q 'plist::Value::from_file' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-not-parsed"
-echo "$macos_plist_parser_block" | grep -q 'ProgramArguments' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-programargs-missing"
-echo "$macos_plist_parser_block" | grep -q 'RunAtLoad' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-runatload-missing"
-echo "$macos_plist_parser_block" | grep -q 'SuccessfulExit' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-successful-exit-missing"
-echo "$macos_plist_parser_block" | grep -q 'AfterInitialDemand' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-initial-demand-missing"
-echo "$macos_plist_parser_block" | grep -q 'keep_alive.len() != 2' || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-exact-shape-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_missing_service_arg' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-validation-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_extra_arg' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-extra-arg-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_run_at_load_false' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-runatload-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_missing_keep_alive' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-test-missing"
-grep -q 'macos_service_owned_launch_agent_plist_validation_rejects_extra_keep_alive_key' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-plist-keepalive-exact-test-missing"
-echo "$macos_snapshot_handler_block" | grep -q 'if storage.is_empty()' || r_s11b2="$r_s11b2 macos-service-password-empty-snapshot-storage-gate-missing"
-echo "$macos_snapshot_handler_block" | grep -q '(String::new(), String::new())' || r_s11b2="$r_s11b2 macos-service-password-empty-snapshot-not-cleared"
-grep -q 'refresh_macos_service_owned_permanent_password_snapshot' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-snapshot-client-missing"
-grep -q 'Config::set_permanent_password_storage_for_runtime(&storage, &salt)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-apply-missing"
+grep -q 'test_permanent_password_sync_does_not_publish_unpersisted_state' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 snapshot-persistence-failure-regression-test-missing"
+grep -q 'set_permanent_password_storage_for_sync_with_store' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 snapshot-persistence-result-not-enforced"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-nonpersist-test-missing"
 grep -q 'test_set_permanent_password_persists_when_value_matches_preset' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 explicit-password-set-preset-noop-test-missing"
 grep -q 'effective_permanent_password_prs' "$REPO/src/direct_service.rs" || r_s11b2="$r_s11b2 macos-service-password-listener-not-effective-prs"
-grep -q 'let prs = effective_permanent_password_prs().await' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-not-effective-prs"
-grep -q 'service_owned_unattended_password_authorization()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-ui-auth-not-action-only"
-if grep -q 'authorization: Vec::new()' "$REPO/src/ipc.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-auth-failure-cancel-fallback-present"
-fi
-if ! (cd "$REPO" && python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-start = src.index("async fn set_service_owned_unattended_password_with_ack")
-end = src.index("#[cfg(target_os = \"windows\")]", start)
-body = src[start:end]
-ready = body.find("macos_service_owned_password_authorization_right_ready(ms_timeout).await?")
-auth = body.find("service_owned_unattended_password_authorization()")
-connect_after_auth = body.find("let mut c = connect_service(ms_timeout).await?", auth)
-send = body.find("Data::RequestMacosServiceOwnedUnattendedPasswordChange")
-raise SystemExit(0 if ready != -1 and auth != -1 and connect_after_auth != -1 and send != -1 and ready < auth < connect_after_auth < send else 1)
-PY
-); then
-  r_s11b2="$r_s11b2 macos-service-password-ui-skips-right-readiness-or-reuses-readiness-connection"
-fi
-if grep -qE 'macos_service_owned_unattended_password_digest|MACOS_SERVICE_OWNED_PASSWORD_REQUEST_CONTEXT|password_digest' "$REPO/src/ipc.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-stale-digest-binding"
-fi
-grep -q 'macos_service_owned_password_authorization_right_is_ready' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-right-readiness-gate-missing"
-grep -q 'MacosServiceOwnedPasswordRightReadyRequest' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-right-readiness-request-missing"
-grep -q 'MacosServiceOwnedPasswordRightReadyResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-right-readiness-result-missing"
-grep -q 'macos_service_owned_password_authorization_right_ready' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-right-readiness-client-missing"
-grep -q 'MacosServiceOwnedPasswordRightReadyResult(ready)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-right-readiness-handler-result-missing"
-grep -q 'MacEnsureServiceOwnedUnattendedPasswordAuthorizationRight' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-setup-missing"
-grep -q 'AuthorizationRightSet(NULL' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-set-missing"
-grep -q 'AuthorizationRightGet(RustDeskSetUnattendedPasswordRight()' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-existence-check-missing"
-grep -q 'RustDeskSetUnattendedPasswordRightMatchesExpected' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-exact-definition-check-missing"
-grep -q 'DictionaryStringEquals(rightDefinition, CFSTR("class"), CFSTR("user"))' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-class-not-validated"
-grep -q 'DictionaryStringEquals(rightDefinition, CFSTR("group"), CFSTR("admin"))' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-group-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("shared"), false)' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-shared-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("allow-root"), false)' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-allow-root-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("authenticate-user"), true)' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-authenticate-user-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("session-owner"), false)' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-session-owner-not-validated"
-grep -q 'DictionaryBooleanEquals(rightDefinition, CFSTR("extract-password"), false)' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-extract-password-not-validated"
-grep -q 'DictionaryInt32Equals(rightDefinition, CFSTR("timeout"), 0)' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-validated"
-grep -q 'CFDictionaryGetValue' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-dictionary-read-missing"
-grep -q 'CFStringCompare' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-string-compare-missing"
-grep -q 'CFBooleanGetValue' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-bool-compare-missing"
-grep -q 'CFNumberGetValue' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-number-compare-missing"
-grep -q 'CFSTR("shared")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-shared-key-missing"
-grep -q 'kCFBooleanFalse' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-not-nonshared"
-grep -q 'CFSTR("allow-root")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-allow-root-key-missing"
-grep -q 'CFSTR("authenticate-user")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-authenticate-user-key-missing"
-grep -q 'CFSTR("session-owner")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-session-owner-key-missing"
-grep -q 'CFSTR("extract-password")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-extract-password-key-missing"
-grep -q 'CFSTR("timeout")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-timeout-key-missing"
-grep -q 'const int32_t timeout = 0' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-timeout-not-zero"
-grep -q 'CFSTR("group")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-group-key-missing"
-grep -q 'CFSTR("admin")' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-admin-group-missing"
-grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-create-missing"
-grep -q 'AuthorizationMakeExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-externalize-missing"
-grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-auth-verify-missing"
-grep -q 'AuthorizationCreateFromExternalForm' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-internalize-missing"
-grep -q 'kAuthorizationFlagDefaults, NULL' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-daemon-verification-may-interact"
-grep -q 'RustDeskSetUnattendedPasswordRight' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-custom-right-missing"
-grep -q 'com.carriez.RustDesk.set-unattended-password' "$REPO/src/platform/macos.mm" || r_s11b2="$r_s11b2 macos-service-password-right-name-missing"
-if grep -qE 'RequestDigestIsValid|kAuthorizationEnvironmentPrompt|MacCreateAdminAuthorizationExternalFormForRequest|MacVerifyAdminAuthorizationExternalFormForRequest' "$REPO/src/platform/macos.mm"; then
-  r_s11b2="$r_s11b2 macos-service-password-stale-digest-native-auth"
-fi
-if grep -q 'RustDeskSetUnattendedPasswordRightExists' "$REPO/src/platform/macos.mm"; then
-  r_s11b2="$r_s11b2 macos-service-password-existence-only-right-check-present"
-fi
-if grep -q 'request_digest' "$REPO/src/platform/macos.rs"; then
-  r_s11b2="$r_s11b2 macos-service-password-rust-api-still-digest-bound"
-fi
-grep -q 'ensure_service_owned_unattended_password_authorization_right' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-right-setup-missing"
-grep -q 'MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-auth-create-missing"
-grep -q 'MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm' "$REPO/src/platform/macos.rs" || r_s11b2="$r_s11b2 macos-service-password-rust-auth-verify-missing"
-grep -q 'handle_macos_service_owned_unattended_password_request' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-request-handler-missing"
-grep -q 'crate::platform::is_installed() && crate::platform::is_installed_daemon(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-install-state-gate-missing"
-grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-const-missing"
-grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-path-missing"
-grep -Fq 'fn macos_installed_app_executable_path() -> PathBuf' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-installed-app-path-missing"
-grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-trust-missing"
-grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-app-trust-missing"
-grep -Fq 'fs::symlink_metadata(path)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-symlink-metadata-missing"
-grep -Fq 'metadata.file_type().is_symlink()' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-symlink-gate-missing"
-grep -Fq 'macos_root_wheel_not_group_world_writable(&metadata)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-root-wheel-mode-missing"
-grep -Fq 'macos_root_owned_not_group_world_writable(&metadata)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-app-root-owned-mode-missing"
-grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-check-missing"
-grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-native"
-grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
-grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-entry-check-missing"
-grep -Fq 'MacosAclGuard' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-free-guard-missing"
-if grep -Fq 'Command::new(MACOS_LS)' "$REPO/src/ipc/auth.rs" \
-  || grep -Fq 'const MACOS_LS' "$REPO/src/ipc/auth.rs" \
-  || grep -Fq 'Command::new("/bin/ls")' "$REPO/src/platform/macos.rs" "$REPO/src/ipc.rs" "$REPO/src/ipc/auth.rs" \
-  || grep -Fq 'Command::new("ls")' "$REPO/src/platform/macos.rs" "$REPO/src/ipc.rs" "$REPO/src/ipc/auth.rs"; then
-  r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-ls-parser-present"
-fi
+grep -q 'let credential = effective_permanent_password_credential_snapshot().await' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-snapshot-missing"
+grep -q 'let (prs_status, credential_generation) = credential.into_parts();' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-generation-binding-missing"
+grep -q 'let prs = prs_status.into_prs();' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-not-effective-prs"
 grep -Fq 'security-framework = "2.10"' "$REPO/Cargo.toml" || r_s11b2="$r_s11b2 macos-security-framework-direct-dependency-missing"
-grep -Fq 'const MACOS_AUDIT_TOKEN_BYTES: usize = 32;' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-audit-token-size-missing"
-grep -Fq 'libc::LOCAL_PEEREPID' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-effective-peer-pid-missing"
-grep -Fq 'libc::LOCAL_PEERTOKEN' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-peer-audit-token-missing"
-if grep -Fq 'libc::LOCAL_PEERPID' "$REPO/src/ipc/auth.rs"; then
-  r_s11b2="$r_s11b2 macos-legacy-peerpid-present"
-fi
-grep -Fq 'pub(crate) struct MacosPeerProcessIdentity' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-peer-identity-type-missing"
-grep -Fq 'fn peer_audit_token_from_fd(fd: RawFd) -> Option<[u8; MACOS_AUDIT_TOKEN_BYTES]>' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-peer-audit-token-reader-missing"
-grep -Fq 'pub(crate) fn macos_peer_process_identity' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-peer-identity-capture-missing"
-grep -Fq 'attributes.set_audit_token(audit_token.as_concrete_TypeRef())' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-sec-guest-audit-attribute-missing"
-grep -Fq 'MacosSecCode::copy_guest_with_attribues' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-sec-code-audit-token-lookup-missing"
-grep -Fq 'code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-sec-code-strict-validation-missing"
-grep -Fq 'requirement.strip_prefix' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-code-requirement-normalization-missing"
-grep -Fq 'macos_privileged_helper_satisfies_code_requirement(expected)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-helper-code-requirement-missing"
-grep -Fq 'macos_installed_app_satisfies_code_requirement(&app_bundle)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-app-code-requirement-missing"
-grep -Fq 'macos_service_ipc_allows_installed_app_and_privileged_helper' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-installed-helper-pair-missing"
-grep -Fq 'struct ServiceScopedIpcAuthorization' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-type-missing"
-grep -Fq 'pub(crate) fn service_scoped_ipc_authorization_snapshot' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-capture-missing"
-grep -Fq 'pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 service-ipc-authorization-snapshot-verifier-missing"
-grep -Fq 'const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-ipc-auth-budget-missing"
-grep -Fq 'static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-ipc-auth-slots-missing"
-grep -Fq 'fn try_acquire_macos_service_ipc_authorization_slot() -> Option<OwnedSemaphorePermit>' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-ipc-auth-slot-acquire-missing"
-grep -Fq 'async fn authorize_macos_service_scoped_ipc_connection_for_task' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-ipc-task-authorizer-missing"
-grep -Fq 'tokio::task::spawn_blocking(move ||' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-ipc-auth-not-spawn-blocking"
-if ! (cd "$REPO" && python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-try:
-    start = src.index("pub async fn start")
-    end = src.index("pub async fn new_listener", start)
-except ValueError:
-    raise SystemExit(1)
-body = src[start:end]
-spawn = body.find("tokio::spawn(async move")
-mac_slot = body.find("let macos_service_ipc_authorization_slot")
-slot_acquire = body.find("try_acquire_macos_service_ipc_authorization_slot()", 0, spawn)
-task_auth = body.find("authorize_macos_service_scoped_ipc_connection_for_task", spawn)
-first_read = body.find("stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await", spawn)
-direct = body.find("authorize_service_scoped_ipc_connection(&stream, &postfix)")
-linux_cfg = body.rfind('#[cfg(target_os = "linux")]', 0, direct)
-old_joint_cfg = body.rfind('#[cfg(any(target_os = "linux", target_os = "macos"))]', 0, direct)
-macos_auth_before_spawn = body.find("authorize_macos_service_scoped_ipc_connection_for_task", 0, spawn) != -1
-macos_snapshot_before_spawn = body.find("service_scoped_ipc_authorization_snapshot", 0, spawn) != -1
-ok = (
-    spawn != -1
-    and mac_slot != -1
-    and slot_acquire != -1
-    and task_auth != -1
-    and first_read != -1
-    and mac_slot < slot_acquire < spawn
-    and spawn < task_auth < first_read
-    and direct != -1
-    and linux_cfg != -1
-    and linux_cfg < direct
-    and (old_joint_cfg == -1 or old_joint_cfg < linux_cfg)
-    and not macos_auth_before_spawn
-    and not macos_snapshot_before_spawn
-)
-raise SystemExit(0 if ok else 1)
-PY
-); then
-  r_s11b2="$r_s11b2 macos-service-ipc-authorization-not-task-scoped-before-read"
-fi
-if ! (cd "$REPO" && python3 - <<'PY'
-from pathlib import Path
-src = Path("src/ipc.rs").read_text()
-try:
-    start = src.index("async fn authorize_macos_service_scoped_ipc_connection_for_task")
-    end = src.index("#[inline]", start)
-except ValueError:
-    raise SystemExit(1)
-body = src[start:end]
-snapshot = body.find("service_scoped_ipc_authorization_snapshot")
-blocking = body.find("tokio::task::spawn_blocking")
-verify = body.find("authorize_service_scoped_ipc_authorization_snapshot", blocking)
-permit = body.find("_authorization_slot: OwnedSemaphorePermit")
-ok = permit != -1 and snapshot != -1 and blocking != -1 and verify != -1 and permit < snapshot < blocking < verify
-raise SystemExit(0 if ok else 1)
-PY
-); then
-  r_s11b2="$r_s11b2 macos-service-ipc-blocking-proof-not-budgeted-or-snapshot-backed"
-fi
-grep -Fq 'macOS _service accept-loop blocking-proof offload' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-service-ipc-offload-requirements-missing"
-grep -Fq 'R-S11e-4 — macOS _service accept-loop blocking-proof offload' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-ipc-offload-ledger-missing"
-grep -Fq 'macOS _service audit-token peer code identity' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-requirements-missing"
-grep -Fq 'R-S11e-9 — macOS _service audit-token peer code identity' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-ledger-missing"
-macos_service_identity_block=$(awk '/fn macos_service_ipc_allows_installed_app_and_privileged_helper/,/^}/' "$REPO/src/ipc/auth.rs")
-echo "$macos_service_identity_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-ipc-postfix-gate-missing"
-echo "$macos_service_identity_block" | grep -Fq 'macos_privileged_helper_path_is_expected_and_trusted(current_exe)' || r_s11b2="$r_s11b2 macos-service-ipc-current-helper-not-verified"
-echo "$macos_service_identity_block" | grep -Fq 'macos_peer_is_trusted_installed_app(peer_identity)' || r_s11b2="$r_s11b2 macos-service-ipc-peer-app-not-verified"
-grep -Fq 'ensure_peer_executable_matches_current_macos_identity(&identity' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-snapshot-not-audit-token-backed"
-grep -Fq 'macos_peer_process_identity("macOS _service peer")' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-snapshot-identity-capture-missing"
-grep -Fq 'macos_peer_process_identity("macOS _service server")' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-client-server-identity-capture-missing"
-grep -Fq 'macos_peer_process_identity("macOS service-owned password snapshot requester")' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-runtime-snapshot-identity-capture-missing"
-grep -Fq 'ipc_auth::macos_peer_is_trusted_installed_app(&identity)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-runtime-snapshot-not-audit-token-backed"
-macos_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_macos_service_server_is_trusted/,/^}/' "$REPO/src/ipc/auth.rs")
-macos_connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' "$REPO/src/ipc.rs")
-grep -Fq 'pub(crate) fn ensure_macos_service_server_is_trusted' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-server-client-auth-missing"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'identity.uid != 0' || r_s11b2="$r_s11b2 macos-service-server-client-auth-not-root-gated"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_peer_process_identity("macOS _service server")' || r_s11b2="$r_s11b2 macos-service-server-client-auth-no-audit-token-identity"
-echo "$macos_service_server_client_auth_block" | grep -Fq 'macos_peer_is_trusted_privileged_helper(&identity)' || r_s11b2="$r_s11b2 macos-service-server-client-auth-not-helper-trusted"
-echo "$macos_connect_with_path_block" | grep -Fq 'postfix == crate::POSTFIX_SERVICE' || r_s11b2="$r_s11b2 macos-service-connect-not-postfix-scoped"
-echo "$macos_connect_with_path_block" | grep -Fq 'ensure_macos_service_server_is_trusted(&connection)' || r_s11b2="$r_s11b2 macos-service-connect-not-client-authenticated"
-grep -Fq 'macOS _service client-side server authentication' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-service-client-auth-requirements-missing"
-grep -Fq 'R-S11e-2 — macOS _service client-side server authentication' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-client-auth-ledger-missing"
-if grep -q 'macos_service_ipc_allows_gui_and_service_binaries' "$REPO/src/ipc/auth.rs"; then
-  r_s11b2="$r_s11b2 macos-service-ipc-old-gui-service-binary-model-present"
-fi
-if echo "$macos_service_identity_block" | grep -qE 'peer_dir|current_dir|OsStr::new\("service"\)|executable_paths_match\(peer_dir, current_dir\)'; then
-  r_s11b2="$r_s11b2 macos-service-ipc-old-same-directory-model-present"
-fi
-grep -q 'Self::RootUnixPeer => true' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 macos-service-password-commit-not-root-gated"
-macos_auth_create_block=$(awk '/MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' "$REPO/src/platform/macos.mm")
-macos_auth_verify_block=$(awk '/MacVerifyServiceOwnedUnattendedPasswordAuthorizationExternalForm/,/^}/' "$REPO/src/platform/macos.mm")
-if echo "$macos_auth_create_block$macos_auth_verify_block" | grep -q 'kAuthorizationRightExecute'; then
-  r_s11b2="$r_s11b2 macos-service-password-uses-generic-execute-right"
-fi
-if echo "$macos_auth_verify_block" | grep -q 'kAuthorizationFlagInteractionAllowed'; then
-  r_s11b2="$r_s11b2 macos-service-password-daemon-verification-can-interact"
-fi
-if grep -qE 'extern "C" bool MacCreateAdminAuthorizationExternalForm\(|extern "C" bool MacVerifyAdminAuthorizationExternalForm\(' "$REPO/src/platform/macos.mm"; then
-  r_s11b2="$r_s11b2 macos-service-password-old-auth-present"
-fi
-grep -q '"permanent-password" => authority.allows_main_channel_user_owned_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
-grep -q '"permanent-password" => authority.allows_main_channel_password_write()' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 password-still-generic-config-key"
-grep -q 'Data::Config((' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 generic-config-write-shape-present"
-grep -q 'send_config(' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 generic-send-config-present"
-grep -q 'Socks(Option' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 socks-ipc-variant-present"
-grep -q 'Data::Socks' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 socks-ipc-reference-present"
-grep -q 'Data::Options(Some(_)) => authority.allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
-grep -q 'Rejected options write over ordinary IPC for service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-denied"
+grep -Fq '<span class="id">R-S11g</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 transaction-finality-requirement-missing"
+grep -Fq '<span class="id">R-S11i</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 raw-password-ipc-requirement-missing"
+grep -Fq '<span class="id">R-S19a</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 input-lifecycle-requirement-missing"
+grep -Fq '<tr><td>126</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 transaction-input-appendix-missing"
+grep -Fq 'R-S11e-21 — raw password transaction finality and service-owned SAS' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 transaction-finality-ledger-missing"
+grep -Fq 'R-S11e-4 — macOS service proof ownership' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-proof-ownership-ledger-missing"
+grep -Fq 'R-S11e-9 — macOS service audit-token peer code identity' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-ledger-missing"
+grep -Fq 'R-S11e-2 — macOS service client-side server authentication' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-client-auth-ledger-missing"
+
+# Retain the independent desktop-input and options policy checks that share this ledger section.
+grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"
+grep -q 'pub fn handle_owned_pointer' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-pointer-dispatch-missing"
+grep -q 'pub fn handle_owned_key' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-key-dispatch-missing"
+grep -q 'QUEUE.exec_sync' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-input-not-synchronous"
+grep -q 'pub fn finish_owned_input_dispatch' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-input-barrier-missing"
+grep -q 'finish_owned_input_dispatch' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 macos-input-cleanup-barrier-not-wired"
+grep -Fq 'const INPUT_QUEUE_CAPACITY: usize = 256;' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-count-cap-missing"
+grep -Fq 'const INPUT_QUEUE_MAX_BYTES: usize = 256 * 1024;' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-byte-cap-missing"
+grep -Fq 'state: AtomicUsize' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-nonblocking-cancellation-state-missing"
+grep -q 'fn spawn_input_worker_supervisor' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-worker-supervisor-missing"
+grep -q 'struct InputWorkerCompletion' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-worker-completion-missing"
+grep -q 'SyncSender<std::thread::JoinHandle<()>>' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-supervisor-handle-handoff-missing"
+grep -q 'auth_conn_type == AuthConnType::Remote && !self.start_input_worker().await' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-worker-not-remote-auth-bound"
+grep -q 'struct InputKeyOwnership' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-key-ownership-missing"
+grep -q 'pub enum OwnedPhysicalKey' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 desktop-input-canonical-key-id-missing"
+grep -q 'pub fn owned_physical_key' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 desktop-input-key-resolution-missing"
+grep -q 'struct InputBlockOwnerRegistry' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-block-input-owner-registry-missing"
+grep -q 'SpecialKey(KeyEvent)' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-special-key-queue-path-missing"
+grep -q 'desktop_input_drop_delegates_join_without_waiting_for_dispatch' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-drop-supervisor-test-missing"
+grep -q 'desktop_special_keys_are_consumed_and_trigger_only_on_edges' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-special-key-edge-test-missing"
+grep -q 'desktop_key_state_survives_unwind_until_cleanup_release' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-unwind-ownership-test-missing"
+grep -q 'keyboard input mode and payload are inconsistent' "$REPO/src/server/connection.rs" || r_s11b2="$r_s11b2 desktop-input-structural-validation-missing"
 grep -qF '(OPTION_KEY, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-username-not-pinned-empty"
 grep -qF '(OPTION_PROXY_PASSWORD, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-password-not-pinned-empty"
 if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs" --glob '*.rs' >"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers"; then
   r_s11b2="$r_s11b2 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers")"
 fi
-grep -q 'OptionsSetResult(bool)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
-grep -q 'Data::OptionsSetResult(false)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-reject-nack-missing"
+grep -q 'MainIpcRequest::SetOptions(wire_options)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-typed"
+grep -q 'current_process_allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
+grep -q 'OptionsSet(IpcMutationResult)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
+grep -q 'MainIpcResponse::OptionsSet(IpcMutationResult::Rejected)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-reject-nack-missing"
 grep -q 'Options write requires daemon ACK' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-fallback-not-blocked"
 set_options_fn=$(awk '/pub async fn set_options/,/^}/' "$REPO/src/ipc.rs")
-if echo "$set_options_fn" | grep -q 'crate::platform::is_installed'; then
-  r_s11b2="$r_s11b2 options-fallback-uses-install-heuristic"
-fi
-if [ "$(echo "$set_options_fn" | grep -c 'Config::set_options(value)')" -ne 1 ]; then
-  r_s11b2="$r_s11b2 options-caller-persistence-not-ack-only"
-fi
+echo "$set_options_fn" | grep -q 'crate::platform::is_installed' && r_s11b2="$r_s11b2 options-fallback-uses-install-heuristic"
+echo "$set_options_fn" | grep -q 'Config::set_options' && r_s11b2="$r_s11b2 options-caller-local-persistence-present"
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
-grep -q 'Rejected permanent password storage sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 storage-sync-not-denied"
-grep -q 'Rejected permanent password salt sync from service-owned server' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 standalone-salt-sync-not-denied"
+main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
+main_config_storage=$(awk '/MainConfigKey::PermanentPasswordStorageAndSalt =>/,/MainConfigKey::PermanentPasswordSet =>/' "$REPO/src/ipc.rs")
+echo "$main_config_storage" | grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' || r_s11b2="$r_s11b2 storage-read-not-authority-gated"
+echo "$main_config_storage" | grep -q 'Rejected permanent-password storage read from service-owned main IPC' || r_s11b2="$r_s11b2 storage-read-not-denied"
+echo "$main_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)' && r_s11b2="$r_s11b2 standalone-salt-main-config-key-present"
 if [ -n "$r_s11b2" ]; then
-  echo "  FAIL R-S11b-2a/R-S11b-3a macOS service-owned IPC closure:$r_s11b2"
+  echo "  FAIL R-S11b-2a/R-S11b-3a macOS raw password IPC:$r_s11b2"
   rc=1
 else
-  note "ok  R-S11b-2/R-S11b-3a LaunchAgent marks service-owned --server; ordinary password config writes are absent; typed user-owned password/options writes are denied by source policy; trust-anchor/proxy credential option keys are pinned empty; trusted-device/key-confirmation writers are absent; macOS service-owned password provisioning admits _service only for the audit-token trusted installed app talking to the audit-token trusted PrivilegedHelperTools helper, offloads budgeted receiver-side blocking proof from the _service accept loop before the first read, client-authenticates the connected _service server as the root trusted helper, obtains the custom nonshared timeout-zero Authorization Services right before sending the password, verifies the external form noninteractively in the LaunchDaemon, writes the authorized value directly into the root LaunchDaemon credential store without a pending secret cache, rejects the old main-server commit fallback, and serves the root credential to the service-owned LaunchAgent only as a launchd-owned runtime snapshot after audit-token app proof, exact live argv, and root-owned plist command-shape proof; whole-config IPC is absent; storage/salt sync is denied"
+  note "ok  R-S11b-2a/R-S11b-3a password mutations use fixed raw endpoint-bound frames, pre-body audit-token peer proof, separate bounded transaction/Security.framework lanes, exact joined native-proof ownership, root-helper client authentication, user-paced Authorization Services with wiping capability storage, keyed replay finality, and drained/cleared shutdown state; ordinary serde/config fallbacks are absent"
 fi
 
-echo "== (2b-ii-a) R-S11e-16 macOS password provisioning secret is not accepted in argv =="
-r_s11e16=
-pw_cli_helpers=$(awk '/const PASSWORD_CLI_USAGE/,/pub fn core_main\(\)/' "$REPO/src/core_main.rs")
-pw_arm=$(awk '/matches!\(args\[0\]\.as_str\(\), "--password"/,/args\[0\] == "--get-id"/' "$REPO/src/core_main.rs" | grep -vE '^[[:space:]]*//')
-echo "$pw_cli_helpers" | grep -Fq 'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)' || r_s11e16="$r_s11e16 terminal-command-not-exact"
-echo "$pw_cli_helpers" | grep -Fq 'Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin)' || r_s11e16="$r_s11e16 stdin-command-not-exact"
-echo "$pw_cli_helpers" | grep -Fq '_ => Err(PASSWORD_CLI_USAGE)' || r_s11e16="$r_s11e16 extra-argument-rejection-missing"
-[ "$(echo "$pw_cli_helpers" | grep -c 'rpassword::prompt_password')" -eq 2 ] || r_s11e16="$r_s11e16 hidden-prompt-confirmation-missing"
-echo "$pw_cli_helpers" | grep -Fq 'if stdin.is_terminal()' || r_s11e16="$r_s11e16 password-stdin-terminal-refusal-missing"
-echo "$pw_cli_helpers" | grep -Fq 'reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)' || r_s11e16="$r_s11e16 password-stdin-bounded-read-missing"
-echo "$pw_cli_helpers" | grep -Eq 'std::env|var_os|var\(' && r_s11e16="$r_s11e16 password-environment-input-present"
-echo "$pw_arm" | grep -Eq 'args\[[[:space:]]*1[[:space:]]*\]' && r_s11e16="$r_s11e16 positional-password-read-present"
-grep -q 'fn password_cli_rejects_positional_secrets' "$REPO/src/core_main.rs" || r_s11e16="$r_s11e16 positional-secret-test-missing"
+echo "== (2b-ii-a) R-S11e-16 macOS password provisioning ingress =="
+r_s11e16=$(<"$apple_password_gate_dir/r_s11e16")
 grep -Fq 'sudo rustdesk --password' "$REPO/docs/DEPLOYMENT.md" || r_s11e16="$r_s11e16 safe-deployment-command-missing"
 grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' "$REPO/docs/DEPLOYMENT.md" && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
 grep -Fq 'Permanent-password provisioning through visible process arguments' "$REPO/requirements.html" || r_s11e16="$r_s11e16 requirements-disposition-missing"
@@ -676,7 +841,7 @@ if [ -n "$r_s11e16" ]; then
   echo "  FAIL R-S11e-16 macOS password provisioning ingress:$r_s11e16"
   rc=1
 else
-  note "ok  R-S11e-16 macOS password provisioning uses hidden TTY confirmation or bounded redirected stdin; positional secrets are rejected"
+  note "ok  R-S11e-16 accepts only exact --password/--password-stdin commands, uses a confirmed hidden TTY prompt or bounded non-TTY UTF-8 stdin, keeps secrets out of argv/environment, and carries them in self-zeroizing values"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="
@@ -860,8 +1025,8 @@ grep -Fq 'command.env(key, value.as_ref())' "$macos_rs" || r_s11c5="$r_s11c5 mac
 if grep -Fq '/usr/bin/env' "$macos_rs"; then
   r_s11c5="$r_s11c5 macos-run-as-user-env-helper-present"
 fi
-grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' "$REPO/src/ipc.rs" || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
-grep -Fq 'Command::new(MACOS_OPEN)' "$REPO/src/ipc.rs" || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
+grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' "$macos_rs" || r_s11c5="$r_s11c5 macos-open-absolute-missing"
+grep -Fq 'Command::new(MACOS_OPEN)' "$macos_rs" || r_s11c5="$r_s11c5 macos-reopen-not-absolute"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
 grep -Fq '/Library/PrivilegedHelperTools/com.carriez.rustdesk_service' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-path-missing"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_DIR: &str = "/Library/PrivilegedHelperTools";' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-dir-const-missing"
@@ -1618,6 +1783,43 @@ SH
     fi
   fi
 done
+
+echo "== Apple desktop port-forward mapping conformance (R-T17/PF-1..PF-5) =="
+pf17=
+grep -qF 'pub struct PortForwardTarget' "$REPO/src/client.rs" || pf17="$pf17 immutable-target"
+grep -qF 'const MAX_PORT_FORWARD_HOST_BYTES: usize = 253;' "$REPO/src/client.rs" || pf17="$pf17 target-host-cap"
+grep -qF "strip_prefix('[')" "$REPO/src/client.rs" || pf17="$pf17 bracketed-ipv6"
+if grep -qE 'pub port_forward:[[:space:]]*\(' "$REPO/src/client.rs"; then pf17="$pf17 shared-target-state"; fi
+grep -qF 'tcp::new_exclusive_listener' "$REPO/src/port_forward.rs" || pf17="$pf17 exclusive-listener"
+grep -qF 'const MAX_PORT_FORWARD_CONNECTIONS_PER_MAPPING: usize = 32;' "$REPO/src/port_forward.rs" || pf17="$pf17 per-mapping-admission"
+grep -qF 'const MAX_PORT_FORWARD_CONNECTIONS_PROCESS: usize = 128;' "$REPO/src/port_forward.rs" || pf17="$pf17 process-admission"
+grep -qF 'fn try_acquire() -> Result<Self, String>' "$REPO/src/port_forward.rs" || pf17="$pf17 opaque-mapping-admission"
+grep -qF 'mpsc::channel(1)' "$REPO/src/port_forward.rs" || pf17="$pf17 bounded-closed-control"
+grep -qF 'reap_ready_tasks(&mut tasks' "$REPO/src/port_forward.rs" || pf17="$pf17 eager-task-reaping"
+grep -qF 'drain_join_set(&mut tasks' "$REPO/src/port_forward.rs" || pf17="$pf17 connection-drain"
+grep -qF 'relay_after_authorization(setup' "$REPO/src/port_forward.rs" || pf17="$pf17 post-login-relay"
+if grep -qF 'allow_err!' "$REPO/src/port_forward.rs"; then pf17="$pf17 silent-io-error"; fi
+if grep -qF 'mpsc::UnboundedReceiver<Data>' "$REPO/src/port_forward.rs"; then pf17="$pf17 general-data-listener-control"; fi
+grep -qF '.name("rustdesk-port-forward-owner".to_owned())' "$REPO/src/ui_session_interface.rs" || pf17="$pf17 dedicated-owner-thread"
+grep -qF 'tokio::runtime::Builder::new_current_thread()' "$REPO/src/ui_session_interface.rs" || pf17="$pf17 independent-owner-runtime"
+grep -qF '.name("rustdesk-port-forward-one-off".to_owned())' "$REPO/src/port_forward.rs" || pf17="$pf17 one-off-owner-thread"
+grep -qF 'std::sync::mpsc::sync_channel(PORT_FORWARD_OWNER_REAPER_CAPACITY)' "$REPO/src/port_forward.rs" || pf17="$pf17 bounded-owner-reaper"
+grep -qF 'ensure_port_forward_owner_reaper();' "$REPO/src/ui_session_interface.rs" || pf17="$pf17 owner-reaper-prebootstrap"
+grep -qF 'PORT_FORWARD_OWNER_REAPER.try_send(request)' "$REPO/src/port_forward.rs" || pf17="$pf17 nonblocking-owner-handoff"
+[ "$(grep -cF 'std::process::abort();' "$REPO/src/port_forward.rs")" -ge 2 ] || pf17="$pf17 fail-stop-owner-handoff"
+one_off_join=$(awk '/async fn join_one_off_owner_off_runtime/,/^}/' "$REPO/src/port_forward.rs")
+ui_owner_impl=$(awk '/impl PortForwardSupervisorOwner/,/^}/' "$REPO/src/ui_session_interface.rs")
+ui_owner_drop=$(awk '/impl Drop for PortForwardSupervisorOwner/,/^}/' "$REPO/src/ui_session_interface.rs")
+if grep -qF '.join()' <<<"$one_off_join$ui_owner_impl$ui_owner_drop"; then pf17="$pf17 synchronous-join-fallback"; fi
+grep -qF 'while let Some(command) = commands.recv().await' "$REPO/src/ui_session_interface.rs" || pf17="$pf17 supervisor-eof"
+grep -qF 'drain_owned_port_forwards(&mut mappings).await;' "$REPO/src/ui_session_interface.rs" || pf17="$pf17 supervisor-drain"
+grep -qF 'second_exclusive_listener_bind_is_refused' "$REPO/libs/hbb_common/src/tcp.rs" || pf17="$pf17 cfg-native-second-bind-test"
+if [ -n "$pf17" ]; then
+  echo "  FAIL R-T17 Apple desktop tunnel mapping conformance:$pf17"
+  rc=1
+else
+  note "ok  macOS shares immutable target, exclusive bind, bounded admission/control, fail-stop nonblocking owner-reaper handoff, independent owner-runtime drain, post-login relay, and cfg-native second-bind test"
+fi
 
 after_version_hash=$(version_hash)
 if [ "$before_version_hash" != "$after_version_hash" ]; then

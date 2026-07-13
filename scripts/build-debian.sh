@@ -12,6 +12,12 @@
 #
 # NOT run as part of "fork creation" — a checked-in build artifact.
 set -euo pipefail
+
+if [ -n "${ONLINE_DIR+x}" ]; then
+    printf 'build-debian: ONLINE_DIR is not an operator override; release snapshots use RUSTDESK_RELEASE_ONLINE_SNAPSHOT\n' >&2
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
@@ -27,14 +33,141 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # The pinned .deb build image: the digest-pinned ubuntu:18.04 baseline + the system
 # build-deps, baked by online-fetch.sh (the ONE networked step) via Dockerfile.deb-builder.
 # The compile then runs inside it with --network=none.
-IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
+BUILD_UID="$(id -u)"
+BUILD_GID="$(id -g)"
+RELEASE_CHILD=0
+ONLINE_SNAPSHOT_PARENT=""
+OWNED_WORKSPACE=""
+
+case "${DOCKER_HOST:-unix:///var/run/docker.sock}" in
+    unix:///var/run/docker.sock) export DOCKER_HOST=unix:///var/run/docker.sock ;;
+    *) die "Docker must use the local unix:///var/run/docker.sock daemon" ;;
+esac
+for variable in DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
+    [ -z "${!variable+x}" ] || die "$variable must not influence a Debian build"
+done
+
+cleanup_owned_workspace() {
+    local status=$?
+    trap - EXIT HUP INT TERM
+    if [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]; then
+        if ! chmod -R u+rwX "$OWNED_WORKSPACE" 2>/dev/null \
+            || ! rm -rf -- "$OWNED_WORKSPACE"; then
+            status=1
+        fi
+    fi
+    exit "$status"
+}
+
+trap cleanup_owned_workspace EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+assert_private_directory() {
+    local path="$1" label="$2" resolved metadata
+    case "$path" in
+        /*) ;;
+        *) die "$label must be an absolute path" ;;
+    esac
+    [ -d "$path" ] && [ ! -L "$path" ] || die "$label must be a real directory"
+    resolved="$(readlink -f -- "$path" 2>/dev/null)" || die "$label cannot be resolved"
+    [ "$resolved" = "$path" ] || die "$label must be a canonical non-symlinked path"
+    metadata="$(stat -c '%u:%a' -- "$path" 2>/dev/null)" || die "$label is absent"
+    [ "$metadata" = "$BUILD_UID:700" ] || die "$label must be a current-UID mode-0700 directory"
+}
+
+assert_private_docker_config() {
+    local config_dir="${DOCKER_CONFIG:-}" metadata
+    [ -n "$config_dir" ] || die "release child is missing its private Docker configuration"
+    assert_private_directory "$config_dir" "release Docker configuration"
+    [ -f "$config_dir/config.json" ] && [ ! -L "$config_dir/config.json" ] \
+        || die "release Docker config.json must be a non-symlink regular file"
+    metadata="$(stat -c '%u:%a:%h' -- "$config_dir/config.json" 2>/dev/null)" \
+        || die "release Docker config.json is absent"
+    [ "$metadata" = "$BUILD_UID:600:1" ] \
+        || die "release Docker config.json must be a current-UID mode-0600 non-hardlinked file"
+    cmp -s "$config_dir/config.json" <(printf '{}\n') \
+        || die "Docker config.json must equal the empty canonical configuration"
+}
+
+assert_private_online_snapshot() {
+    local parent="$1" online bad
+    assert_private_directory "$parent" "online snapshot parent"
+    online="$parent/online"
+    [ -d "$online" ] && [ ! -L "$online" ] || die "online snapshot tree must be a real directory"
+    [ "$(stat -c '%u:%a' -- "$online" 2>/dev/null)" = "$BUILD_UID:500" ] \
+        || die "online snapshot tree must be a current-UID mode-0500 directory"
+    bad="$(find "$online" \( ! -uid "$BUILD_UID" -o \
+        \( \( -type f -o -type d \) -perm /0222 \) \) -print -quit)" \
+        || die "cannot inspect online snapshot ownership and modes"
+    [ -z "$bad" ] || die "online snapshot contains a writable or differently owned path: $bad"
+    verify_private_online_snapshot "$parent"
+}
+
+prepare_execution_contract() {
+    local current
+    if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
+        RELEASE_CHILD=1
+        [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+            || die "RELEASE_SRC_COMMIT must be one full lowercase commit ID"
+        current="$(git -c core.hooksPath=/dev/null -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+            || die "cannot resolve release-child source commit"
+        [ "$current" = "$RELEASE_SRC_COMMIT" ] || die "release-child source commit does not equal HEAD"
+        [ -n "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ] \
+            || die "release child requires RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
+        [ -n "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
+            || die "release child requires RELEASE_DOCKER_IMAGE_ID"
+        assert_private_docker_config
+        ONLINE_SNAPSHOT_PARENT="$RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
+    else
+        [ -z "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ] \
+            || die "RUSTDESK_RELEASE_ONLINE_SNAPSHOT is release-internal"
+        [ -z "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
+            || die "RELEASE_DOCKER_IMAGE_ID is release-internal"
+        [ -z "${DOCKER_CONFIG+x}" ] || die "DOCKER_CONFIG must not influence a direct Debian build"
+        OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX)" \
+            || die "cannot create private Debian build workspace"
+        chmod 0700 "$OWNED_WORKSPACE"
+        install -d -m 0700 "$OWNED_WORKSPACE/docker-config"
+        printf '{}\n' > "$OWNED_WORKSPACE/docker-config/config.json"
+        chmod 0600 "$OWNED_WORKSPACE/docker-config/config.json"
+        export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"
+        assert_private_docker_config
+    fi
+}
+
+resolve_image() {
+    require_pinned_builder_image deb-builder "$IMAGE_ID"
+    if [ "$RELEASE_CHILD" -eq 1 ] && [ "$RELEASE_DOCKER_IMAGE_ID" != "$IMAGE_ID" ]; then
+        die "release Debian image ID does not equal DEB_BUILDER_IMAGE_ID"
+    fi
+}
+
+activate_online_snapshot() {
+    if [ "$RELEASE_CHILD" -eq 0 ]; then
+        require_online_complete
+        ONLINE_SNAPSHOT_PARENT="$OWNED_WORKSPACE/online-input"
+        create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+    fi
+    assert_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+    ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
+}
+
+verify_active_online_snapshot() {
+    assert_private_docker_config
+    assert_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+}
 
 preflight() {
-    require_cmd docker git python3 dpkg-deb
+    require_cmd cmp docker git python3 dpkg-deb find install readlink stat
     assert_repo_state
     assert_clean_worktree
     assert_source_date_epoch
-    require_online_complete
+    prepare_execution_contract
+    resolve_image
+    activate_online_snapshot
     # §12.3 / R-B10 (trust nobody): re-verify the exact ./online tarballs this offline build extracts
     # against their pins BEFORE building — a corrupt cache or a stray version-renamed tarball dies here.
     verify_online_shas \
@@ -42,8 +175,7 @@ preflight() {
         "flutter-${FLUTTER_VERSION}.tar.xz" "${SHA256_FLUTTER_3_24_5}" \
         "llvm-${LLVM_VERSION}.tar.xz"       "${SHA256_LLVM_15_0_6}"
     case "$SHA256_BASEIMAGE_UBUNTU_1804" in *"${SHA_PENDING}"*) die "the ubuntu:18.04 base digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    docker image inspect "$IMAGE" >/dev/null 2>&1 || die "build image '$IMAGE' not found — run scripts/online-fetch.sh first (it docker-builds it from the pinned ubuntu:18.04 + the system build-deps, Dockerfile.deb-builder)"
-    log "preflight OK — building $FEATURES in $IMAGE, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+    log "preflight OK — building $FEATURES in $IMAGE_ID, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
 verify_deb_control_scripts() {
@@ -74,7 +206,7 @@ verify_deb_control_scripts() {
 # build_one PROFILE FEATURES: run upstream's build.py in the pinned container,
 # network removed, ./online mounted read-only. Emits target/release + the .deb.
 build_one() {
-    local profile="$1" features="$2" tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-$1"
+    local profile="$1" features="$2" tag="rustdesk-fork-harness-deb-$1"
     log "building profile '$profile' (features: $features)"
     # HONESTY GATE (the af8746f class): build.py renames the freshly built package to
     # $REPO_ROOT/rustdesk-<version>.deb, and the post-build step copies whatever
@@ -83,15 +215,17 @@ build_one() {
     # as a false success. Remove any pre-existing rustdesk-*.deb up front (these are
     # git-ignored artifacts) so the gate below can ONLY find a package THIS run produced.
     rm -f "$REPO_ROOT"/rustdesk-*.deb
-    docker run --rm \
+    verify_active_online_snapshot
+    if ! docker run --rm \
         --name "$tag" \
         --network=none \
+        --user "$BUILD_UID:$BUILD_GID" \
         -e SOURCE_DATE_EPOCH \
         -e RUSTDESK_CANARY_OFFLINE=1 \
         -v "$REPO_ROOT:/src" \
         -v "$ONLINE_DIR:/online:ro" \
         -w /src \
-        "$IMAGE" \
+        "$IMAGE_ID" \
         bash -euo pipefail -c '
             # The container is the pinned, immutable template (R-B8): everything
             # comes from /online (R-B5a), nothing is fetched (--network=none).
@@ -219,7 +353,11 @@ CFG
                 --llvm-path "$LLVM_ROOT" \
                 --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)"
             python3 ./build.py '"$features"'
-        '
+        '; then
+        verify_active_online_snapshot
+        die "Debian build container failed for profile $profile"
+    fi
+    verify_active_online_snapshot
     mkdir -p "$OUT_DIR"
     # build.py fails loud (system2 → sys.exit(-1)) on any step, so a non-zero docker run already
     # aborts under set -e. This is the second line of defence: with the stale .deb purged above,

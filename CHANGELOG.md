@@ -5,6 +5,120 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
+## 1.4.7-hardened.6 - 2026-07-13
+
+### Privileged authority and unattended credentials
+- Made installed-service credential changes explicit privileged transactions rather than generic
+  configuration writes. Linux uses administrator-authorized service ownership, macOS uses the root
+  LaunchDaemon with exact LaunchAgent proof, and Windows uses the stable SCM service as the sole durable
+  authority.
+- Made credential changes generation-bound and fail-closed through derivation, durable replacement,
+  runtime publication, and authentication finality. A credential generation cannot be reused, an
+  authentication attempt cannot complete across a generation change, and ambiguous post-replacement
+  persistence terminates rather than reporting a false failure or success.
+- Replaced Windows profile-derived credential storage with an MSI-provisioned `ProgramData` root whose
+  protected ACL grants only SYSTEM and Administrators full control. Runtime access is handle-relative and
+  reparse-rejecting; only the LocalSystem SCM supervisor has write and durability authority.
+- Bound privileged IPC actions, service children, terminal helpers, clipboard helpers, URL forwarding,
+  SAS, and connection-manager operations to their actual receiver and session authority. Removed
+  password-valued CLI provisioning and remaining whole-configuration authority crossings.
+
+### Credential IPC and finality
+- Moved every desktop password body to dedicated raw `_password` or `_service_password` transport. The
+  protocol is outside serde, JSON, `Bytes`, and `Framed`, with one canonical fixed header, exactly bounded
+  body, operation-bound status, and a Windows operation-bound status acknowledgement before disconnect.
+- Proved both connected endpoints before secret-body transfer. Fixed wiping body/stack allocations feed
+  redacted `SensitivePassword` and `SensitiveAuthorization` ownership without plaintext retry copies; macOS
+  also explicitly wipes native Authorization Services external-form stack copies.
+- Bound operation UUIDs to owner class and process-random-keyed HMAC-SHA256 value fingerprints. Each 64-entry
+  process-lifetime replay ledger reclaims only its oldest terminal result, never evicts admitted work, and keeps
+  retained results value-bound. Uncertain clients reuse one operation for at most 600 seconds; authoritative
+  rejection, internal failure, and shutdown are terminal. Restart remains explicitly non-durable exactly-once.
+- Bound Linux service mutation to the raw root endpoint, socket-derived PID/UID/start-time polkit subject,
+  bounded killed-and-reaped `pkcheck`, single-claimant authorization/commit recovery, and exact root-parent
+  plus service-owned-replica identity. Ordinary main IPC has no password write fallback.
+- Gave macOS generic and password proofs separate capacities and exactly owned, synchronously joined OS
+  threads that abort on timeout, cancellation, lost result, panic, or lost ownership. The user-paced admin
+  prompt sits between bounded right readiness and a fresh raw transport deadline; exact helper, installed-app,
+  LaunchAgent argv/launchd/plist, and runtime-only snapshot proofs remain required.
+- Made the Windows LocalSystem password listener one process-lifetime first-instance, local-only,
+  max-instances-one message pipe. Exact role/generation/process-token and last-message impersonation-token
+  proof, stable active-principal sampling around two token reads, live kernel-DACL reread, exact overlapped
+  cancellation/drain, and retained listener/client supervisors precede admission and operation-ACK-bound
+  disconnect. Arbitrary Interactive Users are rejected before header wait; an authorized active-principal
+  process in an exact RustDesk role can consume only bounded local work and receives no password or admin authority.
+
+### Windows machine authority
+- Made Windows Installer the sole machine-installation authority. Removed application-owned install,
+  uninstall, service, firewall, and elevated command-program paths; the setup bootstrapper admits only
+  its embedded MSI and invokes fixed System32 `msiexec.exe` through a closed command grammar.
+- Bound the LocalSystem child tree to an SCM-owned kill-on-close job assigned at process creation. Session
+  handoff and stop retain exact child identity, account for descendants, preserve active tunnel state,
+  drain admitted service work, and report `SERVICE_STOPPED` only after the owned tree is absent.
+- Bound runtime broker refresh, terminal launch, clipboard access, privacy-session handling, post-install
+  relaunch, MSI cleanup, and deferred installer actions to fixed files, exact tokens, package state, or
+  served-session authority as applicable.
+
+### Remote input ownership
+- Made desktop input execution an owned resource of one authenticated Remote connection from admission
+  through joined teardown. Bounded queues, cancellation, physical key and mouse-button ownership,
+  aggregate `BlockInput` leases, backend-canonical identities, and process-wide native dispatch prevent
+  one session from releasing or inheriting another session's input state.
+- Kept Windows input and `BlockInput` calls on a stable native executor, kept required macOS work on its
+  owned queue, and made Linux, macOS, and Windows injection failures explicit. Temporary modifiers and
+  teardown retry releases or fail closed instead of silently abandoning uncertain native state.
+- Removed the macOS privacy-blackout event tap. Display obscuring cannot implicitly block local physical
+  input; explicit `BlockInput` remains a separate Remote-only, connection-owned capability.
+- Bounded wheel and gesture magnitudes and retained Remote-only authorization at every controlled-side
+  input sink, including rewritten Android events and Windows service-owned SAS.
+
+### TCP tunnels and RDP
+- Made every desktop tunnel mapping carry an immutable validated target and own its listener,
+  cancellation, setup, login, relay tasks, and teardown. Removal, replacement, command-channel closure,
+  and outer-session cancellation stop acceptance and join all owned work.
+- Made loopback listeners exclusive on each desktop platform, including Windows
+  `SO_EXCLUSIVEADDRUSE`. Added nonblocking limits of 32 mappings process-wide, 32 accepted connections
+  per mapping, and 128 accepted connections process-wide, with permits held through setup and relay.
+- Removed pre-login application reads and shared mutable target selection. Tunnel bytes enter relay only
+  after the remote authorizes the exact `PortForward` session.
+- Removed RDP usernames and passwords from the dialog, peer configuration, tunnel transport, process state,
+  and Windows Credential Manager. Legacy options are scrubbed on load/store; trusted System32 `mstsc.exe`
+  receives only the ephemeral loopback endpoint and `/prompt`.
+
+### Native codecs and supply chain
+- Backported the exact upstream libvpx VP9 encoder `write_superframe_index` bounds fix tracked as
+  CVE-2026-1861/CVE-2026-2447 and pinned the source archive, patch, and Windows build tools by SHA-512.
+  Native codec staging remains offline and platform-specific; in-process decoder risk remains an explicit
+  accepted residual.
+- Removed the libaom/AV1 runtime and build scaffold instead of retaining another unreviewed in-process
+  decoder. Rust, Dart, native, workflow, build-script, and lexical unsafe-site inventories are
+  machine-derived and verifier-gated.
+- Hardened dependency and build inputs, including bundled native libraries, runner libraries, Android
+  signing and final-manifest checks, Debian payload ownership and ELF search paths, and Apple
+  service/helper provenance.
+
+### Verification and release discipline
+- Confined verifier scratch state to private workspaces and made mutation self-tests prove that source,
+  lockfile, release-ordering, and workspace-authority failures are detected.
+- Made the complete release build require one clean committed `HEAD` before verification, after
+  verification, and after all cold reproducible target builds. Windows artifacts must be archived from
+  that same commit; generated checksums record the exact source commit and fork version.
+- Made release verification authenticate the manifest digest, full commit, and fork version through an
+  independent channel before checking artifacts. Documented fail-closed Android signing-key loss and
+  compromise handling: no pin bypass, and a suspected compromise retires the package identity.
+- Added focused behavioral and structural gates for credential transaction finality, service authority,
+  exact-child supervision, desktop input ownership, tunnel lifecycle and admission, installer authority,
+  and the native codec backport.
+
+### Assurance scope
+- Linux behavior and compile gates, Apple source-conformance checks, and native Windows pre-build suites
+  cover platform-specific source contracts. Only the repository's complete clean committed cold release
+  build is artifact-level proof for Debian, Android, Windows EXE, and Windows MSI outputs.
+- Native Windows validation of the current worktree and the final clean committed `.6` cold release build
+  remain pending; these notes make no current artifact, reproducibility, publication, or release claim.
+- This hardening was developed and reviewed with AI assistance and remains single-maintainer security
+  engineering, not an independent professional cryptographic or product-security audit.
+
 ## 1.4.7-hardened.5 — 2026-07-11
 
 ### Service-owned unattended passwords
@@ -26,8 +140,8 @@ release notes.
 - Added behavior tests for macOS LaunchAgent plist proof, runtime snapshot non-persistence, and the
   preset-match persistence case.
 - Tightened `verify.sh` and `apple-conform-check.sh` to gate the macOS snapshot proof in the specific
-  implementation blocks, including live argv, `spawn_blocking`, launchctl pid/path, parsed plist shape,
-  empty snapshots, and runtime overlay behavior.
+  implementation blocks, including live argv, exactly owned proof work, launchctl pid/path, parsed plist
+  shape, empty snapshots, and runtime overlay behavior.
 
 ## 1.4.7-hardened.4 — 2026-07-08
 
@@ -121,4 +235,3 @@ A hardened, **direct-IP-only** RustDesk, built on upstream RustDesk 1.4.7.
 - **The commit is the source of truth.** A release is identified by its build commit; the fork version is
   the human-readable name. `rustdesk --version` reports the app version (`1.4.7`); `rustdesk --fork-version`
   reports the fork release.
-</content>

@@ -42,12 +42,19 @@ use uuid::Uuid;
 use crate::client::io_loop::Remote;
 use crate::client::{
     check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, input_os_password,
-    send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus,
-    KEY_MAP,
+    send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler, PortForwardTarget,
+    QualityStatus, KEY_MAP,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::GrabState;
 use crate::keyboard;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::port_forward::{
+    ensure_port_forward_owner_reaper, join_port_forward_supervisor_off_runtime,
+    port_forward_control, reap_port_forward_supervisor, PortForwardControl,
+    PortForwardControlReceiver, PortForwardMappingPermit, RdpLaunchRequest,
+    MAX_OWNED_PORT_FORWARD_MAPPINGS,
+};
 use crate::{client::Data, client::Interface};
 
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
@@ -599,6 +606,12 @@ impl<T: InvokeUiSession> Session<T> {
             .next()
             .is_some()
         {
+            return;
+        }
+        if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
+            self.on_error(&format!(
+                "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
+            ));
             return;
         }
         let pf = (port, remote_host, remote_port);
@@ -1840,96 +1853,105 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let key = crate::get_key(false).await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {
-        if handler.is_rdp() {
-            let port = handler
-                .get_option("rdp_port".to_owned())
-                .parse::<i32>()
-                .unwrap_or(3389);
-            let rdp_username = handler.get_option("rdp_username".to_owned());
-            let rdp_password = handler.get_option("rdp_password".to_owned());
-            log::info!("Remote rdp port: {}", port);
-            start_one_port_forward(
-                handler,
-                0,
-                "".to_owned(),
-                port,
-                receiver,
-                &key,
-                &token,
-                rdp_username,
-                rdp_password,
-            )
-            .await;
-        } else if handler.args.len() == 0 {
-            let pfs = handler.lc.read().unwrap().port_forwards.clone();
-            let mut queues = HashMap::<i32, mpsc::UnboundedSender<Data>>::new();
-            for d in pfs {
-                sender.send(Data::AddPortForward(d)).ok();
-            }
-            loop {
-                match receiver.recv().await {
-                    Some(Data::AddPortForward((port, remote_host, remote_port))) => {
-                        if port <= 0 || remote_port <= 0 {
-                            continue;
-                        }
-                        let (sender, receiver) = mpsc::unbounded_channel::<Data>();
-                        queues.insert(port, sender);
-                        let handler = handler.clone();
-                        let key = key.clone();
-                        let token = token.clone();
-                        tokio::spawn(async move {
-                            start_one_port_forward(
-                                handler,
-                                port,
-                                remote_host,
-                                remote_port,
-                                receiver,
-                                &key,
-                                &token,
-                                String::new(),
-                                String::new(),
-                            )
-                            .await;
-                        });
-                    }
-                    Some(Data::RemovePortForward(port)) => {
-                        if let Some(s) = queues.remove(&port) {
-                            s.send(Data::Close).ok();
-                        }
-                    }
-                    Some(Data::Close) => {
-                        break;
-                    }
-                    Some(d) => {
-                        for (_, s) in queues.iter() {
-                            s.send(d.clone()).ok();
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        } else {
+        let one_off = !handler.is_rdp() && !handler.args.is_empty();
+        if one_off {
             let port = handler.args[0].parse::<i32>().unwrap_or(0);
             if handler.args.len() != 3
                 || handler.args[2].parse::<i32>().unwrap_or(0) <= 0
                 || port <= 0
             {
                 handler.on_error("Invalid arguments, usage:<br><br> rustdesk --port-forward remote-id listen-port remote-host remote-port");
+                return;
             }
+        }
+
+        let supervisor =
+            match PortForwardSupervisorOwner::start(handler.clone(), key.clone(), token.clone()) {
+                Ok(supervisor) => supervisor,
+                Err(err) => {
+                    handler.on_error(&err);
+                    return;
+                }
+            };
+
+        if handler.is_rdp() {
+            let port = handler
+                .get_option("rdp_port".to_owned())
+                .parse::<i32>()
+                .unwrap_or(3389);
+            log::info!("Remote rdp port: {}", port);
+            if let Err(err) = supervisor
+                .add(PortForwardMappingSpec {
+                    port: 0,
+                    remote_host: "localhost".to_owned(),
+                    remote_port: port,
+                })
+                .await
+            {
+                handler.on_error(&err);
+            } else {
+                loop {
+                    match receiver.recv().await {
+                        Some(Data::NewRDP) => match supervisor.launch_rdp(0).await {
+                            Ok(RdpLaunchRequest::Queued | RdpLaunchRequest::Coalesced) => {}
+                            Err(err) => handler.on_error(&err),
+                        },
+                        Some(Data::Close) | None => break,
+                        Some(_) => {}
+                    }
+                }
+            }
+        } else if handler.args.len() == 0 {
+            let pfs = handler.lc.read().unwrap().port_forwards.clone();
+            for d in pfs {
+                if let Err(err) = supervisor.add(d.into()).await {
+                    handler.on_error(&err);
+                    break;
+                }
+            }
+            loop {
+                match receiver.recv().await {
+                    Some(Data::AddPortForward(mapping)) => {
+                        if let Err(err) = supervisor.add(mapping.into()).await {
+                            handler.on_error(&err);
+                        }
+                    }
+                    Some(Data::RemovePortForward(port)) => {
+                        if let Err(err) = supervisor.remove(port).await {
+                            handler.on_error(&err);
+                        }
+                    }
+                    Some(Data::Close) | None => {
+                        break;
+                    }
+                    Some(_) => {
+                        log::warn!("ignoring non-lifecycle command in port-forward manager");
+                    }
+                }
+            }
+        } else {
+            let port = handler.args[0].parse::<i32>().unwrap_or(0);
             let remote_host = handler.args[1].clone();
             let remote_port = handler.args[2].parse::<i32>().unwrap_or(0);
-            start_one_port_forward(
-                handler,
-                port,
-                remote_host,
-                remote_port,
-                receiver,
-                &key,
-                &token,
-                String::new(),
-                String::new(),
-            )
-            .await;
+            if let Err(err) = supervisor
+                .add(PortForwardMappingSpec {
+                    port,
+                    remote_host,
+                    remote_port,
+                })
+                .await
+            {
+                handler.on_error(&err);
+            } else {
+                while let Some(command) = receiver.recv().await {
+                    if matches!(command, Data::Close) {
+                        break;
+                    }
+                }
+            }
+        }
+        if let Err(err) = supervisor.close_and_join().await {
+            handler.on_error(&err);
         }
         return;
     }
@@ -1939,30 +1961,439 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn start_one_port_forward<T: InvokeUiSession>(
+struct OwnedPortForwardMapping {
+    control: PortForwardControl,
+    task: tokio::task::JoinHandle<()>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PortForwardMappingSpec {
+    port: i32,
+    remote_host: String,
+    remote_port: i32,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl From<(i32, String, i32)> for PortForwardMappingSpec {
+    fn from((port, remote_host, remote_port): (i32, String, i32)) -> Self {
+        Self {
+            port,
+            remote_host,
+            remote_port,
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum PortForwardSupervisorCommand {
+    Add {
+        mapping: PortForwardMappingSpec,
+        completed: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
+    Remove {
+        port: i32,
+        completed: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
+    LaunchRdp {
+        port: i32,
+        completed: tokio::sync::oneshot::Sender<Result<RdpLaunchRequest, String>>,
+    },
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PortForwardSupervisorOwner {
+    commands: Option<mpsc::Sender<PortForwardSupervisorCommand>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl PortForwardSupervisorOwner {
+    fn start<T: InvokeUiSession>(
+        handler: Session<T>,
+        key: String,
+        token: String,
+    ) -> Result<Self, String> {
+        ensure_port_forward_owner_reaper();
+        let (commands, receiver) =
+            mpsc::channel::<PortForwardSupervisorCommand>(MAX_OWNED_PORT_FORWARD_MAPPINGS);
+        let (started, startup) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::Builder::new()
+            .name("rustdesk-port-forward-owner".to_owned())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(err) => {
+                        let _ = started.send(Err(format!(
+                            "Failed to create port-forward owner runtime: {err}"
+                        )));
+                        return;
+                    }
+                };
+                if started.send(Ok(())).is_err() {
+                    return;
+                }
+                runtime.block_on(run_port_forward_supervisor(handler, receiver, key, token));
+            })
+            .map_err(|err| format!("Failed to start port-forward owner thread: {err}"))?;
+
+        match startup.recv() {
+            Ok(Ok(())) => Ok(Self {
+                commands: Some(commands),
+                thread: Some(thread),
+            }),
+            Ok(Err(err)) => {
+                reap_port_forward_supervisor(thread);
+                Err(err)
+            }
+            Err(err) => {
+                reap_port_forward_supervisor(thread);
+                Err(format!("Port-forward owner startup failed: {err}"))
+            }
+        }
+    }
+
+    async fn add(&self, mapping: PortForwardMappingSpec) -> Result<(), String> {
+        let (completed, result) = tokio::sync::oneshot::channel();
+        self.sender()?
+            .send(PortForwardSupervisorCommand::Add { mapping, completed })
+            .await
+            .map_err(|_| "Port-forward supervisor is closed".to_owned())?;
+        result
+            .await
+            .map_err(|_| "Port-forward supervisor dropped an add result".to_owned())?
+    }
+
+    async fn remove(&self, port: i32) -> Result<(), String> {
+        let (completed, result) = tokio::sync::oneshot::channel();
+        self.sender()?
+            .send(PortForwardSupervisorCommand::Remove { port, completed })
+            .await
+            .map_err(|_| "Port-forward supervisor is closed".to_owned())?;
+        result
+            .await
+            .map_err(|_| "Port-forward supervisor dropped a remove result".to_owned())?
+    }
+
+    async fn launch_rdp(&self, port: i32) -> Result<RdpLaunchRequest, String> {
+        let (completed, result) = tokio::sync::oneshot::channel();
+        self.sender()?
+            .send(PortForwardSupervisorCommand::LaunchRdp { port, completed })
+            .await
+            .map_err(|_| "Port-forward supervisor is closed".to_owned())?;
+        result
+            .await
+            .map_err(|_| "Port-forward supervisor dropped an RDP result".to_owned())?
+    }
+
+    fn sender(&self) -> Result<&mpsc::Sender<PortForwardSupervisorCommand>, String> {
+        self.commands
+            .as_ref()
+            .ok_or_else(|| "Port-forward supervisor is closed".to_owned())
+    }
+
+    async fn close_and_join(mut self) -> Result<(), String> {
+        self.commands.take();
+        let Some(thread) = self.thread.take() else {
+            return Ok(());
+        };
+        join_port_forward_supervisor_off_runtime(thread).await
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for PortForwardSupervisorOwner {
+    fn drop(&mut self) {
+        self.commands.take();
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
+        reap_port_forward_supervisor(thread);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl OwnedPortForwardMapping {
+    fn request_close(&self) {
+        self.control.close();
+    }
+
+    async fn wait(self) {
+        if let Err(err) = self.task.await {
+            log::error!("port-forward mapping task failed while draining: {}", err);
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn ensure_mapping_capacity<T>(mappings: &HashMap<i32, T>, port: i32) -> Result<(), String> {
+    if !mappings.contains_key(&port) && mappings.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
+        return Err(format!(
+            "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn add_owned_port_forward<T: InvokeUiSession>(
+    mappings: &mut HashMap<i32, OwnedPortForwardMapping>,
+    handler: &Session<T>,
+    key: &str,
+    token: &str,
+    mapping: PortForwardMappingSpec,
+) -> Result<(), String> {
+    let PortForwardMappingSpec {
+        port,
+        remote_host,
+        remote_port,
+    } = mapping;
+    if port != 0 && !(1..=u16::MAX as i32).contains(&port) {
+        return Err("Invalid local port-forward port".to_owned());
+    }
+    PortForwardTarget::new(remote_host.clone(), remote_port).map_err(|err| err.to_string())?;
+    ensure_mapping_capacity(mappings, port)?;
+
+    replace_owned_port_forward(mappings, port, |process_permit| {
+        let (control, mapping_receiver) = port_forward_control();
+        let mapping_handler = handler.clone();
+        let mapping_key = key.to_owned();
+        let mapping_token = token.to_owned();
+        let task = tokio::spawn(async move {
+            start_admitted_port_forward(
+                mapping_handler,
+                port,
+                remote_host,
+                remote_port,
+                mapping_receiver,
+                &mapping_key,
+                &mapping_token,
+                process_permit,
+            )
+            .await;
+        });
+        OwnedPortForwardMapping { control, task }
+    })
+    .await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn remove_owned_port_forward(
+    mappings: &mut HashMap<i32, OwnedPortForwardMapping>,
+    port: i32,
+) {
+    if let Some(mapping) = mappings.remove(&port) {
+        mapping.request_close();
+        mapping.wait().await;
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn replace_owned_port_forward<F>(
+    mappings: &mut HashMap<i32, OwnedPortForwardMapping>,
+    port: i32,
+    create: F,
+) -> Result<(), String>
+where
+    F: FnOnce(PortForwardMappingPermit) -> OwnedPortForwardMapping,
+{
+    drain_replaced_port_forward(mappings, port).await;
+    let permit = PortForwardMappingPermit::try_acquire()?;
+    mappings.insert(port, create(permit));
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn drain_replaced_port_forward(
+    mappings: &mut HashMap<i32, OwnedPortForwardMapping>,
+    port: i32,
+) {
+    if let Some(previous) = mappings.remove(&port) {
+        previous.request_close();
+        previous.wait().await;
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn drain_owned_port_forwards(mappings: &mut HashMap<i32, OwnedPortForwardMapping>) {
+    for mapping in mappings.values() {
+        mapping.request_close();
+    }
+    for (_, mapping) in mappings.drain() {
+        mapping.wait().await;
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn run_port_forward_supervisor<T: InvokeUiSession>(
+    handler: Session<T>,
+    mut commands: mpsc::Receiver<PortForwardSupervisorCommand>,
+    key: String,
+    token: String,
+) {
+    let mut mappings = HashMap::<i32, OwnedPortForwardMapping>::new();
+    while let Some(command) = commands.recv().await {
+        reap_finished_port_forwards(&mut mappings).await;
+        match command {
+            PortForwardSupervisorCommand::Add { mapping, completed } => {
+                let result =
+                    add_owned_port_forward(&mut mappings, &handler, &key, &token, mapping).await;
+                if completed.send(result).is_err() {
+                    log::debug!("port-forward add requester closed before completion");
+                }
+            }
+            PortForwardSupervisorCommand::Remove { port, completed } => {
+                remove_owned_port_forward(&mut mappings, port).await;
+                if completed.send(Ok(())).is_err() {
+                    log::debug!("port-forward remove requester closed before completion");
+                }
+            }
+            PortForwardSupervisorCommand::LaunchRdp { port, completed } => {
+                let result = mappings
+                    .get(&port)
+                    .ok_or_else(|| format!("Port-forward mapping {port} is not active"))
+                    .and_then(|mapping| mapping.control.launch_rdp());
+                if completed.send(result).is_err() {
+                    log::debug!("port-forward RDP requester closed before completion");
+                }
+            }
+        }
+    }
+    drain_owned_port_forwards(&mut mappings).await;
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn reap_finished_port_forwards(mappings: &mut HashMap<i32, OwnedPortForwardMapping>) {
+    let finished: Vec<i32> = mappings
+        .iter()
+        .filter_map(|(port, mapping)| mapping.task.is_finished().then_some(*port))
+        .collect();
+    for port in finished {
+        if let Some(mapping) = mappings.remove(&port) {
+            mapping.wait().await;
+        }
+    }
+}
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+mod port_forward_mapping_tests {
+    use super::*;
+
+    fn owned_mapping(finished: Arc<AtomicUsize>) -> OwnedPortForwardMapping {
+        let (control, receiver) = port_forward_control();
+        let task = tokio::spawn(async move {
+            receiver.wait_closed().await;
+            finished.fetch_add(1, Ordering::SeqCst);
+        });
+        OwnedPortForwardMapping { control, task }
+    }
+
+    #[test]
+    fn configured_and_live_mapping_adds_share_one_capacity_boundary() {
+        let mut mappings = HashMap::<i32, ()>::new();
+        for port in 1..=MAX_OWNED_PORT_FORWARD_MAPPINGS as i32 {
+            ensure_mapping_capacity(&mappings, port)
+                .expect("configured mapping within limit must be admitted");
+            mappings.insert(port, ());
+        }
+        assert!(ensure_mapping_capacity(&mappings, 1).is_ok());
+        assert!(
+            ensure_mapping_capacity(&mappings, MAX_OWNED_PORT_FORWARD_MAPPINGS as i32 + 1).is_err(),
+            "live add beyond the same configured-mapping boundary must be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_replacement_drains_old_mapping_before_returning() {
+        let finished = Arc::new(AtomicUsize::new(0));
+        let mut mappings = HashMap::new();
+        mappings.insert(21120, owned_mapping(finished.clone()));
+
+        drain_replaced_port_forward(&mut mappings, 21120).await;
+        assert_eq!(
+            finished.load(Ordering::SeqCst),
+            1,
+            "replacement must not be created before the old mapping drains"
+        );
+        mappings.insert(21120, owned_mapping(finished.clone()));
+
+        assert_eq!(finished.load(Ordering::SeqCst), 1);
+        assert!(mappings.contains_key(&21120));
+        drain_owned_port_forwards(&mut mappings).await;
+        assert_eq!(finished.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn supervisor_cleanup_signals_all_mappings_before_draining() {
+        let finished = Arc::new(AtomicUsize::new(0));
+        let mut mappings = HashMap::new();
+        mappings.insert(21120, owned_mapping(finished.clone()));
+        mappings.insert(21121, owned_mapping(finished.clone()));
+
+        drain_owned_port_forwards(&mut mappings).await;
+
+        assert_eq!(finished.load(Ordering::SeqCst), 2);
+        assert!(mappings.is_empty());
+    }
+
+    #[test]
+    fn outer_owner_drop_closes_and_drains_independent_runtime_mappings() {
+        let finished = Arc::new(AtomicUsize::new(0));
+        let task_finished = finished.clone();
+        let (commands, mut receiver) = mpsc::channel::<PortForwardSupervisorCommand>(1);
+        let (drained, completion) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::Builder::new()
+            .name("port-forward-owner-drop-test".to_owned())
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("test owner runtime");
+                runtime.block_on(async move {
+                    let mut mappings = HashMap::new();
+                    mappings.insert(21120, owned_mapping(task_finished));
+                    while receiver.recv().await.is_some() {}
+                    drain_owned_port_forwards(&mut mappings).await;
+                    drained.send(()).expect("drain observer");
+                });
+            })
+            .expect("test owner thread");
+        let owner = PortForwardSupervisorOwner {
+            commands: Some(commands),
+            thread: Some(thread),
+        };
+
+        drop(owner);
+        completion
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("independent owner must drain after outer drop");
+        assert_eq!(finished.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn start_admitted_port_forward<T: InvokeUiSession>(
     handler: Session<T>,
     port: i32,
     remote_host: String,
     remote_port: i32,
-    receiver: mpsc::UnboundedReceiver<Data>,
+    receiver: PortForwardControlReceiver,
     key: &str,
     token: &str,
-    rdp_username: String,
-    rdp_password: String,
+    mapping_permit: PortForwardMappingPermit,
 ) {
-    if let Err(err) = crate::port_forward::listen(
+    if let Err(err) = crate::port_forward::listen_admitted(
         handler.get_id(),
-        handler.password.clone(),
         port,
         handler.clone(),
         receiver,
         key,
         token,
-        handler.lc.clone(),
         remote_host,
         remote_port,
-        rdp_username,
-        rdp_password,
+        &mapping_permit,
     )
     .await
     {

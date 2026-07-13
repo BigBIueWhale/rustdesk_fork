@@ -1,8 +1,8 @@
 # scripts/Dockerfile.deb-builder — the pinned ubuntu:18.04 .deb build image (R-B7/B8).
 #
 # build-debian.sh runs the compile with --network=none, so the system BUILD deps that
-# upstream's CI apt-installs into ubuntu:18.04 (flutter-build.yml) must be baked in HERE,
-# during the ONE networked step (online-fetch.sh docker-builds this). The Rust / Flutter /
+# upstream's CI apt-installs into ubuntu:18.04 (flutter-build.yml) must be baked into the
+# explicitly maintained image capture. Release builds load that pinned capture. The Rust / Flutter /
 # LLVM toolchains are NOT in this image — they come from ./online at build time (the
 # digest-pinned tarballs), so the image carries only the OS-level dev libs + build tools.
 #
@@ -17,13 +17,13 @@
 # already-present curl/unzip/tar are not enough), and gcc-8/g++-8 for the pinned native-codec
 # build path used by stage_vcpkg_natives.
 #
-# NB (R-B2 refinement): the apt package versions are not individually pinned. bionic is EOL
-# and frozen, so they are effectively stable, and the SAME built image is reused for the
-# double-build determinism check (R-B2 is byte-identity across two builds of one source in
-# one image, which holds). If apt drift is ever observed, pin exact `pkg=version` here.
-ARG BASE_DIGEST
+ARG BASE_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
 FROM ubuntu:18.04@${BASE_DIGEST}
+ARG BASE_DIGEST
+ARG DOCKERFILE_SHA256
+ARG DPKG_MANIFEST_SHA256
 ENV DEBIAN_FRONTEND=noninteractive
+COPY Dockerfile.deb-builder /usr/local/share/rustdesk-build-provenance/Dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates clang cmake curl g++ g++-8 g++-multilib gcc-8 gcc-multilib git \
       libappindicator3-dev libasound2-dev libc6-dev libclang-dev \
@@ -32,4 +32,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
       libxdo-dev libxfixes-dev llvm-dev nasm ninja-build pkg-config \
       python3 unzip wget xz-utils yasm zip \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && printf '%s  %s\n' "$DOCKERFILE_SHA256" /usr/local/share/rustdesk-build-provenance/Dockerfile | sha256sum -c - \
+    && dpkg-query -W -f='${binary:Package}\t${Version}\n' | LC_ALL=C sort > /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv \
+    && printf '%s  %s\n' "$DPKG_MANIFEST_SHA256" /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv | sha256sum -c - \
+    && printf 'contract=rustdesk-build-image-v1\nrole=deb-builder\nbase=ubuntu:18.04@%s\ndockerfile_sha256=%s\ndpkg_manifest_sha256=%s\n' \
+         "$BASE_DIGEST" "$DOCKERFILE_SHA256" "$DPKG_MANIFEST_SHA256" \
+         > /usr/local/share/rustdesk-build-provenance/contract-v1
+LABEL org.rustdesk.build-input.contract="rustdesk-build-image-v1" \
+      org.rustdesk.build-input.role="deb-builder" \
+      org.rustdesk.build-input.base="ubuntu:18.04@${BASE_DIGEST}" \
+      org.rustdesk.build-input.dockerfile-sha256="${DOCKERFILE_SHA256}" \
+      org.rustdesk.build-input.dpkg-manifest-sha256="${DPKG_MANIFEST_SHA256}"

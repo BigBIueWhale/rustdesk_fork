@@ -3,19 +3,18 @@ mod ipc_auth;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[path = "ipc/fs.rs"]
 mod ipc_fs;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[path = "ipc/password.rs"]
+pub(crate) mod password;
 
-use crate::{
-    common::{is_server, is_service_owned_server_process},
-    privacy_mode,
-    privacy_mode::PrivacyModeState,
-};
+use crate::{common::is_service_owned_server_process, privacy_mode::PrivacyModeState};
 use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use hbb_common::anyhow;
 use hbb_common::{
-    allow_err, bail, bytes,
+    bail, bytes,
     bytes_codec::BytesCodec,
     config::{self, Config},
     futures::StreamExt as _,
@@ -28,16 +27,20 @@ use hbb_common::{
     tokio_util::codec::Framed,
     ResultType,
 };
+#[cfg(target_os = "linux")]
+use ipc_auth::authenticate_linux_service_owned_password_parent;
 #[cfg(target_os = "macos")]
 pub(crate) use ipc_auth::authenticate_macos_cm_endpoint;
 #[cfg(target_os = "windows")]
 pub(crate) use ipc_auth::authenticate_windows_cm_endpoint;
-#[cfg(target_os = "macos")]
-use ipc_auth::ensure_macos_service_server_is_trusted;
+#[cfg(windows)]
+pub(crate) use ipc_auth::current_windows_process_identity_key;
 #[cfg(windows)]
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::ensure_user_owned_main_server_is_trusted;
+#[cfg(all(target_os = "linux", test))]
+use ipc_auth::linux_proc_stat_start_time;
 #[cfg(windows)]
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -45,19 +48,32 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(target_os = "linux")]
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
-    current_process_identity, ensure_linux_service_server_is_trusted,
-    ensure_peer_process_identity_matches, linux_proc_stat_start_time, peer_process_identity,
+    authenticate_linux_service_owned_password_replica_server, current_process_identity,
+    ensure_linux_service_password_server_is_trusted, ensure_linux_service_server_is_trusted,
+    ensure_peer_process_identity_matches, peer_process_identity, peer_process_identity_from_stream,
     peer_process_identity_is_live, PeerProcessIdentity,
 };
 #[cfg(windows)]
-use ipc_auth::{
-    authenticate_windows_service_owned_main_server, ensure_windows_ipc_server_matches_current,
-    windows_ipc_listener_security_attributes, windows_named_pipe_client_access_mask,
+pub(crate) use ipc_auth::{
+    authenticate_windows_sensitive_pipe_server, authorize_windows_sensitive_pipe_client,
+    authorize_windows_service_main_ipc_connection, ensure_windows_ipc_server_matches_current,
+    ensure_windows_service_main_server_pid, preauthorize_windows_sensitive_pipe_client,
+    windows_ipc_listener_sddl, windows_ipc_listener_security_attributes,
+    windows_named_pipe_client_access_mask, windows_sensitive_pipe_security,
+    WindowsSensitivePipeClientProof, WindowsSensitivePipeSecurity, WindowsSensitivePipeServerProof,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) use ipc_auth::{authorize_cm_ipc_connection, authorize_whiteboard_ipc_connection};
 #[cfg(windows)]
 use ipc_auth::{authorize_windows_main_ipc_connection, authorize_windows_url_ipc_connection};
+#[cfg(windows)]
+pub(crate) use ipc_auth::{
+    authorize_windows_service_owned_sas_requester, WindowsProcessIdentityKey,
+};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use ipc_auth::{
+    ensure_user_owned_password_client_is_trusted, ensure_user_owned_password_server_is_trusted,
+};
 // R-X13 (§8): the ipc_auth re-exports (ensure_peer_executable_matches_current_by_fd /
 // is_allowed_service_peer_uid / log_rejected_uinput_connection / peer_uid_from_fd) were the uinput
 // peer-authorization accessors, removed with the uinput module. The _service-channel authorization
@@ -72,8 +88,13 @@ pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
 pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
     authorize_windows_url_ipc_connection(stream, "_url")
 }
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use hbb_common::tokio::sync::{OwnedSemaphorePermit, Semaphore};
+#[cfg(target_os = "windows")]
+use hbb_common::tokio::sync::mpsc;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::tokio::{
+    sync::{Notify, OwnedSemaphorePermit, Semaphore},
+    task::JoinSet,
+};
 #[cfg(target_os = "linux")]
 use ipc_fs::terminal_count_candidate_uids;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -87,13 +108,13 @@ use parity_tokio_ipc::{
 use serde_derive::{Deserialize, Serialize};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::cell::Cell;
+use std::collections::HashMap;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::sync::{Arc, OnceLock};
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicBool, Ordering},
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use std::sync::{
+    atomic::{AtomicU8, Ordering as AtomicOrdering},
+    Arc, OnceLock,
 };
 #[cfg(target_os = "linux")]
 use std::{
@@ -103,23 +124,94 @@ use std::{
 };
 
 #[cfg(target_os = "macos")]
-const MACOS_OPEN: &str = "/usr/bin/open";
-#[cfg(target_os = "macos")]
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 * 1024;
 pub(crate) const CM_IPC_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 pub(crate) const CM_FILE_BLOCK_MAX_FRAME_BYTES: usize = 256 * 1024;
 pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_TRANSACTION_TIMEOUT_MS: u64 = 2_000;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_MAX_OPTION_COUNT: usize = 64;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_MAX_OPTION_VALUE_BYTES: usize = 4 * 1024;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_MAX_ID_BYTES: usize = 256;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_MAX_CONFIG_VALUE_BYTES: usize = 64 * 1024;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_MAX_AUTH_TOKEN_BYTES: usize = 4 * 1024;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PASSWORD_MUTATION_ID_BYTES: usize = 36;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PASSWORD_MUTATION_RESULT_BUDGET: usize = 64;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PASSWORD_MUTATION_RECOVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) use password::{zeroize_sensitive_bytes, SensitivePassword};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+type MainPasswordMutationValue = SensitivePassword;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 static SERVICE_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 4;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const MAIN_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 16;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static MAIN_PASSWORD_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_TRANSACTION_BUDGET: usize = 16;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static MAIN_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const MAIN_IPC_BLOCKING_MUTATION_BUDGET: usize = 1;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static MAIN_IPC_BLOCKING_MUTATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static PASSWORD_MUTATIONS: OnceLock<Arc<PasswordMutationCoordinator>> = OnceLock::new();
+#[cfg(target_os = "linux")]
+static LINUX_PASSWORD_ADMISSIONS: OnceLock<Arc<LinuxPasswordAdmissionCoordinator>> =
+    OnceLock::new();
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static MAIN_IPC_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static SERVICE_IPC_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
+#[cfg(target_os = "windows")]
+static WINDOWS_SERVICE_MAIN_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static LOCAL_IPC_DRAIN_CHANGED: OnceLock<Notify> = OnceLock::new();
+#[cfg(target_os = "windows")]
+const WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_BUDGET: usize = 6;
+#[cfg(target_os = "windows")]
+const WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_BUDGET: usize = 2;
+#[cfg(target_os = "windows")]
+const WINDOWS_SERVICE_MAIN_TRANSACTION_DRAIN_TIMEOUT_MS: u64 = 3_000;
+#[cfg(target_os = "windows")]
+const WINDOWS_CREDENTIAL_SNAPSHOT_COMPONENT_MAX_BYTES: usize = 16 * 1024;
+#[cfg(target_os = "windows")]
+static WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(target_os = "windows")]
+static WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+const PRIVILEGED_MAIN_IPC_TRANSACTION_BUDGET: usize = 2;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static PRIVILEGED_MAIN_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 #[cfg(target_os = "macos")]
 const MACOS_SERVICE_IPC_AUTHORIZATION_BUDGET: usize = 4;
 #[cfg(target_os = "macos")]
 static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(target_os = "macos")]
+const MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_BUDGET: usize = 4;
+#[cfg(target_os = "macos")]
+static MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 #[cfg(windows)]
 use std::{
@@ -140,7 +232,6 @@ use windows::{
 
 // IPC actions here.
 pub const IPC_ACTION_CLOSE: &str = "close";
-pub static EXIT_RECV_CLOSE: AtomicBool = AtomicBool::new(true);
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 thread_local! {
@@ -189,6 +280,90 @@ fn try_acquire_macos_service_ipc_authorization_slot() -> Option<OwnedSemaphorePe
     }
 }
 
+#[cfg(target_os = "macos")]
+fn try_acquire_macos_service_password_ipc_authorization_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS
+        .get_or_init(|| {
+            Arc::new(Semaphore::new(
+                MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_BUDGET,
+            ))
+        })
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!(
+                "Rejected macOS service password IPC connection because password authorization work is at capacity"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct MacosSecurityProofWorker {
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(target_os = "macos")]
+impl MacosSecurityProofWorker {
+    fn finish(mut self) {
+        let Some(worker) = self.worker.take() else {
+            std::process::abort();
+        };
+        if worker.join().is_err() {
+            log::error!("macOS Security.framework proof worker panicked");
+            std::process::abort();
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for MacosSecurityProofWorker {
+    fn drop(&mut self) {
+        if self.worker.is_some() {
+            log::error!("macOS Security.framework proof lost exact worker ownership");
+            std::process::abort();
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn run_bounded_macos_security_proof<T, F>(
+    deadline: tokio::time::Instant,
+    thread_name: &'static str,
+    proof: F,
+) -> ResultType<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> ResultType<T> + Send + 'static,
+{
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let worker = std::thread::Builder::new()
+        .name(thread_name.to_owned())
+        .spawn(move || {
+            let result = proof();
+            let _ = result_tx.send(result);
+        })
+        .map_err(|err| anyhow!("Could not start macOS Security.framework proof worker: {err}"))?;
+    let owner = MacosSecurityProofWorker {
+        worker: Some(worker),
+    };
+    let result = match tokio::time::timeout_at(deadline, result_rx).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => {
+            log::error!("macOS Security.framework proof worker ended without a result");
+            std::process::abort();
+        }
+        Err(_) => {
+            log::error!("macOS Security.framework proof exceeded its absolute deadline");
+            std::process::abort();
+        }
+    };
+    owner.finish();
+    result
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn try_acquire_service_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
     let semaphore = SERVICE_IPC_TRANSACTION_SLOTS
@@ -203,15 +378,806 @@ fn try_acquire_service_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn try_acquire_service_password_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET)))
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!(
+                "Rejected _service_password IPC connection because password work is at capacity"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn try_acquire_main_ipc_transaction_slot(stream: &Connection) -> Option<OwnedSemaphorePermit> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let (slots, description) = if stream.peer_uid() == Some(0) {
+        (
+            PRIVILEGED_MAIN_IPC_TRANSACTION_SLOTS
+                .get_or_init(|| Arc::new(Semaphore::new(PRIVILEGED_MAIN_IPC_TRANSACTION_BUDGET))),
+            "privileged main IPC",
+        )
+    } else {
+        (
+            MAIN_IPC_TRANSACTION_SLOTS
+                .get_or_init(|| Arc::new(Semaphore::new(MAIN_IPC_TRANSACTION_BUDGET))),
+            "main IPC",
+        )
+    };
+    #[cfg(target_os = "windows")]
+    let (slots, description) = (
+        MAIN_IPC_TRANSACTION_SLOTS
+            .get_or_init(|| Arc::new(Semaphore::new(MAIN_IPC_TRANSACTION_BUDGET))),
+        "main IPC",
+    );
+
+    match slots.clone().try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!("Rejected {description} connection because work is at capacity");
+            None
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn try_acquire_sensitive_main_ipc_transaction_slot(
+    kind: PasswordMutationKind,
+) -> Option<OwnedSemaphorePermit> {
+    let description = match kind {
+        PasswordMutationKind::ServiceOwned => "privileged main password IPC",
+        PasswordMutationKind::UserOwned => "main password IPC",
+    };
+    let slots = MAIN_PASSWORD_IPC_TRANSACTION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(MAIN_PASSWORD_IPC_TRANSACTION_BUDGET)));
+
+    match slots.clone().try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!("Rejected {description} connection because work is at capacity");
+            None
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn try_acquire_main_ipc_blocking_mutation_slot() -> Option<OwnedSemaphorePermit> {
+    MAIN_IPC_BLOCKING_MUTATION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(MAIN_IPC_BLOCKING_MUTATION_BUDGET)))
+        .clone()
+        .try_acquire_owned()
+        .ok()
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct LocalIpcListenerGuard {
+    state: &'static AtomicU8,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl LocalIpcListenerGuard {
+    fn activate(state: &'static AtomicU8, description: &str) -> ResultType<Self> {
+        state
+            .compare_exchange(0, 1, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
+            .map_err(|_| hbb_common::anyhow::anyhow!("{description} started more than once"))?;
+        Ok(Self { state })
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for LocalIpcListenerGuard {
+    fn drop(&mut self) {
+        self.state.store(2, AtomicOrdering::Release);
+        LOCAL_IPC_DRAIN_CHANGED
+            .get_or_init(Notify::new)
+            .notify_waiters();
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) async fn wait_for_local_ipc_shutdown() {
+    loop {
+        let notified = LOCAL_IPC_DRAIN_CHANGED.get_or_init(Notify::new).notified();
+        let main_draining = MAIN_IPC_LISTENER_STATE.load(AtomicOrdering::Acquire) == 1;
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let service_draining = SERVICE_IPC_LISTENER_STATE.load(AtomicOrdering::Acquire) == 1;
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        let service_draining = false;
+        #[cfg(target_os = "windows")]
+        let service_main_draining =
+            WINDOWS_SERVICE_MAIN_LISTENER_STATE.load(AtomicOrdering::Acquire) == 1;
+        #[cfg(not(target_os = "windows"))]
+        let service_main_draining = false;
+        if !main_draining && !service_draining && !service_main_draining {
+            return;
+        }
+        notified.await;
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum WindowsServiceMainEndpoint {
+    Credential,
+    Control,
+}
+
+#[cfg(target_os = "windows")]
+fn try_acquire_windows_service_main_transaction_slot(
+    endpoint: WindowsServiceMainEndpoint,
+) -> Option<OwnedSemaphorePermit> {
+    let slots = match endpoint {
+        WindowsServiceMainEndpoint::Credential => WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_SLOTS
+            .get_or_init(|| {
+                Arc::new(Semaphore::new(
+                    WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_BUDGET,
+                ))
+            }),
+        WindowsServiceMainEndpoint::Control => WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_SLOTS
+            .get_or_init(|| {
+                Arc::new(Semaphore::new(
+                    WINDOWS_SERVICE_MAIN_CONTROL_TRANSACTION_BUDGET,
+                ))
+            }),
+    };
+    slots.clone().try_acquire_owned().ok()
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PasswordMutationKind {
+    UserOwned,
+    ServiceOwned,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PasswordMutationState {
+    Prepared,
+    Pending,
+    Complete(IpcMutationResult, std::time::Instant),
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PasswordMutationFingerprint(hbb_common::sodiumoxide::crypto::auth::hmacsha256::Tag);
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl PartialEq for PasswordMutationFingerprint {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Eq for PasswordMutationFingerprint {}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for PasswordMutationFingerprint {
+    fn drop(&mut self) {
+        zeroize_sensitive_bytes(&mut self.0 .0);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PasswordMutationEntry {
+    kind: PasswordMutationKind,
+    fingerprint: PasswordMutationFingerprint,
+    state: PasswordMutationState,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PasswordMutationLedger {
+    shutting_down: bool,
+    fingerprint_key: hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key,
+    entries: HashMap<String, PasswordMutationEntry>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl PasswordMutationLedger {
+    fn new() -> Self {
+        Self {
+            shutting_down: false,
+            fingerprint_key: hbb_common::sodiumoxide::crypto::auth::hmacsha256::gen_key(),
+            entries: HashMap::new(),
+        }
+    }
+
+    fn fingerprint(&self, value: &str) -> PasswordMutationFingerprint {
+        password_mutation_fingerprint(&self.fingerprint_key, value)
+    }
+
+    fn clear_sensitive_state(&mut self) {
+        self.entries.clear();
+        zeroize_sensitive_bytes(&mut self.fingerprint_key.0);
+    }
+
+    fn evict_oldest_complete(&mut self) -> bool {
+        let oldest = self
+            .entries
+            .iter()
+            .filter_map(|(operation_id, entry)| match entry.state {
+                PasswordMutationState::Complete(_, completed_at) => {
+                    Some((operation_id.clone(), completed_at))
+                }
+                PasswordMutationState::Prepared | PasswordMutationState::Pending => None,
+            })
+            .min_by_key(|(_, completed_at)| *completed_at)
+            .map(|(operation_id, _)| operation_id);
+        oldest
+            .and_then(|operation_id| self.entries.remove(&operation_id))
+            .is_some()
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PasswordMutationCoordinator {
+    ledger: std::sync::Mutex<PasswordMutationLedger>,
+    changed: Notify,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PasswordMutationPreparation {
+    status: PasswordMutationStatus,
+    owns_preparation: bool,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LinuxPasswordCaller {
+    pid: u32,
+    uid: u32,
+    start_time: String,
+}
+
+#[cfg(target_os = "linux")]
+impl From<&PeerProcessIdentity> for LinuxPasswordCaller {
+    fn from(identity: &PeerProcessIdentity) -> Self {
+        Self {
+            pid: identity.pid(),
+            uid: identity.uid(),
+            start_time: identity.start_time().to_owned(),
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LinuxPasswordAdmissionState {
+    Authorizing,
+    Committing,
+    Recoverable,
+    Complete(IpcMutationResult, std::time::Instant),
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxPasswordAdmissionEntry {
+    kind: PasswordMutationKind,
+    fingerprint: PasswordMutationFingerprint,
+    caller: LinuxPasswordCaller,
+    state: LinuxPasswordAdmissionState,
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxPasswordAdmissionLedger {
+    shutting_down: bool,
+    fingerprint_key: hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key,
+    entries: HashMap<String, LinuxPasswordAdmissionEntry>,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxPasswordAdmissionLedger {
+    fn new() -> Self {
+        Self {
+            shutting_down: false,
+            fingerprint_key: hbb_common::sodiumoxide::crypto::auth::hmacsha256::gen_key(),
+            entries: HashMap::new(),
+        }
+    }
+
+    fn fingerprint(&self, value: &str) -> PasswordMutationFingerprint {
+        password_mutation_fingerprint(&self.fingerprint_key, value)
+    }
+
+    fn clear_sensitive_state(&mut self) {
+        self.entries.clear();
+        zeroize_sensitive_bytes(&mut self.fingerprint_key.0);
+    }
+
+    fn evict_oldest_complete(&mut self) -> bool {
+        let oldest = self
+            .entries
+            .iter()
+            .filter_map(|(operation_id, entry)| match entry.state {
+                LinuxPasswordAdmissionState::Complete(_, completed_at) => {
+                    Some((operation_id.clone(), completed_at))
+                }
+                LinuxPasswordAdmissionState::Authorizing
+                | LinuxPasswordAdmissionState::Committing
+                | LinuxPasswordAdmissionState::Recoverable => None,
+            })
+            .min_by_key(|(_, completed_at)| *completed_at)
+            .map(|(operation_id, _)| operation_id);
+        oldest
+            .and_then(|operation_id| self.entries.remove(&operation_id))
+            .is_some()
+    }
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxPasswordAdmissionCoordinator {
+    ledger: std::sync::Mutex<LinuxPasswordAdmissionLedger>,
+    changed: Notify,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LinuxPasswordAdmissionDecision {
+    Authorize,
+    Wait,
+    Recover,
+    Complete(IpcMutationResult),
+    Rejected,
+    ShuttingDown,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxPasswordAdmissionCoordinator {
+    fn new() -> Self {
+        Self {
+            ledger: std::sync::Mutex::new(LinuxPasswordAdmissionLedger::new()),
+            changed: Notify::new(),
+        }
+    }
+
+    fn begin(
+        &self,
+        operation_id: &str,
+        kind: PasswordMutationKind,
+        value: &str,
+        caller: &LinuxPasswordCaller,
+    ) -> LinuxPasswordAdmissionDecision {
+        let mut ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
+        if let Some(entry) = ledger.entries.get_mut(operation_id) {
+            if entry.kind != kind || entry.fingerprint != fingerprint || entry.caller != *caller {
+                return LinuxPasswordAdmissionDecision::Rejected;
+            }
+            return match entry.state {
+                LinuxPasswordAdmissionState::Authorizing
+                | LinuxPasswordAdmissionState::Committing => LinuxPasswordAdmissionDecision::Wait,
+                LinuxPasswordAdmissionState::Recoverable => {
+                    entry.state = LinuxPasswordAdmissionState::Committing;
+                    LinuxPasswordAdmissionDecision::Recover
+                }
+                LinuxPasswordAdmissionState::Complete(result, _) => {
+                    LinuxPasswordAdmissionDecision::Complete(result)
+                }
+            };
+        }
+        if ledger.shutting_down {
+            return LinuxPasswordAdmissionDecision::ShuttingDown;
+        }
+        if ledger.entries.len() >= PASSWORD_MUTATION_RESULT_BUDGET
+            && !ledger.evict_oldest_complete()
+        {
+            return LinuxPasswordAdmissionDecision::Rejected;
+        }
+        ledger.entries.insert(
+            operation_id.to_owned(),
+            LinuxPasswordAdmissionEntry {
+                kind,
+                fingerprint,
+                caller: caller.clone(),
+                state: LinuxPasswordAdmissionState::Authorizing,
+            },
+        );
+        LinuxPasswordAdmissionDecision::Authorize
+    }
+
+    fn finish_authorization(
+        &self,
+        operation_id: &str,
+        caller: &LinuxPasswordCaller,
+        admitted: bool,
+    ) -> bool {
+        let mut ledger = self.ledger.lock().unwrap();
+        let Some(entry) = ledger.entries.get_mut(operation_id) else {
+            return false;
+        };
+        if entry.caller != *caller || entry.state != LinuxPasswordAdmissionState::Authorizing {
+            return false;
+        }
+        if admitted {
+            entry.state = LinuxPasswordAdmissionState::Committing;
+        } else {
+            ledger.entries.remove(operation_id);
+        }
+        drop(ledger);
+        self.changed.notify_waiters();
+        true
+    }
+
+    fn complete(
+        &self,
+        operation_id: &str,
+        caller: &LinuxPasswordCaller,
+        result: IpcMutationResult,
+    ) -> bool {
+        let mut ledger = self.ledger.lock().unwrap();
+        let Some(entry) = ledger.entries.get_mut(operation_id) else {
+            return false;
+        };
+        if entry.caller != *caller {
+            return false;
+        }
+        if let LinuxPasswordAdmissionState::Complete(existing, _) = entry.state {
+            return existing == result;
+        }
+        if entry.state != LinuxPasswordAdmissionState::Committing {
+            return false;
+        }
+        entry.state = LinuxPasswordAdmissionState::Complete(result, std::time::Instant::now());
+        drop(ledger);
+        self.changed.notify_waiters();
+        true
+    }
+
+    fn release_failed_commit(&self, operation_id: &str, caller: &LinuxPasswordCaller) -> bool {
+        let mut ledger = self.ledger.lock().unwrap();
+        let Some(entry) = ledger.entries.get_mut(operation_id) else {
+            return false;
+        };
+        if entry.caller != *caller || entry.state != LinuxPasswordAdmissionState::Committing {
+            return false;
+        }
+        entry.state = LinuxPasswordAdmissionState::Recoverable;
+        drop(ledger);
+        self.changed.notify_waiters();
+        true
+    }
+
+    fn begin_shutdown(&self) {
+        let mut ledger = self.ledger.lock().unwrap();
+        ledger.shutting_down = true;
+        drop(ledger);
+        self.changed.notify_waiters();
+    }
+
+    fn clear_after_transactions_drain(&self) {
+        let mut ledger = self.ledger.lock().unwrap();
+        if !ledger
+            .entries
+            .values()
+            .all(|entry| matches!(entry.state, LinuxPasswordAdmissionState::Complete(_, _)))
+        {
+            log::error!(
+                "Linux password admission transactions drained with unresolved authority; terminating instead of evicting replay authority"
+            );
+            std::process::abort();
+        }
+        ledger.clear_sensitive_state();
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl PasswordMutationCoordinator {
+    fn new() -> Self {
+        Self {
+            ledger: std::sync::Mutex::new(PasswordMutationLedger::new()),
+            changed: Notify::new(),
+        }
+    }
+
+    fn prepare_if_allowed(
+        &self,
+        operation_id: &str,
+        kind: PasswordMutationKind,
+        value: &str,
+        admission_allowed: bool,
+    ) -> PasswordMutationPreparation {
+        if !password_mutation_id_is_valid(operation_id) {
+            return PasswordMutationPreparation {
+                status: PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                owns_preparation: false,
+            };
+        }
+        let mut ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
+        if let Some(entry) = ledger.entries.get(operation_id) {
+            if entry.kind != kind || entry.fingerprint != fingerprint {
+                return PasswordMutationPreparation {
+                    status: PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                    owns_preparation: false,
+                };
+            }
+            return PasswordMutationPreparation {
+                status: password_mutation_status(entry.state),
+                owns_preparation: false,
+            };
+        }
+        if !admission_allowed {
+            return PasswordMutationPreparation {
+                status: PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                owns_preparation: false,
+            };
+        }
+        if ledger.shutting_down {
+            return PasswordMutationPreparation {
+                status: PasswordMutationStatus::ShuttingDown,
+                owns_preparation: false,
+            };
+        }
+        if ledger.entries.len() >= PASSWORD_MUTATION_RESULT_BUDGET
+            && !ledger.evict_oldest_complete()
+        {
+            return PasswordMutationPreparation {
+                status: PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                owns_preparation: false,
+            };
+        }
+        ledger.entries.insert(
+            operation_id.to_owned(),
+            PasswordMutationEntry {
+                kind,
+                fingerprint,
+                state: PasswordMutationState::Prepared,
+            },
+        );
+        PasswordMutationPreparation {
+            status: PasswordMutationStatus::Prepared,
+            owns_preparation: true,
+        }
+    }
+
+    #[cfg(test)]
+    fn prepare(
+        &self,
+        operation_id: &str,
+        kind: PasswordMutationKind,
+        value: &str,
+    ) -> PasswordMutationPreparation {
+        self.prepare_if_allowed(operation_id, kind, value, true)
+    }
+
+    fn acknowledge(&self, operation_id: &str, kind: PasswordMutationKind, value: &str) -> bool {
+        let mut ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
+        let Some(entry) = ledger.entries.get_mut(operation_id) else {
+            return false;
+        };
+        if entry.kind != kind
+            || entry.fingerprint != fingerprint
+            || entry.state != PasswordMutationState::Prepared
+        {
+            return false;
+        }
+        entry.state = PasswordMutationState::Pending;
+        true
+    }
+
+    fn complete(&self, operation_id: &str, kind: PasswordMutationKind, result: IpcMutationResult) {
+        let mut ledger = self.ledger.lock().unwrap();
+        let Some(entry) = ledger.entries.get_mut(operation_id) else {
+            log::error!("password mutation completed without a ledger entry");
+            return;
+        };
+        if entry.kind != kind || entry.state != PasswordMutationState::Pending {
+            log::error!("password mutation completed from an invalid ledger state");
+            return;
+        }
+        entry.state = PasswordMutationState::Complete(result, std::time::Instant::now());
+        drop(ledger);
+        self.changed.notify_waiters();
+    }
+
+    fn fail_admitted(&self, operation_id: &str, kind: PasswordMutationKind, value: &str) -> bool {
+        let mut ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
+        let Some(entry) = ledger.entries.get_mut(operation_id) else {
+            return false;
+        };
+        if entry.kind != kind
+            || entry.fingerprint != fingerprint
+            || !matches!(
+                entry.state,
+                PasswordMutationState::Prepared | PasswordMutationState::Pending
+            )
+        {
+            return false;
+        }
+        entry.state = PasswordMutationState::Complete(
+            IpcMutationResult::InternalFailure,
+            std::time::Instant::now(),
+        );
+        drop(ledger);
+        self.changed.notify_waiters();
+        true
+    }
+
+    fn status(&self, operation_id: &str, kind: PasswordMutationKind) -> PasswordMutationStatus {
+        if !password_mutation_id_is_valid(operation_id) {
+            return PasswordMutationStatus::Unknown;
+        }
+        let ledger = self.ledger.lock().unwrap();
+        ledger
+            .entries
+            .get(operation_id)
+            .filter(|entry| entry.kind == kind)
+            .map(|entry| password_mutation_status(entry.state))
+            .unwrap_or(PasswordMutationStatus::Unknown)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn classify_during_shutdown(
+        &self,
+        operation_id: &str,
+        kind: PasswordMutationKind,
+        value: &str,
+    ) -> PasswordMutationStatus {
+        let ledger = self.ledger.lock().unwrap();
+        let fingerprint = ledger.fingerprint(value);
+        match ledger.entries.get(operation_id) {
+            Some(entry) if entry.kind == kind && entry.fingerprint == fingerprint => {
+                password_mutation_status(entry.state)
+            }
+            Some(_) => PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+            None => PasswordMutationStatus::ShuttingDown,
+        }
+    }
+
+    fn begin_shutdown(&self) {
+        let mut ledger = self.ledger.lock().unwrap();
+        ledger.shutting_down = true;
+        drop(ledger);
+        self.changed.notify_waiters();
+    }
+
+    async fn drain(&self) {
+        loop {
+            let notified = self.changed.notified();
+            let drained = {
+                let ledger = self.ledger.lock().unwrap();
+                ledger
+                    .entries
+                    .values()
+                    .all(|entry| matches!(entry.state, PasswordMutationState::Complete(_, _)))
+            };
+            if drained {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    fn clear_after_transactions_drain(&self) {
+        let mut ledger = self.ledger.lock().unwrap();
+        if !ledger
+            .entries
+            .values()
+            .all(|entry| matches!(entry.state, PasswordMutationState::Complete(_, _)))
+        {
+            log::error!("Password mutation transactions drained with unresolved replay authority");
+            std::process::abort();
+        }
+        ledger.clear_sensitive_state();
+    }
+
+    async fn wait_for_complete(
+        &self,
+        operation_id: &str,
+        kind: PasswordMutationKind,
+    ) -> Option<IpcMutationResult> {
+        loop {
+            let notified = self.changed.notified();
+            match self.status(operation_id, kind) {
+                PasswordMutationStatus::Complete(result) => return Some(result),
+                PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending => {}
+                PasswordMutationStatus::Unknown | PasswordMutationStatus::ShuttingDown => {
+                    return None
+                }
+            }
+            notified.await;
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct PasswordMutationCompletion {
+    coordinator: Arc<PasswordMutationCoordinator>,
+    operation_id: String,
+    kind: PasswordMutationKind,
+    result: IpcMutationResult,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Drop for PasswordMutationCompletion {
+    fn drop(&mut self) {
+        self.coordinator
+            .complete(&self.operation_id, self.kind, self.result);
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn spawn_password_mutation(
+    operation_id: String,
+    value: MainPasswordMutationValue,
+    kind: PasswordMutationKind,
+    permit: OwnedSemaphorePermit,
+) -> tokio::task::JoinHandle<IpcMutationResult> {
+    let coordinator = Arc::clone(password_mutations());
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let mut completion = PasswordMutationCompletion {
+            coordinator,
+            operation_id,
+            kind,
+            result: IpcMutationResult::InternalFailure,
+        };
+        let result = match Config::set_permanent_password_persisted(value.as_str()) {
+            Ok(true) => IpcMutationResult::Applied,
+            Ok(false) => IpcMutationResult::Rejected,
+            Err(err) => {
+                log::error!("password mutation persistence failed: {err}");
+                IpcMutationResult::InternalFailure
+            }
+        };
+        completion.result = result;
+        result
+    })
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn password_mutations() -> &'static Arc<PasswordMutationCoordinator> {
+    PASSWORD_MUTATIONS.get_or_init(|| Arc::new(PasswordMutationCoordinator::new()))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_password_admissions() -> &'static Arc<LinuxPasswordAdmissionCoordinator> {
+    LINUX_PASSWORD_ADMISSIONS.get_or_init(|| Arc::new(LinuxPasswordAdmissionCoordinator::new()))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn password_mutation_id_is_valid(operation_id: &str) -> bool {
+    operation_id.len() == PASSWORD_MUTATION_ID_BYTES
+        && hbb_common::uuid::Uuid::parse_str(operation_id)
+            .is_ok_and(|id| id.to_string() == operation_id)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn password_mutation_fingerprint(
+    key: &hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key,
+    value: &str,
+) -> PasswordMutationFingerprint {
+    PasswordMutationFingerprint(
+        hbb_common::sodiumoxide::crypto::auth::hmacsha256::authenticate(value.as_bytes(), key),
+    )
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn password_mutation_status(state: PasswordMutationState) -> PasswordMutationStatus {
+    match state {
+        PasswordMutationState::Prepared => PasswordMutationStatus::Prepared,
+        PasswordMutationState::Pending => PasswordMutationStatus::Pending,
+        PasswordMutationState::Complete(result, _) => PasswordMutationStatus::Complete(result),
+    }
+}
+
 #[cfg(target_os = "macos")]
 async fn authorize_macos_service_scoped_ipc_connection_for_task(
     stream: &Connection,
     postfix: &str,
     _authorization_slot: OwnedSemaphorePermit,
+    deadline: tokio::time::Instant,
 ) -> bool {
     let authorization = ipc_auth::service_scoped_ipc_authorization_snapshot(stream, postfix);
-    match tokio::task::spawn_blocking(move || {
-        ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization)
+    match run_bounded_macos_security_proof(deadline, "macos-service-ipc-proof", move || {
+        Ok(ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization))
     })
     .await
     {
@@ -221,6 +1187,39 @@ async fn authorize_macos_service_scoped_ipc_connection_for_task(
             false
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+async fn authorize_macos_service_scoped_password_stream_for_task(
+    stream: &Conn,
+    postfix: &str,
+    _authorization_slot: OwnedSemaphorePermit,
+    deadline: tokio::time::Instant,
+) -> bool {
+    let authorization =
+        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(stream, postfix);
+    match run_bounded_macos_security_proof(deadline, "macos-password-ipc-proof", move || {
+        Ok(ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization))
+    })
+    .await
+    {
+        Ok(authorized) => authorized,
+        Err(err) => {
+            log::error!("macOS service password IPC authorization task failed: {err}");
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn authorize_macos_service_server_snapshot_for_task(
+    authorization: ipc_auth::MacosServiceServerAuthorization,
+    deadline: tokio::time::Instant,
+) -> ResultType<()> {
+    run_bounded_macos_security_proof(deadline, "macos-service-server-proof", move || {
+        ipc_auth::authorize_macos_service_server_snapshot(authorization)
+    })
+    .await
 }
 
 #[inline]
@@ -632,23 +1631,8 @@ pub enum Data {
     ChatMessage {
         text: String,
     },
-    SystemInfo(Option<String>),
     ClickTime(i64),
     Close,
-    ConfigRequest(String),
-    ConfigValue((String, Option<String>)),
-    Options(Option<HashMap<String, String>>),
-    OptionsSetResult(bool),
-    SetVoiceCallInput(String),
-    SetUserOwnedPermanentPassword(String),
-    SetUserOwnedPermanentPasswordResult(bool),
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    RequestServiceOwnedUnattendedPasswordChange(String),
-    #[cfg(target_os = "macos")]
-    RequestMacosServiceOwnedUnattendedPasswordChange {
-        password: String,
-        authorization: Vec<u8>,
-    },
     #[cfg(target_os = "macos")]
     MacosServiceOwnedPasswordRightReadyRequest,
     #[cfg(target_os = "macos")]
@@ -660,15 +1644,14 @@ pub enum Data {
         storage: String,
         salt: String,
     },
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    CommitServiceOwnedUnattendedPasswordChange(String),
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    ServiceOwnedUnattendedPasswordChangeResult(bool),
     #[cfg(target_os = "windows")]
     RequestServiceOwnedShareRdp(bool),
     #[cfg(target_os = "windows")]
     ServiceOwnedShareRdpResult(bool),
-    NatType(Option<i32>),
+    #[cfg(target_os = "windows")]
+    RequestServiceOwnedSasDispatch,
+    #[cfg(target_os = "windows")]
+    ServiceOwnedSasDispatchAccepted(bool),
     CmFileResponse(CmFileResponse),
     #[cfg(target_os = "linux")]
     PulseAudioStart {
@@ -676,23 +1659,11 @@ pub enum Data {
         token: String,
         source: String,
     },
-    #[cfg(target_os = "linux")]
-    ValidatePulseAudioStart {
-        token: String,
-        result: Option<bool>,
-    },
     FS(FS),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     AuthorizedFS {
         cm_auth_token: String,
         fs: FS,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    ValidateCmConnection {
-        id: i32,
-        conn_type: CmAuthConnType,
-        cm_auth_token: String,
-        result: Option<CmConnectionAuthority>,
     },
     Test,
     #[cfg(target_os = "windows")]
@@ -721,21 +1692,8 @@ pub enum Data {
     StartVoiceCall,
     VoiceCallResponse(bool),
     CloseVoiceCall(String),
-    #[cfg(windows)]
-    SyncWinCpuUsage(Option<f64>),
     FileTransferLog((String, String)),
-    #[cfg(windows)]
-    ControlledSessionCount(usize),
     CmErr(String),
-    #[cfg(all(
-        feature = "flutter",
-        not(any(target_os = "android", target_os = "ios"))
-    ))]
-    ControllingSessionCount(usize),
-    #[cfg(target_os = "linux")]
-    TerminalSessionCount(usize),
-    #[cfg(target_os = "windows")]
-    PortForwardSessionCount(Option<usize>),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     WhiteboardBind {
         conn_id: i32,
@@ -754,188 +1712,1838 @@ pub enum Data {
     },
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     WhiteboardShutdown,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(tag = "t")]
+pub enum MainConfigKey {
+    Id,
+    PermanentPasswordStorageAndSalt,
+    PermanentPasswordSet,
+    PermanentPasswordIsPreset,
+    UserOwnedPermanentPasswordWritable,
+    HideConnectionManager,
+    VoiceCallInput,
+    DirectListenerBound,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct MainStatusSnapshot {
+    pub options: MainStatusOptions,
+    pub id: String,
+    pub file_transfer_enabled: Option<bool>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum MainStatusOptionKey {
+    AccessMode,
+    EnableKeyboard,
+    EnableClipboard,
+    EnableFileTransfer,
+    EnableCamera,
+    EnableTerminal,
+    EnableAudio,
+    EnableTunnel,
+    EnableRemoteRestart,
+    EnableRecordSession,
+    EnableBlockInput,
+    EnableVirtualDisplay,
+    AllowAutoDisconnect,
+    AutoDisconnectTimeout,
+    AllowOnlyConnectionWindowOpen,
+    AllowAutoRecordIncoming,
+    EnableAbr,
+    AllowRemoveWallpaper,
+    AllowAlwaysSoftwareRender,
+    AllowLinuxHeadless,
+    EnableHwcodec,
+    ApproveMode,
+    VerificationMethod,
+    CustomRendezvousServer,
+    ApiServer,
+    AllowWebsocket,
+    PresetAddressBookName,
+    PresetAddressBookTag,
+    PresetAddressBookAlias,
+    PresetAddressBookNote,
+    PresetDeviceUsername,
+    PresetDeviceName,
+    PresetNote,
+    EnableDirectxCapture,
+    EnableAndroidSoftwareEncodingHalfScale,
+    RelayServer,
+    AllowInsecureTlsFallback,
+    KeepAwakeDuringIncomingSessions,
+    AudioInput,
+    VoiceCallInput,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl MainStatusOptionKey {
+    fn as_str(self) -> &'static str {
+        use hbb_common::config::keys;
+        match self {
+            Self::AccessMode => keys::OPTION_ACCESS_MODE,
+            Self::EnableKeyboard => keys::OPTION_ENABLE_KEYBOARD,
+            Self::EnableClipboard => keys::OPTION_ENABLE_CLIPBOARD,
+            Self::EnableFileTransfer => keys::OPTION_ENABLE_FILE_TRANSFER,
+            Self::EnableCamera => keys::OPTION_ENABLE_CAMERA,
+            Self::EnableTerminal => keys::OPTION_ENABLE_TERMINAL,
+            Self::EnableAudio => keys::OPTION_ENABLE_AUDIO,
+            Self::EnableTunnel => keys::OPTION_ENABLE_TUNNEL,
+            Self::EnableRemoteRestart => keys::OPTION_ENABLE_REMOTE_RESTART,
+            Self::EnableRecordSession => keys::OPTION_ENABLE_RECORD_SESSION,
+            Self::EnableBlockInput => keys::OPTION_ENABLE_BLOCK_INPUT,
+            Self::EnableVirtualDisplay => keys::OPTION_ENABLE_VIRTUAL_DISPLAY,
+            Self::AllowAutoDisconnect => keys::OPTION_ALLOW_AUTO_DISCONNECT,
+            Self::AutoDisconnectTimeout => keys::OPTION_AUTO_DISCONNECT_TIMEOUT,
+            Self::AllowOnlyConnectionWindowOpen => keys::OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN,
+            Self::AllowAutoRecordIncoming => keys::OPTION_ALLOW_AUTO_RECORD_INCOMING,
+            Self::EnableAbr => keys::OPTION_ENABLE_ABR,
+            Self::AllowRemoveWallpaper => keys::OPTION_ALLOW_REMOVE_WALLPAPER,
+            Self::AllowAlwaysSoftwareRender => keys::OPTION_ALLOW_ALWAYS_SOFTWARE_RENDER,
+            Self::AllowLinuxHeadless => keys::OPTION_ALLOW_LINUX_HEADLESS,
+            Self::EnableHwcodec => keys::OPTION_ENABLE_HWCODEC,
+            Self::ApproveMode => keys::OPTION_APPROVE_MODE,
+            Self::VerificationMethod => keys::OPTION_VERIFICATION_METHOD,
+            Self::CustomRendezvousServer => keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,
+            Self::ApiServer => keys::OPTION_API_SERVER,
+            Self::AllowWebsocket => keys::OPTION_ALLOW_WEBSOCKET,
+            Self::PresetAddressBookName => keys::OPTION_PRESET_ADDRESS_BOOK_NAME,
+            Self::PresetAddressBookTag => keys::OPTION_PRESET_ADDRESS_BOOK_TAG,
+            Self::PresetAddressBookAlias => keys::OPTION_PRESET_ADDRESS_BOOK_ALIAS,
+            Self::PresetAddressBookNote => keys::OPTION_PRESET_ADDRESS_BOOK_NOTE,
+            Self::PresetDeviceUsername => keys::OPTION_PRESET_DEVICE_USERNAME,
+            Self::PresetDeviceName => keys::OPTION_PRESET_DEVICE_NAME,
+            Self::PresetNote => keys::OPTION_PRESET_NOTE,
+            Self::EnableDirectxCapture => keys::OPTION_ENABLE_DIRECTX_CAPTURE,
+            Self::EnableAndroidSoftwareEncodingHalfScale => {
+                keys::OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE
+            }
+            Self::RelayServer => keys::OPTION_RELAY_SERVER,
+            Self::AllowInsecureTlsFallback => keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK,
+            Self::KeepAwakeDuringIncomingSessions => {
+                keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS
+            }
+            Self::AudioInput => "audio-input",
+            Self::VoiceCallInput => "voice-call-input",
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        use hbb_common::config::keys;
+        Some(match value {
+            keys::OPTION_ACCESS_MODE => Self::AccessMode,
+            keys::OPTION_ENABLE_KEYBOARD => Self::EnableKeyboard,
+            keys::OPTION_ENABLE_CLIPBOARD => Self::EnableClipboard,
+            keys::OPTION_ENABLE_FILE_TRANSFER => Self::EnableFileTransfer,
+            keys::OPTION_ENABLE_CAMERA => Self::EnableCamera,
+            keys::OPTION_ENABLE_TERMINAL => Self::EnableTerminal,
+            keys::OPTION_ENABLE_AUDIO => Self::EnableAudio,
+            keys::OPTION_ENABLE_TUNNEL => Self::EnableTunnel,
+            keys::OPTION_ENABLE_REMOTE_RESTART => Self::EnableRemoteRestart,
+            keys::OPTION_ENABLE_RECORD_SESSION => Self::EnableRecordSession,
+            keys::OPTION_ENABLE_BLOCK_INPUT => Self::EnableBlockInput,
+            keys::OPTION_ENABLE_VIRTUAL_DISPLAY => Self::EnableVirtualDisplay,
+            keys::OPTION_ALLOW_AUTO_DISCONNECT => Self::AllowAutoDisconnect,
+            keys::OPTION_AUTO_DISCONNECT_TIMEOUT => Self::AutoDisconnectTimeout,
+            keys::OPTION_ALLOW_ONLY_CONN_WINDOW_OPEN => Self::AllowOnlyConnectionWindowOpen,
+            keys::OPTION_ALLOW_AUTO_RECORD_INCOMING => Self::AllowAutoRecordIncoming,
+            keys::OPTION_ENABLE_ABR => Self::EnableAbr,
+            keys::OPTION_ALLOW_REMOVE_WALLPAPER => Self::AllowRemoveWallpaper,
+            keys::OPTION_ALLOW_ALWAYS_SOFTWARE_RENDER => Self::AllowAlwaysSoftwareRender,
+            keys::OPTION_ALLOW_LINUX_HEADLESS => Self::AllowLinuxHeadless,
+            keys::OPTION_ENABLE_HWCODEC => Self::EnableHwcodec,
+            keys::OPTION_APPROVE_MODE => Self::ApproveMode,
+            keys::OPTION_VERIFICATION_METHOD => Self::VerificationMethod,
+            keys::OPTION_CUSTOM_RENDEZVOUS_SERVER => Self::CustomRendezvousServer,
+            keys::OPTION_API_SERVER => Self::ApiServer,
+            keys::OPTION_ALLOW_WEBSOCKET => Self::AllowWebsocket,
+            keys::OPTION_PRESET_ADDRESS_BOOK_NAME => Self::PresetAddressBookName,
+            keys::OPTION_PRESET_ADDRESS_BOOK_TAG => Self::PresetAddressBookTag,
+            keys::OPTION_PRESET_ADDRESS_BOOK_ALIAS => Self::PresetAddressBookAlias,
+            keys::OPTION_PRESET_ADDRESS_BOOK_NOTE => Self::PresetAddressBookNote,
+            keys::OPTION_PRESET_DEVICE_USERNAME => Self::PresetDeviceUsername,
+            keys::OPTION_PRESET_DEVICE_NAME => Self::PresetDeviceName,
+            keys::OPTION_PRESET_NOTE => Self::PresetNote,
+            keys::OPTION_ENABLE_DIRECTX_CAPTURE => Self::EnableDirectxCapture,
+            keys::OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE => {
+                Self::EnableAndroidSoftwareEncodingHalfScale
+            }
+            keys::OPTION_RELAY_SERVER => Self::RelayServer,
+            keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK => Self::AllowInsecureTlsFallback,
+            keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS => {
+                Self::KeepAwakeDuringIncomingSessions
+            }
+            "audio-input" => Self::AudioInput,
+            "voice-call-input" => Self::VoiceCallInput,
+            _ => return None,
+        })
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct MainStatusOption {
+    key: MainStatusOptionKey,
+    value: String,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct MainStatusOptions(Vec<MainStatusOption>);
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl MainStatusOptions {
+    fn from_map(options: HashMap<String, String>) -> ResultType<Self> {
+        if options.len() > MAIN_IPC_MAX_OPTION_COUNT {
+            bail!("too many main IPC options");
+        }
+        let mut entries = Vec::with_capacity(options.len());
+        for (key, value) in options {
+            let Some(key) = MainStatusOptionKey::from_str(&key) else {
+                bail!("main IPC option is not allowlisted");
+            };
+            if value.len() > MAIN_IPC_MAX_OPTION_VALUE_BYTES {
+                bail!("main IPC option value is oversized");
+            }
+            entries.push(MainStatusOption { key, value });
+        }
+        entries.sort_by_key(|entry| entry.key.as_str());
+        if entries.windows(2).any(|pair| pair[0].key == pair[1].key) {
+            bail!("duplicate main IPC option");
+        }
+        Ok(Self(entries))
+    }
+
+    fn from_config() -> ResultType<Self> {
+        let options = Config::get_options()
+            .into_iter()
+            .filter(|(key, _)| MainStatusOptionKey::from_str(key).is_some())
+            .collect();
+        Self::from_map(options)
+    }
+
+    fn validate(self) -> ResultType<Self> {
+        if self.0.len() > MAIN_IPC_MAX_OPTION_COUNT {
+            bail!("too many main IPC options");
+        }
+        let mut seen = std::collections::HashSet::with_capacity(self.0.len());
+        for entry in &self.0 {
+            if entry.value.len() > MAIN_IPC_MAX_OPTION_VALUE_BYTES {
+                bail!("main IPC option value is oversized");
+            }
+            if !seen.insert(entry.key) {
+                bail!("duplicate main IPC option");
+            }
+        }
+        Ok(self)
+    }
+
+    pub fn into_map(self) -> ResultType<HashMap<String, String>> {
+        Ok(self
+            .validate()?
+            .0
+            .into_iter()
+            .map(|entry| (entry.key.as_str().to_owned(), entry.value))
+            .collect())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn merge_main_status_options(
+    mut existing: HashMap<String, String>,
+    updates: HashMap<String, String>,
+) -> HashMap<String, String> {
+    existing.retain(|key, _| MainStatusOptionKey::from_str(key).is_none());
+    existing.extend(updates);
+    existing
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub enum IpcMutationResult {
+    Applied,
+    Rejected,
+    InternalFailure,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub enum PasswordMutationStatus {
+    Prepared,
+    Pending,
+    Complete(IpcMutationResult),
+    Unknown,
+    ShuttingDown,
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn windows_credential_queue_uncertainty_status() -> PasswordMutationStatus {
+    PasswordMutationStatus::Pending
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsCredentialClientDecision {
+    Continue,
+    Applied,
+    Rejected,
+    InternalFailure,
+    NotAdmitted,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn windows_credential_client_decision(
+    status: PasswordMutationStatus,
+    recovery_required: bool,
+) -> WindowsCredentialClientDecision {
+    match status {
+        PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending => {
+            WindowsCredentialClientDecision::Continue
+        }
+        PasswordMutationStatus::Complete(IpcMutationResult::Applied) => {
+            WindowsCredentialClientDecision::Applied
+        }
+        PasswordMutationStatus::Complete(IpcMutationResult::Rejected) => {
+            WindowsCredentialClientDecision::Rejected
+        }
+        PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure) => {
+            WindowsCredentialClientDecision::InternalFailure
+        }
+        PasswordMutationStatus::ShuttingDown => WindowsCredentialClientDecision::NotAdmitted,
+        PasswordMutationStatus::Unknown if recovery_required => {
+            WindowsCredentialClientDecision::Continue
+        }
+        PasswordMutationStatus::Unknown => WindowsCredentialClientDecision::NotAdmitted,
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsJobStopDecision {
+    Empty,
+    Retry,
+    Abort,
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn windows_job_stop_decision(
+    active_processes: Option<u32>,
+    operation_error: Option<i32>,
+) -> WindowsJobStopDecision {
+    if active_processes == Some(0) {
+        return WindowsJobStopDecision::Empty;
+    }
+    if matches!(operation_error, Some(5) | Some(6))
+        || (active_processes.is_none() && operation_error.is_none())
+    {
+        return WindowsJobStopDecision::Abort;
+    }
+    WindowsJobStopDecision::Retry
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsCredentialOperationState {
+    Active,
+    Complete(IpcMutationResult, std::time::Instant),
+}
+
+#[cfg(any(target_os = "windows", test))]
+struct WindowsCredentialOperationEntry {
+    request_tag: PasswordMutationFingerprint,
+    state: WindowsCredentialOperationState,
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) struct WindowsCredentialOperationLedger {
+    request_key: hbb_common::sodiumoxide::crypto::auth::hmacsha256::Key,
+    entries: HashMap<String, WindowsCredentialOperationEntry>,
+    capacity: usize,
+    shutting_down: bool,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl WindowsCredentialOperationLedger {
+    pub(crate) fn new(capacity: usize) -> Self {
+        Self {
+            request_key: hbb_common::sodiumoxide::crypto::auth::hmacsha256::gen_key(),
+            entries: HashMap::new(),
+            capacity,
+            shutting_down: false,
+        }
+    }
+
+    fn request_tag(&self, value: &str) -> PasswordMutationFingerprint {
+        password_mutation_fingerprint(&self.request_key, value)
+    }
+
+    fn evict_oldest_complete(&mut self) -> bool {
+        let oldest = self
+            .entries
+            .iter()
+            .filter_map(|(operation_id, entry)| match entry.state {
+                WindowsCredentialOperationState::Complete(_, completed_at) => {
+                    Some((operation_id.clone(), completed_at))
+                }
+                WindowsCredentialOperationState::Active => None,
+            })
+            .min_by_key(|(_, completed_at)| *completed_at)
+            .map(|(operation_id, _)| operation_id);
+        oldest
+            .and_then(|operation_id| self.entries.remove(&operation_id))
+            .is_some()
+    }
+
+    pub(crate) fn status(&self, operation_id: &str, value: &str) -> Option<PasswordMutationStatus> {
+        let request_tag = self.request_tag(value);
+        self.entries.get(operation_id).map(|entry| {
+            if entry.request_tag != request_tag {
+                PasswordMutationStatus::Complete(IpcMutationResult::Rejected)
+            } else {
+                match entry.state {
+                    WindowsCredentialOperationState::Active => PasswordMutationStatus::Pending,
+                    WindowsCredentialOperationState::Complete(result, _) => {
+                        PasswordMutationStatus::Complete(result)
+                    }
+                }
+            }
+        })
+    }
+
+    pub(crate) fn classify_during_shutdown(
+        &self,
+        operation_id: &str,
+        value: &str,
+    ) -> PasswordMutationStatus {
+        self.status(operation_id, value)
+            .unwrap_or(PasswordMutationStatus::ShuttingDown)
+    }
+
+    pub(crate) fn admit(
+        &mut self,
+        operation_id: &str,
+        value: &str,
+        transaction_active: bool,
+    ) -> bool {
+        if self.shutting_down || transaction_active || self.entries.contains_key(operation_id) {
+            return false;
+        }
+        if self.entries.len() >= self.capacity && !self.evict_oldest_complete() {
+            return false;
+        }
+        let request_tag = self.request_tag(value);
+        self.entries.insert(
+            operation_id.to_owned(),
+            WindowsCredentialOperationEntry {
+                request_tag,
+                state: WindowsCredentialOperationState::Active,
+            },
+        );
+        true
+    }
+
+    pub(crate) fn complete(
+        &mut self,
+        operation_id: &str,
+        result: IpcMutationResult,
+    ) -> ResultType<()> {
+        let Some(entry) = self.entries.get_mut(operation_id) else {
+            bail!("Windows credential transaction completed without replay authority");
+        };
+        if entry.state != WindowsCredentialOperationState::Active {
+            bail!("Windows credential transaction completed from a non-active state");
+        }
+        entry.state = WindowsCredentialOperationState::Complete(result, std::time::Instant::now());
+        Ok(())
+    }
+
+    pub(crate) fn begin_shutdown(&mut self) {
+        self.shutting_down = true;
+    }
+
+    pub(crate) fn is_shutting_down(&self) -> bool {
+        self.shutting_down
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsCredentialTransactionPhase {
+    Admitted,
+    Quiesced,
+    Committed,
+    Complete(IpcMutationResult),
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WindowsCredentialTransactionResolution {
+    pub(crate) result: IpcMutationResult,
+    pub(crate) retire_child: bool,
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) struct WindowsCredentialTransactionModel {
+    expected_child_identity: Option<(u32, u64)>,
+    phase: WindowsCredentialTransactionPhase,
+    stop_requested: bool,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl WindowsCredentialTransactionModel {
+    pub(crate) fn admitted(expected_child_identity: Option<(u32, u64)>) -> Self {
+        Self {
+            expected_child_identity,
+            phase: WindowsCredentialTransactionPhase::Admitted,
+            stop_requested: false,
+        }
+    }
+
+    pub(crate) fn exact_child_is_live(&self, observed_identity: Option<(u32, u64)>) -> bool {
+        self.expected_child_identity.is_some() && self.expected_child_identity == observed_identity
+    }
+
+    pub(crate) fn note_quiesced(&mut self) -> ResultType<()> {
+        match self.phase {
+            WindowsCredentialTransactionPhase::Admitted
+            | WindowsCredentialTransactionPhase::Quiesced => {
+                self.phase = WindowsCredentialTransactionPhase::Quiesced;
+                Ok(())
+            }
+            _ => bail!("Windows credential quiesce arrived after the durable decision"),
+        }
+    }
+
+    pub(crate) fn precommit_failure(
+        &mut self,
+        resume_proven: bool,
+        result: IpcMutationResult,
+    ) -> ResultType<WindowsCredentialTransactionResolution> {
+        if !matches!(
+            self.phase,
+            WindowsCredentialTransactionPhase::Admitted
+                | WindowsCredentialTransactionPhase::Quiesced
+        ) || result == IpcMutationResult::Applied
+        {
+            bail!("invalid Windows credential precommit completion");
+        }
+        self.phase = WindowsCredentialTransactionPhase::Complete(result);
+        Ok(WindowsCredentialTransactionResolution {
+            result,
+            retire_child: self.expected_child_identity.is_some() && !resume_proven,
+        })
+    }
+
+    pub(crate) fn note_committed(&mut self) -> ResultType<()> {
+        if !matches!(
+            self.phase,
+            WindowsCredentialTransactionPhase::Admitted
+                | WindowsCredentialTransactionPhase::Quiesced
+        ) {
+            bail!("invalid Windows credential durable commit transition");
+        }
+        self.phase = WindowsCredentialTransactionPhase::Committed;
+        Ok(())
+    }
+
+    pub(crate) fn request_stop(&mut self) {
+        self.stop_requested = true;
+    }
+
+    pub(crate) fn should_skip_replica_apply(&self) -> bool {
+        self.stop_requested && self.phase == WindowsCredentialTransactionPhase::Committed
+    }
+
+    pub(crate) fn postcommit_complete(
+        &mut self,
+        exact_replica_applied: bool,
+    ) -> ResultType<WindowsCredentialTransactionResolution> {
+        match self.phase {
+            WindowsCredentialTransactionPhase::Committed
+            | WindowsCredentialTransactionPhase::Complete(IpcMutationResult::Applied) => {}
+            _ => bail!("Windows credential postcommit completion preceded durable commit"),
+        }
+        let skip_replica_apply = self.should_skip_replica_apply();
+        self.phase = WindowsCredentialTransactionPhase::Complete(IpcMutationResult::Applied);
+        Ok(WindowsCredentialTransactionResolution {
+            result: IpcMutationResult::Applied,
+            retire_child: self.expected_child_identity.is_some()
+                && !exact_replica_applied
+                && !skip_replica_apply,
+        })
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WindowsCredentialStopApplyState {
+    Open,
+    Applying,
+    StopBeforeApply,
+    StopPendingApply,
+    ReadyToStop,
+    Stopped,
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) struct WindowsCredentialStopApplyModel {
+    state: WindowsCredentialStopApplyState,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl WindowsCredentialStopApplyModel {
+    pub(crate) fn new() -> Self {
+        Self {
+            state: WindowsCredentialStopApplyState::Open,
+        }
+    }
+
+    pub(crate) fn request_stop(&mut self) -> bool {
+        match self.state {
+            WindowsCredentialStopApplyState::Open => {
+                self.state = WindowsCredentialStopApplyState::StopBeforeApply;
+                false
+            }
+            WindowsCredentialStopApplyState::Applying => {
+                self.state = WindowsCredentialStopApplyState::StopPendingApply;
+                false
+            }
+            WindowsCredentialStopApplyState::StopBeforeApply
+            | WindowsCredentialStopApplyState::StopPendingApply
+            | WindowsCredentialStopApplyState::ReadyToStop => false,
+            WindowsCredentialStopApplyState::Stopped => true,
+        }
+    }
+
+    pub(crate) fn admit_apply(&mut self) -> bool {
+        if self.state != WindowsCredentialStopApplyState::Open {
+            return false;
+        }
+        self.state = WindowsCredentialStopApplyState::Applying;
+        true
+    }
+
+    pub(crate) fn finish_apply(&mut self) -> bool {
+        match self.state {
+            WindowsCredentialStopApplyState::Applying => {
+                self.state = WindowsCredentialStopApplyState::Open;
+                false
+            }
+            WindowsCredentialStopApplyState::StopPendingApply => {
+                self.state = WindowsCredentialStopApplyState::ReadyToStop;
+                false
+            }
+            WindowsCredentialStopApplyState::Open
+            | WindowsCredentialStopApplyState::StopBeforeApply
+            | WindowsCredentialStopApplyState::ReadyToStop
+            | WindowsCredentialStopApplyState::Stopped => false,
+        }
+    }
+
+    pub(crate) fn complete_stop(&mut self) -> bool {
+        if matches!(
+            self.state,
+            WindowsCredentialStopApplyState::StopBeforeApply
+                | WindowsCredentialStopApplyState::ReadyToStop
+        ) {
+            self.state = WindowsCredentialStopApplyState::Stopped;
+            return true;
+        }
+        self.state == WindowsCredentialStopApplyState::Stopped
+    }
+
+    pub(crate) fn stop_is_linearized(&self) -> bool {
+        self.state == WindowsCredentialStopApplyState::Stopped
+    }
+
+    pub(crate) fn state(&self) -> WindowsCredentialStopApplyState {
+        self.state
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "t", content = "c")]
+pub enum MainIpcRequest {
+    StatusSnapshot,
+    Config(MainConfigKey),
+    SetVoiceCallInput(String),
+    PasswordMutationStatus {
+        operation_id: String,
+    },
+    SetOptions(MainStatusOptions),
+    ValidateCmConnection {
+        id: i32,
+        conn_type: CmAuthConnType,
+        cm_auth_token: String,
+    },
+    #[cfg(target_os = "linux")]
+    ValidatePulseAudioStart {
+        token: String,
+    },
     #[cfg(target_os = "windows")]
-    FileTransferEnabledState(Option<bool>),
+    CpuUsage,
+    #[cfg(target_os = "windows")]
+    ControlledSessionCount,
+    #[cfg(target_os = "linux")]
+    TerminalSessionCount,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "t", content = "c")]
+pub enum MainIpcResponse {
+    StatusSnapshot(MainStatusSnapshot),
+    Config {
+        key: MainConfigKey,
+        value: Option<String>,
+    },
+    VoiceCallInputSet(IpcMutationResult),
+    PasswordMutation(PasswordMutationStatus),
+    OptionsSet(IpcMutationResult),
+    RequestFailed(IpcMutationResult),
+    CmConnectionValidation(CmConnectionAuthority),
+    #[cfg(target_os = "linux")]
+    PulseAudioStartValidation(bool),
+    #[cfg(target_os = "windows")]
+    CpuUsage(Option<f64>),
+    #[cfg(target_os = "windows")]
+    ControlledSessionCount(usize),
+    #[cfg(target_os = "linux")]
+    TerminalSessionCount(usize),
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) const WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";
+#[cfg(target_os = "windows")]
+pub(crate) const WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX: &str = "_service_main_control";
+#[cfg(target_os = "windows")]
+pub(crate) const WINDOWS_SERVICE_SAS_IPC_POSTFIX: &str = "_service_sas";
+#[cfg(target_os = "windows")]
+pub(crate) const WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS: u64 = 5_000;
+#[cfg(target_os = "windows")]
+pub(crate) const WINDOWS_SERVICE_SUPERVISOR_PID_ENV: &str =
+    "RUSTDESK_WINDOWS_SERVICE_SUPERVISOR_PID";
+#[cfg(target_os = "windows")]
+pub(crate) const WINDOWS_SERVICE_SUPERVISOR_CREATION_ENV: &str =
+    "RUSTDESK_WINDOWS_SERVICE_SUPERVISOR_CREATION";
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "t", content = "c")]
+enum WindowsServiceMainRequest {
+    QuiesceCredentialReplica {
+        transition_id: String,
+    },
+    ApplyCredentialReplica {
+        transition_id: String,
+        storage: String,
+        salt: String,
+        replica_tag: [u8; 32],
+    },
+    QueryCredentialReplica,
+    ResumeCredentialReplica {
+        transition_id: String,
+    },
+    PortForwardSessionCount,
+    Shutdown,
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub(crate) struct WindowsCredentialReplicaState {
+    pub(crate) transition_id: Option<String>,
+    pub(crate) replica_tag: [u8; 32],
+    pub(crate) quiesced: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Serialize, Deserialize)]
+enum WindowsCredentialReplicaResponse {
+    State(WindowsCredentialReplicaState),
+    Rejected,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "t", content = "c")]
+enum WindowsServiceMainResponse {
+    CredentialReplica(WindowsCredentialReplicaResponse),
+    PortForwardSessionCount(usize),
+    ShutdownAccepted,
 }
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn start(postfix: &str) -> ResultType<()> {
     if postfix.is_empty() {
         Config::ensure_loaded();
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        return start_main_ipc().await;
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        bail!("desktop main IPC is unavailable on mobile");
     }
-    let mut incoming = new_listener(postfix).await?;
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    return start_service_ipc(postfix).await;
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    bail!("unsupported IPC listener postfix: {postfix}");
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum SensitiveMainListenerEvent {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    Accepted(Conn),
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    AcceptFailed(String),
+    #[cfg(target_os = "windows")]
+    Request(crate::platform::windows::WindowsSensitivePasswordRequest),
+    Ended,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn next_sensitive_main_listener_event(listener: &mut Incoming) -> SensitiveMainListenerEvent {
+    match listener.next().await {
+        Some(Ok(stream)) => SensitiveMainListenerEvent::Accepted(stream),
+        Some(Err(err)) => SensitiveMainListenerEvent::AcceptFailed(err.to_string()),
+        None => SensitiveMainListenerEvent::Ended,
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn next_sensitive_main_listener_event(
+    listener: &mut Option<
+        mpsc::Receiver<crate::platform::windows::WindowsSensitivePasswordRequest>,
+    >,
+) -> SensitiveMainListenerEvent {
+    match listener.as_mut() {
+        Some(listener) => listener
+            .recv()
+            .await
+            .map(SensitiveMainListenerEvent::Request)
+            .unwrap_or(SensitiveMainListenerEvent::Ended),
+        None => std::future::pending().await,
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn start_main_ipc() -> ResultType<()> {
+    let mut incoming = new_listener("").await?;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let mut password_events = new_listener(password::USER_PASSWORD_IPC_POSTFIX).await?;
+    #[cfg(target_os = "windows")]
+    let (mut password_events, password_listener) =
+        if crate::common::is_service_owned_server_process() {
+            (None, None)
+        } else {
+            let (password_request_tx, password_events) = mpsc::channel(MAIN_IPC_TRANSACTION_BUDGET);
+            let password_listener =
+                crate::platform::windows::start_windows_sensitive_password_listener(
+                    password::USER_PASSWORD_IPC_POSTFIX,
+                    password_request_tx,
+                )?;
+            (Some(password_events), Some(password_listener))
+        };
+    let listener_guard =
+        LocalIpcListenerGuard::activate(&MAIN_IPC_LISTENER_STATE, "main IPC listener")?;
+    let mut transactions = JoinSet::new();
+    let shutdown = crate::server::shutdown_token();
+    let mut listener_error = None;
     loop {
-        if let Some(result) = incoming.next().await {
-            match result {
-                Ok(stream) => {
-                    let postfix = postfix.to_owned();
-                    let is_protected_service_ipc = config::is_service_ipc_postfix(&postfix);
-                    let mut stream = if is_protected_service_ipc {
-                        Connection::new_protected_service(stream)
-                    } else {
-                        Connection::new(stream)
-                    };
-                    #[cfg(target_os = "linux")]
-                    if is_protected_service_ipc {
-                        if !authorize_service_scoped_ipc_connection(&stream, &postfix) {
-                            continue;
-                        }
-                    }
-                    #[cfg(any(target_os = "linux", target_os = "macos"))]
-                    let service_ipc_transaction_slot = if is_protected_service_ipc {
-                        let Some(slot) = try_acquire_service_ipc_transaction_slot() else {
-                            continue;
-                        };
-                        Some(slot)
-                    } else {
-                        None
-                    };
-                    #[cfg(target_os = "macos")]
-                    let macos_service_ipc_authorization_slot = if is_protected_service_ipc {
-                        let Some(slot) = try_acquire_macos_service_ipc_authorization_slot() else {
-                            continue;
-                        };
-                        Some(slot)
-                    } else {
-                        None
-                    };
-                    #[cfg(windows)]
-                    if postfix.is_empty() {
-                        // Windows main IPC (`postfix == ""`) is authorized here.
-                        // Other security-sensitive channels use dedicated authorization paths:
-                        // - service-scoped postfixes: service-specific listener/authorization
-                        if !authorize_windows_main_ipc_connection(&stream, &postfix) {
-                            continue;
-                        }
-                    }
-                    tokio::spawn(async move {
-                        #[cfg(any(target_os = "linux", target_os = "macos"))]
-                        let _service_ipc_transaction_slot = service_ipc_transaction_slot;
-                        #[cfg(target_os = "macos")]
-                        if let Some(authorization_slot) = macos_service_ipc_authorization_slot {
-                            if !authorize_macos_service_scoped_ipc_connection_for_task(
-                                &stream,
-                                &postfix,
-                                authorization_slot,
-                            )
-                            .await
-                            {
-                                return;
-                            }
-                        }
-                        #[cfg(any(target_os = "linux", target_os = "macos"))]
-                        if is_protected_service_ipc {
-                            match stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await {
-                                Err(err) => {
-                                    log::trace!(
-                                        "protected _service IPC request closed before a bounded request frame: {}",
-                                        err
-                                    );
-                                }
-                                Ok(Some(data)) => {
-                                    if service_channel_admits_message(&data) {
-                                        handle(data, &mut stream, IpcChannel::Service).await;
-                                    } else {
-                                        log::warn!(
-                                            "Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}",
-                                            postfix,
-                                            std::mem::discriminant(&data),
-                                            stream.peer_uid()
-                                        );
-                                    }
-                                }
-                                Ok(None) => {
-                                    log::warn!(
-                                        "Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}",
-                                        postfix,
-                                        stream.peer_uid()
-                                    );
-                                }
-                            }
-                            return;
-                        }
-                        loop {
-                            match stream.next().await {
-                                Err(err) => {
-                                    log::trace!("ipc '{}' connection closed: {}", postfix, err);
-                                    break;
-                                }
-                                Ok(Some(data)) => {
-                                    // R-S11 / R-S11b / Appendix C #15/#25: the main channel is a
-                                    // state-mutation boundary. Reject ordinary service-owned
-                                    // policy/credential mutations before the handler reaches Config setters.
-                                    #[cfg(any(target_os = "linux", target_os = "macos"))]
-                                    if !main_channel_admits_state_mutation(
-                                        &data,
-                                        MainIpcAuthority::for_current_process(),
-                                        MainIpcPeerAuthority::for_stream(&stream),
-                                    ) {
-                                        log::warn!(
-                                            "Rejected a state mutation on the main IPC channel (R-S11/R-S11b): data_kind={:?}, peer_uid={:?}",
-                                            std::mem::discriminant(&data),
-                                            stream.peer_uid()
-                                        );
-                                        send_main_channel_mutation_rejection_ack(
-                                            &data,
-                                            &mut stream,
-                                        )
-                                        .await;
-                                        continue;
-                                    }
-                                    // R-S11: the SAME per-arm state-mutation allowlist binds the WINDOWS
-                                    // main pipe (postfix == ""; the only postfix `start()` is ever called
-                                    // with on Windows). Windows has no `_service` channel and no
-                                    // SO_PEERCRED peer_uid, but the same named mutation policy MUST
-                                    // be enforced here so that even a same-session, same-executable
-                                    // process (already the only peer admitted by
-                                    // authorize_windows_main_ipc_connection) cannot mutate privileged
-                                    // state from inside — the config-integrity boundary R-S11 mandates
-                                    // "per write-arm", on every shipped artifact, not Linux/macOS alone.
-                                    #[cfg(target_os = "windows")]
-                                    let peer_authority = match &data {
-                                        Data::Close
-                                        | Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
-                                            MainIpcPeerAuthority::for_windows_main_pipe(&stream)
-                                        }
-                                        _ => MainIpcPeerAuthority::Ordinary,
-                                    };
-                                    #[cfg(target_os = "windows")]
-                                    if !main_channel_admits_state_mutation(
-                                        &data,
-                                        MainIpcAuthority::for_current_process(),
-                                        peer_authority,
-                                    ) {
-                                        log::warn!(
-                                            "Rejected a state mutation on the main IPC channel (R-S11/R-S11b): data_kind={:?}",
-                                            std::mem::discriminant(&data)
-                                        );
-                                        send_main_channel_mutation_rejection_ack(
-                                            &data,
-                                            &mut stream,
-                                        )
-                                        .await;
-                                        continue;
-                                    }
-                                    handle(data, &mut stream, IpcChannel::Main).await;
-                                }
-                                Ok(None) => {
-                                    // `Ok(None)` means a complete frame arrived but did not
-                                    // deserialize into `Data`. Peer close/reset is returned as
-                                    // `Err` by `ConnectionTmpl::next()`. Keep the historical
-                                    // ignore behavior for non-service IPC.
-                                }
-                            }
-                        }
-                    });
-                }
-                Err(err) => {
-                    log::error!("Couldn't get client: {:?}", err);
+        tokio::select! {
+            biased;
+            _ = shutdown.cancelled() => break,
+            completed = transactions.join_next(), if !transactions.is_empty() => {
+                if let Some(Err(err)) = completed {
+                    log::error!("main IPC transaction task failed: {err}");
                 }
             }
+            event = next_sensitive_main_listener_event(&mut password_events) => {
+                match event {
+                    #[cfg(any(target_os = "linux", target_os = "macos"))]
+                    SensitiveMainListenerEvent::Accepted(stream) => {
+                        let Some(authority) = sensitive_main_ipc_authority(&stream) else { continue; };
+                        let Some(permit) = try_acquire_sensitive_main_ipc_transaction_slot(authority) else { continue; };
+                        transactions.spawn(handle_sensitive_main_ipc_transaction(
+                            stream,
+                            authority,
+                            permit,
+                        ));
+                    }
+                    #[cfg(any(target_os = "linux", target_os = "macos"))]
+                    SensitiveMainListenerEvent::AcceptFailed(err) => {
+                        log::error!("Could not accept main password IPC client: {err}");
+                    }
+                    #[cfg(target_os = "windows")]
+                    SensitiveMainListenerEvent::Request(request) => {
+                        let authority_allowed = current_process_allows_user_owned_permanent_password_write()
+                            && !Config::is_disable_change_permanent_password();
+                        let (status, worker) = begin_password_mutation(
+                            request.operation_id,
+                            request.value,
+                            PasswordMutationKind::UserOwned,
+                            authority_allowed,
+                        );
+                        let _ = request.response.send(status);
+                        if let Some(worker) = worker {
+                            transactions.spawn(async move {
+                                if let Err(err) = worker.await {
+                                    log::error!("password mutation worker failed: {err}");
+                                }
+                            });
+                        }
+                    }
+                    SensitiveMainListenerEvent::Ended => {
+                        listener_error = Some("main password IPC listener ended unexpectedly".to_owned());
+                        crate::server::request_graceful_shutdown();
+                        break;
+                    }
+                }
+            }
+            result = incoming.next() => {
+                let Some(result) = result else {
+                    listener_error = Some("main IPC listener ended unexpectedly".to_owned());
+                    crate::server::request_graceful_shutdown();
+                    break;
+                };
+                let stream = match result {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        log::error!("Could not accept main IPC client: {err}");
+                        continue;
+                    }
+                };
+                let stream = Connection::new_main(stream);
+                #[cfg(windows)]
+                if !authorize_windows_main_ipc_connection(&stream, "") {
+                    continue;
+                }
+                let Some(permit) = try_acquire_main_ipc_transaction_slot(&stream) else { continue; };
+                transactions.spawn(handle_main_ipc_transaction(stream, permit));
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(listener) = password_listener.as_ref() {
+        listener.quiesce().await;
+    }
+    password_mutations().begin_shutdown();
+    #[cfg(target_os = "windows")]
+    if let Some(password_events) = password_events.as_mut() {
+        while let Ok(request) = password_events.try_recv() {
+            let status = password_mutations().classify_during_shutdown(
+                &request.operation_id,
+                PasswordMutationKind::UserOwned,
+                request.value.as_str(),
+            );
+            let _ = request.response.send(status);
+        }
+    }
+    while let Some(result) = transactions.join_next().await {
+        if let Err(err) = result {
+            log::error!("main IPC transaction did not drain cleanly: {err}");
+        }
+    }
+    password_mutations().drain().await;
+    password_mutations().clear_after_transactions_drain();
+    drop(listener_guard);
+    if let Some(err) = listener_error {
+        log::error!("{err}");
+        crate::server::finish_graceful_shutdown().await;
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn sensitive_main_ipc_authority(stream: &Conn) -> Option<PasswordMutationKind> {
+    #[cfg(target_os = "linux")]
+    if MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned {
+        return match authenticate_linux_service_owned_password_parent(
+            stream,
+            password::USER_PASSWORD_IPC_POSTFIX,
+        ) {
+            Ok(_) => Some(PasswordMutationKind::ServiceOwned),
+            Err(err) => {
+                log::warn!("Rejected service-owned main password IPC client: {err}");
+                None
+            }
+        };
+    }
+
+    match ensure_user_owned_password_client_is_trusted(stream, password::USER_PASSWORD_IPC_POSTFIX)
+    {
+        Ok(()) => Some(PasswordMutationKind::UserOwned),
+        Err(err) => {
+            log::warn!("Rejected user-owned main password IPC client: {err}");
+            None
         }
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn handle_sensitive_main_ipc_transaction(
+    mut stream: Conn,
+    kind: PasswordMutationKind,
+    _permit: OwnedSemaphorePermit,
+) {
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_millis(MAIN_IPC_TRANSACTION_TIMEOUT_MS);
+    let request = match password::receive_request_unix(
+        &mut stream,
+        password::SensitivePayloadKind::Password,
+        deadline,
+    )
+    .await
+    {
+        Ok(request) => request,
+        Err(err) => {
+            log::trace!("main password IPC request was rejected: {err}");
+            return;
+        }
+    };
+    let operation_id = request.operation_id();
+    let value = match request.into_password() {
+        Ok(value) => value,
+        Err(err) => {
+            log::trace!("main password IPC value was rejected: {err}");
+            return;
+        }
+    };
+    let authority_allowed = match kind {
+        PasswordMutationKind::UserOwned => {
+            current_process_allows_user_owned_permanent_password_write()
+                && !Config::is_disable_change_permanent_password()
+        }
+        PasswordMutationKind::ServiceOwned => {
+            MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
+                && !Config::is_disable_change_permanent_password()
+        }
+    };
+    let (status, worker) =
+        begin_password_mutation(operation_id.to_string(), value, kind, authority_allowed);
+    if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
+    {
+        log::trace!("main password IPC status could not be returned: {err}");
+    }
+    if let Some(worker) = worker {
+        if let Err(err) = worker.await {
+            log::error!("password mutation worker failed: {err}");
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn start_service_ipc(postfix: &str) -> ResultType<()> {
+    if postfix != crate::POSTFIX_SERVICE {
+        bail!("unsupported service IPC postfix: {postfix}");
+    }
+    let mut incoming = new_listener(postfix).await?;
+    let mut password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;
+    let listener_guard = LocalIpcListenerGuard::activate(
+        &SERVICE_IPC_LISTENER_STATE,
+        "protected service IPC listener",
+    )?;
+    let mut transactions = JoinSet::new();
+    let shutdown = crate::server::shutdown_token();
+    let mut listener_error = None;
+    loop {
+        tokio::select! {
+            biased;
+            _ = shutdown.cancelled() => break,
+            completed = transactions.join_next(), if !transactions.is_empty() => {
+                if let Some(Err(err)) = completed {
+                    log::error!("protected _service IPC transaction failed: {err}");
+                }
+            }
+            result = password_incoming.next() => {
+                let Some(result) = result else {
+                    listener_error = Some("protected service password IPC listener ended unexpectedly".to_owned());
+                    crate::server::request_graceful_shutdown();
+                    break;
+                };
+                let stream = match result {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        log::error!("Could not accept protected service password IPC client: {err}");
+                        continue;
+                    }
+                };
+                #[cfg(target_os = "linux")]
+                if !ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(
+                    ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
+                        &stream,
+                        password::SERVICE_PASSWORD_IPC_POSTFIX,
+                    ),
+                ) {
+                    continue;
+                }
+                let Some(permit) = try_acquire_service_password_ipc_transaction_slot() else { continue; };
+                #[cfg(target_os = "linux")]
+                {
+                    let identity = match peer_process_identity_from_stream(
+                        &stream,
+                        password::SERVICE_PASSWORD_IPC_POSTFIX,
+                    ) {
+                        Ok(identity) => identity,
+                        Err(err) => {
+                            log::warn!("Rejected Linux service password IPC peer: {err}");
+                            continue;
+                        }
+                    };
+                    transactions.spawn(handle_sensitive_linux_service_ipc_transaction(
+                        stream,
+                        identity,
+                        permit,
+                    ));
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let Some(authorization_permit) = try_acquire_macos_service_password_ipc_authorization_slot() else { continue; };
+                    transactions.spawn(async move {
+                        let deadline = tokio::time::Instant::now()
+                            + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                        let authorized = authorize_macos_service_scoped_password_stream_for_task(
+                            &stream,
+                            password::SERVICE_PASSWORD_IPC_POSTFIX,
+                            authorization_permit,
+                            deadline,
+                        )
+                        .await;
+                        if authorized {
+                            handle_sensitive_macos_service_ipc_transaction(
+                                stream,
+                                permit,
+                                deadline,
+                            )
+                            .await;
+                        }
+                    });
+                }
+            }
+            result = incoming.next() => {
+                let Some(result) = result else {
+                    listener_error = Some("protected _service IPC listener ended unexpectedly".to_owned());
+                    crate::server::request_graceful_shutdown();
+                    break;
+                };
+                let stream = match result {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        log::error!("Could not accept protected _service IPC client: {err}");
+                        continue;
+                    }
+                };
+                let stream = Connection::new_protected_service(stream);
+                #[cfg(target_os = "linux")]
+                if !authorize_service_scoped_ipc_connection(&stream, postfix) {
+                    continue;
+                }
+                let Some(permit) = try_acquire_service_ipc_transaction_slot() else { continue; };
+                #[cfg(target_os = "macos")]
+                let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
+                let postfix = postfix.to_owned();
+                transactions.spawn(async move {
+                    let _permit = permit;
+                    #[cfg(target_os = "macos")]
+                    {
+                        let deadline = tokio::time::Instant::now()
+                            + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+                        if !authorize_macos_service_scoped_ipc_connection_for_task(
+                            &stream,
+                            &postfix,
+                            authorization_permit,
+                            deadline,
+                        )
+                        .await
+                        {
+                            return;
+                        }
+                    }
+                    handle_service_ipc_transaction(stream, &postfix).await;
+                });
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    password_mutations().begin_shutdown();
+    #[cfg(target_os = "linux")]
+    linux_password_admissions().begin_shutdown();
+    while let Some(result) = transactions.join_next().await {
+        if let Err(err) = result {
+            log::error!("protected _service IPC transaction did not drain cleanly: {err}");
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        password_mutations().drain().await;
+        password_mutations().clear_after_transactions_drain();
+    }
+    #[cfg(target_os = "linux")]
+    linux_password_admissions().clear_after_transactions_drain();
+    drop(listener_guard);
+    if let Some(err) = listener_error {
+        log::error!("{err}");
+        crate::server::finish_graceful_shutdown().await;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn handle_sensitive_linux_service_ipc_transaction(
+    mut stream: Conn,
+    identity: PeerProcessIdentity,
+    _permit: OwnedSemaphorePermit,
+) {
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+    let request = match password::receive_request_unix(
+        &mut stream,
+        password::SensitivePayloadKind::Password,
+        deadline,
+    )
+    .await
+    {
+        Ok(request) => request,
+        Err(err) => {
+            log::trace!("Linux service password IPC request was rejected: {err}");
+            return;
+        }
+    };
+    let operation_id = request.operation_id();
+    let value = match request.into_password() {
+        Ok(value) => value,
+        Err(err) => {
+            log::trace!("Linux service password IPC value was rejected: {err}");
+            return;
+        }
+    };
+    let status = execute_linux_service_owned_unattended_password_request(
+        operation_id.to_string(),
+        value,
+        identity,
+    )
+    .await;
+    if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
+    {
+        log::trace!("Linux service password status could not be returned: {err}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn handle_sensitive_macos_service_ipc_transaction(
+    mut stream: Conn,
+    _permit: OwnedSemaphorePermit,
+    deadline: tokio::time::Instant,
+) {
+    let request = match password::receive_request_unix(
+        &mut stream,
+        password::SensitivePayloadKind::PasswordWithAuthorization,
+        deadline,
+    )
+    .await
+    {
+        Ok(request) => request,
+        Err(err) => {
+            log::trace!("macOS service password IPC request was rejected: {err}");
+            return;
+        }
+    };
+    let operation_id = request.operation_id();
+    let Some(_authorization_slot) = try_acquire_macos_service_password_ipc_authorization_slot()
+    else {
+        return;
+    };
+    let (request, authority_allowed) = match run_bounded_macos_security_proof(
+        deadline,
+        "macos-password-capability-proof",
+        move || {
+            let authority_allowed =
+                crate::platform::ensure_service_owned_unattended_password_authorization_right()
+                    && macos_peer_is_authorized_for_service_owned_password_change(
+                        request.authorization(),
+                    );
+            Ok((request, authority_allowed))
+        },
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            log::warn!("macOS password authorization capability proof failed: {err}");
+            return;
+        }
+    };
+    let value = match request.into_password() {
+        Ok(value) => value,
+        Err(err) => {
+            log::trace!("macOS service password IPC value was rejected: {err}");
+            return;
+        }
+    };
+    let status = handle_macos_service_owned_unattended_password_request(
+        operation_id.to_string(),
+        value,
+        authority_allowed,
+    )
+    .await;
+    if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
+    {
+        log::trace!("macOS service password status could not be returned: {err}");
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn handle_main_ipc_transaction(mut stream: Connection, _permit: OwnedSemaphorePermit) {
+    let request = stream
+        .next_main_timeout(MAIN_IPC_TRANSACTION_TIMEOUT_MS)
+        .await;
+    let request = match request {
+        Ok(Some(request)) => request,
+        Ok(None) => {
+            log::warn!("Rejected malformed main IPC request");
+            return;
+        }
+        Err(err) => {
+            log::trace!("main IPC request ended before its bounded frame: {err}");
+            return;
+        }
+    };
+    let response = handle_main_ipc_request(request, &stream).await;
+    write_response_with_deadline(&mut stream, &response, "main IPC").await;
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn begin_password_mutation(
+    operation_id: String,
+    value: MainPasswordMutationValue,
+    kind: PasswordMutationKind,
+    authority_allowed: bool,
+) -> (
+    PasswordMutationStatus,
+    Option<tokio::task::JoinHandle<IpcMutationResult>>,
+) {
+    let admission_allowed =
+        authority_allowed && value.as_str().len() <= UNATTENDED_PASSWORD_MAX_BYTES;
+    let preparation = password_mutations().prepare_if_allowed(
+        &operation_id,
+        kind,
+        value.as_str(),
+        admission_allowed,
+    );
+    if !preparation.owns_preparation {
+        return (preparation.status, None);
+    }
+
+    let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
+        if !password_mutations().fail_admitted(&operation_id, kind, value.as_str()) {
+            log::error!("password mutation capacity failure could not be finalized");
+        }
+        return (
+            PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure),
+            None,
+        );
+    };
+    if !password_mutations().acknowledge(&operation_id, kind, value.as_str()) {
+        log::error!("password mutation preparation could not be acknowledged");
+        if !password_mutations().fail_admitted(&operation_id, kind, value.as_str()) {
+            log::error!("password mutation acknowledgement failure could not be finalized");
+        }
+        return (
+            PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure),
+            None,
+        );
+    }
+    let worker = spawn_password_mutation(operation_id.clone(), value, kind, permit);
+    (PasswordMutationStatus::Prepared, Some(worker))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -> MainIpcResponse {
+    match request {
+        MainIpcRequest::StatusSnapshot => {
+            #[cfg(target_os = "windows")]
+            let file_transfer_enabled = {
+                use hbb_common::rendezvous_proto::control_permissions::Permission;
+                Some(
+                    crate::server::get_control_permission_state(Permission::file, false)
+                        .unwrap_or_else(|| {
+                            crate::server::Connection::is_permission_enabled_locally(
+                                config::keys::OPTION_ENABLE_FILE_TRANSFER,
+                            )
+                        }),
+                )
+            };
+            #[cfg(not(target_os = "windows"))]
+            let file_transfer_enabled = None;
+            let id = Config::get_id();
+            if id.len() > MAIN_IPC_MAX_ID_BYTES {
+                log::error!("main IPC status ID exceeds its protocol limit");
+                return MainIpcResponse::RequestFailed(IpcMutationResult::InternalFailure);
+            }
+            let options = match MainStatusOptions::from_config() {
+                Ok(options) => options,
+                Err(err) => {
+                    log::error!("main IPC status options are invalid: {err}");
+                    return MainIpcResponse::RequestFailed(IpcMutationResult::InternalFailure);
+                }
+            };
+            MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+                options,
+                id,
+                file_transfer_enabled,
+            })
+        }
+        MainIpcRequest::Config(key) => {
+            let value = match key {
+                MainConfigKey::Id => Some(Config::get_id()),
+                MainConfigKey::PermanentPasswordStorageAndSalt => {
+                    if current_process_allows_main_channel_permanent_password_storage_sync() {
+                        let (storage, salt) =
+                            Config::get_local_permanent_password_storage_and_salt();
+                        Some(storage + "\n" + &salt)
+                    } else {
+                        log::warn!(
+                            "Rejected permanent-password storage read from service-owned main IPC"
+                        );
+                        None
+                    }
+                }
+                MainConfigKey::PermanentPasswordSet => Some(
+                    if permanent_password_is_set_for_current_process().await {
+                        "Y"
+                    } else {
+                        "N"
+                    }
+                    .to_owned(),
+                ),
+                MainConfigKey::PermanentPasswordIsPreset => Some(
+                    if permanent_password_is_preset_for_current_process().await {
+                        "Y"
+                    } else {
+                        "N"
+                    }
+                    .to_owned(),
+                ),
+                MainConfigKey::UserOwnedPermanentPasswordWritable => Some(
+                    if current_process_allows_user_owned_permanent_password_write()
+                        && !Config::is_disable_change_permanent_password()
+                    {
+                        "Y"
+                    } else {
+                        "N"
+                    }
+                    .to_owned(),
+                ),
+                MainConfigKey::HideConnectionManager => {
+                    if crate::common::is_custom_client() {
+                        Some(hbb_common::password_security::hide_cm().to_string())
+                    } else {
+                        None
+                    }
+                }
+                MainConfigKey::VoiceCallInput => {
+                    crate::audio_service::get_voice_call_input_device()
+                }
+                MainConfigKey::DirectListenerBound => {
+                    Some(crate::direct_service::is_direct_listener_bound().to_string())
+                }
+            };
+            if value
+                .as_ref()
+                .is_some_and(|value| value.len() > MAIN_IPC_MAX_CONFIG_VALUE_BYTES)
+            {
+                log::error!("main IPC config value exceeds its protocol limit");
+                return MainIpcResponse::RequestFailed(IpcMutationResult::InternalFailure);
+            }
+            MainIpcResponse::Config { key, value }
+        }
+        MainIpcRequest::SetVoiceCallInput(value) => {
+            if !MainIpcAuthority::for_current_process().allows_main_channel_voice_call_input_write()
+            {
+                return MainIpcResponse::VoiceCallInputSet(IpcMutationResult::Rejected);
+            }
+            if value.len() > MAIN_IPC_MAX_OPTION_VALUE_BYTES {
+                return MainIpcResponse::VoiceCallInputSet(IpcMutationResult::Rejected);
+            }
+            let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
+                return MainIpcResponse::VoiceCallInputSet(IpcMutationResult::InternalFailure);
+            };
+            let applied = match tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                crate::audio_service::set_voice_call_input_device(Some(value), true);
+            })
+            .await
+            {
+                Ok(()) => IpcMutationResult::Applied,
+                Err(err) => {
+                    log::error!("voice-call input mutation worker failed: {err}");
+                    IpcMutationResult::InternalFailure
+                }
+            };
+            MainIpcResponse::VoiceCallInputSet(applied)
+        }
+        MainIpcRequest::PasswordMutationStatus { operation_id } => {
+            let kind = if MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
+            {
+                PasswordMutationKind::ServiceOwned
+            } else {
+                PasswordMutationKind::UserOwned
+            };
+            MainIpcResponse::PasswordMutation(password_mutations().status(&operation_id, kind))
+        }
+        MainIpcRequest::SetOptions(value) => {
+            if !current_process_allows_main_channel_options_write() {
+                return MainIpcResponse::OptionsSet(IpcMutationResult::Rejected);
+            }
+            let value = match value.into_map() {
+                Ok(value) => value,
+                Err(err) => {
+                    log::warn!("Rejected invalid main IPC options write: {err}");
+                    return MainIpcResponse::OptionsSet(IpcMutationResult::Rejected);
+                }
+            };
+            let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
+                return MainIpcResponse::OptionsSet(IpcMutationResult::InternalFailure);
+            };
+            let accepted = tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                let _restart = CheckIfRestart::new();
+                Config::set_options(merge_main_status_options(Config::get_options(), value));
+            })
+            .await;
+            let accepted = match accepted {
+                Ok(()) => IpcMutationResult::Applied,
+                Err(err) => {
+                    log::error!("options mutation worker failed: {err}");
+                    IpcMutationResult::InternalFailure
+                }
+            };
+            MainIpcResponse::OptionsSet(accepted)
+        }
+        MainIpcRequest::ValidateCmConnection {
+            id,
+            conn_type,
+            cm_auth_token,
+        } => {
+            if id <= 0
+                || cm_auth_token.is_empty()
+                || cm_auth_token.len() > MAIN_IPC_MAX_AUTH_TOKEN_BYTES
+            {
+                return MainIpcResponse::CmConnectionValidation(CmConnectionAuthority::default());
+            }
+            MainIpcResponse::CmConnectionValidation(
+                crate::server::validate_cm_connection_authority(id, conn_type, &cm_auth_token),
+            )
+        }
+        #[cfg(target_os = "linux")]
+        MainIpcRequest::ValidatePulseAudioStart { token } => {
+            let valid = !token.is_empty()
+                && token.len() <= MAIN_IPC_MAX_AUTH_TOKEN_BYTES
+                && peer_process_identity(stream, "")
+                    .map(|peer| crate::audio_service::validate_pa_capture_authority(&token, &peer))
+                    .unwrap_or(false);
+            MainIpcResponse::PulseAudioStartValidation(valid)
+        }
+        #[cfg(target_os = "windows")]
+        MainIpcRequest::CpuUsage => {
+            MainIpcResponse::CpuUsage(hbb_common::platform::windows::cpu_uage_one_minute())
+        }
+        #[cfg(target_os = "windows")]
+        MainIpcRequest::ControlledSessionCount => {
+            MainIpcResponse::ControlledSessionCount(crate::Connection::alive_conns().len())
+        }
+        #[cfg(target_os = "linux")]
+        MainIpcRequest::TerminalSessionCount => MainIpcResponse::TerminalSessionCount(
+            crate::terminal_service::get_terminal_session_count(true),
+        ),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn handle_service_ipc_transaction(mut stream: Connection, postfix: &str) {
+    match stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await {
+        Err(err) => log::trace!("protected _service IPC request closed before a bounded request frame: {err}"),
+        Ok(Some(data)) if service_channel_admits_message(&data) => handle_service_request(data, &mut stream).await,
+        Ok(Some(data)) => log::warn!("Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}", postfix, std::mem::discriminant(&data), stream.peer_uid()),
+        Ok(None) => log::warn!("Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}", postfix, stream.peer_uid()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::main(flavor = "current_thread")]
+pub async fn start_windows_service_main_ipc() -> ResultType<()> {
+    if !is_service_owned_server_process() || !crate::platform::is_root() {
+        bail!("Windows service-main IPC requires the service-owned LocalSystem server role");
+    }
+    let mut credential_incoming = new_listener(WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX).await?;
+    let mut control_incoming = new_listener(WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX).await?;
+    let listener_guard = LocalIpcListenerGuard::activate(
+        &WINDOWS_SERVICE_MAIN_LISTENER_STATE,
+        "Windows service-main listeners",
+    )?;
+    let mut transactions = JoinSet::new();
+    let shutdown = crate::server::shutdown_token();
+    let mut listener_error = None;
+    loop {
+        tokio::select! {
+            biased;
+            _ = shutdown.cancelled() => break,
+            result = control_incoming.next() => {
+                let Some(result) = result else {
+                    listener_error = Some("Windows service-main control IPC listener ended unexpectedly".to_owned());
+                    crate::server::request_graceful_shutdown();
+                    break;
+                };
+                let stream = match result {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        log::error!("Could not accept Windows service-main IPC client: {err}");
+                        continue;
+                    }
+                };
+                let stream = Connection::new_protected_service(stream);
+                if !authorize_windows_service_main_ipc_connection(&stream) {
+                    continue;
+                }
+                let endpoint = WindowsServiceMainEndpoint::Control;
+                let Some(permit) = try_acquire_windows_service_main_transaction_slot(endpoint) else {
+                    log::debug!("Rejected Windows service-main control connection because work is at capacity");
+                    continue;
+                };
+                transactions.spawn(handle_windows_service_main_transaction(
+                    stream,
+                    permit,
+                    endpoint,
+                ));
+            }
+            completed = transactions.join_next(), if !transactions.is_empty() => {
+                if let Some(Err(err)) = completed {
+                    log::error!("Windows service-main transaction task failed: {err}");
+                }
+            }
+            result = credential_incoming.next() => {
+                let Some(result) = result else {
+                    listener_error = Some("Windows service credential IPC listener ended unexpectedly".to_owned());
+                    crate::server::request_graceful_shutdown();
+                    break;
+                };
+                let stream = match result {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        log::error!("Could not accept Windows service-main control IPC client: {err}");
+                        continue;
+                    }
+                };
+                let stream = Connection::new_protected_service(stream);
+                if !authorize_windows_service_main_ipc_connection(&stream) {
+                    continue;
+                }
+                let endpoint = WindowsServiceMainEndpoint::Credential;
+                let Some(permit) = try_acquire_windows_service_main_transaction_slot(endpoint) else {
+                    log::debug!("Rejected Windows service credential connection because work is at capacity");
+                    continue;
+                };
+                transactions.spawn(handle_windows_service_main_transaction(
+                    stream,
+                    permit,
+                    endpoint,
+                ));
+            }
+        }
+    }
+    let drain = async {
+        while let Some(result) = transactions.join_next().await {
+            if let Err(err) = result {
+                log::error!("Windows service-main transaction did not drain cleanly: {err}");
+            }
+        }
+    };
+    if tokio::time::timeout(
+        std::time::Duration::from_millis(WINDOWS_SERVICE_MAIN_TRANSACTION_DRAIN_TIMEOUT_MS),
+        drain,
+    )
+    .await
+    .is_err()
+    {
+        log::error!("Windows service-main transactions exceeded their shutdown deadline");
+        transactions.abort_all();
+        while transactions.join_next().await.is_some() {}
+    }
+    drop(listener_guard);
+    if shutdown.is_cancelled() || listener_error.is_some() {
+        if let Some(err) = listener_error {
+            log::error!("{err}");
+        }
+        crate::server::finish_graceful_shutdown().await;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+async fn handle_windows_service_main_transaction(
+    mut stream: Connection,
+    _permit: OwnedSemaphorePermit,
+    endpoint: WindowsServiceMainEndpoint,
+) {
+    let request = match stream
+        .next_windows_service_main_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .await
+    {
+        Ok(Some(request)) => request,
+        Ok(None) => {
+            log::warn!("Rejected malformed Windows service-main IPC request");
+            return;
+        }
+        Err(err) => {
+            log::trace!("Windows service-main IPC request timed out: {err}");
+            return;
+        }
+    };
+    if !authorize_windows_service_main_ipc_connection(&stream) {
+        return;
+    }
+    match request {
+        WindowsServiceMainRequest::QuiesceCredentialReplica { transition_id } => {
+            if endpoint != WindowsServiceMainEndpoint::Credential {
+                log::warn!("Rejected credential quiesce on Windows service-main control IPC");
+                return;
+            }
+            let response = if !password_mutation_id_is_valid(&transition_id) {
+                WindowsCredentialReplicaResponse::Rejected
+            } else {
+                match crate::server::quiesce_windows_credential_replica(&transition_id) {
+                    Ok(state) => WindowsCredentialReplicaResponse::State(state),
+                    Err(err) => {
+                        log::warn!("Rejected Windows credential replica quiesce: {err}");
+                        WindowsCredentialReplicaResponse::Rejected
+                    }
+                }
+            };
+            write_response_with_deadline(
+                &mut stream,
+                &WindowsServiceMainResponse::CredentialReplica(response),
+                "Windows credential replica quiesce",
+            )
+            .await;
+        }
+        WindowsServiceMainRequest::ApplyCredentialReplica {
+            transition_id,
+            storage,
+            salt,
+            replica_tag,
+        } => {
+            if endpoint != WindowsServiceMainEndpoint::Credential {
+                log::warn!("Rejected credential apply on Windows service-main control IPC");
+                return;
+            }
+            let response = if !password_mutation_id_is_valid(&transition_id)
+                || storage.len() > WINDOWS_CREDENTIAL_SNAPSHOT_COMPONENT_MAX_BYTES
+                || salt.len() > WINDOWS_CREDENTIAL_SNAPSHOT_COMPONENT_MAX_BYTES
+            {
+                WindowsCredentialReplicaResponse::Rejected
+            } else {
+                match crate::server::apply_windows_credential_replica(
+                    &transition_id,
+                    &storage,
+                    &salt,
+                    replica_tag,
+                ) {
+                    Ok(state) => WindowsCredentialReplicaResponse::State(state),
+                    Err(err) => {
+                        log::warn!("Rejected Windows credential replica apply: {err}");
+                        WindowsCredentialReplicaResponse::Rejected
+                    }
+                }
+            };
+            write_response_with_deadline(
+                &mut stream,
+                &WindowsServiceMainResponse::CredentialReplica(response),
+                "Windows credential replica apply",
+            )
+            .await;
+        }
+        WindowsServiceMainRequest::QueryCredentialReplica => {
+            if endpoint != WindowsServiceMainEndpoint::Credential {
+                log::warn!("Rejected credential query on Windows service-main control IPC");
+                return;
+            }
+            let response = WindowsCredentialReplicaResponse::State(
+                crate::server::query_windows_credential_replica(),
+            );
+            write_response_with_deadline(
+                &mut stream,
+                &WindowsServiceMainResponse::CredentialReplica(response),
+                "Windows credential replica query",
+            )
+            .await;
+        }
+        WindowsServiceMainRequest::ResumeCredentialReplica { transition_id } => {
+            if endpoint != WindowsServiceMainEndpoint::Credential {
+                log::warn!("Rejected credential resume on Windows service-main control IPC");
+                return;
+            }
+            let response = if !password_mutation_id_is_valid(&transition_id) {
+                WindowsCredentialReplicaResponse::Rejected
+            } else {
+                match crate::server::resume_windows_credential_replica(&transition_id) {
+                    Ok(state) => WindowsCredentialReplicaResponse::State(state),
+                    Err(err) => {
+                        log::warn!("Rejected Windows credential replica resume: {err}");
+                        WindowsCredentialReplicaResponse::Rejected
+                    }
+                }
+            };
+            write_response_with_deadline(
+                &mut stream,
+                &WindowsServiceMainResponse::CredentialReplica(response),
+                "Windows credential replica resume",
+            )
+            .await;
+        }
+        WindowsServiceMainRequest::PortForwardSessionCount => {
+            if endpoint != WindowsServiceMainEndpoint::Control {
+                log::warn!("Rejected port-forward count on Windows service credential IPC");
+                return;
+            }
+            let count = crate::server::AUTHED_CONNS
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|connection| {
+                    connection.conn_type == crate::server::AuthConnType::PortForward
+                })
+                .count();
+            let response = WindowsServiceMainResponse::PortForwardSessionCount(count);
+            write_response_with_deadline(
+                &mut stream,
+                &response,
+                "Windows service-main session count",
+            )
+            .await;
+        }
+        WindowsServiceMainRequest::Shutdown => {
+            if endpoint != WindowsServiceMainEndpoint::Control {
+                log::warn!("Rejected shutdown on Windows service credential IPC");
+                return;
+            }
+            let response = WindowsServiceMainResponse::ShutdownAccepted;
+            if !write_response_with_deadline(
+                &mut stream,
+                &response,
+                "Windows service-main shutdown acknowledgement",
+            )
+            .await
+            {
+                return;
+            }
+            crate::server::request_graceful_shutdown();
+        }
+    }
+}
 pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     let path = Config::ipc_path(postfix);
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1042,73 +3650,11 @@ impl Drop for CheckIfRestart {
     }
 }
 
-/// Main-channel mutation policy. Whole-config writes, identity/salt field writes, proxy writes,
-/// service-owned credentials, and service-owned options stay out of ordinary IPC.
-/// This match is intentionally exhaustive: adding an IPC message requires classifying it here
-/// instead of falling through to a permissive default.
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum MainIpcAuthority {
     UserOwned,
     ServiceOwned,
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum MainIpcPeerAuthority {
-    Ordinary,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    RootUnixPeer,
-    #[cfg(target_os = "windows")]
-    WindowsLocalSystemPeer,
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-impl MainIpcPeerAuthority {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn for_stream(stream: &Connection) -> Self {
-        if stream.peer_uid() == Some(0) {
-            Self::RootUnixPeer
-        } else {
-            Self::Ordinary
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    fn for_windows_main_pipe(stream: &Connection) -> Self {
-        match stream.windows_pipe_client_token_is_local_system() {
-            Ok(true) => Self::WindowsLocalSystemPeer,
-            Ok(false) => Self::Ordinary,
-            Err(err) => {
-                log::warn!(
-                    "Failed to resolve Windows main IPC peer token for service-owned action: {err}"
-                );
-                Self::Ordinary
-            }
-        }
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    fn allows_service_owned_unattended_password_commit(self) -> bool {
-        match self {
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            Self::RootUnixPeer => true,
-            #[cfg(target_os = "windows")]
-            Self::WindowsLocalSystemPeer => true,
-            _ => false,
-        }
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    fn allows_service_owned_main_channel_close(self) -> bool {
-        match self {
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            Self::RootUnixPeer => true,
-            #[cfg(target_os = "windows")]
-            Self::WindowsLocalSystemPeer => true,
-            _ => false,
-        }
-    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -1128,246 +3674,45 @@ impl MainIpcAuthority {
     fn allows_main_channel_user_owned_password_write(self) -> bool {
         matches!(self, Self::UserOwned)
     }
-
     fn allows_main_channel_options_write(self) -> bool {
         matches!(self, Self::UserOwned)
     }
-
     fn allows_main_channel_voice_call_input_write(self) -> bool {
         matches!(self, Self::UserOwned)
     }
-
     fn allows_main_channel_password_storage_sync(self) -> bool {
         matches!(self, Self::UserOwned)
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    fn allows_service_owned_unattended_password_commit(self) -> bool {
-        matches!(self, Self::ServiceOwned)
-    }
-
-    fn allows_main_channel_close(self, peer_authority: MainIpcPeerAuthority) -> bool {
-        match self {
-            Self::UserOwned => true,
-            Self::ServiceOwned => peer_authority.allows_service_owned_main_channel_close(),
-        }
     }
 }
 
 #[inline]
 fn current_process_allows_user_owned_permanent_password_write() -> bool {
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    {
-        MainIpcAuthority::for_current_process().allows_main_channel_user_owned_password_write()
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        true
-    }
+    MainIpcAuthority::for_current_process().allows_main_channel_user_owned_password_write()
 }
 
 #[inline]
 fn current_process_allows_main_channel_options_write() -> bool {
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    {
-        MainIpcAuthority::for_current_process().allows_main_channel_options_write()
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        true
-    }
+    MainIpcAuthority::for_current_process().allows_main_channel_options_write()
 }
 
 #[inline]
 fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool {
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    {
-        MainIpcAuthority::for_current_process().allows_main_channel_password_storage_sync()
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        true
-    }
+    MainIpcAuthority::for_current_process().allows_main_channel_password_storage_sync()
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 #[inline]
 fn current_process_allows_service_owned_unattended_password_commit(stream: &Connection) -> bool {
-    let peer_authority = {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            MainIpcPeerAuthority::for_stream(stream)
-        }
-        #[cfg(target_os = "windows")]
-        {
-            MainIpcPeerAuthority::for_windows_main_pipe(stream)
-        }
-    };
-    MainIpcAuthority::for_current_process().allows_service_owned_unattended_password_commit()
-        && peer_authority.allows_service_owned_unattended_password_commit()
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-pub(crate) fn main_channel_admits_state_mutation(
-    data: &Data,
-    authority: MainIpcAuthority,
-    peer_authority: MainIpcPeerAuthority,
-) -> bool {
-    match data {
-        Data::SetVoiceCallInput(_) => authority.allows_main_channel_voice_call_input_write(),
-        Data::SetUserOwnedPermanentPassword(_) => {
-            authority.allows_main_channel_user_owned_password_write()
-        }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
-            authority.allows_service_owned_unattended_password_commit()
-                && peer_authority.allows_service_owned_unattended_password_commit()
-        }
-        #[cfg(target_os = "macos")]
-        Data::CommitServiceOwnedUnattendedPasswordChange(_) => false,
-        #[cfg(target_os = "windows")]
-        Data::RequestServiceOwnedShareRdp(_) => false,
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        Data::RequestServiceOwnedUnattendedPasswordChange(_) => false,
-        #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }
-        | Data::MacosServiceOwnedPasswordRightReadyRequest
-        | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => false,
-        // Whole-options writes are ordinary user-owned configuration writes. A service-owned server
-        // enforces machine policy and must not accept them over the generic main IPC config bus.
-        Data::Options(Some(_)) => authority.allows_main_channel_options_write(),
-        Data::Close => authority.allows_main_channel_close(peer_authority),
-        Data::Login { .. }
-        | Data::ChatMessage { .. }
-        | Data::SystemInfo(_)
-        | Data::ClickTime(_)
-        | Data::ConfigRequest(_)
-        | Data::ConfigValue(_)
-        | Data::Options(None)
-        | Data::OptionsSetResult(_)
-        | Data::SetUserOwnedPermanentPasswordResult(_)
-        | Data::NatType(_)
-        | Data::CmFileResponse(_)
-        | Data::FS(_)
-        | Data::Test
-        | Data::ClipboardFileEnabled(_)
-        | Data::PrivacyModeState(_)
-        | Data::Control(_)
-        | Data::Empty
-        | Data::Disconnected
-        | Data::UrlLink(_)
-        | Data::VoiceCallIncoming
-        | Data::StartVoiceCall
-        | Data::VoiceCallResponse(_)
-        | Data::CloseVoiceCall(_)
-        | Data::FileTransferLog(_)
-        | Data::CmErr(_) => true,
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        Data::CmEndpointChallenge { .. }
-        | Data::CmEndpointProof { .. }
-        | Data::CmServerChallenge { .. }
-        | Data::CmServerProof { .. } => true,
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::WhiteboardEndpointChallenge { .. }
-        | Data::WhiteboardEndpointProof { .. }
-        | Data::WhiteboardServerChallenge { .. }
-        | Data::WhiteboardServerProof { .. }
-        | Data::AuthorizedFS { .. }
-        | Data::ValidateCmConnection { .. }
-        | Data::Keyboard(_)
-        | Data::KeyboardResponse(_)
-        | Data::Mouse(_)
-        | Data::WhiteboardBind { .. }
-        | Data::WhiteboardEvent { .. }
-        | Data::WhiteboardClose { .. }
-        | Data::WhiteboardShutdown => true,
-        #[cfg(target_os = "linux")]
-        Data::PulseAudioStart { .. }
-        | Data::ValidatePulseAudioStart { .. }
-        | Data::TerminalSessionCount(_) => true,
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        Data::ServiceOwnedUnattendedPasswordChangeResult(_) => true,
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPasswordRightReadyResult(_)
-        | Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => true,
-        #[cfg(target_os = "windows")]
-        Data::ServiceOwnedShareRdpResult(_)
-        | Data::ClipboardFile(_)
-        | Data::AuthorizedClipboardNonFile { .. }
-        | Data::ClipboardNonFile(_)
-        | Data::SyncWinCpuUsage(_)
-        | Data::ControlledSessionCount(_)
-        | Data::PortForwardSessionCount(_)
-        | Data::FileTransferEnabledState(_) => true,
-        #[cfg(all(
-            feature = "flutter",
-            not(any(target_os = "android", target_os = "ios"))
-        ))]
-        Data::ControllingSessionCount(_) => true,
-    }
-}
-
-async fn send_main_channel_mutation_rejection_ack(data: &Data, stream: &mut Connection) {
-    match data {
-        Data::SetUserOwnedPermanentPassword(_) => {
-            allow_err!(
-                stream
-                    .send(&Data::SetUserOwnedPermanentPasswordResult(false))
-                    .await
-            );
-        }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        Data::RequestServiceOwnedUnattendedPasswordChange(_) => {
-            allow_err!(
-                stream
-                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
-                    .await
-            );
-        }
-        #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. } => {
-            allow_err!(
-                stream
-                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
-                    .await
-            );
-        }
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPasswordRightReadyRequest => {
-            allow_err!(
-                stream
-                    .send(&Data::MacosServiceOwnedPasswordRightReadyResult(false))
-                    .await
-            );
-        }
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
-            allow_err!(
-                stream
-                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
-                    .await
-            );
-        }
-        Data::Options(Some(_)) => {
-            allow_err!(stream.send(&Data::OptionsSetResult(false)).await);
-        }
-        #[cfg(target_os = "windows")]
-        Data::RequestServiceOwnedShareRdp(_) => {
-            allow_err!(stream.send(&Data::ServiceOwnedShareRdpResult(false)).await);
-        }
-        _ => {}
-    }
+    MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
+        && stream.peer_uid() == Some(0)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
     match data {
         Data::Test => true,
-        #[cfg(target_os = "linux")]
-        Data::RequestServiceOwnedUnattendedPasswordChange(_) => true,
         #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange { .. }
-        | Data::MacosServiceOwnedPasswordRightReadyRequest
+        Data::MacosServiceOwnedPasswordRightReadyRequest
         | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => true,
         _ => false,
     }
@@ -1617,16 +3962,21 @@ where
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmServerChallenge { challenge }) => {
             let proof = cm_server_proof_for_challenge(&challenge, launch_token)?;
-            stream.send(&Data::CmServerProof { proof }).await?;
+            stream
+                .send_json_timeout(&Data::CmServerProof { proof }, CM_ENDPOINT_AUTH_TIMEOUT_MS)
+                .await?;
         }
         _ => bail!("connection-manager server launch challenge missing"),
     }
 
     let challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
-        .send(&Data::CmEndpointChallenge {
-            challenge: challenge.clone(),
-        })
+        .send_json_timeout(
+            &Data::CmEndpointChallenge {
+                challenge: challenge.clone(),
+            },
+            CM_ENDPOINT_AUTH_TIMEOUT_MS,
+        )
         .await?;
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmEndpointProof { proof }) => {
@@ -1661,9 +4011,12 @@ where
     };
     let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
-        .send(&Data::CmServerChallenge {
-            challenge: server_challenge.clone(),
-        })
+        .send_json_timeout(
+            &Data::CmServerChallenge {
+                challenge: server_challenge.clone(),
+            },
+            CM_ENDPOINT_AUTH_TIMEOUT_MS,
+        )
         .await?;
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmServerProof { proof }) => {
@@ -1675,7 +4028,12 @@ where
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmEndpointChallenge { challenge }) => {
             let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token)?;
-            stream.send(&Data::CmEndpointProof { proof }).await
+            stream
+                .send_json_timeout(
+                    &Data::CmEndpointProof { proof },
+                    CM_ENDPOINT_AUTH_TIMEOUT_MS,
+                )
+                .await
         }
         _ => bail!("connection-manager endpoint challenge missing"),
     }
@@ -1695,16 +4053,24 @@ where
     {
         Some(Data::WhiteboardServerChallenge { challenge }) => {
             let proof = whiteboard_server_proof_for_challenge(&challenge, launch_token)?;
-            stream.send(&Data::WhiteboardServerProof { proof }).await?;
+            stream
+                .send_json_timeout(
+                    &Data::WhiteboardServerProof { proof },
+                    WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+                )
+                .await?;
         }
         _ => bail!("whiteboard server launch challenge missing"),
     }
 
     let challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
-        .send(&Data::WhiteboardEndpointChallenge {
-            challenge: challenge.clone(),
-        })
+        .send_json_timeout(
+            &Data::WhiteboardEndpointChallenge {
+                challenge: challenge.clone(),
+            },
+            WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+        )
         .await?;
     match stream
         .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
@@ -1728,9 +4094,12 @@ where
         .map_err(|err| hbb_common::anyhow::anyhow!("missing whiteboard launch token: {err}"))?;
     let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
-        .send(&Data::WhiteboardServerChallenge {
-            challenge: server_challenge.clone(),
-        })
+        .send_json_timeout(
+            &Data::WhiteboardServerChallenge {
+                challenge: server_challenge.clone(),
+            },
+            WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+        )
         .await?;
     match stream
         .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
@@ -1748,22 +4117,25 @@ where
     {
         Some(Data::WhiteboardEndpointChallenge { challenge }) => {
             let proof = whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token)?;
-            stream.send(&Data::WhiteboardEndpointProof { proof }).await
+            stream
+                .send_json_timeout(
+                    &Data::WhiteboardEndpointProof { proof },
+                    WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+                )
+                .await
         }
         _ => bail!("whiteboard endpoint challenge missing"),
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum IpcChannel {
-    Main,
-    Service,
 }
 
 #[cfg(target_os = "linux")]
 const SET_UNATTENDED_PASSWORD_POLKIT_ACTION: &str = "com.carriez.RustDesk.set-unattended-password";
 #[cfg(target_os = "linux")]
 const PKCHECK_PATH: &str = "/usr/bin/pkcheck";
+#[cfg(target_os = "linux")]
+const PKCHECK_AUTHORIZATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+#[cfg(target_os = "linux")]
+const PKCHECK_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(25);
 
 #[cfg(target_os = "linux")]
 fn linux_path_is_clean_absolute(path: &Path) -> bool {
@@ -1822,18 +4194,30 @@ fn trusted_linux_pkcheck_path() -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_polkit_subject_for_peer(stream: &Connection) -> ResultType<String> {
-    let identity = peer_process_identity(stream, crate::POSTFIX_SERVICE)?;
-    Ok(format!(
+fn linux_polkit_subject_for_identity(identity: &PeerProcessIdentity) -> String {
+    format!(
         "{},{},{}",
         identity.pid(),
         identity.start_time(),
         identity.uid()
-    ))
+    )
 }
 
 #[cfg(target_os = "linux")]
-fn linux_pkcheck_authorizes_service_owned_password_change(subject: String) -> bool {
+fn terminate_and_reap_linux_pkcheck(child: &mut std::process::Child, reason: &str) {
+    if let Err(err) = child.kill() {
+        log::debug!("pkcheck termination after {reason} returned: {err}");
+    }
+    if let Err(err) = child.wait() {
+        log::error!("Failed to reap pkcheck after {reason}: {err}");
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_pkcheck_authorizes_service_owned_password_change(
+    subject: String,
+    shutdown: hbb_common::tokio_util::sync::CancellationToken,
+) -> bool {
     let Some(pkcheck) = trusted_linux_pkcheck_path() else {
         log::warn!(
             "Rejected service-owned unattended password change: no trusted pkcheck executable at {}",
@@ -1841,24 +4225,18 @@ fn linux_pkcheck_authorizes_service_owned_password_change(subject: String) -> bo
         );
         return false;
     };
-    let status = std::process::Command::new(pkcheck)
+    let child = std::process::Command::new(pkcheck)
         .arg("--action-id")
         .arg(SET_UNATTENDED_PASSWORD_POLKIT_ACTION)
         .arg("--process")
         .arg(&subject)
         .arg("--allow-user-interaction")
-        .status();
-    match status {
-        Ok(status) if status.success() => true,
-        Ok(status) => {
-            log::warn!(
-                "Rejected service-owned unattended password change: polkit denied action={}, subject={}, status={}",
-                SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
-                subject,
-                status
-            );
-            false
-        }
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
         Err(err) => {
             log::warn!(
                 "Rejected service-owned unattended password change: failed to run pkcheck for action={}, subject={}, err={}",
@@ -1866,26 +4244,63 @@ fn linux_pkcheck_authorizes_service_owned_password_change(subject: String) -> bo
                 subject,
                 err
             );
-            false
+            return false;
+        }
+    };
+    let deadline = std::time::Instant::now() + PKCHECK_AUTHORIZATION_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return true,
+            Ok(Some(status)) => {
+                log::warn!(
+                    "Rejected service-owned unattended password change: polkit denied action={}, subject={}, status={}",
+                    SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                    subject,
+                    status
+                );
+                return false;
+            }
+            Ok(None) if shutdown.is_cancelled() => {
+                terminate_and_reap_linux_pkcheck(&mut child, "service shutdown");
+                return false;
+            }
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                log::warn!(
+                    "Rejected service-owned unattended password change: pkcheck exceeded its authorization deadline"
+                );
+                terminate_and_reap_linux_pkcheck(&mut child, "authorization timeout");
+                return false;
+            }
+            Ok(None) => std::thread::sleep(PKCHECK_POLL_INTERVAL),
+            Err(err) => {
+                log::warn!(
+                    "Rejected service-owned unattended password change: failed to poll pkcheck for action={}, subject={}, err={}",
+                    SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                    subject,
+                    err
+                );
+                terminate_and_reap_linux_pkcheck(&mut child, "status failure");
+                return false;
+            }
         }
     }
 }
 
 #[cfg(target_os = "linux")]
-async fn linux_peer_is_authorized_for_service_owned_password_change(stream: &Connection) -> bool {
-    let subject = match linux_polkit_subject_for_peer(stream) {
-        Ok(subject) => subject,
-        Err(err) => {
-            log::warn!("Rejected service-owned unattended password change: {err}");
-            return false;
-        }
-    };
+async fn linux_peer_is_authorized_for_service_owned_password_change(
+    identity: &PeerProcessIdentity,
+) -> bool {
+    let subject = linux_polkit_subject_for_identity(identity);
+    let shutdown = crate::server::shutdown_token();
     match tokio::task::spawn_blocking(move || {
-        linux_pkcheck_authorizes_service_owned_password_change(subject)
+        linux_pkcheck_authorizes_service_owned_password_change(subject, shutdown)
     })
     .await
     {
-        Ok(authorized) => authorized,
+        Ok(authorized) => {
+            authorized
+                && peer_process_identity_is_live(identity, password::SERVICE_PASSWORD_IPC_POSTFIX)
+        }
         Err(err) => {
             log::warn!(
                 "Rejected service-owned unattended password change: pkcheck task failed: {err}"
@@ -1895,64 +4310,152 @@ async fn linux_peer_is_authorized_for_service_owned_password_change(stream: &Con
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-async fn commit_service_owned_unattended_password_change(value: String) -> ResultType<bool> {
-    #[cfg(target_os = "linux")]
-    let _scope = UserMainIpcScope::new();
-    let ms_timeout = 1_000;
-    let mut c = connect(ms_timeout, "").await?;
-    #[cfg(target_os = "linux")]
-    authenticate_linux_service_owned_main_server(&c)?;
-    #[cfg(target_os = "windows")]
-    let _ = authenticate_windows_service_owned_main_server(&c)?;
-    c.send(&Data::CommitServiceOwnedUnattendedPasswordChange(value))
-        .await?;
-    if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
-        c.next_timeout(ms_timeout).await?
-    {
-        Ok(ok)
-    } else {
-        Ok(false)
-    }
-}
+#[cfg(target_os = "linux")]
+async fn execute_linux_service_owned_password_operation<
+    Authorize,
+    AuthorizeFuture,
+    Commit,
+    CommitFuture,
+>(
+    coordinator: &LinuxPasswordAdmissionCoordinator,
+    operation_id: &str,
+    value: &str,
+    caller: &LinuxPasswordCaller,
+    mut authorize: Authorize,
+    mut commit: Commit,
+) -> ResultType<IpcMutationResult>
+where
+    Authorize: FnMut() -> AuthorizeFuture,
+    AuthorizeFuture: std::future::Future<Output = bool>,
+    Commit: FnMut() -> CommitFuture,
+    CommitFuture: std::future::Future<Output = ResultType<IpcMutationResult>>,
+{
+    let kind = PasswordMutationKind::ServiceOwned;
+    let shutdown = crate::server::shutdown_token();
+    loop {
+        let changed = coordinator.changed.notified();
+        match coordinator.begin(operation_id, kind, value, caller) {
+            LinuxPasswordAdmissionDecision::Authorize => {
+                let admitted = authorize().await;
+                if !coordinator.finish_authorization(operation_id, caller, admitted) {
+                    bail!("Linux password authorization admission state changed unexpectedly");
+                }
+                if !admitted {
+                    return Ok(IpcMutationResult::Rejected);
+                }
+            }
+            LinuxPasswordAdmissionDecision::Wait => {
+                tokio::select! {
+                    _ = changed => {}
+                    _ = shutdown.cancelled() => {
+                        bail!("Linux password authorization stopped during service shutdown")
+                    }
+                }
+                continue;
+            }
+            LinuxPasswordAdmissionDecision::Recover => {}
+            LinuxPasswordAdmissionDecision::Complete(result) => return Ok(result),
+            LinuxPasswordAdmissionDecision::Rejected => return Ok(IpcMutationResult::Rejected),
+            LinuxPasswordAdmissionDecision::ShuttingDown => {
+                bail!("Linux password admission is shutting down")
+            }
+        }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn service_owned_password_value_is_valid(platform: &str, password: &str) -> bool {
-    if password.len() > UNATTENDED_PASSWORD_MAX_BYTES {
-        log::warn!(
-            "Rejected {platform} service-owned password request with oversized password value"
-        );
-        return false;
+        let result = match commit().await {
+            Ok(result) => result,
+            Err(err) => {
+                if !coordinator.release_failed_commit(operation_id, caller) {
+                    bail!("Linux password commit ownership changed after a commit failure");
+                }
+                return Err(err);
+            }
+        };
+        if !coordinator.complete(operation_id, caller, result) {
+            bail!("Linux admitted password operation could not record its terminal result");
+        }
+        return Ok(result);
     }
-    true
 }
 
 #[cfg(target_os = "linux")]
-async fn handle_linux_service_owned_unattended_password_request(
-    channel: IpcChannel,
-    value: String,
-    stream: &mut Connection,
-) {
-    let accepted = channel == IpcChannel::Service
-        && service_owned_password_value_is_valid("Linux", &value)
-        && linux_peer_is_authorized_for_service_owned_password_change(stream).await
-        && match commit_service_owned_unattended_password_change(value).await {
-            Ok(committed) => committed,
-            Err(err) => {
-                log::warn!(
-                    "Rejected service-owned unattended password change: service-to-server commit failed: {err}"
-                );
-                false
-            }
-        };
-    if !accepted {
-        log::warn!("Rejected service-owned unattended password change");
+async fn commit_service_owned_unattended_password_change(
+    operation_id: String,
+    value: SensitivePassword,
+) -> ResultType<IpcMutationResult> {
+    let ms_timeout = 1_000;
+    complete_main_password_mutation(operation_id, &value, true, ms_timeout).await
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+pub(crate) fn service_owned_password_value_is_valid(platform: &str, password: &str) -> bool {
+    if unattended_password_value_is_valid(password) {
+        true
+    } else {
+        log::warn!(
+            "Rejected {platform} service-owned password request with oversized password value"
+        );
+        false
     }
-    allow_err!(
-        stream
-            .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
-            .await
-    );
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn unattended_password_value_is_valid(password: &str) -> bool {
+    password.len() <= UNATTENDED_PASSWORD_MAX_BYTES
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn validate_unattended_password_value(password: &SensitivePassword) -> ResultType<()> {
+    if !unattended_password_value_is_valid(password.as_str()) {
+        bail!("Permanent password exceeds its protocol limit");
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn execute_linux_service_owned_unattended_password_request(
+    operation_id: String,
+    value: SensitivePassword,
+    identity: PeerProcessIdentity,
+) -> PasswordMutationStatus {
+    if !password_mutation_id_is_valid(&operation_id)
+        || !service_owned_password_value_is_valid("Linux", value.as_str())
+    {
+        log::warn!("Rejected service-owned unattended password change");
+        return PasswordMutationStatus::Complete(IpcMutationResult::Rejected);
+    }
+    let caller = LinuxPasswordCaller::from(&identity);
+    let commit_operation_id = operation_id.clone();
+    let mut commit_value = Some(value.clone());
+    let result = match execute_linux_service_owned_password_operation(
+        linux_password_admissions(),
+        &operation_id,
+        value.as_str(),
+        &caller,
+        || linux_peer_is_authorized_for_service_owned_password_change(&identity),
+        || {
+            let value = commit_value.take();
+            let operation_id = commit_operation_id.clone();
+            async move {
+                let value = value.ok_or_else(|| {
+                    hbb_common::anyhow::anyhow!(
+                        "Linux password operation attempted more than one commit"
+                    )
+                })?;
+                commit_service_owned_unattended_password_change(operation_id, value).await
+            }
+        },
+    )
+    .await
+    {
+        Ok(result) => PasswordMutationStatus::Complete(result),
+        Err(err) => {
+            log::warn!(
+                "Linux service-owned password operation remains unresolved after transport failure: {err}"
+            );
+            PasswordMutationStatus::Pending
+        }
+    };
+    result
 }
 
 #[cfg(target_os = "macos")]
@@ -1965,18 +4468,37 @@ fn macos_peer_is_authorized_for_service_owned_password_change(authorization: &[u
 }
 
 #[cfg(target_os = "macos")]
-fn macos_service_owned_password_authorization_right_is_ready() -> bool {
-    if crate::platform::ensure_service_owned_unattended_password_authorization_right() {
-        return true;
+async fn macos_service_owned_password_authorization_right_is_ready(
+    deadline: tokio::time::Instant,
+) -> bool {
+    let Some(_authorization_slot) = try_acquire_macos_service_password_ipc_authorization_slot()
+    else {
+        return false;
+    };
+    match run_bounded_macos_security_proof(deadline, "macos-password-right-proof", || {
+        Ok(crate::platform::ensure_service_owned_unattended_password_authorization_right())
+    })
+    .await
+    {
+        Ok(true) => true,
+        Ok(false) => {
+            log::warn!(
+                "Rejected macOS service-owned unattended password change: authorization right is unavailable"
+            );
+            false
+        }
+        Err(err) => {
+            log::warn!("macOS password authorization right proof failed: {err}");
+            false
+        }
     }
-    log::warn!(
-        "Rejected macOS service-owned unattended password change: authorization right is unavailable"
-    );
-    false
 }
 
 #[cfg(target_os = "macos")]
-async fn macos_peer_is_service_owned_server(stream: &Connection) -> bool {
+async fn macos_peer_is_service_owned_server(
+    stream: &Connection,
+    deadline: tokio::time::Instant,
+) -> bool {
     let identity = match stream
         .macos_peer_process_identity("macOS service-owned password snapshot requester")
     {
@@ -1986,8 +4508,14 @@ async fn macos_peer_is_service_owned_server(stream: &Connection) -> bool {
             return false;
         }
     };
-    match tokio::task::spawn_blocking(move || macos_peer_is_service_owned_server_blocking(identity))
-        .await
+    let Some(_authorization_slot) = try_acquire_macos_service_password_ipc_authorization_slot()
+    else {
+        return false;
+    };
+    match run_bounded_macos_security_proof(deadline, "macos-password-snapshot-proof", move || {
+        Ok(macos_peer_is_service_owned_server_blocking(identity))
+    })
+    .await
     {
         Ok(accepted) => accepted,
         Err(err) => {
@@ -2251,27 +4779,36 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
 }
 
 #[cfg(target_os = "macos")]
-async fn handle_macos_service_owned_permanent_password_snapshot_request(
-    channel: IpcChannel,
-    stream: &mut Connection,
-) {
-    let (storage, salt) =
-        if channel == IpcChannel::Service && macos_peer_is_service_owned_server(stream).await {
-            let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
-            if storage.is_empty() {
-                (String::new(), String::new())
-            } else {
-                (storage, salt)
-            }
-        } else {
-            log::warn!("Rejected macOS service-owned password snapshot request");
+async fn handle_macos_service_owned_permanent_password_snapshot_request(stream: &mut Connection) {
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+    let (storage, salt) = if macos_peer_is_service_owned_server(stream, deadline).await {
+        let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
+        if storage.is_empty() {
             (String::new(), String::new())
-        };
-    allow_err!(
-        stream
-            .send(&Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt })
-            .await
-    );
+        } else {
+            (storage, salt)
+        }
+    } else {
+        log::warn!("Rejected macOS service-owned password snapshot request");
+        (String::new(), String::new())
+    };
+    let response_timeout = match password::remaining_millis(deadline) {
+        Ok(timeout) => timeout,
+        Err(err) => {
+            log::warn!("macOS service-owned password snapshot deadline expired: {err}");
+            return;
+        }
+    };
+    if let Err(err) = stream
+        .send_json_timeout(
+            &Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt },
+            response_timeout,
+        )
+        .await
+    {
+        log::warn!("Failed to send macOS service-owned password snapshot: {err}");
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -2318,66 +4855,63 @@ async fn permanent_password_is_preset_for_current_process() -> bool {
 
 #[cfg(target_os = "macos")]
 async fn handle_macos_service_owned_unattended_password_request(
-    channel: IpcChannel,
-    password: String,
-    authorization: Vec<u8>,
-    stream: &mut Connection,
-) {
-    let accepted = channel == IpcChannel::Service
-        && macos_service_owned_password_authorization_right_is_ready()
-        && service_owned_password_value_is_valid("macOS", &password)
-        && macos_peer_is_authorized_for_service_owned_password_change(&authorization)
-        && {
-            let committed = Config::set_permanent_password(&password);
-            if !committed {
-                log::warn!(
-                    "Rejected macOS service-owned unattended password change: root credential store rejected the update"
-                );
-            }
-            committed
-        };
-    if !accepted {
-        log::warn!("Rejected macOS service-owned unattended password change");
-    }
-    allow_err!(
-        stream
-            .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
-            .await
+    operation_id: String,
+    password: SensitivePassword,
+    authority_allowed: bool,
+) -> PasswordMutationStatus {
+    let kind = PasswordMutationKind::ServiceOwned;
+    let admission_allowed = password_mutation_id_is_valid(&operation_id)
+        && authority_allowed
+        && service_owned_password_value_is_valid("macOS", password.as_str());
+    let preparation = password_mutations().prepare_if_allowed(
+        &operation_id,
+        kind,
+        password.as_str(),
+        admission_allowed,
     );
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) async fn handle_windows_service_owned_unattended_password_request(
-    value: String,
-    stream: &mut Connection,
-) {
-    let accepted = service_owned_password_value_is_valid("Windows", &value)
-        && windows_peer_is_authorized_for_service_owned_password_change(stream)
-        && match commit_service_owned_unattended_password_change(value).await {
-            Ok(committed) => committed,
-            Err(err) => {
-                log::warn!(
-                    "Rejected Windows service-owned unattended password change: service-to-server commit failed: {err}"
-                );
-                false
+    let result = if preparation.owns_preparation {
+        let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
+            if !password_mutations().fail_admitted(&operation_id, kind, password.as_str()) {
+                log::error!("macOS password admission failure could not be finalized");
             }
+            return PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure);
         };
-    if !accepted {
-        log::warn!("Rejected Windows service-owned unattended password change");
-    }
-    allow_err!(
-        stream
-            .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
-            .await
-    );
-}
-
-#[cfg(target_os = "windows")]
-fn windows_peer_is_authorized_for_service_owned_password_change(stream: &Connection) -> bool {
-    windows_peer_is_authorized_for_service_owned_request(
-        stream,
-        "Windows service-owned unattended password change",
-    )
+        if !password_mutations().acknowledge(&operation_id, kind, password.as_str()) {
+            log::error!("macOS password preparation could not be acknowledged");
+            if !password_mutations().fail_admitted(&operation_id, kind, password.as_str()) {
+                log::error!("macOS password acknowledgement failure could not be finalized");
+            }
+            IpcMutationResult::InternalFailure
+        } else {
+            let worker = spawn_password_mutation(operation_id.clone(), password, kind, permit);
+            match worker.await {
+                Ok(result) => result,
+                Err(err) => {
+                    log::error!("macOS password mutation worker failed: {err}");
+                    IpcMutationResult::InternalFailure
+                }
+            }
+        }
+    } else {
+        match preparation.status {
+            PasswordMutationStatus::Complete(result) => result,
+            PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending => {
+                match tokio::time::timeout(
+                    Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS),
+                    password_mutations().wait_for_complete(&operation_id, kind),
+                )
+                .await
+                {
+                    Ok(Some(result)) => result,
+                    Ok(None) | Err(_) => return PasswordMutationStatus::Pending,
+                }
+            }
+            PasswordMutationStatus::Unknown | PasswordMutationStatus::ShuttingDown => {
+                IpcMutationResult::InternalFailure
+            }
+        }
+    };
+    PasswordMutationStatus::Complete(result)
 }
 
 #[cfg(target_os = "windows")]
@@ -2396,11 +4930,56 @@ pub(crate) async fn handle_windows_service_owned_share_rdp_request(
     if !accepted {
         log::warn!("Rejected Windows service-owned RDP session-sharing change");
     }
-    allow_err!(
-        stream
-            .send(&Data::ServiceOwnedShareRdpResult(accepted))
-            .await
-    );
+    if let Err(err) = stream
+        .send_json_timeout(
+            &Data::ServiceOwnedShareRdpResult(accepted),
+            SERVICE_IPC_REQUEST_TIMEOUT_MS,
+        )
+        .await
+    {
+        log::warn!("Failed to send Windows service-owned RDP result: {err}");
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn handle_service_request(data: Data, stream: &mut Connection) {
+    match data {
+        Data::Test => {
+            if let Err(err) = stream
+                .send_json_timeout(&Data::Test, SERVICE_IPC_REQUEST_TIMEOUT_MS)
+                .await
+            {
+                log::debug!("Failed to send service IPC liveness response: {err}");
+            }
+        }
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPasswordRightReadyRequest => {
+            let deadline = tokio::time::Instant::now()
+                + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+            let ready = macos_service_owned_password_authorization_right_is_ready(deadline).await;
+            let response_timeout = match password::remaining_millis(deadline) {
+                Ok(timeout) => timeout,
+                Err(err) => {
+                    log::warn!("macOS password-right readiness deadline expired: {err}");
+                    return;
+                }
+            };
+            if let Err(err) = stream
+                .send_json_timeout(
+                    &Data::MacosServiceOwnedPasswordRightReadyResult(ready),
+                    response_timeout,
+                )
+                .await
+            {
+                log::warn!("Failed to send macOS password-right readiness result: {err}");
+            }
+        }
+        #[cfg(target_os = "macos")]
+        Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => {
+            handle_macos_service_owned_permanent_password_snapshot_request(stream).await;
+        }
+        _ => log::error!("service request reached dispatch without admission"),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -2426,375 +5005,33 @@ fn windows_peer_is_authorized_for_service_owned_request(stream: &Connection, act
     }
 }
 
-async fn handle(data: Data, stream: &mut Connection, channel: IpcChannel) {
-    match data {
-        Data::SystemInfo(_) => {
-            let info = format!(
-                "log_path: {}, config: {}, username: {}",
-                Config::log_path().to_str().unwrap_or(""),
-                Config::file().to_str().unwrap_or(""),
-                crate::username(),
-            );
-            allow_err!(stream.send(&Data::SystemInfo(Some(info))).await);
-        }
-        Data::ClickTime(_) => {
-            let t = crate::server::CLICK_TIME.load(Ordering::SeqCst);
-            allow_err!(stream.send(&Data::ClickTime(t)).await);
-        }
-        Data::Close => {
-            log::info!("Receive close message");
-            if EXIT_RECV_CLOSE.load(Ordering::SeqCst) {
-                #[cfg(not(target_os = "android"))]
-                crate::server::input_service::fix_key_down_timeout_at_exit();
-                if is_server() {
-                    let _ = privacy_mode::turn_off_privacy(0, Some(PrivacyModeState::OffByPeer));
-                }
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
-                if crate::is_main() {
-                    // below part is for main windows can be reopen during rustdesk installation and installing service from UI
-                    // this make new ipc server (domain socket) can be created.
-                    std::fs::remove_file(&Config::ipc_path("")).ok();
-                    #[cfg(target_os = "linux")]
-                    {
-                        hbb_common::sleep((crate::platform::SERVICE_INTERVAL * 2) as f32 / 1000.0)
-                            .await;
-                        // https://github.com/rustdesk/rustdesk/discussions/9254
-                        // R-X10: --no-server removed; restart the GUI plainly (it never starts a
-                        // controlled server anyway — that is the installed --service only).
-                        crate::run_me::<&str>(vec![]).ok();
-                    }
-                    #[cfg(target_os = "macos")]
-                    {
-                        // our launchagent interval is 1 second
-                        hbb_common::sleep(1.5).await;
-                        std::process::Command::new(MACOS_OPEN)
-                            .arg("-n")
-                            .arg(&format!("/Applications/{}.app", crate::get_app_name()))
-                            .spawn()
-                            .ok();
-                    }
-                    // leave above open a little time
-                    hbb_common::sleep(0.3).await;
-                    // in case below exit failed
-                    crate::platform::quit_gui();
-                }
-                std::process::exit(-1); // to make sure --server luauchagent process can restart because SuccessfulExit used
-            }
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::ValidateCmConnection {
-            id,
-            conn_type,
-            cm_auth_token,
-            result: None,
-        } => {
-            let result =
-                crate::server::validate_cm_connection_authority(id, conn_type, &cm_auth_token);
-            allow_err!(
-                stream
-                    .send(&Data::ValidateCmConnection {
-                        id,
-                        conn_type,
-                        cm_auth_token: String::new(),
-                        result: Some(result),
-                    })
-                    .await
-            );
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::ValidateCmConnection { .. } => {}
-        #[cfg(target_os = "linux")]
-        Data::ValidatePulseAudioStart {
-            token,
-            result: None,
-        } => {
-            let result = peer_process_identity(stream, "")
-                .map(|peer| crate::audio_service::validate_pa_capture_authority(&token, &peer))
-                .unwrap_or(false);
-            allow_err!(
-                stream
-                    .send(&Data::ValidatePulseAudioStart {
-                        token: String::new(),
-                        result: Some(result),
-                    })
-                    .await
-            );
-        }
-        #[cfg(target_os = "linux")]
-        Data::ValidatePulseAudioStart { .. } => {}
-        Data::ConfigRequest(name) => {
-            let value = if name == "id" {
-                Some(Config::get_id())
-            } else if name == "permanent-password-storage-and-salt" {
-                if current_process_allows_main_channel_permanent_password_storage_sync() {
-                    let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
-                    Some(storage + "\n" + &salt)
-                } else {
-                    log::warn!(
-                        "Rejected permanent password storage sync from service-owned server"
-                    );
-                    None
-                }
-            } else if name == "permanent-password-set" {
-                Some(if permanent_password_is_set_for_current_process().await {
-                    "Y".to_owned()
-                } else {
-                    "N".to_owned()
-                })
-            } else if name == "permanent-password-is-preset" {
-                Some(
-                    if permanent_password_is_preset_for_current_process().await {
-                        "Y".to_owned()
-                    } else {
-                        "N".to_owned()
-                    },
-                )
-            } else if name == "permanent-password-user-owned-writable" {
-                Some(
-                    if current_process_allows_user_owned_permanent_password_write()
-                        && !Config::is_disable_change_permanent_password()
-                    {
-                        "Y".to_owned()
-                    } else {
-                        "N".to_owned()
-                    },
-                )
-            } else if name == "salt" {
-                if current_process_allows_main_channel_permanent_password_storage_sync() {
-                    Some(Config::get_salt())
-                } else {
-                    log::warn!("Rejected permanent password salt sync from service-owned server");
-                    None
-                }
-            } else if name == "hide_cm" {
-                if crate::common::is_custom_client() {
-                    Some(hbb_common::password_security::hide_cm().to_string())
-                } else {
-                    None
-                }
-            } else if name == "voice-call-input" {
-                crate::audio_service::get_voice_call_input_device()
-            } else if name == "direct-listener-bound" {
-                // T1 / BR-4 (verify-ground-truth): answer the GUI's cross-process query for the
-                // REAL direct-listener state. This handler runs in the process that hosts the
-                // main "" IPC channel AND binds :21118 (the `--server`, server.rs), so the atomic
-                // read here is the true socket state (bound / R-S9-parked / rebinding). The
-                // desktop GUI is a SEPARATE process whose own atomic is always false, hence this
-                // read-only IPC GET (mirrors how `permanent-password-set` is queried above).
-                Some(crate::direct_service::is_direct_listener_bound().to_string())
-            } else {
-                None
-            };
-            allow_err!(stream.send(&Data::ConfigValue((name, value))).await);
-        }
-        Data::SetVoiceCallInput(value) => {
-            crate::audio_service::set_voice_call_input_device(Some(value), true);
-            log::info!("voice-call-input updated");
-        }
-        Data::SetUserOwnedPermanentPassword(value) => {
-            let accepted = current_process_allows_user_owned_permanent_password_write()
-                && !Config::is_disable_change_permanent_password()
-                && Config::set_permanent_password(&value);
-            if !accepted {
-                log::warn!("Rejected user-owned permanent password change");
-            }
-            allow_err!(
-                stream
-                    .send(&Data::SetUserOwnedPermanentPasswordResult(accepted))
-                    .await
-            );
-        }
-        #[cfg(target_os = "linux")]
-        Data::RequestServiceOwnedUnattendedPasswordChange(value) => {
-            handle_linux_service_owned_unattended_password_request(channel, value, stream).await;
-        }
-        #[cfg(target_os = "macos")]
-        Data::RequestMacosServiceOwnedUnattendedPasswordChange {
-            password,
-            authorization,
-        } => {
-            handle_macos_service_owned_unattended_password_request(
-                channel,
-                password,
-                authorization,
-                stream,
-            )
-            .await;
-        }
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPasswordRightReadyRequest => {
-            let ready = channel == IpcChannel::Service
-                && macos_service_owned_password_authorization_right_is_ready();
-            if !ready {
-                log::warn!(
-                    "Rejected macOS service-owned password authorization-right readiness request"
-                );
-            }
-            allow_err!(
-                stream
-                    .send(&Data::MacosServiceOwnedPasswordRightReadyResult(ready))
-                    .await
-            );
-        }
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => {
-            handle_macos_service_owned_permanent_password_snapshot_request(channel, stream).await;
-        }
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPermanentPasswordSnapshot { .. } => {}
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPasswordRightReadyResult(_) => {}
-        #[cfg(target_os = "windows")]
-        Data::RequestServiceOwnedUnattendedPasswordChange(_) => {
-            allow_err!(
-                stream
-                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
-                    .await
-            );
-        }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        Data::CommitServiceOwnedUnattendedPasswordChange(value) => {
-            let accepted = channel == IpcChannel::Main
-                && current_process_allows_service_owned_unattended_password_commit(stream)
-                && !Config::is_disable_change_permanent_password()
-                && Config::set_permanent_password(&value);
-            if !accepted {
-                log::warn!("Rejected service-owned unattended password commit");
-            }
-            allow_err!(
-                stream
-                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(accepted))
-                    .await
-            );
-        }
-        #[cfg(target_os = "macos")]
-        Data::CommitServiceOwnedUnattendedPasswordChange(_) => {
-            log::warn!(
-                "Rejected macOS service-owned unattended password commit: root LaunchDaemon storage is authoritative"
-            );
-            allow_err!(
-                stream
-                    .send(&Data::ServiceOwnedUnattendedPasswordChangeResult(false))
-                    .await
-            );
-        }
-        Data::Options(value) => match value {
-            None => {
-                let v = Config::get_options();
-                allow_err!(stream.send(&Data::Options(Some(v))).await);
-            }
-            Some(value) => {
-                let accepted = current_process_allows_main_channel_options_write();
-                if accepted {
-                    let _chk = CheckIfRestart::new();
-                    // R-A6/R-S11: CheckTestNatType Drop guard removed here too — is_direct is constant
-                    // (socks inert, R-D6(d)(iii)), so it never fired; severs the service-entry probe reach.
-                    if let Some(v) = value.get("privacy-mode-impl-key") {
-                        crate::privacy_mode::switch(v);
-                    }
-                    Config::set_options(value);
-                } else {
-                    log::warn!("Rejected options write over ordinary IPC for service-owned server");
-                }
-                allow_err!(stream.send(&Data::OptionsSetResult(accepted)).await);
-            }
-        },
-        Data::OptionsSetResult(_) => {}
-        Data::SetUserOwnedPermanentPasswordResult(_) => {}
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        Data::ServiceOwnedUnattendedPasswordChangeResult(_) => {}
-        #[cfg(target_os = "windows")]
-        Data::ServiceOwnedShareRdpResult(_) => {}
-        Data::NatType(_) => {
-            let t = Config::get_nat_type();
-            allow_err!(stream.send(&Data::NatType(Some(t))).await);
-        }
-        Data::Test => {
-            allow_err!(stream.send(&Data::Test).await);
-        }
-        #[cfg(windows)]
-        Data::SyncWinCpuUsage(None) => {
-            allow_err!(
-                stream
-                    .send(&Data::SyncWinCpuUsage(
-                        hbb_common::platform::windows::cpu_uage_one_minute()
-                    ))
-                    .await
-            );
-        }
-        #[cfg(windows)]
-        Data::ControlledSessionCount(_) => {
-            allow_err!(
-                stream
-                    .send(&Data::ControlledSessionCount(
-                        crate::Connection::alive_conns().len()
-                    ))
-                    .await
-            );
-        }
-        #[cfg(all(
-            feature = "flutter",
-            not(any(target_os = "android", target_os = "ios"))
-        ))]
-        Data::ControllingSessionCount(_count) => {
-            // R-X1: updater excised — the controlling-session count was only read to
-            // defer an in-progress auto-update; with no updater it is ignored.
-        }
-        #[cfg(target_os = "linux")]
-        Data::TerminalSessionCount(_) => {
-            let count = crate::terminal_service::get_terminal_session_count(true);
-            allow_err!(stream.send(&Data::TerminalSessionCount(count)).await);
-        }
-        #[cfg(target_os = "windows")]
-        Data::PortForwardSessionCount(c) => match c {
-            None => {
-                let count = crate::server::AUTHED_CONNS
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .filter(|c| c.conn_type == crate::server::AuthConnType::PortForward)
-                    .count();
-                allow_err!(
-                    stream
-                        .send(&Data::PortForwardSessionCount(Some(count)))
-                        .await
-                );
-            }
-            _ => {
-                // Port forward session count is only a get value.
-            }
-        },
-        #[cfg(target_os = "windows")]
-        Data::FileTransferEnabledState(_) => {
-            use hbb_common::rendezvous_proto::control_permissions::Permission;
-            let state = crate::server::get_control_permission_state(Permission::file, false);
-            let enabled = state.unwrap_or_else(|| {
-                crate::server::Connection::is_permission_enabled_locally(
-                    config::keys::OPTION_ENABLE_FILE_TRANSFER,
-                )
-            });
-            allow_err!(
-                stream
-                    .send(&Data::FileTransferEnabledState(Some(enabled)))
-                    .await
-            );
-        }
-        _ => {}
-    };
-}
-
 #[inline]
 async fn connect_with_path(
     ms_timeout: u64,
     path: &str,
     postfix: &str,
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
+    #[cfg(target_os = "macos")]
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    if matches!(
+        postfix,
+        password::USER_PASSWORD_IPC_POSTFIX | password::SERVICE_PASSWORD_IPC_POSTFIX
+    ) {
+        bail!("sensitive password endpoints require the raw transport");
+    }
     #[cfg(windows)]
     {
         let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
         ensure_windows_ipc_server_matches_current(&client, postfix)?;
-        let mut connection = if config::is_service_ipc_postfix(postfix) {
+        let mut connection = if config::is_service_ipc_postfix(postfix)
+            || postfix == WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX
+            || postfix == WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
+            || postfix == WINDOWS_SERVICE_SAS_IPC_POSTFIX
+        {
             ConnectionTmpl::new_protected_service(client)
+        } else if postfix.is_empty() {
+            ConnectionTmpl::new_main(client)
         } else {
             ConnectionTmpl::new(client)
         };
@@ -2805,9 +5042,22 @@ async fn connect_with_path(
     }
     #[cfg(not(windows))]
     {
-        let client = timeout(ms_timeout, Endpoint::connect(path)).await??;
+        #[cfg(target_os = "macos")]
+        let connect_timeout = password::remaining_millis(deadline)?;
+        #[cfg(not(target_os = "macos"))]
+        let connect_timeout = ms_timeout;
+        let client = timeout(connect_timeout, Endpoint::connect(path)).await??;
         let mut connection = if config::is_service_ipc_postfix(postfix) {
             ConnectionTmpl::new_protected_service(client)
+        } else if postfix.is_empty() {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                ConnectionTmpl::new_main(client)
+            }
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                bail!("desktop main IPC is unavailable on mobile");
+            }
         } else {
             ConnectionTmpl::new(client)
         };
@@ -2815,12 +5065,17 @@ async fn connect_with_path(
             connection.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
         }
         #[cfg(target_os = "linux")]
-        if postfix == crate::POSTFIX_SERVICE {
+        if config::is_service_ipc_postfix(postfix) {
             ensure_linux_service_server_is_trusted(&connection)?;
         }
         #[cfg(target_os = "macos")]
-        if postfix == crate::POSTFIX_SERVICE {
-            ensure_macos_service_server_is_trusted(&connection)?;
+        if config::is_service_ipc_postfix(postfix) {
+            let authorization = ipc_auth::macos_service_server_authorization_snapshot(
+                connection.inner.get_ref(),
+                "macOS _service server",
+            )?;
+            authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;
+            password::remaining_millis(deadline)?;
         }
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let _ = postfix;
@@ -2952,11 +5207,20 @@ fn user_main_ipc_server_uid() -> ResultType<u32> {
 }
 
 pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmpl<ConnClient>> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    if matches!(
+        postfix,
+        password::USER_PASSWORD_IPC_POSTFIX | password::SERVICE_PASSWORD_IPC_POSTFIX
+    ) {
+        bail!("sensitive password endpoints require the raw transport");
+    }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         let use_user_main_ipc = USE_USER_MAIN_IPC.with(|use_user_main| use_user_main.get());
-        let is_root_main_ipc =
-            unsafe { hbb_common::libc::geteuid() == 0 } && postfix.is_empty() && use_user_main_ipc;
+        let is_user_main_endpoint = postfix.is_empty();
+        let is_root_main_ipc = unsafe { hbb_common::libc::geteuid() == 0 }
+            && is_user_main_endpoint
+            && use_user_main_ipc;
         if is_root_main_ipc {
             let uid = user_main_ipc_server_uid()?;
             let path = Config::ipc_path_for_uid(uid, postfix);
@@ -2972,6 +5236,118 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn connect_sensitive_unix(
+    deadline: tokio::time::Instant,
+    postfix: &str,
+    service_owned_replica: bool,
+) -> ResultType<ConnClient> {
+    let use_user_main_ipc = USE_USER_MAIN_IPC.with(|use_user_main| use_user_main.get());
+    let route_to_user_main = unsafe { hbb_common::libc::geteuid() == 0 }
+        && postfix == password::USER_PASSWORD_IPC_POSTFIX
+        && use_user_main_ipc;
+    let (path, expected_user_uid) = if route_to_user_main {
+        let uid = user_main_ipc_server_uid()?;
+        (Config::ipc_path_for_uid(uid, postfix), Some(uid))
+    } else {
+        (
+            Config::ipc_path(postfix),
+            (postfix == password::USER_PASSWORD_IPC_POSTFIX)
+                .then(|| unsafe { hbb_common::libc::geteuid() as u32 }),
+        )
+    };
+    let stream = timeout(
+        password::remaining_millis(deadline)?,
+        Endpoint::connect(path),
+    )
+    .await??;
+    match postfix {
+        password::USER_PASSWORD_IPC_POSTFIX => {
+            if service_owned_replica {
+                #[cfg(target_os = "linux")]
+                {
+                    let identity =
+                        authenticate_linux_service_owned_password_replica_server(&stream)?;
+                    let expected_uid = expected_user_uid.ok_or_else(|| {
+                        hbb_common::anyhow::anyhow!(
+                            "service-owned password replica route has no expected uid"
+                        )
+                    })?;
+                    if identity.uid() != expected_uid {
+                        bail!(
+                            "service-owned password replica uid mismatch: expected={}, actual={}",
+                            expected_uid,
+                            identity.uid()
+                        );
+                    }
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    bail!("service-owned password replicas are unavailable on macOS");
+                }
+            } else {
+                let expected_uid = expected_user_uid.ok_or_else(|| {
+                    hbb_common::anyhow::anyhow!("user password IPC route has no expected uid")
+                })?;
+                ensure_user_owned_password_server_is_trusted(&stream, expected_uid)?;
+            }
+        }
+        password::SERVICE_PASSWORD_IPC_POSTFIX => {
+            #[cfg(target_os = "linux")]
+            {
+                ensure_linux_service_password_server_is_trusted(&stream)?;
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let authorization = ipc_auth::macos_service_server_authorization_snapshot(
+                    &stream,
+                    "macOS service password server",
+                )?;
+                authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;
+            }
+        }
+        _ => bail!("unsupported sensitive Unix IPC endpoint"),
+    }
+    password::remaining_millis(deadline)?;
+    Ok(stream)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn main_ipc_request(request: MainIpcRequest, ms_timeout: u64) -> ResultType<MainIpcResponse> {
+    let stream = connect(ms_timeout, "").await?;
+    main_ipc_request_on_stream(stream, request, ms_timeout).await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn main_ipc_request_on_stream(
+    mut stream: ConnectionTmpl<ConnClient>,
+    request: MainIpcRequest,
+    ms_timeout: u64,
+) -> ResultType<MainIpcResponse> {
+    stream
+        .send_main_request_timeout(&request, ms_timeout)
+        .await?;
+    stream
+        .next_main_response_timeout(ms_timeout)
+        .await?
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("main IPC returned a malformed response"))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn main_ipc_request_on_stream_deadline(
+    mut stream: ConnectionTmpl<ConnClient>,
+    request: MainIpcRequest,
+    deadline: tokio::time::Instant,
+) -> ResultType<MainIpcResponse> {
+    stream
+        .send_main_request_timeout(&request, password::remaining_millis(deadline)?)
+        .await?;
+    stream
+        .next_main_response_timeout(password::remaining_millis(deadline)?)
+        .await?
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("main IPC returned a malformed response"))
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) async fn validate_cm_connection_authority(
     id: i32,
@@ -2985,21 +5361,17 @@ pub(crate) async fn validate_cm_connection_authority(
         bail!("missing cm authority token");
     }
 
-    let mut stream = connect(1_000, "").await?;
-    stream
-        .send(&Data::ValidateCmConnection {
+    match main_ipc_request(
+        MainIpcRequest::ValidateCmConnection {
             id,
             conn_type,
             cm_auth_token: cm_auth_token.to_owned(),
-            result: None,
-        })
-        .await?;
-
-    match stream.next_timeout(1_000).await? {
-        Some(Data::ValidateCmConnection {
-            result: Some(result),
-            ..
-        }) => Ok(result),
+        },
+        1_000,
+    )
+    .await?
+    {
+        MainIpcResponse::CmConnectionValidation(result) => Ok(result),
         _ => bail!("invalid cm authority validation response"),
     }
 }
@@ -3021,23 +5393,21 @@ async fn validate_pulse_audio_start_authority(
         bail!("local pulse audio capture authority rejected");
     }
 
-    let mut stream = connect_for_uid(1_000, owner.uid(), "").await?;
+    let stream = connect_for_uid(1_000, owner.uid(), "").await?;
     ensure_peer_process_identity_matches(&stream, owner, "")?;
-    stream
-        .send(&Data::ValidatePulseAudioStart {
+    match main_ipc_request_on_stream(
+        stream,
+        MainIpcRequest::ValidatePulseAudioStart {
             token: token.to_owned(),
-            result: None,
-        })
-        .await?;
-
-    match stream.next_timeout(1_000).await? {
-        Some(Data::ValidatePulseAudioStart {
-            result: Some(true), ..
-        }) => Ok(()),
-        Some(Data::ValidatePulseAudioStart {
-            result: Some(false),
-            ..
-        }) => bail!("pulse audio capture authority rejected"),
+        },
+        1_000,
+    )
+    .await?
+    {
+        MainIpcResponse::PulseAudioStartValidation(true) => Ok(()),
+        MainIpcResponse::PulseAudioStartValidation(false) => {
+            bail!("pulse audio capture authority rejected")
+        }
         _ => bail!("invalid pulse audio capture authority validation response"),
     }
 }
@@ -3169,10 +5539,89 @@ where
         Self::new_with_max_packet_length(conn, SERVICE_IPC_MAX_FRAME_BYTES)
     }
 
-    pub async fn send(&mut self, data: &Data) -> ResultType<()> {
-        let v = serde_json::to_vec(data)?;
-        self.inner.send(bytes::Bytes::from(v)).await?;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) fn new_main(conn: T) -> Self {
+        Self::new_with_max_packet_length(conn, MAIN_IPC_MAX_FRAME_BYTES)
+    }
+
+    async fn send_json<S: serde::Serialize>(&mut self, value: &S) -> ResultType<()> {
+        let value = serde_json::to_vec(value)?;
+        let max_packet_length = self.inner.codec().max_packet_length();
+        if value.len() > max_packet_length {
+            bail!(
+                "outbound IPC frame exceeds codec limit: frame={}, limit={}",
+                value.len(),
+                max_packet_length
+            );
+        }
+        self.inner.send(bytes::Bytes::from(value)).await?;
         Ok(())
+    }
+
+    pub(crate) async fn send_json_timeout<S: serde::Serialize>(
+        &mut self,
+        value: &S,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        timeout(ms_timeout, self.send_json(value)).await??;
+        Ok(())
+    }
+
+    async fn next_json<D: serde::de::DeserializeOwned>(&mut self) -> ResultType<Option<D>> {
+        let Some(bytes) = self.inner.next().await else {
+            bail!("reset by the peer");
+        };
+        let bytes = bytes?;
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            return Ok(None);
+        };
+        Ok(serde_json::from_str(text).ok())
+    }
+
+    pub async fn send(&mut self, data: &Data) -> ResultType<()> {
+        self.send_json(data).await
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn send_main_request_timeout(
+        &mut self,
+        request: &MainIpcRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn next_main_timeout(&mut self, ms_timeout: u64) -> ResultType<Option<MainIpcRequest>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn next_main_response_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<MainIpcResponse>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "windows")]
+    async fn send_windows_service_main_request_timeout(
+        &mut self,
+        request: &WindowsServiceMainRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    #[cfg(target_os = "windows")]
+    async fn next_windows_service_main_request_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WindowsServiceMainRequest>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "windows")]
+    async fn next_windows_service_main_response_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WindowsServiceMainResponse>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
     }
 
     pub(crate) fn set_max_packet_length(&mut self, max_packet_length: usize) {
@@ -3194,23 +5643,18 @@ where
     }
 
     pub async fn next(&mut self) -> ResultType<Option<Data>> {
-        match self.inner.next().await {
-            Some(res) => {
-                let bytes = res?;
-                if let Ok(s) = std::str::from_utf8(&bytes) {
-                    if let Ok(data) = serde_json::from_str::<Data>(s) {
-                        return Ok(Some(data));
-                    }
-                }
-                return Ok(None);
-            }
-            _ => {
-                bail!("reset by the peer");
-            }
-        }
+        self.next_json().await
     }
 
     pub async fn send_raw(&mut self, data: Bytes) -> ResultType<()> {
+        let max_packet_length = self.inner.codec().max_packet_length();
+        if data.len() > max_packet_length {
+            bail!(
+                "outbound raw IPC frame exceeds codec limit: frame={}, limit={}",
+                data.len(),
+                max_packet_length
+            );
+        }
         self.inner.send(data).await?;
         Ok(())
     }
@@ -3225,20 +5669,62 @@ where
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn write_response_with_deadline<T, S>(
+    stream: &mut ConnectionTmpl<T>,
+    response: &S,
+    context: &str,
+) -> bool
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin,
+    S: serde::Serialize,
+{
+    match stream
+        .send_json_timeout(response, MAIN_IPC_TRANSACTION_TIMEOUT_MS)
+        .await
+    {
+        Ok(()) => true,
+        Err(err) => {
+            log::warn!("{context} response failed: {err}");
+            false
+        }
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 pub async fn get_config(name: &str) -> ResultType<Option<String>> {
     get_config_async(name, 1_000).await
 }
 
 async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<String>> {
-    let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::ConfigRequest(name.to_owned())).await?;
-    if let Some(Data::ConfigValue((name2, value))) = c.next_timeout(ms_timeout).await? {
-        if name == name2 {
-            return Ok(value);
-        }
+    let Some(key) = main_config_key(name) else {
+        return Ok(None);
+    };
+    match main_ipc_request(MainIpcRequest::Config(key), ms_timeout).await? {
+        MainIpcResponse::Config {
+            key: response_key,
+            value,
+        } if response_key == key => Ok(value),
+        _ => bail!("invalid main IPC config response"),
     }
-    return Ok(None);
+}
+
+fn main_config_key(name: &str) -> Option<MainConfigKey> {
+    match name {
+        "id" => Some(MainConfigKey::Id),
+        "permanent-password-storage-and-salt" => {
+            Some(MainConfigKey::PermanentPasswordStorageAndSalt)
+        }
+        "permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet),
+        "permanent-password-is-preset" => Some(MainConfigKey::PermanentPasswordIsPreset),
+        "permanent-password-user-owned-writable" => {
+            Some(MainConfigKey::UserOwnedPermanentPasswordWritable)
+        }
+        "hide_cm" => Some(MainConfigKey::HideConnectionManager),
+        "voice-call-input" => Some(MainConfigKey::VoiceCallInput),
+        "direct-listener-bound" => Some(MainConfigKey::DirectListenerBound),
+        _ => None,
+    }
 }
 
 async fn connect_user_owned_password_main(
@@ -3250,33 +5736,279 @@ async fn connect_user_owned_password_main(
     Ok(connection)
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn connect_user_owned_password_stream(
+    deadline: tokio::time::Instant,
+) -> ResultType<ConnClient> {
+    connect_sensitive_unix(deadline, password::USER_PASSWORD_IPC_POSTFIX, false).await
+}
+
+#[cfg(target_os = "linux")]
+async fn connect_service_owned_password_replica_stream(
+    deadline: tokio::time::Instant,
+) -> ResultType<ConnClient> {
+    let connection = {
+        let _scope = UserMainIpcScope::new();
+        connect_sensitive_unix(deadline, password::USER_PASSWORD_IPC_POSTFIX, true).await?
+    };
+    Ok(connection)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn complete_main_password_mutation(
+    operation_id: String,
+    value: &MainPasswordMutationValue,
+    service_owned: bool,
+    ms_timeout: u64,
+) -> ResultType<IpcMutationResult> {
+    let operation_uuid = hbb_common::uuid::Uuid::parse_str(&operation_id)
+        .map_err(|err| hbb_common::anyhow::anyhow!("invalid password operation UUID: {err}"))?;
+    let mut query_only = false;
+    let mut recovery_required = service_owned;
+    let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
+    loop {
+        if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
+            bail!("password mutation outcome remains unknown after bounded recovery");
+        }
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+        if query_only {
+            let stream = if service_owned {
+                #[cfg(target_os = "linux")]
+                {
+                    let stream = {
+                        let _scope = UserMainIpcScope::new();
+                        connect(password::remaining_millis(deadline)?, "").await
+                    };
+                    match stream {
+                        Ok(stream) => {
+                            if let Err(err) = authenticate_linux_service_owned_main_server(&stream)
+                            {
+                                log::warn!(
+                                    "Retrying admitted password mutation after child identity failure: {err}"
+                                );
+                                hbb_common::sleep(0.1).await;
+                                continue;
+                            }
+                            if let Err(err) = password::remaining_millis(deadline) {
+                                log::warn!(
+                                    "Retrying admitted password mutation after child proof exceeded its deadline: {err}"
+                                );
+                                hbb_common::sleep(0.1).await;
+                                continue;
+                            }
+                            stream
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "Retrying accepted password mutation after reconnect failure: {err}"
+                            );
+                            hbb_common::sleep(0.1).await;
+                            continue;
+                        }
+                    }
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    bail!("service-owned main password mutation is unsupported on this platform");
+                }
+            } else {
+                match connect_user_owned_password_main(password::remaining_millis(deadline)?).await
+                {
+                    Ok(stream) => stream,
+                    Err(err) if !recovery_required => return Err(err),
+                    Err(err) => {
+                        log::warn!(
+                            "Retrying accepted password mutation after reconnect failure: {err}"
+                        );
+                        hbb_common::sleep(0.1).await;
+                        continue;
+                    }
+                }
+            };
+            let response = main_ipc_request_on_stream_deadline(
+                stream,
+                MainIpcRequest::PasswordMutationStatus {
+                    operation_id: operation_id.clone(),
+                },
+                deadline,
+            )
+            .await;
+            let response = match response {
+                Ok(MainIpcResponse::PasswordMutation(status)) => status,
+                Ok(_) => {
+                    log::warn!("Retrying password mutation after an invalid status response");
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+                Err(err) => {
+                    log::warn!("Retrying password mutation until its final state is known: {err}");
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+            };
+            match windows_credential_client_decision(response, recovery_required) {
+                WindowsCredentialClientDecision::Continue => {
+                    recovery_required = true;
+                    query_only = matches!(
+                        response,
+                        PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending
+                    );
+                }
+                WindowsCredentialClientDecision::Applied => return Ok(IpcMutationResult::Applied),
+                WindowsCredentialClientDecision::Rejected => {
+                    return Ok(IpcMutationResult::Rejected)
+                }
+                WindowsCredentialClientDecision::InternalFailure => {
+                    return Ok(IpcMutationResult::InternalFailure)
+                }
+                WindowsCredentialClientDecision::NotAdmitted => {
+                    bail!("password mutation was not accepted because the daemon is shutting down")
+                }
+            }
+            hbb_common::sleep(0.05).await;
+            continue;
+        }
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let mut stream = if service_owned {
+            #[cfg(target_os = "linux")]
+            {
+                match connect_service_owned_password_replica_stream(deadline).await {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        log::warn!("Retrying admitted password mutation after child identity failure: {err}");
+                        hbb_common::sleep(0.1).await;
+                        continue;
+                    }
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                bail!("service-owned main password mutation is unsupported on this platform");
+            }
+        } else {
+            match connect_user_owned_password_stream(deadline).await {
+                Ok(stream) => stream,
+                Err(err) if !recovery_required => return Err(err),
+                Err(err) => {
+                    log::warn!(
+                        "Retrying accepted password mutation after reconnect failure: {err}"
+                    );
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+            }
+        };
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let response: ResultType<PasswordMutationStatus> = {
+            match password::send_request_unix(&mut stream, operation_uuid, value, None, deadline)
+                .await
+            {
+                Ok(()) => {
+                    match password::receive_status_unix(&mut stream, operation_uuid, deadline).await
+                    {
+                        Ok(status) => Ok(status),
+                        Err(err) => {
+                            recovery_required = true;
+                            Err(err)
+                        }
+                    }
+                }
+                Err(password::UnixSensitivePasswordSendError::NotSent(err))
+                    if !recovery_required =>
+                {
+                    return Err(err)
+                }
+                Err(password::UnixSensitivePasswordSendError::NotSent(err)) => Err(err),
+                Err(password::UnixSensitivePasswordSendError::Uncertain(err)) => {
+                    recovery_required = true;
+                    Err(err)
+                }
+            }
+        };
+        #[cfg(target_os = "windows")]
+        let response = match crate::platform::windows::transact_sensitive_password(
+            password::USER_PASSWORD_IPC_POSTFIX,
+            operation_uuid,
+            value,
+            std::time::Duration::from_millis(ms_timeout),
+        )
+        .await
+        {
+            crate::platform::windows::WindowsSensitivePasswordAttempt::Status(status) => Ok(status),
+            crate::platform::windows::WindowsSensitivePasswordAttempt::NotSent(err)
+                if !recovery_required =>
+            {
+                return Err(hbb_common::anyhow::anyhow!(err));
+            }
+            crate::platform::windows::WindowsSensitivePasswordAttempt::NotSent(err) => {
+                Err(hbb_common::anyhow::anyhow!(err))
+            }
+            crate::platform::windows::WindowsSensitivePasswordAttempt::Uncertain(err) => {
+                recovery_required = true;
+                Err(hbb_common::anyhow::anyhow!(err))
+            }
+        };
+        let response = match response {
+            Ok(status) => status,
+            Err(err) => {
+                log::warn!("Retrying password mutation until its final state is known: {err}");
+                hbb_common::sleep(0.1).await;
+                continue;
+            }
+        };
+        match windows_credential_client_decision(response, recovery_required) {
+            WindowsCredentialClientDecision::Continue => {
+                recovery_required = true;
+                query_only = matches!(
+                    response,
+                    PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending
+                );
+            }
+            WindowsCredentialClientDecision::Applied => return Ok(IpcMutationResult::Applied),
+            WindowsCredentialClientDecision::Rejected => return Ok(IpcMutationResult::Rejected),
+            WindowsCredentialClientDecision::InternalFailure => {
+                return Ok(IpcMutationResult::InternalFailure)
+            }
+            WindowsCredentialClientDecision::NotAdmitted => {
+                bail!("password mutation was not accepted because the daemon is shutting down")
+            }
+        }
+        hbb_common::sleep(0.05).await;
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn user_owned_permanent_password_is_writable() -> ResultType<bool> {
     let ms_timeout = 1_000;
-    let name = "permanent-password-user-owned-writable";
-    let mut c = connect_user_owned_password_main(ms_timeout).await?;
-    c.send(&Data::ConfigRequest(name.to_owned())).await?;
-    if let Some(Data::ConfigValue((name2, value))) = c.next_timeout(ms_timeout).await? {
-        return Ok(name == name2 && value.as_deref().is_some_and(|v| v.trim() == "Y"));
+    let stream = connect_user_owned_password_main(ms_timeout).await?;
+    match main_ipc_request_on_stream(
+        stream,
+        MainIpcRequest::Config(MainConfigKey::UserOwnedPermanentPasswordWritable),
+        ms_timeout,
+    )
+    .await?
+    {
+        MainIpcResponse::Config {
+            key: MainConfigKey::UserOwnedPermanentPasswordWritable,
+            value,
+        } => Ok(value.as_deref().is_some_and(|value| value.trim() == "Y")),
+        _ => bail!("invalid user-owned password capability response"),
     }
-    Ok(false)
 }
 
 async fn set_voice_call_input_device_async(value: String) -> ResultType<()> {
-    let mut c = connect(1000, "").await?;
-    c.send(&Data::SetVoiceCallInput(value)).await?;
-    Ok(())
-}
-
-#[tokio::main(flavor = "current_thread")]
-pub async fn set_data(data: &Data) -> ResultType<()> {
-    set_data_async(data).await
-}
-
-async fn set_data_async(data: &Data) -> ResultType<()> {
-    let mut c = connect(1000, "").await?;
-    c.send(data).await?;
-    Ok(())
+    match main_ipc_request(MainIpcRequest::SetVoiceCallInput(value), 1_000).await? {
+        MainIpcResponse::VoiceCallInputSet(IpcMutationResult::Applied) => Ok(()),
+        MainIpcResponse::VoiceCallInputSet(IpcMutationResult::Rejected) => {
+            bail!("voice-call input change was rejected by daemon")
+        }
+        MainIpcResponse::VoiceCallInputSet(IpcMutationResult::InternalFailure) => {
+            bail!("voice-call input change failed internally")
+        }
+        _ => bail!("invalid voice-call input response"),
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -3312,8 +6044,11 @@ pub async fn refresh_macos_service_owned_permanent_password_snapshot(
     ms_timeout: u64,
 ) -> ResultType<bool> {
     let mut c = connect_service(ms_timeout).await?;
-    c.send(&Data::MacosServiceOwnedPermanentPasswordSnapshotRequest)
-        .await?;
+    c.send_json_timeout(
+        &Data::MacosServiceOwnedPermanentPasswordSnapshotRequest,
+        ms_timeout,
+    )
+    .await?;
     match c.next_timeout(ms_timeout).await? {
         Some(Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt }) => {
             Config::set_permanent_password_storage_for_runtime(&storage, &salt)?;
@@ -3367,10 +6102,24 @@ pub fn can_set_user_owned_permanent_password() -> bool {
 }
 
 pub fn set_user_owned_permanent_password(v: String) -> ResultType<()> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        return set_user_owned_permanent_password_sensitive(SensitivePassword::new(v));
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = v;
+        bail!("Changing a user-owned permanent password is unavailable on mobile")
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn set_user_owned_permanent_password_sensitive(v: SensitivePassword) -> ResultType<()> {
+    validate_unattended_password_value(&v)?;
     if Config::is_disable_change_permanent_password() {
         bail!("Changing permanent password is disabled");
     }
-    if set_user_owned_permanent_password_with_ack(v)? {
+    if set_user_owned_permanent_password_with_ack_sensitive(v)? {
         Ok(())
     } else {
         bail!("Changing permanent password was rejected by daemon");
@@ -3384,12 +6133,12 @@ pub fn can_request_service_owned_unattended_password_change() -> bool {
 
 #[cfg(target_os = "windows")]
 pub fn can_request_service_owned_unattended_password_change() -> bool {
-    crate::platform::is_installed() && crate::platform::is_elevated(None).unwrap_or(false)
+    crate::platform::is_installed()
 }
 
 #[cfg(target_os = "macos")]
 pub fn can_request_service_owned_unattended_password_change() -> bool {
-    crate::platform::is_installed() && crate::platform::is_installed_daemon(false)
+    crate::platform::is_installed()
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -3406,54 +6155,88 @@ pub fn can_set_permanent_password() -> bool {
 }
 
 pub fn set_permanent_password(v: String) -> ResultType<()> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        return set_permanent_password_sensitive(SensitivePassword::new(v));
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = v;
+        bail!("Changing a permanent password is unavailable on mobile")
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn set_permanent_password_sensitive(v: SensitivePassword) -> ResultType<()> {
+    validate_unattended_password_value(&v)?;
     if Config::is_disable_change_permanent_password() {
         bail!("Changing permanent password is disabled");
     }
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    {
-        if can_request_service_owned_unattended_password_change() {
-            return set_service_owned_unattended_password(v);
-        }
+    if can_request_service_owned_unattended_password_change() {
+        #[cfg(target_os = "windows")]
+        return set_windows_service_owned_unattended_password(v);
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        return set_service_owned_unattended_password_sensitive(v);
     }
     if can_set_user_owned_permanent_password() {
-        return set_user_owned_permanent_password(v);
+        return set_user_owned_permanent_password_sensitive(v);
     }
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    {
-        bail!("Changing service-owned unattended password requires administrator authorization");
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        bail!("Changing service-owned unattended password requires administrator authorization that is not implemented on this platform");
-    }
+    bail!("Changing service-owned unattended password requires administrator authorization");
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_user_owned_permanent_password_with_ack(v: String) -> ResultType<bool> {
+    set_user_owned_permanent_password_with_ack_async(SensitivePassword::new(v)).await
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tokio::main(flavor = "current_thread")]
+async fn set_user_owned_permanent_password_with_ack_sensitive(
+    v: SensitivePassword,
+) -> ResultType<bool> {
     set_user_owned_permanent_password_with_ack_async(v).await
 }
 
-async fn set_user_owned_permanent_password_with_ack_async(v: String) -> ResultType<bool> {
-    // The daemon ACK/NACK is expected quickly since it applies the config in-process.
-    let ms_timeout = 1_000;
-    let mut c = connect_user_owned_password_main(ms_timeout).await?;
-    c.send(&Data::SetUserOwnedPermanentPassword(v)).await?;
-    if let Some(Data::SetUserOwnedPermanentPasswordResult(ok)) = c.next_timeout(ms_timeout).await? {
-        if ok {
-            // Ensure the hashed permanent password storage is written to the user config file.
-            // This sync must not affect the daemon ACK outcome.
-            if let Err(err) = sync_permanent_password_storage_from_daemon_async().await {
-                log::warn!("Failed to sync permanent password storage from daemon: {err}");
-            }
+async fn set_user_owned_permanent_password_with_ack_async(
+    v: MainPasswordMutationValue,
+) -> ResultType<bool> {
+    validate_unattended_password_value(&v)?;
+    let ms_timeout = 5_000;
+    let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+    let result = complete_main_password_mutation(operation_id, &v, false, ms_timeout).await?;
+    let accepted = match result {
+        IpcMutationResult::Applied => true,
+        IpcMutationResult::Rejected => false,
+        IpcMutationResult::InternalFailure => bail!("password mutation failed internally"),
+    };
+    if accepted {
+        if let Err(err) = sync_permanent_password_storage_from_daemon_async().await {
+            log::warn!("Failed to sync permanent password storage from daemon: {err}");
         }
-        return Ok(ok);
     }
-    Ok(false)
+    Ok(accepted)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
+    set_service_owned_unattended_password_sensitive(SensitivePassword::new(v))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn set_service_owned_unattended_password_sensitive(v: SensitivePassword) -> ResultType<()> {
+    validate_unattended_password_value(&v)?;
     if set_service_owned_unattended_password_with_ack(v)? {
+        Ok(())
+    } else {
+        bail!("Changing service-owned unattended password was rejected by service");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_service_owned_unattended_password(v: SensitivePassword) -> ResultType<()> {
+    validate_unattended_password_value(&v)?;
+    if set_windows_service_owned_unattended_password_with_ack(v)? {
         Ok(())
     } else {
         bail!("Changing service-owned unattended password was rejected by service");
@@ -3462,58 +6245,198 @@ pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
 
 #[cfg(target_os = "macos")]
 async fn macos_service_owned_password_authorization_right_ready(
-    ms_timeout: u64,
+    deadline: tokio::time::Instant,
 ) -> ResultType<bool> {
-    let mut c = connect_service(ms_timeout).await?;
-    c.send(&Data::MacosServiceOwnedPasswordRightReadyRequest)
-        .await?;
-    match c.next_timeout(ms_timeout).await? {
+    let mut c = connect_service(password::remaining_millis(deadline)?).await?;
+    c.send_json_timeout(
+        &Data::MacosServiceOwnedPasswordRightReadyRequest,
+        password::remaining_millis(deadline)?,
+    )
+    .await?;
+    match c
+        .next_timeout(password::remaining_millis(deadline)?)
+        .await?
+    {
         Some(Data::MacosServiceOwnedPasswordRightReadyResult(ready)) => Ok(ready),
         _ => Ok(false),
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[tokio::main(flavor = "current_thread")]
-async fn set_service_owned_unattended_password_with_ack(v: String) -> ResultType<bool> {
+async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) -> ResultType<bool> {
     let ms_timeout = 1_000;
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    {
-        let mut c = connect_service(ms_timeout).await?;
-        c.send(&Data::RequestServiceOwnedUnattendedPasswordChange(v))
-            .await?;
-        if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
-            c.next_timeout(ms_timeout).await?
-        {
-            return Ok(ok);
+    let operation_id = hbb_common::uuid::Uuid::new_v4();
+    let mut recovery_required = false;
+    let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
+    loop {
+        if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
+            bail!("service-owned password mutation outcome remains unknown after bounded recovery");
         }
-        return Ok(false);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if !macos_service_owned_password_authorization_right_ready(ms_timeout).await? {
-            return Ok(false);
-        }
-        let authorization = match crate::platform::service_owned_unattended_password_authorization()
-        {
-            Ok(authorization) => authorization,
-            Err(err) => return Err(err),
+        #[cfg(target_os = "linux")]
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+        #[cfg(target_os = "macos")]
+        let authorization = {
+            let readiness_deadline =
+                tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+            match macos_service_owned_password_authorization_right_ready(readiness_deadline).await {
+                Ok(true) => {}
+                Ok(false) if !recovery_required => return Ok(false),
+                Err(err) if !recovery_required => return Err(err),
+                Ok(false) => {
+                    log::warn!(
+                        "Retrying accepted macOS password operation until its authorization service recovers"
+                    );
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+                Err(err) => {
+                    log::warn!(
+                        "Retrying accepted macOS password operation after authorization readiness failure: {err}"
+                    );
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+            }
+            match tokio::task::spawn_blocking(|| {
+                crate::platform::service_owned_unattended_password_authorization()
+            })
+            .await
+            .map_err(|err| {
+                hbb_common::anyhow::anyhow!("macOS administrator authorization task failed: {err}")
+            })
+            .and_then(|authorization| authorization)
+            {
+                Ok(authorization) => Some(authorization),
+                Err(err) if !recovery_required => return Err(err),
+                Err(err) => {
+                    log::warn!(
+                        "Retrying accepted macOS password operation after authorization failure: {err}"
+                    );
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+            }
         };
-        let mut c = connect_service(ms_timeout).await?;
-        c.send(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
-            password: v,
-            authorization,
-        })
-        .await?;
-        if let Some(Data::ServiceOwnedUnattendedPasswordChangeResult(ok)) =
-            c.next_timeout(ms_timeout).await?
+        #[cfg(target_os = "macos")]
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+        #[cfg(target_os = "linux")]
+        let authorization: Option<password::SensitiveAuthorization> = None;
+
+        let mut stream =
+            match connect_sensitive_unix(deadline, password::SERVICE_PASSWORD_IPC_POSTFIX, false)
+                .await
+            {
+                Ok(connection) => connection,
+                Err(err) if !recovery_required => return Err(err),
+                Err(err) => {
+                    log::warn!(
+                        "Retrying service-owned password operation after reconnect failure: {err}"
+                    );
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+            };
+        let status: ResultType<PasswordMutationStatus> = match password::send_request_unix(
+            &mut stream,
+            operation_id,
+            &v,
+            authorization.as_ref(),
+            deadline,
+        )
+        .await
         {
-            return Ok(ok);
+            Ok(()) => {
+                match password::receive_status_unix(&mut stream, operation_id, deadline).await {
+                    Ok(status) => Ok(status),
+                    Err(err) => {
+                        recovery_required = true;
+                        Err(err)
+                    }
+                }
+            }
+            Err(password::UnixSensitivePasswordSendError::NotSent(err)) if !recovery_required => {
+                return Err(err)
+            }
+            Err(password::UnixSensitivePasswordSendError::NotSent(err)) => Err(err),
+            Err(password::UnixSensitivePasswordSendError::Uncertain(err)) => {
+                recovery_required = true;
+                Err(err)
+            }
+        };
+        match status {
+            Ok(status) => match windows_credential_client_decision(status, recovery_required) {
+                WindowsCredentialClientDecision::Continue => recovery_required = true,
+                WindowsCredentialClientDecision::Applied => return Ok(true),
+                WindowsCredentialClientDecision::Rejected => return Ok(false),
+                WindowsCredentialClientDecision::InternalFailure => {
+                    bail!("service-owned password mutation failed internally")
+                }
+                WindowsCredentialClientDecision::NotAdmitted => {
+                    bail!("service stopped before password mutation admission")
+                }
+            },
+            Err(err) => log::warn!(
+                "Retrying service-owned password operation until its final state is known: {err}"
+            ),
         }
-        return Ok(false);
+        hbb_common::sleep(0.1).await;
     }
-    #[allow(unreachable_code)]
-    Ok(false)
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::main(flavor = "current_thread")]
+async fn set_windows_service_owned_unattended_password_with_ack(
+    value: SensitivePassword,
+) -> ResultType<bool> {
+    let ms_timeout = 1_000;
+    let operation_id = hbb_common::uuid::Uuid::new_v4();
+    let mut recovery_required = false;
+    let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
+    loop {
+        if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
+            bail!("Windows service-owned password mutation outcome remains unknown after bounded recovery");
+        }
+        let attempt = crate::platform::windows::transact_sensitive_password(
+            password::SERVICE_PASSWORD_IPC_POSTFIX,
+            operation_id,
+            &value,
+            std::time::Duration::from_millis(ms_timeout),
+        )
+        .await;
+        match attempt {
+            crate::platform::windows::WindowsSensitivePasswordAttempt::Status(status) => {
+                match windows_credential_client_decision(status, recovery_required) {
+                    WindowsCredentialClientDecision::Continue => recovery_required = true,
+                    WindowsCredentialClientDecision::Applied => return Ok(true),
+                    WindowsCredentialClientDecision::Rejected => return Ok(false),
+                    WindowsCredentialClientDecision::InternalFailure => {
+                        bail!("Windows service-owned password mutation failed internally")
+                    }
+                    WindowsCredentialClientDecision::NotAdmitted => {
+                        bail!("Windows service stopped before password mutation admission")
+                    }
+                }
+            }
+            crate::platform::windows::WindowsSensitivePasswordAttempt::NotSent(err)
+                if !recovery_required =>
+            {
+                return Err(hbb_common::anyhow::anyhow!(err));
+            }
+            crate::platform::windows::WindowsSensitivePasswordAttempt::NotSent(err) => {
+                log::warn!(
+                    "Retrying Windows service-owned password operation after pre-admission transport failure: {err}"
+                );
+            }
+            crate::platform::windows::WindowsSensitivePasswordAttempt::Uncertain(err) => {
+                recovery_required = true;
+                log::warn!(
+                    "Retrying Windows service-owned password operation until its final state is known: {err}"
+                );
+            }
+        }
+        hbb_common::sleep(0.1).await;
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -3533,11 +6456,41 @@ pub fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
 async fn set_service_owned_share_rdp_with_ack(enable: bool) -> ResultType<bool> {
     let ms_timeout = 1_000;
     let mut c = connect_service(ms_timeout).await?;
-    c.send(&Data::RequestServiceOwnedShareRdp(enable)).await?;
+    c.send_json_timeout(&Data::RequestServiceOwnedShareRdp(enable), ms_timeout)
+        .await?;
     match c.next_timeout(ms_timeout).await? {
         Some(Data::ServiceOwnedShareRdpResult(ok)) => Ok(ok),
         Some(other) => bail!("Unexpected RDP session-sharing response: {:?}", other),
         None => Ok(false),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) async fn request_windows_service_owned_sas() -> ResultType<()> {
+    if !is_service_owned_server_process() || !crate::platform::is_root() {
+        bail!("service-owned SAS requires the LocalSystem service-owned server role");
+    }
+    let mut stream = connect(
+        WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS,
+        WINDOWS_SERVICE_SAS_IPC_POSTFIX,
+    )
+    .await?;
+    stream
+        .send_json_timeout(
+            &Data::RequestServiceOwnedSasDispatch,
+            WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS,
+        )
+        .await?;
+    match stream
+        .next_timeout(WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS)
+        .await?
+    {
+        Some(Data::ServiceOwnedSasDispatchAccepted(true)) => Ok(()),
+        Some(Data::ServiceOwnedSasDispatchAccepted(false)) => {
+            bail!("Windows service rejected the service-owned SAS dispatch request")
+        }
+        Some(_) => bail!("Windows service returned an invalid service-owned SAS response"),
+        None => bail!("Windows service returned a malformed service-owned SAS response"),
     }
 }
 
@@ -3550,13 +6503,30 @@ pub fn get_id() -> String {
 }
 
 async fn get_options_(ms_timeout: u64) -> ResultType<HashMap<String, String>> {
-    let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::Options(None)).await?;
-    if let Some(Data::Options(Some(value))) = c.next_timeout(ms_timeout).await? {
-        Config::set_options(value.clone());
-        Ok(value)
-    } else {
-        Ok(Config::get_options())
+    let snapshot = get_main_status_snapshot(ms_timeout).await?;
+    snapshot.options.into_map()
+}
+
+pub async fn get_main_status_snapshot(ms_timeout: u64) -> ResultType<MainStatusSnapshot> {
+    match main_ipc_request(MainIpcRequest::StatusSnapshot, ms_timeout).await? {
+        MainIpcResponse::StatusSnapshot(snapshot) => Ok(snapshot),
+        _ => bail!("invalid main IPC status response"),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub async fn get_windows_cpu_usage(ms_timeout: u64) -> ResultType<Option<f64>> {
+    match main_ipc_request(MainIpcRequest::CpuUsage, ms_timeout).await? {
+        MainIpcResponse::CpuUsage(usage) => Ok(usage),
+        _ => bail!("invalid main IPC CPU-usage response"),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub async fn get_controlled_session_count(ms_timeout: u64) -> ResultType<usize> {
+    match main_ipc_request(MainIpcRequest::ControlledSessionCount, ms_timeout).await? {
+        MainIpcResponse::ControlledSessionCount(count) => Ok(count),
+        _ => bail!("invalid main IPC controlled-session response"),
     }
 }
 
@@ -3591,45 +6561,18 @@ pub fn set_option(key: &str, value: &str) {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
-    match connect(1000, "").await {
-        Ok(mut c) => {
-            c.send(&Data::Options(Some(value.clone()))).await?;
-            match c.next_timeout(1000).await? {
-                Some(Data::OptionsSetResult(true)) => {
-                    Config::set_options(value);
-                    Ok(())
-                }
-                Some(Data::OptionsSetResult(false)) => {
-                    bail!("Options write was rejected by daemon")
-                }
-                Some(other) => {
-                    bail!("Unexpected options write response: {:?}", other)
-                }
-                None => {
-                    bail!("Missing options write response")
-                }
-            }
+    let wire_options = MainStatusOptions::from_map(value.clone())?;
+    match main_ipc_request(MainIpcRequest::SetOptions(wire_options), 2_000).await {
+        Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Applied)) => Ok(()),
+        Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Rejected)) => {
+            bail!("Options write was rejected by daemon")
         }
-        Err(err) => bail!("Options write requires daemon ACK: {}", err),
+        Ok(MainIpcResponse::OptionsSet(IpcMutationResult::InternalFailure)) => {
+            bail!("Options write failed internally")
+        }
+        Ok(_) => bail!("Invalid options write response"),
+        Err(err) => bail!("Options write requires daemon ACK: {err}"),
     }
-}
-
-#[inline]
-async fn get_nat_type_(ms_timeout: u64) -> ResultType<i32> {
-    let mut c = connect(ms_timeout, "").await?;
-    c.send(&Data::NatType(None)).await?;
-    if let Some(Data::NatType(Some(value))) = c.next_timeout(ms_timeout).await? {
-        Config::set_nat_type(value);
-        Ok(value)
-    } else {
-        Ok(Config::get_nat_type())
-    }
-}
-
-pub async fn get_nat_type(ms_timeout: u64) -> i32 {
-    get_nat_type_(ms_timeout)
-        .await
-        .unwrap_or(Config::get_nat_type())
 }
 
 // R-D6 (Tier-4): the IPC socks CLIENT query wrappers (get_socks_/get_socks_async/get_socks/set_socks)
@@ -3645,7 +6588,7 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
 pub async fn send_url_scheme(url: String) -> ResultType<()> {
     connect(1_000, "_url")
         .await?
-        .send(&Data::UrlLink(url))
+        .send_json_timeout(&Data::UrlLink(url), 1_000)
         .await?;
     Ok(())
 }
@@ -3659,53 +6602,157 @@ pub fn close_all_instances() -> ResultType<bool> {
 }
 
 #[cfg(target_os = "windows")]
-async fn connect_exact_windows_service_owned_main_server(
-    expected_pid: u32,
+async fn windows_service_main_request(
+    expected_identity: Option<WindowsProcessIdentityKey>,
+    request: WindowsServiceMainRequest,
     ms_timeout: u64,
-) -> ResultType<Connection> {
-    let c = connect(ms_timeout, "").await?;
-    let actual_pid = authenticate_windows_service_owned_main_server(&c)?;
-    if actual_pid != expected_pid {
-        bail!(
-            "Windows service-owned main IPC server pid mismatch: expected {}, got {}",
-            expected_pid,
-            actual_pid
-        );
+) -> ResultType<WindowsServiceMainResponse> {
+    let mut stream = connect(ms_timeout, WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX).await?;
+    if let Some(expected_identity) = expected_identity {
+        ensure_windows_service_main_server_pid(&stream, expected_identity)?;
     }
-    Ok(c)
+    stream
+        .send_windows_service_main_request_timeout(&request, ms_timeout)
+        .await?;
+    stream
+        .next_windows_service_main_response_timeout(ms_timeout)
+        .await?
+        .ok_or_else(|| {
+            hbb_common::anyhow::anyhow!("Windows service-main IPC returned a malformed response")
+        })
+}
+
+#[cfg(target_os = "windows")]
+async fn windows_service_credential_request(
+    expected_identity: WindowsProcessIdentityKey,
+    request: WindowsServiceMainRequest,
+    ms_timeout: u64,
+) -> ResultType<WindowsCredentialReplicaState> {
+    let mut stream = connect(ms_timeout, WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX).await?;
+    ensure_windows_service_main_server_pid(&stream, expected_identity)?;
+    stream
+        .send_windows_service_main_request_timeout(&request, ms_timeout)
+        .await?;
+    match stream
+        .next_windows_service_main_response_timeout(ms_timeout)
+        .await?
+    {
+        Some(WindowsServiceMainResponse::CredentialReplica(
+            WindowsCredentialReplicaResponse::State(state),
+        )) => Ok(state),
+        Some(WindowsServiceMainResponse::CredentialReplica(
+            WindowsCredentialReplicaResponse::Rejected,
+        )) => bail!("Windows service-owned credential replica rejected the request"),
+        _ => bail!("invalid Windows service-owned credential replica response"),
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn windows_credential_replica_tag(storage: &str, salt: &str) -> [u8; 32] {
+    let mut state = hbb_common::sodiumoxide::crypto::hash::sha256::State::new();
+    state.update(b"rustdesk.windows.credential-replica.v1\0");
+    state.update(&(storage.len() as u64).to_be_bytes());
+    state.update(storage.as_bytes());
+    state.update(&(salt.len() as u64).to_be_bytes());
+    state.update(salt.as_bytes());
+    state.finalize().0
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) async fn quiesce_windows_service_owned_credential(
+    expected_identity: WindowsProcessIdentityKey,
+    transition_id: String,
+    ms_timeout: u64,
+) -> ResultType<WindowsCredentialReplicaState> {
+    windows_service_credential_request(
+        expected_identity,
+        WindowsServiceMainRequest::QuiesceCredentialReplica { transition_id },
+        ms_timeout,
+    )
+    .await
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) async fn apply_windows_service_owned_credential(
+    expected_identity: WindowsProcessIdentityKey,
+    transition_id: String,
+    storage: String,
+    salt: String,
+    replica_tag: [u8; 32],
+    ms_timeout: u64,
+) -> ResultType<WindowsCredentialReplicaState> {
+    windows_service_credential_request(
+        expected_identity,
+        WindowsServiceMainRequest::ApplyCredentialReplica {
+            transition_id,
+            storage,
+            salt,
+            replica_tag,
+        },
+        ms_timeout,
+    )
+    .await
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) async fn query_windows_service_owned_credential(
+    expected_identity: WindowsProcessIdentityKey,
+    ms_timeout: u64,
+) -> ResultType<WindowsCredentialReplicaState> {
+    windows_service_credential_request(
+        expected_identity,
+        WindowsServiceMainRequest::QueryCredentialReplica,
+        ms_timeout,
+    )
+    .await
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) async fn resume_windows_service_owned_credential(
+    expected_identity: WindowsProcessIdentityKey,
+    transition_id: String,
+    ms_timeout: u64,
+) -> ResultType<WindowsCredentialReplicaState> {
+    windows_service_credential_request(
+        expected_identity,
+        WindowsServiceMainRequest::ResumeCredentialReplica { transition_id },
+        ms_timeout,
+    )
+    .await
 }
 
 #[cfg(target_os = "windows")]
 pub async fn get_windows_service_owned_port_forward_session_count(
-    expected_pid: u32,
+    expected_identity: WindowsProcessIdentityKey,
     ms_timeout: u64,
 ) -> ResultType<usize> {
-    let mut c = connect_exact_windows_service_owned_main_server(expected_pid, ms_timeout).await?;
-    c.send(&Data::PortForwardSessionCount(None)).await?;
-    if let Some(Data::PortForwardSessionCount(Some(count))) = c.next_timeout(ms_timeout).await? {
-        return Ok(count);
+    match windows_service_main_request(
+        Some(expected_identity),
+        WindowsServiceMainRequest::PortForwardSessionCount,
+        ms_timeout,
+    )
+    .await?
+    {
+        WindowsServiceMainResponse::PortForwardSessionCount(count) => Ok(count),
+        _ => bail!("invalid Windows service-main port-forward response"),
     }
-    bail!("Failed to get port forward session count");
 }
 
 #[cfg(target_os = "windows")]
 pub async fn close_windows_service_owned_main_server(
-    expected_pid: u32,
+    expected_identity: WindowsProcessIdentityKey,
     ms_timeout: u64,
 ) -> ResultType<()> {
-    let mut c = connect_exact_windows_service_owned_main_server(expected_pid, ms_timeout).await?;
-    c.send(&Data::Close).await
-}
-
-#[cfg(all(
-    feature = "flutter",
-    not(any(target_os = "android", target_os = "ios"))
-))]
-#[tokio::main(flavor = "current_thread")]
-pub async fn update_controlling_session_count(count: usize) -> ResultType<()> {
-    let mut c = connect(1000, "").await?;
-    c.send(&Data::ControllingSessionCount(count)).await?;
-    Ok(())
+    match windows_service_main_request(
+        Some(expected_identity),
+        WindowsServiceMainRequest::Shutdown,
+        ms_timeout,
+    )
+    .await?
+    {
+        WindowsServiceMainResponse::ShutdownAccepted => Ok(()),
+        _ => bail!("invalid Windows service-main shutdown response"),
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -3741,30 +6788,17 @@ pub async fn get_terminal_session_count() -> ResultType<usize> {
                 continue;
             }
         };
-        let mut ipc_conn = ConnectionTmpl::new(connection);
-        if let Err(err) = ipc_conn.send(&Data::TerminalSessionCount(0)).await {
-            last_err = Some(anyhow::anyhow!(
-                "Failed to request terminal session count via ipc at {}: {}",
-                socket_path,
-                err
-            ));
-            continue;
-        }
-        match ipc_conn.next_timeout(timeout_ms).await {
-            Ok(Some(Data::TerminalSessionCount(session_count))) => {
+        let ipc_conn = ConnectionTmpl::new_main(connection);
+        match main_ipc_request_on_stream(ipc_conn, MainIpcRequest::TerminalSessionCount, timeout_ms)
+            .await
+        {
+            Ok(MainIpcResponse::TerminalSessionCount(session_count)) => {
                 return Ok(session_count);
             }
-            Ok(None) => {
+            Ok(_) => {
                 last_err = Some(anyhow::anyhow!(
-                    "Invalid response when requesting terminal session count via ipc at {}",
+                    "Unexpected terminal session count response via ipc at {}",
                     socket_path
-                ));
-            }
-            Ok(other) => {
-                last_err = Some(anyhow::anyhow!(
-                    "Unexpected response when requesting terminal session count via ipc at {}: {:?}",
-                    socket_path,
-                    other.map(|v| std::mem::discriminant(&v))
                 ));
             }
             Err(err) => {
@@ -3786,6 +6820,396 @@ pub async fn get_terminal_session_count() -> ResultType<usize> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn windows_credential_ledger_replays_lost_ack_without_password_retention() {
+        let mut ledger = WindowsCredentialOperationLedger::new(4);
+        assert!(ledger.admit("operation", "new-password", false));
+        assert_eq!(
+            ledger.status("operation", "new-password"),
+            Some(PasswordMutationStatus::Pending)
+        );
+        assert_eq!(
+            ledger.status("operation", "different-password"),
+            Some(PasswordMutationStatus::Complete(
+                IpcMutationResult::Rejected
+            ))
+        );
+        ledger
+            .complete("operation", IpcMutationResult::Applied)
+            .unwrap();
+        assert_eq!(
+            ledger.status("operation", "new-password"),
+            Some(PasswordMutationStatus::Complete(IpcMutationResult::Applied))
+        );
+    }
+
+    #[test]
+    fn windows_credential_ledger_evicts_only_completed_replay_entries() {
+        let mut ledger = WindowsCredentialOperationLedger::new(1);
+        assert!(ledger.admit("first", "one", false));
+        ledger
+            .complete("first", IpcMutationResult::Rejected)
+            .unwrap();
+        assert!(ledger.admit("second", "two", false));
+        assert_eq!(ledger.status("first", "one"), None);
+        assert_eq!(
+            ledger.status("second", "two"),
+            Some(PasswordMutationStatus::Pending)
+        );
+
+        let mut active = WindowsCredentialOperationLedger::new(1);
+        assert!(active.admit("first", "one", false));
+        assert!(!active.admit("second", "two", false));
+
+        let mut stopping = WindowsCredentialOperationLedger::new(2);
+        stopping.begin_shutdown();
+        assert!(stopping.is_shutting_down());
+        assert!(!stopping.admit("after-stop", "secret", false));
+    }
+
+    #[test]
+    fn windows_credential_queue_saturation_never_contradicts_replay_state() {
+        let mut ledger = WindowsCredentialOperationLedger::new(2);
+        assert!(ledger.admit("committed", "secret", false));
+        ledger
+            .complete("committed", IpcMutationResult::Applied)
+            .unwrap();
+
+        assert_eq!(
+            windows_credential_queue_uncertainty_status(),
+            PasswordMutationStatus::Pending
+        );
+        assert_eq!(
+            ledger.status("committed", "secret"),
+            Some(PasswordMutationStatus::Complete(IpcMutationResult::Applied))
+        );
+        assert_eq!(
+            windows_credential_queue_uncertainty_status(),
+            PasswordMutationStatus::Pending
+        );
+    }
+
+    #[test]
+    fn windows_credential_shutdown_drain_replays_active_duplicate() {
+        let mut ledger = WindowsCredentialOperationLedger::new(2);
+        assert!(ledger.admit("operation", "secret", false));
+        ledger.begin_shutdown();
+
+        assert_eq!(
+            ledger.classify_during_shutdown("operation", "secret"),
+            PasswordMutationStatus::Pending
+        );
+    }
+
+    #[test]
+    fn windows_credential_shutdown_drain_replays_completed_duplicate() {
+        let mut ledger = WindowsCredentialOperationLedger::new(2);
+        assert!(ledger.admit("operation", "secret", false));
+        ledger
+            .complete("operation", IpcMutationResult::Applied)
+            .unwrap();
+        ledger.begin_shutdown();
+
+        assert_eq!(
+            ledger.classify_during_shutdown("operation", "secret"),
+            PasswordMutationStatus::Complete(IpcMutationResult::Applied)
+        );
+    }
+
+    #[test]
+    fn windows_credential_shutdown_drain_rejects_only_unmatched_request() {
+        let mut ledger = WindowsCredentialOperationLedger::new(2);
+        ledger.begin_shutdown();
+
+        assert_eq!(
+            ledger.classify_during_shutdown("fresh-operation", "secret"),
+            PasswordMutationStatus::ShuttingDown
+        );
+    }
+
+    #[test]
+    fn windows_credential_closed_queue_is_nonterminal() {
+        assert_eq!(
+            windows_credential_queue_uncertainty_status(),
+            PasswordMutationStatus::Pending
+        );
+    }
+
+    #[test]
+    fn windows_credential_lost_reply_stop_and_apply_remain_consistent() {
+        let mut ledger = WindowsCredentialOperationLedger::new(2);
+        assert!(ledger.admit("operation", "secret", false));
+        ledger.begin_shutdown();
+
+        let drained = ledger.classify_during_shutdown("operation", "secret");
+        assert_eq!(drained, PasswordMutationStatus::Pending);
+        assert_eq!(
+            windows_credential_client_decision(drained, false),
+            WindowsCredentialClientDecision::Continue
+        );
+
+        ledger
+            .complete("operation", IpcMutationResult::Applied)
+            .unwrap();
+        let final_status = ledger.classify_during_shutdown("operation", "secret");
+        assert_eq!(
+            windows_credential_client_decision(final_status, true),
+            WindowsCredentialClientDecision::Applied
+        );
+    }
+
+    #[test]
+    fn windows_credential_client_only_retries_explicitly_unknown_recovery() {
+        assert_eq!(
+            windows_credential_client_decision(PasswordMutationStatus::ShuttingDown, false),
+            WindowsCredentialClientDecision::NotAdmitted
+        );
+        assert_eq!(
+            windows_credential_client_decision(PasswordMutationStatus::ShuttingDown, true),
+            WindowsCredentialClientDecision::NotAdmitted
+        );
+        assert_eq!(
+            windows_credential_client_decision(PasswordMutationStatus::Unknown, true),
+            WindowsCredentialClientDecision::Continue
+        );
+        assert_eq!(
+            windows_credential_client_decision(PasswordMutationStatus::Unknown, false),
+            WindowsCredentialClientDecision::NotAdmitted
+        );
+    }
+
+    #[test]
+    fn windows_credential_operation_bound_failures_remain_terminal_during_recovery() {
+        let mut first_service = WindowsCredentialOperationLedger::new(2);
+        assert!(first_service.admit("operation", "secret", false));
+        first_service
+            .complete("operation", IpcMutationResult::Applied)
+            .unwrap();
+
+        let mut transaction_busy_service = WindowsCredentialOperationLedger::new(2);
+        assert!(!transaction_busy_service.admit("operation", "secret", true));
+        assert_eq!(
+            windows_credential_client_decision(
+                PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                true,
+            ),
+            WindowsCredentialClientDecision::Rejected
+        );
+
+        let mut capacity_full_service = WindowsCredentialOperationLedger::new(1);
+        assert!(capacity_full_service.admit("other-operation", "other-secret", false));
+        assert!(!capacity_full_service.admit("operation", "secret", false));
+        assert_eq!(
+            windows_credential_client_decision(
+                PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                true,
+            ),
+            WindowsCredentialClientDecision::Rejected
+        );
+
+        let mut liveness_failure_service = WindowsCredentialOperationLedger::new(2);
+        assert!(liveness_failure_service.admit("operation", "secret", false));
+        liveness_failure_service
+            .complete("operation", IpcMutationResult::InternalFailure)
+            .unwrap();
+        let liveness_status = liveness_failure_service
+            .status("operation", "secret")
+            .unwrap();
+        assert_eq!(
+            windows_credential_client_decision(
+                PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                true,
+            ),
+            WindowsCredentialClientDecision::Rejected
+        );
+        assert_eq!(
+            windows_credential_client_decision(liveness_status, true),
+            WindowsCredentialClientDecision::InternalFailure
+        );
+
+        let mut reapplying_service = WindowsCredentialOperationLedger::new(2);
+        assert!(reapplying_service.admit("operation", "secret", false));
+        reapplying_service
+            .complete("operation", IpcMutationResult::Applied)
+            .unwrap();
+        assert_eq!(
+            windows_credential_client_decision(
+                reapplying_service.status("operation", "secret").unwrap(),
+                true,
+            ),
+            WindowsCredentialClientDecision::Applied
+        );
+    }
+
+    #[test]
+    fn windows_credential_first_authoritative_failure_remains_terminal() {
+        assert_eq!(
+            windows_credential_client_decision(
+                PasswordMutationStatus::Complete(IpcMutationResult::Rejected),
+                false,
+            ),
+            WindowsCredentialClientDecision::Rejected
+        );
+        assert_eq!(
+            windows_credential_client_decision(
+                PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure),
+                false,
+            ),
+            WindowsCredentialClientDecision::InternalFailure
+        );
+    }
+
+    #[test]
+    fn windows_credential_sensitive_password_uses_tested_in_place_erasure() {
+        let mut password = SensitivePassword::new("password-secret".to_owned());
+        assert!(password.zeroize());
+        assert!(password.as_str().as_bytes().iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn windows_credential_stop_before_apply_prevents_replica_admission() {
+        let mut authority = WindowsCredentialStopApplyModel::new();
+        assert!(!authority.request_stop());
+        assert_eq!(
+            authority.state(),
+            WindowsCredentialStopApplyState::StopBeforeApply
+        );
+        assert!(!authority.admit_apply());
+        assert!(!authority.stop_is_linearized());
+        assert!(authority.complete_stop());
+        assert!(authority.stop_is_linearized());
+    }
+
+    #[test]
+    fn windows_credential_apply_before_stop_is_awaited_before_stop_linearizes() {
+        let mut authority = WindowsCredentialStopApplyModel::new();
+        assert!(authority.admit_apply());
+        assert!(!authority.request_stop());
+        assert_eq!(
+            authority.state(),
+            WindowsCredentialStopApplyState::StopPendingApply
+        );
+        assert!(!authority.complete_stop());
+        assert!(!authority.stop_is_linearized());
+        assert!(!authority.finish_apply());
+        assert_eq!(
+            authority.state(),
+            WindowsCredentialStopApplyState::ReadyToStop
+        );
+        assert!(authority.complete_stop());
+        assert!(authority.stop_is_linearized());
+        assert!(!authority.admit_apply());
+    }
+
+    #[test]
+    fn windows_credential_job_stop_retries_until_empty_and_aborts_on_lost_authority() {
+        assert_eq!(
+            windows_job_stop_decision(Some(2), Some(123)),
+            WindowsJobStopDecision::Retry
+        );
+        assert_eq!(
+            windows_job_stop_decision(Some(1), None),
+            WindowsJobStopDecision::Retry
+        );
+        assert_eq!(
+            windows_job_stop_decision(Some(0), None),
+            WindowsJobStopDecision::Empty
+        );
+        assert_eq!(
+            windows_job_stop_decision(None, Some(5)),
+            WindowsJobStopDecision::Abort
+        );
+        assert_eq!(
+            windows_job_stop_decision(None, Some(6)),
+            WindowsJobStopDecision::Abort
+        );
+        assert_eq!(
+            windows_job_stop_decision(None, None),
+            WindowsJobStopDecision::Abort
+        );
+    }
+
+    #[test]
+    fn windows_credential_model_binds_to_exact_child_identity() {
+        let model = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        assert!(model.exact_child_is_live(Some((7, 100))));
+        assert!(!model.exact_child_is_live(Some((7, 101))));
+        assert!(!model.exact_child_is_live(Some((8, 100))));
+        assert!(!model.exact_child_is_live(None));
+    }
+
+    #[test]
+    fn windows_credential_model_accepts_idempotent_quiesce_replay() {
+        let mut model = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        model.note_quiesced().unwrap();
+        model.note_quiesced().unwrap();
+        let resolution = model
+            .precommit_failure(true, IpcMutationResult::InternalFailure)
+            .unwrap();
+        assert_eq!(resolution.result, IpcMutationResult::InternalFailure);
+        assert!(!resolution.retire_child);
+    }
+
+    #[test]
+    fn windows_credential_model_precommit_death_requires_retirement() {
+        let mut dead = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        dead.note_quiesced().unwrap();
+        let resolution = dead
+            .precommit_failure(false, IpcMutationResult::InternalFailure)
+            .unwrap();
+        assert!(resolution.retire_child);
+
+        let mut resumed = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        resumed.note_quiesced().unwrap();
+        let resolution = resumed
+            .precommit_failure(true, IpcMutationResult::InternalFailure)
+            .unwrap();
+        assert!(!resolution.retire_child);
+    }
+
+    #[test]
+    fn windows_credential_model_postcommit_death_stays_applied() {
+        let mut model = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        model.note_quiesced().unwrap();
+        model.note_committed().unwrap();
+        let resolution = model.postcommit_complete(false).unwrap();
+        assert_eq!(resolution.result, IpcMutationResult::Applied);
+        assert!(resolution.retire_child);
+        assert!(model
+            .precommit_failure(false, IpcMutationResult::InternalFailure)
+            .is_err());
+        assert_eq!(
+            model.postcommit_complete(false).unwrap().result,
+            IpcMutationResult::Applied
+        );
+    }
+
+    #[test]
+    fn windows_credential_model_lost_apply_ack_resolves_as_applied() {
+        let mut model = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        model.note_quiesced().unwrap();
+        model.note_committed().unwrap();
+
+        let resolution = model.postcommit_complete(true).unwrap();
+        assert_eq!(resolution.result, IpcMutationResult::Applied);
+        assert!(!resolution.retire_child);
+        assert!(model
+            .precommit_failure(false, IpcMutationResult::InternalFailure)
+            .is_err());
+    }
+
+    #[test]
+    fn windows_credential_model_stop_after_admission_finishes_commit_and_skips_replica() {
+        let mut model = WindowsCredentialTransactionModel::admitted(Some((7, 100)));
+        model.request_stop();
+        model.note_quiesced().unwrap();
+        model.note_committed().unwrap();
+        assert!(model.should_skip_replica_apply());
+        let resolution = model.postcommit_complete(false).unwrap();
+        assert_eq!(resolution.result, IpcMutationResult::Applied);
+        assert!(!resolution.retire_child);
+    }
 
     #[test]
     fn verify_ffi_enum_data_size() {
@@ -4125,273 +7549,27 @@ mod test {
         assert!(!macos_service_owned_server_live_argv_is_expected(&cmd));
     }
 
-    // R-S11 / Appendix C #15: the MAIN-channel config-write allowlist MUST reject generic
-    // struct-field/proxy writes while admitting the per-key writes that legitimately stay. R-S11b adds
-    // that ordinary password and options writes are user-owned only; service-owned unattended
-    // credentials and machine policy are denied over ordinary config IPC.
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
-    fn main_channel_rejects_untyped_state_mutations() {
-        use std::collections::HashMap;
-
-        let user_owned = MainIpcAuthority::UserOwned;
-        let service_owned = MainIpcAuthority::ServiceOwned;
-        let ordinary_peer = MainIpcPeerAuthority::Ordinary;
-        assert!(main_channel_admits_state_mutation(
-            &Data::Options(None),
-            user_owned,
-            ordinary_peer
-        ));
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::Options(Some(HashMap::from([(
-                    "direct-server".to_owned(),
-                    "Y".to_owned()
-                )]))),
-                user_owned,
-                ordinary_peer
-            ),
-            "a user-owned options write stays legitimate"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::Options(Some(HashMap::from([(
-                    "direct-server".to_owned(),
-                    "Y".to_owned()
-                )]))),
-                service_owned,
-                ordinary_peer
-            ),
-            "R-S11b-3: service-owned machine policy MUST NOT be changed over ordinary options IPC"
-        );
-        // R-S11 (Appendix C #15): the legacy Data::Config write shape is deleted. Config IPC is
-        // request/value only; legitimate mutations use named operations.
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::ConfigRequest("id".to_owned()),
-                user_owned,
-                ordinary_peer
-            ),
-            "a ConfigRequest id read must be allowed"
-        );
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::SetVoiceCallInput("mic".to_owned()),
-                user_owned,
-                ordinary_peer
-            ),
-            "voice-call-input stays as a typed user-owned local operation"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::SetVoiceCallInput("mic".to_owned()),
-                service_owned,
-                ordinary_peer
-            ),
-            "R-S11c-14: service-owned voice-call input MUST NOT be changed over ordinary main IPC"
-        );
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::ConfigValue(("id".to_owned(), Some("value".to_owned()))),
-                user_owned,
-                ordinary_peer
-            ),
-            "a ConfigValue response is not a write operation"
-        );
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::SetUserOwnedPermanentPassword("pw".to_owned()),
-                user_owned,
-                ordinary_peer
-            ),
-            "the typed user-owned permanent-password operation stays legitimate"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::SetUserOwnedPermanentPassword("pw".to_owned()),
-                service_owned,
-                ordinary_peer
-            ),
-            "R-S11b-2: the user-owned password operation MUST NOT mutate a service-owned credential"
-        );
-        #[cfg(target_os = "linux")]
-        {
-            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::RequestServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                    service_owned,
-                    root_peer
-                ),
-                "R-S11b-2: service-owned password requests go to _service, not main IPC"
-            );
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::RequestMacosServiceOwnedUnattendedPasswordChange {
-                        password: "pw".to_owned(),
-                        authorization: vec![0; 32],
-                    },
-                    service_owned,
-                    root_peer
-                ),
-                "R-S11c-1: macOS service-owned password requests go to _service, not main IPC"
-            );
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::MacosServiceOwnedPermanentPasswordSnapshotRequest,
-                    service_owned,
-                    root_peer
-                ),
-                "R-S11c-1: macOS service-owned password snapshots go to _service, not main IPC"
-            );
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::MacosServiceOwnedPasswordRightReadyRequest,
-                    service_owned,
-                    root_peer
-                ),
-                "R-S11c-1: macOS service-owned password right readiness goes to _service, not main IPC"
-            );
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                    service_owned,
-                    root_peer
-                ),
-                "R-S11c-1: macOS service-owned password commits are rooted in the LaunchDaemon store, not the LaunchAgent main IPC"
-            );
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                    user_owned,
-                    root_peer
-                ),
-                "R-S11b-2: a root peer cannot commit into a user-owned server as a service credential"
-            );
-            assert!(
-                !main_channel_admits_state_mutation(
-                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                    service_owned,
-                    ordinary_peer
-                ),
-                "R-S11b-2: service-owned password commits require the root service peer"
-            );
-            assert!(
-                main_channel_admits_state_mutation(
-                    &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                    service_owned,
-                    root_peer
-                ),
-                "R-S11b-2: only the root service may commit the service-owned password into the service-owned server"
-            );
-        }
-        assert!(MainIpcAuthority::UserOwned.allows_main_channel_password_storage_sync());
-        assert!(
-            !MainIpcAuthority::ServiceOwned.allows_main_channel_password_storage_sync(),
-            "R-S11b-2: service-owned password storage/salt snapshots MUST NOT sync over ordinary IPC"
-        );
-        assert!(
-            main_channel_admits_state_mutation(&Data::Close, user_owned, ordinary_peer),
-            "a user-owned main IPC close stays a user-owned process-control action"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(&Data::Close, service_owned, ordinary_peer),
-            "R-S11c: an ordinary peer cannot close a service-owned main IPC receiver"
-        );
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            let root_peer = MainIpcPeerAuthority::RootUnixPeer;
-            assert!(
-                main_channel_admits_state_mutation(&Data::Close, service_owned, root_peer),
-                "R-S11c: only the owning root service peer may close a service-owned main IPC receiver"
-            );
-        }
+    fn main_protocol_rejects_global_data_frames() {
+        let frame = serde_json::to_vec(&Data::Close).unwrap();
+        assert!(serde_json::from_slice::<MainIpcRequest>(&frame).is_err());
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
-    fn windows_service_owned_main_ipc_actions_require_localsystem_peer() {
+    fn main_authority_keeps_service_owned_mutations_closed() {
         let user_owned = MainIpcAuthority::UserOwned;
         let service_owned = MainIpcAuthority::ServiceOwned;
-        let ordinary_peer = MainIpcPeerAuthority::Ordinary;
-        let system_peer = MainIpcPeerAuthority::WindowsLocalSystemPeer;
 
-        assert!(
-            main_channel_admits_state_mutation(&Data::Close, user_owned, ordinary_peer),
-            "a user-owned main IPC close stays a user-owned process-control action"
-        );
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::SetVoiceCallInput("mic".to_owned()),
-                user_owned,
-                ordinary_peer
-            ),
-            "voice-call-input stays as a typed user-owned local operation"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::SetVoiceCallInput("mic".to_owned()),
-                service_owned,
-                system_peer
-            ),
-            "R-S11c-14: service-owned voice-call input MUST NOT be changed over main IPC"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(&Data::Close, service_owned, ordinary_peer),
-            "R-S11c: an ordinary same-session peer cannot close a service-owned Windows main server"
-        );
-        assert!(
-            main_channel_admits_state_mutation(&Data::Close, service_owned, system_peer),
-            "R-S11c: only the LocalSystem service peer may close a service-owned Windows main server"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::RequestServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                service_owned,
-                system_peer
-            ),
-            "R-S11c-1: Windows service-owned password requests go to _service, not main IPC"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::RequestServiceOwnedShareRdp(true),
-                service_owned,
-                system_peer
-            ),
-            "R-S11b-3: Windows service-owned RDP session-sharing policy requests go to _service, not main IPC"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                user_owned,
-                system_peer
-            ),
-            "R-S11c-1: LocalSystem cannot commit a service credential into a user-owned server"
-        );
-        assert!(
-            !main_channel_admits_state_mutation(
-                &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                service_owned,
-                ordinary_peer
-            ),
-            "R-S11c-1: Windows service-owned password commits require the LocalSystem service peer"
-        );
-        assert!(
-            main_channel_admits_state_mutation(
-                &Data::CommitServiceOwnedUnattendedPasswordChange("pw".to_owned()),
-                service_owned,
-                system_peer
-            ),
-            "R-S11c-1: only the LocalSystem service may commit the Windows service-owned password"
-        );
+        assert!(user_owned.allows_main_channel_user_owned_password_write());
+        assert!(user_owned.allows_main_channel_options_write());
+        assert!(user_owned.allows_main_channel_voice_call_input_write());
+        assert!(user_owned.allows_main_channel_password_storage_sync());
+        assert!(!service_owned.allows_main_channel_user_owned_password_write());
+        assert!(!service_owned.allows_main_channel_options_write());
+        assert!(!service_owned.allows_main_channel_voice_call_input_write());
+        assert!(!service_owned.allows_main_channel_password_storage_sync());
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -4400,21 +7578,6 @@ mod test {
         assert!(
             service_channel_admits_message(&Data::Test),
             "R-S11b-1: _service keeps a narrow liveness ping"
-        );
-        #[cfg(target_os = "linux")]
-        assert!(
-            service_channel_admits_message(&Data::RequestServiceOwnedUnattendedPasswordChange(
-                "pw".to_owned()
-            )),
-            "R-S11b-2: Linux _service accepts only the typed admin-authorized password request in addition to liveness"
-        );
-        #[cfg(target_os = "macos")]
-        assert!(
-            service_channel_admits_message(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
-                password: "pw".to_owned(),
-                authorization: vec![0; 32],
-            }),
-            "R-S11c-1: macOS _service accepts only the typed authorized password request in addition to liveness"
         );
         #[cfg(target_os = "macos")]
         assert!(
@@ -4429,20 +7592,8 @@ mod test {
             "R-S11c-1: macOS _service accepts the no-secret authorization-right readiness request in addition to liveness"
         );
         assert!(
-            !service_channel_admits_message(&Data::Options(None)),
-            "R-S11b-1: _service is not an options/config read channel"
-        );
-        assert!(
-            !service_channel_admits_message(&Data::ConfigRequest("permanent-password".to_owned())),
-            "R-S11b-1: _service is not a config read channel"
-        );
-        assert!(
-            !service_channel_admits_message(&Data::SetVoiceCallInput("mic".to_owned())),
-            "R-S11b-1: _service does not accept typed main-channel mutations"
-        );
-        assert!(
-            !service_channel_admits_message(&Data::SetUserOwnedPermanentPassword("pw".to_owned())),
-            "R-S11b-2: _service does not accept user-owned credential writes"
+            !service_channel_admits_message(&Data::Close),
+            "R-S11b-1: _service is not a process-control channel"
         );
         #[cfg(target_os = "macos")]
         assert!(
@@ -4451,8 +7602,9 @@ mod test {
         );
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
-    fn protected_service_connection_uses_bounded_frame_codec() {
+    fn privileged_and_main_connections_use_bounded_frame_codecs() {
         let (service_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
         let service = ConnectionTmpl::new_protected_service(service_end);
         assert_eq!(
@@ -4460,9 +7612,612 @@ mod test {
             SERVICE_IPC_MAX_FRAME_BYTES
         );
 
+        let (main_end, _peer_end) = tokio::io::duplex(MAIN_IPC_MAX_FRAME_BYTES * 2);
+        let main = ConnectionTmpl::new_main(main_end);
+        assert_eq!(
+            main.inner.codec().max_packet_length(),
+            MAIN_IPC_MAX_FRAME_BYTES
+        );
+
         let (generic_end, _peer_end) = tokio::io::duplex(SERVICE_IPC_MAX_FRAME_BYTES * 2);
         let generic = ConnectionTmpl::new(generic_end);
         assert_eq!(generic.inner.codec().max_packet_length(), usize::MAX);
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn main_status_options_are_explicitly_allowlisted_and_bounded() {
+        use hbb_common::config::keys;
+
+        let options = MainStatusOptions::from_map(HashMap::from([
+            (keys::OPTION_ENABLE_KEYBOARD.to_owned(), "Y".to_owned()),
+            ("audio-input".to_owned(), "default".to_owned()),
+        ]))
+        .unwrap()
+        .into_map()
+        .unwrap();
+        assert_eq!(options.get(keys::OPTION_ENABLE_KEYBOARD).unwrap(), "Y");
+        assert_eq!(options.get("audio-input").unwrap(), "default");
+
+        assert!(MainStatusOptions::from_map(HashMap::from([(
+            keys::OPTION_KEY.to_owned(),
+            "secret".to_owned(),
+        )]))
+        .is_err());
+        assert!(MainStatusOptions::from_map(HashMap::from([(
+            keys::OPTION_PROXY_PASSWORD.to_owned(),
+            "secret".to_owned(),
+        )]))
+        .is_err());
+        assert!(MainStatusOptions::from_map(HashMap::from([(
+            "future-credential".to_owned(),
+            "secret".to_owned(),
+        )]))
+        .is_err());
+        assert!(MainStatusOptions::from_map(HashMap::from([(
+            keys::OPTION_ENABLE_KEYBOARD.to_owned(),
+            "x".repeat(MAIN_IPC_MAX_OPTION_VALUE_BYTES + 1),
+        )]))
+        .is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn main_status_options_reject_duplicate_typed_keys() {
+        let options = MainStatusOptions(vec![
+            MainStatusOption {
+                key: MainStatusOptionKey::EnableKeyboard,
+                value: "Y".to_owned(),
+            },
+            MainStatusOption {
+                key: MainStatusOptionKey::EnableKeyboard,
+                value: "N".to_owned(),
+            },
+        ]);
+        assert!(options.into_map().is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn main_status_option_replacement_preserves_non_disclosed_values() {
+        use hbb_common::config::keys;
+
+        let merged = merge_main_status_options(
+            HashMap::from([
+                (keys::OPTION_KEY.to_owned(), "secret".to_owned()),
+                (keys::OPTION_ENABLE_KEYBOARD.to_owned(), "Y".to_owned()),
+            ]),
+            HashMap::from([(keys::OPTION_ENABLE_CLIPBOARD.to_owned(), "N".to_owned())]),
+        );
+        assert_eq!(merged.get(keys::OPTION_KEY).unwrap(), "secret");
+        assert!(!merged.contains_key(keys::OPTION_ENABLE_KEYBOARD));
+        assert_eq!(merged.get(keys::OPTION_ENABLE_CLIPBOARD).unwrap(), "N");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn outbound_frames_are_rejected_before_exceeding_the_active_codec_limit() {
+        let (json_end, _peer_end) = tokio::io::duplex(64);
+        let mut json = ConnectionTmpl::new_with_max_packet_length(json_end, 16);
+        assert!(json.send_json(&"x".repeat(32)).await.is_err());
+
+        let (raw_end, _peer_end) = tokio::io::duplex(64);
+        let mut raw = ConnectionTmpl::new_with_max_packet_length(raw_end, 16);
+        assert!(raw.send_raw(Bytes::from(vec![0; 17])).await.is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_ledger_is_idempotent_value_bound_and_shutdown_aware() {
+        let coordinator = PasswordMutationCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let kind = PasswordMutationKind::UserOwned;
+
+        let first = coordinator.prepare(&operation_id, kind, "first");
+        assert_eq!(first.status, PasswordMutationStatus::Prepared);
+        assert!(first.owns_preparation);
+        let retry = coordinator.prepare(&operation_id, kind, "first");
+        assert_eq!(retry.status, PasswordMutationStatus::Prepared);
+        assert!(!retry.owns_preparation);
+        let mismatch = coordinator.prepare(&operation_id, kind, "second");
+        assert_eq!(
+            mismatch.status,
+            PasswordMutationStatus::Complete(IpcMutationResult::Rejected)
+        );
+        assert!(!mismatch.owns_preparation);
+        let kind_mismatch =
+            coordinator.prepare(&operation_id, PasswordMutationKind::ServiceOwned, "first");
+        assert_eq!(
+            kind_mismatch.status,
+            PasswordMutationStatus::Complete(IpcMutationResult::Rejected)
+        );
+        assert!(coordinator.acknowledge(&operation_id, kind, "first"));
+        assert_eq!(
+            coordinator.status(&operation_id, kind),
+            PasswordMutationStatus::Pending
+        );
+        coordinator.complete(&operation_id, kind, IpcMutationResult::Applied);
+        coordinator.begin_shutdown();
+        assert_eq!(
+            coordinator.status(&operation_id, kind),
+            PasswordMutationStatus::Complete(IpcMutationResult::Applied)
+        );
+        let after_shutdown =
+            coordinator.prepare(&hbb_common::uuid::Uuid::new_v4().to_string(), kind, "new");
+        assert_eq!(after_shutdown.status, PasswordMutationStatus::ShuttingDown);
+        assert!(!after_shutdown.owns_preparation);
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_replay_secrets_are_keyed_and_erased_on_clear() {
+        let coordinator = PasswordMutationCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let kind = PasswordMutationKind::UserOwned;
+        assert!(
+            coordinator
+                .prepare(&operation_id, kind, "secret")
+                .owns_preparation
+        );
+        assert!(coordinator.acknowledge(&operation_id, kind, "secret"));
+        coordinator.complete(&operation_id, kind, IpcMutationResult::Applied);
+
+        {
+            let ledger = coordinator.ledger.lock().unwrap();
+            let entry = ledger.entries.get(&operation_id).unwrap();
+            let raw = hbb_common::sodiumoxide::crypto::hash::sha256::hash(b"secret");
+            assert_ne!(entry.fingerprint.0.as_ref(), raw.0.as_slice());
+            assert!(ledger.fingerprint_key.0.iter().any(|byte| *byte != 0));
+        }
+
+        coordinator.begin_shutdown();
+        coordinator.clear_after_transactions_drain();
+        let ledger = coordinator.ledger.lock().unwrap();
+        assert!(ledger.entries.is_empty());
+        assert!(ledger.fingerprint_key.0.iter().all(|byte| *byte == 0));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn unattended_password_length_is_rejected_before_transport() {
+        let maximum = SensitivePassword::new("x".repeat(UNATTENDED_PASSWORD_MAX_BYTES));
+        assert!(validate_unattended_password_value(&maximum).is_ok());
+        let oversized = SensitivePassword::new("x".repeat(UNATTENDED_PASSWORD_MAX_BYTES + 1));
+        assert!(validate_unattended_password_value(&oversized).is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_prepared_is_irrevocable_and_retry_cannot_release_owner() {
+        let coordinator = PasswordMutationCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let kind = PasswordMutationKind::UserOwned;
+
+        let owner = coordinator.prepare(&operation_id, kind, "value");
+        assert_eq!(owner.status, PasswordMutationStatus::Prepared);
+        assert!(owner.owns_preparation);
+
+        let retry = coordinator.prepare(&operation_id, kind, "value");
+        assert_eq!(retry.status, PasswordMutationStatus::Prepared);
+        assert!(!retry.owns_preparation);
+        assert!(coordinator.acknowledge(&operation_id, kind, "value"));
+        coordinator.complete(&operation_id, kind, IpcMutationResult::Applied);
+
+        assert_eq!(
+            coordinator.status(&operation_id, kind),
+            PasswordMutationStatus::Complete(IpcMutationResult::Applied)
+        );
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_admission_failure_is_terminal() {
+        let coordinator = PasswordMutationCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let kind = PasswordMutationKind::ServiceOwned;
+
+        let owner = coordinator.prepare(&operation_id, kind, "value");
+        assert!(owner.owns_preparation);
+        assert!(coordinator.fail_admitted(&operation_id, kind, "value"));
+        assert_eq!(
+            coordinator.status(&operation_id, kind),
+            PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure)
+        );
+        assert!(!coordinator.fail_admitted(&operation_id, kind, "value"));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_capacity_never_evicts_live_operations() {
+        let coordinator = PasswordMutationCoordinator::new();
+        for index in 0..PASSWORD_MUTATION_RESULT_BUDGET {
+            let operation_id = hbb_common::uuid::Uuid::from_u128(index as u128 + 1).to_string();
+            let preparation =
+                coordinator.prepare(&operation_id, PasswordMutationKind::UserOwned, "value");
+            assert!(preparation.owns_preparation);
+        }
+        let overflow = coordinator.prepare(
+            &hbb_common::uuid::Uuid::from_u128(10_000).to_string(),
+            PasswordMutationKind::UserOwned,
+            "value",
+        );
+        assert_eq!(
+            overflow.status,
+            PasswordMutationStatus::Complete(IpcMutationResult::Rejected)
+        );
+        assert!(!overflow.owns_preparation);
+        assert_eq!(
+            coordinator
+                .ledger
+                .lock()
+                .unwrap()
+                .entries
+                .values()
+                .filter(|entry| entry.state == PasswordMutationState::Prepared)
+                .count(),
+            PASSWORD_MUTATION_RESULT_BUDGET
+        );
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_completed_results_are_value_bound_until_bounded_eviction() {
+        let coordinator = PasswordMutationCoordinator::new();
+        let first_id = hbb_common::uuid::Uuid::from_u128(1).to_string();
+        let last_id =
+            hbb_common::uuid::Uuid::from_u128(PASSWORD_MUTATION_RESULT_BUDGET as u128).to_string();
+        for index in 0..PASSWORD_MUTATION_RESULT_BUDGET {
+            let operation_id = hbb_common::uuid::Uuid::from_u128(index as u128 + 1).to_string();
+            assert!(
+                coordinator
+                    .prepare(&operation_id, PasswordMutationKind::UserOwned, "value")
+                    .owns_preparation
+            );
+            assert!(coordinator.acknowledge(
+                &operation_id,
+                PasswordMutationKind::UserOwned,
+                "value"
+            ));
+            coordinator.complete(
+                &operation_id,
+                PasswordMutationKind::UserOwned,
+                IpcMutationResult::Applied,
+            );
+            if index == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        assert_eq!(
+            coordinator.status(&first_id, PasswordMutationKind::UserOwned),
+            PasswordMutationStatus::Complete(IpcMutationResult::Applied)
+        );
+        let changed_value = coordinator.prepare(
+            &first_id,
+            PasswordMutationKind::UserOwned,
+            "different-value",
+        );
+        assert_eq!(
+            changed_value.status,
+            PasswordMutationStatus::Complete(IpcMutationResult::Rejected)
+        );
+        assert!(!changed_value.owns_preparation);
+        let replacement_id = hbb_common::uuid::Uuid::from_u128(10_000).to_string();
+        let replacement =
+            coordinator.prepare(&replacement_id, PasswordMutationKind::UserOwned, "value");
+        assert_eq!(replacement.status, PasswordMutationStatus::Prepared);
+        assert!(replacement.owns_preparation);
+        assert_eq!(
+            coordinator.status(&first_id, PasswordMutationKind::UserOwned),
+            PasswordMutationStatus::Unknown
+        );
+        assert_eq!(
+            coordinator.status(&last_id, PasswordMutationKind::UserOwned),
+            PasswordMutationStatus::Complete(IpcMutationResult::Applied)
+        );
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn password_mutation_completion_owner_prevents_orphaned_pending_state() {
+        let coordinator = Arc::new(PasswordMutationCoordinator::new());
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let kind = PasswordMutationKind::ServiceOwned;
+        assert!(
+            coordinator
+                .prepare(&operation_id, kind, "value")
+                .owns_preparation
+        );
+        assert!(coordinator.acknowledge(&operation_id, kind, "value"));
+        drop(PasswordMutationCompletion {
+            coordinator: Arc::clone(&coordinator),
+            operation_id: operation_id.clone(),
+            kind,
+            result: IpcMutationResult::InternalFailure,
+        });
+        assert_eq!(
+            coordinator.status(&operation_id, kind),
+            PasswordMutationStatus::Complete(IpcMutationResult::InternalFailure)
+        );
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn password_mutation_shutdown_drain_waits_for_terminal_result() {
+        let coordinator = Arc::new(PasswordMutationCoordinator::new());
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let kind = PasswordMutationKind::ServiceOwned;
+        assert!(
+            coordinator
+                .prepare(&operation_id, kind, "value")
+                .owns_preparation
+        );
+        assert!(coordinator.acknowledge(&operation_id, kind, "value"));
+        coordinator.begin_shutdown();
+
+        let drain_coordinator = Arc::clone(&coordinator);
+        let drain = tokio::spawn(async move { drain_coordinator.drain().await });
+        tokio::task::yield_now().await;
+        assert!(!drain.is_finished());
+
+        coordinator.complete(&operation_id, kind, IpcMutationResult::Applied);
+        drain.await.unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn linux_admitted_replay_after_lost_response_does_not_repeat_denied_polkit() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let coordinator = LinuxPasswordAdmissionCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let caller = LinuxPasswordCaller {
+            pid: 100,
+            uid: 1000,
+            start_time: "10".to_owned(),
+        };
+        let authorization_calls = AtomicUsize::new(0);
+        let first = execute_linux_service_owned_password_operation(
+            &coordinator,
+            &operation_id,
+            "new-password",
+            &caller,
+            || {
+                authorization_calls.fetch_add(1, Ordering::Relaxed);
+                async { true }
+            },
+            || async { Ok(IpcMutationResult::Applied) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(first, IpcMutationResult::Applied);
+
+        // Model loss of the outer result: replay the exact request. This closure models a fresh
+        // polkit denial and must never run because the operation is already admitted/complete.
+        let replay = execute_linux_service_owned_password_operation(
+            &coordinator,
+            &operation_id,
+            "new-password",
+            &caller,
+            || {
+                authorization_calls.fetch_add(1, Ordering::Relaxed);
+                async { false }
+            },
+            || async { Ok(IpcMutationResult::InternalFailure) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(replay, IpcMutationResult::Applied);
+        assert_eq!(authorization_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_password_admission_denials_do_not_consume_replay_capacity() {
+        let coordinator = LinuxPasswordAdmissionCoordinator::new();
+        let caller = LinuxPasswordCaller {
+            pid: 100,
+            uid: 1000,
+            start_time: "10".to_owned(),
+        };
+        for index in 0..=PASSWORD_MUTATION_RESULT_BUDGET {
+            let operation_id = hbb_common::uuid::Uuid::from_u128(index as u128 + 1).to_string();
+            assert_eq!(
+                coordinator.begin(
+                    &operation_id,
+                    PasswordMutationKind::ServiceOwned,
+                    "secret",
+                    &caller,
+                ),
+                LinuxPasswordAdmissionDecision::Authorize
+            );
+            assert!(coordinator.finish_authorization(&operation_id, &caller, false));
+        }
+        assert!(coordinator.ledger.lock().unwrap().entries.is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_password_admission_evicts_only_completed_replay_entries() {
+        let coordinator = LinuxPasswordAdmissionCoordinator::new();
+        let caller = LinuxPasswordCaller {
+            pid: 100,
+            uid: 1000,
+            start_time: "10".to_owned(),
+        };
+        let first_id = hbb_common::uuid::Uuid::from_u128(1).to_string();
+        for index in 0..PASSWORD_MUTATION_RESULT_BUDGET {
+            let operation_id = hbb_common::uuid::Uuid::from_u128(index as u128 + 1).to_string();
+            assert_eq!(
+                coordinator.begin(
+                    &operation_id,
+                    PasswordMutationKind::ServiceOwned,
+                    "secret",
+                    &caller,
+                ),
+                LinuxPasswordAdmissionDecision::Authorize
+            );
+            assert!(coordinator.finish_authorization(&operation_id, &caller, true));
+            assert!(coordinator.complete(&operation_id, &caller, IpcMutationResult::Applied));
+            if index == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+
+        let replacement_id = hbb_common::uuid::Uuid::from_u128(10_000).to_string();
+        assert_eq!(
+            coordinator.begin(
+                &replacement_id,
+                PasswordMutationKind::ServiceOwned,
+                "secret",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Authorize
+        );
+        assert!(!coordinator
+            .ledger
+            .lock()
+            .unwrap()
+            .entries
+            .contains_key(&first_id));
+
+        let live = LinuxPasswordAdmissionCoordinator::new();
+        for index in 0..PASSWORD_MUTATION_RESULT_BUDGET {
+            let operation_id = hbb_common::uuid::Uuid::from_u128(index as u128 + 1).to_string();
+            assert_eq!(
+                live.begin(
+                    &operation_id,
+                    PasswordMutationKind::ServiceOwned,
+                    "secret",
+                    &caller,
+                ),
+                LinuxPasswordAdmissionDecision::Authorize
+            );
+        }
+        assert_eq!(
+            live.begin(
+                &hbb_common::uuid::Uuid::from_u128(10_000).to_string(),
+                PasswordMutationKind::ServiceOwned,
+                "secret",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Rejected
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_password_commit_has_one_owner_and_one_recovery_claimant() {
+        let coordinator = LinuxPasswordAdmissionCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let caller = LinuxPasswordCaller {
+            pid: 100,
+            uid: 1000,
+            start_time: "10".to_owned(),
+        };
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "secret",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Authorize
+        );
+        assert!(coordinator.finish_authorization(&operation_id, &caller, true));
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "secret",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Wait
+        );
+        assert!(coordinator.release_failed_commit(&operation_id, &caller));
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "secret",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Recover
+        );
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "secret",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Wait
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn linux_admitted_unresolved_replay_recovers_when_polkit_is_unavailable() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let coordinator = LinuxPasswordAdmissionCoordinator::new();
+        let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
+        let caller = LinuxPasswordCaller {
+            pid: 101,
+            uid: 1000,
+            start_time: "11".to_owned(),
+        };
+        let authorization_calls = AtomicUsize::new(0);
+        let first = execute_linux_service_owned_password_operation(
+            &coordinator,
+            &operation_id,
+            "new-password",
+            &caller,
+            || {
+                authorization_calls.fetch_add(1, Ordering::Relaxed);
+                async { true }
+            },
+            || async { Err(hbb_common::anyhow::anyhow!("lost child response")) },
+        )
+        .await;
+        assert!(first.is_err());
+
+        let replay = execute_linux_service_owned_password_operation(
+            &coordinator,
+            &operation_id,
+            "new-password",
+            &caller,
+            || {
+                authorization_calls.fetch_add(1, Ordering::Relaxed);
+                async { false }
+            },
+            || async { Ok(IpcMutationResult::Applied) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(replay, IpcMutationResult::Applied);
+        assert_eq!(authorization_calls.load(Ordering::Relaxed), 1);
+
+        let mismatched_caller = LinuxPasswordCaller {
+            pid: 102,
+            ..caller.clone()
+        };
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "new-password",
+                &mismatched_caller,
+            ),
+            LinuxPasswordAdmissionDecision::Rejected
+        );
+        assert_eq!(
+            coordinator.begin(
+                &operation_id,
+                PasswordMutationKind::ServiceOwned,
+                "different-password",
+                &caller,
+            ),
+            LinuxPasswordAdmissionDecision::Rejected
+        );
     }
 
     #[test]
@@ -4478,30 +8233,6 @@ mod test {
             cm.inner.codec().max_packet_length(),
             CM_FILE_BLOCK_MAX_FRAME_BYTES
         );
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    #[test]
-    fn protected_service_frame_cap_covers_escaped_password_request() {
-        let password = "\u{0001}".repeat(UNATTENDED_PASSWORD_MAX_BYTES);
-        let frame =
-            serde_json::to_vec(&Data::RequestServiceOwnedUnattendedPasswordChange(password))
-                .unwrap();
-
-        assert!(frame.len() <= SERVICE_IPC_MAX_FRAME_BYTES);
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn protected_service_frame_cap_covers_macos_password_request() {
-        let password = "\u{0001}".repeat(UNATTENDED_PASSWORD_MAX_BYTES);
-        let frame = serde_json::to_vec(&Data::RequestMacosServiceOwnedUnattendedPasswordChange {
-            password,
-            authorization: vec![255; 1024],
-        })
-        .unwrap();
-
-        assert!(frame.len() <= SERVICE_IPC_MAX_FRAME_BYTES);
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4606,6 +8337,29 @@ mod test {
     #[test]
     fn linux_pkcheck_path_is_clean_absolute() {
         assert!(linux_path_is_clean_absolute(Path::new(PKCHECK_PATH)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_password_authorization_is_bounded_reaped_and_capacity_isolated() {
+        let source = include_str!("ipc.rs");
+        let start = source.find("fn terminate_and_reap_linux_pkcheck").unwrap();
+        let end = source[start..]
+            .find("async fn execute_linux_service_owned_password_operation")
+            .map(|offset| start + offset)
+            .unwrap();
+        let authorization = &source[start..end];
+        for required in [
+            "PKCHECK_AUTHORIZATION_TIMEOUT",
+            "child.try_wait()",
+            "shutdown.is_cancelled()",
+            "child.kill()",
+            "child.wait()",
+        ] {
+            assert!(authorization.contains(required), "missing {required}");
+        }
+        assert!(source.contains("SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS"));
+        assert!(source.contains("try_acquire_service_password_ipc_transaction_slot"));
     }
 
     #[cfg(target_os = "linux")]

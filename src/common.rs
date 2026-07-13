@@ -577,15 +577,8 @@ audio_rechannel!(audio_rechannel_8_7, 8, 7);
 // its IPC query hop are gone.
 
 #[inline]
-#[cfg(any(target_os = "android", target_os = "ios"))]
 pub async fn get_nat_type(_ms_timeout: u64) -> i32 {
     Config::get_nat_type()
-}
-
-#[inline]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub async fn get_nat_type(ms_timeout: u64) -> i32 {
-    crate::ipc::get_nat_type(ms_timeout).await
 }
 
 // R-SV4(d)/R-SV10: the rendezvous-server latency probe is EXCISED. It used to

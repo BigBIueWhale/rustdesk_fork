@@ -1,12 +1,32 @@
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-vcpkg_from_github(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO webmproject/libvpx
-    REF "v${VERSION}"
+set(_libvpx_source_ref "v1.15.2")
+set(_libvpx_fix_commit "d5f35ac8d93cba7f7a3f7ddb8f9dc8bd28f785e1")
+set(_libvpx_distfiles_native "$ENV{RUSTDESK_VCPKG_DISTFILES_DIR}")
+if(_libvpx_distfiles_native STREQUAL "")
+    message(FATAL_ERROR "RUSTDESK_VCPKG_DISTFILES_DIR is required; libvpx source must come from the verified offline capture")
+endif()
+file(TO_CMAKE_PATH "${_libvpx_distfiles_native}" _libvpx_distfiles)
+if(CMAKE_HOST_WIN32)
+    set(_libvpx_file_url "file:///")
+else()
+    set(_libvpx_file_url "file://")
+endif()
+
+vcpkg_download_distfile(_libvpx_archive
+    URLS "${_libvpx_file_url}${_libvpx_distfiles}/libvpx-${_libvpx_source_ref}.tar.gz"
+    FILENAME "libvpx-${_libvpx_source_ref}.tar.gz"
     SHA512 824fe8719e4115ec359ae0642f5e1cea051d458f09eb8c24d60858cf082f66e411215e23228173ab154044bafbdfbb2d93b589bb726f55b233939b91f928aae0
-    HEAD_REF master
+)
+vcpkg_download_distfile(_libvpx_security_patch
+    URLS "${_libvpx_file_url}${_libvpx_distfiles}/libvpx-${_libvpx_fix_commit}.patch"
+    FILENAME "libvpx-${_libvpx_fix_commit}.patch"
+    SHA512 2980e0504e207047d55e6c98dcc55c2a3c06315b4ec04d59c42d786657e03ba0e1c73a0718ac6635990aac25fc642b204a1d56e13501ce2bd9625996ad0310d8
+)
+vcpkg_extract_source_archive(SOURCE_PATH
+    ARCHIVE "${_libvpx_archive}"
     PATCHES
+        "${_libvpx_security_patch}"
         0003-add-uwp-v142-and-v143-support.patch
         0004-remove-library-suffixes.patch
 )

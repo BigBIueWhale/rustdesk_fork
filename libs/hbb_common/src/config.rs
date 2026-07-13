@@ -59,6 +59,690 @@ lazy_static::lazy_static! {
     pub static ref ORG: RwLock<String> = RwLock::new("com.carriez".to_owned());
 }
 
+#[cfg(any(windows, test))]
+fn windows_service_owned_config_root_from(program_data: &Path, app_name: &str) -> Result<PathBuf> {
+    if !program_data.is_absolute() || app_name.is_empty() {
+        return Err(anyhow!("invalid Windows service-owned config root input"));
+    }
+    if app_name == "."
+        || app_name == ".."
+        || app_name.ends_with([' ', '.'])
+        || app_name
+            .chars()
+            .any(|value| value.is_control() || r#"<>:"/\|?*"#.contains(value))
+    {
+        return Err(anyhow!("invalid Windows service-owned config app name"));
+    }
+    Ok(program_data.join(app_name).join("config"))
+}
+
+#[cfg(windows)]
+mod windows_machine_config {
+    use super::{config_temp_file_name, windows_config_acl, ConfigStoreFault};
+    use anyhow::{anyhow, Result};
+    use ntapi::ntioapi::{
+        FileAttributeTagInformation, FileDispositionInformation, FileRenameInformation,
+        NtCreateFile, NtFlushBuffersFile, NtQueryInformationFile, NtSetInformationFile,
+        FILE_ATTRIBUTE_TAG_INFORMATION, FILE_CREATE, FILE_DIRECTORY_FILE,
+        FILE_DISPOSITION_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
+        FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION,
+        FILE_SYNCHRONOUS_IO_NONALERT, FILE_WRITE_THROUGH, IO_STATUS_BLOCK,
+    };
+    use std::{
+        convert::TryFrom,
+        ffi::OsStr,
+        fs::File,
+        io::{self, Read, Write},
+        mem::{size_of, zeroed},
+        os::windows::{
+            ffi::OsStrExt,
+            fs::OpenOptionsExt,
+            io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
+        },
+        path::{Component, Path, PathBuf, Prefix},
+        ptr::{copy_nonoverlapping, null_mut},
+        sync::OnceLock,
+    };
+    use winapi::{
+        shared::ntdef::{
+            HANDLE, NTSTATUS, NT_SUCCESS, OBJECT_ATTRIBUTES, OBJ_CASE_INSENSITIVE, UNICODE_STRING,
+        },
+        um::{
+            fileapi::{
+                CreateFileW, FlushFileBuffers, GetVolumeInformationByHandleW,
+                BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING,
+            },
+            handleapi::INVALID_HANDLE_VALUE,
+            winbase::{FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT},
+            winnt::{
+                DELETE, FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_NORMAL,
+                FILE_ATTRIBUTE_REPARSE_POINT, FILE_DELETE_CHILD, FILE_GENERIC_READ,
+                FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_PERSISTENT_ACLS,
+                FILE_READ_ATTRIBUTES, FILE_READ_ONLY_VOLUME, FILE_SHARE_DELETE, FILE_SHARE_READ,
+                FILE_SHARE_WRITE, FILE_TRAVERSE, FILE_WRITE_ATTRIBUTES, GENERIC_WRITE,
+                READ_CONTROL, SYNCHRONIZE,
+            },
+        },
+    };
+
+    const SHARE_ALL: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    const STATUS_OBJECT_NAME_NOT_FOUND: NTSTATUS = 0xC000_0034u32 as NTSTATUS;
+    const STATUS_OBJECT_NAME_COLLISION: NTSTATUS = 0xC000_0035u32 as NTSTATUS;
+    const STATUS_OBJECT_PATH_NOT_FOUND: NTSTATUS = 0xC000_003Au32 as NTSTATUS;
+
+    pub(super) struct Root {
+        path: PathBuf,
+        handle: OwnedHandle,
+        durability_volume: Option<OwnedHandle>,
+        write_authority: bool,
+        identity: FileIdentity,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct FileIdentity {
+        volume: u32,
+        index_high: u32,
+        index_low: u32,
+    }
+
+    static ROOT: OnceLock<Root> = OnceLock::new();
+
+    fn invalid(message: &'static str) -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidInput, message)
+    }
+
+    fn nt_error(status: NTSTATUS) -> io::Error {
+        if status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND {
+            io::Error::from(io::ErrorKind::NotFound)
+        } else if status == STATUS_OBJECT_NAME_COLLISION {
+            io::Error::from(io::ErrorKind::AlreadyExists)
+        } else {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("NTSTATUS 0x{:08x}", status as u32),
+            )
+        }
+    }
+
+    fn component_wide(value: &OsStr) -> io::Result<Vec<u16>> {
+        let value = value.encode_wide().collect::<Vec<_>>();
+        if value.is_empty() || value.iter().any(|value| matches!(*value, 0 | 47 | 58 | 92)) {
+            return Err(invalid("invalid Windows machine-config path component"));
+        }
+        Ok(value)
+    }
+
+    fn decompose(path: &Path) -> io::Result<(u8, Vec<Vec<u16>>)> {
+        let mut components = path.components();
+        let drive = match components.next() {
+            Some(Component::Prefix(prefix)) => match prefix.kind() {
+                Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => drive,
+                _ => return Err(invalid("machine config requires a local drive path")),
+            },
+            _ => return Err(invalid("machine config path is not absolute")),
+        };
+        if components.next() != Some(Component::RootDir) {
+            return Err(invalid("machine config path is not rooted"));
+        }
+        let mut result = Vec::new();
+        for component in components {
+            match component {
+                Component::Normal(value) => result.push(component_wide(value)?),
+                Component::CurDir => {}
+                _ => return Err(invalid("machine config path contains traversal")),
+            }
+        }
+        Ok((drive, result))
+    }
+
+    fn open_volume_root(drive: u8) -> io::Result<OwnedHandle> {
+        let path = format!(r"\\?\{}:\", drive as char);
+        let access =
+            FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE;
+        let file = std::fs::OpenOptions::new()
+            .access_mode(access)
+            .share_mode(SHARE_ALL)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)?;
+        Ok(OwnedHandle::from(file))
+    }
+
+    fn open_durability_volume(drive: u8) -> io::Result<OwnedHandle> {
+        let path = format!(r"\\.\{}:", drive as char)
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let handle = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                GENERIC_WRITE,
+                SHARE_ALL,
+                null_mut(),
+                OPEN_EXISTING,
+                0,
+                null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(unsafe { OwnedHandle::from_raw_handle(handle as RawHandle) })
+    }
+
+    fn volume_information(handle: HANDLE) -> io::Result<(u32, u32)> {
+        let mut serial = 0;
+        let mut flags = 0;
+        if unsafe {
+            GetVolumeInformationByHandleW(
+                handle,
+                null_mut(),
+                0,
+                &mut serial,
+                null_mut(),
+                &mut flags,
+                null_mut(),
+                0,
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok((serial, flags))
+    }
+
+    unsafe fn open_at(
+        parent: HANDLE,
+        name: &[u16],
+        desired_access: u32,
+        disposition: u32,
+        options: u32,
+    ) -> io::Result<OwnedHandle> {
+        let name_bytes = name
+            .len()
+            .checked_mul(2)
+            .filter(|length| *length <= u16::MAX as usize)
+            .ok_or_else(|| invalid("machine config path component is too long"))?;
+        let mut unicode = UNICODE_STRING {
+            Length: name_bytes as u16,
+            MaximumLength: name_bytes as u16,
+            Buffer: name.as_ptr() as *mut u16,
+        };
+        let mut attributes: OBJECT_ATTRIBUTES = zeroed();
+        attributes.Length = size_of::<OBJECT_ATTRIBUTES>() as u32;
+        attributes.RootDirectory = parent;
+        attributes.ObjectName = &mut unicode;
+        attributes.Attributes = OBJ_CASE_INSENSITIVE;
+        let mut handle: HANDLE = null_mut();
+        let mut status_block: IO_STATUS_BLOCK = zeroed();
+        let status = NtCreateFile(
+            &mut handle,
+            desired_access | SYNCHRONIZE | FILE_READ_ATTRIBUTES | READ_CONTROL,
+            &mut attributes,
+            &mut status_block,
+            null_mut(),
+            FILE_ATTRIBUTE_NORMAL,
+            SHARE_ALL,
+            disposition,
+            options | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            null_mut(),
+            0,
+        );
+        if !NT_SUCCESS(status) {
+            return Err(nt_error(status));
+        }
+        let handle = OwnedHandle::from_raw_handle(handle as RawHandle);
+        let mut tag: FILE_ATTRIBUTE_TAG_INFORMATION = zeroed();
+        let mut query_status: IO_STATUS_BLOCK = zeroed();
+        let status = NtQueryInformationFile(
+            handle.as_raw_handle() as HANDLE,
+            &mut query_status,
+            (&mut tag as *mut FILE_ATTRIBUTE_TAG_INFORMATION).cast(),
+            size_of::<FILE_ATTRIBUTE_TAG_INFORMATION>() as u32,
+            FileAttributeTagInformation,
+        );
+        if !NT_SUCCESS(status) || tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "machine config component is a reparse point or could not be proven ordinary",
+            ));
+        }
+        Ok(handle)
+    }
+
+    fn directory_access(write_authority: bool) -> u32 {
+        let mut access = FILE_LIST_DIRECTORY | FILE_TRAVERSE;
+        if write_authority {
+            access |=
+                FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD;
+        }
+        access
+    }
+
+    fn open_directory_at(
+        parent: HANDLE,
+        name: &[u16],
+        write_authority: bool,
+        create: bool,
+    ) -> io::Result<OwnedHandle> {
+        if create {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "machine config root descendants must be installer-provisioned",
+            ));
+        }
+        unsafe {
+            open_at(
+                parent,
+                name,
+                directory_access(write_authority),
+                FILE_OPEN,
+                FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT,
+            )
+        }
+    }
+
+    fn identity(handle: HANDLE) -> io::Result<FileIdentity> {
+        let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
+        if unsafe { winapi::um::fileapi::GetFileInformationByHandle(handle, &mut information) } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(FileIdentity {
+            volume: information.dwVolumeSerialNumber,
+            index_high: information.nFileIndexHigh,
+            index_low: information.nFileIndexLow,
+        })
+    }
+
+    pub(super) fn initialize(path: PathBuf, write_authority: bool) -> Result<PathBuf> {
+        let (drive, components) = decompose(&path)?;
+        if components.is_empty() {
+            return Err(anyhow!("machine config root has no directory components"));
+        }
+        let mut current = open_volume_root(drive)?;
+        for (index, component) in components.iter().enumerate() {
+            let final_root = index + 1 == components.len();
+            current = open_directory_at(
+                current.as_raw_handle() as HANDLE,
+                component,
+                write_authority && final_root,
+                false,
+            )?;
+        }
+        windows_config_acl::verify_machine_root_handle(current.as_raw_handle() as HANDLE)?;
+        let root_identity = identity(current.as_raw_handle() as HANDLE)?;
+        let (root_volume_serial, root_volume_flags) =
+            volume_information(current.as_raw_handle() as HANDLE)?;
+        if root_volume_serial != root_identity.volume
+            || root_volume_flags & FILE_PERSISTENT_ACLS == 0
+            || root_volume_flags & FILE_READ_ONLY_VOLUME != 0
+        {
+            return Err(anyhow!(
+                "machine config root volume identity or persistent-ACL support is invalid"
+            ));
+        }
+        let durability_volume = if write_authority {
+            let volume = open_durability_volume(drive)?;
+            let (volume_serial, volume_flags) =
+                volume_information(volume.as_raw_handle() as HANDLE)?;
+            if volume_serial != root_volume_serial
+                || volume_flags & FILE_PERSISTENT_ACLS == 0
+                || volume_flags & FILE_READ_ONLY_VOLUME != 0
+            {
+                return Err(anyhow!(
+                    "machine config durability volume does not match the retained root"
+                ));
+            }
+            Some(volume)
+        } else {
+            None
+        };
+        let root = Root {
+            path: path.clone(),
+            identity: root_identity,
+            handle: current,
+            durability_volume,
+            write_authority,
+        };
+        match ROOT.set(root) {
+            Ok(()) => Ok(path),
+            Err(candidate) => {
+                let Some(existing) = ROOT.get() else {
+                    return Err(anyhow!("machine config root initialization was lost"));
+                };
+                if existing.path == candidate.path
+                    && existing.identity == candidate.identity
+                    && existing.write_authority == candidate.write_authority
+                {
+                    Ok(existing.path.clone())
+                } else {
+                    Err(anyhow!(
+                        "machine config root was initialized inconsistently"
+                    ))
+                }
+            }
+        }
+    }
+
+    pub(super) fn root_path() -> Option<&'static Path> {
+        ROOT.get().map(|root| root.path.as_path())
+    }
+
+    pub(super) fn contains(path: &Path) -> bool {
+        root_path().is_some_and(|root| path.starts_with(root))
+    }
+
+    fn relative_components(path: &Path) -> io::Result<Vec<Vec<u16>>> {
+        let root = ROOT
+            .get()
+            .ok_or_else(|| invalid("machine config root is not initialized"))?;
+        let relative = path
+            .strip_prefix(&root.path)
+            .map_err(|_| invalid("machine config path escaped its root"))?;
+        let mut result = Vec::new();
+        for component in relative.components() {
+            match component {
+                Component::Normal(value) => result.push(component_wide(value)?),
+                Component::CurDir => {}
+                _ => return Err(invalid("machine config path contains traversal")),
+            }
+        }
+        if result.is_empty() {
+            return Err(invalid("machine config operation requires a child path"));
+        }
+        Ok(result)
+    }
+
+    fn with_parent<T>(
+        path: &Path,
+        write: bool,
+        operation: impl FnOnce(HANDLE, &[u16]) -> io::Result<T>,
+    ) -> io::Result<T> {
+        let root = ROOT
+            .get()
+            .ok_or_else(|| invalid("machine config root is not initialized"))?;
+        if write && !root.write_authority {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "service child has no machine-config disk authority",
+            ));
+        }
+        let components = relative_components(path)?;
+        let (file_name, directories) = components
+            .split_last()
+            .ok_or_else(|| invalid("machine config path has no file name"))?;
+        let mut owned = Vec::new();
+        let mut parent = root.handle.as_raw_handle() as HANDLE;
+        for directory in directories {
+            let handle = open_directory_at(parent, directory, write, false)?;
+            verify_machine_child_handle(handle.as_raw_handle() as HANDLE, true)?;
+            parent = handle.as_raw_handle() as HANDLE;
+            owned.push(handle);
+        }
+        operation(parent, file_name)
+    }
+
+    fn verify_machine_child_handle(handle: HANDLE, expected_directory: bool) -> io::Result<()> {
+        windows_config_acl::verify_machine_child_handle(handle, expected_directory).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("machine config object trust validation failed: {err:#}"),
+            )
+        })
+    }
+
+    pub(super) fn read(path: &Path) -> io::Result<Vec<u8>> {
+        with_parent(path, false, |parent, name| {
+            let handle = unsafe {
+                open_at(
+                    parent,
+                    name,
+                    FILE_GENERIC_READ,
+                    FILE_OPEN,
+                    FILE_NON_DIRECTORY_FILE,
+                )?
+            };
+            verify_machine_child_handle(handle.as_raw_handle() as HANDLE, false)?;
+            let opened_identity = identity(handle.as_raw_handle() as HANDLE)?;
+            let mut file = File::from(handle);
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)?;
+            if identity(file.as_raw_handle() as HANDLE)? != opened_identity {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "machine config file identity changed while open",
+                ));
+            }
+            Ok(bytes)
+        })
+    }
+
+    pub(super) fn preserve_corrupt(path: &Path) -> io::Result<()> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| invalid("machine config file name is not UTF-8"))?;
+        let backup_name = component_wide(OsStr::new(&format!("{file_name}.corrupt.{stamp}")))?;
+        with_parent(path, true, |parent, name| {
+            let handle = unsafe {
+                open_at(
+                    parent,
+                    name,
+                    DELETE | FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+                    FILE_OPEN,
+                    FILE_NON_DIRECTORY_FILE,
+                )?
+            };
+            verify_machine_child_handle(handle.as_raw_handle() as HANDLE, false)?;
+            unsafe {
+                rename_at(
+                    handle.as_raw_handle() as HANDLE,
+                    parent,
+                    &backup_name,
+                    false,
+                )?;
+            }
+            if flush_renamed_file(handle.as_raw_handle() as HANDLE).is_err()
+                || flush_namespace_volume().is_err()
+            {
+                std::process::abort();
+            }
+            Ok(())
+        })
+    }
+
+    unsafe fn mark_delete(handle: HANDLE) -> io::Result<()> {
+        let mut information = FILE_DISPOSITION_INFORMATION { DeleteFileA: 1 };
+        let mut status_block: IO_STATUS_BLOCK = zeroed();
+        let status = NtSetInformationFile(
+            handle,
+            &mut status_block,
+            (&mut information as *mut FILE_DISPOSITION_INFORMATION).cast(),
+            size_of::<FILE_DISPOSITION_INFORMATION>() as u32,
+            FileDispositionInformation,
+        );
+        if NT_SUCCESS(status) {
+            Ok(())
+        } else {
+            Err(nt_error(status))
+        }
+    }
+
+    unsafe fn rename_at(
+        handle: HANDLE,
+        parent: HANDLE,
+        name: &[u16],
+        replace: bool,
+    ) -> io::Result<()> {
+        let name_bytes = name
+            .len()
+            .checked_mul(2)
+            .ok_or_else(|| invalid("machine config rename name is too long"))?;
+        let name_bytes_u32 = u32::try_from(name_bytes)
+            .map_err(|_| invalid("machine config rename name is too long"))?;
+        let total = size_of::<FILE_RENAME_INFORMATION>()
+            .checked_add(name_bytes)
+            .ok_or_else(|| invalid("machine config rename buffer overflow"))?;
+        let mut buffer = vec![0u64; (total + 7) / 8];
+        let information = buffer.as_mut_ptr() as *mut FILE_RENAME_INFORMATION;
+        (*information).ReplaceIfExists = u8::from(replace);
+        (*information).RootDirectory = parent;
+        (*information).FileNameLength = name_bytes_u32;
+        copy_nonoverlapping(
+            name.as_ptr(),
+            (*information).FileName.as_mut_ptr(),
+            name.len(),
+        );
+        let name_offset =
+            ((*information).FileName.as_ptr() as usize).saturating_sub(information as usize);
+        let length = name_offset
+            .checked_add(name_bytes)
+            .and_then(|length| u32::try_from(length).ok())
+            .ok_or_else(|| invalid("machine config rename length overflow"))?;
+        let mut status_block: IO_STATUS_BLOCK = zeroed();
+        let status = NtSetInformationFile(
+            handle,
+            &mut status_block,
+            information.cast(),
+            length,
+            FileRenameInformation,
+        );
+        if NT_SUCCESS(status) {
+            Ok(())
+        } else {
+            Err(nt_error(status))
+        }
+    }
+
+    fn flush_renamed_file(handle: HANDLE) -> io::Result<()> {
+        let mut status_block: IO_STATUS_BLOCK = unsafe { zeroed() };
+        let status = unsafe { NtFlushBuffersFile(handle, &mut status_block) };
+        if NT_SUCCESS(status) {
+            Ok(())
+        } else {
+            Err(nt_error(status))
+        }
+    }
+
+    fn flush_namespace_volume() -> io::Result<()> {
+        let root = ROOT
+            .get()
+            .ok_or_else(|| invalid("machine config root is not initialized"))?;
+        let volume = root.durability_volume.as_ref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "service child has no machine-config durability authority",
+            )
+        })?;
+        if unsafe { FlushFileBuffers(volume.as_raw_handle() as HANDLE) } == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(super) fn store(path: &Path, bytes: &[u8], fault: ConfigStoreFault) -> Result<()> {
+        with_parent(path, true, |parent, final_name| {
+            for attempt in 0..128 {
+                let temporary_name = config_temp_file_name(path, attempt)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err.to_string()))?;
+                let temporary_name = component_wide(OsStr::new(&temporary_name))?;
+                let handle = match unsafe {
+                    open_at(
+                        parent,
+                        &temporary_name,
+                        FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE,
+                        FILE_CREATE,
+                        FILE_NON_DIRECTORY_FILE | FILE_WRITE_THROUGH,
+                    )
+                } {
+                    Ok(handle) => handle,
+                    Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+                    Err(err) => return Err(err),
+                };
+                verify_machine_child_handle(handle.as_raw_handle() as HANDLE, false)?;
+                let opened_identity = identity(handle.as_raw_handle() as HANDLE)?;
+                let mut file = File::from(handle);
+                let precommit = (|| -> io::Result<()> {
+                    file.write_all(bytes)?;
+                    file.sync_all()?;
+                    if fault == ConfigStoreFault::BeforeReplace {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "injected machine config failure before replacement",
+                        ));
+                    }
+                    if identity(file.as_raw_handle() as HANDLE)? != opened_identity {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "machine config temporary file identity changed",
+                        ));
+                    }
+                    Ok(())
+                })();
+                if let Err(err) = precommit {
+                    let cleanup = unsafe { mark_delete(file.as_raw_handle() as HANDLE) };
+                    return match cleanup {
+                        Ok(()) => Err(err),
+                        Err(cleanup) => Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("{err}; temporary cleanup failed: {cleanup}"),
+                        )),
+                    };
+                }
+                unsafe {
+                    rename_at(file.as_raw_handle() as HANDLE, parent, final_name, true)?;
+                }
+                if fault == ConfigStoreFault::AfterReplace {
+                    std::process::abort();
+                }
+                if flush_renamed_file(file.as_raw_handle() as HANDLE).is_err()
+                    || flush_namespace_volume().is_err()
+                {
+                    std::process::abort();
+                }
+                if identity(file.as_raw_handle() as HANDLE)? != opened_identity {
+                    std::process::abort();
+                }
+                return Ok(());
+            }
+            Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "could not allocate a machine config temporary file",
+            ))
+        })
+        .map_err(Into::into)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn windows_service_owned_root_native_walk_requires_a_local_drive() {
+            let (drive, components) = decompose(Path::new(r"C:\ProgramData\RustDesk\config"))
+                .expect("fixed ProgramData path should decompose");
+            assert_eq!(drive, b'C');
+            assert_eq!(components.len(), 3);
+            assert!(decompose(Path::new(r"\\server\share\RustDesk\config")).is_err());
+        }
+    }
+}
+
+fn advance_permanent_password_credential_generation(generation: &mut u64) {
+    let Some(next) = generation.checked_add(1) else {
+        log::error!(
+            "Permanent-password credential generation exhausted; refusing ABA by terminating"
+        );
+        std::process::abort();
+    };
+    *generation = next;
+}
+
 type Size = (i32, i32, i32, i32);
 type KeyPair = (Vec<u8>, Vec<u8>);
 
@@ -82,6 +766,11 @@ lazy_static::lazy_static! {
     pub static ref HARD_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
     pub static ref BUILTIN_SETTINGS: RwLock<HashMap<String, String>> = Default::default();
     static ref RUNTIME_PERMANENT_PASSWORD_PRS: RwLock<Option<String>> = RwLock::new(None);
+    // This lock is the credential publication/authorization linearization point. Writers hold it
+    // while publishing a changed persisted or runtime credential and advancing the generation;
+    // a new session holds the read side while validating its captured generation and committing
+    // its authorization state. Existing authorized sessions deliberately do not retain the lock.
+    static ref PERMANENT_PASSWORD_CREDENTIAL_GENERATION: RwLock<u64> = RwLock::new(1);
 }
 
 #[cfg(target_os = "android")]
@@ -136,13 +825,7 @@ pub const DIRECT_PORT: i32 = 21118;
 
 #[inline]
 pub fn is_service_ipc_postfix(postfix: &str) -> bool {
-    // `_service` is the protected cross-user service-control/status IPC channel used by the root
-    // service. The user process may connect to it, so it shares the `_service` IPC parent directory
-    // and is world-connectable, gated by accept-time peer-uid authorization and a narrow message
-    // allowlist. R-X13 (§8): the `_uinput_*` cross-uid Wayland-injection channels that also carried
-    // this classification are gone with the uinput module, so `_service` is now the SOLE service
-    // postfix.
-    postfix == "_service"
+    matches!(postfix, "_service" | "_service_password")
 }
 
 // Keep Linux/macOS IPC parent directory rules in one place to avoid drift between
@@ -265,7 +948,6 @@ pub struct Config2 {
     // T2 (excise): the local-settings-PIN field was removed with that subsystem (R-G1 /
     // excise-don't-disable). Config2 has no #[serde(deny_unknown_fields)], so an OLD config
     // file that still carries the now-removed key loads fine — serde ignores the unknown field.
-
     #[serde(default)]
     socks: Option<Socks5Server>,
 
@@ -422,6 +1104,22 @@ pub enum PermanentPasswordPrsRead {
     UndecryptableStorage,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PermanentPasswordCredentialSnapshot {
+    prs: PermanentPasswordPrsRead,
+    generation: u64,
+}
+
+impl PermanentPasswordCredentialSnapshot {
+    pub fn into_parts(self) -> (PermanentPasswordPrsRead, u64) {
+        (self.prs, self.generation)
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+}
+
 impl PermanentPasswordPrsRead {
     pub fn into_prs(self) -> String {
         match self {
@@ -514,13 +1212,6 @@ pub struct TransferSerde {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn patch(path: PathBuf) -> PathBuf {
     if let Some(_tmp) = path.to_str() {
-        #[cfg(windows)]
-        return _tmp
-            .replace(
-                "system32\\config\\systemprofile",
-                "ServiceProfiles\\LocalService",
-            )
-            .into();
         #[cfg(target_os = "macos")]
         return _tmp.replace("Application Support", "Preferences").into();
         #[cfg(target_os = "linux")]
@@ -717,6 +1408,7 @@ mod windows_config_acl {
     use anyhow::{anyhow, Result};
     use std::{
         fs,
+        mem::{size_of, zeroed},
         os::windows::ffi::OsStrExt,
         path::Path,
         ptr,
@@ -724,24 +1416,33 @@ mod windows_config_acl {
     use winapi::{
         shared::{
             minwindef::{DWORD, FALSE, HLOCAL, LPVOID},
-            ntdef::LPWSTR,
+            ntdef::{HANDLE, LPWSTR},
             sddl::{
-                ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
-                SDDL_REVISION_1,
+                ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
             },
             winerror::ERROR_SUCCESS,
         },
         um::{
             accctrl::SE_FILE_OBJECT,
-            aclapi::SetNamedSecurityInfoW,
+            aclapi::{GetNamedSecurityInfoW, GetSecurityInfo, SetNamedSecurityInfoW},
             errhandlingapi::GetLastError,
+            fileapi::GetFileInformationByHandle,
             handleapi::CloseHandle,
             processthreadsapi::{GetCurrentProcess, OpenProcessToken},
-            securitybaseapi::{GetSecurityDescriptorDacl, GetTokenInformation},
+            securitybaseapi::{
+                GetAce, GetAclInformation, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+                GetTokenInformation, IsValidSid,
+            },
             winbase::LocalFree,
             winnt::{
-                TokenUser, DACL_SECURITY_INFORMATION, PACL, PROTECTED_DACL_SECURITY_INFORMATION,
-                PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY, TOKEN_USER,
+                AclSizeInformation, TokenUser, ACCESS_ALLOWED_ACE, ACCESS_ALLOWED_ACE_TYPE,
+                ACE_HEADER, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION,
+                FILE_ALL_ACCESS, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+                OBJECT_INHERIT_ACE, OWNER_SECURITY_INFORMATION, PACL,
+                PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+                SECURITY_DESCRIPTOR_CONTROL, SE_DACL_PROTECTED, SID_MAX_SUB_AUTHORITIES,
+                SID_REVISION, TOKEN_QUERY, TOKEN_USER,
             },
         },
     };
@@ -774,10 +1475,12 @@ mod windows_config_acl {
         if let Some(parent) = path.parent() {
             if parent.exists() {
                 harden_path(parent, true)?;
+                verify_hardened_path(parent, true)?;
             }
         }
         if path.exists() {
             harden_path(path, false)?;
+            verify_hardened_path(path, false)?;
         }
         Ok(())
     }
@@ -792,11 +1495,177 @@ mod windows_config_acl {
                 parent.display()
             )
         })?;
-        harden_path(parent, true)
+        harden_path(parent, true)?;
+        verify_hardened_path(parent, true)
+    }
+
+    pub(super) fn verify_machine_root_handle(handle: HANDLE) -> Result<()> {
+        verify_machine_handle(handle, true, true)
+    }
+
+    pub(super) fn verify_machine_child_handle(
+        handle: HANDLE,
+        expected_directory: bool,
+    ) -> Result<()> {
+        verify_machine_handle(handle, expected_directory, false)
+    }
+
+    fn verify_machine_handle(
+        handle: HANDLE,
+        expected_directory: bool,
+        require_protected_inheritable_dacl: bool,
+    ) -> Result<()> {
+        let mut information = unsafe { zeroed() };
+        if unsafe { GetFileInformationByHandle(handle, &mut information) } == FALSE {
+            return Err(anyhow!(
+                "GetFileInformationByHandle failed for machine config object: win32_error={}",
+                unsafe { GetLastError() }
+            ));
+        }
+        let is_directory = information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0;
+        if is_directory != expected_directory
+            || information.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        {
+            return Err(anyhow!(
+                "Machine config object type or reparse-point validation failed"
+            ));
+        }
+
+        let mut owner: PSID = ptr::null_mut();
+        let mut dacl: PACL = ptr::null_mut();
+        let mut descriptor: PSECURITY_DESCRIPTOR = ptr::null_mut();
+        let result = unsafe {
+            GetSecurityInfo(
+                handle,
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &mut owner,
+                ptr::null_mut(),
+                &mut dacl,
+                ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        if result != ERROR_SUCCESS || descriptor.is_null() || owner.is_null() || dacl.is_null() {
+            return Err(anyhow!(
+                "GetSecurityInfo returned no authoritative machine config owner/DACL: win32_error={result}"
+            ));
+        }
+        let _descriptor_guard = LocalFreeGuard(descriptor as HLOCAL);
+        let owner = sid_to_string(owner)?;
+        if !owner.eq_ignore_ascii_case("S-1-5-18") && !owner.eq_ignore_ascii_case("S-1-5-32-544") {
+            return Err(anyhow!(
+                "Machine config object owner is not SYSTEM or Administrators"
+            ));
+        }
+
+        if require_protected_inheritable_dacl {
+            let mut control: SECURITY_DESCRIPTOR_CONTROL = 0;
+            let mut revision = 0;
+            if unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) }
+                == FALSE
+                || control & SE_DACL_PROTECTED == 0
+            {
+                return Err(anyhow!("Machine config root DACL is not protected"));
+            }
+        }
+
+        let mut acl_information: ACL_SIZE_INFORMATION = unsafe { zeroed() };
+        if unsafe {
+            GetAclInformation(
+                dacl,
+                (&mut acl_information as *mut ACL_SIZE_INFORMATION).cast(),
+                size_of::<ACL_SIZE_INFORMATION>() as DWORD,
+                AclSizeInformation,
+            )
+        } == FALSE
+        {
+            return Err(anyhow!(
+                "GetAclInformation failed for machine config object: win32_error={}",
+                unsafe { GetLastError() }
+            ));
+        }
+        if acl_information.AceCount == 0 {
+            return Err(anyhow!("Machine config object has an empty DACL"));
+        }
+
+        let mut system_full = false;
+        let mut administrators_full = false;
+        for index in 0..acl_information.AceCount {
+            let mut raw_ace: LPVOID = ptr::null_mut();
+            if unsafe { GetAce(dacl, index, &mut raw_ace) } == FALSE || raw_ace.is_null() {
+                return Err(anyhow!(
+                    "GetAce failed for machine config object: index={index}, win32_error={}",
+                    unsafe { GetLastError() }
+                ));
+            }
+            let header = unsafe { &*(raw_ace as *const ACE_HEADER) };
+            let sid_offset = size_of::<ACCESS_ALLOWED_ACE>() - size_of::<DWORD>();
+            let ace_size = usize::from(header.AceSize);
+            if header.AceType != ACCESS_ALLOWED_ACE_TYPE || ace_size < sid_offset + 8 {
+                return Err(anyhow!(
+                    "Machine config DACL contains a non-basic allow ACE"
+                ));
+            }
+            let ace = unsafe { &*(raw_ace as *const ACCESS_ALLOWED_ACE) };
+            if ace.Mask & FILE_ALL_ACCESS != FILE_ALL_ACCESS {
+                return Err(anyhow!(
+                    "Machine config DACL contains a non-full-control ACE"
+                ));
+            }
+            if require_protected_inheritable_dacl
+                && ace.Header.AceFlags & (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE)
+                    != (OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE)
+            {
+                return Err(anyhow!(
+                    "Machine config root DACL does not propagate to files and directories"
+                ));
+            }
+            let sid_bytes = unsafe {
+                std::slice::from_raw_parts(
+                    (raw_ace as *const u8).add(sid_offset),
+                    ace_size - sid_offset,
+                )
+            };
+            let sub_authorities = usize::from(sid_bytes[1]);
+            let sid_length = sub_authorities
+                .checked_mul(size_of::<DWORD>())
+                .and_then(|length| 8usize.checked_add(length))
+                .ok_or_else(|| anyhow!("Machine config DACL SID length overflow"))?;
+            if sid_bytes[0] != SID_REVISION
+                || sub_authorities > usize::from(SID_MAX_SUB_AUTHORITIES)
+                || sid_length > sid_bytes.len()
+            {
+                return Err(anyhow!("Machine config DACL contains a malformed SID"));
+            }
+            let sid: PSID = sid_bytes.as_ptr().cast_mut().cast();
+            if unsafe { IsValidSid(sid) } == FALSE {
+                return Err(anyhow!("Machine config DACL contains an invalid SID"));
+            }
+            match sid_to_string(sid)?.to_ascii_uppercase().as_str() {
+                "S-1-5-18" => system_full = true,
+                "S-1-5-32-544" => administrators_full = true,
+                _ => {
+                    return Err(anyhow!(
+                        "Machine config DACL grants access to a lower principal"
+                    ));
+                }
+            }
+        }
+        if !system_full || !administrators_full {
+            return Err(anyhow!(
+                "Machine config DACL does not grant full control to SYSTEM and Administrators"
+            ));
+        }
+        Ok(())
     }
 
     pub(super) fn harden_config_file(path: &Path) -> Result<()> {
         harden_path(path, false)
+    }
+
+    pub(super) fn verify_config_file(path: &Path) -> Result<()> {
+        verify_hardened_path(path, false)
     }
 
     fn harden_path(path: &Path, inherit_to_children: bool) -> Result<()> {
@@ -856,6 +1725,63 @@ mod windows_config_acl {
         Ok(())
     }
 
+    fn verify_hardened_path(path: &Path, inherit_to_children: bool) -> Result<()> {
+        let mut path_w = wide_path(path);
+        let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
+        let result = unsafe {
+            GetNamedSecurityInfoW(
+                path_w.as_mut_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut sd,
+            )
+        };
+        if result != ERROR_SUCCESS || sd.is_null() {
+            return Err(anyhow!(
+                "GetNamedSecurityInfoW failed while verifying config ACL '{}': win32_error={result}",
+                path.display()
+            ));
+        }
+        let _sd_guard = LocalFreeGuard(sd as HLOCAL);
+        let mut sddl_w: LPWSTR = ptr::null_mut();
+        let converted = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                sd,
+                SDDL_REVISION_1 as DWORD,
+                DACL_SECURITY_INFORMATION,
+                &mut sddl_w,
+                ptr::null_mut(),
+            )
+        };
+        if converted == FALSE || sddl_w.is_null() {
+            return Err(anyhow!(
+                "Could not serialize config ACL for verification '{}': win32_error={}",
+                path.display(),
+                unsafe { GetLastError() }
+            ));
+        }
+        let _sddl_guard = LocalFreeGuard(sddl_w as HLOCAL);
+        let mut len = 0usize;
+        while unsafe { *sddl_w.add(len) } != 0 {
+            len += 1;
+        }
+        let actual = String::from_utf16(unsafe { std::slice::from_raw_parts(sddl_w, len) })?;
+        let expected = windows_config_acl_sddl(&current_user_sid_string()?, inherit_to_children);
+        if !actual.eq_ignore_ascii_case(&expected) {
+            return Err(anyhow!(
+                "Config ACL verification failed for '{}': expected '{}', got '{}'",
+                path.display(),
+                expected,
+                actual
+            ));
+        }
+        Ok(())
+    }
+
     fn current_user_sid_string() -> Result<String> {
         let mut token = ptr::null_mut();
         let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) };
@@ -880,13 +1806,7 @@ mod windows_config_acl {
 
         let mut buf = vec![0u8; len as usize];
         let read = unsafe {
-            GetTokenInformation(
-                token,
-                TokenUser,
-                buf.as_mut_ptr() as LPVOID,
-                len,
-                &mut len,
-            )
+            GetTokenInformation(token, TokenUser, buf.as_mut_ptr() as LPVOID, len, &mut len)
         };
         if read == FALSE {
             return Err(anyhow!(
@@ -903,6 +1823,10 @@ mod windows_config_acl {
             ));
         }
         sid_to_string(sid)
+    }
+
+    pub(super) fn current_process_is_local_system() -> Result<bool> {
+        Ok(current_user_sid_string()?.eq_ignore_ascii_case("S-1-5-18"))
     }
 
     fn sid_to_string(sid: PSID) -> Result<String> {
@@ -970,6 +1894,42 @@ fn load_path_with_status<
 >(
     file: PathBuf,
 ) -> ConfigLoad<T> {
+    #[cfg(windows)]
+    if windows_machine_config::contains(&file) {
+        return match windows_machine_config::read(&file) {
+            Ok(bytes) => match std::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|value| toml::from_str(value).ok())
+            {
+                Some(config) => ConfigLoad::new(config, ConfigLoadStatus::Loaded),
+                None => {
+                    log::error!(
+                        "Machine config '{}' is corrupt; preserving it and failing closed",
+                        file.display()
+                    );
+                    if let Err(err) = windows_machine_config::preserve_corrupt(&file) {
+                        log::error!(
+                            "Could not preserve corrupt machine config '{}': {err}",
+                            file.display()
+                        );
+                        ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError)
+                    } else {
+                        ConfigLoad::new(T::default(), ConfigLoadStatus::Corrupt)
+                    }
+                }
+            },
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                ConfigLoad::new(T::default(), ConfigLoadStatus::NotFound)
+            }
+            Err(err) => {
+                log::error!(
+                    "Machine config '{}' could not be read through its retained root: {err}",
+                    file.display()
+                );
+                ConfigLoad::new(T::default(), ConfigLoadStatus::TransientError)
+            }
+        };
+    }
     // A HIGH-blast-radius path: EVERY config load. Distinguish a genuine first run (no file)
     // from a PRESENT-but-corrupt file, and never silently reset+overwrite the latter — a
     // regenerated default stored back over it would discard the key_pair/permanent credential
@@ -988,9 +1948,7 @@ fn load_path_with_status<
         Ok(config) => ConfigLoad::new(config, ConfigLoadStatus::Loaded),
         Err(err) => match &err {
             // Genuine first run: `File::open` returned NotFound — no file exists yet.
-            confy::ConfyError::GeneralLoadError(e)
-                if e.kind() == std::io::ErrorKind::NotFound =>
-            {
+            confy::ConfyError::GeneralLoadError(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 ConfigLoad::new(T::default(), ConfigLoadStatus::NotFound)
             }
             // Read succeeded but the bytes will not parse: DEFINITE corruption (a valid
@@ -1026,25 +1984,15 @@ fn load_path_with_status<
 
 #[inline]
 pub fn store_path<T: serde::Serialize>(path: PathBuf, cfg: T) -> crate::ResultType<()> {
-    #[cfg(not(windows))]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        Ok(confy::store_path_perms(
-            path,
-            cfg,
-            fs::Permissions::from_mode(0o600),
-        )?)
-    }
-    #[cfg(windows)]
-    {
-        windows_config_acl::prepare_config_path_for_store(&path)?;
-        confy::store_path(&path, cfg)?;
-        windows_config_acl::harden_config_file(&path)?;
-        Ok(())
-    }
+    let serialized = toml::to_string_pretty(&cfg)?;
+    store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)
 }
 
 fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>> {
+    #[cfg(windows)]
+    if windows_machine_config::contains(path) {
+        return windows_machine_config::read(path).map_err(Into::into);
+    }
     #[cfg(windows)]
     windows_config_acl::prepare_config_path_for_load(path)?;
 
@@ -1055,127 +2003,413 @@ fn load_raw_config_bytes(path: &Path) -> Result<Vec<u8>> {
 }
 
 fn store_raw_config_bytes(path: PathBuf, data: &[u8]) -> Result<()> {
-    #[cfg(windows)]
-    windows_config_acl::prepare_config_path_for_store(&path)?;
+    store_config_bytes_transaction(&path, data, ConfigStoreFault::None)
+}
 
-    #[cfg(not(windows))]
-    {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConfigStoreFault {
+    None,
+    BeforeReplace,
+    AfterReplace,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReplacementFailureReconciliation {
+    NewAuthoritative,
+    NotNew,
+}
+
+#[cfg(any(windows, test))]
+fn reconcile_replacement_failure(
+    observed: Option<&[u8]>,
+    intended: &[u8],
+) -> ReplacementFailureReconciliation {
+    if observed == Some(intended) {
+        ReplacementFailureReconciliation::NewAuthoritative
+    } else {
+        ReplacementFailureReconciliation::NotNew
+    }
+}
+
+fn config_temp_file_name(path: &Path, attempt: u32) -> Result<String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("Config path '{}' has no UTF-8 file name", path.display()))?;
+    Ok(format!(
+        ".{name}.tmp.{}.{}.{}",
+        std::process::id(),
+        stamp,
+        attempt
+    ))
+}
+
+#[cfg(unix)]
+fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFault) -> Result<()> {
+    store_config_bytes_transaction_unix(path, data, fault, &|message| {
+        log::error!("Fatal config durability failure after replacement: {message}");
+        std::process::abort()
+    })
+}
+
+#[cfg(unix)]
+fn store_config_bytes_transaction_unix(
+    path: &Path,
+    data: &[u8],
+    fault: ConfigStoreFault,
+    fatal_after_replace: &dyn Fn(&str) -> Result<()>,
+) -> Result<()> {
+    use std::{
+        ffi::{CStr, CString, OsStr},
+        os::unix::{
+            ffi::OsStrExt,
+            io::{AsRawFd, FromRawFd},
+        },
+    };
+
+    fn component(value: &OsStr, context: &str) -> Result<CString> {
+        CString::new(value.as_bytes())
+            .map_err(|err| anyhow!("Invalid {context} path component: {err}"))
+    }
+
+    fn open_parent(path: &Path) -> Result<fs::File> {
         let parent = path
             .parent()
             .ok_or_else(|| anyhow!("Config path '{}' has no parent directory", path.display()))?;
-        fs::create_dir_all(parent)?;
+        let mut dir = fs::File::open(if parent.is_absolute() {
+            Path::new("/")
+        } else {
+            Path::new(".")
+        })?;
+        for part in parent.components() {
+            match part {
+                std::path::Component::RootDir | std::path::Component::CurDir => {}
+                std::path::Component::Normal(name) => {
+                    let name = component(name, "config directory")?;
+                    let made = unsafe {
+                        crate::libc::mkdirat(
+                            dir.as_raw_fd(),
+                            name.as_ptr(),
+                            0o700 as crate::libc::mode_t,
+                        )
+                    };
+                    if made != 0 {
+                        let err = io::Error::last_os_error();
+                        if err.raw_os_error() != Some(crate::libc::EEXIST) {
+                            return Err(anyhow!(
+                                "Failed to create config directory component: {err}"
+                            ));
+                        }
+                    }
+                    let fd = unsafe {
+                        crate::libc::openat(
+                            dir.as_raw_fd(),
+                            name.as_ptr(),
+                            crate::libc::O_RDONLY
+                                | crate::libc::O_DIRECTORY
+                                | crate::libc::O_CLOEXEC
+                                | crate::libc::O_NOFOLLOW,
+                        )
+                    };
+                    if fd < 0 {
+                        return Err(anyhow!(
+                            "Failed to open config directory component without following links: {}",
+                            io::Error::last_os_error()
+                        ));
+                    }
+                    dir = unsafe { fs::File::from_raw_fd(fd) };
+                }
+                std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
+                    return Err(anyhow!(
+                        "Config path '{}' contains an unsupported parent component",
+                        path.display()
+                    ));
+                }
+            }
+        }
+        Ok(dir)
     }
+
+    fn verify_file(file: &fs::File, path: &Path) -> Result<()> {
+        use std::os::unix::fs::MetadataExt;
+
+        let metadata = file.metadata()?;
+        if !metadata.file_type().is_file()
+            || metadata.uid() != unsafe { crate::libc::geteuid() }
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.nlink() != 1
+        {
+            return Err(anyhow!(
+                "Config file '{}' failed regular-file/owner/mode/link verification",
+                path.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn sync_temp_file(file: &fs::File) -> Result<()> {
+        file.sync_all()?;
+        #[cfg(target_os = "macos")]
+        if unsafe { crate::libc::fcntl(file.as_raw_fd(), crate::libc::F_FULLFSYNC) } != 0 {
+            return Err(anyhow!(
+                "F_FULLFSYNC failed for temporary config file: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        Ok(())
+    }
+
+    fn unlink_temp(parent_fd: i32, name: &CStr) -> Result<()> {
+        if unsafe { crate::libc::unlinkat(parent_fd, name.as_ptr(), 0) } == 0 {
+            return Ok(());
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::NotFound {
+            Ok(())
+        } else {
+            Err(anyhow!("Failed to remove temporary config file: {err}"))
+        }
+    }
+
+    let parent = open_parent(path)?;
+    let parent_fd = parent.as_raw_fd();
+    let final_name = component(
+        path.file_name()
+            .ok_or_else(|| anyhow!("Config path '{}' has no file name", path.display()))?,
+        "config file",
+    )?;
 
     for attempt in 0..128 {
-        let tmp = raw_config_temp_path(&path, attempt);
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+        let temp_name = CString::new(config_temp_file_name(path, attempt)?)?;
+        let fd = unsafe {
+            crate::libc::openat(
+                parent_fd,
+                temp_name.as_ptr(),
+                crate::libc::O_WRONLY
+                    | crate::libc::O_CREAT
+                    | crate::libc::O_EXCL
+                    | crate::libc::O_CLOEXEC
+                    | crate::libc::O_NOFOLLOW,
+                0o600 as crate::libc::mode_t,
+            )
+        };
+        if fd < 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() == io::ErrorKind::AlreadyExists {
+                continue;
+            }
+            return Err(anyhow!("Failed to create temporary config file: {err}"));
         }
-
-        let mut file = match options.open(&tmp) {
-            Ok(file) => file,
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => {
+        let mut temp = unsafe { fs::File::from_raw_fd(fd) };
+        let transaction = (|| -> Result<()> {
+            if unsafe { crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t) } != 0 {
                 return Err(anyhow!(
-                    "Failed to create temporary config file '{}': {err}",
-                    tmp.display()
+                    "Failed to set temporary config permissions: {}",
+                    io::Error::last_os_error()
                 ));
             }
-        };
-
-        let write_result = file
-            .write_all(data)
-            .and_then(|_| file.sync_all())
-            .map_err(|err| anyhow!("Failed to write '{}': {err}", tmp.display()));
-        drop(file);
-        if let Err(err) = write_result {
-            let _ = fs::remove_file(&tmp);
-            return Err(err);
+            verify_file(&temp, path)?;
+            temp.write_all(data)?;
+            sync_temp_file(&temp)?;
+            if fault == ConfigStoreFault::BeforeReplace {
+                return Err(anyhow!("injected config failure before replacement"));
+            }
+            if unsafe {
+                crate::libc::renameat(
+                    parent_fd,
+                    temp_name.as_ptr(),
+                    parent_fd,
+                    final_name.as_ptr(),
+                )
+            } != 0
+            {
+                return Err(anyhow!(
+                    "Failed to atomically replace config '{}': {}",
+                    path.display(),
+                    io::Error::last_os_error()
+                ));
+            }
+            if fault == ConfigStoreFault::AfterReplace {
+                return fatal_after_replace("injected failure before parent-directory sync");
+            }
+            let mut last_sync_error = None;
+            for _ in 0..16 {
+                match parent.sync_all() {
+                    Ok(()) => return Ok(()),
+                    Err(err) => {
+                        last_sync_error = Some(err);
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                }
+            }
+            let message = format!(
+                "could not sync parent directory for '{}' after replacement: {}",
+                path.display(),
+                last_sync_error
+                    .map(|err| err.to_string())
+                    .unwrap_or_else(|| "unknown sync failure".to_owned())
+            );
+            fatal_after_replace(&message)
+        })();
+        drop(temp);
+        if let Err(error) = transaction {
+            return match unlink_temp(parent_fd, &temp_name) {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(anyhow!("{error}; cleanup also failed: {cleanup}")),
+            };
         }
-
-        if let Err(err) = replace_raw_config_file(&tmp, &path) {
-            let _ = fs::remove_file(&tmp);
-            return Err(err);
-        }
-
-        #[cfg(windows)]
-        windows_config_acl::harden_config_file(&path)?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
-        }
-
         return Ok(());
     }
-
     Err(anyhow!(
-        "Could not allocate a temporary config path for '{}'",
+        "Could not allocate a temporary config file for '{}'",
         path.display()
     ))
 }
 
 #[cfg(windows)]
-fn replace_raw_config_file(tmp: &Path, path: &Path) -> Result<()> {
-    use std::os::windows::ffi::OsStrExt;
+fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFault) -> Result<()> {
+    use std::os::windows::{ffi::OsStrExt, fs::OpenOptionsExt};
     use winapi::um::{
         errhandlingapi::GetLastError,
-        winbase::{MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH},
+        winbase::{
+            MoveFileExW, FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_WRITE_THROUGH,
+            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        },
     };
 
-    let tmp_w: Vec<u16> = tmp
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let path_w: Vec<u16> = path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let moved = unsafe {
-        MoveFileExW(
-            tmp_w.as_ptr(),
-            path_w.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if moved == 0 {
-        return Err(anyhow!(
-            "Failed to replace config file '{}' with '{}': win32_error={}",
-            path.display(),
-            tmp.display(),
-            unsafe { GetLastError() }
-        ));
+    if windows_machine_config::contains(path) {
+        return windows_machine_config::store(path, data, fault);
     }
+    windows_config_acl::prepare_config_path_for_store(path)?;
+    for attempt in 0..128 {
+        let temp_name = config_temp_file_name(path, attempt)?;
+        let temp_path = path.with_file_name(temp_name);
+        let mut temp = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH)
+            .open(&temp_path)
+        {
+            Ok(file) => file,
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(anyhow!("Failed to create temporary config file: {err}")),
+        };
+        let pre_replace = (|| -> Result<()> {
+            windows_config_acl::harden_config_file(&temp_path)?;
+            windows_config_acl::verify_config_file(&temp_path)?;
+            temp.write_all(data)?;
+            temp.sync_all()?;
+            if fault == ConfigStoreFault::BeforeReplace {
+                return Err(anyhow!("injected config failure before replacement"));
+            }
+            Ok(())
+        })();
+        drop(temp);
+        if let Err(error) = pre_replace {
+            return match fs::remove_file(&temp_path) {
+                Ok(()) => Err(error),
+                Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => Err(error),
+                Err(cleanup) => Err(anyhow!(
+                    "{error}; temporary credential cleanup also failed: {cleanup}"
+                )),
+            };
+        }
+
+        let temp_w: Vec<u16> = temp_path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let path_w: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        if unsafe {
+            MoveFileExW(
+                temp_w.as_ptr(),
+                path_w.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        } == 0
+        {
+            let error = unsafe { GetLastError() };
+            match fs::remove_file(&temp_path) {
+                Ok(()) => {
+                    return Err(anyhow!(
+                        "Failed to atomically replace config '{}': win32_error={error}",
+                        path.display()
+                    ));
+                }
+                Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => {}
+                Err(cleanup) => {
+                    return Err(anyhow!(
+                        "MoveFileExW failed and temporary config cleanup failed: win32_error={error}, cleanup={cleanup}"
+                    ));
+                }
+            }
+
+            // The source name was consumed despite the reported failure. Exact no-follow
+            // readback determines whether the intended bytes became authoritative; inability to
+            // read a definitive state is fatal because returning either Applied or failure would
+            // be an unsupported durability claim.
+            let observed = (|| -> Result<Vec<u8>> {
+                let mut committed = fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+                    .open(path)?;
+                let mut observed = Vec::new();
+                committed.read_to_end(&mut observed)?;
+                Ok(observed)
+            })();
+            let observed = match observed {
+                Ok(observed) => observed,
+                Err(readback) => {
+                    log::error!(
+                        "MoveFileExW consumed the temporary config name but final-state readback failed; refusing an ambiguous mutation result: path='{}', win32_error={error}, readback={readback}",
+                        path.display()
+                    );
+                    std::process::abort();
+                }
+            };
+            if reconcile_replacement_failure(Some(&observed), data)
+                == ReplacementFailureReconciliation::NewAuthoritative
+            {
+                log::error!(
+                    "MoveFileExW reported failure after the new config became authoritative; refusing to continue without proven write-through durability: path='{}', win32_error={error}",
+                    path.display()
+                );
+                std::process::abort();
+            }
+            return Err(anyhow!(
+                "Failed to atomically replace config '{}': win32_error={error}",
+                path.display()
+            ));
+        }
+        // MOVEFILE_WRITE_THROUGH is the replacement durability barrier. The temp inode's DACL
+        // and contents were verified and flushed before this call, so no fallible metadata or
+        // readback step remains after the successful point of no return.
+        let _ = fault;
+        return Ok(());
+    }
+    Err(anyhow!(
+        "Could not allocate a temporary config file for '{}'",
+        path.display()
+    ))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn store_config_bytes_transaction(path: &Path, data: &[u8], fault: ConfigStoreFault) -> Result<()> {
+    if fault != ConfigStoreFault::None {
+        return Err(anyhow!("config fault injection is unavailable"));
+    }
+    fs::write(path, data)?;
     Ok(())
-}
-
-#[cfg(not(windows))]
-fn replace_raw_config_file(tmp: &Path, path: &Path) -> Result<()> {
-    fs::rename(tmp, path).map_err(|err| {
-        anyhow!(
-            "Failed to replace config file '{}' with '{}': {err}",
-            path.display(),
-            tmp.display()
-        )
-    })
-}
-
-fn raw_config_temp_path(path: &Path, attempt: u32) -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let mut tmp = path.to_path_buf();
-    tmp.set_extension(format!("{}.{}.{}", std::process::id(), stamp, attempt));
-    tmp
 }
 
 fn encrypted_json_config_bytes(label: &str, json: String) -> Option<Vec<u8>> {
@@ -1304,11 +2538,7 @@ impl Config {
         // and never a parse corruption (load_path already renamed those aside, vacating the
         // path) — it is an empty power-loss torn write or a transient read failure. Never
         // store defaults OVER such a file while it still holds bytes.
-        if config.key_pair.0.is_empty()
-            && config.id.is_empty()
-            && config.enc_id.is_empty()
-            && file.exists()
-        {
+        if config.is_empty() && file.exists() {
             let len = fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
             if len == 0 {
                 log::error!(
@@ -1414,7 +2644,7 @@ impl Config {
         }
     }
 
-    fn store(&self) {
+    fn store_result(&self) -> crate::ResultType<()> {
         let mut config = self.clone();
         Self::prepare_config_for_store(&mut config);
         if !config.password.is_empty()
@@ -1438,7 +2668,13 @@ impl Config {
             config.enc_id.clear();
         }
         config.id = "".to_owned();
-        Config::store_(&config, "");
+        store_path(Self::file_(""), &config)
+    }
+
+    fn store(&self) {
+        if let Err(err) = self.store_result() {
+            log::error!("Failed to store config: {err}");
+        }
     }
 
     pub fn file() -> PathBuf {
@@ -1491,6 +2727,21 @@ impl Config {
         }
     }
 
+    #[cfg(windows)]
+    pub fn initialize_windows_service_owned_root(
+        program_data: &Path,
+        write_authority: bool,
+    ) -> crate::ResultType<PathBuf> {
+        if !windows_config_acl::current_process_is_local_system()? {
+            return Err(anyhow!(
+                "Windows service-owned config root requires the LocalSystem token"
+            ));
+        }
+        let app_name = APP_NAME.read().unwrap().clone();
+        let root = windows_service_owned_config_root_from(program_data, &app_name)?;
+        windows_machine_config::initialize(root, write_authority)
+    }
+
     pub fn path<P: AsRef<Path>>(p: P) -> PathBuf {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
@@ -1500,6 +2751,12 @@ impl Config {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
+            #[cfg(windows)]
+            if let Some(root) = windows_machine_config::root_path() {
+                let mut path = root.to_path_buf();
+                path.push(p);
+                return path;
+            }
             #[cfg(not(target_os = "macos"))]
             let org = "".to_owned();
             #[cfg(target_os = "macos")]
@@ -1855,11 +3112,31 @@ impl Config {
     /// storage. Returns `false` when changing the password is disabled or the new
     /// password cannot be prepared for storage.
     pub fn set_permanent_password(password: &str) -> bool {
+        match Self::set_permanent_password_persisted(password) {
+            Ok(accepted) => accepted,
+            Err(err) => {
+                log::error!("Failed to persist permanent password: {err}");
+                false
+            }
+        }
+    }
+
+    pub fn set_permanent_password_persisted(password: &str) -> crate::ResultType<bool> {
+        Self::set_permanent_password_with_store(password, Config::store_result)
+    }
+
+    fn set_permanent_password_with_store<F>(password: &str, persist: F) -> crate::ResultType<bool>
+    where
+        F: FnOnce(&Config) -> crate::ResultType<()>,
+    {
         if Self::is_disable_change_permanent_password() {
-            return false;
+            return Ok(false);
         }
 
+        let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
+        let old_effective_prs = Self::read_permanent_password_prs_unlocked();
         let mut config = CONFIG.write().unwrap();
+        let mut next = config.clone();
 
         // R-P1: BOTH at-rest forms are the memory-hard PRS (Argon2id), never the
         // plaintext and never a fast SHA256 — `config.password` holds the PRS's raw 32
@@ -1874,23 +3151,26 @@ impl Config {
             // "salt-bound, usable for auth" (R-S9). The Argon2id salt itself is the fixed
             // domain-separation constant (R-P1), NOT config.salt — config.salt is now only
             // the hash-shaped-storage marker.
-            Self::ensure_permanent_password_salt(&mut config);
+            Self::ensure_permanent_password_salt(&mut next);
             match derive_permanent_password_storages(password) {
                 Some(pair) => pair,
                 None => {
-                    log::error!("Failed to derive the CPace PRS; refusing permanent password update");
-                    return false;
+                    log::error!(
+                        "Failed to derive the CPace PRS; refusing permanent password update"
+                    );
+                    return Ok(false);
                 }
             }
         };
-        // Idempotent steady-state re-set: nothing to persist when unchanged.
-        if stored == config.password && prs == config.password_prs {
-            return true;
+        next.password = stored;
+        next.password_prs = prs;
+        persist(&next)?;
+        *config = next;
+        drop(config);
+        if Self::read_permanent_password_prs_unlocked() != old_effective_prs {
+            advance_permanent_password_credential_generation(&mut generation);
         }
-        config.password = stored;
-        config.password_prs = prs;
-        config.store();
-        true
+        Ok(true)
     }
 
     /// R-P1: the live CPace PRS — the memory-hard Argon2id hash (fixed salt)
@@ -1900,6 +3180,11 @@ impl Config {
     /// The CPace layer applies NFC and the non-empty check (R-P1/R-S9); on this ASCII
     /// base64 string the NFC pass is a harmless no-op.
     pub fn read_permanent_password_prs() -> PermanentPasswordPrsRead {
+        let _generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.read().unwrap();
+        Self::read_permanent_password_prs_unlocked()
+    }
+
+    fn read_permanent_password_prs_unlocked() -> PermanentPasswordPrsRead {
         if let Some(prs) = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().as_ref() {
             return if prs.is_empty() {
                 PermanentPasswordPrsRead::Empty
@@ -1916,6 +3201,28 @@ impl Config {
             Some(_) => PermanentPasswordPrsRead::Empty,
             None => PermanentPasswordPrsRead::UndecryptableStorage,
         }
+    }
+
+    pub fn read_permanent_password_credential_snapshot() -> PermanentPasswordCredentialSnapshot {
+        let generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.read().unwrap();
+        PermanentPasswordCredentialSnapshot {
+            prs: Self::read_permanent_password_prs_unlocked(),
+            generation: *generation,
+        }
+    }
+
+    /// Runs `authorize` only if `generation` is still current. The generation read lock remains
+    /// held through the synchronous callback, making the callback's authorization transition and
+    /// credential publication mutually exclusive.
+    pub fn with_current_permanent_password_generation<T>(
+        generation: u64,
+        authorize: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let current = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.read().unwrap();
+        if *current != generation {
+            return None;
+        }
+        Some(authorize())
     }
 
     pub fn get_permanent_password_prs() -> String {
@@ -1935,12 +3242,34 @@ impl Config {
         storage: &str,
         salt: &str,
     ) -> crate::ResultType<bool> {
+        Self::set_permanent_password_storage_for_sync_with_store(
+            storage,
+            salt,
+            Config::store_result,
+        )
+    }
+
+    fn set_permanent_password_storage_for_sync_with_store<F>(
+        storage: &str,
+        salt: &str,
+        persist: F,
+    ) -> crate::ResultType<bool>
+    where
+        F: FnOnce(&Config) -> crate::ResultType<()>,
+    {
+        let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
+        let old_effective_prs = Self::read_permanent_password_prs_unlocked();
         let mut config = CONFIG.write().unwrap();
-        if !Self::apply_permanent_password_storage_for_sync(&mut config, storage, salt)? {
+        let mut next = config.clone();
+        if !Self::apply_permanent_password_storage_for_sync(&mut next, storage, salt)? {
             return Ok(false);
         }
-
-        config.store();
+        persist(&next)?;
+        *config = next;
+        drop(config);
+        if Self::read_permanent_password_prs_unlocked() != old_effective_prs {
+            advance_permanent_password_credential_generation(&mut generation);
+        }
         Ok(true)
     }
 
@@ -1949,11 +3278,13 @@ impl Config {
         salt: &str,
     ) -> crate::ResultType<bool> {
         let prs = Self::permanent_password_prs_from_storage(storage, salt)?;
+        let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
         let mut runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap();
         if runtime_prs.as_deref() == Some(prs.as_str()) {
             return Ok(false);
         }
         *runtime_prs = Some(prs);
+        advance_permanent_password_credential_generation(&mut generation);
         Ok(true)
     }
 
@@ -2278,6 +3609,13 @@ impl Config {
 }
 
 const PEERS: &str = "peers";
+const RETIRED_RDP_CREDENTIAL_OPTIONS: [&str; 2] = ["rdp_username", "rdp_password"];
+
+fn remove_retired_rdp_credential_options(options: &mut HashMap<String, String>) -> bool {
+    let original_len = options.len();
+    options.retain(|key, _| !RETIRED_RDP_CREDENTIAL_OPTIONS.contains(&key.as_str()));
+    options.len() != original_len
+}
 
 fn is_semantically_empty_peer_config(config: &PeerConfig) -> bool {
     config == &PeerConfig::default()
@@ -2296,7 +3634,10 @@ impl PeerConfig {
         Self::load_path_with_status(Self::path(id), Some(id))
     }
 
-    fn load_path_with_status(path: PathBuf, stored_peer_id: Option<&str>) -> ConfigLoad<PeerConfig> {
+    fn load_path_with_status(
+        path: PathBuf,
+        stored_peer_id: Option<&str>,
+    ) -> ConfigLoad<PeerConfig> {
         let _lock = CONFIG.read().unwrap();
         let loaded: ConfigLoad<PeerConfig> = load_path_with_status(path.clone());
         let mut config = loaded.value;
@@ -2310,13 +3651,7 @@ impl PeerConfig {
             decrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION);
         config.password_prs = password_prs;
         store = store || store2;
-        for opt in ["rdp_password"] {
-            if let Some(v) = config.options.get_mut(opt) {
-                let (encrypted, _, store2) = decrypt_str_or_original(v, PASSWORD_ENC_VERSION);
-                *v = encrypted;
-                store = store || store2;
-            }
-        }
+        store = remove_retired_rdp_credential_options(&mut config.options) || store;
         if store {
             Self::store_path_(&path, &config);
             if let Some(id) = stored_peer_id {
@@ -2343,11 +3678,7 @@ impl PeerConfig {
         // R-S16 (viewer twin): the DERIVED Argon2id CPace PRS, encrypted at rest like `password`.
         config.password_prs =
             encrypt_vec_or_original(&config.password_prs, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        for opt in ["rdp_password"] {
-            if let Some(v) = config.options.get_mut(opt) {
-                *v = encrypt_str_or_original(v, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN)
-            }
-        }
+        remove_retired_rdp_credential_options(&mut config.options);
         if let Err(err) = store_path(path.to_path_buf(), config) {
             log::error!("Failed to store config: {}", err);
         }
@@ -3869,6 +5200,23 @@ mod tests {
     }
 
     #[test]
+    fn direct_only_password_config_is_not_empty() {
+        let (password, password_prs) =
+            derive_permanent_password_storages("direct-only password").unwrap();
+        let config = Config {
+            password,
+            password_prs,
+            salt: "direct-only-salt".to_owned(),
+            ..Default::default()
+        };
+
+        assert!(config.id.is_empty());
+        assert!(config.enc_id.is_empty());
+        assert!(config.key_pair.0.is_empty());
+        assert!(!config.is_empty());
+    }
+
+    #[test]
     fn runtime_password_snapshot_does_not_persist() {
         let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
         let file = Config::file_("");
@@ -3920,12 +5268,14 @@ mod tests {
 
     impl ConfigStateTestGuard {
         fn new(config: Config, hard_settings: HashMap<String, String>) -> Self {
+            let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
             let original_config = Config::get();
             let original_hard_settings = HARD_SETTINGS.read().unwrap().clone();
             let original_runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().clone();
             *CONFIG.write().unwrap() = config;
             *HARD_SETTINGS.write().unwrap() = hard_settings;
             *RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap() = None;
+            advance_permanent_password_credential_generation(&mut generation);
             Self {
                 original_config,
                 original_hard_settings,
@@ -3936,9 +5286,11 @@ mod tests {
 
     impl Drop for ConfigStateTestGuard {
         fn drop(&mut self) {
+            let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
             *CONFIG.write().unwrap() = self.original_config.clone();
             *HARD_SETTINGS.write().unwrap() = self.original_hard_settings.clone();
             *RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap() = self.original_runtime_prs.clone();
+            advance_permanent_password_credential_generation(&mut generation);
         }
     }
 
@@ -4086,6 +5438,231 @@ mod tests {
     }
 
     #[test]
+    fn test_set_permanent_password_does_not_publish_unpersisted_state() {
+        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
+            let result = Config::set_permanent_password_with_store("new-password", |_| {
+                Err(anyhow!("injected persistence failure"))
+            });
+            assert!(result.is_err());
+            let config = CONFIG.read().unwrap();
+            assert!(config.password.is_empty());
+            assert!(config.password_prs.is_empty());
+            assert!(config.salt.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_permanent_password_sync_does_not_publish_unpersisted_state() {
+        let (storage, _) = derive_permanent_password_storages("new-password").unwrap();
+        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
+            let result = Config::set_permanent_password_storage_for_sync_with_store(
+                &storage,
+                "sync-salt",
+                |_| Err(anyhow!("injected persistence failure")),
+            );
+            assert!(result.is_err());
+            let config = CONFIG.read().unwrap();
+            assert!(config.password.is_empty());
+            assert!(config.password_prs.is_empty());
+            assert!(config.salt.is_empty());
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_transaction_faults_preserve_precommit_and_make_postcommit_fatal() {
+        use std::{
+            os::unix::fs::PermissionsExt,
+            sync::atomic::{AtomicBool, Ordering},
+        };
+
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-config-transaction-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = directory.join("credential.toml");
+
+        store_config_bytes_transaction(&path, b"old", ConfigStoreFault::None).unwrap();
+        let before = store_config_bytes_transaction_unix(
+            &path,
+            b"new-before",
+            ConfigStoreFault::BeforeReplace,
+            &|_| panic!("pre-replacement failure must not be fatal"),
+        );
+        assert!(before.is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"old");
+
+        let fatal = AtomicBool::new(false);
+        let after = store_config_bytes_transaction_unix(
+            &path,
+            b"new-after",
+            ConfigStoreFault::AfterReplace,
+            &|_| {
+                fatal.store(true, Ordering::Release);
+                Err(anyhow!("simulated process-fatal durability outcome"))
+            },
+        );
+        assert!(after.is_err());
+        assert!(fatal.load(Ordering::Acquire));
+        assert_eq!(fs::read(&path).unwrap(), b"new-after");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn replacement_failure_readback_reconciliation_requires_exact_bytes() {
+        assert_eq!(
+            reconcile_replacement_failure(Some(b"new"), b"new"),
+            ReplacementFailureReconciliation::NewAuthoritative
+        );
+        assert_eq!(
+            reconcile_replacement_failure(Some(b"old"), b"new"),
+            ReplacementFailureReconciliation::NotNew
+        );
+        assert_eq!(
+            reconcile_replacement_failure(None, b"new"),
+            ReplacementFailureReconciliation::NotNew
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_transaction_rejects_symlink_parent_and_replaces_final_link_itself() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-config-nofollow-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let real = directory.join("real");
+        fs::create_dir_all(&real).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&real, fs::Permissions::from_mode(0o700)).unwrap();
+        let linked_parent = directory.join("linked-parent");
+        symlink(&real, &linked_parent).unwrap();
+        assert!(store_config_bytes_transaction(
+            &linked_parent.join("config.toml"),
+            b"blocked",
+            ConfigStoreFault::None,
+        )
+        .is_err());
+        assert!(!real.join("config.toml").exists());
+
+        let victim = directory.join("victim");
+        fs::write(&victim, b"victim").unwrap();
+        let final_path = real.join("config.toml");
+        symlink(&victim, &final_path).unwrap();
+        store_config_bytes_transaction(&final_path, b"committed", ConfigStoreFault::None).unwrap();
+        assert_eq!(fs::read(&victim).unwrap(), b"victim");
+        assert_eq!(fs::read(&final_path).unwrap(), b"committed");
+        assert!(!fs::symlink_metadata(&final_path)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_precommit_failure_removes_credential_temp_file() {
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-config-windows-cleanup-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("credential.toml");
+        assert!(store_config_bytes_transaction(
+            &path,
+            b"new-credential",
+            ConfigStoreFault::BeforeReplace,
+        )
+        .is_err());
+        assert!(!path.exists());
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 0);
+        fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn credential_generation_linearizes_authorization_before_rotation() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Barrier,
+        };
+
+        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
+            let old_storage =
+                encode_permanent_password_encrypted_storage_from_h1(&[1u8; 32]).unwrap();
+            let new_storage =
+                encode_permanent_password_encrypted_storage_from_h1(&[2u8; 32]).unwrap();
+            Config::set_permanent_password_storage_for_runtime(&old_storage, "salt").unwrap();
+            let generation = Config::read_permanent_password_credential_snapshot().generation();
+
+            let gate = Arc::new(Barrier::new(2));
+            let authorized = Arc::new(AtomicBool::new(false));
+            let auth_gate = Arc::clone(&gate);
+            let auth_flag = Arc::clone(&authorized);
+            let authorization = std::thread::spawn(move || {
+                Config::with_current_permanent_password_generation(generation, || {
+                    auth_gate.wait();
+                    auth_gate.wait();
+                    auth_flag.store(true, Ordering::Release);
+                })
+            });
+
+            gate.wait();
+            let rotation_done = Arc::new(AtomicBool::new(false));
+            let rotation_flag = Arc::clone(&rotation_done);
+            let rotation = std::thread::spawn(move || {
+                Config::set_permanent_password_storage_for_runtime(&new_storage, "salt").unwrap();
+                rotation_flag.store(true, Ordering::Release);
+            });
+            std::thread::sleep(Duration::from_millis(50));
+            assert!(!rotation_done.load(Ordering::Acquire));
+            gate.wait();
+
+            assert!(authorization.join().unwrap().is_some());
+            rotation.join().unwrap();
+            assert!(authorized.load(Ordering::Acquire));
+            assert!(rotation_done.load(Ordering::Acquire));
+            assert!(
+                Config::with_current_permanent_password_generation(generation, || ()).is_none()
+            );
+        });
+    }
+
+    #[test]
+    fn windows_service_owned_root_derivation_is_explicit() {
+        #[cfg(windows)]
+        let program_data = Path::new(r"C:\ProgramData");
+        #[cfg(not(windows))]
+        let program_data = Path::new("/ProgramData");
+        let root = windows_service_owned_config_root_from(program_data, "RustDesk").unwrap();
+        assert_eq!(root, program_data.join("RustDesk").join("config"));
+        assert!(windows_service_owned_config_root_from(program_data, "../bad").is_err());
+        assert!(windows_service_owned_config_root_from(Path::new("relative"), "RustDesk").is_err());
+    }
+
+    #[test]
     fn test_malformed_preset_password_with_salt_is_not_usable() {
         for storage in ["01secret", "00not-a-valid-hash"] {
             let hard_settings = HashMap::from([
@@ -4151,7 +5728,10 @@ mod tests {
         let original_password = cfg.password.clone();
 
         assert!(Config::validate_or_decrypt_permanent_password_storage(&mut cfg).is_ok());
-        assert_eq!(cfg.password, original_password, "well-formed 00 blob preserved verbatim");
+        assert_eq!(
+            cfg.password, original_password,
+            "well-formed 00 blob preserved verbatim"
+        );
         assert_eq!(cfg.salt, "salt123");
     }
 
@@ -4187,13 +5767,23 @@ mod tests {
             PASSWORD_ENC_VERSION.to_owned() + &base64::encode(payload, base64::Variant::Original);
         cfg.salt = "salt123".to_owned();
         cfg.password_prs = "some-prs-storage".to_owned();
-        let (p, s, prs) = (cfg.password.clone(), cfg.salt.clone(), cfg.password_prs.clone());
+        let (p, s, prs) = (
+            cfg.password.clone(),
+            cfg.salt.clone(),
+            cfg.password_prs.clone(),
+        );
 
         Config::prepare_config_for_store(&mut cfg);
 
-        assert_eq!(cfg.password, p, "a transient 00 credential must be preserved");
+        assert_eq!(
+            cfg.password, p,
+            "a transient 00 credential must be preserved"
+        );
         assert_eq!(cfg.salt, s);
-        assert_eq!(cfg.password_prs, prs, "prs must not be wiped on a transient blip");
+        assert_eq!(
+            cfg.password_prs, prs,
+            "prs must not be wiped on a transient blip"
+        );
     }
 
     #[test]
@@ -4452,7 +6042,10 @@ mod tests {
         let loaded: ConfigLoad<Config2> = load_path_with_status(file.clone());
         assert_eq!(loaded.value, Config2::default());
         assert_eq!(loaded.status, ConfigLoadStatus::NotFound);
-        assert!(!file.exists(), "load_path must not create a file on first run");
+        assert!(
+            !file.exists(),
+            "load_path must not create a file on first run"
+        );
         fs::remove_dir_all(&dir).ok();
     }
 
@@ -4557,21 +6150,21 @@ mod tests {
     #[test]
     fn empty_peer_cleanup_requires_loaded_semantically_empty_config() {
         let empty = PeerConfig::default();
-        assert!(should_remove_empty_peer_config(ConfigLoadStatus::Loaded, &empty));
-        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::NotFound, &empty));
-        assert!(!should_remove_empty_peer_config(ConfigLoadStatus::Corrupt, &empty));
+        assert!(should_remove_empty_peer_config(
+            ConfigLoadStatus::Loaded,
+            &empty
+        ));
+        assert!(!should_remove_empty_peer_config(
+            ConfigLoadStatus::NotFound,
+            &empty
+        ));
+        assert!(!should_remove_empty_peer_config(
+            ConfigLoadStatus::Corrupt,
+            &empty
+        ));
         assert!(!should_remove_empty_peer_config(
             ConfigLoadStatus::TransientError,
             &empty
-        ));
-
-        let mut with_rdp_password = PeerConfig::default();
-        with_rdp_password
-            .options
-            .insert("rdp_password".to_owned(), "secret".to_owned());
-        assert!(!should_remove_empty_peer_config(
-            ConfigLoadStatus::Loaded,
-            &with_rdp_password
         ));
 
         let mut with_peer_prs = PeerConfig::default();
@@ -4580,6 +6173,68 @@ mod tests {
             ConfigLoadStatus::Loaded,
             &with_peer_prs
         ));
+    }
+
+    #[test]
+    fn peer_store_drops_retired_rdp_credential_options() {
+        let dir = unique_tmp_dir("rdp-credential-store");
+        let file = dir.join("peer.toml");
+        let mut config = PeerConfig::default();
+        config
+            .options
+            .insert("rdp_username".to_owned(), "account".to_owned());
+        config
+            .options
+            .insert("rdp_password".to_owned(), "secret".to_owned());
+        config
+            .options
+            .insert("rdp_port".to_owned(), "3390".to_owned());
+
+        PeerConfig::store_path_(&file, &config);
+
+        let stored: PeerConfig = load_path(file);
+        assert!(!stored.options.contains_key("rdp_username"));
+        assert!(!stored.options.contains_key("rdp_password"));
+        assert_eq!(
+            stored.options.get("rdp_port").map(String::as_str),
+            Some("3390")
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn peer_load_removes_and_rewrites_legacy_rdp_credential_options() {
+        let dir = unique_tmp_dir("rdp-credential-load");
+        let file = dir.join("peer.toml");
+        let mut legacy = PeerConfig::default();
+        legacy
+            .options
+            .insert("rdp_username".to_owned(), "account".to_owned());
+        legacy
+            .options
+            .insert("rdp_password".to_owned(), "secret".to_owned());
+        legacy
+            .options
+            .insert("rdp_port".to_owned(), "3390".to_owned());
+        store_path(file.clone(), legacy).unwrap();
+
+        let loaded = PeerConfig::load_path_with_status(file.clone(), None);
+        assert_eq!(loaded.status, ConfigLoadStatus::Loaded);
+        assert!(!loaded.value.options.contains_key("rdp_username"));
+        assert!(!loaded.value.options.contains_key("rdp_password"));
+        assert_eq!(
+            loaded.value.options.get("rdp_port").map(String::as_str),
+            Some("3390")
+        );
+
+        let rewritten: PeerConfig = load_path(file);
+        assert!(!rewritten.options.contains_key("rdp_username"));
+        assert!(!rewritten.options.contains_key("rdp_password"));
+        assert_eq!(
+            rewritten.options.get("rdp_port").map(String::as_str),
+            Some("3390")
+        );
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -4600,9 +6255,6 @@ mod tests {
         ));
         let mut alias_config = PeerConfig::default();
         alias_config.password_prs = b"connect-equivalent".to_vec();
-        alias_config
-            .options
-            .insert("rdp_password".to_owned(), "secret".to_owned());
         store_path(alias_path.clone(), alias_config).unwrap();
 
         let all = vec![(id.to_owned(), SystemTime::UNIX_EPOCH, alias_path.clone())];
@@ -5151,26 +6803,30 @@ mod tests {
     #[test]
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn test_service_ipc_path_is_shared_across_uids() {
-        // R-X13: was test_uinput_ipc_path_is_shared_across_uids. With the `_uinput_*` cross-uid
-        // channels gone (uinput module excised), `_service` is the sole service postfix. The root
-        // service and the user `--server` process must resolve the SAME `_service` socket path
-        // regardless of uid (shared parent dir), while non-service channels stay per-uid.
         const ROOT_UID: u32 = 0;
         const USER_UID: u32 = 1000;
 
-        let path_root = Config::ipc_path_for_uid(ROOT_UID, "_service");
-        let path_user = Config::ipc_path_for_uid(USER_UID, "_service");
-        assert_eq!(path_root, path_user);
+        for postfix in ["_service", "_service_password"] {
+            assert!(is_service_ipc_postfix(postfix));
+            let path_root = Config::ipc_path_for_uid(ROOT_UID, postfix);
+            let path_user = Config::ipc_path_for_uid(USER_UID, postfix);
+            assert_eq!(path_root, path_user);
 
-        let app_name = APP_NAME.read().unwrap().clone();
-        assert!(
-            path_root.starts_with(&format!("/tmp/{app_name}-service/")),
-            "unexpected service ipc path: {}",
-            path_root
-        );
+            let app_name = APP_NAME.read().unwrap().clone();
+            assert!(
+                path_root.starts_with(&format!("/tmp/{app_name}-service/")),
+                "unexpected service ipc path: {}",
+                path_root
+            );
+        }
 
         let non_service_root = Config::ipc_path_for_uid(ROOT_UID, "");
         let non_service_user = Config::ipc_path_for_uid(USER_UID, "");
         assert_ne!(non_service_root, non_service_user);
+
+        assert!(!is_service_ipc_postfix("_password"));
+        let password_root = Config::ipc_path_for_uid(ROOT_UID, "_password");
+        let password_user = Config::ipc_path_for_uid(USER_UID, "_password");
+        assert_ne!(password_root, password_user);
     }
 }

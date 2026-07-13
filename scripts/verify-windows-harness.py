@@ -1,0 +1,1362 @@
+#!/usr/bin/env python3
+"""Structural, behavioral, and mutation verifier for the Windows build harness."""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import pathlib
+import re
+import signal
+import subprocess
+import sys
+
+
+class VerificationError(RuntimeError):
+    pass
+
+
+FILES = {
+    "host": "scripts/build-windows-vm.sh",
+    "frb": "scripts/frb-codegen.sh",
+    "guest": "scripts/run-build.ps1",
+    "build": "scripts/build-windows.ps1",
+    "orchestrator": "build.py",
+    "pe": "scripts/canonicalize-pe.py",
+    "msi": "scripts/canonicalize-msi.py",
+    "watch": "scripts/native-codec-watch.sh",
+    "port": "res/vcpkg/libvpx/portfile.cmake",
+    "metadata": "res/vcpkg/libvpx/vcpkg.json",
+}
+
+
+def require(source: str, literal: str, description: str) -> None:
+    if literal not in source:
+        raise VerificationError(f"missing {description}: {literal}")
+
+
+def require_count(source: str, literal: str, minimum: int, description: str) -> None:
+    count = source.count(literal)
+    if count < minimum:
+        raise VerificationError(
+            f"insufficient {description}: found {count}, expected at least {minimum}: {literal}"
+        )
+
+
+def reject(source: str, pattern: str, description: str) -> None:
+    if re.search(pattern, source, re.MULTILINE):
+        raise VerificationError(f"forbidden {description}")
+
+
+def require_order(source: str, literals: tuple[str, ...], description: str) -> None:
+    cursor = -1
+    for literal in literals:
+        location = source.find(literal, cursor + 1)
+        if location < 0 or location <= cursor:
+            raise VerificationError(f"invalid {description}: {literal}")
+        cursor = location
+
+
+def shell_function(source: str, name: str) -> str:
+    match = re.search(rf"(?m)^{re.escape(name)}\(\) \{{\s*$", source)
+    if match is None:
+        raise VerificationError(f"missing shell function: {name}")
+    following = re.search(r"(?m)^[A-Za-z_][A-Za-z0-9_]*\(\) \{\s*$", source[match.end() :])
+    end = len(source) if following is None else match.end() + following.start()
+    return source[match.start() : end]
+
+
+def powershell_function(source: str, name: str) -> str:
+    match = re.search(rf"(?mi)^function\s+{re.escape(name)}(?:\([^\n]*\))?\s*\{{\s*$", source)
+    if match is None:
+        raise VerificationError(f"missing PowerShell function: {name}")
+    following = re.search(r"(?mi)^function\s+[A-Za-z_][A-Za-z0-9_-]*", source[match.end() :])
+    end = len(source) if following is None else match.end() + following.start()
+    return source[match.start() : end]
+
+
+def parse_python(source: str, name: str) -> ast.Module:
+    try:
+        return ast.parse(source, filename=name)
+    except SyntaxError as exc:
+        raise VerificationError(f"invalid Python syntax in {name}: {exc}") from exc
+
+
+def python_function(tree: ast.Module, name: str) -> ast.FunctionDef:
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise VerificationError(f"missing Python function: {name}")
+
+
+def require_python_call(
+    tree: ast.Module,
+    function_name: str,
+    called_name: str,
+    description: str,
+) -> None:
+    function = python_function(tree, function_name)
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == called_name:
+            return
+    raise VerificationError(
+        f"missing {description}: {function_name} must call {called_name}"
+    )
+
+
+def require_direct_python_call(
+    tree: ast.Module,
+    function_name: str,
+    called_name: str,
+    description: str,
+) -> None:
+    function = python_function(tree, function_name)
+    for statement in function.body:
+        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+            continue
+        called = statement.value.func
+        if isinstance(called, ast.Name) and called.id == called_name:
+            return
+    raise VerificationError(
+        f"missing {description}: {function_name} must directly call {called_name}"
+    )
+
+
+def reject_ambient_windows_python(source: str) -> None:
+    command = re.compile(
+        r"(?i)^(?:&\s+)?(?:python(?:3)?(?:\.exe)?|py(?:\.exe)?|pip(?:3)?(?:\.exe)?)(?:\s|$)"
+    )
+    start_process = re.compile(
+        r"(?i)\bStart-Process\s+(?:python(?:3)?(?:\.exe)?|py(?:\.exe)?|pip(?:3)?(?:\.exe)?)(?:\s|$)"
+    )
+    command_lookup = re.compile(
+        r"(?i)^&\s*\(\s*Get-Command\s+(?:python(?:3)?(?:\.exe)?|py(?:\.exe)?|pip(?:3)?(?:\.exe)?)(?:\s|\))"
+    )
+    pip_module = re.compile(r"(?i)(?:^|\s)-m\s+pip(?:\s|$)")
+    for line_number, line in enumerate(source.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if (
+            command.search(stripped)
+            or start_process.search(stripped)
+            or command_lookup.search(stripped)
+            or pip_module.search(stripped)
+        ):
+            raise VerificationError(
+                f"scripts/build-windows.ps1:{line_number}: ambient Python/pip invocation: {stripped}"
+            )
+
+
+def validate_powershell_lexically(source: str, name: str) -> None:
+    stack: list[tuple[str, int]] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    opening = set(pairs.values())
+    state = "normal"
+    line = 1
+    index = 0
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if char == "\n":
+            line += 1
+            if state == "comment":
+                state = "normal"
+            index += 1
+            continue
+        if state == "comment":
+            index += 1
+            continue
+        if state == "block-comment":
+            if char == "#" and next_char == ">":
+                state = "normal"
+                index += 2
+            else:
+                index += 1
+            continue
+        if state == "single":
+            if char == "'" and next_char == "'":
+                index += 2
+            elif char == "'":
+                state = "normal"
+                index += 1
+            else:
+                index += 1
+            continue
+        if state == "double":
+            if char == chr(96):
+                index += 2
+            elif char == '"':
+                state = "normal"
+                index += 1
+            else:
+                index += 1
+            continue
+        if state in ("here-single", "here-double"):
+            line_start = source.rfind("\n", 0, index) + 1
+            if index == line_start:
+                terminator = "'@" if state == "here-single" else '"@'
+                if source.startswith(terminator, index):
+                    state = "normal"
+                    index += 2
+                    continue
+            index += 1
+            continue
+        if char == "#":
+            state = "comment"
+        elif char == "<" and next_char == "#":
+            state = "block-comment"
+            index += 1
+        elif char == "'":
+            state = "single"
+        elif char == '"':
+            state = "double"
+        elif char == "@" and next_char in ("'", '"'):
+            state = "here-single" if next_char == "'" else "here-double"
+            index += 1
+        elif char in opening:
+            stack.append((char, line))
+        elif char in pairs:
+            if not stack or stack[-1][0] != pairs[char]:
+                raise VerificationError(f"{name}:{line}: unbalanced {char}")
+            stack.pop()
+        index += 1
+    if state not in ("normal", "comment"):
+        raise VerificationError(f"{name}: unterminated PowerShell lexical state {state}")
+    if stack:
+        token, token_line = stack[-1]
+        raise VerificationError(f"{name}:{token_line}: unclosed {token}")
+
+
+def validate_port(source: str, metadata_source: str) -> None:
+    metadata = json.loads(metadata_source)
+    if type(metadata.get("port-version")) is not int or metadata["port-version"] != 1:
+        raise VerificationError("libvpx port-version is not integer 1")
+    lines = source.splitlines()
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if re.fullmatch(r"\s*vcpkg_extract_source_archive\s*\(\s*SOURCE_PATH\s*", line)
+    ]
+    if len(starts) != 1:
+        raise VerificationError("libvpx extraction block count is not one")
+    start = starts[0]
+    depth = 0
+    end = None
+    for index in range(start, len(lines)):
+        line = re.sub(r"#.*$", "", lines[index])
+        depth += line.count("(") - line.count(")")
+        if depth == 0:
+            end = index
+            break
+        if depth < 0:
+            raise VerificationError("libvpx extraction block is unbalanced")
+    if end is None:
+        raise VerificationError("libvpx extraction block is unterminated")
+    normalized = [line.strip() for line in lines[start : end + 1] if line.strip()]
+    expected = [
+        "vcpkg_extract_source_archive(SOURCE_PATH",
+        'ARCHIVE "${_libvpx_archive}"',
+        "PATCHES",
+        '"${_libvpx_security_patch}"',
+        "0003-add-uwp-v142-and-v143-support.patch",
+        "0004-remove-library-suffixes.patch",
+        ")",
+    ]
+    if normalized != expected:
+        raise VerificationError(f"libvpx extraction patch order is not exact: {normalized!r}")
+
+
+def validate_sources(sources: dict[str, str]) -> None:
+    host = sources["host"]
+    frb = sources["frb"]
+    guest = sources["guest"]
+    build = sources["build"]
+    orchestrator = sources["orchestrator"]
+    pe = sources["pe"]
+    msi = sources["msi"]
+    watch = sources["watch"]
+
+    orchestrator_tree = parse_python(orchestrator, "build.py")
+    pe_tree = parse_python(pe, "scripts/canonicalize-pe.py")
+    msi_tree = parse_python(msi, "scripts/canonicalize-msi.py")
+
+    for source, name in ((host, "build-windows-vm.sh"), (frb, "frb-codegen.sh")):
+        reject(source, r"\|\|\s*true", f"masked status in {name}")
+        reject(source, r"guestfish[^\n]*\|", f"piped guestfish status in {name}")
+    launch_domain = shell_function(host, "launch_domain")
+    process_identity = shell_function(host, "process_identity")
+    owned_process_matches = shell_function(host, "owned_process_matches")
+    owned_process_is_live = shell_function(host, "owned_process_is_live")
+    stop_owned_process = shell_function(host, "stop_owned_process")
+    virsh_bounded = shell_function(host, "virsh_bounded")
+    wait_for_domain = shell_function(host, "wait_for_domain")
+    preflight = shell_function(host, "preflight")
+    snapshot_golden = shell_function(host, "snapshot_golden")
+    verify_private_golden = shell_function(host, "verify_private_golden")
+    write_manifest = shell_function(host, "write_manifest")
+    prepare_overlay = shell_function(host, "prepare_overlay")
+    host_main = shell_function(host, "main")
+
+    require(host, "CREATE_TIMEOUT_SECONDS=300", "five-minute VM creation bound")
+    require(host, "CONTROL_TIMEOUT_SECONDS=30", "bounded libvirt control timeout")
+    require(host, "PROCESS_STOP_SECONDS=10", "bounded process-group stop timeout")
+    require(host, 'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"', "unique private run state")
+    require(host, 'CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"', "kernel domain UUID")
+    require(
+        launch_domain,
+        'setsid --wait virt-install --connect qemu:///session --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID"',
+        "owned session/process-group virt-install",
+    )
+    require(host, "VM_TIMEOUT_SECONDS=7200", "two-hour VM bound")
+    require(host, "IFS=' ' read -r uptime _ </proc/uptime", "monotonic clock")
+    require(host, "trap cleanup EXIT", "EXIT cleanup")
+    for status in (129, 130, 143):
+        require(host, f"signal_exit {status}", f"signal cleanup status {status}")
+    require(
+        process_identity,
+        '''printf '%s %s %s %s\\n' "$1" "${20}" "$3" "$4"''',
+        "state/start/process-group/session identity sample",
+    )
+    for body, description in (
+        (owned_process_matches, "owned process identity gate"),
+        (owned_process_is_live, "owned live-process identity gate"),
+    ):
+        require(body, '[ "$start" = "$CURRENT_VIRT_START" ]', f"start time in {description}")
+        require(body, '[ "$group" = "$CURRENT_VIRT_PID" ]', f"process group in {description}")
+        require(body, '[ "$session" = "$CURRENT_VIRT_PID" ]', f"session in {description}")
+    require(owned_process_is_live, '[ "$state" != Z ] && [ "$state" != X ]', "exited child detection")
+    require(stop_owned_process, 'kill -TERM -- "-$CURRENT_VIRT_PID"', "owned group TERM")
+    require(stop_owned_process, 'kill -KILL -- "-$CURRENT_VIRT_PID"', "owned group KILL fallback")
+    require_count(
+        stop_owned_process,
+        'deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))',
+        2,
+        "TERM/KILL deadlines",
+    )
+    require(
+        virsh_bounded,
+        'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n        virsh -c qemu:///session "$@"',
+        "bounded libvirt control wrapper",
+    )
+    direct_virsh = re.findall(r"(?m)^[ \t]*virsh(?:[ \t]|$)", host)
+    if len(direct_virsh) != 1:
+        raise VerificationError(
+            f"libvirt calls do not all pass through virsh_bounded: found {len(direct_virsh)} direct invocations"
+        )
+    require_order(
+        launch_domain,
+        (
+            'CURRENT_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))',
+            "setsid --wait virt-install",
+            "CURRENT_VIRT_PID=$!",
+            'CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")"',
+            'deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))',
+            "stop_owned_process",
+        ),
+        "owned virt-install creation deadline",
+    )
+    require(wait_for_domain, 'if [ "$(monotonic_seconds)" -ge "$CURRENT_VM_DEADLINE" ]; then', "VM deadline test")
+    require(
+        wait_for_domain,
+        "stop_and_undefine_owned_domain || die \"timed-out domain could not be destroyed and undefined safely\"",
+        "deadline domain termination",
+    )
+    require(host, "domain_is_listed", "UUID domain absence proof")
+    require(host, "verify_domain_xml", "domain disk/network identity proof")
+    require(host, "--network none", "networkless VM")
+
+    require(preflight, '[ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ]', "regular golden source")
+    require(preflight, 'verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"', "golden pre-snapshot hash")
+    require(snapshot_golden, 'PRIVATE_GOLDEN="$RUN_ROOT/golden.qcow2"', "private golden path")
+    require(snapshot_golden, "os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC", "exclusive private golden creation")
+    require(snapshot_golden, "before = os.fstat(source_fd)", "golden pre-copy state")
+    require(
+        snapshot_golden,
+        "not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1",
+        "golden source ownership/type/link proof",
+    )
+    require(
+        snapshot_golden,
+        "stat.S_IMODE(before.st_mode) & 0o022",
+        "golden source group/world write rejection",
+    )
+    require(snapshot_golden, "after = os.fstat(source_fd)", "golden post-copy state")
+    require(
+        snapshot_golden,
+        "if any(getattr(before, field) != getattr(after, field) for field in stable_fields):",
+        "golden source stability proof",
+    )
+    require(snapshot_golden, "if digest.hexdigest() != expected:", "private golden creation hash proof")
+    require(
+        snapshot_golden,
+        "not stat.S_ISREG(copied.st_mode) or copied.st_uid != uid",
+        "private golden ownership/type proof",
+    )
+    require(snapshot_golden, "copied.st_nlink != 1", "private golden link-count proof")
+    require(snapshot_golden, "os.fchmod(destination_fd, 0o400)", "immutable private golden mode")
+    require(snapshot_golden, "verify_private_golden", "private golden snapshot postcondition")
+    require(
+        verify_private_golden,
+        '"$(stat -c \'%u:%a:%h\' "$PRIVATE_GOLDEN")" = "$(id -u):400:1"',
+        "private golden ownership/mode/link proof",
+    )
+    require(
+        verify_private_golden,
+        'verify_sha256 "$PRIVATE_GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"',
+        "private golden rehash",
+    )
+    require(prepare_overlay, "verify_private_golden", "pre-overlay golden hash validation")
+    require_count(host_main, "verify_private_golden", 3, "post-pass/pre-publication golden validation")
+    require_order(
+        host_main,
+        (
+            "snapshot_golden",
+            "run_pass A",
+            "verify_private_golden",
+            "run_pass B",
+            "verify_private_golden",
+            "verify_active_online_snapshot",
+            "verify_private_golden",
+            'publish_result "$RUN_ROOT/pass-A/result"',
+        ),
+        "golden snapshot and pre/post hash validation",
+    )
+    require(
+        host,
+        'GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" -c core.hooksPath=/dev/null add -A -- .',
+        "isolated worktree capture",
+    )
+    require(host, 'first="$(capture_worktree_tree first)"', "first worktree capture")
+    require(host, 'second="$(capture_worktree_tree second)"', "second worktree capture")
+    for manifest in (
+        "rustdesk-windows-source-manifest-v1",
+        "rustdesk-windows-source-identity-v1",
+        "rustdesk-windows-offline-manifest-v1",
+    ):
+        require(host, manifest, manifest)
+    require(host, 'require_pinned_builder_image win-helper "$WIN_HELPER_TAG"', "pinned Windows helper image")
+    require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_TAG"', "pinned FRB builder image")
+    require(
+        host_main,
+        'ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"',
+        "private per-run online snapshot path",
+    )
+    require(
+        host_main,
+        'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+        "private online snapshot creation",
+    )
+    require(
+        shell_function(host, "verify_active_online_snapshot"),
+        'verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+        "active online snapshot postcondition",
+    )
+    require(host, 'FRB_IMAGE_ID="$DEB_BUILDER_IMAGE"', "immutable FRB image handoff")
+    require(host, '--online-root "$ONLINE_DIR"', "private FRB online handoff")
+    require(host, "FRB reproducibility mismatch between Windows passes", "FRB A-equals-B gate")
+    require(host, "FRB manifest does not describe exactly the four canonical outputs", "exact FRB manifest")
+    require(host, "FRB manifest is not a regular file", "regular FRB manifest")
+    require(host, 'extracted="$(mktemp -d "$CURRENT_PASS_ROOT/extract.XXXXXXXX")"', "private extraction")
+    require_order(
+        host,
+        (
+            "wait_for_domain",
+            "extract_and_validate",
+            'python3 "$SOURCE_SNAPSHOT/scripts/canonicalize-pe.py"',
+            "publish_result",
+        ),
+        "shutdown/extract/validate/publish ordering",
+    )
+    require(host, "guest completion marker count is not exactly one", "explicit guest marker count")
+    require(host, "guest source-verification marker", "guest source proof")
+    require(host, "assert_safe_path", "mount path delimiter gate")
+    require(
+        write_manifest,
+        'dos_device = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$", re.IGNORECASE)',
+        "reserved Win32 device-name rejection",
+    )
+    require(write_manifest, "folded = relative.casefold()", "Windows case-folded path identity")
+    require(write_manifest, "previous = case_paths.get(folded)", "source case-collision rejection")
+    require(write_manifest, "generated_folded = {name.casefold(): name for name in generated}", "generated namespace map")
+    require(
+        write_manifest,
+        "if relative.casefold() in generated_folded:",
+        "generated directory namespace rejection",
+    )
+    require(
+        write_manifest,
+        "reserved = generated_folded.get(relative.casefold())",
+        "generated file namespace rejection",
+    )
+    for generated_name in (
+        '.source-manifest.json',
+        '.source-identity.json',
+        '.source-date-epoch',
+        '.build-run-id',
+        '.source-manifest.json.tmp',
+        '.source-identity.json.tmp',
+        'run-build.ps1',
+    ):
+        require(write_manifest, f'"{generated_name}"', f"host generated namespace {generated_name}")
+    require(host, "source tree contains an unmanifested empty directory", "exact source directories")
+    require(host, 'chmod -R a-w "$media_root"', "immutable source media tree")
+    require(host, "source identity changed while source media was created", "source identity media postcondition")
+    require(host, 'mv -T --no-clobber -- "$staging" "$OUT_DIR"', "atomic no-clobber result publication")
+
+    require(frb, "--source-root", "explicit FRB source interface")
+    require(frb, "--online-root", "explicit FRB online interface")
+    require(frb, "--output-root", "explicit FRB output interface")
+    require(frb, "FRB output root must not exist", "absent FRB output root")
+    require(frb, '--user "$(id -u):$(id -g)"', "invoking FRB uid/gid")
+    require(frb, '[[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]', "immutable FRB image ID")
+    require(frb, 'WORK_ROOT="$(mktemp -d', "private FRB generation")
+    require(frb, 'require_pinned_builder_image deb-builder "$IMAGE_ID"', "FRB image provenance")
+    require(frb, "verify_online_shas", "FRB archive pins")
+    require(frb, "FRB installation metadata does not match the pinned build contract", "FRB tool metadata")
+    require(frb, "FRB source snapshot has a writable entry", "read-only FRB source")
+    require(frb, "FRB input is not one nonempty regular file", "regular FRB inputs")
+    require(frb, '--read-only --user "$(id -u):$(id -g)"', "read-only FRB container")
+    require(frb, 'mv -T --no-clobber -- "$PUBLISH_ROOT" "$OUTPUT_ROOT"', "atomic FRB directory publication")
+    reject(frb, r'rm\s+-f\s+--\s+"\$REPO_ROOT/', "live-tree FRB deletion")
+    for output in (
+        "src/bridge_generated.rs",
+        "src/bridge_generated.io.rs",
+        "flutter/lib/generated_bridge.dart",
+        "flutter/lib/generated_bridge.freezed.dart",
+    ):
+        require(frb, output, f"FRB output {output}")
+
+    validate_powershell_lexically(guest, "scripts/run-build.ps1")
+    validate_powershell_lexically(build, "scripts/build-windows.ps1")
+    guest_safe_path = powershell_function(guest, "Assert-SafeRelativePath")
+    guest_manifest = powershell_function(guest, "Assert-SourceManifest")
+    require(guest, "$ErrorActionPreference = 'Stop'", "fail-loud guest policy")
+    reject(guest, r"SilentlyContinue", "guest masked error")
+    require(
+        guest_safe_path,
+        "if ($component -imatch '^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?$')",
+        "guest reserved Win32 device-name rejection",
+    )
+    require(
+        guest_safe_path,
+        "[StringComparer]::OrdinalIgnoreCase.Equals($rootComponent, $name)",
+        "guest generated namespace case-folding",
+    )
+    require(
+        guest_safe_path,
+        "-not ($components.Count -eq 1 -and [StringComparer]::Ordinal.Equals($Path, 'run-build.ps1'))",
+        "guest generated runner exception bound to exact spelling",
+    )
+    require(guest_safe_path, "$rootComponent = $components[0]", "generated namespace root-component binding")
+    for generated_name in (
+        '.source-manifest.json',
+        '.source-identity.json',
+        '.source-date-epoch',
+        '.build-run-id',
+        '.source-manifest.json.tmp',
+        '.source-identity.json.tmp',
+        'run-build.ps1',
+    ):
+        require(guest_safe_path, f"'{generated_name}'", f"guest generated namespace {generated_name}")
+    require(guest, "Assert-SourceManifest $sourceMedia", "media manifest proof")
+    require(guest, "Assert-SourceManifest $source", "copied manifest proof")
+    require(
+        guest_manifest,
+        "($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+        "directory reparse rejection",
+    )
+    require(
+        guest_manifest,
+        "$actualDirectories.Count -ne $expectedDirectories.Count",
+        "exact copied directory count",
+    )
+    require(
+        guest_manifest,
+        "if (-not $expectedDirectories.Contains($relative))",
+        "undeclared copied directory rejection",
+    )
+    require(guest, "Remove-Item -LiteralPath $legacySource -Recurse -Force", "legacy source removal")
+    require(
+        guest,
+        "($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+        "safe legacy source traversal",
+    )
+    require(
+        guest,
+        "if (Test-Path -LiteralPath $legacySource) {\n        Fail 'legacy C:\\src was not fully removed'",
+        "legacy source removal postcondition",
+    )
+    require(guest, "$buildParent = 'C:\\rustdesk-build'", "unique source parent")
+    require(guest, "unique source directory already exists", "unique source absence proof")
+    require_order(
+        guest,
+        (
+            "$out = $null",
+            "$transcriptStarted = $false",
+            "$outputRoots = @(",
+            "Start-Transcript",
+            "$transcriptStarted = $true",
+            "Stop-Computer -Force",
+        ),
+        "outer guest startup/shutdown finality",
+    )
+    require(guest, "if ($null -ne $out)", "failure logging without pre-established OUTPUT authority")
+    require(guest, "$manifest.files -isnot [Array]", "source manifest array type proof")
+    require(guest_manifest, "$entry.path -isnot [string]", "source path JSON type proof")
+    require(guest_manifest, "Get-JsonInt64 $entry.size", "source size JSON integer proof")
+    require_order(
+        guest,
+        (
+            "$identity = Get-Content",
+            "Assert-SourceManifest $sourceMedia",
+            "$legacySource = 'C:\\src'",
+            "& powershell.exe",
+        ),
+        "guest identity before cleanup/build",
+    )
+    for variable in (
+        "RUSTDESK_SOURCE_COMMIT",
+        "RUSTDESK_SOURCE_TREE",
+        "RUSTDESK_SOURCE_MANIFEST_SHA256",
+        "RUSTDESK_OFFLINE_MANIFEST_SHA256",
+        "RUSTDESK_FORK_VERSION",
+        "RUSTDESK_TARGET",
+        "SOURCE_DATE_EPOCH",
+    ):
+        require(guest, f"$env:{variable}", f"guest export {variable}")
+
+    require_order(
+        build,
+        ("function Preflight", "Assert-BuildIdentity", "Assert-PowerShellSourceParsing", "function Build"),
+        "build identity before build cleanup",
+    )
+    require(build, "    Assert-BuildIdentity\n    Assert-PowerShellSourceParsing", "preflight identity invocation")
+    require(build, "source identity schema is not exact", "build source schema proof")
+    require(build, "source manifest hash changed after guest verification", "build manifest recheck")
+    reject(build, r"\$installedVpxKey", "sidecar-authorized libvpx reuse")
+    require_order(
+        build,
+        (
+            "vcpkg.exe' remove --recurse 'libvpx:x64-windows-static'",
+            "stale compiled libvpx bytes remain after mandatory removal",
+            "libvpx --classic",
+            "Set-Content -LiteralPath $vpxInstalledKey",
+        ),
+        "mandatory clean libvpx rebuild",
+    )
+    for option in ("--fork-version", "--source-commit", "--source-tree", "--target"):
+        require(build, option, f"MSI identity option {option}")
+        require(host, option, f"host MSI identity option {option}")
+    for option, value in (
+        ("--fork-version", "$env:RUSTDESK_FORK_VERSION"),
+        ("--source-commit", "$env:RUSTDESK_SOURCE_COMMIT"),
+        ("--source-tree", "$env:RUSTDESK_SOURCE_TREE"),
+        ("--target", "$env:RUSTDESK_TARGET"),
+    ):
+        require(build, f"'{option}',\n        {value}", f"MSI identity binding {option}")
+    require(build, '$cacheName = "msys2-$toolName"', "MinGW pkgconf cache destination")
+
+    reject_ambient_windows_python(build)
+    python_toolchain = powershell_function(build, "Assert-PythonToolchain")
+    require(build, "$PYTHON_VERSION  = '3.11.9'", "exact Python 3.11.9 pin")
+    require(build, "$PYTHON_EXE      = 'C:\\Program Files\\Python311\\python.exe'", "absolute pinned Python path")
+    require(
+        python_toolchain,
+        "$reported = ((& $executable --version 2>&1) | Out-String).Trim()",
+        "pinned Python version query",
+    )
+    require(
+        python_toolchain,
+        '$reported -cne "Python $PYTHON_VERSION"',
+        "exact Python version comparison",
+    )
+    require(
+        python_toolchain,
+        "foreach ($commandName in @('python.exe', 'python3.exe'))",
+        "ambient Python command-resolution audit",
+    )
+    require(python_toolchain, "$command.Source -cne $expected", "pinned Python command authority")
+    require(python_toolchain, "pinned Python executables are not byte-identical", "python/python3 byte identity")
+    require(build, "function Get-OrdinaryPathItem", "Windows ancestor reparse gate")
+    require(build, "path traverses a reparse point", "Windows ancestor reparse rejection")
+    require(build, "[Management.Automation.Language.Parser]::ParseFile", "native PowerShell parser proof")
+    require(build, "$errors.Count -ne 0", "native PowerShell parse error rejection")
+    require(
+        host,
+        'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"',
+        "olefile wheel hash pin",
+    )
+    require(build, "python-wheels\\olefile-0.47-py2.py3-none-any.whl", "exact olefile 0.47 wheel")
+    require(build, "$OLEFILE_SHA256  = '543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f'", "guest olefile digest pin")
+    require(build, "Get-FileHash -LiteralPath $olefileWheel -Algorithm SHA256", "guest olefile digest proof")
+    require(build, "isinstance(loader, zipimport.zipimporter)", "olefile zip-wheel loader proof")
+    require_count(build, "os.path.normcase(os.path.abspath(loader.archive)) != wheel", 2, "olefile wheel authority proofs")
+    require_count(build, 'if olefile.__version__ != "0.47":', 2, "exact olefile version proofs")
+    require(build, "if len(arguments) != 13 or arguments[1::2] != expected_options", "isolated MSI argument-vector proof")
+    require(
+        build,
+        "& $PYTHON_EXE -I -S -c $olefileProbe $olefileWheel",
+        "isolated olefile wheel probe",
+    )
+    require(
+        build,
+        "& $PYTHON_EXE -I -S -c $isolatedOlefileRunner $olefileWheel @msiCanonicalizerArguments",
+        "isolated MSI canonicalizer runner",
+    )
+    for pinned_call in (
+        "& $PYTHON_EXE build.py --flutter",
+        "& $PYTHON_EXE preprocess.py --arp -d $msiDist",
+        "& $PYTHON_EXE .\\generate.py -f $setupPayloadDir -o . -e $setupPayloadMsi",
+    ):
+        require(build, pinned_call, f"pinned Python invocation {pinned_call}")
+
+    build_flutter_windows = python_function(orchestrator_tree, "build_flutter_windows")
+    require(orchestrator, "canonicalizer_input = pe.with_name(f'.canonicalize-input-{pe.name}')", "distinct PE input path")
+    require_order(
+        ast.get_source_segment(orchestrator, build_flutter_windows) or "",
+        (
+            "os.link(pe, canonicalizer_input)",
+            "os.unlink(pe)",
+            "'scripts/canonicalize-pe.py'",
+            "'--output'",
+            "str(pe)",
+            "str(canonicalizer_input)",
+            "canonicalizer_input.unlink()",
+        ),
+        "PE absent-output orchestration",
+    )
+
+    canonicalize_bytes = ast.get_source_segment(pe, python_function(pe_tree, "canonicalize_bytes")) or ""
+    pe_canonicalize = ast.get_source_segment(pe, python_function(pe_tree, "canonicalize")) or ""
+    pe_publish = ast.get_source_segment(pe, python_function(pe_tree, "_publish_absent")) or ""
+    pe_self_test = ast.get_source_segment(pe, python_function(pe_tree, "self_test")) or ""
+    require(pe, "IMAGE_DEBUG_TYPE_REPRO = 16", "bounded repro debug type")
+    require(pe, "debug_type == IMAGE_DEBUG_TYPE_REPRO", "repro-only payload clearing")
+    require(canonicalize_bytes, "authorized = pe_fields + debug_ranges", "complete PE mutation authorization union")
+    require(canonicalize_bytes, "image.data[start:end] = b\"\\0\" * (end - start)", "bounded PE mutation application")
+    require_direct_python_call(pe_tree, "canonicalize_bytes", "_prove_only_authorized_changes", "PE authorized mutation proof")
+    require(
+        pe_canonicalize,
+        "if os.path.abspath(input_path) == os.path.abspath(output_path):",
+        "distinct PE input/output rejection",
+    )
+    require_direct_python_call(pe_tree, "canonicalize", "_publish_absent", "absent PE publication")
+    require(pe_publish, "if os.path.lexists(output_path):", "occupied PE output rejection")
+    require(pe_publish, "os.link(temporary, output_path, follow_symlinks=False)", "no-clobber PE publication")
+    require(pe_publish, "if _read_descriptor(descriptor) != content:", "published PE byte postcondition")
+    require(pe_publish, "_make_deletable(output_path)", "Windows PE rollback deletion authority")
+    require(pe_canonicalize, "_require_real_directory_path", "PE ancestor reparse rejection")
+    require(pe_canonicalize, "canonicalization is not idempotent", "PE idempotence postcondition")
+    require_python_call(pe_tree, "self_test", "_prove_only_authorized_changes", "PE authorization self-test")
+    require(pe_self_test, "mutation outside the authorization union was accepted", "PE unauthorized-mutation fixture")
+    require(pe_self_test, "pre-existing output path was overwritten", "PE occupied-output fixture")
+    require(pe_self_test, "in-place output path was accepted", "PE distinct-output fixture")
+    require(pe, "usage: canonicalize-pe.py --output ABSENT_OUTPUT INPUT.exe", "PE absent-output CLI")
+    require(pe, "canonicalize-pe self-test: ok", "PE synthetic tests")
+
+    msi_layout = ast.get_source_segment(msi, python_function(msi_tree, "_cabinet_layout")) or ""
+    msi_stream = ast.get_source_segment(msi, python_function(msi_tree, "_cabinet_stream")) or ""
+    msi_canonicalize = ast.get_source_segment(msi, python_function(msi_tree, "canonicalize")) or ""
+    msi_verify = ast.get_source_segment(msi, python_function(msi_tree, "_verify_file")) or ""
+    msi_self_test = ast.get_source_segment(msi, python_function(msi_tree, "self_test")) or ""
+    require(msi, "FMTID_SUMMARY_INFORMATION", "exact SummaryInformation FMTID")
+    require(msi_stream, "if len(candidates) != 1:", "unique embedded cabinet count")
+    require(msi_stream, "MSI must contain exactly one valid embedded cabinet", "unique embedded CAB rejection")
+    require(msi_layout, "if flags & 0x0003:", "previous/next cabinet chaining rejection")
+    require(msi_layout, "if folder_count != 1 or file_count == 0:", "exact one-folder cabinet")
+    require(msi_layout, "order = (folder_index, folder_offset, folded)", "canonical cabinet file order key")
+    require(msi_layout, "if previous_order is not None and order <= previous_order:", "strict cabinet file order")
+    require(msi_layout, "if folder_offset != previous_end:", "contiguous cabinet file coverage")
+    require(
+        msi_layout,
+        "if previous_end_by_folder.get(0) != folder_uncompressed[0]:",
+        "complete cabinet folder coverage",
+    )
+    require(msi, 'struct.pack_into("<H", mutable, date_offset, 0x0021)', "CAB date normalization")
+    require(msi, 'struct.pack_into("<H", mutable, time_offset, 0)', "CAB time normalization")
+    require(msi, 'struct.pack_into("<Q", root, 100, 0)', "root create timestamp")
+    require(msi, 'struct.pack_into("<Q", root, 108, 0)', "root modify timestamp")
+    require(
+        msi_canonicalize,
+        "if len({os.path.normcase(path), os.path.normcase(output), os.path.normcase(contract_output)}) != 3:",
+        "distinct MSI input/output/contract paths",
+    )
+    require(
+        msi_canonicalize,
+        "if os.path.lexists(output) or os.path.lexists(contract_output):",
+        "absent MSI output and contract paths",
+    )
+    require(msi_canonicalize, "os.link(temporary, output, follow_symlinks=False)", "no-clobber MSI publication")
+    require(
+        msi_canonicalize,
+        "os.link(contract_temporary, contract_output, follow_symlinks=False)",
+        "no-clobber cabinet contract publication",
+    )
+    require_order(
+        msi_canonicalize,
+        (
+            "os.link(contract_temporary, contract_output, follow_symlinks=False)",
+            "os.unlink(contract_temporary)",
+            "if _read_file(contract_output) != contract_bytes:",
+            "os.chmod(contract_output, 0o400)",
+        ),
+        "Windows-deletable contract publication before read-only finalization",
+    )
+    require(msi_canonicalize, "_make_deletable(contract_output)", "Windows MSI contract rollback authority")
+    require(msi_canonicalize, "_require_real_directory_path", "MSI ancestor reparse rejection")
+    require(msi_verify, '"format": "rustdesk-msi-cabinet-contract-v1"', "MSI cabinet contract")
+    require(msi_verify, '"cabinet_sha256": hashlib.sha256(cabinet).hexdigest()', "cabinet byte digest contract")
+    require(msi_verify, '"sequence": index', "cabinet sequence contract")
+    require(msi, "MSI input, absent outputs, and all identity options are required", "MSI absent-output CLI")
+    for mutation in ("cabinet-chain", "file-order", "file-overlap"):
+        require(msi_self_test, f'"{mutation}"', f"MSI behavioral fixture {mutation}")
+    require(
+        msi,
+        'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
+        "portable MSI open flags",
+    )
+    require(msi, 'if os.name != "nt":', "portable MSI directory durability")
+    require(msi, "source_descriptor = -1", "closed MSI source descriptor")
+    require(msi, "canonicalize-msi self-test: ok", "MSI synthetic tests")
+
+    require(build, "$canonicalMsiDir = Join-Path $SRC 'target\\canonical-msi'", "private MSI output directory")
+    require(build, "canonical MSI output directory is not a fresh ordinary directory", "fresh MSI output directory proof")
+    require_order(
+        build,
+        (
+            "'scripts\\canonicalize-msi.py'",
+            "$msiBuiltOut",
+            "'--output'",
+            "$msiOut",
+            "'--contract-out'",
+            "$msiContract",
+            "& $PYTHON_EXE -I -S -c $isolatedOlefileRunner $olefileWheel @msiCanonicalizerArguments",
+        ),
+        "isolated MSI absent-output canonicalization",
+    )
+    require(build, "canonical MSI cabinet contract schema is not exact", "exact cabinet contract schema")
+    require(build, "$cabinetContract.files -isnot [Array]", "cabinet contract array type proof")
+    require(build, "Get-JsonInt64 $entry.folder", "one-folder contract integer proof")
+    require(build, "$sequence -ne ($index + 1)", "contiguous contract sequence comparison")
+    require(build, "$offset -ne $expectedOffset", "contiguous contract offset comparison")
+    require(build, "$expectedOffset -gt ([Int64][UInt32]::MaxValue - $size)", "cabinet extent overflow proof")
+    require(
+        build,
+        "SELECT `DiskId`, `LastSequence`, `Cabinet` FROM `Media` ORDER BY `DiskId`",
+        "Windows Installer Media table comparison",
+    )
+    require(build, "$mediaRows.Count -ne 1", "exact one-row Media table")
+    require(build, "[Int64]$mediaRows[0].Values[1] -ne $contractFiles.Count", "Media all-files coverage")
+    require(build, "$zeroRows.Count -ne 0", "COM zero-row behavior proof")
+    require(
+        build,
+        "SELECT `File`, `FileSize`, `Sequence` FROM `File` ORDER BY `Sequence`",
+        "Windows Installer File table comparison",
+    )
+    require(build, "$fileRows.Count -ne $contractFiles.Count", "File/contract count comparison")
+    require(build, "$row[0] -cne $entry.id", "File ID comparison")
+    require(build, "[Int64]$row[1] -ne (Get-JsonInt64 $entry.size", "File size comparison")
+    require(build, "[Int64]$row[2] -ne (Get-JsonInt64 $entry.sequence", "File sequence comparison")
+    require(build, "$value -is [int] -or $value -is [long]", "COM integer variant type proof")
+    require(build, "$value -isnot [string]", "COM string variant type proof")
+    require(build, 'SELECT ``Data`` FROM ``_Streams`` WHERE ``Name`` = \'$Name\'', "Windows Installer _Streams byte query")
+    require(build, "'DataSize'", "_Streams declared byte size")
+    require(build, "'ReadStream'", "_Streams byte reader")
+    require(build, "[Text.EncoderFallback]::ExceptionFallback", "lossless _Streams byte decoding")
+    require(build, "$chunk -isnot [string]", "_Streams chunk variant type proof")
+    require(build, "$bytes = $encoding.GetBytes($chunk)", "_Streams string-to-byte conversion")
+    require(build, "$sha.TransformBlock($bytes, 0, $bytes.Length, $bytes, 0)", "incremental _Streams byte hashing")
+    require(build, "$extra.Length -ne 0", "_Streams exact byte extent")
+    require(build, "$second = $view.GetType().InvokeMember('Fetch'", "duplicate _Streams row check")
+    require(build, "$cabinetDigest -cne $cabinetContract.cabinet_sha256", "_Streams/cabinet digest comparison")
+    require(build, "$viewClosed = $true", "successful COM view close proof")
+
+    for mutation in (
+        "patch-block-remove",
+        "patch-block-substitute",
+        "patch-block-reorder",
+        "port-version",
+        "guest-mingw-cache-name",
+    ):
+        require(watch, mutation, f"codec watcher mutation {mutation}")
+    validate_port(sources["port"], sources["metadata"])
+
+
+def load_sources(repo: pathlib.Path) -> dict[str, str]:
+    sources = {}
+    for name, relative in FILES.items():
+        path = repo / relative
+        if not path.is_file():
+            raise VerificationError(f"missing harness file: {relative}")
+        sources[name] = path.read_text(encoding="utf-8")
+    return sources
+
+
+def run_bounded_self_test(
+    repo: pathlib.Path,
+    command: list[str],
+    expected_output: str,
+    description: str,
+    timeout_seconds: int,
+) -> None:
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=repo,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=(os.name == "posix"),
+        )
+    except OSError as exc:
+        raise VerificationError(f"could not start {description}: {exc}") from exc
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        stdout, stderr = process.communicate()
+        detail = (stdout + stderr).strip()
+        raise VerificationError(
+            f"{description} exceeded {timeout_seconds}s timeout"
+            + (f": {detail[-2000:]}" if detail else "")
+        ) from exc
+    if process.returncode != 0:
+        detail = (stdout + stderr).strip()
+        raise VerificationError(
+            f"{description} failed with exit {process.returncode}"
+            + (f": {detail[-2000:]}" if detail else "")
+        )
+    if expected_output not in stdout:
+        detail = (stdout + stderr).strip()
+        raise VerificationError(
+            f"{description} did not report its success marker {expected_output!r}"
+            + (f": {detail[-2000:]}" if detail else "")
+        )
+
+
+def run_behavioral_self_tests(repo: pathlib.Path) -> None:
+    tests = (
+        (
+            ["bash", "scripts/build-windows-vm.sh", "--self-test"],
+            "build-windows-vm self-test: ok",
+            "Windows VM harness behavioral self-test",
+            45,
+        ),
+        (
+            [sys.executable, "scripts/canonicalize-pe.py", "--self-test"],
+            "canonicalize-pe self-test: ok",
+            "PE canonicalizer behavioral self-test",
+            20,
+        ),
+        (
+            [sys.executable, "scripts/canonicalize-msi.py", "--self-test"],
+            "canonicalize-msi self-test: ok",
+            "MSI canonicalizer behavioral self-test",
+            20,
+        ),
+    )
+    for command, marker, description, timeout_seconds in tests:
+        run_bounded_self_test(repo, command, marker, description, timeout_seconds)
+
+
+def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
+    mutations = [
+        ("domain UUID", "host", '--uuid "$CURRENT_DOMAIN_UUID"', '--uuid "$RUN_ID"'),
+        ("VM deadline", "host", "VM_TIMEOUT_SECONDS=7200", "VM_TIMEOUT_SECONDS=0"),
+        ("VM creation deadline", "host", "CREATE_TIMEOUT_SECONDS=300", "CREATE_TIMEOUT_SECONDS=0"),
+        ("control timeout", "host", "CONTROL_TIMEOUT_SECONDS=30", "CONTROL_TIMEOUT_SECONDS=0"),
+        ("process stop deadline", "host", "PROCESS_STOP_SECONDS=10", "PROCESS_STOP_SECONDS=0"),
+        ("setsid wait", "host", "setsid --wait virt-install", "setsid virt-install"),
+        (
+            "bounded virsh",
+            "host",
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n        virsh -c qemu:///session "$@"',
+            'virsh -c qemu:///session "$@"',
+        ),
+        (
+            "owned session",
+            "host",
+            '&& [ "$session" = "$CURRENT_VIRT_PID" ]',
+            '&& [ -n "$session" ]',
+        ),
+        (
+            "owned process group KILL",
+            "host",
+            'kill -KILL -- "-$CURRENT_VIRT_PID"',
+            'kill -KILL -- "$CURRENT_VIRT_PID"',
+        ),
+        (
+            "deadline domain termination",
+            "host",
+            'stop_and_undefine_owned_domain || die "timed-out domain could not be destroyed and undefined safely"',
+            'die "Windows build timed out"',
+        ),
+        ("private state", "host", "windows-build-$RUN_ID.XXXXXXXX", "windows-build-fixed"),
+        ("zombie reap", "host", '[ "$state" != Z ] && [ "$state" != X ]', "true"),
+        (
+            "golden exclusive snapshot",
+            "host",
+            "os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC",
+            "os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC",
+        ),
+        (
+            "golden source ownership",
+            "host",
+            "not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1",
+            "not stat.S_ISREG(before.st_mode)",
+        ),
+        (
+            "golden source stability",
+            "host",
+            "if any(getattr(before, field) != getattr(after, field) for field in stable_fields):",
+            "if all(getattr(before, field) != getattr(after, field) for field in stable_fields):",
+        ),
+        (
+            "golden snapshot hash",
+            "host",
+            "if digest.hexdigest() != expected:",
+            "if not digest.hexdigest():",
+        ),
+        ("golden immutable mode", "host", "os.fchmod(destination_fd, 0o400)", "os.fchmod(destination_fd, 0o600)"),
+        (
+            "golden pre-overlay rehash",
+            "host",
+            "prepare_overlay() {\n    verify_private_golden",
+            "prepare_overlay() {\n    :",
+        ),
+        (
+            "golden pre-publication rehash",
+            "host",
+            "verify_active_online_snapshot\n    verify_private_golden\n    publish_result",
+            "verify_active_online_snapshot\n    publish_result",
+        ),
+        (
+            "worktree capture",
+            "host",
+            'GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" -c core.hooksPath=/dev/null add -A -- .',
+            'git -C "$REPO_ROOT" add -A -- .',
+        ),
+        ("networkless VM", "host", "--network none", "--network default"),
+        (
+            "host reserved device namespace",
+            "host",
+            "con|prn|aux|nul|com[1-9]|lpt[1-9]",
+            "con|prn|aux|nul",
+        ),
+        (
+            "host generated namespace",
+            "host",
+            "if relative.casefold() in generated_folded:",
+            "if False:",
+        ),
+        ("FRB user", "frb", '--user "$(id -u):$(id -g)"', ""),
+        ("image provenance", "host", 'require_pinned_builder_image win-helper "$WIN_HELPER_TAG"', "freeze_image win-helper"),
+        (
+            "online snapshot",
+            "host",
+            'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+            "require_online_complete",
+        ),
+        ("source media", "host", 'chmod -R a-w "$media_root"', ""),
+        (
+            "source case collision",
+            "host",
+            "previous = case_paths.get(folded)",
+            "previous = None",
+        ),
+        ("atomic result", "host", 'mv -T --no-clobber -- "$staging" "$OUT_DIR"', 'mv -- "$staging" "$OUT_DIR"'),
+        ("FRB online root", "host", '--online-root "$ONLINE_DIR"', '--cache-root "$ONLINE_DIR"'),
+        ("FRB image provenance", "frb", 'require_pinned_builder_image deb-builder "$IMAGE_ID"', 'docker image inspect "$IMAGE_ID"'),
+        ("FRB exact manifest", "host", "FRB manifest does not describe exactly the four canonical outputs", "FRB manifest accepted"),
+        ("FRB read-only source", "frb", "FRB source snapshot has a writable entry", "FRB source snapshot accepted"),
+        ("FRB publish", "frb", 'mv -T --no-clobber -- "$PUBLISH_ROOT" "$OUTPUT_ROOT"', 'cp -a "$PUBLISH_ROOT" "$OUTPUT_ROOT"'),
+        ("guest fail loud", "guest", "$ErrorActionPreference = 'Stop'", "$ErrorActionPreference = 'Continue'"),
+        (
+            "guest reserved device namespace",
+            "guest",
+            "con|prn|aux|nul|com[1-9]|lpt[1-9]",
+            "con|prn|aux|nul",
+        ),
+        (
+            "guest generated namespace",
+            "guest",
+            "[StringComparer]::OrdinalIgnoreCase.Equals($rootComponent, $name)",
+            "[StringComparer]::Ordinal.Equals($rootComponent, $name)",
+        ),
+        ("guest generated root", "guest", "$rootComponent = $components[0]", "$rootComponent = $Path"),
+        ("guest outer shutdown", "guest", "$out = $null", "$out = 'C:\\missing'"),
+        ("guest JSON integer", "guest", "Get-JsonInt64 $entry.size", "[Int64]$entry.size"),
+        (
+            "legacy source",
+            "guest",
+            "Remove-Item -LiteralPath $legacySource -Recurse -Force",
+            "Write-Output $legacySource",
+        ),
+        (
+            "legacy source reparse",
+            "guest",
+            "($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+            "$false",
+        ),
+        (
+            "directory reparse",
+            "guest",
+            "($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+            "$false",
+        ),
+        (
+            "extra directory",
+            "guest",
+            "if (-not $expectedDirectories.Contains($relative))",
+            "if ($false)",
+        ),
+        (
+            "source identity",
+            "build",
+            "    Assert-BuildIdentity\n    Assert-PowerShellSourceParsing",
+            "    Assert-EnvironmentOnly\n    Assert-PowerShellSourceParsing",
+        ),
+        ("libvpx rebuild", "build", "stale compiled libvpx bytes remain after mandatory removal", ""),
+        (
+            "MSI source tree",
+            "build",
+            "'--source-tree',\n        $env:RUSTDESK_SOURCE_TREE",
+            "'--source-branch',\n        $env:RUSTDESK_SOURCE_TREE",
+        ),
+        ("Python pin", "build", "$PYTHON_VERSION  = '3.11.9'", "$PYTHON_VERSION  = '3.11'"),
+        (
+            "pinned Python path",
+            "build",
+            "$PYTHON_EXE      = 'C:\\Program Files\\Python311\\python.exe'",
+            "$PYTHON_EXE      = 'python.exe'",
+        ),
+        (
+            "ambient Python",
+            "build",
+            "& $PYTHON_EXE build.py --flutter",
+            "python build.py --flutter",
+        ),
+        (
+            "olefile isolation flags",
+            "build",
+            "& $PYTHON_EXE -I -S -c $olefileProbe $olefileWheel",
+            "& $PYTHON_EXE -c $olefileProbe $olefileWheel",
+        ),
+        (
+            "olefile wheel authority",
+            "build",
+            "os.path.normcase(os.path.abspath(loader.archive)) != wheel",
+            "False",
+        ),
+        (
+            "olefile version",
+            "build",
+            'if olefile.__version__ != "0.47":',
+            'if not olefile.__version__:',
+        ),
+        (
+            "olefile guest digest",
+            "build",
+            "Get-FileHash -LiteralPath $olefileWheel -Algorithm SHA256",
+            "Get-Item -LiteralPath $olefileWheel",
+        ),
+        (
+            "Python companion identity",
+            "build",
+            "pinned Python executables are not byte-identical",
+            "pinned Python executables are accepted",
+        ),
+        (
+            "native PowerShell parsing",
+            "build",
+            "[Management.Automation.Language.Parser]::ParseFile",
+            "[Management.Automation.Language.Parser]::ParseInput",
+        ),
+        (
+            "isolated MSI argument vector",
+            "build",
+            "if len(arguments) != 13 or arguments[1::2] != expected_options",
+            "if not arguments",
+        ),
+        (
+            "Windows ancestor reparse",
+            "build",
+            "path traverses a reparse point",
+            "path reparse accepted",
+        ),
+        (
+            "orchestrated PE distinct output",
+            "orchestrator",
+            "os.unlink(pe)",
+            "pass",
+        ),
+        ("PE repro type", "pe", "IMAGE_DEBUG_TYPE_REPRO = 16", "IMAGE_DEBUG_TYPE_REPRO = 2"),
+        (
+            "PE authorization union",
+            "pe",
+            "authorized = pe_fields + debug_ranges",
+            "authorized = pe_fields",
+        ),
+        (
+            "PE authorization proof",
+            "pe",
+            "    _prove_only_authorized_changes(source, result, authorized)\n    return result",
+            "    return result",
+        ),
+        (
+            "PE distinct output",
+            "pe",
+            "if os.path.abspath(input_path) == os.path.abspath(output_path):",
+            "if False:",
+        ),
+        (
+            "PE occupied output",
+            "pe",
+            "if os.path.lexists(output_path):",
+            "if False:",
+        ),
+        ("PE rollback", "pe", "_make_deletable(output_path)", "os.unlink(output_path)"),
+        (
+            "MSI one folder",
+            "msi",
+            "if folder_count != 1 or file_count == 0:",
+            "if folder_count == 0 or file_count == 0:",
+        ),
+        ("MSI no chaining", "msi", "if flags & 0x0003:", "if flags & 0x0002:"),
+        (
+            "MSI file order",
+            "msi",
+            "if previous_order is not None and order <= previous_order:",
+            "if False:",
+        ),
+        (
+            "MSI contiguous files",
+            "msi",
+            "if folder_offset != previous_end:",
+            "if folder_offset < previous_end:",
+        ),
+        (
+            "MSI full folder coverage",
+            "msi",
+            "if previous_end_by_folder.get(0) != folder_uncompressed[0]:",
+            "if previous_end_by_folder.get(0, 0) > folder_uncompressed[0]:",
+        ),
+        (
+            "MSI distinct outputs",
+            "msi",
+            "if len({os.path.normcase(path), os.path.normcase(output), os.path.normcase(contract_output)}) != 3:",
+            "if False:",
+        ),
+        (
+            "MSI absent outputs",
+            "msi",
+            "if os.path.lexists(output) or os.path.lexists(contract_output):",
+            "if False:",
+        ),
+        (
+            "MSI contract output",
+            "build",
+            "'--contract-out',\n        $msiContract",
+            "'--contract-out',\n        $msiOut",
+        ),
+        (
+            "MSI contract read-only finalization",
+            "msi",
+            "os.chmod(contract_output, 0o400)",
+            "os.chmod(contract_temporary, 0o400)",
+        ),
+        ("MSI contract rollback", "msi", "_make_deletable(contract_output)", "os.unlink(contract_output)"),
+        (
+            "MSI contract JSON integer",
+            "build",
+            "Get-JsonInt64 $entry.folder",
+            "[Int64]$entry.folder",
+        ),
+        ("MSI Media comparison", "build", "$mediaRows.Count -ne 1", "$mediaRows.Count -lt 1"),
+        ("MSI zero-row comparison", "build", "$zeroRows.Count -ne 0", "$zeroRows.Count -lt 0"),
+        (
+            "MSI File size comparison",
+            "build",
+            "[Int64]$row[1] -ne (Get-JsonInt64 $entry.size",
+            "[Int64]$row[1] -lt 0",
+        ),
+        (
+            "MSI stream digest comparison",
+            "build",
+            "$cabinetDigest -cne $cabinetContract.cabinet_sha256",
+            "$cabinetDigest -cne $cabinetDigest",
+        ),
+        (
+            "MSI strict stream conversion",
+            "build",
+            "[Text.EncoderFallback]::ExceptionFallback",
+            "[Text.EncoderFallback]::ReplacementFallback",
+        ),
+        (
+            "MSI stream byte hashing",
+            "build",
+            "$sha.TransformBlock($bytes, 0, $bytes.Length, $bytes, 0)",
+            "$null = $bytes",
+        ),
+        (
+            "MSI Windows flags",
+            "msi",
+            'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
+            "flags = os.O_RDONLY | os.O_CLOEXEC",
+        ),
+        ("watch patch reorder", "watch", "patch-block-reorder", "patch-order-ignored"),
+        (
+            "port patch order",
+            "port",
+            '        "${_libvpx_security_patch}"\n        0003-add-uwp-v142-and-v143-support.patch',
+            '        0003-add-uwp-v142-and-v143-support.patch\n        "${_libvpx_security_patch}"',
+        ),
+        ("port-version", "metadata", '"port-version": 1', '"port-version": 2'),
+    ]
+    for description, name, old, new in mutations:
+        mutated = dict(sources)
+        if old not in mutated[name]:
+            raise VerificationError(f"self-test fixture is absent for {description}")
+        mutated[name] = mutated[name].replace(old, new, 1)
+        try:
+            validate_sources(mutated)
+        except VerificationError:
+            continue
+        raise VerificationError(f"self-test mutation was accepted: {description}")
+    run_behavioral_self_tests(repo)
+    print(
+        "verify-windows-harness self-test: ok "
+        f"({len(mutations)} mutations, 3 bounded behavioral suites)"
+    )
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path.cwd())
+    parser.add_argument("--self-test", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    sources = load_sources(args.repo.resolve())
+    validate_sources(sources)
+    if args.self_test:
+        run_self_test(args.repo.resolve(), sources)
+    else:
+        print("verify-windows-harness: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except (VerificationError, json.JSONDecodeError) as exc:
+        print(f"verify-windows-harness: FAIL: {exc}", file=sys.stderr)
+        raise SystemExit(1)

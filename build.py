@@ -8,6 +8,7 @@ import urllib.request
 import shutil
 import hashlib
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -372,17 +373,8 @@ def build_flutter_windows(features):
     # one-file payload directory; it never embeds this Flutter dist directly. cwd is the repo root here,
     # so these in-place edits persist for the later MSI packaging step.
     #
-    # The MSVC-linked PEs here -- the cargo cdylib librustdesk.dll, the flutter
-    # runner rustdesk.exe, and the flutter plugin DLLs -- are all linked with LINK=/Brepro (set by
-    # build-windows.ps1). /Brepro was meant to make the PE TimeDateStamp a deterministic content hash, but
-    # its debug-directory "repro hash" also picks up a NON-content input, so that debug metadata DRIFTS
-    # build-to-build even when the compiled code is byte-identical -- the same MSVC /Brepro quirk that
-    # canonicalize-pe.py already neutralizes on the FINAL packer .exe host-side (scripts/build-windows-vm.sh
-    # extract()). That host-side pass never reaches these EMBEDDED PEs -- they are already brotli/CAB-packed
-    # inside the installers by then -- so left un-normalized their drift tips BOTH installers' SHA-256 across
-    # a double build (R-B2 A!=B). Normalize each embedded PE with the SAME script/flags as that packer-.exe
-    # invocation (zero the COFF/debug TimeDateStamps + checksum, sort the winres version-info strings -- all
-    # load-irrelevant, idempotent metadata), so the dir WiX reads is byte-deterministic.
+    # Normalize only the explicitly authorized PE reproducibility metadata before
+    # WiX and the portable packer consume these embedded binaries.
     # Windows-only path: build_flutter_deb / the Android build never reach here (they run with
     # platform!=Windows), so the .deb/.apk stay byte-identical.
     release_pes = sorted(
@@ -392,7 +384,22 @@ def build_flutter_windows(features):
         print(f'R-B2: no PE (*.dll/*.exe) under {flutter_build_dir_2} to canonicalize -- flutter build dir empty?')
         exit(-1)
     for pe in release_pes:
-        system2(f'python3 scripts/canonicalize-pe.py "{pe.as_posix()}"')
+        canonicalizer_input = pe.with_name(f'.canonicalize-input-{pe.name}')
+        if os.path.lexists(canonicalizer_input):
+            raise RuntimeError(f'canonicalizer input path is already occupied: {canonicalizer_input}')
+        os.link(pe, canonicalizer_input)
+        os.unlink(pe)
+        subprocess.run(
+            [
+                sys.executable,
+                'scripts/canonicalize-pe.py',
+                '--output',
+                str(pe),
+                str(canonicalizer_input),
+            ],
+            check=True,
+        )
+        canonicalizer_input.unlink()
 
 
 def main():

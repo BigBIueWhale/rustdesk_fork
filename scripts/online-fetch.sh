@@ -42,18 +42,66 @@ fetch_verify() {
     [ "$sha" != "${SHA_PENDING}" ] || \
         die "refusing to fetch $name — its pins.env SHA-256 is the R-B12 sentinel; record audited provenance first"
     log "fetching: $url -> $name"
-    curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"
+    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"; then
+        rm -f "$dest.part"
+        die "failed to fetch $name"
+    fi
     mv "$dest.part" "$dest"
     verify_sha256 "$dest" "$sha"
 }
 
-# ── Rust crate world: vendor the committed lockfile (incl. the 44 git deps) ────
+fetch_verify_sha512() {
+    local url="$1" name="$2" sha="$3"
+    local dest="$ONLINE_DIR/$name"
+    if [ -f "$dest" ] && [ "$(sha512sum "$dest" | awk '{print $1}')" = "$sha" ]; then
+        log "cached + SHA512-verified, skipping: $name"
+        return 0
+    fi
+    log "fetching: $url -> $name"
+    mkdir -p "$(dirname "$dest")"
+    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"; then
+        rm -f "$dest.part"
+        die "failed to fetch $name"
+    fi
+    [ "$(sha512sum "$dest.part" | awk '{print $1}')" = "$sha" ] || {
+        rm -f "$dest.part"
+        die "SHA512 mismatch for $name"
+    }
+    mv "$dest.part" "$dest"
+}
+
+libvpx_native_key() {
+    (
+        printf 'VCPKG_BASELINE=%s\n' "$VCPKG_BASELINE"
+        printf 'LIBVPX_SOURCE_REF=%s\n' "$LIBVPX_SOURCE_REF"
+        printf 'SHA512_LIBVPX_SOURCE=%s\n' "$SHA512_LIBVPX_SOURCE"
+        printf 'LIBVPX_FIX_COMMIT=%s\n' "$LIBVPX_FIX_COMMIT"
+        printf 'SHA512_LIBVPX_PATCH=%s\n' "$SHA512_LIBVPX_PATCH"
+        cd "$REPO_ROOT"
+        find res/vcpkg/libvpx -type f -print | LC_ALL=C sort | while IFS= read -r file; do
+            sha256sum "$file"
+        done
+    ) | sha256sum | awk '{print $1}'
+}
+
+require_libvpx_distfiles() {
+    local dir="$ONLINE_DIR/vcpkg-distfiles"
+    local key
+    key="$(libvpx_native_key)"
+    [ -f "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" ] || die "libvpx source capture missing — stage_vcpkg_distfiles must run first"
+    [ "$(sha512sum "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" | awk '{print $1}')" = "$SHA512_LIBVPX_SOURCE" ] || die "libvpx source capture SHA512 mismatch"
+    [ -f "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" ] || die "libvpx security patch capture missing — stage_vcpkg_distfiles must run first"
+    [ "$(sha512sum "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" | awk '{print $1}')" = "$SHA512_LIBVPX_PATCH" ] || die "libvpx security patch capture SHA512 mismatch"
+    [ "$(cat "$dir/libvpx-native-key.txt" 2>/dev/null)" = "$key" ] || die "libvpx native key is stale — stage_vcpkg_distfiles must refresh it"
+}
+
+# ── Rust crate world: vendor the committed lockfile (incl. 38 git-sourced records) ──
 # `cargo vendor --locked` reproduces the exact lockfile-pinned crate set offline.
 # It is itself a network step and belongs here, not in the offline build.
 vendor_cargo() {
     require_cmd cargo
     log "cargo vendor (--locked) -> ./online/cargo-vendor (+ its [source] config)"
-    # Capture the printed [source] config (crates-io + each of the 44 git deps) so
+    # Capture the printed [source] config (crates-io + all 38 git-sourced records) so
     # the offline build can replay it; build-debian.sh rewrites its directory path.
     ( cd "$REPO_ROOT" && cargo vendor --locked --versioned-dirs "$ONLINE_DIR/cargo-vendor" \
         > "$ONLINE_DIR/cargo-vendor-config.toml" )
@@ -128,33 +176,73 @@ fetch_windows_toolchains() {
     fi
 }
 
-# ── vcpkg registry snapshot + the digest-pinned build base images ─────────────
-fetch_vcpkg_and_images() {
+# ── vcpkg registry snapshot ───────────────────────────────────────────────────
+fetch_vcpkg() {
     # vcpkg @ the pinned baseline commit (then `vcpkg install` builds the native
     # set offline from the overlay ports in res/vcpkg).
     fetch_verify "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz" \
         "vcpkg-${VCPKG_BASELINE}.tar.gz" "${SHA256_VCPKG_120DEAC3}"
-    # Digest-pinned base images for the §12.1 Docker builds (upstream's ubuntu18.04
-    # for the .deb, ubuntu-24.04 for the .apk). Pulled by digest, exported to a tar.
-    require_cmd docker
-    for tag in "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"; do
-        case "$tag" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-        log "docker pull (by digest): $tag"
-        docker pull "$tag"
-    done
 }
 
-# ── The pinned .deb build image (R-B7/B8): ubuntu:18.04 + the system build-deps ────
-# build-debian.sh runs the compile with --network=none, so the dev libs upstream's CI
-# apt-installs into ubuntu:18.04 (flutter-build.yml) are baked into a local image HERE,
-# during this one networked step. The toolchains stay in ./online (not in the image).
+require_image_pin() {
+    local name="$1" value="${!1:-}"
+    [ -n "$value" ] || die "pins.env is missing $name"
+    [ "$value" != "$SHA_PENDING" ] || die "$name is not established"
+}
+
+verify_or_load_builder_image() {
+    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5" archive_sha="$6" compatibility_tag="$7"
+    local archive="$ONLINE_DIR/build-images/${role}.docker.tar.gz"
+    require_cmd python3 docker
+    python3 "$LIB_DIR/offline-image-provenance.py" verify-load \
+        --archive "$archive" --archive-sha "$archive_sha" \
+        --role "$role" --expected-id "$image_id" --base "$base" \
+        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+    docker tag "$image_id" "$compatibility_tag"
+    python3 "$LIB_DIR/offline-image-provenance.py" verify-local \
+        --image-ref "$compatibility_tag" --role "$role" --expected-id "$image_id" --base "$base" \
+        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+}
+
+load_builder_images() {
+    local names=(
+        DEB_BUILDER_IMAGE_ID SHA256_DEB_BUILDER_DOCKERFILE SHA256_DEB_BUILDER_DPKG_MANIFEST SHA256_DEB_BUILDER_IMAGE_ARCHIVE
+        ANDROID_BUILDER_IMAGE_ID SHA256_ANDROID_BUILDER_DOCKERFILE SHA256_ANDROID_BUILDER_DPKG_MANIFEST SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE
+        WIN_HELPER_IMAGE_ID SHA256_WIN_HELPER_DOCKERFILE SHA256_WIN_HELPER_DPKG_MANIFEST SHA256_WIN_HELPER_IMAGE_ARCHIVE
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+    verify_or_load_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \
+        "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" "$SHA256_DEB_BUILDER_DOCKERFILE" \
+        "$SHA256_DEB_BUILDER_DPKG_MANIFEST" "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
+        "${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+    verify_or_load_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID" \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
+        "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
+        "${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+    verify_or_load_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_WIN_HELPER_DOCKERFILE" \
+        "$SHA256_WIN_HELPER_DPKG_MANIFEST" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
+        "${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
+}
+
+# Explicit maintenance candidate builds. Captured images remain the release authority.
 build_deb_builder_image() {
     require_cmd docker
-    case "$SHA256_BASEIMAGE_UBUNTU_1804" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    log "docker build: $tag (FROM the pinned ubuntu:18.04 + system build-deps, Dockerfile.deb-builder)"
+    require_image_pin SHA256_DEB_BUILDER_DOCKERFILE
+    require_image_pin SHA256_DEB_BUILDER_DPKG_MANIFEST
+    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder-candidate"
     docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        --build-arg "DOCKERFILE_SHA256=${SHA256_DEB_BUILDER_DOCKERFILE}" \
+        --build-arg "DPKG_MANIFEST_SHA256=${SHA256_DEB_BUILDER_DPKG_MANIFEST}" \
+        --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
+    local image_id
+    image_id="$(docker image inspect --format '{{.Id}}' "$tag")"
+    python3 "$LIB_DIR/offline-image-provenance.py" verify-local --image-ref "$tag" \
+        --role deb-builder --expected-id "$image_id" --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        --dockerfile-sha "$SHA256_DEB_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST"
+    printf 'DEB_BUILDER_IMAGE_ID="%s"\n' "$image_id"
 }
 
 # ── The pinned .apk build image (R-B7/B8): ubuntu:24.04 + the android build-deps ────
@@ -163,11 +251,20 @@ build_deb_builder_image() {
 # vcpkg/cargo-ndk/gradle system deps; the rust/flutter/NDK toolchains stay in ./online.
 build_android_builder_image() {
     require_cmd docker
-    case "$SHA256_BASEIMAGE_UBUNTU_2404" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    log "docker build: $tag (FROM the pinned ubuntu:24.04 + android build-deps, Dockerfile.android-builder)"
+    require_image_pin SHA256_ANDROID_BUILDER_DOCKERFILE
+    require_image_pin SHA256_ANDROID_BUILDER_DPKG_MANIFEST
+    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder-candidate"
     docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --build-arg "DOCKERFILE_SHA256=${SHA256_ANDROID_BUILDER_DOCKERFILE}" \
+        --build-arg "DPKG_MANIFEST_SHA256=${SHA256_ANDROID_BUILDER_DPKG_MANIFEST}" \
+        --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.android-builder" "$LIB_DIR"
+    local image_id
+    image_id="$(docker image inspect --format '{{.Id}}' "$tag")"
+    python3 "$LIB_DIR/offline-image-provenance.py" verify-local --image-ref "$tag" \
+        --role android-builder --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --dockerfile-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST"
+    printf 'ANDROID_BUILDER_IMAGE_ID="%s"\n' "$image_id"
 }
 
 # ── The pinned Windows VM helper image: genisoimage + libguestfs + MSI tooling ──
@@ -177,11 +274,78 @@ build_android_builder_image() {
 # build-windows-vm.sh/provision-windows-vm.sh/verify-windows-golden.sh.
 build_windows_helper_image() {
     require_cmd docker
-    case "$SHA256_BASEIMAGE_UBUNTU_2404" in *"${SHA_PENDING}"*) die "base-image digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
-    log "docker build: $tag (FROM the pinned ubuntu:24.04 + Windows VM helper deps, Dockerfile.win-helper)"
+    require_image_pin SHA256_WIN_HELPER_DOCKERFILE
+    require_image_pin SHA256_WIN_HELPER_DPKG_MANIFEST
+    local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper-candidate"
     docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --build-arg "DOCKERFILE_SHA256=${SHA256_WIN_HELPER_DOCKERFILE}" \
+        --build-arg "DPKG_MANIFEST_SHA256=${SHA256_WIN_HELPER_DPKG_MANIFEST}" \
+        --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.win-helper" "$LIB_DIR"
+    local image_id
+    image_id="$(docker image inspect --format '{{.Id}}' "$tag")"
+    python3 "$LIB_DIR/offline-image-provenance.py" verify-local --image-ref "$tag" \
+        --role win-helper --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST"
+    printf 'WIN_HELPER_IMAGE_ID="%s"\n' "$image_id"
+}
+
+maintenance_build_image_candidates() {
+    require_cmd docker python3
+    docker pull "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
+    docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
+    build_deb_builder_image
+    build_android_builder_image
+    build_windows_helper_image
+}
+
+capture_builder_image() {
+    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5" output="$6"
+    python3 "$LIB_DIR/offline-image-provenance.py" maintenance-capture \
+        --output "$output" \
+        --role "$role" --expected-id "$image_id" --base "$base" \
+        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+}
+
+maintenance_capture_builder_images() {
+    local names=(
+        DEB_BUILDER_IMAGE_ID SHA256_DEB_BUILDER_DOCKERFILE SHA256_DEB_BUILDER_DPKG_MANIFEST
+        ANDROID_BUILDER_IMAGE_ID SHA256_ANDROID_BUILDER_DOCKERFILE SHA256_ANDROID_BUILDER_DPKG_MANIFEST
+        WIN_HELPER_IMAGE_ID SHA256_WIN_HELPER_DOCKERFILE SHA256_WIN_HELPER_DPKG_MANIFEST
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+    local dir="$ONLINE_DIR/build-images"
+    local deb="$dir/deb-builder.docker.tar.gz" android="$dir/android-builder.docker.tar.gz" win="$dir/win-helper.docker.tar.gz"
+    local deb_tmp="$dir/.deb-builder.docker.tar.gz.part" android_tmp="$dir/.android-builder.docker.tar.gz.part" win_tmp="$dir/.win-helper.docker.tar.gz.part"
+    [ ! -e "$deb" ] && [ ! -e "$android" ] && [ ! -e "$win" ] || die "one or more final builder archives already exist"
+    [ ! -e "$deb_tmp" ] && [ ! -e "$android_tmp" ] && [ ! -e "$win_tmp" ] || die "stale builder archive capture temporary exists"
+    require_pinned_builder_image deb-builder
+    require_pinned_builder_image android-builder
+    require_pinned_builder_image win-helper
+    mkdir -p "$dir"
+    local deb_result android_result win_result
+    trap 'rm -f "$deb_tmp" "$android_tmp" "$win_tmp"' EXIT HUP INT TERM
+    deb_result="$(capture_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \
+        "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" "$SHA256_DEB_BUILDER_DOCKERFILE" "$SHA256_DEB_BUILDER_DPKG_MANIFEST" "$deb_tmp")"
+    android_result="$(capture_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID" \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_ANDROID_BUILDER_DOCKERFILE" "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" "$android_tmp")"
+    win_result="$(capture_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \
+        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_WIN_HELPER_DOCKERFILE" "$SHA256_WIN_HELPER_DPKG_MANIFEST" "$win_tmp")"
+    local deb_sha android_sha win_sha
+    deb_sha="$(printf '%s\n' "$deb_result" | sed -n 's/^sha256=//p')"
+    android_sha="$(printf '%s\n' "$android_result" | sed -n 's/^sha256=//p')"
+    win_sha="$(printf '%s\n' "$win_result" | sed -n 's/^sha256=//p')"
+    case "$deb_sha$android_sha$win_sha" in *[!0-9a-f]*|'') die "builder capture returned malformed archive hashes" ;; esac
+    [ "${#deb_sha}" -eq 64 ] && [ "${#android_sha}" -eq 64 ] && [ "${#win_sha}" -eq 64 ] \
+        || die "builder capture returned malformed archive hash lengths"
+    mv "$deb_tmp" "$deb"
+    mv "$android_tmp" "$android"
+    mv "$win_tmp" "$win"
+    trap - EXIT HUP INT TERM
+    printf 'SHA256_DEB_BUILDER_IMAGE_ARCHIVE="%s"\n' "$deb_sha"
+    printf 'SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE="%s"\n' "$android_sha"
+    printf 'SHA256_WIN_HELPER_IMAGE_ARCHIVE="%s"\n' "$win_sha"
 }
 
 # ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
@@ -192,7 +356,7 @@ build_windows_helper_image() {
 build_frb_codegen() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
     if [ -x "$ONLINE_DIR/frb-tool/bin/flutter_rust_bridge_codegen" ]; then
         log "frb codegen tool already staged, skipping"; return 0
     fi
@@ -213,7 +377,7 @@ build_frb_codegen() {
 stage_pub_cache() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
     if [ -d "$ONLINE_DIR/pub-cache/hosted" ] || [ -d "$ONLINE_DIR/pub-cache/git" ]; then
         log "pub cache already staged, skipping"; return 0
     fi
@@ -238,8 +402,10 @@ stage_pub_cache() {
     '
 }
 
-# ── The libyuv vcpkg distfile (R-B12(a)): captured as a REPRODUCIBLE git archive ───
-# libvpx/opus pin SHA512 via vcpkg_from_github; libyuv fetches from googlesource, whose gitiles
+# ── vcpkg overlay distfiles (R-B12(a)) ─────────────────────────────────────────
+# libvpx uses a SHA512-pinned v1.15.2 archive plus the exact upstream d5f35ac8
+# security patch. The overlay consumes only these captures through file:// URLs.
+# libyuv fetches from googlesource, whose gitiles
 # `+archive` tarballs are EMPIRICALLY non-reproducible (two fetches differ — even decompressed),
 # so the URL can't be SHA-pinned and R-R1 forbids vendoring. Capture a deterministic
 # `git archive --format=tar | gzip -n` of the pinned commit into ./online + verify its SHA512
@@ -249,13 +415,73 @@ stage_pub_cache() {
 # vcpkg_from_git.) MUST run before stage_vcpkg_natives[_arm64]. The archive is byte-deterministic
 # given the image's git (this SHA512 was computed in this deb-builder, git 2.17.1 — re-pin if it
 # changes; same class as the SHA256_VCPKG_120DEAC3 GitHub-archive caveat in pins.env).
+stage_libvpx_distfiles() {
+    local vpx_dir="$ONLINE_DIR/vcpkg-distfiles"
+    mkdir -p "$vpx_dir"
+    fetch_verify_sha512 \
+        "https://github.com/webmproject/libvpx/archive/refs/tags/${LIBVPX_SOURCE_REF}.tar.gz" \
+        "vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" "$SHA512_LIBVPX_SOURCE"
+
+    local committed_patch="$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"
+    [ "$(sha512sum "$committed_patch" | awk '{print $1}')" = "$SHA512_LIBVPX_PATCH" ] || die "committed libvpx security patch does not match SHA512_LIBVPX_PATCH"
+    if [ ! -f "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" ] || \
+       [ "$(sha512sum "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" | awk '{print $1}')" != "$SHA512_LIBVPX_PATCH" ]; then
+        cp "$committed_patch" "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch.part"
+        mv "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch.part" "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch"
+    fi
+
+    local tool_hash tool_name tool_extra tool_url
+    [ "$(sha256sum "$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512" | awk '{print $1}')" = "$SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST" ] || die "libvpx Windows acquisition manifest does not match its pin"
+    while read -r tool_hash tool_name tool_extra; do
+        [ -z "$tool_extra" ] || die "malformed libvpx Windows tool manifest entry: $tool_hash $tool_name $tool_extra"
+        case "$tool_hash" in *[!0-9a-f]*|'') die "malformed SHA512 in libvpx Windows tool manifest: $tool_hash" ;; esac
+        [ "${#tool_hash}" -eq 128 ] || die "malformed SHA512 length in libvpx Windows tool manifest: $tool_hash"
+        case "$tool_name" in
+            msys2-*.pkg.tar.zst)
+                tool_url="https://mirror.msys2.org/msys/x86_64/${tool_name#msys2-}"
+                ;;
+            mingw-w64-x86_64-pkgconf-1~2.4.3-1-any.pkg.tar.zst)
+                tool_url="https://mirror.msys2.org/mingw/mingw64/$tool_name"
+                ;;
+            nasm-2.16.03-win64.zip)
+                tool_url="https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/$tool_name"
+                ;;
+            cmake-3.30.1-windows-i386.zip)
+                tool_url="https://github.com/Kitware/CMake/releases/download/v3.30.1/$tool_name"
+                ;;
+            ninja-win-1.12.1.zip)
+                tool_url="https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip"
+                ;;
+            7z2409.7z.exe)
+                tool_url="https://github.com/ip7z/7zip/releases/download/24.09/7z2409.exe"
+                ;;
+            7zr.exe)
+                tool_url="https://github.com/ip7z/7zip/releases/download/24.09/7zr.exe"
+                ;;
+            PowerShell-7.2.24-win-x64.zip)
+                tool_url="https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.zip"
+                ;;
+            *) die "unexpected libvpx Windows tool archive: $tool_name" ;;
+        esac
+        fetch_verify_sha512 "$tool_url" "vcpkg-distfiles/windows-tools/$tool_name" "$tool_hash"
+    done <"$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
+
+    printf '%s\n' "$(libvpx_native_key)" >"$vpx_dir/libvpx-native-key.txt.part"
+    mv "$vpx_dir/libvpx-native-key.txt.part" "$vpx_dir/libvpx-native-key.txt"
+    require_libvpx_distfiles
+    log "libvpx source, security patch, and Windows acquisition closure captured + SHA512-verified"
+}
+
 stage_vcpkg_distfiles() {
+    stage_libvpx_distfiles
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
     local yuv_tgz="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
     if [ -f "$yuv_tgz" ]; then
-        log "vcpkg distfile (libyuv) already captured, skipping"; return 0
+        [ "$(sha512sum "$yuv_tgz" | awk '{print $1}')" = "$SHA512_LIBYUV" ] || die "cached libyuv distfile SHA512 mismatch"
+        log "vcpkg distfile (libyuv) already captured + verified"
+        return 0
     fi
     case "$SHA512_LIBYUV" in
         *"${SHA_PENDING}"*) die "libyuv distfile SHA512 is the R-B12 sentinel — record it in pins.env first" ;;
@@ -290,19 +516,26 @@ stage_vcpkg_distfiles() {
 stage_vcpkg_natives() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "deb-builder image missing — build_deb_builder_image must run first"
-    if [ -d "$ONLINE_DIR/vcpkg/installed/x64-linux/lib" ]; then
-        log "vcpkg native codecs already staged, skipping"; return 0
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
+    require_libvpx_distfiles
+    local native_key
+    native_key="$(libvpx_native_key)"
+    if [ -d "$ONLINE_DIR/vcpkg/installed/x64-linux/lib" ] && \
+       [ "$(cat "$ONLINE_DIR/vcpkg/installed/x64-linux/.rustdesk-libvpx-native-key" 2>/dev/null)" = "$native_key" ]; then
+        log "vcpkg native codecs already staged for libvpx key $native_key, skipping"; return 0
     fi
-    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
+    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg must run first"
     log "staging the vcpkg native codecs (libvpx/libyuv/opus, x64-linux static) -> ./online/vcpkg/installed"
     docker run --rm \
         -v "$ONLINE_DIR:/online" \
         -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
+        -e RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        -e LIBVPX_NATIVE_KEY="$native_key" \
         "$builder" bash -euo pipefail -c '
             VR=/tmp/vcpkg; mkdir -p "$VR"
             tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
             export VCPKG_DISABLE_METRICS=1
+            export VCPKG_BINARY_SOURCES=clear
             # Build the native codecs with the pinned gcc-8 toolchain used by the
             # offline deb-builder image, keeping C/C++ object generation stable. The
             # outputs are C-ABI static libs → link fine into the gcc/rust cargo build.
@@ -313,8 +546,12 @@ stage_vcpkg_natives() {
             # Stage only the x64-linux install tree (lib/*.a + include/) that
             # scrap/magnum-opus link_vcpkg read via VCPKG_ROOT/installed/x64-linux.
             mkdir -p /online/vcpkg/installed
+            staged="/online/vcpkg/installed/.x64-linux-${LIBVPX_NATIVE_KEY}.tmp"
+            rm -rf /online/vcpkg/installed/.x64-linux-*.tmp
+            cp -a "$VR"/installed/x64-linux "$staged"
+            printf "%s\n" "$LIBVPX_NATIVE_KEY" >"$staged/.rustdesk-libvpx-native-key"
             rm -rf /online/vcpkg/installed/x64-linux
-            cp -a "$VR"/installed/x64-linux /online/vcpkg/installed/x64-linux
+            mv "$staged" /online/vcpkg/installed/x64-linux
         '
     log "vcpkg natives staged ($(ls "$ONLINE_DIR"/vcpkg/installed/x64-linux/lib/*.a 2>/dev/null | wc -l) static libs)"
 }
@@ -333,7 +570,10 @@ stage_android_ndk() {
     log "extracting the Android NDK ${ANDROID_NDK_VERSION} -> ./online/android-ndk"
     rm -rf "$ONLINE_DIR/.ndk-tmp" "$ONLINE_DIR/android-ndk"; mkdir -p "$ONLINE_DIR/.ndk-tmp"
     unzip -q "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" -d "$ONLINE_DIR/.ndk-tmp"
-    mv "$ONLINE_DIR"/.ndk-tmp/android-ndk-* "$ONLINE_DIR/android-ndk"
+    local extracted=()
+    mapfile -d '' extracted < <(find "$ONLINE_DIR/.ndk-tmp" -mindepth 1 -maxdepth 1 -type d -name 'android-ndk-*' -print0)
+    [ "${#extracted[@]}" -eq 1 ] || die "pinned Android NDK archive did not extract exactly one android-ndk-* directory"
+    mv "${extracted[0]}" "$ONLINE_DIR/android-ndk"
     rm -rf "$ONLINE_DIR/.ndk-tmp"
 }
 
@@ -348,27 +588,38 @@ stage_android_ndk() {
 stage_vcpkg_natives_arm64() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
-    if [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android/lib" ]; then
-        log "vcpkg arm64-android codecs already staged, skipping"; return 0
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
+    require_libvpx_distfiles
+    local native_key
+    native_key="$(libvpx_native_key)"
+    if [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android/lib" ] && \
+       [ "$(cat "$ONLINE_DIR/vcpkg/installed/arm64-android/.rustdesk-libvpx-native-key" 2>/dev/null)" = "$native_key" ]; then
+        log "vcpkg arm64-android codecs already staged for libvpx key $native_key, skipping"; return 0
     fi
     [ -d "$ONLINE_DIR/android-ndk/toolchains" ] || die "android NDK not extracted — stage_android_ndk must run first"
-    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg_and_images must run first"
+    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg must run first"
     log "staging the vcpkg arm64-android natives (libvpx/libyuv/opus + oboe audio) -> ./online/vcpkg/installed/arm64-android"
     docker run --rm \
         -v "$ONLINE_DIR:/online" \
         -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
+        -e RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        -e LIBVPX_NATIVE_KEY="$native_key" \
         "$builder" bash -euo pipefail -c '
             export ANDROID_NDK_HOME=/online/android-ndk
             VR=/tmp/vcpkg; mkdir -p "$VR"
             tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
             export VCPKG_DISABLE_METRICS=1
+            export VCPKG_BINARY_SOURCES=clear
             "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
             "$VR"/vcpkg install --triplet arm64-android --overlay-ports=/overlay \
                 libvpx libyuv opus oboe
             mkdir -p /online/vcpkg/installed
+            staged="/online/vcpkg/installed/.arm64-android-${LIBVPX_NATIVE_KEY}.tmp"
+            rm -rf /online/vcpkg/installed/.arm64-android-*.tmp
+            cp -a "$VR"/installed/arm64-android "$staged"
+            printf "%s\n" "$LIBVPX_NATIVE_KEY" >"$staged/.rustdesk-libvpx-native-key"
             rm -rf /online/vcpkg/installed/arm64-android
-            cp -a "$VR"/installed/arm64-android /online/vcpkg/installed/arm64-android
+            mv "$staged" /online/vcpkg/installed/arm64-android
         '
     log "vcpkg arm64-android codecs staged ($(ls "$ONLINE_DIR"/vcpkg/installed/arm64-android/lib/*.a 2>/dev/null | wc -l) static libs)"
 }
@@ -381,7 +632,7 @@ stage_vcpkg_natives_arm64() {
 stage_cargo_ndk() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
     if [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ]; then
         log "cargo-ndk already staged, skipping"; return 0
     fi
@@ -404,7 +655,7 @@ stage_cargo_ndk() {
 stage_android_sdk() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
     if [ -d "$ONLINE_DIR/android-sdk/build-tools/${ANDROID_BUILD_TOOLS}" ]; then
         log "android SDK already staged, skipping"; return 0
     fi
@@ -435,7 +686,7 @@ stage_android_sdk() {
 stage_gradle() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "android-builder image missing — build_android_builder_image must run first"
+    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
     if [ -d "$ONLINE_DIR/gradle-home/caches/modules-2" ]; then
         log "gradle cache already warm, skipping"; return 0
     fi
@@ -564,13 +815,48 @@ stage_windows_wix_nuget() {
 }
 
 main() {
+    case "${1:-}" in
+        --libvpx-distfiles)
+            [ "$#" -eq 1 ] || die "--libvpx-distfiles takes no arguments"
+            stage_libvpx_distfiles
+            return 0
+            ;;
+        --maintenance-build-image-candidates)
+            [ "$#" -eq 1 ] || die "--maintenance-build-image-candidates takes no arguments"
+            maintenance_build_image_candidates
+            return 0
+            ;;
+        --maintenance-capture-builder-images)
+            [ "$#" -eq 1 ] || die "--maintenance-capture-builder-images takes no arguments"
+            maintenance_capture_builder_images
+            return 0
+            ;;
+        --maintenance-print-online-closure)
+            [ "$#" -eq 1 ] || die "--maintenance-print-online-closure takes no arguments"
+            python3 "$LIB_DIR/online-input-provenance.py" maintenance-print-root --tree "$ONLINE_DIR"
+            return 0
+            ;;
+        --maintenance-write-online-closure)
+            [ "$#" -eq 1 ] || die "--maintenance-write-online-closure takes no arguments"
+            python3 "$LIB_DIR/online-input-provenance.py" maintenance-write-record --tree "$ONLINE_DIR"
+            return 0
+            ;;
+        --verify-offline-inputs)
+            [ "$#" -eq 1 ] || die "--verify-offline-inputs takes no arguments"
+            verify_online_pinned_archives
+            load_builder_images
+            require_online_complete
+            return 0
+            ;;
+        '') ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs]" ;;
+    esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
+    load_builder_images
     vendor_cargo
     fetch_toolchains
-    fetch_vcpkg_and_images
-    build_deb_builder_image
-    build_android_builder_image
-    build_windows_helper_image
+    verify_online_glob_cardinality
+    fetch_vcpkg
     build_frb_codegen
     stage_pub_cache
     stage_vcpkg_distfiles
@@ -584,9 +870,9 @@ main() {
     stage_windows_engine
     stage_flutter_pub_cache
     stage_windows_wix_nuget
-    # Windows ISO / VS Build Tools are partly evergreen (R-B12(c)): pin the CAPTURED
-    # offline layout by SHA-256, documenting publisher-verified vs evergreen.
-    log "online-fetch complete — ./online is now offline-buildable. Builds run --network=none."
+    verify_online_pinned_archives
+    require_online_complete
+    log "online-fetch complete — ./online equals its pinned closure. Builds run --network=none."
 }
 
 main "$@"

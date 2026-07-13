@@ -45,10 +45,10 @@
 //! ```no_run
 //! use enigo::*;
 //! let mut enigo = Enigo::new();
-//! enigo.mouse_move_to(500, 200);
-//! enigo.mouse_down(MouseButton::Left);
-//! enigo.mouse_move_relative(100, 100);
-//! enigo.mouse_up(MouseButton::Left);
+//! enigo.mouse_move_to(500, 200).unwrap();
+//! enigo.mouse_down(MouseButton::Left).unwrap();
+//! enigo.mouse_move_relative(100, 100).unwrap();
+//! enigo.mouse_up(MouseButton::Left).unwrap();
 //! enigo.key_sequence("hello world");
 //! ```
 #![deny(missing_docs)]
@@ -91,8 +91,21 @@ extern crate serde;
 ///
 pub type ResultType = std::result::Result<(), Box<dyn std::error::Error>>;
 
+pub(crate) fn checked_scroll_magnitude(
+    length: i32,
+    maximum: i32,
+) -> std::result::Result<i32, Box<dyn std::error::Error>> {
+    let magnitude = length
+        .checked_abs()
+        .ok_or_else(|| "scroll length is not representable".to_owned())?;
+    if magnitude > maximum {
+        return Err(format!("scroll length exceeds backend maximum {maximum}").into());
+    }
+    Ok(magnitude)
+}
+
 #[cfg_attr(feature = "with_serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 /// MouseButton represents a mouse button,
 /// and is used in for example
 /// [mouse_click](trait.MouseControllable.html#tymethod.mouse_click).
@@ -142,9 +155,9 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_move_to(500, 200);
+    /// enigo.mouse_move_to(500, 200).unwrap();
     /// ```
-    fn mouse_move_to(&mut self, x: i32, y: i32);
+    fn mouse_move_to(&mut self, x: i32, y: i32) -> ResultType;
 
     /// Lets the mouse cursor move the specified amount in the x and y
     /// direction.
@@ -162,9 +175,9 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_move_relative(100, 100);
+    /// enigo.mouse_move_relative(100, 100).unwrap();
     /// ```
-    fn mouse_move_relative(&mut self, x: i32, y: i32);
+    fn mouse_move_relative(&mut self, x: i32, y: i32) -> ResultType;
 
     /// Push down one of the mouse buttons
     ///
@@ -183,7 +196,7 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_down(MouseButton::Left);
+    /// enigo.mouse_down(MouseButton::Left).unwrap();
     /// ```
     fn mouse_down(&mut self, button: MouseButton) -> ResultType;
 
@@ -202,9 +215,9 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_up(MouseButton::Right);
+    /// enigo.mouse_up(MouseButton::Right).unwrap();
     /// ```
-    fn mouse_up(&mut self, button: MouseButton);
+    fn mouse_up(&mut self, button: MouseButton) -> ResultType;
 
     /// Click a mouse button
     ///
@@ -219,9 +232,9 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_click(MouseButton::Right);
+    /// enigo.mouse_click(MouseButton::Right).unwrap();
     /// ```
-    fn mouse_click(&mut self, button: MouseButton);
+    fn mouse_click(&mut self, button: MouseButton) -> ResultType;
 
     /// Scroll the mouse (wheel) left or right
     ///
@@ -236,9 +249,9 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_scroll_x(2);
+    /// enigo.mouse_scroll_x(2).unwrap();
     /// ```
-    fn mouse_scroll_x(&mut self, length: i32);
+    fn mouse_scroll_x(&mut self, length: i32) -> ResultType;
 
     /// Scroll the mouse (wheel) up or down
     ///
@@ -253,9 +266,9 @@ pub trait MouseControllable {
     /// ```no_run
     /// use enigo::*;
     /// let mut enigo = Enigo::new();
-    /// enigo.mouse_scroll_y(2);
+    /// enigo.mouse_scroll_y(2).unwrap();
     /// ```
-    fn mouse_scroll_y(&mut self, length: i32);
+    fn mouse_scroll_y(&mut self, length: i32) -> ResultType;
 }
 
 /// A key on the keyboard.
@@ -529,6 +542,16 @@ impl fmt::Debug for Enigo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scroll_magnitude_rejects_overflow_and_backend_excess() {
+        assert_eq!(checked_scroll_magnitude(64, 64).unwrap(), 64);
+        assert_eq!(checked_scroll_magnitude(-64, 64).unwrap(), 64);
+        assert!(checked_scroll_magnitude(65, 64).is_err());
+        assert!(checked_scroll_magnitude(-65, 64).is_err());
+        assert!(checked_scroll_magnitude(i32::MIN, 64).is_err());
+    }
+
     #[test]
     fn test_get_key_state() {
         let mut enigo = Enigo::new();

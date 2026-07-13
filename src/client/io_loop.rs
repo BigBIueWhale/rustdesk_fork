@@ -498,8 +498,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     .lock()
                     .unwrap()
                     .set_connected();
-                self.handler
-                    .set_connection_type(stream_type); // flutter -> connection_ready
+                self.handler.set_connection_type(stream_type); // flutter -> connection_ready
                 self.handler.update_direct(Some(direct));
 
                 // just build for now

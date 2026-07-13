@@ -1,7 +1,7 @@
 # scripts/Dockerfile.android-builder — the pinned ubuntu:24.04 .apk build image (R-B7/B8).
 #
 # The Android build (build-android.sh) runs --network=none, so the system tools it needs
-# are baked in HERE during the ONE networked step (online-fetch.sh docker-builds this). The
+# are baked into the explicitly maintained image capture. Release builds load that pinned capture. The
 # Rust / Flutter / NDK toolchains are NOT in this image — they come from ./online at build
 # time (the digest-pinned tarballs + the extracted /online/android-ndk). Newer than the
 # bionic deb-builder because the NDK r28c prebuilt clang needs a modern glibc (ubuntu:24.04).
@@ -12,11 +12,26 @@
 # the cargo-ndk JNI lib (libclang for bindgen, libssl-dev for openssl-sys), and `flutter build
 # apk` (openjdk-17 for gradle). The android SDK (build-tools/platform) + gradle cache are
 # staged separately into ./online (sdkmanager / the gradle offline cache).
-ARG BASE_DIGEST
+ARG BASE_DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
 FROM ubuntu:24.04@${BASE_DIGEST}
+ARG BASE_DIGEST
+ARG DOCKERFILE_SHA256
+ARG DPKG_MANIFEST_SHA256
 ENV DEBIAN_FRONTEND=noninteractive
+COPY Dockerfile.android-builder /usr/local/share/rustdesk-build-provenance/Dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates clang cmake curl git \
       libclang-dev libssl-dev nasm ninja-build openjdk-17-jdk-headless \
       pkg-config python3 unzip wget xz-utils yasm zip \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && printf '%s  %s\n' "$DOCKERFILE_SHA256" /usr/local/share/rustdesk-build-provenance/Dockerfile | sha256sum -c - \
+    && dpkg-query -W -f='${binary:Package}\t${Version}\n' | LC_ALL=C sort > /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv \
+    && printf '%s  %s\n' "$DPKG_MANIFEST_SHA256" /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv | sha256sum -c - \
+    && printf 'contract=rustdesk-build-image-v1\nrole=android-builder\nbase=ubuntu:24.04@%s\ndockerfile_sha256=%s\ndpkg_manifest_sha256=%s\n' \
+         "$BASE_DIGEST" "$DOCKERFILE_SHA256" "$DPKG_MANIFEST_SHA256" \
+         > /usr/local/share/rustdesk-build-provenance/contract-v1
+LABEL org.rustdesk.build-input.contract="rustdesk-build-image-v1" \
+      org.rustdesk.build-input.role="android-builder" \
+      org.rustdesk.build-input.base="ubuntu:24.04@${BASE_DIGEST}" \
+      org.rustdesk.build-input.dockerfile-sha256="${DOCKERFILE_SHA256}" \
+      org.rustdesk.build-input.dpkg-manifest-sha256="${DPKG_MANIFEST_SHA256}"

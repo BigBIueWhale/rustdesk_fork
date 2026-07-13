@@ -11,6 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 RV="$(. scripts/pins.env; echo "$RUST_VERSION")"
+TEST_HOME="$(getent passwd "$(id -u)" | awk -F: 'NF == 7 { print $6 }')"
+[ -n "$TEST_HOME" ] && [ -d "$TEST_HOME" ] || { echo "BUILD-FAILLO: FATAL - cannot resolve test home"; exit 1; }
+CLEAN_SCRIPT_ENV=(env -i HOME="$TEST_HOME" PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC)
 P=0; F=0
 
 # run_die DESC SNIPPET : SNIPPET (lib sourced) MUST exit non-zero AND print a FATAL/FAIL message.
@@ -49,11 +52,13 @@ run_die "clean-worktree guard dies dirty"  'touch scripts/.faillo_ct_probe; trap
 run_ok  "clean-worktree yields ALLOW_DIRTY" 'export ALLOW_DIRTY_TREE=1; assert_clean_worktree'
 
 echo "== build-harness fail-loud proofs (script level) =="
-run_script_die "build-release.sh rejects a bad arg"    bash scripts/build-release.sh --nonsense
+run_script_die "build-release.sh rejects a bad arg" \
+  "${CLEAN_SCRIPT_ENV[@]}" bash scripts/build-release.sh --nonsense
 run_script_die "build-release.sh --doctor rejects a dirty tree" \
-  bash -c 'touch scripts/.faillo_dirt_probe; o="$(bash scripts/build-release.sh --doctor 2>&1)"; r=$?; rm -f scripts/.faillo_dirt_probe; printf "%s" "$o"; exit $r'
+  bash -c 'touch scripts/.faillo_dirt_probe; o="$(env -i HOME="$1" PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC bash scripts/build-release.sh --doctor 2>&1)"; r=$?; rm -f scripts/.faillo_dirt_probe; printf "%s" "$o"; exit $r' _ "$TEST_HOME"
 run_script_die "gen-android-keystore refuses to overwrite" bash scripts/gen-android-keystore.sh scripts/lib.sh /tmp/faillo-nonexistent-pass
-run_script_die "publish-github-release rejects a bad flag"  bash scripts/publish-github-release.sh --nonsense
+run_script_die "publish-github-release rejects a bad flag" \
+  "${CLEAN_SCRIPT_ENV[@]}" bash scripts/publish-github-release.sh --nonsense
 
 echo
 echo "RESULT: $P passed, $F failed"

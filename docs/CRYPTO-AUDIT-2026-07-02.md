@@ -1,11 +1,11 @@
-# Independent Cryptographic Audit — CPace PAKE (R-V3)
+# AI Cryptographic Review — CPace PAKE
 
 **Date:** 2026-07-02
 **Scope:** the in-tree CPace balanced-PAKE and its integration — §10 (the PAKE), §11
 (verification), and the wire/at-rest crypto it depends on.
 **Tree:** `master`, audit base `0c7442e`, re-reviewed through `b6f5eea`, findings resolved
 at `4eb6912`.
-**Requirement fulfilled:** R-V3 (the independent expert review §11 requires before exposed operation).
+**Requirement status:** this review does not fulfill R-V3's independent external expert-audit requirement.
 
 > ⚠️ **PARTIALLY SUPERSEDED (2026-07-04).** After this audit, the **host-key / host-proof
 > identity layer** it covers (R-S17 — the Ed25519 host-proof + the no-TOFU pin) was **retired
@@ -19,13 +19,12 @@ at `4eb6912`.
 
 ## Provenance & nature of this review (read first)
 
-This is an **AI-conducted expert review** performed by **Claude Opus 4.8**, engaged as the
-R-V3 cryptographer. It is rigorous — it includes an *independent* byte-level reproduction of
-the construction and first-principles protocol analysis — and it found and drove the
-resolution of real defects. It is nonetheless a **single-reviewer** review, and is not
-equivalent to the multi-party, decades-deep scrutiny that SSH's channel crypto enjoys. This
-report is the honest record of what was and was not covered; the residual it names is the
-operator's informed risk to accept.
+This is an **AI-conducted review** performed by **Claude Opus 4.8**. It includes a byte-level
+reproduction using a separately implemented stack and first-principles protocol analysis, and
+it found and drove the resolution of real defects. It is nonetheless a **single-model** review,
+not an organizationally independent professional audit and not equivalent to the multi-party,
+decades-deep scrutiny that SSH's channel crypto enjoys. This report is evidence available to a
+future auditor, not the external sign-off R-V3 requires.
 
 ## Verdict
 
@@ -133,12 +132,11 @@ fork meets or exceeds SSH-password-auth; the residual axis where SSH leads is *m
 
 ## Conclusion
 
-The mathematics is correct and the protocol composition is sound. R-V3's substance — an
-independent expert review of the §10.4 construction, the state machine, the constant-time paths,
-and the KDF/secretbox parameters, with findings resolved in writing and in code — is satisfied.
-No cryptographic defect blocks production. The residuals above — single-model review,
-trusted primitives, no formal proof, type-level timing — are the honest boundary of this
-audit and the operator's informed risk to accept.
+This review found the mathematics correct and the protocol composition sound, and its findings
+were resolved in writing and in code. It does not establish independent expert assurance and
+does not satisfy R-V3. The residuals above — single-model review, trusted primitives, no formal
+proof, and type-level timing — define the evidence and limitations an external auditor must
+evaluate before exposed production operation.
 
 *Verification artifacts:* `scripts/verify.sh` (all gates green — KATs, wire handshake, main-crate
 compile, R-P12 gate), `scripts/audit.sh` (green), `libs/pake` (16 passed / 1 ignored; the

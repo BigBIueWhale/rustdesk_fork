@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Arc, Mutex, RwLock, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, RwLock, Weak,
+    },
     time::Duration,
 };
 
@@ -12,7 +15,7 @@ use hbb_common::{
     allow_err,
     anyhow::Context,
     bail,
-    config::{Config, PermanentPasswordPrsRead},
+    config::{Config, PermanentPasswordCredentialSnapshot, PermanentPasswordPrsRead},
     log,
     message_proto::*,
     protobuf::{Enum, Message as _},
@@ -69,12 +72,222 @@ mod service;
 mod video_qos;
 pub mod video_service;
 
+#[cfg(any(target_os = "windows", test))]
+#[derive(Clone)]
+struct WindowsCredentialTransition {
+    id: String,
+    previous_storage: String,
+    previous_salt: String,
+    previous_tag: [u8; 32],
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Default)]
+struct WindowsCredentialReplica {
+    initialized: bool,
+    storage: String,
+    salt: String,
+    tag: [u8; 32],
+    transition: Option<WindowsCredentialTransition>,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl WindowsCredentialReplica {
+    fn resume_with<F, C>(
+        &mut self,
+        transition_id: &str,
+        quiesced: bool,
+        restore: F,
+        clear_quiesce: C,
+    ) -> ResultType<crate::ipc::WindowsCredentialReplicaState>
+    where
+        F: FnOnce(&str, &str) -> ResultType<()>,
+        C: FnOnce(),
+    {
+        let Some(transition) = self.transition.as_ref() else {
+            if !quiesced {
+                return Ok(crate::ipc::WindowsCredentialReplicaState {
+                    transition_id: None,
+                    replica_tag: self.tag,
+                    quiesced: false,
+                });
+            }
+            bail!("Windows credential replica quiesce state is incomplete");
+        };
+        if transition.id != transition_id {
+            bail!("Windows credential replica transition identity mismatch");
+        }
+        let transition = transition.clone();
+        restore(&transition.previous_storage, &transition.previous_salt)?;
+        self.storage = transition.previous_storage;
+        self.salt = transition.previous_salt;
+        self.tag = transition.previous_tag;
+        self.transition = None;
+        clear_quiesce();
+        Ok(crate::ipc::WindowsCredentialReplicaState {
+            transition_id: None,
+            replica_tag: self.tag,
+            quiesced: false,
+        })
+    }
+}
+
+#[cfg(target_os = "windows")]
+static WINDOWS_CREDENTIAL_REPLICA: std::sync::OnceLock<std::sync::Mutex<WindowsCredentialReplica>> =
+    std::sync::OnceLock::new();
+#[cfg(any(target_os = "windows", test))]
+static WINDOWS_CREDENTIAL_QUIESCED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "windows")]
+fn windows_credential_replica() -> &'static std::sync::Mutex<WindowsCredentialReplica> {
+    WINDOWS_CREDENTIAL_REPLICA
+        .get_or_init(|| std::sync::Mutex::new(WindowsCredentialReplica::default()))
+}
+
+#[cfg(target_os = "windows")]
+fn initialize_windows_credential_replica(replica: &mut WindowsCredentialReplica) {
+    if replica.initialized {
+        return;
+    }
+    let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
+    replica.tag = crate::ipc::windows_credential_replica_tag(&storage, &salt);
+    replica.storage = storage;
+    replica.salt = salt;
+    replica.initialized = true;
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn windows_credential_authentication_is_quiesced() -> bool {
+    WINDOWS_CREDENTIAL_QUIESCED.load(Ordering::Acquire)
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn quiesce_windows_credential_authentication() -> ResultType<()> {
+    WINDOWS_CREDENTIAL_QUIESCED.store(true, Ordering::Release);
+    if let Err(err) = Config::set_permanent_password_storage_for_runtime("", "") {
+        WINDOWS_CREDENTIAL_QUIESCED.store(false, Ordering::Release);
+        return Err(err);
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn resume_windows_credential_authentication() {
+    WINDOWS_CREDENTIAL_QUIESCED.store(false, Ordering::Release);
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn quiesce_windows_credential_replica(
+    transition_id: &str,
+) -> ResultType<crate::ipc::WindowsCredentialReplicaState> {
+    let mut replica = windows_credential_replica().lock().unwrap();
+    initialize_windows_credential_replica(&mut replica);
+    if let Some(transition) = replica.transition.as_ref() {
+        if transition.id != transition_id {
+            bail!("another Windows credential transition is already active");
+        }
+        return Ok(crate::ipc::WindowsCredentialReplicaState {
+            transition_id: Some(transition.id.clone()),
+            replica_tag: transition.previous_tag,
+            quiesced: windows_credential_authentication_is_quiesced(),
+        });
+    }
+
+    quiesce_windows_credential_authentication()?;
+    replica.transition = Some(WindowsCredentialTransition {
+        id: transition_id.to_owned(),
+        previous_storage: replica.storage.clone(),
+        previous_salt: replica.salt.clone(),
+        previous_tag: replica.tag,
+    });
+    Ok(crate::ipc::WindowsCredentialReplicaState {
+        transition_id: Some(transition_id.to_owned()),
+        replica_tag: replica.tag,
+        quiesced: true,
+    })
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn apply_windows_credential_replica(
+    transition_id: &str,
+    storage: &str,
+    salt: &str,
+    replica_tag: [u8; 32],
+) -> ResultType<crate::ipc::WindowsCredentialReplicaState> {
+    if crate::ipc::windows_credential_replica_tag(storage, salt) != replica_tag {
+        bail!("Windows credential replica tag does not match the supplied snapshot");
+    }
+    let mut replica = windows_credential_replica().lock().unwrap();
+    initialize_windows_credential_replica(&mut replica);
+    let Some(transition) = replica.transition.as_ref() else {
+        if replica.tag == replica_tag {
+            return Ok(crate::ipc::WindowsCredentialReplicaState {
+                transition_id: None,
+                replica_tag,
+                quiesced: windows_credential_authentication_is_quiesced(),
+            });
+        }
+        bail!("Windows credential replica has no matching active transition");
+    };
+    if transition.id != transition_id {
+        bail!("Windows credential replica transition identity mismatch");
+    }
+    Config::set_permanent_password_storage_for_runtime(storage, salt)?;
+    replica.storage = storage.to_owned();
+    replica.salt = salt.to_owned();
+    replica.tag = replica_tag;
+    replica.transition = None;
+    resume_windows_credential_authentication();
+    Ok(crate::ipc::WindowsCredentialReplicaState {
+        transition_id: None,
+        replica_tag,
+        quiesced: false,
+    })
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn resume_windows_credential_replica(
+    transition_id: &str,
+) -> ResultType<crate::ipc::WindowsCredentialReplicaState> {
+    let mut replica = windows_credential_replica().lock().unwrap();
+    initialize_windows_credential_replica(&mut replica);
+    replica.resume_with(
+        transition_id,
+        windows_credential_authentication_is_quiesced(),
+        |storage, salt| {
+            Config::set_permanent_password_storage_for_runtime(storage, salt).map(|_| ())
+        },
+        resume_windows_credential_authentication,
+    )
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn query_windows_credential_replica() -> crate::ipc::WindowsCredentialReplicaState {
+    let mut replica = windows_credential_replica().lock().unwrap();
+    initialize_windows_credential_replica(&mut replica);
+    crate::ipc::WindowsCredentialReplicaState {
+        transition_id: replica
+            .transition
+            .as_ref()
+            .map(|transition| transition.id.clone()),
+        replica_tag: replica.tag,
+        quiesced: windows_credential_authentication_is_quiesced(),
+    }
+}
+
 pub async fn effective_permanent_password_prs_status() -> PermanentPasswordPrsRead {
+    effective_permanent_password_credential_snapshot()
+        .await
+        .into_parts()
+        .0
+}
+
+pub async fn effective_permanent_password_credential_snapshot(
+) -> PermanentPasswordCredentialSnapshot {
     #[cfg(target_os = "macos")]
     if crate::common::is_service_owned_server_process() {
         match crate::ipc::refresh_macos_service_owned_permanent_password_snapshot(1_000).await {
-            Ok(true) => return Config::read_permanent_password_prs(),
-            Ok(false) => return PermanentPasswordPrsRead::Empty,
+            Ok(_) => return Config::read_permanent_password_credential_snapshot(),
             Err(err) => {
                 log::debug!("Failed to refresh macOS service-owned password snapshot: {err}");
                 if let Err(clear_err) = Config::set_permanent_password_storage_for_runtime("", "") {
@@ -82,11 +295,11 @@ pub async fn effective_permanent_password_prs_status() -> PermanentPasswordPrsRe
                         "Failed to clear stale macOS service-owned password snapshot: {clear_err}"
                     );
                 }
-                return PermanentPasswordPrsRead::Empty;
+                return Config::read_permanent_password_credential_snapshot();
             }
         }
     }
-    Config::read_permanent_password_prs()
+    Config::read_permanent_password_credential_snapshot()
 }
 
 pub async fn effective_permanent_password_prs() -> String {
@@ -316,6 +529,15 @@ pub fn is_shutting_down() -> bool {
     SHUTDOWN_TOKEN.is_cancelled()
 }
 
+static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);
+
+pub fn request_graceful_shutdown() {
+    if !SHUTDOWN_TOKEN.is_cancelled() {
+        log::info!("R-T9: graceful shutdown initiated — stop accepting, drain live sessions");
+        SHUTDOWN_TOKEN.cancel();
+    }
+}
+
 /// R-T9 (§20): perform a graceful shutdown on SIGTERM/SIGINT. (1) stop accepting — the accept
 /// loop observes the cancelled token and drops the listener (new SYNs RST); (2) signal every live
 /// connection to close gracefully (each run-loop's `cancelled()` arm sends its CloseReason, flushes,
@@ -325,11 +547,14 @@ pub fn is_shutting_down() -> bool {
 /// `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero means cleanup actually
 /// completed); (4) force-exit 0, terminating any still-live connection past the deadline. Idempotent.
 pub async fn begin_graceful_shutdown() {
-    if SHUTDOWN_TOKEN.is_cancelled() {
+    request_graceful_shutdown();
+    finish_graceful_shutdown().await;
+}
+
+pub async fn finish_graceful_shutdown() {
+    if SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
-    log::info!("R-T9: graceful shutdown initiated — stop accepting, drain live sessions");
-    SHUTDOWN_TOKEN.cancel();
     let deadline = std::time::Duration::from_secs(8);
     let start = std::time::Instant::now();
     loop {
@@ -346,6 +571,8 @@ pub async fn begin_graceful_shutdown() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::ipc::wait_for_local_ipc_shutdown().await;
     log::info!("R-T9: graceful shutdown complete — exiting 0");
     std::process::exit(0);
 }
@@ -414,43 +641,7 @@ pub async fn create_tcp_connection(
     // identity keys (R-P5), no alternate keying path to select, and no downgrade
     // (R-P11). With the rendezvous/relay paths neutralized (6920db9) the box only
     // serves direct connections, which always key via CPace below.
-    {
-        // R-P14 / R-S1: the single mandatory CPace handshake at the choke point.
-        // The direct path gains mandatory keying here — every transport is mutually
-        // password-authenticated and keyed before any application message. The PRS is
-        // the live permanent password read fresh per connection (R-P1/R-S16); an
-        // empty PRS fails closed (R-S9). Note: the matching viewer must run the
-        // CPace initiator (client.rs) — fork peers only, no downgrade (R-P11).
-        let prs = effective_permanent_password_prs().await;
-        if prs.is_empty() {
-            bail!("Refusing connection: no permanent password set (R-S9)");
-        }
-        // R-S10 / R-P14c: shed a source that has exceeded the online-guess rate
-        // BEFORE the expensive scalar-mult — checked here, before run_responder.
-        if !hbb_common::cpace::guess_limiter_allows(addr.ip()) {
-            note_security_event(SecurityEvent::RateLimited, addr.ip());
-            bail!("R-S10: source rate-limited after too many failed password attempts");
-        }
-        let Some(fs) = stream.as_framed_tcp_mut() else {
-            bail!("CPace handshake requires a TCP stream at the choke point");
-        };
-        match hbb_common::cpace::run_responder(fs, &prs).await {
-            Ok(keys) => {
-                fs.set_session_keys(keys);
-            }
-            Err(e) => {
-                if e.is_password_guess() {
-                    // R-P14c: ONLY a key-confirmation tag mismatch is an online
-                    // password guess and feeds the per-source limiter (R-S10);
-                    // decode / order / AD / identity / timeout aborts MUST NOT, or a
-                    // malformed-frame flood would trip the owner's own block.
-                    hbb_common::cpace::record_guess_failure(addr.ip());
-                    note_security_event(SecurityEvent::KeyConfirmFail, addr.ip());
-                }
-                bail!("CPace handshake failed: fail-closed");
-            }
-        }
-    }
+    let credential_generation = authenticate_tcp_stream(&mut stream, addr).await?;
     // R-T1(b): keying succeeded — release the pre-key handshake slot now, before the
     // unbounded Connection::start session, so the bound governs only the half-open
     // (attacker-reachable) population. (A fail-closed bail above auto-drops it on return.)
@@ -476,9 +667,83 @@ pub async fn create_tcp_connection(
         id,
         Arc::downgrade(&server),
         control_permissions,
+        credential_generation,
     )
     .await;
     Ok(())
+}
+
+async fn authenticate_tcp_stream(stream: &mut Stream, addr: SocketAddr) -> ResultType<u64> {
+    {
+        // R-P14 / R-S1: the single mandatory CPace handshake at the choke point.
+        // The direct path gains mandatory keying here — every transport is mutually
+        // password-authenticated and keyed before any application message. The PRS is
+        // the live permanent password read fresh per connection (R-P1/R-S16); an
+        // empty PRS fails closed (R-S9). Note: the matching viewer must run the
+        // CPace initiator (client.rs) — fork peers only, no downgrade (R-P11).
+        #[cfg(target_os = "windows")]
+        if windows_credential_authentication_is_quiesced() {
+            bail!("Permanent password transition is in progress");
+        }
+        let credential = effective_permanent_password_credential_snapshot().await;
+        let (prs_status, credential_generation) = credential.into_parts();
+        let prs = prs_status.into_prs();
+        if prs.is_empty() {
+            bail!("Refusing connection: no permanent password set (R-S9)");
+        }
+        // R-S10 / R-P14c: shed a source that has exceeded the online-guess rate
+        // BEFORE the expensive scalar-mult — checked here, before run_responder.
+        if !hbb_common::cpace::guess_limiter_allows(addr.ip()) {
+            note_security_event(SecurityEvent::RateLimited, addr.ip());
+            bail!("R-S10: source rate-limited after too many failed password attempts");
+        }
+        let handshake = {
+            let Some(fs) = stream.as_framed_tcp_mut() else {
+                bail!("CPace handshake requires a TCP stream at the choke point");
+            };
+            hbb_common::cpace::run_responder(fs, &prs).await
+        };
+        let keys = match handshake {
+            Ok(keys) => keys,
+            Err(e) => {
+                if e.is_password_guess() {
+                    // R-P14c: ONLY a key-confirmation tag mismatch is an online
+                    // password guess and feeds the per-source limiter (R-S10);
+                    // decode / order / AD / identity / timeout aborts MUST NOT, or a
+                    // malformed-frame flood would trip the owner's own block.
+                    hbb_common::cpace::record_guess_failure(addr.ip());
+                    note_security_event(SecurityEvent::KeyConfirmFail, addr.ip());
+                }
+                bail!("CPace handshake failed: fail-closed");
+            }
+        };
+        #[cfg(target_os = "windows")]
+        if windows_credential_authentication_is_quiesced() {
+            bail!("Permanent password transition interrupted the handshake");
+        }
+        // On macOS this refreshes the LaunchAgent's runtime snapshot again. On every platform
+        // the generation comparison is made after CPace key confirmation and before the keys
+        // become usable by an application stream.
+        let confirmed_generation = effective_permanent_password_credential_snapshot()
+            .await
+            .generation();
+        if confirmed_generation != credential_generation {
+            bail!("CPace credential changed during handshake");
+        }
+        let keys_installed =
+            Config::with_current_permanent_password_generation(credential_generation, || {
+                #[cfg(target_os = "windows")]
+                if windows_credential_authentication_is_quiesced() {
+                    return false;
+                }
+                stream.set_session_keys(keys);
+                true
+            });
+        if keys_installed != Some(true) {
+            bail!("CPace credential changed before key installation");
+        }
+        Ok(credential_generation)
+    }
 }
 
 impl Server {
@@ -752,6 +1017,15 @@ pub async fn start_server(is_server: bool) {
 
     if is_server {
         crate::common::set_server_running(true);
+        #[cfg(target_os = "windows")]
+        if crate::common::is_service_owned_server_process() {
+            std::thread::spawn(|| {
+                if let Err(err) = crate::ipc::start_windows_service_main_ipc() {
+                    log::error!("Failed to start Windows service-main IPC: {err}");
+                    std::process::exit(1);
+                }
+            });
+        }
         std::thread::spawn(move || {
             if let Err(err) = crate::ipc::start("") {
                 log::error!("Failed to start ipc: {}", err);
@@ -770,7 +1044,7 @@ pub async fn start_server(is_server: bool) {
         // lifetime is the process/systemd-unit lifetime (R-X9), so pass `None`.
         crate::direct_service::start_direct_only(None).await;
     } else {
-        match crate::ipc::connect(1000, "").await {
+        match crate::ipc::get_main_status_snapshot(1000).await {
             Ok(_) => {}
             Err(err) => {
                 // R-X10: the GUI/client (`is_server == false`) path NEVER auto-starts a controlled
@@ -836,5 +1110,200 @@ pub async fn start_ipc_url_server() {
         Err(err) => {
             log::error!("{}", err);
         }
+    }
+}
+
+#[cfg(test)]
+mod credential_generation_tests {
+    use super::*;
+    use hbb_common::{
+        cpace::run_initiator,
+        sodiumoxide::base64,
+        tcp::FramedStream,
+        tokio::net::{TcpListener, TcpStream},
+    };
+
+    async fn loopback_pair() -> (FramedStream, FramedStream, SocketAddr) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
+        let client = client.unwrap();
+        let (server, peer) = accepted.unwrap();
+        (
+            FramedStream::from(client, addr),
+            FramedStream::from(server, peer),
+            peer,
+        )
+    }
+
+    fn runtime_storage(raw: [u8; 32]) -> String {
+        let hashed = "00".to_owned() + &base64::encode(raw, base64::Variant::Original);
+        let encrypted =
+            hbb_common::password_security::symmetric_crypt(hashed.as_bytes(), true).unwrap();
+        "01".to_owned() + &base64::encode(encrypted, base64::Variant::Original)
+    }
+
+    fn assert_quiesce_ack_drains_final_authorization_callback() {
+        use std::sync::mpsc;
+
+        Config::set_permanent_password_storage_for_runtime(
+            &runtime_storage([0x33u8; 32]),
+            "test-salt",
+        )
+        .unwrap();
+        let generation = Config::read_permanent_password_credential_snapshot().generation();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (authorize_tx, authorize_rx) = mpsc::channel();
+        let authorized = Arc::new(AtomicBool::new(false));
+        let authorized_in_callback = Arc::clone(&authorized);
+        let authorization = std::thread::spawn(move || {
+            Config::with_current_permanent_password_generation(generation, || {
+                entered_tx.send(()).unwrap();
+                authorize_rx.recv().unwrap();
+                authorized_in_callback.store(true, Ordering::Release);
+            })
+        });
+
+        entered_rx.recv().unwrap();
+        let (quiesced_tx, quiesced_rx) = mpsc::channel();
+        let quiesce = std::thread::spawn(move || {
+            quiesce_windows_credential_authentication().unwrap();
+            quiesced_tx.send(()).unwrap();
+        });
+        let quiesce_started = std::time::Instant::now();
+        while !windows_credential_authentication_is_quiesced() {
+            assert!(
+                quiesce_started.elapsed() < Duration::from_secs(1),
+                "quiesce did not reach its authorization gate"
+            );
+            std::thread::yield_now();
+        }
+        assert!(quiesced_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        authorize_tx.send(()).unwrap();
+        assert!(authorization.join().unwrap().is_some());
+        quiesced_rx.recv().unwrap();
+        quiesce.join().unwrap();
+
+        assert!(authorized.load(Ordering::Acquire));
+        assert!(windows_credential_authentication_is_quiesced());
+        assert!(Config::with_current_permanent_password_generation(generation, || ()).is_none());
+        resume_windows_credential_authentication();
+        Config::set_permanent_password_storage_for_runtime("", "").unwrap();
+    }
+
+    #[test]
+    fn windows_replica_resume_retains_quiesce_until_restoration_succeeds() {
+        use std::cell::Cell;
+
+        let mut replica = WindowsCredentialReplica {
+            initialized: true,
+            storage: String::new(),
+            salt: String::new(),
+            tag: [0; 32],
+            transition: Some(WindowsCredentialTransition {
+                id: "transition".to_owned(),
+                previous_storage: "old-storage".to_owned(),
+                previous_salt: "old-salt".to_owned(),
+                previous_tag: [7; 32],
+            }),
+        };
+        let clears = Cell::new(0);
+        let failed = replica.resume_with(
+            "transition",
+            true,
+            |_, _| Err(hbb_common::anyhow::anyhow!("injected restoration failure")),
+            || clears.set(clears.get() + 1),
+        );
+        assert!(failed.is_err());
+        assert!(replica.transition.is_some());
+        assert_eq!(clears.get(), 0);
+
+        let state = replica
+            .resume_with(
+                "transition",
+                true,
+                |storage, salt| {
+                    assert_eq!(storage, "old-storage");
+                    assert_eq!(salt, "old-salt");
+                    Ok(())
+                },
+                || clears.set(clears.get() + 1),
+            )
+            .unwrap();
+        assert_eq!(state.transition_id, None);
+        assert!(!state.quiesced);
+        assert_eq!(state.replica_tag, [7; 32]);
+        assert!(replica.transition.is_none());
+        assert_eq!(clears.get(), 1);
+
+        let replay = replica
+            .resume_with(
+                "transition",
+                false,
+                |_, _| panic!("lost-reply replay must not restore twice"),
+                || panic!("lost-reply replay must not clear quiesce twice"),
+            )
+            .unwrap();
+        assert_eq!(replay.transition_id, None);
+        assert!(!replay.quiesced);
+        assert_eq!(replay.replica_tag, [7; 32]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn rotation_and_quiesce_races_cannot_cross_final_authorization() {
+        let old_prs = base64::encode([0x11u8; 32], base64::Variant::Original);
+        Config::set_permanent_password_storage_for_runtime(
+            &runtime_storage([0x11u8; 32]),
+            "test-salt",
+        )
+        .unwrap();
+        let old_generation = Config::read_permanent_password_credential_snapshot().generation();
+
+        let (mut initiator, mut proxy_from_initiator, _) = loopback_pair().await;
+        let (mut proxy_to_responder, responder, responder_addr) = loopback_pair().await;
+        let mut responder = Stream::Tcp(responder);
+
+        let initiator_future = run_initiator(&mut initiator, &old_prs);
+        let responder_future = authenticate_tcp_stream(&mut responder, responder_addr);
+        let proxy_future = async {
+            let step1 = proxy_from_initiator.next().await.unwrap().unwrap();
+            proxy_to_responder.send_raw(step1.to_vec()).await.unwrap();
+
+            let step2 = proxy_to_responder.next().await.unwrap().unwrap();
+            proxy_from_initiator.send_raw(step2.to_vec()).await.unwrap();
+
+            Config::set_permanent_password_storage_for_runtime(
+                &runtime_storage([0x22u8; 32]),
+                "test-salt",
+            )
+            .unwrap();
+
+            let step3 = proxy_from_initiator.next().await.unwrap().unwrap();
+            proxy_to_responder.send_raw(step3.to_vec()).await.unwrap();
+            let step4 = proxy_to_responder.next().await.unwrap().unwrap();
+            proxy_from_initiator.send_raw(step4.to_vec()).await.unwrap();
+        };
+
+        let (initiator_result, responder_result, ()) =
+            tokio::join!(initiator_future, responder_future, proxy_future);
+        assert!(
+            initiator_result.is_ok(),
+            "the old CPace transcript itself completed"
+        );
+        assert!(
+            responder_result.is_err(),
+            "the responder must reject the stale generation"
+        );
+        assert!(
+            !responder.is_secured(),
+            "stale CPace keys must never be installed"
+        );
+        assert!(
+            Config::with_current_permanent_password_generation(old_generation, || ()).is_none(),
+            "the stale generation cannot pass the final authorization linearization"
+        );
+
+        Config::set_permanent_password_storage_for_runtime("", "").unwrap();
+        assert_quiesce_ack_drains_final_authorization_callback();
     }
 }

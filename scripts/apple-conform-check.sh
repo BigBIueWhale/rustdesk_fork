@@ -22,6 +22,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
 
+# shellcheck source=scripts/verify-scan.sh
+source scripts/verify-scan.sh
+verify_scan_preflight
+
 APPLE_CHECK_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-apple-check.XXXXXXXXXX)
 readonly APPLE_CHECK_TMP
 cleanup_apple_check_tmp() {
@@ -53,6 +57,7 @@ PY
 then
   exit 1
 fi
+verify_scan_self_test "$APPLE_CHECK_TMP"
 
 BASE_IMG=rd-devcheck
 IMG=rd-apple-check
@@ -190,8 +195,16 @@ done
 
 echo "== (2) R-A6 Apple-cfg forbidden-token greps =="
 apple_absent(){
-  local hits
-  hits=$(grep -rnE "$1" "${GREP_SRC[@]}" 2>/dev/null | grep -vE ':[0-9]+:[[:space:]]*//' || true)
+  local hits raw="$APPLE_CHECK_TMP/apple-absent-raw" filtered="$APPLE_CHECK_TMP/apple-absent-filtered"
+  if verify_scan_capture "$raw" -rnE "$1" "${GREP_SRC[@]}"; then
+    if verify_scan_capture "$filtered" -vE ':[0-9]+:[[:space:]]*//' "$raw"; then
+      hits=$(<"$filtered")
+    else
+      hits=
+    fi
+  else
+    hits=
+  fi
   if [ -n "$hits" ]; then
     echo "  FAIL $2 - Apple-cfg token present:"
     echo "$hits" | sed 's/^/      /'
@@ -210,14 +223,14 @@ apple_absent 'libpam|pam_authenticate|\bpam::' \
 
 echo "== (2a) R-S11e-17 typed CM file response authority =="
 r_s11e17=
-if rg -n 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \
-  "$REPO/src/ipc.rs" "$REPO/src/ui_cm_interface.rs" "$REPO/src/server/connection.rs" >"$APPLE_CHECK_TMP/r_s11e17_forbidden.txt"; then
+if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \
+  "$REPO/src/ipc.rs" "$REPO/src/ui_cm_interface.rs" "$REPO/src/server/connection.rs"; then
   r_s11e17="$r_s11e17 legacy-untyped-response-surface-present"
 fi
-if rg -n 'digest_request' "$REPO/src/server/connection.rs" >"$APPLE_CHECK_TMP/r_s11e17_aux_digest_state.txt"; then
+if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_aux_digest_state.txt" -nE 'digest_request' "$REPO/src/server/connection.rs"; then
   r_s11e17="$r_s11e17 digest-authority-remains-auxiliary-state"
 fi
-if rg -n 'Message::new|write_to_bytes|parse_from_bytes' "$REPO/src/ui_cm_interface.rs" >"$APPLE_CHECK_TMP/r_s11e17_cm_proto.txt"; then
+if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_cm_proto.txt" -nE 'Message::new|write_to_bytes|parse_from_bytes' "$REPO/src/ui_cm_interface.rs"; then
   r_s11e17="$r_s11e17 cm-still-constructs-or-parses-network-protobuf"
 fi
 grep -Fq 'CmFileResponse(CmFileResponse)' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 typed-envelope-missing"
@@ -806,7 +819,7 @@ grep -q 'keyboard input mode and payload are inconsistent' "$REPO/src/server/con
 grep -qF '(OPTION_KEY, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-username-not-pinned-empty"
 grep -qF '(OPTION_PROXY_PASSWORD, "")' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 proxy-password-not-pinned-empty"
-if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs" --glob '*.rs' >"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers"; then
+if verify_scan_capture "$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers" -rInE --include='*.rs' 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs"; then
   r_s11b2="$r_s11b2 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers")"
 fi
 grep -q 'MainIpcRequest::SetOptions(wire_options)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-typed"

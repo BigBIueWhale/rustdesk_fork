@@ -41,6 +41,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/verify-scan.sh
+source scripts/verify-scan.sh
+verify_scan_preflight
+
 VERIFY_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-verify.XXXXXXXXXX)
 readonly VERIFY_TMP
 cleanup_verify_tmp() {
@@ -72,6 +76,7 @@ PY
 then
   exit 1
 fi
+verify_scan_self_test "$VERIFY_TMP"
 
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
 # shellcheck source=scripts/fork-version.sh
@@ -229,8 +234,8 @@ grep -q 'current_process_allows_main_channel_options_write()' src/ipc.rs        
 grep -q 'fn allows_main_channel_voice_call_input_write' src/ipc.rs                     || r_s11="$r_s11 voice-input-authority-helper-missing"
 grep -q 'Socks(Option' src/ipc.rs && r_s11="$r_s11 socks-ipc-variant-present"
 grep -q 'Data::Socks' src/ipc.rs && r_s11="$r_s11 socks-ipc-reference-present"
-if rg -n 'CheckHwcodec|HwCodecConfig|notify_server_to_check_hwcodec|get_hwcodec_config_from_server|client_get_hwcodec_config_thread|hwcodec_process|--check-hwcodec-config|start_check_process\(|check_available_hwcodec\(|HwCodecConfig::' \
-  src >"$VERIFY_TMP/rd_verify_hwcodec_ipc"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_hwcodec_ipc" -rInE 'CheckHwcodec|HwCodecConfig|notify_server_to_check_hwcodec|get_hwcodec_config_from_server|client_get_hwcodec_config_thread|hwcodec_process|--check-hwcodec-config|start_check_process\(|check_available_hwcodec\(|HwCodecConfig::' \
+  src; then
   r_s11="$r_s11 hwcodec-ipc-probe-surface-present:$(tr '\n' ';' <"$VERIFY_TMP/rd_verify_hwcodec_ipc")"
 fi
 config_get_id_body=$(awk '/pub fn get_id\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
@@ -996,7 +1001,7 @@ if [ -n "$r_s11c25" ]; then echo "  FAIL R-S11c-25 Windows terminal service prin
 
 echo "== (3b-iii-a5) Windows privacy-broker, shortcut, and process provenance (R-S11d) =="
 r_s11d=
-if rg -n 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform -g '*.rs' >"$VERIFY_TMP/rd_verify_r_s11d_wmic"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11d_wmic" -rInE --include='*.rs' 'wmic|by_wmic|get_pids_with_args_by_wmic|get_pids_with_first_arg_by_wmic|get_pids_with_first_arg_check_session|not\(target_pointer_width = "64"\)|all\(target_os = "windows", not\(target_pointer_width = "64"\)\)' src/common.rs src/platform; then
   cat "$VERIFY_TMP/rd_verify_r_s11d_wmic"
   r_s11d="$r_s11d windows:unsupported-32bit-wmic-process-probe-leftover"
 fi
@@ -1266,7 +1271,7 @@ grep -Fq 'bail!("SetupAPI driver install requires reboot before the driver can b
 grep -Fq 'pub struct MonitorMode' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained idd:monitor-mode-not-local"
 grep -Fq 'map.insert("idd_impl".into(), serde_json::json!(IDD_IMPL_AMYUNI));' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained idd:not-amyuni-only"
 [ ! -d libs/virtual_display ] || r_s11d_retained="$r_s11d_retained idd:deleted-crate-present"
-if rg -n 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virtual_display|virtual_display =|kPlatformAdditionsRustDeskVirtualDisplays|isRustDeskIdd|RustDeskVirtualDisplays' Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py >"$VERIFY_TMP/rd_verify_r_s11d_retained_idd"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11d_retained_idd" -rInE 'rustdesk_idd|rustdesk_virtual_displays|dylib_virtual_display|libs/virtual_display|^[[:space:]]*virtual_display[[:space:]]*=|kPlatformAdditionsRustDeskVirtualDisplays|isRustDeskIdd|RustDeskVirtualDisplays' Cargo.toml Cargo.lock build.py src flutter/lib scripts/build-windows.ps1 scripts/canonicalize-pe.py; then
   r_s11d_retained="$r_s11d_retained idd:loader-build-or-ui-leftover"
 fi
 
@@ -1320,7 +1325,7 @@ grep -Fq '<CustomAction Id="RemoveTestCertificates" DllEntry="RemoveTestCertific
 grep -Fq '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>' "$windows_msi" || r_s11e20="$r_s11e20 certificate-action-not-explicit-uninstall-commit-scheduled"
 grep -Fq 'if (SUCCEEDED(hr) && !DeleteRustDeskTestCertsW())' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 certificate-action-not-fail-closed"
 grep -Fq '..\..\..\src\platform\windows_delete_test_cert.cc' res/msi/CustomActions/CustomActions.vcxproj || r_s11e20="$r_s11e20 certificate-source-not-linked-into-msi"
-if rg -n 'kWrongRootStorePrefix|has_wrong_root_store_prefix|delete_one_level_tree' src/platform/windows_delete_test_cert.cc >"$VERIFY_TMP/rd_verify_r_s11e20_cert_broad"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_cert_broad" -nE 'kWrongRootStorePrefix|has_wrong_root_store_prefix|delete_one_level_tree' src/platform/windows_delete_test_cert.cc; then
   r_s11e20="$r_s11e20 broad-certificate-store-cleanup-leftover"
 fi
 
@@ -1359,7 +1364,7 @@ if printf '%s\n%s\n' "$sas_policy_read" "$sas_policy_decision" | grep -Eq 'KEY_S
 fi
 grep -Fq 'windows_sas_policy_matrix_is_read_only_and_fail_closed' src/platform/windows.rs || r_s11e20="$r_s11e20 sas-read-only-policy-test-missing"
 
-if rg -n 'AddFirewallRules|RemoveFirewallRules|CreateStartService|TryStopDeleteService|TerminateProcesses|TerminateBrokers|MyCreateServiceW|AddFirewallRule|CC_CONNECTION_TYPE|--conn-type|STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi >"$VERIFY_TMP/rd_verify_r_s11e20_custom_actions"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_custom_actions" -rInE 'AddFirewallRules|RemoveFirewallRules|CreateStartService|TryStopDeleteService|TerminateProcesses|TerminateBrokers|MyCreateServiceW|AddFirewallRule|CC_CONNECTION_TYPE|--conn-type|STOP_SERVICE|SetPropertyServiceStop|SetPropertyFromConfig|SetPropertyIsServiceRunning|TryDeleteStartupShortcut|ReadConfig|AddRegSoftwareSASGeneration|SoftwareSASGeneration' res/msi; then
   r_s11e20="$r_s11e20 custom-service-firewall-or-basename-kill-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_custom_actions")"
 fi
 for deleted in res/msi/CustomActions/FirewallRules.cpp res/msi/CustomActions/ServiceUtils.cpp flutter/lib/desktop/pages/install_page.dart; do
@@ -1372,8 +1377,8 @@ done
 for removed_flag in '"--install"' '"--noinstall"' '"--uninstall"' '"--after-install"' '"--before-uninstall"' '"--silent-install"' '"--uninstall-cert"' '"--install-idd"' '"--uninstall-amyuni-idd"'; do
   if grep -Fq -- "$removed_flag" src/core_main.rs; then r_s11e20="$r_s11e20 public-application-helper-flag-leftover:$removed_flag"; fi
 done
-if rg -n 'goto_install|install_me\(|run_without_install|show_run_without_install|install_install_me|main_goto_install|mainGotoInstall|installInstallMe|runInstallPage|is_disable_installation|isDisableInstallation|ends_with\("install\.exe"\)|"--install"|"--noinstall"|is_install_page|Install Page' \
-  src/common.rs src/ui_interface.rs src/flutter_ffi.rs libs/hbb_common/src/config.rs flutter/lib flutter/windows/runner/main.cpp >"$VERIFY_TMP/rd_verify_r_s11e20_ui"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_ui" -rInE 'goto_install|install_me\(|run_without_install|show_run_without_install|install_install_me|main_goto_install|mainGotoInstall|installInstallMe|runInstallPage|is_disable_installation|isDisableInstallation|ends_with\("install\.exe"\)|"--install"|"--noinstall"|is_install_page|Install Page' \
+  src/common.rs src/ui_interface.rs src/flutter_ffi.rs libs/hbb_common/src/config.rs flutter/lib flutter/windows/runner/main.cpp; then
   r_s11e20="$r_s11e20 in-app-installer-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_ui")"
 fi
 
@@ -1404,7 +1409,7 @@ fi
 if grep -Fq 'ends_with("install.exe")' "$portable"; then r_s11e20="$r_s11e20 legacy-installer-name-fallback"; fi
 
 grep -Fq '& $PYTHON_EXE build.py --flutter' "$windows_build" || r_s11e20="$r_s11e20 canonical-flutter-build-command-missing"
-if rg -n 'skip-portable-pack|skip_portable_pack|rustdesk_portable|rustdesk-\{version\}-install\.exe|rustdesk-\{version\}-win7-install\.exe|generate\.py' build.py >"$VERIFY_TMP/rd_verify_r_s11e20_legacy_build"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_legacy_build" -nE 'skip-portable-pack|skip_portable_pack|rustdesk_portable|rustdesk-\{version\}-install\.exe|rustdesk-\{version\}-win7-install\.exe|generate\.py' build.py; then
   r_s11e20="$r_s11e20 legacy-windows-installer-builder-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_legacy_build")"
 fi
 grep -Fq "\$setupPayloadDir = Join-Path \$SRC 'target\rustdesk-setup-payload'" "$windows_build" || r_s11e20="$r_s11e20 dedicated-one-file-payload-dir-missing"
@@ -1436,7 +1441,7 @@ grep -Fq 'subprocess.run(command, check=True)' libs/portable/generate.py || r_s1
 grep -Fq 'Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force' "$windows_build" || r_s11e20="$r_s11e20 payload-finally-cleanup-missing"
 grep -Fq "\$setup = Join-Path \$SRC 'target\release\rustdesk-portable-packer.exe'" "$windows_build" || r_s11e20="$r_s11e20 exact-setup-output-missing"
 grep -Fq "\$msi = Join-Path \$SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'" "$windows_build" || r_s11e20="$r_s11e20 exact-msi-output-missing"
-if rg -n 'Get-ChildItem -Path \$SRC -Filter' "$windows_build" >"$VERIFY_TMP/rd_verify_r_s11e20_discovery"; then
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_discovery" -nE 'Get-ChildItem -Path \$SRC -Filter' "$windows_build"; then
   r_s11e20="$r_s11e20 recursive-artifact-discovery-leftover"
 fi
 
@@ -2197,7 +2202,7 @@ grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs            
 grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-password-not-pinned-empty"
 grep -qF 'overlay_pinned_settings(&mut res);' libs/hbb_common/src/config.rs           || r_s11b3="$r_s11b3 effective-options-read-not-pinned"
 grep -qF 'fn overlay_pinned_settings(options: &mut HashMap<String, String>)' libs/hbb_common/src/config.rs || r_s11b3="$r_s11b3 effective-options-overlay-helper-missing"
-if rg -n 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs --glob '*.rs' >"$VERIFY_TMP/r_s11b3_trust_writers"; then
+if verify_scan_capture "$VERIFY_TMP/r_s11b3_trust_writers" -rInE --include='*.rs' 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs; then
   r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11b3_trust_writers")"
 fi
 grep -q 'OptionsSet(IpcMutationResult)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-typed-result-missing"
@@ -2240,7 +2245,7 @@ if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closur
 echo "== (3b-iii-e) bounded input lifecycle and service-owned Windows SAS (R-S11c-2/R-S11c-3/R-S11g) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::desktop_input_queue_tests --color never
 r_s11c23=
-if rg -n 'Data::SAS|Data::UserSid|connect_to_user_session|UserSid\(Option' src/ipc.rs src/platform/windows.rs src/server >"$VERIFY_TMP/r_s11c23_hits.txt"; then
+if verify_scan_capture "$VERIFY_TMP/r_s11c23_hits.txt" -rInE 'Data::SAS|Data::UserSid|connect_to_user_session|UserSid\(Option' src/ipc.rs src/platform/windows.rs src/server; then
   r_s11c23="$r_s11c23 raw-service-message-symbol-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11c23_hits.txt")"
 fi
 ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
@@ -2387,13 +2392,13 @@ if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$
 
 echo "== (3b-iii-f0) CM cannot select authenticated peer message types (R-S11e-17) =="
 r_s11e17=
-if rg -n 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' src/ipc.rs src/ui_cm_interface.rs src/server/connection.rs >"$VERIFY_TMP/r_s11e17_forbidden.txt"; then
+if verify_scan_capture "$VERIFY_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' src/ipc.rs src/ui_cm_interface.rs src/server/connection.rs; then
   r_s11e17="$r_s11e17 legacy-untyped-response-surface-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e17_forbidden.txt")"
 fi
-if rg -n 'digest_request' src/server/connection.rs >"$VERIFY_TMP/r_s11e17_aux_digest_state.txt"; then
+if verify_scan_capture "$VERIFY_TMP/r_s11e17_aux_digest_state.txt" -nE 'digest_request' src/server/connection.rs; then
   r_s11e17="$r_s11e17 digest-authority-remains-auxiliary-state:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e17_aux_digest_state.txt")"
 fi
-if rg -n 'Message::new|write_to_bytes|parse_from_bytes' src/ui_cm_interface.rs >"$VERIFY_TMP/r_s11e17_cm_proto.txt"; then
+if verify_scan_capture "$VERIFY_TMP/r_s11e17_cm_proto.txt" -nE 'Message::new|write_to_bytes|parse_from_bytes' src/ui_cm_interface.rs; then
   r_s11e17="$r_s11e17 cm-still-constructs-or-parses-network-protobuf:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e17_cm_proto.txt")"
 fi
 grep -Fq 'CmFileResponse(CmFileResponse)' src/ipc.rs || r_s11e17="$r_s11e17 typed-envelope-not-in-data"
@@ -3578,6 +3583,18 @@ grep -Fq 'sudo rustdesk --password' docs/DEPLOYMENT.md || r_s11e16="$r_s11e16 sa
 grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' docs/DEPLOYMENT.md && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
 [ "$(grep -c -- '--password-stdin' scripts/smoke-server.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
 grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
+smoke_nonroot_stage=$(awk '/^out2c=/{capture=1} capture{print} /^echo "\$out2c"$/{exit}' scripts/smoke-server.sh)
+smoke_nonroot_runner=$(printf '%s\n' "$smoke_nonroot_stage" | awk '/cat > "\$fixture\/run\.sh"/{capture=1; next} capture && /^EOS$/{exit} capture{print}')
+printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"' || r_s11e16="$r_s11e16 nonroot-smoke-protected-fixture-missing"
+printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'install -d -o rduser -g "$gid" -m 0700 "$fixture/home"' || r_s11e16="$r_s11e16 nonroot-smoke-private-home-missing"
+[ "$(printf '%s\n' "$smoke_nonroot_stage" | grep -cF 'install -o root -g "$gid"')" -eq 4 ] || r_s11e16="$r_s11e16 nonroot-smoke-fixture-file-set-not-exact"
+printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'export HOME=/tmp/rd-smoke-nonroot/home' || r_s11e16="$r_s11e16 nonroot-smoke-runner-not-fixture-rooted"
+printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'kill -TERM "$SRV"' || r_s11e16="$r_s11e16 nonroot-smoke-exact-server-stop-missing"
+printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'wait "$SRV"' || r_s11e16="$r_s11e16 nonroot-smoke-server-reap-missing"
+printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'SOURCE_BIND_UNCHANGED=yes' || r_s11e16="$r_s11e16 nonroot-smoke-source-bind-proof-missing"
+if printf '%s\n' "$smoke_nonroot_runner" | grep -Eq '/work|target/debug|pkill'; then
+  r_s11e16="$r_s11e16 nonroot-smoke-runner-retains-source-or-broad-process-authority"
+fi
 grep -Fq 'Permanent-password provisioning through visible process arguments' requirements.html || r_s11e16="$r_s11e16 requirements-disposition-missing"
 grep -Fq 'R-S11e-16 — permanent-password provisioning ingress' HARDENING_STATUS.md || r_s11e16="$r_s11e16 ledger-disposition-missing"
 if [ -n "$r_s11e16" ]; then
@@ -6449,13 +6466,14 @@ release_gate_bad=
 release_gate=scripts/verify-release.sh
 grep -qF 'GATES=(' "$release_gate" || release_gate_bad="$release_gate_bad no-gate-array"
 grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"' "$release_gate" || release_gate_bad="$release_gate_bad missing-verify"
+grep -qF '"verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"' "$release_gate" || release_gate_bad="$release_gate_bad missing-windows-harness"
 grep -qF '"smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
 grep -qF '"audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-rust-audit"
 grep -qF '"dart-audit.sh|osv-scanner (Dart advisory floor)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-audit"
-grep -qF '"test-build-faillo.sh|build-harness fail-loud guards (every misconfiguration dies loud, §12.3)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-build-faillo"
+grep -qF '"test-build-faillo.sh|build-harness fail-loud guards (all enumerated cases die loud, §12.3)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-build-faillo"
 grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
 grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"
 stale_release_gate_ledger='ALL 7 source ''gates'
@@ -6473,12 +6491,20 @@ fi
 # operator-owned docs/privacy target exists. The remaining RustDesk brand strings are app/driver
 # nomenclature or comments; this gate targets live string-literal links in the front-end link path
 # plus the config.rs HELPER_URL expansion map.
-rsv9_http=$(grep -rInE 'http://[^ ]*(rustdesk|github)' flutter/lib --include='*.dart' 2>/dev/null || true)
+if verify_scan_capture "$VERIFY_TMP/rsv9_http" -rInE --include='*.dart' 'http://[^ ]*(rustdesk|github)' flutter/lib; then
+  rsv9_http=$(<"$VERIFY_TMP/rsv9_http")
+else
+  rsv9_http=
+fi
 if ! grep -qF "pub static ref HELPER_URL: HashMap<&'static str, &'static str> = HashMap::new();" libs/hbb_common/src/config.rs; then
   rsv9_http="$rsv9_http
 libs/hbb_common/src/config.rs:HELPER_URL is not empty"
 fi
-rsv9_upstream_link_literals=$(rg -n '"https?://[^"]*(rustdesk\.com|github\.com/rustdesk)[^"]*"' src/client.rs libs/hbb_common/src/config.rs flutter/lib --glob '*.rs' --glob '*.dart' 2>/dev/null || true)
+if verify_scan_capture "$VERIFY_TMP/rsv9_upstream_links" -rInE --include='*.rs' --include='*.dart' '"https?://[^"]*(rustdesk\.com|github\.com/rustdesk)[^"]*"' src/client.rs libs/hbb_common/src/config.rs flutter/lib; then
+  rsv9_upstream_link_literals=$(<"$VERIFY_TMP/rsv9_upstream_links")
+else
+  rsv9_upstream_link_literals=
+fi
 if [ -n "$rsv9_upstream_link_literals" ]; then
   rsv9_http="$rsv9_http
 $rsv9_upstream_link_literals"
@@ -6777,7 +6803,8 @@ ui_owner_drop=$(awk '/impl Drop for PortForwardSupervisorOwner/,/^}/' src/ui_ses
 if grep -qF '.join()' <<<"$one_off_join$ui_owner_impl$ui_owner_drop"; then r_t17_missing="$r_t17_missing synchronous-join-fallback"; fi
 grep -qF 'drain_replaced_port_forward(mappings, port).await;' src/ui_session_interface.rs || r_t17_missing="$r_t17_missing duplicate-old-drain"
 for test_name in cancellation_covers_connect_keying_login_and_relay control_eof_and_close_are_terminal_and_rdp_launch_coalesces mapping_shutdown_drains_every_owned_task process_reaper_joins_one_off_owner_and_reports_result cancellation_reaper_handoff_returns_before_owner_exit local_relay_is_not_entered_before_authorization mapping_admission_rejects_literal_33rd_and_recovers connection_admission_enforces_literal_32_and_128_boundaries_and_recovers sustained_ready_completion_reaping_keeps_join_set_bounded duplicate_replacement_drains_old_mapping_before_returning outer_owner_drop_closes_and_drains_independent_runtime_mappings second_exclusive_listener_bind_is_refused hostile_reuseaddr_socket_cannot_bind_exclusive_listener_port; do
-  rg -q "fn $test_name" src libs/hbb_common/src || r_t17_missing="$r_t17_missing test:$test_name"
+  verify_scan_capture "$VERIFY_TMP/r_t17_$test_name" -rIF "fn $test_name" src libs/hbb_common/src \
+    || r_t17_missing="$r_t17_missing test:$test_name"
 done
 if [ -n "$r_t17_missing" ]; then
   echo "  FAIL R-T17/PF-1..PF-5 tunnel mapping closure incomplete:$r_t17_missing"; rc=1
@@ -7143,9 +7170,13 @@ else
 fi
 
 echo "== (7) remote-configuration UI blocking excised (R-S16(d)/R-G1/R-D2) =="
-remote_config_blocker_hits=$(rg -n \
+if verify_scan_capture "$VERIFY_TMP/remote_config_blockers" -rInE --include='*.rs' --include='*.dart' \
   'allow-remote-config-modification|AllowRemoteConfigModification|kOptionAllowRemoteConfigModification|OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION|Enable remote configuration modification|canBeBlocked|shouldBeBlocked|buildRemoteBlock|preventMouseKeyBuilder|ControlPermissionsRemoteModify|MouseMoveTime|MOUSE_MOVE_TIME|VideoConnCount|videoConnCount|video_conn_count|main(CheckMouseTime|GetMouseTime|GetConnectStatus)|wire_main_(check_mouse_time|get_mouse_time|get_connect_status)|is-remote-modify-enabled-by-control-permissions' \
-  src libs flutter/lib 2>/dev/null || true)
+  src libs flutter/lib; then
+  remote_config_blocker_hits=$(<"$VERIFY_TMP/remote_config_blockers")
+else
+  remote_config_blocker_hits=
+fi
 if [ -n "$remote_config_blocker_hits" ]; then
   echo "  FAIL R-S16(d)/R-G1: remote-configuration UI blocker remnants survived:"
   echo "$remote_config_blocker_hits"
@@ -7153,7 +7184,7 @@ if [ -n "$remote_config_blocker_hits" ]; then
 else
   echo "  ok  R-S16(d)/R-G1 remote-configuration UI blocking option and plumbing absent"
 fi
-if rg -q 'allow-remote-[c]m-modification|AllowRemoteCm|allowRemoteCMModification' \
+if verify_scan_capture "$VERIFY_TMP/remote_cm_blockers" -rIE --include='*.rs' --include='*.dart' 'allow-remote-[c]m-modification|AllowRemoteCm|allowRemoteCMModification' \
   src libs flutter/lib; then
   echo "  FAIL R-G1: hidden connection-manager remote-modification gate survived"; rc=1
 else

@@ -199,6 +199,26 @@ def validate_build_release(source):
     require_text(source, 'DOCKER_HOST_URI=unix:///var/run/docker.sock', "local Docker socket binding")
     require_text(source, 'DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"', "private Docker config")
     require_text(source, 'ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"', "single online snapshot location")
+    require_text(
+        source,
+        "require_cmd cmp git docker python3 sha256sum stat readlink install find date /usr/bin/grep",
+        "release host-tool preflight",
+    )
+    require_text(
+        source,
+        'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
+        "release source-gate preflight",
+    )
+    require_order(
+        source,
+        (
+            'require_cmd cmp git docker python3 sha256sum stat readlink install find date /usr/bin/grep',
+            'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
+            "require_online_complete\n",
+            "create_release_online_snapshot\n",
+        ),
+        "release preflight ordering",
+    )
     if source.count('create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"') != 1:
         raise VerificationError("release transaction must create exactly one private online snapshot")
     if "HOST_ONLINE_DIR" in source:
@@ -222,6 +242,12 @@ def validate_build_release(source):
     require_text(source, 'create_snapshot A "$SOURCE_A"', "snapshot A creation")
     require_text(source, 'create_snapshot B "$SOURCE_B"', "snapshot B creation")
     require_text(source, 'worktree add --quiet --detach "$source" "$PINNED_HEAD"', "detached exact-commit worktrees")
+    require_text(source, 'chmod 0700 "$source"', "private release snapshot mode")
+    require_text(
+        source,
+        '[ "$(stat -c \'%u:%a\' "$source")" = "$(id -u):700" ]',
+        "private release snapshot metadata proof",
+    )
     require_text(source, 'git_closed -C "$source" clean -ffdx', "generated-state reset")
     require_count(source, "DOUBLE_BUILD=0", 3, "single target invocation per outer snapshot")
     require_text(source, 'build_snapshot A "$SOURCE_A"', "snapshot A target execution")
@@ -417,12 +443,87 @@ def validate_docs(source):
         require_text(source, text, "versioning transaction documentation")
 
 
+def validate_scan_contract(scan, verify, apple, release):
+    require_text(scan, "readonly VERIFY_SCAN_GREP=/usr/bin/grep", "fixed verifier scanner")
+    require_text(scan, "metadata = os.lstat(path)", "scanner no-follow metadata proof")
+    require_text(scan, "metadata.st_uid != 0", "scanner root-owner proof")
+    require_text(scan, "metadata.st_mode & 0o022", "scanner write-mode proof")
+    require_text(scan, 'else\n    status=$?\n  fi', "scanner status capture")
+    require_text(scan, "if [ \"$status\" -eq 1 ]; then", "scanner no-match status")
+    require_text(scan, "scanner failed with status", "scanner operational-failure diagnostic")
+    require_text(scan, "exit 1", "scanner operational-failure termination")
+    require_text(scan, "verify_scan_self_test() {", "scanner status self-test")
+    for source, label, minimum in (
+        (verify, "verify", 18),
+        (apple, "Apple", 4),
+    ):
+        require_text(source, "source scripts/verify-scan.sh", f"{label} scanner loading")
+        require_text(source, "verify_scan_preflight", f"{label} scanner preflight")
+        require_text(source, "verify_scan_self_test", f"{label} scanner status self-test")
+        require_count(source, "verify_scan_capture", minimum, f"{label} fail-loud scans")
+        if re.search(r"(?:^|\W)rg(?:$|\W)", source):
+            raise VerificationError(f"{label} retains an undeclared ripgrep dependency")
+    require_text(release, "source scripts/verify-scan.sh", "release scanner loading")
+    require_text(release, "verify_scan_preflight || exit 1", "release scanner preflight")
+    require_text(release, "--preflight)", "release side-effect-free preflight mode")
+    require_text(
+        verify,
+        "^[[:space:]]*virtual_display[[:space:]]*=",
+        "anchored IDD dependency scan",
+    )
+
+
+def validate_smoke_contract(smoke):
+    for text, label in (
+        ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
+        ('install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"', "protected fixture directories"),
+        ('install -d -o rduser -g "$gid" -m 0700 "$fixture/home"', "private non-root home"),
+        ('install -o root -g "$gid" -m 0550 target/debug/rustdesk "$fixture/bin/rustdesk"', "portable server fixture"),
+        ('install -o root -g "$gid" -m 0550 target/debug/examples/seed_password "$fixture/bin/seed_password"', "password seeder fixture"),
+        ('install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"', "probe client fixture"),
+        ('install -o root -g "$gid" -m 0440 target/smoke-bind-loopback.so "$fixture/bin/smoke-bind-loopback.so"', "bind shim fixture"),
+        ('su -s /bin/bash -c /tmp/rd-smoke-nonroot/run.sh rduser', "non-root runner dispatch"),
+        ('echo SOURCE_BIND_UNCHANGED=yes', "source-bind postcondition"),
+        ("SERVER_EXIT=0", "server reaping assertion"),
+        ("SOURCE_BIND_UNCHANGED=yes", "source-bind assertion"),
+    ):
+        require_text(smoke, text, label)
+    if smoke.count('install -o root -g "$gid"') != 4:
+        raise VerificationError("non-root smoke fixture must stage exactly four root-owned runtime files")
+    marker = 'cat > "$fixture/run.sh" <<"EOS"\n'
+    start = smoke.find(marker)
+    if start < 0:
+        raise VerificationError("non-root smoke runner heredoc is absent")
+    start += len(marker)
+    end = smoke.find("\nEOS\n", start)
+    if end < 0:
+        raise VerificationError("non-root smoke runner heredoc is unterminated")
+    runner = smoke[start:end]
+    for forbidden in ("/work", "target/debug", "pkill"):
+        if forbidden in runner:
+            raise VerificationError(f"non-root smoke runner retains forbidden source/process authority: {forbidden}")
+    require_text(runner, 'export HOME=/tmp/rd-smoke-nonroot/home', "fixture-owned runner home")
+    require_text(runner, 'kill -TERM "$SRV"', "exact server stop")
+    require_text(runner, 'wait "$SRV"', "exact server reap")
+    require_text(runner, 'SERVICE_ROLE_MARKER=absent', "portable-role proof")
+
+
+def validate_faillo_contract(source):
+    require_text(source, "release source-gate preflight accepts the fixed scanner", "scanner preflight proof")
+    require_text(source, "verifier scanner rejects an operational error", "scanner error proof")
+    if "every misconfiguration" in source:
+        raise VerificationError("fail-loud suite overclaims every possible misconfiguration")
+
+
 def validate_sources(sources):
     validate_build_release(sources["build"])
     validate_target_scripts(sources["debian"], sources["android"], sources["pins"])
     validate_publisher(sources["publish"])
     validate_fork_version(sources["version"])
     validate_docs(sources["docs"])
+    validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
+    validate_smoke_contract(sources["smoke"])
+    validate_faillo_contract(sources["faillo"])
 
 
 def run_command(command, cwd, env=None):
@@ -822,6 +923,12 @@ def run_source_mutations(sources):
         ("build", 'create_snapshot B "$SOURCE_B"', 'true # snapshot B removed', "snapshot B creation"),
         (
             "build",
+            'chmod 0700 "$source"',
+            'chmod 0711 "$source"',
+            "private release snapshot mode",
+        ),
+        (
+            "build",
             'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
             'true # online snapshot removed',
             "exactly one private online snapshot",
@@ -831,6 +938,66 @@ def run_source_mutations(sources):
             'assert_release_online_snapshot "before final dist installation"',
             'true # final online proof removed',
             "pre-publication online snapshot proof",
+        ),
+        (
+            "build",
+            "require_cmd cmp git docker python3 sha256sum stat readlink install find date /usr/bin/grep",
+            "require_cmd cmp git docker python3 sha256sum stat readlink install find date",
+            "release host-tool preflight",
+        ),
+        (
+            "build",
+            'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
+            "true # release source-gate preflight removed",
+            "release source-gate preflight",
+        ),
+        (
+            "scan",
+            'if [ "$status" -eq 1 ]; then',
+            'if [ "$status" -eq 2 ]; then',
+            "scanner no-match status",
+        ),
+        (
+            "scan",
+            'else\n    status=$?\n  fi',
+            'else\n    status=0\n  fi',
+            "scanner status capture",
+        ),
+        (
+            "release",
+            "verify_scan_preflight || exit 1",
+            "true # scanner preflight removed",
+            "release scanner preflight",
+        ),
+        (
+            "verify",
+            "source scripts/verify-scan.sh",
+            "source scripts/verify-scan.sh\nrg -n forbidden src",
+            "undeclared ripgrep dependency",
+        ),
+        (
+            "verify",
+            "^[[:space:]]*virtual_display[[:space:]]*=",
+            "virtual_display =",
+            "anchored IDD dependency scan",
+        ),
+        (
+            "smoke",
+            'cd "$HOME"',
+            "cd /work",
+            "non-root smoke runner retains forbidden source/process authority",
+        ),
+        (
+            "smoke",
+            'install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"',
+            "true # probe client fixture removed",
+            "probe client fixture",
+        ),
+        (
+            "smoke",
+            'kill -TERM "$SRV" 2>/dev/null || true',
+            'pkill -TERM -f "rustdesk --server" || true',
+            "non-root smoke runner retains forbidden source/process authority",
         ),
         ("build", "renameat2 = libc.renameat2", "renameat2 = libc.rename", "atomic final-dist exchange"),
         ("build", "git --no-replace-objects", "git", "Git replacement-object suppression"),
@@ -920,6 +1087,12 @@ def main():
         lines, positions = validate_verify_workspace((repo / "scripts/verify.sh").read_text(encoding="utf-8"))
         sources = {
             "build": (repo / "scripts/build-release.sh").read_text(encoding="utf-8"),
+            "scan": (repo / "scripts/verify-scan.sh").read_text(encoding="utf-8"),
+            "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
+            "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
+            "release": (repo / "scripts/verify-release.sh").read_text(encoding="utf-8"),
+            "smoke": (repo / "scripts/smoke-server.sh").read_text(encoding="utf-8"),
+            "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
             "publish": (repo / "scripts/publish-github-release.sh").read_text(encoding="utf-8"),
             "version": (repo / "scripts/fork-version.sh").read_text(encoding="utf-8"),
             "debian": (repo / "scripts/build-debian.sh").read_text(encoding="utf-8"),

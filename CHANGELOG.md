@@ -100,6 +100,10 @@ release notes.
 ### Verification and release discipline
 - Confined verifier scratch state to private workspaces and made mutation self-tests prove that source,
   lockfile, release-ordering, and workspace-authority failures are detected.
+- Closed source-gate text scanning to fixed, root-owned GNU `grep`, with explicit match/no-match/error
+  status handling and a release preflight that runs before the online closure is copied.
+- Made the non-root portable password smoke stage execute from an immutable owner-scoped fixture, prove
+  its portable role and exact process ownership, and leave the mode-0700 release source bind unchanged.
 - Made the complete release build require one clean committed `HEAD` before verification, after
   verification, and after all cold reproducible target builds. Windows artifacts must be archived from
   that same commit; generated checksums record the exact source commit and fork version.
@@ -114,8 +118,8 @@ release notes.
 - Linux behavior and compile gates, Apple source-conformance checks, and native Windows pre-build suites
   cover platform-specific source contracts. Only the repository's complete clean committed cold release
   build is artifact-level proof for Debian, Android, Windows EXE, and Windows MSI outputs.
-- Native Windows validation of the current worktree and the final clean committed `.6` cold release build
-  remain pending; these notes make no current artifact, reproducibility, publication, or release claim.
+- Native Windows and artifact reproducibility evidence is established only by the complete clean committed
+  `.6` release transaction and its generated manifest; these source notes make no publication claim.
 - This hardening was developed and reviewed with AI assistance and remains single-maintainer security
   engineering, not an independent professional cryptographic or product-security audit.
 

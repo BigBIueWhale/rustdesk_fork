@@ -379,7 +379,7 @@ cleanup_release_workspace() {
 
 release_preflight() {
     local working_pins_hash commit_pins_hash
-    require_cmd cmp git docker python3 sha256sum stat readlink install find date
+    require_cmd cmp git docker python3 sha256sum stat readlink install find date /usr/bin/grep
     assert_repo_state
     assert_source_date_epoch
     assert_release_source_state "release preflight"
@@ -391,6 +391,8 @@ release_preflight() {
         || die "cannot read pins.env from the pinned commit"
     [ "$working_pins_hash" = "$commit_pins_hash" ] \
         || die "loaded pins.env bytes do not match the pinned commit"
+    run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight \
+        || die "release source-gate preflight failed"
     require_online_complete
     HOST_KEYSTORE="$DEFAULT_ANDROID_KEYSTORE"
     HOST_KEYSTORE_PASS_FILE="$DEFAULT_ANDROID_KEYSTORE_PASS_FILE"

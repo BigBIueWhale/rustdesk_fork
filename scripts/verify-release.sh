@@ -14,6 +14,15 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/verify-scan.sh
+source scripts/verify-scan.sh
+verify_scan_preflight || exit 1
+case "${1:-}" in
+  "") ;;
+  --preflight) [ "$#" -eq 1 ] || { echo "verify-release: --preflight takes no arguments" >&2; exit 2; }; exit 0 ;;
+  *) echo "usage: scripts/verify-release.sh [--preflight]" >&2; exit 2 ;;
+esac
+
 # gate-script | one-line description
 GATES=(
   "verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"
@@ -24,7 +33,7 @@ GATES=(
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"
   "audit.sh|cargo-audit + cargo-deny (Rust advisory floor)"
   "dart-audit.sh|osv-scanner (Dart advisory floor)"
-  "test-build-faillo.sh|build-harness fail-loud guards (every misconfiguration dies loud, §12.3)"
+  "test-build-faillo.sh|build-harness fail-loud guards (all enumerated cases die loud, §12.3)"
 )
 
 declare -a results

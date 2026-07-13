@@ -148,27 +148,68 @@ echo "== (2c) R-D8: portable 'rustdesk --password-stdin' provisions over SAME-UI
 # identity are the authorization. This also exercises RLIMIT_NOFILE enforcement under non-root.
 out2c=$("${RUN[@]}" bash -c '
   id -u rduser >/dev/null 2>&1 || useradd -m -u 4000 rduser
-  chmod 0644 target/smoke-bind-loopback.so
-  cat > /tmp/a2.sh <<"EOS"
-export HOME=/home/rduser
-cd /work
+  [ "$(id -u rduser)" = 4000 ] || exit 1
+  gid=$(id -g rduser)
+  fixture=/tmp/rd-smoke-nonroot
+  source_meta=$(stat -c "%d:%i:%u:%g:%a" /work)
+  source_hash=$(sha256sum /work/target/debug/rustdesk /work/target/debug/examples/seed_password /work/target/debug/examples/probe_client /work/target/smoke-bind-loopback.so)
+  install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"
+  install -d -o rduser -g "$gid" -m 0700 "$fixture/home"
+  install -o root -g "$gid" -m 0550 target/debug/rustdesk "$fixture/bin/rustdesk"
+  install -o root -g "$gid" -m 0550 target/debug/examples/seed_password "$fixture/bin/seed_password"
+  install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"
+  install -o root -g "$gid" -m 0440 target/smoke-bind-loopback.so "$fixture/bin/smoke-bind-loopback.so"
+  cat > "$fixture/run.sh" <<"EOS"
+#!/bin/bash
+export HOME=/tmp/rd-smoke-nonroot/home
+cd "$HOME"
+bin=/tmp/rd-smoke-nonroot/bin
 echo "UID=$(id -u)"
-./target/debug/examples/seed_password Initial-Seed-Pw-000 >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
-LD_PRELOAD=/work/target/smoke-bind-loopback.so ./target/debug/rustdesk --server >/tmp/srv2c.log 2>&1 &
+"$bin/seed_password" Initial-Seed-Pw-000 >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
+SRV=
+cleanup_server() {
+  if [ -n "$SRV" ] && kill -0 "$SRV" 2>/dev/null; then
+    kill -TERM "$SRV" 2>/dev/null || true
+    wait "$SRV" 2>/dev/null || true
+  fi
+}
+trap cleanup_server EXIT
+LD_PRELOAD="$bin/smoke-bind-loopback.so" "$bin/rustdesk" --server >srv2c.log 2>&1 &
+SRV=$!
 sleep 8
-printf "%s\n" Changed-Same-Uid-Pw-9 | timeout 15 ./target/debug/rustdesk --password-stdin >/tmp/pw2c.out 2>&1
+server_exe=$(readlink -f "/proc/$SRV/exe")
+echo "SERVER_UID=$(awk "/^Uid:/{print \$2}" "/proc/$SRV/status")"
+echo "PORTABLE_EXE=$server_exe"
+[ "$server_exe" = "$bin/rustdesk" ] || exit 1
+if tr "\0" "\n" <"/proc/$SRV/cmdline" | grep -Fxq -- --service-owned-server; then exit 1; fi
+echo "SERVICE_ROLE_MARKER=absent"
+printf "%s\n" Changed-Same-Uid-Pw-9 | timeout 15 "$bin/rustdesk" --password-stdin >pw2c.out 2>&1
 echo "PW_EXIT=$?"
-echo "PW_OUT=[$(tr -d "\n" </tmp/pw2c.out)]"
-echo "KEYED_NEW: $(./target/debug/examples/probe_client 127.0.0.1:21118 Changed-Same-Uid-Pw-9 ok 2>&1 | grep -oE "keying ok=(true|false)")"
-echo "KEYED_OLD: $(./target/debug/examples/probe_client 127.0.0.1:21118 Initial-Seed-Pw-000 fail 2>&1 | grep -oE "keying ok=(true|false)")"
-pkill -TERM -f "rustdesk --server" 2>/dev/null || true
+echo "PW_OUT=[$(tr -d "\n" <pw2c.out)]"
+echo "KEYED_NEW: $("$bin/probe_client" 127.0.0.1:21118 Changed-Same-Uid-Pw-9 ok 2>&1 | grep -oE "keying ok=(true|false)")"
+echo "KEYED_OLD: $("$bin/probe_client" 127.0.0.1:21118 Initial-Seed-Pw-000 fail 2>&1 | grep -oE "keying ok=(true|false)")"
+kill -TERM "$SRV" 2>/dev/null || true
+wait "$SRV"
+echo "SERVER_EXIT=$?"
+SRV=
 EOS
-  chmod 0644 /tmp/a2.sh
-  su rduser -c "bash /tmp/a2.sh"
+  chown root:"$gid" "$fixture/run.sh"
+  chmod 0550 "$fixture/run.sh"
+  cd /tmp
+  su -s /bin/bash -c /tmp/rd-smoke-nonroot/run.sh rduser
+  [ "$source_meta" = "$(stat -c "%d:%i:%u:%g:%a" /work)" ] || exit 1
+  [ "$source_hash" = "$(sha256sum /work/target/debug/rustdesk /work/target/debug/examples/seed_password /work/target/debug/examples/probe_client /work/target/smoke-bind-loopback.so)" ] || exit 1
+  echo SOURCE_BIND_UNCHANGED=yes
 ' || true)
 echo "$out2c"
 echo "$out2c" | grep -q 'UID=4000' \
   || { echo "  FAIL R-D8: stage (2c) did not run as the intended non-root uid (4000)"; rc=1; }
+echo "$out2c" | grep -q 'SERVER_UID=4000' \
+  || { echo "  FAIL R-D8: stage (2c) server was not owned by the intended non-root uid (4000)"; rc=1; }
+echo "$out2c" | grep -q 'PORTABLE_EXE=/tmp/rd-smoke-nonroot/bin/rustdesk' \
+  || { echo "  FAIL R-D8: stage (2c) did not execute the isolated portable fixture image"; rc=1; }
+echo "$out2c" | grep -q 'SERVICE_ROLE_MARKER=absent' \
+  || { echo "  FAIL R-D8: stage (2c) entered or could not disprove the service-owned role"; rc=1; }
 echo "$out2c" | grep -q 'PW_EXIT=0' \
   || { echo "  FAIL R-D8: same-uid --password-stdin did not cleanly exit 0"; rc=1; }
 echo "$out2c" | grep -q 'Done!' \
@@ -177,6 +218,10 @@ echo "$out2c" | grep -q 'KEYED_NEW: keying ok=true' \
   || { echo "  FAIL R-D8: the same-uid-provisioned password is not usable — a CPace probe could not key with it"; rc=1; }
 echo "$out2c" | grep -q 'KEYED_OLD: keying ok=false' \
   || { echo "  FAIL R-D8: the old password still keys after the same-uid change"; rc=1; }
+echo "$out2c" | grep -q 'SERVER_EXIT=0' \
+  || { echo "  FAIL R-D8: the non-root server did not terminate and reap cleanly"; rc=1; }
+echo "$out2c" | grep -q 'SOURCE_BIND_UNCHANGED=yes' \
+  || { echo "  FAIL R-D8: stage (2c) changed or could not re-prove the source bind"; rc=1; }
 
 echo "== (2d) R-S11b: installed layout selects service ownership and never falls back to user-owned password storage =="
 out2d=$("${RUN[@]}" bash -c '

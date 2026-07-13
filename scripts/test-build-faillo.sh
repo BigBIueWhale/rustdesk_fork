@@ -3,7 +3,7 @@
 #
 # The release build must make silent failure structurally impossible: on a fresh machine, in any
 # order, on any stale state, an operator either gets byte-identical A==B artifacts or a LOUD,
-# actionable error. This gate PROVES that property doesn't regress — it feeds each guard a
+# actionable error. This gate exercises the enumerated guards against regression — it feeds each a
 # misconfiguration and asserts the guard DIES with a FATAL message (never proceeds silently).
 # Needs docker + git; binds no socket. Run standalone or via verify-release.sh.
 set -uo pipefail
@@ -38,6 +38,13 @@ run_script_die() {
     echo "  PASS  $desc"; P=$((P+1))
   else echo "  FAIL  $desc (rc=$rc)"; F=$((F+1)); fi
 }
+run_script_ok() {
+  local desc="$1"; shift
+  local rc; "$@" >/dev/null 2>&1; rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "  PASS  $desc"; P=$((P+1))
+  else echo "  FAIL  $desc (rc=$rc)"; F=$((F+1)); fi
+}
 
 echo "== build-harness fail-loud proofs (guard level) =="
 run_die "SOURCE_DATE_EPOCH unset"          'unset SOURCE_DATE_EPOCH; assert_source_date_epoch'
@@ -52,6 +59,10 @@ run_die "clean-worktree guard dies dirty"  'touch scripts/.faillo_ct_probe; trap
 run_ok  "clean-worktree yields ALLOW_DIRTY" 'export ALLOW_DIRTY_TREE=1; assert_clean_worktree'
 
 echo "== build-harness fail-loud proofs (script level) =="
+run_script_ok "release source-gate preflight accepts the fixed scanner" \
+  "${CLEAN_SCRIPT_ENV[@]}" bash scripts/verify-release.sh --preflight
+run_script_die "verifier scanner rejects an operational error" \
+  bash -c 'source scripts/verify-scan.sh; verify_scan_capture /dev/null -E "[" /dev/null'
 run_script_die "build-release.sh rejects a bad arg" \
   "${CLEAN_SCRIPT_ENV[@]}" bash scripts/build-release.sh --nonsense
 run_script_die "build-release.sh --doctor rejects a dirty tree" \
@@ -62,5 +73,5 @@ run_script_die "publish-github-release rejects a bad flag" \
 
 echo
 echo "RESULT: $P passed, $F failed"
-if [ "$F" -eq 0 ]; then echo "BUILD-FAILLO: GREEN — every misconfiguration died loud"; exit 0
+if [ "$F" -eq 0 ]; then echo "BUILD-FAILLO: GREEN — all enumerated guard cases died loud"; exit 0
 else echo "BUILD-FAILLO: RED — $F silent path(s)!"; exit 1; fi

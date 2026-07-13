@@ -9,7 +9,7 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> **Current `.6` verdict (2026-07-13): source implementation exists, but documentation and inventory settlement plus a clean committed cold build remain required. No current `.6` artifact, reproducibility, publication, or release proof exists yet.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
+> **Current `.6` source verdict (2026-07-13): implementation and release-harness closure are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
 
 **Current machine inventory expectation.** `Cargo.lock` has 910 package records: 38 git-sourced records from
 27 unique git source URLs, including 28 rustdesk-org records from 21 unique rustdesk-org URLs.
@@ -58,8 +58,8 @@ CLIPRDR file-read clamps `length` to the remaining bytes with no `offset+length`
 wrap, and the descriptor serializer truncates an over-long name with no
 `520 - name_len` underflow (each overflow-safe, unit-tested). The release harness
 defines the required Debian/Android/Windows R-B2 cold double-build, and the Apple
-SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2). The final
-current `.6` cold artifact build has not run.
+SDK-free source-conformance gate covers the macOS/iOS code paths (R-R2). Current
+artifact evidence is authoritative only through the exact-commit R-B2 manifest.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
@@ -764,8 +764,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and job ABI layout. `scripts/build-windows.ps1` runs the terminal suite natively, offline and locked, before every
   artifact build; `scripts/verify.sh` runs the Linux-visible suite and gates that native-Windows step plus the source
   contracts above. The committed Windows VM double build remains the platform runtime and deterministic-artifact proof.
-- **R-S11c-26 — protected service IPC resource boundary — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS WORKTREE
-  VALIDATION AND FINAL CLEAN COLD BUILD PENDING.** Platforms: Linux, macOS, and Windows installed-service IPC.
+- **R-S11c-26 — protected service IPC resource boundary — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS
+  OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Platforms: Linux, macOS, and Windows installed-service IPC.
   Endpoint/action: generic `_service` controls and read-only snapshots, raw `_service_password` mutation, Windows
   `_service_credential`, `_service_main_control`, and `_service_sas`. Boundary: kernel-proved local peer ↔ bounded
   root/LaunchDaemon/LocalSystem work ownership before receiver-authorized dispatch. Generic `_service` uses the
@@ -1707,7 +1707,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   build runs that suite natively before artifacts; `scripts/verify.sh` gates creation-time job assignment, exact-child
   IPC, job accounting/termination, SCM status ordering, transaction drain, deleted paths, requirements, ledger, and
   Appendix C #124.
-- **R-S11e-20 — Windows Installer sole machine-state authority — SOURCE IMPLEMENTED; `.6` NATIVE/COLD ARTIFACT VALIDATION NOT YET PERFORMED.** Platform: Windows
+- **R-S11e-20 — Windows Installer sole machine-state authority — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Platform: Windows
   setup, install, repair, upgrade, and uninstall. Endpoint/action: UAC-approved setup bootstrap, Program Files
   payload deployment, LocalSystem service ownership, firewall authorization, machine registry/shortcuts, fixed
   certificate/driver/runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
@@ -1743,9 +1743,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   portable pure tests cover exact setup-name and 0/3010 status policy; a Windows-target isolated portable compile
   passed historically for an earlier source state; `scripts/verify.sh` gates the sole-authority topology, deleted
   paths, declarative MSI resources, exact one-file build payload, broker provenance, R-S11f, this ledger entry,
-  and Appendix C #125. The final current `.6` Windows VM cold artifact build has not run.
-- **R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED; CURRENT NATIVE
-  WINDOWS WORKTREE VALIDATION AND FINAL CLEAN COLD BUILD PENDING.** Ordinary main IPC remains a closed bounded
+  and Appendix C #125. Current Windows artifact evidence is authoritative only through the exact-commit R-B2 manifest.
+- **R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED; NATIVE/ARTIFACT
+  EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Ordinary main IPC remains a closed bounded
   nonsecret protocol. Password bodies use only raw `_password`/`_service_password` with canonical header/body/status
   frames and a Windows operation-bound ACK. Each operation UUID is bound to owner kind and an HMAC-SHA256 value
   fingerprint under a process-random key. `Prepared`/`Pending` admission is irrevocable; a mismatched replay rejects;
@@ -1763,7 +1763,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and final impersonated dispatch; its result proves dispatch acceptance, not secure-desktop activation. SCM may
   remain `STOP_PENDING`, and `SERVICE_STOPPED` follows exact-job zero.
 
-- **R-S19a — connection-owned controlled-input execution — SOURCE IMPLEMENTED; `.6` NATIVE/COLD ARTIFACT VALIDATION NOT YET PERFORMED.**
+- **R-S19a — connection-owned controlled-input execution — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
   Windows, Linux, and macOS Remote connections each own one bounded input worker from authorization through joined
   teardown. Android validates both the raw inbound key and the modifier-rewritten event; iOS has no controlled-input
   server and retains source-conformance scope only. Item/byte caps, bounded wheel and gesture magnitudes, structural
@@ -1781,9 +1781,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   owns joins from creation, queued events are destroyed without execution after cancellation, and no Tokio executor
   is synchronously blocked by native completion. Source gates, Linux tests, Apple conformance, Android validation,
   and native Windows input-lifecycle suites cover the platform contracts. Appendix C #126 and R-S19a are the
-  normative closure; the final current `.6` cold artifact build has not run.
+  normative closure; current artifact evidence is authoritative only through the exact-commit R-B2 manifest.
 
-- **R-S11e-22 — Windows machine credential store and former local-authority/LPE class — SOURCE IMPLEMENTED; `.6` NATIVE/COLD ARTIFACT VALIDATION NOT YET PERFORMED.**
+- **R-S11e-22 — Windows machine credential store and former local-authority/LPE class — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
   The MSI alone provisions `ProgramData\<Product>\config` with a protected inheritable DACL containing only
   SYSTEM and Administrators full-control ACEs; accepted owner is SYSTEM or Administrators. Runtime has no create,
   ACL repair, profile fallback/rewrite, alternate root, or pathname fallback. The stable LocalSystem SCM supervisor
@@ -2069,14 +2069,29 @@ requirements/fixes; the newly proven Windows service-terminal principal flaw is 
 R-R3/Appendix D gated class: Rust and Dart package advisories are checked by the pinned advisory gates, while
 native vcpkg codec advisories remain the Appendix C #2b watch/residual.
 
-The R-S11b/R-S11c source topology is implemented. That source status is not artifact or release proof; the
-current `.6` native validation and clean committed cold build remain outstanding.
+The R-S11b/R-S11c source topology is implemented. That source status is not artifact or release proof;
+native and reproducibility evidence is owned by the exact-commit R-B2 transaction and generated manifest.
 
-**R-B2 — release harness source implemented; current `.6` artifact proof absent.**
+**R-B2 — exact-commit release harness source implemented.**
 `scripts/build-release.sh` is the sole release-build entry point. It requires a clean committed source tree,
 runs the release gates, performs cold Debian/Android/Windows double-builds, requires A==B for each target, and
 writes the coherent commit/version/artifact identity to `dist/SHA256SUMS`. Publication is a separate optional
 action through `scripts/publish-github-release.sh`; it is not part of building or verifying `.6`.
+
+The release source-gate boundary is closed before expensive input copying. `scripts/verify-release.sh
+--preflight` proves a fixed `/usr/bin/grep` that is an executable, root-owned, non-group/world-writable regular
+file and identifies as GNU grep. Every migrated exhaustive forbidden-pattern scan distinguishes match (0),
+clean no-match (1), and operational failure (all other statuses); scanner failure terminates instead of becoming
+a false absence. The preflight runs under the release child environment before `require_online_complete` and
+the private online snapshot copy. Structural mutation tests remove or reorder that boundary, corrupt status
+capture, and reintroduce an undeclared `rg` dependency.
+
+The non-root portable password smoke does not traverse or relax the mode-0700 release source snapshot. Root in
+the disposable container stages exactly the server, seeder, probe, and bind shim as root-owned read/execute-only
+files beneath a protected `/tmp/rd-smoke-nonroot` fixture; UID 4000 owns only its mode-0700 fixture home. The
+runner proves the exact portable executable, non-service role, process UID, credential replacement, exact PID
+termination/reap, and unchanged source inode/mode/content. Structural mutations reject source traversal, a
+missing fixture member, broad process killing, or a release snapshot relaxed from mode 0700.
 
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
@@ -2091,9 +2106,9 @@ repeated in this live ledger because they prove only those old source states. Th
 invalidated across calendar days and led to the `SOURCE_DATE_EPOCH` fix. These records establish historical
 harness behavior, not current `.6` release evidence.
 
-The final sequence remains: settle source and normative documentation, update inventory and codec/status hashes,
-bump `FORK_VERSION` last, verify, commit, push the exact clean HEAD, then run the full cold build. The final
-current `.6` cold artifact build has not run, and no `.6` release or publication is claimed.
+The required sequence is: settle source and normative documentation, update inventory and codec/status hashes,
+bump `FORK_VERSION` last, verify, commit, push the exact clean HEAD, then run the full cold build. This tracked
+source does not substitute for the generated exact-commit artifact manifest, and no `.6` publication is claimed.
 ## Historical live-QA closure (2026-07-06 through 2026-07-07)
 
 Acceptance testing of the old `v1.4.7-hardened.1` prerelease exposed five clusters: Windows service/status
@@ -2105,8 +2120,8 @@ The corresponding source treatments landed historically as `98fc028` (headless C
 (settings/password and unlock-PIN excision), `66ec419` (Android boot/capture/listener teardown and honest
 status), `741d3b1` (Windows resilience and honest desktop status), and `79078c0` (remaining UI coherence).
 Later service, IPC, installer, input, and tunnel hardening further supersedes that snapshot. These old commits and
-their tests are historical traceability only; they do not prove the current `.6` artifacts. The final current
-`.6` clean committed cold build and native Windows validation remain unperformed.
+their tests are historical traceability only; they do not prove current `.6` artifacts, whose native and
+reproducibility evidence must name the exact commit in the R-B2 manifest.
 ## Upstream-CVE coverage — the 2026 RustDesk client CVE inventory
 
 Cross-checked (2026-06-29) the fork's hardening against the **complete public 2026
@@ -2168,7 +2183,7 @@ rather than a watched package, and `verify.sh` fails if a future source module,
 FFI binding, bindgen package, overlay path, manifest entry, build-Dockerfile,
 build-scaffold, or ledger shape reintroduces libaom.
 
-**R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; `.6` COLD ARTIFACT VALIDATION NOT YET PERFORMED.**
+**R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the
 VP8/VP9 viewer decoder. The prior decoder characterization was incorrect.
 libvpx v1.15.2 and v1.16.0 both predate the fix. The fork retains v1.15.2 and
@@ -2386,8 +2401,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **Apple R-R2 release gate integration — ✅ CLOSED 2026-07-11.** `scripts/apple-conform-check.sh`
   still runs outside the default fast `verify.sh` loop because it needs the `rd-apple-check`
   image plus Apple target cross-checks, but it is now part of the release source-gate bundle:
-  `scripts/verify-release.sh` runs it with `verify.sh`, `smoke-server.sh`, `dart-verify.sh`,
-  `native-codec-watch.sh`, `audit.sh`, `dart-audit.sh`, and `test-build-faillo.sh`. The fast
+  `scripts/verify-release.sh` runs it with `verify.sh`, the Windows harness self-test,
+  `smoke-server.sh`, `dart-verify.sh`, `native-codec-watch.sh`, `audit.sh`, `dart-audit.sh`, and
+  `test-build-faillo.sh`. The fast
   verifier asserts that full bundle, including the Apple gate and the release-gate ledger/requirements
   wording, so future Apple-source drift fails release verification rather than passing a
   "complete/proven" milestone silently.
@@ -2554,8 +2570,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 **✅ STATUS: ALL CLOSED — 2026-07-04.** The backlog enumerated below was IMPLEMENTED in full by a
 single coherent excision pass (36 files, **+441 / −1790**) and reviewed to standard: all source gates
-green (the `verify-release` bundle — verify.sh / smoke-server / dart-verify / native-codec-watch /
-apple-conform / audit / dart-audit / test-build-faillo — plus `flutter-verify` for the flutter-feature
+green (the `verify-release` bundle — verify.sh / Windows harness self-test / smoke-server / dart-verify /
+native-codec-watch / apple-conform / audit / dart-audit / test-build-faillo — plus `flutter-verify` for the flutter-feature
 Rust), **zero dangling references across all five platforms** (Rust / Dart / Kotlin / Swift / proto /
 tests), and R-B2 reproducibility re-proven per release (build-release.sh → dist/SHA256SUMS, double-build
 A==B per target). The four tiers below are **retained as the implementation record** — each item's
@@ -2730,8 +2746,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-57550c3d5d2ca20c064f41bb078cede0f4ee505a7ed1d76b8dbb7dceafc5a295  requirements.html
+55e4e176412cdcdceb4e4cf459aa117b979f262e3aa20759656e40347e5246c3  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B13 and Appendix C #129. It is a
-source-ledger identity, not proof that the current `.6` cold artifacts have been built.
+source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -851,7 +851,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   absolute and the checked path was argv-passed, but root-side authorization must not depend on a formatter
   subprocess for authority-bearing ACL state. Closure: `macos_path_has_no_extended_acl` is a single shared
   `ipc_auth` helper that builds a checked C path, retrieves the exact no-follow extended ACL with
-  `acl_get_link_np(..., ACL_TYPE_EXTENDED)`, validates the ACL with `acl_valid_link_np`, rejects any first entry
+  `acl_get_link_np(..., ACL_TYPE_EXTENDED)`, validates the ACL with exported `acl_valid`, rejects any first entry
   returned by `acl_get_entry`, frees the ACL through a drop guard, and fails closed on NUL paths, ACL retrieval
   failure, or validation failure. `src/ipc.rs` now calls that shared helper for LaunchAgent plist parent/file
   trust instead of carrying a second parser. Verification closure: `scripts/verify.sh` and

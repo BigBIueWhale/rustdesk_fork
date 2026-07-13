@@ -837,6 +837,12 @@ pub fn get_active_userid() -> String {
         .unwrap_or_default()
 }
 
+pub fn get_active_username() -> String {
+    active_console_passwd_entry()
+        .map(|(name, _)| name)
+        .unwrap_or_default()
+}
+
 pub fn get_active_user_home() -> Option<PathBuf> {
     active_console_passwd_entry()
         .map(|(_, home)| home)

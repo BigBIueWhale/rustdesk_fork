@@ -487,7 +487,7 @@ grep -Fq 'macos_root_wheel_not_group_world_writable(&metadata)' "$REPO/src/ipc/a
 grep -Fq 'macos_root_owned_not_group_world_writable(&metadata)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-app-root-owned-mode-missing"
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-check-missing"
 grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-native"
-grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
+grep -Fq 'acl_valid(acl)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
 grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-entry-check-missing"
 grep -Fq 'MacosAclGuard' "$REPO/src/ipc/auth.rs" || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-free-guard-missing"
 if grep -Fq 'Command::new(MACOS_LS)' "$REPO/src/ipc/auth.rs" \
@@ -897,7 +897,7 @@ grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-check-missing"
 grep -Fq 'CString::new(path.as_os_str().as_bytes().to_vec())' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-cstring-missing"
 grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-get-link-missing"
-grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-valid-link-missing"
+grep -Fq 'acl_valid(acl)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-validation-missing"
 grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-entry-missing"
 grep -Fq 'acl_free(self.0)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-runtime-acl-free-missing"
 grep -Fq 'macOS runtime service ACL inspection provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-runtime-acl-requirements-missing"
@@ -1378,7 +1378,6 @@ EXPECTED_MACOS_PODS = [
     "desktop_drop (0.0.1)",
     "desktop_multi_window (0.0.1)",
     "device_info_plus (0.0.1)",
-    "file_selector_macos (0.0.1)",
     "flutter_custom_cursor (0.0.1)",
     "FlutterMacOS (1.0.0)",
     "FMDB (2.7.12)",
@@ -1400,7 +1399,6 @@ EXPECTED_MACOS_CHECKSUMS = {
     "desktop_drop": "e0b672a7d84c0a6cbc378595e82cdb15f2970a43",
     "desktop_multi_window": "93667594ccc4b88d91a97972fd3b1b89667fa80a",
     "device_info_plus": "b0fafc687fb901e2af612763340f1b0d4352f8e5",
-    "file_selector_macos": "6280b52b459ae6c590af5d78fc35c7267a3c4b31",
     "flutter_custom_cursor": "37e588711a2746f5cf48adb58b582cacff11c0c6",
     "FlutterMacOS": "8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24",
     "FMDB": "728731dd336af3936ce00f91d9d8495f5718a0e6",

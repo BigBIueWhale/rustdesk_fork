@@ -1927,7 +1927,7 @@ grep -Fq 'macos_root_wheel_not_group_world_writable(&metadata)' src/ipc/auth.rs 
 grep -Fq 'macos_root_owned_not_group_world_writable(&metadata)' src/ipc/auth.rs  || r_s11b2="$r_s11b2 macos-service-ipc-app-root-owned-mode-missing"
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-check-missing"
 grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-native"
-grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
+grep -Fq 'acl_valid(acl)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-not-validated"
 grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-entry-check-missing"
 grep -Fq 'MacosAclGuard' src/ipc/auth.rs || r_s11b2="$r_s11b2 macos-service-ipc-runtime-acl-free-guard-missing"
 if grep -Fq 'Command::new(MACOS_LS)' src/ipc/auth.rs \
@@ -2660,7 +2660,7 @@ grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -
 grep -Fq 'fn macos_path_has_no_extended_acl(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-check-missing"
 grep -Fq 'CString::new(path.as_os_str().as_bytes().to_vec())' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-cstring-missing"
 grep -Fq 'acl_get_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-get-link-missing"
-grep -Fq 'acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-valid-link-missing"
+grep -Fq 'acl_valid(acl)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-validation-missing"
 grep -Fq 'acl_get_entry(acl, MACOS_ACL_FIRST_ENTRY, &mut entry)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-entry-missing"
 grep -Fq 'acl_free(self.0)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-runtime-acl-free-missing"
 grep -Fq 'macOS runtime service ACL inspection provenance' requirements.html || r_s11c5="$r_s11c5 macos-runtime-acl-requirements-missing"

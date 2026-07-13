@@ -104,11 +104,7 @@ extern "C" {
         entry_id: libc::c_int,
         entry_p: *mut MacosAclEntry,
     ) -> libc::c_int;
-    fn acl_valid_link_np(
-        path_p: *const libc::c_char,
-        acl_type: libc::c_int,
-        acl: MacosAcl,
-    ) -> libc::c_int;
+    fn acl_valid(acl: MacosAcl) -> libc::c_int;
     fn acl_free(obj_p: *mut c_void) -> libc::c_int;
 }
 
@@ -556,7 +552,7 @@ pub(crate) fn macos_path_has_no_extended_acl(path: &Path) -> bool {
         return false;
     }
     let _acl_guard = MacosAclGuard(acl);
-    if unsafe { acl_valid_link_np(path_c.as_ptr(), MACOS_ACL_TYPE_EXTENDED, acl) } != 0 {
+    if unsafe { acl_valid(acl) } != 0 {
         log::error!(
             "Rejected invalid macOS extended ACL for '{}': {}",
             path.display(),

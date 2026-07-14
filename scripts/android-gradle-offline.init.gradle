@@ -1,0 +1,15 @@
+def rustdeskOffline = System.getenv("RUSTDESK_GRADLE_OFFLINE")
+
+switch (rustdeskOffline) {
+    case "1":
+        gradle.startParameter.offline = true
+        if (!gradle.startParameter.offline) {
+            throw new GradleException("failed to enable Gradle offline mode")
+        }
+        println("RUSTDESK_GRADLE_OFFLINE: enabled")
+        break
+    case null:
+        break
+    default:
+        throw new GradleException("RUSTDESK_GRADLE_OFFLINE must be unset or exactly 1")
+}

@@ -681,8 +681,8 @@ stage_android_sdk() {
 # (--network=none) cannot. Populate the cache HERE (the ONE networked step) by running the SAME
 # shared android build flow online (APK_MODE=warm, scripts/android-apk-build.sh) — it writes
 # /online/gradle-home AND auto-installs the extra SDK packages gradle pulls (build-tools 30.0.3,
-# platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then copies this cache
-# and builds gradle --offline.
+# platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then projects this cache
+# into private writable execution state whose tracked init authority enables Gradle offline mode.
 stage_gradle() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"

@@ -10,12 +10,33 @@
 # cargo-ndk, the offline cargo vendor, the offline flutter shim, the SDK, and the gradle cache.
 #
 # APK_MODE selects ONLY the gradle-cache handling (everything else is identical):
-#   offline: copy the read-only warm /online/gradle-home -> a writable /tmp dir, force
-#            org.gradle.offline (gradle builds from the warm cache with no network).
+#   offline: project the read-only warm /online/gradle-home into a private writable cache
+#            whose tracked init authority enables Gradle's actual offline start parameter.
 #   warm:    GRADLE_USER_HOME=/online/gradle-home directly (the networked run populates it,
 #            and gradle auto-installs the extra SDK packages it needs into /online/android-sdk).
 set -euo pipefail
-: "${APK_MODE:?APK_MODE must be offline|warm}"
+case "${APK_MODE:-}" in
+    offline|warm) ;;
+    *) echo "[FATAL] APK_MODE must be exactly offline or warm" >&2; exit 1 ;;
+esac
+[ -z "${RUSTDESK_GRADLE_OFFLINE+x}" ] \
+    || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
+
+if [ "$APK_MODE" = offline ]; then
+    python3 -I -S /src/scripts/android-gradle-cache.py materialize \
+        --source /online/gradle-home \
+        --init-script /src/scripts/android-gradle-offline.init.gradle
+    export GRADLE_USER_HOME=/tmp/gradle-home
+    export RUSTDESK_GRADLE_OFFLINE=1
+else
+    if [ -e /online/gradle-home ] || [ -L /online/gradle-home ]; then
+        [ -d /online/gradle-home ] && [ ! -L /online/gradle-home ] \
+            || { echo "[FATAL] warm Gradle cache is not a real directory" >&2; exit 1; }
+    else
+        mkdir /online/gradle-home
+    fi
+    export GRADLE_USER_HOME=/online/gradle-home
+fi
 
 TC=/tmp/tc; mkdir -p "$TC"
 # Host rust (rust-1.* ONLY — a bare rust-* glob would also grab the android cross-std),
@@ -53,20 +74,10 @@ export PUB_CACHE=/online/pub-cache CI=true
 # holds the Android Gradle resource-merge intermediates; after a dependency change (e.g. a plugin
 # removed) a prior build's merged-resource state DANGLES and `flutter build apk` aborts mid-merge
 # ("Unable to locate resourceFile ... in source-sets"). `flutter build apk` does NOT clean it, so a
-# re-run on a non-pristine tree fails — this makes it safe on ANY tree state, in ANY order. It is
+# re-run on a non-pristine tree fails — this makes it safe on any writable generated tree. It is
 # git-ignored build output regenerated identically by both double-build passes, so R-B2 A==B is
-# unaffected. Runs as root in the container, so it also clears any root-owned plugin intermediates a
-# prior build left. (Mirrors build-debian.sh's R-B9 ephemeral clean for the linux build.)
+# unaffected.
 rm -rf ./flutter/build
-
-# gradle cache: the only offline-vs-warm difference.
-if [ "$APK_MODE" = offline ]; then
-    cp -a /online/gradle-home /tmp/gradle-home
-    echo "org.gradle.offline=true" >> /tmp/gradle-home/gradle.properties
-    export GRADLE_USER_HOME=/tmp/gradle-home
-else
-    export GRADLE_USER_HOME=/online/gradle-home; mkdir -p "$GRADLE_USER_HOME"
-fi
 
 # Offline pub: the project + the flutter SDK tool package (flutter build re-resolves both
 # in-process ONLINE otherwise -> pub advisories _TypeError on the read-only cache).

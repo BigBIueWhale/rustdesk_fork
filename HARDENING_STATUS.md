@@ -2130,6 +2130,15 @@ runs the release gates, performs cold Debian/Android/Windows double-builds, requ
 writes the coherent commit/version/artifact identity to `dist/SHA256SUMS`. Publication is a separate optional
 action through `scripts/publish-github-release.sh`; it is not part of building or verifying `.6`.
 
+**R-B10 Android Gradle execution cache — SOURCE IMPLEMENTED; ARTIFACT PROOF PENDING.**
+The immutable online Gradle seed is projected descriptor-relatively into a fresh non-root owner-only execution
+cache. The projector rejects mode, ownership, topology, mount, link, mutation, and destination-identity drift,
+verifies complete bytes and inventory, and rejects ambient Gradle init authority. The sole tracked init script
+sets Gradle's real offline start parameter; the former ignored `org.gradle.offline` project property is absent.
+The pinned-image gate executes Gradle 7.6.4 under the production no-network/non-root confinement and proves the
+enabled, unset, and malformed flag states. The online-input mutation suite is now a mandatory release gate.
+Current artifact evidence remains open until a clean pushed exact commit completes the full R-B2 transaction.
+
 The release source-gate boundary is closed before expensive input copying. `scripts/verify-release.sh
 --preflight` proves a fixed `/usr/bin/grep` that is an executable, root-owned, non-group/world-writable regular
 file and identifies as GNU grep. Every migrated exhaustive forbidden-pattern scan distinguishes match (0),
@@ -2645,10 +2654,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **Apple R-R2 release gate integration — ✅ CLOSED 2026-07-11.** `scripts/apple-conform-check.sh`
   still runs outside the default fast `verify.sh` loop because it needs the `rd-apple-check`
   image plus Apple target cross-checks, but it is now part of the release source-gate bundle:
-  `scripts/verify-release.sh` runs it with `verify.sh`, the Windows harness self-test,
-  `smoke-server.sh`, `dart-verify.sh`, `native-codec-watch.sh`, `audit.sh`, `dart-audit.sh`, and
-  `test-build-faillo.sh`. The fast
-  verifier asserts that full bundle, including the Apple gate and the release-gate ledger/requirements
+  `scripts/verify-release.sh` runs it with `verify.sh`, the Windows harness self-test, the online-input mutation
+  suite, the Android Gradle execution-cache gate, `smoke-server.sh`, `dart-verify.sh`, `native-codec-watch.sh`,
+  `audit.sh`, `dart-audit.sh`, and `test-build-faillo.sh`. The fast verifier asserts that exact ordered eleven-gate
+  bundle, including the Apple gate and the release-gate ledger/requirements
   wording, so future Apple-source drift fails release verification rather than passing a
   "complete/proven" milestone silently.
 - **R-R3 dependency-advisory gates** — `scripts/audit.sh` builds a digest-pinned Rust 1.75 audit image,
@@ -2990,7 +2999,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-84007462c7627686075efb7916614ebd1ae937551ade3f598dc739effefc3d0c  requirements.html
+225eb08ea3ad98159fd2490047fa37e5f63b56af3a0e89fb931d75f49e3f03d1  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

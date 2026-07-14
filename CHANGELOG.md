@@ -109,6 +109,10 @@ release notes.
   bundle-relative RUNPATHs.
 
 ### Verification and release discipline
+- Projected the immutable Android Gradle seed into a fresh non-root owner-only execution cache, rejected ambient
+  init authority and unsafe topology, and replaced the ignored `org.gradle.offline` property with a tracked init
+  script that sets Gradle's actual offline start parameter. Pinned Gradle execution and online-snapshot mutation
+  suites are mandatory release gates; `--network=none` remains the independent hard boundary.
 - Confined verifier scratch state to private workspaces and made mutation self-tests prove that source,
   lockfile, release-ordering, and workspace-authority failures are detected.
 - Bound verifier fixture allocation and cleanup to retained no-follow scratch descriptors. Random descriptor-relative

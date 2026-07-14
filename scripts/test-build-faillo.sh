@@ -96,6 +96,36 @@ $expected"
     && ! reached_failure_is_expected 1 "$valid
 $marker" "$reached" "$expected" "$marker"
 }
+
+run_wrong_online_sha_probe() (
+  local fixture="" fixture_id="" status
+  cleanup_wrong_sha_fixture() {
+    status=$?
+    local cleanup_failed=0
+    trap - EXIT
+    trap '' HUP INT TERM
+    if [ -n "$fixture" ]; then
+      /usr/bin/python3 -I -S "$REPO_ROOT/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$fixture" --expected-identity "$fixture_id" \
+        || cleanup_failed=1
+      [ ! -e "$fixture" ] && [ ! -L "$fixture" ] || cleanup_failed=1
+    fi
+    [ "$cleanup_failed" -eq 0 ] || status=125
+    exit "$status"
+  }
+  umask 077
+  trap cleanup_wrong_sha_fixture EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  fixture="$(mktemp -d /tmp/rustdesk-faillo-sha.XXXXXXXXXX)" || exit 1
+  fixture_id="$(stat -c '%d:%i' -- "$fixture")" || exit 1
+  printf 'independent wrong-sha fixture\n' > "$fixture/rust-${RV}.tar.xz" || exit 1
+  ONLINE_DIR="$fixture" bash -c \
+    'source scripts/lib.sh >/dev/null 2>&1; load_pins >/dev/null 2>&1; verify_online_shas "$1" "$2"' \
+    _ "rust-${RV}.tar.xz" 0000000000000000000000000000000000000000000000000000000000000000
+)
+
 run_with_dirty_probe() (
   local label="$1" probe="" probe_id="" probe_parent="$DIRTY_PROBE_PARENT"
   shift
@@ -127,6 +157,61 @@ run_with_dirty_probe() (
     || exit 1
   printf 'BUILD-FAILLO: DIRTY-PROBE-READY: %s\n' "$probe" >&2
   "$@"
+)
+
+run_production_dirty_probe() (
+  local fixture_root="" fixture_id="" fixture_repo="" observed status
+  cleanup_production_fixture() {
+    status=$?
+    local cleanup_failed=0
+    trap - EXIT
+    trap '' HUP INT TERM
+    if [ -n "$fixture_root" ]; then
+      observed="$(stat -c '%d:%i:%u:%g:%a:%F' -- "$fixture_root" 2>/dev/null)" \
+        || cleanup_failed=1
+      [ "$observed" = "$fixture_id:$(id -u):$(id -g):700:directory" ] \
+        || cleanup_failed=1
+      if [ "$cleanup_failed" -eq 0 ]; then
+        /usr/bin/python3 -I -S "$REPO_ROOT/scripts/verify-private-tree-closure.py" \
+          --mount-root "$fixture_root" \
+          && /usr/bin/python3 -I -S "$REPO_ROOT/scripts/verify-private-tree-closure.py" \
+          --inode-root "$fixture_root" \
+          && /usr/bin/python3 -I -S "$REPO_ROOT/scripts/verify-private-tree-closure.py" \
+          --remove-private-root "$fixture_root" --expected-identity "$fixture_id" \
+          && [ ! -e "$fixture_root" ] && [ ! -L "$fixture_root" ] \
+          || cleanup_failed=1
+      fi
+    fi
+    if [ "$cleanup_failed" -ne 0 ]; then
+      printf 'BUILD-FAILLO: PRODUCTION-FIXTURE-CLEANUP-FAILURE: %s\n' "$fixture_root" >&2
+      status=125
+    fi
+    exit "$status"
+  }
+  umask 077
+  trap cleanup_production_fixture EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  fixture_root="$(mktemp -d /tmp/rustdesk-faillo-doctor.XXXXXXXXXX)" || exit 1
+  fixture_id="$(stat -c '%d:%i' -- "$fixture_root")" || exit 1
+  fixture_repo="$fixture_root/repository"
+  /usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null clone \
+    --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo" \
+    || exit 1
+  chmod 0700 "$fixture_repo" || exit 1
+  /usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null -C "$fixture_repo" \
+    checkout --quiet -B master "$EXPECTED_SOURCE_COMMIT" || exit 1
+  [ "$(stat -c '%u:%g:%a' -- "$fixture_repo")" = "$(id -u):$(id -g):700" ] \
+    || exit 1
+  [ "$(/usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null -C "$fixture_repo" \
+    symbolic-ref --quiet --short HEAD)" = master ] || exit 1
+  [ "$(/usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null -C "$fixture_repo" \
+    rev-parse --verify 'HEAD^{commit}')" = "$EXPECTED_SOURCE_COMMIT" ] || exit 1
+  [ -z "$(/usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null -C "$fixture_repo" \
+    status --porcelain=v1 --untracked-files=all)" ] || exit 1
+  DIRTY_PROBE_PARENT="$fixture_repo" run_with_dirty_probe doctor \
+    "${CLEAN_SCRIPT_ENV[@]}" "$fixture_repo/scripts/build-release.sh" --doctor
 )
 
 exercise_dirty_probe_cleanup_failure() (
@@ -168,7 +253,7 @@ run_die "SOURCE_DATE_EPOCH non-integer"    "SOURCE_DATE_EPOCH is unset or not an
 run_ok  "SOURCE_DATE_EPOCH from the pin"   'export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"; assert_source_date_epoch'
 run_die "verify_sha256 R-B12 sentinel"     "is pinned to the R-B12 sentinel" 'verify_sha256 /etc/hostname "$SHA_PENDING"'
 run_die "verify_sha256 missing file"       "verify_sha256: file not found: /online/DOES-NOT-EXIST.tar.xz" 'verify_sha256 /online/DOES-NOT-EXIST.tar.xz 00000000000000000000000000000000000000000000000000000000deadbeef'
-run_die "verify_online_shas wrong SHA"     "SHA-256 mismatch for ${ONLINE_DIR:-$REPO_ROOT/online}/rust-${RV}.tar.xz" "verify_online_shas rust-${RV}.tar.xz 0000000000000000000000000000000000000000000000000000000000000000"
+run_script_die "verify_online_shas wrong SHA" "SHA-256 mismatch for " run_wrong_online_sha_probe
 run_die "verify_online_shas odd arg count" "verify_online_shas: odd argument count" 'verify_online_shas loneName'
 run_die "require_cmd missing tool"         "required tool(s) not found: this_tool_does_not_exist_xyz" 'require_cmd this_tool_does_not_exist_xyz'
 run_script_die_reached "clean-worktree guard dies dirty" \
@@ -226,7 +311,7 @@ run_script_die_reached_without_marker "exact source-state self-test rejects a di
 run_script_die_reached "production release source gate rejects a dirty checkout" \
   "release preflight: source tree is not clean, including untracked files" \
   "BUILD-FAILLO: DIRTY-PROBE-READY:" \
-  run_with_dirty_probe doctor "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --doctor
+  run_production_dirty_probe
 run_script_die "gen-android-keystore refuses to overwrite" "refusing to overwrite existing keystore: scripts/lib.sh" \
   bash scripts/gen-android-keystore.sh scripts/lib.sh /tmp/faillo-nonexistent-pass
 run_script_die "publish-github-release rejects a bad flag" "unknown argument '--nonsense'" \

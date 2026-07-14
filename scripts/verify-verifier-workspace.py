@@ -714,7 +714,7 @@ def validate_verify_workspace(source):
     for text, label in (
         ('[ -z "$VERIFY_TMP_ID" ]', "workspace recorded identity requirement"),
         ('"$(stat -c \'%d:%i\' -- "$VERIFY_TMP"', "workspace live identity proof"),
-        ('--remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"', "identity-bound workspace removal"),
+        ('--remove-private-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"', "identity-bound workspace removal"),
         ('[ -e "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ]', "workspace removal postcondition"),
         ('trap \'\' HUP INT TERM', "workspace cleanup signal exclusion"),
         ('echo "$VERIFY_SUCCESS_MESSAGE"', "deferred verify success output"),
@@ -725,7 +725,7 @@ def validate_verify_workspace(source):
         (
             "trap '' HUP INT TERM",
             '"$(stat -c \'%d:%i\' -- "$VERIFY_TMP"',
-            '--remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
+            '--remove-private-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
             'echo "$VERIFY_SUCCESS_MESSAGE"',
             'exit "$status"',
         ),
@@ -775,13 +775,55 @@ def validate_build_release(source):
     normalizer = extract_between(
         source,
         "offline_normalize_exact_tree() {",
-        "\n}\n\nnormalize_snapshot_access() {",
+        "\n}\n\nverify_private_tree_authority_capacity() {",
         "private-tree normalizer",
+    )
+    capacity_check = extract_between(
+        source,
+        "verify_private_tree_authority_capacity() {",
+        "\n}\n\nacquire_private_tree_closure_execution() {",
+        "retained-authority capacity preflight",
+    )
+    execution_authority = extract_between(
+        source,
+        "acquire_private_tree_closure_execution() {",
+        "\n}\n\nclose_private_tree_closure_execution() {",
+        "private-tree helper execution authority",
+    )
+    execution_close = extract_between(
+        source,
+        "close_private_tree_closure_execution() {",
+        "\n}\n\nrun_private_tree_closure_from_descriptor() {",
+        "private-tree helper execution-authority close",
+    )
+    descriptor_executor = extract_between(
+        source,
+        "run_private_tree_closure_from_descriptor() {",
+        "\n}\n\noffline_remove_exact_tree_contents() {",
+        "private-tree descriptor executor",
+    )
+    tree_remover = extract_between(
+        source,
+        "offline_remove_exact_tree_contents() {",
+        "\n}\n\nverify_private_tree_removal_capability() {",
+        "private-tree terminal remover",
+    )
+    removal_capability = extract_between(
+        source,
+        "verify_private_tree_removal_capability() {",
+        "\n}\n\nverify_private_tree_cleanup_preflight() {",
+        "private-tree removal-capability preflight",
+    )
+    cleanup_preflight = extract_between(
+        source,
+        "verify_private_tree_cleanup_preflight() {",
+        "\n}\n\nnormalize_snapshot_access() {",
+        "complete private-tree cleanup preflight",
     )
     snapshot_normalizer = extract_between(
         source,
         "normalize_snapshot_access() {",
-        "\n}\n\nnormalize_workspace_access() {",
+        "\n}\n\ncleanup_release_workspace() {",
         "snapshot normalizer",
     )
     cleanup = extract_between(
@@ -865,9 +907,15 @@ def validate_build_release(source):
     main = extract_between(source, "main() {", "\n}\n\nmain\n", "release main transaction")
     normalization_command = extract_between(
         normalizer,
-        "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\",
+        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
         "\n    ); then",
         "descriptor-bound private-tree normalizer",
+    )
+    removal_command = extract_between(
+        tree_remover,
+        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
+        "; then",
+        "descriptor-bound private-tree terminal remover",
     )
     require_text(
         source,
@@ -918,6 +966,7 @@ def validate_build_release(source):
             "assert_repo_state\n",
             'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
             "require_online_complete\n",
+            "verify_private_tree_cleanup_preflight",
             "create_release_online_snapshot\n",
         ),
         "release preflight ordering",
@@ -953,8 +1002,8 @@ def validate_build_release(source):
         ('git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow', "independent complete-history snapshot clone"),
         ('checkout --quiet --detach "$PINNED_HEAD"', "detached pinned-commit snapshot checkout"),
         ('assert_git_object_authority "$source"', "snapshot object-authority rejection"),
-        ('"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source"', "snapshot mount closure"),
-        ('"$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source"', "snapshot inode-link closure"),
+        ('run_private_tree_closure_from_descriptor --mount-root "$source"', "snapshot mount closure"),
+        ('run_private_tree_closure_from_descriptor --inode-root "$source"', "snapshot inode-link closure"),
     ):
         require_text(create_snapshot, text, label)
     require_exact_count(
@@ -973,8 +1022,8 @@ def validate_build_release(source):
             'assert_git_object_authority "$source"',
             'git_closed -C "$source" fsck --full --strict --no-reflogs',
             'chmod 0700 "$source"',
-            '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source"',
-            '"$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source"',
+            'run_private_tree_closure_from_descriptor --mount-root "$source"',
+            'run_private_tree_closure_from_descriptor --inode-root "$source"',
             'assert_snapshot_exact "$source" "snapshot $label creation"',
         ),
         "independent release snapshot acquisition",
@@ -991,6 +1040,11 @@ def validate_build_release(source):
         reset_self_test,
         'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo"',
         "reset fixture complete-history Git clone",
+    )
+    require_text(
+        reset_self_test,
+        "verify_private_tree_cleanup_preflight",
+        "reset fixture complete terminal-cleanup preflight",
     )
     require_exact_count(
         source,
@@ -1010,7 +1064,7 @@ def validate_build_release(source):
         reset,
         (
             'normalize_snapshot_access "$source" "$label"',
-            '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source"',
+            'run_private_tree_closure_from_descriptor --mount-root "$source"',
             'git_closed -C "$source" clean -ffdx',
             'git_closed -C "$source" clean -nffdx',
             'assert_snapshot_exact "$source" "$label after generated-state reset"',
@@ -1018,15 +1072,15 @@ def validate_build_release(source):
         "generated-state reset ordering",
     )
     expected_normalization_command = (
-        "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
         "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\\n"
         "            --security-opt no-new-privileges \\\n"
-        "            --ulimit nofile=131328:131328 \\\n"
+        "            --ulimit nofile=524544:524544 \\\n"
         '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
-        '            --mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly" \\\n'
-        '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py \\\n'
+        '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n'
+        '            "$PRIVATE_TREE_CLOSURE_HASH" \\\n'
         '            --normalize-root /cleanup --expected-identity "$expected_identity" \\\n'
-        '            --owner "$uid" --group "$gid"'
+        '            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
     )
     require_exact_count(normalizer, "docker_local run ", 1, "single descriptor-bound normalizer container")
     if normalization_command != expected_normalization_command:
@@ -1040,12 +1094,13 @@ def validate_build_release(source):
         ("--cap-add=DAC_READ_SEARCH", "normalizer read-only inspection capability"),
         ("--cap-add=CHOWN", "normalizer chown capability"),
         ("--security-opt no-new-privileges", "normalizer privilege ceiling"),
-        ("--ulimit nofile=131328:131328", "normalizer retained-authority descriptor budget"),
-        ('"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py', "content-ID normalizer image"),
+        ("--ulimit nofile=524544:524544", "normalizer retained-authority descriptor budget"),
+        ('"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR"', "authenticated normalizer executor"),
+        ('"$PRIVATE_TREE_CLOSURE_HASH"', "normalizer committed helper digest"),
         ('--normalize-root /cleanup --expected-identity "$expected_identity"', "identity-bound normalization dispatch"),
         ('--owner "$uid" --group "$gid"', "normalizer destination ownership"),
-        ('"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"', "normalizer mount closure proof"),
-        ('src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly', "pinned normalizer implementation"),
+        ('run_private_tree_closure_from_descriptor --mount-root "$path"', "normalizer mount closure proof"),
+        ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor-sourced normalizer implementation"),
         ("bind-recursive=disabled", "normalizer recursive-bind exclusion"),
         ('[ "$observed" = "$expected_identity" ]', "normalizer identity postcondition"),
     ):
@@ -1055,7 +1110,7 @@ def validate_build_release(source):
     if re.findall(r"--cap-add=([A-Z_]+)", reset_self_test) != ["CHOWN"]:
         raise VerificationError("reset fixture capability set is not exactly CHOWN")
     require_exact_count(normalizer, "bind-recursive=disabled", 1, "normalizer recursive-bind exclusions")
-    require_exact_count(normalizer, '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"', 2, "normalizer mount closure stages")
+    require_exact_count(normalizer, 'run_private_tree_closure_from_descriptor --mount-root "$path"', 2, "normalizer mount closure stages")
     require_exact_count(normalizer, '[ "$observed" = "$expected_identity" ]', 2, "normalizer identity stages")
     require_text(
         normalizer,
@@ -1070,7 +1125,7 @@ def validate_build_release(source):
         (
             '[ "$resolved" = "$path" ]',
             '[ "$observed" = "$expected_identity" ]',
-            '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"',
+            'run_private_tree_closure_from_descriptor --mount-root "$path"',
             'verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"',
             "--cap-add=DAC_READ_SEARCH",
             "--cap-add=CHOWN",
@@ -1104,6 +1159,102 @@ def validate_build_release(source):
     ):
         if forbidden in normalizer:
             raise VerificationError(f"private-tree normalizer retains forbidden Docker authority: {forbidden}")
+    for text, label in (
+        ('--check-descriptor-budget', "host retained-authority capacity proof"),
+        ('--check-exact-descriptor-budget', "container exact retained-authority capacity proof"),
+        ('--ulimit nofile=524544:524544', "capacity-preflight descriptor limit"),
+        ('--pull=never', "capacity-preflight no-pull policy"),
+        ('--network=none', "capacity-preflight network isolation"),
+        ('--read-only', "capacity-preflight immutable container root"),
+        ('--cap-drop=ALL', "capacity-preflight capability reset"),
+        ('--security-opt no-new-privileges', "capacity-preflight privilege ceiling"),
+    ):
+        require_text(capacity_check, text, label)
+    if "--cap-add=" in capacity_check:
+        raise VerificationError("retained-authority capacity preflight adds a capability")
+    for text, label in (
+        ('path_state="$(stat -c \'%d:%i:%u:%g:%a:%h:%F\'', "helper pathname identity acquisition"),
+        ('[ "$path_state" = "$(stat -c \'%d:%i\' -- "$PRIVATE_TREE_CLOSURE_PROBE"):$(id -u):$(id -g):500:1:regular file" ]', "helper pathname metadata proof"),
+        ('exec {PRIVATE_TREE_CLOSURE_FD}< "$PRIVATE_TREE_CLOSURE_PROBE"', "open helper execution authority"),
+        ('stat -Lc \'%d:%i:%u:%g:%a:%h:%F\'', "helper descriptor identity proof"),
+        ('[ "$descriptor_state" = "$path_state" ]', "helper pathname/descriptor identity equality"),
+        ('sha256sum "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "helper descriptor content proof"),
+        ('[ "$observed_hash" = "$PRIVATE_TREE_CLOSURE_HASH" ]', "helper committed-content equality"),
+        ('[ -z "$PRIVATE_TREE_CLOSURE_FD" ] || return 1', "duplicate helper-authority rejection"),
+    ):
+        require_text(execution_authority, text, label)
+    for text, label in (
+        ('[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 0', "absent helper-close identity"),
+        ('exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1', "helper descriptor close"),
+        ('PRIVATE_TREE_CLOSURE_FD=""', "helper descriptor retirement"),
+    ):
+        require_text(execution_close, text, label)
+    require_order(
+        execution_close,
+        (
+            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 0',
+            'exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1',
+            'PRIVATE_TREE_CLOSURE_FD=""',
+        ),
+        "helper descriptor close ordering",
+    )
+    for text, label in (
+        ('[ -n "$PRIVATE_TREE_CLOSURE_FD" ] && [ -n "$PRIVATE_TREE_CLOSURE_HASH" ]', "descriptor executor authority precondition"),
+        ('/usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR"', "bounded descriptor executor"),
+        ('"$PRIVATE_TREE_CLOSURE_HASH" "$@"', "descriptor executor committed digest"),
+        ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor executor byte source"),
+    ):
+        require_text(descriptor_executor, text, label)
+    for text, label in (
+        ('readonly PRIVATE_TREE_CLOSURE_EXECUTOR=', "immutable bounded helper executor"),
+        ('sys.stdin.buffer.read(1048577)', "bounded terminal-removal helper input"),
+        ('len(source) <= 1048576 or sys.exit(126)', "oversized terminal-removal helper rejection"),
+        ('expected = sys.argv.pop(1)', "helper digest argument removal"),
+        ('hashlib.sha256(source).hexdigest() == expected or sys.exit(126)', "in-memory helper digest proof"),
+        ('exec(compile(source, "/probe.py", "exec"))', "authenticated in-memory helper execution"),
+    ):
+        require_text(source, text, label)
+    expected_removal_command = (
+        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+        "        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\\n"
+        "        --security-opt no-new-privileges \\\n"
+        "        --ulimit nofile=524544:524544 \\\n"
+        '        --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
+        '        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n'
+        '        "$PRIVATE_TREE_CLOSURE_HASH" \\\n'
+        '        --remove-tree-contents /cleanup --expected-identity "$expected_identity" \\\n'
+        '        --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
+    )
+    if removal_command != expected_removal_command:
+        raise VerificationError("private-tree terminal remover command is not the exact authority allowlist")
+    if re.findall(r"--cap-add=([A-Z_]+)", tree_remover) != [
+        "DAC_OVERRIDE",
+        "FOWNER",
+    ]:
+        raise VerificationError("private-tree terminal remover capability allowlist is not exact")
+    for text, label in (
+        ('[ "$observed" = "$expected_identity:$uid:$gid:700" ]', "terminal-removal root metadata proof"),
+        ('run_private_tree_closure_from_descriptor --mount-root "$path"', "terminal-removal mount closure"),
+        ('verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"', "terminal-removal image provenance"),
+        ('"$PRIVATE_TREE_CLOSURE_HASH"', "terminal-removal helper digest"),
+        ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor-sourced terminal-removal helper"),
+        ('--remove-tree-contents /cleanup', "terminal content-removal operation"),
+        ('root authority changed during content removal', "terminal-removal root postcondition"),
+    ):
+        require_text(tree_remover, text, label)
+    if '"$PRIVATE_TREE_CLOSURE_PROBE"' in tree_remover:
+        raise VerificationError("private-tree terminal remover executes a mutable helper pathname")
+    for forbidden in (
+        '/usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE"',
+        'src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py',
+    ):
+        if forbidden in source:
+            raise VerificationError(
+                f"release transaction executes a mutable private-tree helper pathname: {forbidden}"
+            )
+    for forbidden in ("--privileged", "--cap-add=ALL", "--cap-add=CHOWN", "--network=host"):
+        if forbidden in tree_remover:
+            raise VerificationError(f"private-tree terminal remover retains forbidden authority: {forbidden}")
     require_text(snapshot_normalizer, '"$SOURCE_A"|"$SOURCE_B"', "snapshot normalizer scope")
     require_text(
         snapshot_normalizer,
@@ -1116,10 +1267,13 @@ def validate_build_release(source):
         (
             'if [ "$WINDOWS_UNSAFE" -eq 1 ] || [ "$KEEP_WORKSPACE" -eq 1 ]',
             "reconcile_final_publication",
-            "normalize_workspace_access",
-            '--remove-scratch-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"',
+            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1',
+            "offline_remove_exact_tree_contents",
+            "run_private_tree_closure_from_descriptor",
+            '--remove-empty-private-root "$WORKSPACE"',
+            "close_private_tree_closure_execution",
         ),
-        "whole-workspace cleanup ordering",
+        "descriptor-bound terminal workspace cleanup ordering",
     )
     require_text(
         cleanup,
@@ -1129,12 +1283,6 @@ def validate_build_release(source):
     require_text(cleanup, "workspace_state=absent", "missing-workspace failure state")
     require_text(cleanup, "workspace_state=invalid", "changed-workspace failure state")
     require_text(cleanup, 'elif [ ! -e "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ]', "missing workspace detection")
-    require_exact_count(
-        cleanup,
-        '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$WORKSPACE"',
-        2,
-        "workspace cleanup mount closure",
-    )
     if 'elif [ -n "$DEBIAN_IMAGE_ID" ]' in cleanup:
         raise VerificationError("workspace cleanup can delete without an installed closure probe")
     for forbidden in (
@@ -1148,8 +1296,45 @@ def validate_build_release(source):
             )
     require_text(
         cleanup,
-        'if [ "$FIXTURE_MODE" -eq 0 ] && [ -n "$DEBIAN_IMAGE_ID" ]',
-        "production-only retained-authority workspace normalization",
+        'if [ "$FIXTURE_MODE" -eq 0 ] && [ "$workspace_state" = valid ]',
+        "production-only retained-authority workspace removal",
+    )
+    require_text(
+        cleanup,
+        "production cleanup lacks the pinned terminal-removal image; retained path",
+        "missing production cleanup image rejection",
+    )
+    require_text(
+        cleanup,
+        'elif ! run_private_tree_closure_from_descriptor \\\n                --remove-private-root "$WORKSPACE"',
+        "fixture-only recursive workspace removal",
+    )
+    for text, label in (
+        ('install -d -m 0700 "$fixture"', "capability fixture private root"),
+        ('install -d -m 1700 "$fixture/sticky"', "capability fixture sticky directory"),
+        ('printf \'sticky-owner\\n\' > "$fixture/sticky/user-entry"', "capability fixture foreign sticky entry"),
+        ('--cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER', "capability fixture exact capability set"),
+        ('chmod 0000 /capability/root-entry', "capability fixture inaccessible root-owned file"),
+        ('chmod 0000 /capability/locked', "capability fixture inaccessible root-owned directory"),
+        ('[ "$observed" = "0:0:0" ]', "capability fixture root ownership proof"),
+        ('offline_remove_exact_tree_contents "$fixture" "$fixture_id"', "capability fixture terminal removal"),
+        ('--remove-empty-private-root "$fixture"', "capability fixture empty-root removal"),
+        ('[ ! -e "$fixture" ] && [ ! -L "$fixture" ]', "capability fixture absence proof"),
+    ):
+        require_text(removal_capability, text, label)
+    if re.findall(r"--cap-add=([A-Z_]+)", removal_capability) != [
+        "DAC_OVERRIDE",
+        "FOWNER",
+    ]:
+        raise VerificationError("terminal-removal capability preflight allowlist is not exact")
+    require_order(
+        cleanup_preflight,
+        (
+            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 1',
+            "verify_private_tree_authority_capacity",
+            "verify_private_tree_removal_capability",
+        ),
+        "complete terminal-cleanup preflight ordering",
     )
     require_text(
         create_workspace,
@@ -1166,6 +1351,7 @@ def validate_build_release(source):
         (
             'PRIVATE_TREE_CLOSURE_PROBE="$WORKSPACE/private-tree-closure.py"',
             'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
+            'PRIVATE_TREE_CLOSURE_HASH="$private_hash"',
             '"$PINNED_HEAD:scripts/verify-private-tree-closure.py"',
             '[ "$private_hash" = "$commit_hash" ]',
             'FINALIZE_RELEASE_SET_PROBE="$WORKSPACE/finalize-release-set.py"',
@@ -1173,8 +1359,18 @@ def validate_build_release(source):
             '"$PINNED_HEAD:scripts/finalize-release-set.py"',
             '[ "$publisher_private_hash" = "$commit_hash" ]',
             'DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"',
+            "acquire_private_tree_closure_execution",
         ),
         "private release-helper installation",
+    )
+    require_order(
+        main,
+        (
+            'DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"',
+            "create_workspace",
+            "release_preflight",
+        ),
+        "production cleanup image initialization",
     )
     require_text(cleanup, "trap '' HUP INT TERM", "cleanup signal exclusion")
     require_exact_count(cleanup, '[ "$status" -ne 0 ] || status=1', 1, "cleanup original-status preservation")
@@ -1183,7 +1379,7 @@ def validate_build_release(source):
         (
             "trap '' HUP INT TERM",
             "reconcile_final_publication",
-            '--remove-scratch-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"',
+            '--remove-empty-private-root "$WORKSPACE"',
             '[ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]',
             'log "$RELEASE_SUCCESS_MESSAGE"',
             'exit "$status"',
@@ -2299,7 +2495,18 @@ def validate_docs(sources):
     for text in (
         "git clone --no-hardlinks --no-checkout --reject-shallow",
         "shallow declarations or state",
-        "RLIMIT_NOFILE</code> 131,328",
+        "exact soft <code>RLIMIT_NOFILE</code> of 524,544",
+        "at most 64 pre-existing descriptors",
+        "before enumerating inherited descriptors",
+        "file type, owner, group, mode, link count",
+        "every host or container closure, normalization, preflight, and deletion invocation",
+        "only <code>DAC_OVERRIDE</code> and <code>FOWNER</code>",
+        "recursive host remover is fixture-only",
+        "hashes the complete bytes in memory against the committed digest",
+        "root-owned mode-<code>0000</code> file and directory",
+        "refuses any late content instead of traversing it",
+        "does not chown, chmod, or otherwise normalize the online snapshot",
+        "complete-history clone, attaches <code>master</code>",
         "failed descriptor close preserve uncertainty and abort",
         "FS_IOC_GETFSUUID",
         "complete ext4 UUID",
@@ -2327,7 +2534,15 @@ def validate_docs(sources):
     for text in (
         "Current `.6` source verdict (2026-07-14)",
         "git clone --no-hardlinks --no-checkout --reject-shallow",
-        "131,328",
+        "524,544",
+        "no longer normalizes the workspace or its authenticated online snapshot",
+        "hashes the complete bytes in memory",
+        "no release operation executes or mounts the mutable helper pathname",
+        "only `DAC_OVERRIDE` and `FOWNER`",
+        "recursive host removal is confined",
+        "root-owned mode-0000 state",
+        "refuses any late content instead of traversing it",
+        "complete-history, no-hardlink clone attached as `master`",
         "FS_IOC_GETFSUUID",
         "nonzero 16-byte external ext4 UUID",
         "wrong-token payload and next-record names",
@@ -2341,7 +2556,13 @@ def validate_docs(sources):
     changelog = sources["changelog"]
     for text in (
         "`--no-hardlinks --reject-shallow` private repository",
-        "independently reacquires and consumes a complete",
+        "terminal privileged deletion instead of whole-workspace ownership normalization",
+        "hashes the bounded descriptor bytes in memory against the committed digest",
+        "no release operation executes or mounts its mutable pathname",
+        "`DAC_OVERRIDE` and `FOWNER`",
+        "host cleanup is fixture-only",
+        "host refuses late content before removing only the exact",
+        "private complete-history no-hardlink clone attached as `master`",
         "complete descriptor-retrieved ext4 UUID",
         "wrong-token canonical state",
         "process-restart proofs; they do not claim physical power-loss simulation",
@@ -2447,11 +2668,23 @@ def validate_faillo_contract(source):
         "\n)\n\nexercise_dirty_probe_cleanup_failure() (",
         "dirty-probe lifecycle",
     )
+    production_fixture = extract_between(
+        source,
+        "run_production_dirty_probe() (",
+        "\n)\n\nexercise_dirty_probe_cleanup_failure() (",
+        "production dirty-source fixture",
+    )
     reached_contract = extract_between(
         source,
         "reached_failure_is_expected() {",
         "\n}\nrun_script_die_reached_without_marker() {",
         "reached-state failure classifier",
+    )
+    wrong_sha_fixture = extract_between(
+        source,
+        "run_wrong_online_sha_probe() (",
+        "\n)\n\nrun_with_dirty_probe() (",
+        "independent wrong-SHA fixture",
     )
     require_text(source, "release source-gate preflight accepts the fixed scanner", "scanner preflight proof")
     require_text(source, "verifier scanner rejects an operational error", "scanner error proof")
@@ -2471,15 +2704,34 @@ def validate_faillo_contract(source):
         "root-owned reset exact command",
     )
     for text, label in (
-        ('${ONLINE_DIR:-$REPO_ROOT/online}/rust-${RV}.tar.xz', "effective online-directory diagnostic"),
+        ('run_script_die "verify_online_shas wrong SHA" "SHA-256 mismatch for " run_wrong_online_sha_probe', "independent wrong-SHA dispatch"),
         ('"--self-test-source-state=$EXPECTED_SOURCE_COMMIT"', "exact source-state self-test command"),
         ('--self-test-source-state=0000000000000000000000000000000000000000', "wrong source-state commit rejection"),
         ('build-release source-state self-test: OK', "exact source-state success marker"),
         ('source-state self-test: source tree is not clean, including untracked files', "exact source-state dirty rejection"),
         ('production release source gate rejects a dirty checkout', "production release-source behavioral gate"),
-        ('run_with_dirty_probe doctor "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --doctor', "production release-source fixture dispatch"),
+        ('run_production_dirty_probe', "production release-source fixture dispatch"),
     ):
         require_text(source, text, label)
+    for text, label in (
+        ('mktemp -d /tmp/rustdesk-faillo-sha.XXXXXXXXXX', "private wrong-SHA root"),
+        ('fixture_id="$(stat -c \'%d:%i\' -- "$fixture")"', "wrong-SHA root identity"),
+        ('printf \'independent wrong-sha fixture\\n\'', "independent wrong-SHA bytes"),
+        ('ONLINE_DIR="$fixture" bash -c', "fixture-local online directory"),
+        ('--remove-private-root "$fixture" --expected-identity "$fixture_id"', "wrong-SHA descriptor-bound cleanup"),
+        ('[ ! -e "$fixture" ] && [ ! -L "$fixture" ]', "wrong-SHA absence proof"),
+        ('[ "$cleanup_failed" -eq 0 ] || status=125', "wrong-SHA cleanup status"),
+        ('exit "$status"', "wrong-SHA original-status propagation"),
+    ):
+        require_text(wrong_sha_fixture, text, label)
+    if '${ONLINE_DIR:-$REPO_ROOT/online}/rust-${RV}.tar.xz' in source:
+        raise VerificationError("fail-loud wrong-SHA proof depends on the ignored online cache")
+    require_exact_count(
+        source,
+        "run_production_dirty_probe",
+        2,
+        "production release-source fixture dispatch",
+    )
     for text, label in (
         ("run_with_dirty_probe()", "exclusive dirty-probe lifecycle"),
         ('mktemp "$probe_parent/.faillo-${label}.XXXXXXXXXX"', "random exclusive dirty probe"),
@@ -2525,6 +2777,50 @@ def validate_faillo_contract(source):
         "printf 'BUILD-FAILLO: DIRTY-PROBE-READY: %s\\n' \"$probe\" >&2",
         "dirty-probe reached-state marker",
     )
+    for text, label in (
+        ("umask 077", "production fixture private creation mask"),
+        ('mktemp -d /tmp/rustdesk-faillo-doctor.XXXXXXXXXX', "production fixture private root"),
+        ('clone \\\n    --quiet --no-hardlinks --no-checkout --reject-shallow', "production fixture independent complete clone"),
+        ('checkout --quiet -B master "$EXPECTED_SOURCE_COMMIT"', "production fixture attached exact master"),
+        ('symbolic-ref --quiet --short HEAD', "production fixture attached-branch proof"),
+        ("rev-parse --verify 'HEAD^{commit}'", "production fixture exact-commit proof"),
+        ('status --porcelain=v1 --untracked-files=all', "production fixture clean baseline proof"),
+        ('DIRTY_PROBE_PARENT="$fixture_repo" run_with_dirty_probe doctor', "production fixture sole dirty mutation"),
+        ('"$fixture_repo/scripts/build-release.sh" --doctor', "production fixture committed release entrypoint"),
+        ('--mount-root "$fixture_root"', "production fixture mount-closure cleanup"),
+        ('--inode-root "$fixture_root"', "production fixture inode-closure cleanup"),
+        ('--remove-private-root "$fixture_root" --expected-identity "$fixture_id"', "production fixture descriptor-bound cleanup"),
+        ('[ ! -e "$fixture_root" ] && [ ! -L "$fixture_root" ]', "production fixture absence proof"),
+        ('status=$?', "production fixture original-status capture"),
+        ("status=125", "production fixture distinct cleanup status"),
+        ('exit "$status"', "production fixture final-status propagation"),
+    ):
+        require_text(production_fixture, text, label)
+    require_order(
+        production_fixture,
+        (
+            "status=$?",
+            "trap - EXIT",
+            "status=125",
+            'exit "$status"',
+        ),
+        "production dirty-source cleanup status preservation",
+    )
+    require_order(
+        production_fixture,
+        (
+            'mktemp -d /tmp/rustdesk-faillo-doctor.XXXXXXXXXX',
+            'clone \\\n    --quiet --no-hardlinks --no-checkout --reject-shallow',
+            'checkout --quiet -B master "$EXPECTED_SOURCE_COMMIT"',
+            'symbolic-ref --quiet --short HEAD',
+            "rev-parse --verify 'HEAD^{commit}'",
+            'status --porcelain=v1 --untracked-files=all',
+            'DIRTY_PROBE_PARENT="$fixture_repo" run_with_dirty_probe doctor',
+        ),
+        "production dirty-source fixture authority ordering",
+    )
+    if "rm -rf" in production_fixture:
+        raise VerificationError("production dirty-source fixture retains recursive pathname deletion")
     if "grep -qiE 'FATAL|FAIL" in source or 'grep -qiE \'FATAL|FAIL' in source:
         raise VerificationError("fail-loud suite accepts a broad unrelated failure diagnostic")
     require_order(
@@ -2555,19 +2851,19 @@ def validate_private_tree_closure(source):
         source, module, "main", "private-tree closure main dispatch"
     )
     cleanup = extract_python_method(
-        source, module, "ScratchRoot", "remove_contents", "closure cleanup traversal"
+        source, module, "PrivateTreeRoot", "remove_contents", "closure cleanup traversal"
     )
     inode_closure = extract_python_method(
         source,
         module,
-        "ScratchRoot",
+        "PrivateTreeRoot",
         "collect_inode_links",
         "closure inode-closure traversal",
     )
     inode_closure_acquisition = extract_python_method(
         source,
         module,
-        "ScratchRoot",
+        "PrivateTreeRoot",
         "acquire_inode_closure",
         "retained inode-closure acquisition",
     )
@@ -2621,7 +2917,7 @@ def validate_private_tree_closure(source):
         source, module, "close_descriptors", "descriptor cleanup"
     )
     scratch_close = extract_python_method(
-        source, module, "ScratchRoot", "close", "scratch authority cleanup"
+        source, module, "PrivateTreeRoot", "close", "private-tree root authority cleanup"
     )
     normalization_close = extract_python_method(
         source,
@@ -2629,6 +2925,27 @@ def validate_private_tree_closure(source):
         "TreeNormalizationAuthority",
         "close",
         "normalization authority cleanup",
+    )
+    tree_contents_acquisition = extract_python_method(
+        source,
+        module,
+        "PrivateTreeRoot",
+        "for_tree_contents",
+        "terminal tree-contents authority acquisition",
+    )
+    tree_contents_removal = extract_python_method(
+        source,
+        module,
+        "PrivateTreeRoot",
+        "remove_tree_contents",
+        "terminal tree-contents removal",
+    )
+    empty_root_removal = extract_python_method(
+        source,
+        module,
+        "PrivateTreeRoot",
+        "remove_empty_root",
+        "terminal empty-root removal",
     )
     for method, label in (
         (cleanup, "closure cleanup mount-boundary proof"),
@@ -2653,7 +2970,7 @@ def validate_private_tree_closure(source):
         ("0:1 /bound", "same-filesystem descendant mount fixture"),
         ("space\\040tab\\011line\\012slash\\134", "complete mountinfo escape fixture"),
         ('parser.add_argument("--scratch-fd", type=int)', "closure fixture scratch descriptor option"),
-        ('ScratchRoot(inherited_fd=arguments.scratch_fd)', "closure inherited scratch authority"),
+        ('PrivateTreeRoot(inherited_fd=arguments.scratch_fd)', "closure inherited scratch authority"),
         ('descriptor = os.dup(inherited_fd)', "closure scratch descriptor duplication"),
         ('mount_id = descriptor_mount_id(descriptor)', "closure scratch mount authority acquisition"),
         ('descriptor_mount_id(self.fd) != self.mount_id', "closure scratch live mount authority"),
@@ -2666,10 +2983,15 @@ def validate_private_tree_closure(source):
         ('metadata.st_uid != os.geteuid()', "closure fixture scratch owner proof"),
         ('metadata.st_gid != os.getegid()', "closure fixture scratch group proof"),
         ('stat.S_IMODE(metadata.st_mode) != 0o700', "closure fixture scratch mode proof"),
-        ('modes.add_argument("--remove-scratch-root")', "closure scratch-root removal mode"),
+        ('modes.add_argument("--remove-private-root")', "closure private-root removal mode"),
+        ('modes.add_argument("--remove-empty-private-root")', "terminal empty-root removal mode"),
+        ('modes.add_argument("--remove-tree-contents")', "terminal tree-contents removal mode"),
+        ('modes.add_argument("--check-descriptor-budget"', "host descriptor-budget preflight mode"),
+        ('modes.add_argument("--check-exact-descriptor-budget"', "exact descriptor-budget preflight mode"),
         ('scratch.remove_root((int(match.group(1)), int(match.group(2))))', "closure recorded root identity dispatch"),
+        ('scratch.remove_empty_root((int(match.group(1)), int(match.group(2))))', "terminal empty-root identity dispatch"),
         ('os.rmdir(self.basename, dir_fd=self.parent_fd)', "closure descriptor-relative root removal"),
-        ('raise ClosureError("scratch authority options are valid only with their scratch modes")', "closure misplaced authority rejection"),
+        ('raise ClosureError("tree authority options are valid only with their tree modes")', "closure misplaced authority rejection"),
         ('closure constructor leaked a descriptor after acquisition failure', "closure constructor descriptor inventory proof"),
         ('closure child leaked a descriptor after acquisition failure', "closure child descriptor inventory proof"),
         ('closure child acquisition failure did not preserve one ambiguous edge', "closure ambiguous-edge preservation proof"),
@@ -2678,7 +3000,10 @@ def validate_private_tree_closure(source):
         ('parser.add_argument("--owner", type=int)', "normalization owner authority"),
         ('parser.add_argument("--group", type=int)', "normalization group authority"),
         ('PROTECTED_HARDLINKS = "/proc/sys/fs/protected_hardlinks"', "kernel hardlink-protection source"),
-        ("TREE_ENTRY_LIMIT = 131072", "retained-authority exact entry bound"),
+        ("TREE_ENTRY_LIMIT = 524288", "retained-authority exact entry bound"),
+        ("MAX_DIRECTORY_DEPTH = 128", "retained-authority directory-depth bound"),
+        ("MAX_PREEXISTING_DESCRIPTORS = 64", "retained-authority inherited-descriptor bound"),
+        ("MAX_TRANSIENT_DESCRIPTORS = 8", "retained-authority transient-descriptor bound"),
         ("RETAINED_DESCRIPTOR_RESERVE = 256", "retained-authority descriptor reserve"),
         ("TREE_ENTRY_LIMIT + RETAINED_DESCRIPTOR_RESERVE", "retained-authority descriptor limit derivation"),
         ('if content != b"1\\n":', "exact kernel hardlink-protection policy"),
@@ -2691,9 +3016,13 @@ def validate_private_tree_closure(source):
         ('normalization directory inventory changed', "normalization complete-inventory fixture"),
         ('normalization mode policy retained a special permission bit', "normalization special-mode fixture"),
         ('exercise_cleanup_failure_accounting()', "descriptor cleanup-failure fixture dispatch"),
+        ('exercise_authority_bounds(scratch)', "retained-authority bound fixture dispatch"),
         ('descriptor close failure fixture did not exhaust cleanup', "exhaustive descriptor-close fixture"),
         ('descriptor close failure fixture replaced its primary error', "primary-error preservation fixture"),
         ('descriptor close failure fixture lost cleanup errors', "complete close-error reporting fixture"),
+        ('print("verify-private-tree-closure: DETAIL: {}".format(note)', "concrete cleanup-error diagnostics"),
+        ('descriptor inventory ran before the exact budget was established', "exact-boundary descriptor-order fixture"),
+        ('require_rejection(empty_authority.remove_empty_root, empty_authority.identity)', "late empty-root content rejection fixture"),
     ):
         require_text(source, text, label)
     for text, label in (
@@ -2723,7 +3052,7 @@ def validate_private_tree_closure(source):
         ("failures.extend(collect_descriptor_close_failures((self.fd, self.parent_fd)))", "complete scratch descriptor close"),
         ("self.fd = None", "scratch descriptor ownership retirement"),
         ("self.parent_fd = None", "scratch parent-descriptor ownership retirement"),
-        ('report_cleanup_failures(primary, "self-test scratch cleanup", failures)', "scratch cleanup failure preservation"),
+        ('report_cleanup_failures(primary, "private-tree root cleanup", failures)', "private-tree cleanup failure preservation"),
     ):
         require_text(scratch_close, text, label)
     for text, label in (
@@ -2743,9 +3072,22 @@ def validate_private_tree_closure(source):
         ("hard < RETAINED_DESCRIPTOR_LIMIT", "retained-authority descriptor hard-limit rejection"),
         ("resource.setrlimit(", "retained-authority soft descriptor-limit establishment"),
         ("(RETAINED_DESCRIPTOR_LIMIT, hard)", "bounded retained-authority descriptor limit"),
-        ("observed < RETAINED_DESCRIPTOR_LIMIT", "retained-authority descriptor-limit reproof"),
+        ("observed_soft != RETAINED_DESCRIPTOR_LIMIT", "retained-authority exact soft-limit reproof"),
+        ("observed_hard != RETAINED_DESCRIPTOR_LIMIT", "retained-authority exact hard-limit reproof"),
+        ("len(live_descriptor_inventory()) > MAX_PREEXISTING_DESCRIPTORS", "pre-existing descriptor rejection"),
+        ("required_reserve > RETAINED_DESCRIPTOR_RESERVE", "descriptor-reserve arithmetic proof"),
     ):
         require_text(retained_descriptor_budget, text, label)
+    require_order(
+        retained_descriptor_budget,
+        (
+            "resource.getrlimit(resource.RLIMIT_NOFILE)",
+            "resource.setrlimit(",
+            "observed_soft, observed_hard = resource.getrlimit(resource.RLIMIT_NOFILE)",
+            "len(live_descriptor_inventory()) > MAX_PREEXISTING_DESCRIPTORS",
+        ),
+        "descriptor limit establishment before live inventory",
+    )
     require_order(
         normalization_dispatch,
         (
@@ -2770,6 +3112,62 @@ def validate_private_tree_closure(source):
         ),
         "retained inode-closure descriptor budget",
     )
+    for method, label in (
+        (cleanup, "cleanup directory-depth enforcement"),
+        (inode_closure, "inode-closure directory-depth enforcement"),
+        (normalization_collect, "normalization directory-depth enforcement"),
+    ):
+        require_text(method, "if depth >= MAX_DIRECTORY_DEPTH:", label)
+        require_text(method, 'raise ClosureError("tree exceeds its directory-depth bound")', label)
+    for method, label in (
+        (cleanup, "cleanup special-object rejection"),
+        (inode_closure, "inode-closure special-object rejection"),
+    ):
+        require_text(method, "elif stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):", label)
+        require_text(method, 'raise ClosureError("tree contains a special filesystem object")', label)
+    for text, label in (
+        ("require_real_directory(path)", "terminal-removal canonical root"),
+        ("identity(metadata) != expected_identity", "terminal-removal descriptor identity"),
+        ("identity(edge) != expected_identity", "terminal-removal pathname identity"),
+        ("metadata.st_uid != owner", "terminal-removal root owner"),
+        ("metadata.st_gid != group", "terminal-removal root group"),
+        ("stat.S_IMODE(metadata.st_mode) != 0o700", "terminal-removal private root mode"),
+        ("mount_id = descriptor_mount_id(descriptor)", "terminal-removal mount authority"),
+    ):
+        require_text(tree_contents_acquisition, text, label)
+    require_order(
+        tree_contents_removal,
+        (
+            "self.assert_bound()",
+            "self.acquire_inode_closure(self.fd)",
+            "self.remove_contents(self.fd, [TREE_ENTRY_LIMIT], authorities)",
+            "self.require_inode_authorities_consumed(authorities)",
+            "self.close_inode_authorities(authorities",
+            "directory_is_empty(self.fd)",
+            "self.assert_bound()",
+        ),
+        "terminal tree-contents retained-authority removal",
+    )
+    require_order(
+        empty_root_removal,
+        (
+            "self.assert_bound()",
+            "self.identity != expected_identity",
+            "directory_is_empty(self.fd)",
+            "os.stat(self.basename, dir_fd=self.parent_fd, follow_symlinks=False)",
+            "self.cleanup_started = True",
+            "os.rmdir(self.basename, dir_fd=self.parent_fd)",
+            "os.fstat(self.fd).st_nlink != 0",
+            "os.fsync(self.parent_fd)",
+            "self.removed = True",
+        ),
+        "terminal empty-root exact removal",
+    )
+    for forbidden in ("acquire_inode_closure", "remove_contents", "os.fchmod", "os.unlink"):
+        if forbidden in empty_root_removal:
+            raise VerificationError(
+                f"terminal empty-root removal retains recursive mutation authority: {forbidden}"
+            )
     for text, label in (
         ("child_retained = False", "normalization child descriptor ownership"),
         ("if not child_retained:", "normalization failed-acquisition descriptor cleanup"),
@@ -2778,10 +3176,45 @@ def validate_private_tree_closure(source):
         require_text(normalization_collect, text, label)
     for text, label in (
         ('bounded_directory_names(directory["fd"], len(directory["names"]) + 1)', "normalization complete inventory reproof"),
-        ('current.st_nlink != authority["nlink"]', "normalization retained link-count reproof"),
+        ('(current.st_mode, current.st_uid, current.st_gid, current.st_nlink)', "normalization complete inode metadata reproof"),
+        ('(edge.st_mode, edge.st_uid, edge.st_gid, edge.st_nlink)', "normalization complete edge metadata reproof"),
+        ('expected_directory_metadata(directory, index)', "normalization directory metadata reproof"),
+        ('expected_inode_metadata(authority)', "normalization inode metadata reproof"),
         ('descriptor_mount_id(authority["fd"]) != self.mount_id', "normalization retained mount reproof"),
     ):
         require_text(normalization_assert, text, label)
+    for text, label in (
+        ('"uid": root.st_uid', "normalization root owner acquisition"),
+        ('"gid": root.st_gid', "normalization root group acquisition"),
+        ('"nlink": root.st_nlink', "normalization root link-count acquisition"),
+    ):
+        require_text(normalization_init, text, label)
+    for text, label in (
+        ('"uid": metadata.st_uid', "normalization child owner acquisition"),
+        ('"gid": metadata.st_gid', "normalization child group acquisition"),
+        ('"nlink": metadata.st_nlink', "normalization child link-count acquisition"),
+        ('inode["uid"] != metadata.st_uid', "normalization hardlink owner consistency"),
+        ('inode["gid"] != metadata.st_gid', "normalization hardlink group consistency"),
+    ):
+        require_text(normalization_collect, text, label)
+    require_exact_count(
+        normalization_collect,
+        '"uid": metadata.st_uid',
+        2,
+        "normalization child owner acquisition",
+    )
+    require_exact_count(
+        normalization_collect,
+        '"gid": metadata.st_gid',
+        2,
+        "normalization child group acquisition",
+    )
+    require_exact_count(
+        normalization_collect,
+        '"nlink": metadata.st_nlink',
+        2,
+        "normalization child link-count acquisition",
+    )
     require_order(
         normalization_mutation,
         (
@@ -2791,7 +3224,7 @@ def validate_private_tree_closure(source):
             "os.fchmod(descriptor, normalized_mode(authority[\"mode\"]))",
             "os.fchown(descriptor, owner, group)",
             'os.fchown(directory["fd"], owner, group)',
-            "self.assert_bound()",
+            "self.assert_bound(owner, group)",
         ),
         "retained-authority normalization ordering",
     )
@@ -2807,6 +3240,16 @@ def validate_private_tree_closure(source):
         ("normalization inode mode postcondition differs", "normalized inode mode rejection"),
     ):
         require_text(normalization_mutation, text, label)
+    require_text(
+        closure_main,
+        "scratch.remove_tree_contents(expected)",
+        "terminal tree-contents removal dispatch",
+    )
+    require_text(
+        closure_main,
+        "exercise_authority_bounds(scratch)",
+        "retained-authority bound fixture dispatch",
+    )
     require_text(
         closure_main,
         "exercise_scratch_acquisition_failures(scratch)",
@@ -6487,7 +6930,7 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            '"$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source"',
+            'run_private_tree_closure_from_descriptor --inode-root "$source"',
             'true # snapshot inode-link closure removed',
             "snapshot inode-link closure",
         ),
@@ -6529,8 +6972,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
-            "docker_local run --rm --pull=never --network=bridge --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            "docker_local run --interactive --rm --pull=never --network=bridge --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
             "descriptor-bound private-tree normalizer",
         ),
         (
@@ -6547,31 +6990,25 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "--ulimit nofile=131328:131328 \\",
-            "--ulimit nofile=1024:1024 \\",
+            "            --ulimit nofile=524544:524544 \\",
+            "            --ulimit nofile=1024:1024 \\",
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
-            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly"',
+            '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
+            '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly"',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
-            '--mount "type=bind,src=$path,dst=/cleanup"',
+            '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
+            '            --mount "type=bind,src=$path,dst=/cleanup"',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            '--mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly"',
-            '--mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py"',
-            "private-tree normalizer command is not the exact authority allowlist",
-        ),
-        (
-            "build",
-            '"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py \\\n            --normalize-root /cleanup',
+            '"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n            "$PRIVATE_TREE_CLOSURE_HASH" \\\n            --normalize-root /cleanup',
             '"$DEBIAN_IMAGE_ID" /bin/sh -ceu \'/usr/bin/find /cleanup\' -- \\\n            --normalize-root /cleanup',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
@@ -6583,34 +7020,172 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            '--owner "$uid" --group "$gid"',
-            '--owner 0 --group 0',
+            '            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '            --owner 0 --group 0 < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
             "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
-            "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
             "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH \\\n"
             "            --security-opt no-new-privileges \\\n"
             '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly" \\\n'
-            '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py --inode-root /cleanup\n'
-            "        docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" "$PRIVATE_TREE_CLOSURE_HASH" --inode-root /cleanup\n'
+            "        docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
             "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
             "single descriptor-bound normalizer container",
         ),
         (
             "build",
-            'normalize_workspace_access || cleanup_failed=1',
-            'true # whole-workspace normalization removed',
-            "whole-workspace cleanup ordering",
+            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \\\n                    "release workspace" || cleanup_failed=1',
+            'true # descriptor-bound terminal removal removed',
+            "descriptor-bound terminal workspace cleanup ordering",
         ),
         (
             "build",
-            'normalize_workspace_access || cleanup_failed=1',
-            'normalize_workspace_access || cleanup_failed=1\n            find -P "$WORKSPACE" -type d -exec chmod u+rwx {} +',
-            "workspace cleanup retains pathname mutation authority",
+            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \\\n                    "release workspace" || cleanup_failed=1',
+            'offline_normalize_exact_tree "$WORKSPACE" "$WORKSPACE_ID" \\\n                "release workspace" || cleanup_failed=1',
+            "descriptor-bound terminal workspace cleanup ordering",
+        ),
+        (
+            "build",
+            'verify_private_tree_cleanup_preflight \\\n        || die "release preflight cannot establish the complete terminal cleanup authority"\n    create_release_online_snapshot',
+            'create_release_online_snapshot # capacity preflight removed',
+            "release preflight ordering",
+        ),
+        (
+            "build",
+            '--check-exact-descriptor-budget',
+            '--check-descriptor-budget',
+            "container exact retained-authority capacity proof",
+        ),
+        (
+            "build",
+            'exec {PRIVATE_TREE_CLOSURE_FD}< "$PRIVATE_TREE_CLOSURE_PROBE"',
+            'PRIVATE_TREE_CLOSURE_FD=0 # helper execution authority removed',
+            "open helper execution authority",
+        ),
+        (
+            "build",
+            '[ "$observed_hash" = "$PRIVATE_TREE_CLOSURE_HASH" ]',
+            'true # helper committed-content equality removed',
+            "helper committed-content equality",
+        ),
+        (
+            "build",
+            '--remove-tree-contents /cleanup --expected-identity "$expected_identity" \\\n        --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '--remove-tree-contents /cleanup --expected-identity "$expected_identity" \\\n        --owner "$uid" --group "$gid" < "$PRIVATE_TREE_CLOSURE_PROBE"',
+            "private-tree terminal remover command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--normalize-root /cleanup --expected-identity "$expected_identity" \\\n            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '--normalize-root /cleanup --expected-identity "$expected_identity" \\\n            --owner "$uid" --group "$gid" < "$PRIVATE_TREE_CLOSURE_PROBE"',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            'sys.stdin.buffer.read(1048577)',
+            'sys.stdin.buffer.read()',
+            "bounded terminal-removal helper input",
+        ),
+        (
+            "build",
+            'docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
+            'docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER --cap-add=CHOWN \\',
+            "private-tree terminal remover command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--remove-tree-contents /cleanup --expected-identity "$expected_identity"',
+            '--inode-root /cleanup',
+            "private-tree terminal remover command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            'close_private_tree_closure_execution || cleanup_failed=1',
+            'true # helper execution authority close removed',
+            "descriptor-bound terminal workspace cleanup ordering",
+        ),
+        (
+            "build",
+            '[ -z "$PRIVATE_TREE_CLOSURE_FD" ] || return 1',
+            '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] && return 0',
+            "duplicate helper-authority rejection",
+        ),
+        (
+            "build",
+            '[ "$path_state" = "$(stat -c \'%d:%i\' -- "$PRIVATE_TREE_CLOSURE_PROBE"):$(id -u):$(id -g):500:1:regular file" ]',
+            'true # helper pathname metadata proof removed',
+            "helper pathname metadata proof",
+        ),
+        (
+            "build",
+            'hashlib.sha256(source).hexdigest() == expected or sys.exit(126)',
+            'True # helper digest proof removed',
+            "in-memory helper digest proof",
+        ),
+        (
+            "build",
+            'exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1',
+            'true # helper descriptor close removed',
+            "helper descriptor close",
+        ),
+        (
+            "build",
+            'exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1\n    PRIVATE_TREE_CLOSURE_FD=""',
+            'exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1\n    true # helper descriptor retirement removed',
+            "helper descriptor retirement",
+        ),
+        (
+            "build",
+            '--remove-empty-private-root "$WORKSPACE"',
+            '--remove-private-root "$WORKSPACE"',
+            "descriptor-bound terminal workspace cleanup ordering",
+        ),
+        (
+            "build",
+            'verify_private_tree_removal_capability || status=1',
+            'true # terminal-removal capability proof removed',
+            "complete terminal-cleanup preflight ordering",
+        ),
+        (
+            "build",
+            '    acquire_private_tree_closure_execution \\\n        || die "cannot acquire the committed private-tree helper authority"',
+            '    true # workspace helper descriptor acquisition removed',
+            "private release-helper installation",
+        ),
+        (
+            "build",
+            'DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"\n    create_workspace',
+            'create_workspace # cleanup image initialization removed',
+            "production cleanup image initialization",
+        ),
+        (
+            "build",
+            "production cleanup lacks the pinned terminal-removal image; retained path",
+            "production cleanup will use recursive host fallback",
+            "missing production cleanup image rejection",
+        ),
+        (
+            "build",
+            '    verify_private_tree_cleanup_preflight \\\n        || die "reset self-test cannot establish the complete terminal cleanup authority"',
+            '    true # reset terminal-cleanup preflight removed',
+            "reset fixture complete terminal-cleanup preflight",
+        ),
+        (
+            "build",
+            'chmod 0000 /capability/locked',
+            'chmod 0700 /capability/locked',
+            "capability fixture inaccessible root-owned directory",
+        ),
+        (
+            "build",
+            'docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
+            'docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
+            "capability fixture exact capability set",
         ),
         (
             "build",
@@ -6675,8 +7250,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
-            '--mount "type=bind,src=$WORKSPACE,dst=/cleanup,bind-recursive=disabled"',
+            '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
+            '            --mount "type=bind,src=$WORKSPACE,dst=/cleanup,bind-recursive=disabled"',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
@@ -6741,6 +7316,96 @@ def run_source_mutations(sources):
             "RETAINED_DESCRIPTOR_RESERVE = 256",
             "RETAINED_DESCRIPTOR_RESERVE = 0",
             "retained-authority descriptor reserve",
+        ),
+        (
+            "closure",
+            "TREE_ENTRY_LIMIT = 524288",
+            "TREE_ENTRY_LIMIT = 131072",
+            "retained-authority exact entry bound",
+        ),
+        (
+            "closure",
+            "MAX_DIRECTORY_DEPTH = 128",
+            "MAX_DIRECTORY_DEPTH = 1024",
+            "retained-authority directory-depth bound",
+        ),
+        (
+            "closure",
+            "if len(live_descriptor_inventory()) > MAX_PREEXISTING_DESCRIPTORS:",
+            "if False: # pre-existing descriptor rejection removed",
+            "pre-existing descriptor rejection",
+        ),
+        (
+            "closure",
+            "if depth >= MAX_DIRECTORY_DEPTH:",
+            "if False: # directory-depth rejection removed",
+            "directory-depth enforcement",
+        ),
+        (
+            "closure",
+            'raise ClosureError("tree contains a special filesystem object")',
+            'pass # special filesystem object accepted',
+            "special-object rejection",
+        ),
+        (
+            "closure",
+            'if observed_soft != RETAINED_DESCRIPTOR_LIMIT:\n        raise ClosureError("retained-authority descriptor budget differs after establishment")',
+            'if observed_soft < RETAINED_DESCRIPTOR_LIMIT:\n        raise ClosureError("retained-authority descriptor budget differs after establishment")',
+            "retained-authority exact soft-limit reproof",
+        ),
+        (
+            "closure",
+            "if exact_hard_limit and observed_hard != RETAINED_DESCRIPTOR_LIMIT:",
+            "if False: # exact hard-limit reproof removed",
+            "retained-authority exact hard-limit reproof",
+        ),
+        (
+            "closure",
+            "                exercise_authority_bounds(scratch)",
+            "                pass # retained-authority bound fixture removed",
+            "retained-authority bound fixture dispatch",
+        ),
+        (
+            "closure",
+            "                scratch.remove_tree_contents(expected)",
+            "                scratch.assert_bound() # terminal removal removed",
+            "terminal tree-contents removal dispatch",
+        ),
+        (
+            "closure",
+            "                scratch.remove_empty_root((int(match.group(1)), int(match.group(2))))",
+            "                scratch.remove_root((int(match.group(1)), int(match.group(2))))",
+            "terminal empty-root identity dispatch",
+        ),
+        (
+            "closure",
+            "        if not directory_is_empty(self.fd):\n            raise ClosureError(\"empty private-root removal found retained contents\")",
+            "        if False:\n            raise ClosureError(\"empty private-root removal found retained contents\")",
+            "terminal empty-root exact removal",
+        ),
+        (
+            "closure",
+            '                    "uid": root.st_uid,',
+            '                    "uid": 0,',
+            "normalization root owner acquisition",
+        ),
+        (
+            "closure",
+            '                            "gid": metadata.st_gid,',
+            '                            "gid": 0,',
+            "normalization child group acquisition",
+        ),
+        (
+            "closure",
+            "        self.assert_bound(owner, group)",
+            "        self.assert_bound() # normalized metadata reproof removed",
+            "retained-authority normalization ordering",
+        ),
+        (
+            "closure",
+            '            print("verify-private-tree-closure: DETAIL: {}".format(note), file=sys.stderr)',
+            "            pass # concrete close-failure detail removed",
+            "concrete cleanup-error diagnostics",
         ),
         (
             "closure",
@@ -6837,6 +7502,78 @@ def run_source_mutations(sources):
             '[ "$observed" = "$probe_id" ] || cleanup_failed=1',
             'true # dirty-probe identity verification removed',
             "dirty-probe identity verification",
+        ),
+        (
+            "faillo",
+            'ONLINE_DIR="$fixture" bash -c',
+            'ONLINE_DIR="$REPO_ROOT/online" bash -c',
+            "fixture-local online directory",
+        ),
+        (
+            "faillo",
+            '--remove-private-root "$fixture" --expected-identity "$fixture_id"',
+            '--remove-private-root "$fixture"',
+            "wrong-SHA descriptor-bound cleanup",
+        ),
+        (
+            "faillo",
+            'run_script_die "verify_online_shas wrong SHA" "SHA-256 mismatch for " run_wrong_online_sha_probe',
+            'run_die "verify_online_shas wrong SHA" "SHA-256 mismatch for " \'verify_online_shas missing 0\'',
+            "independent wrong-SHA dispatch",
+        ),
+        (
+            "faillo",
+            '--quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo"',
+            '--quiet --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo"',
+            "production fixture independent complete clone",
+        ),
+        (
+            "faillo",
+            'checkout --quiet -B master "$EXPECTED_SOURCE_COMMIT"',
+            'checkout --quiet --detach "$EXPECTED_SOURCE_COMMIT"',
+            "production fixture attached exact master",
+        ),
+        (
+            "faillo",
+            'symbolic-ref --quiet --short HEAD',
+            'rev-parse --abbrev-ref HEAD',
+            "production fixture attached-branch proof",
+        ),
+        (
+            "faillo",
+            'status --porcelain=v1 --untracked-files=all',
+            'status --porcelain=v1 --untracked-files=no',
+            "production fixture clean baseline proof",
+        ),
+        (
+            "faillo",
+            '--remove-private-root "$fixture_root" --expected-identity "$fixture_id"',
+            '--inode-root "$fixture_root"',
+            "production fixture descriptor-bound cleanup",
+        ),
+        (
+            "faillo",
+            'DIRTY_PROBE_PARENT="$fixture_repo" run_with_dirty_probe doctor',
+            'DIRTY_PROBE_PARENT="$REPO_ROOT/scripts" run_with_dirty_probe doctor',
+            "production fixture sole dirty mutation",
+        ),
+        (
+            "faillo",
+            "  cleanup_production_fixture() {\n    status=$?\n    local cleanup_failed=0",
+            "  cleanup_production_fixture() {\n    status=0 # original production-fixture status discarded\n    local cleanup_failed=0",
+            "production fixture original-status capture",
+        ),
+        (
+            "faillo",
+            "      printf 'BUILD-FAILLO: PRODUCTION-FIXTURE-CLEANUP-FAILURE: %s\\n' \"$fixture_root\" >&2\n      status=125\n    fi\n    exit \"$status\"",
+            "      printf 'BUILD-FAILLO: PRODUCTION-FIXTURE-CLEANUP-FAILURE: %s\\n' \"$fixture_root\" >&2\n      status=125\n    fi\n    exit 0 # production-fixture status discarded",
+            "production fixture final-status propagation",
+        ),
+        (
+            "faillo",
+            '  run_production_dirty_probe',
+            '  run_with_dirty_probe doctor "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --doctor',
+            "production release-source fixture dispatch",
         ),
         (
             "faillo",
@@ -7773,8 +8510,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            '--remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
-            '--remove-scratch-root "$VERIFY_TMP"',
+            '--remove-private-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
+            '--remove-private-root "$VERIFY_TMP"',
             "identity-bound workspace removal",
         ),
         (
@@ -7796,6 +8533,12 @@ def run_source_mutations(sources):
             "requirements release authority",
         ),
         (
+            "requirements",
+            "refuses any late content instead of traversing it",
+            "recursively removes any late content",
+            "requirements release authority",
+        ),
+        (
             "hardening",
             "Current `.6` source verdict (2026-07-14)",
             "Current `.6` source verdict (2026-07-13)",
@@ -7803,8 +8546,20 @@ def run_source_mutations(sources):
         ),
         (
             "changelog",
-            "independently reacquires and consumes a complete",
-            "consumes the same recorded",
+            "terminal privileged deletion instead of whole-workspace ownership normalization",
+            "whole-workspace ownership normalization before deletion",
+            "changelog current release authority",
+        ),
+        (
+            "hardening",
+            "hashes the complete bytes in memory",
+            "executes the retained descriptor without re-authentication",
+            "hardening-status current release authority",
+        ),
+        (
+            "changelog",
+            "host refuses late content before removing only the exact",
+            "host recursively removes late content before deleting the",
             "changelog current release authority",
         ),
         (

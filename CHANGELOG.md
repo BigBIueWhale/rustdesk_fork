@@ -118,10 +118,23 @@ release notes.
   commit, no remotes, strict object validation, mount closure, and complete inode-link closure. The release transaction
   creates no Git worktree registration and never inspects or mutates the invoking repository's worktree registry.
 - Made generated-state normalization one retained-authority operation. It requires kernel hardlink protection and a
-  bounded descriptor budget, retains every directory and unique non-directory inode, rejects external links, mounts,
-  special objects, and changed inventories, strips dangerous mode bits, and re-proves the exact private tree before
-  fail-closed Git cleanup. Descriptor-bound workspace removal independently reacquires and consumes a complete
-  hardlink closure under the same bounded descriptor policy.
+  524,288-entry, depth-128 authority with exact descriptor accounting, retains every directory and unique non-directory
+  inode, records and re-proves complete type/owner/group/mode/link metadata, rejects external links, mounts, special
+  objects, and changed inventories, strips dangerous mode bits, and re-proves the exact private source before
+  fail-closed Git cleanup. Release preflight proves the 524,544-descriptor host and pinned-container budgets before
+  building. Every closure and normalization invocation re-authenticates bounded bytes read from one retained committed
+  helper descriptor; no release operation executes or mounts its mutable pathname.
+- Made production workspace cleanup a terminal privileged deletion instead of whole-workspace ownership normalization.
+  An exact hash-verified helper descriptor acquires complete mount, type, depth, inventory, and hardlink authority; a
+  no-network container receives bounded helper source directly from that descriptor and, with only filesystem
+  `DAC_OVERRIDE` and `FOWNER`, consumes authenticated edges without changing the online snapshot's ownership or
+  modes. Every use hashes the bounded descriptor bytes in memory against the committed digest; preflight exercises the
+  exact capability path against hostile metadata, and the host refuses late content before removing only the exact
+  empty root through retained parent authority. Missing production image authority preserves the workspace; recursive
+  host cleanup is fixture-only.
+- Isolated the production dirty-source proof in a private complete-history no-hardlink clone attached as `master` to the
+  expected commit. Its exclusive probe is the sole invalid source state, and its mount-closed, inode-link-closed fixture
+  is descriptor-removed and proved absent.
 - Made managed verifier finalization preserve the complete forced-kill, launcher-reap, descriptor-close,
   unit-collection, and cgroup-path failure set instead of allowing one cleanup failure to hide another.
 - Made final `dist` installation an ext4-only same-parent transaction bound to the complete descriptor-retrieved ext4 UUID and

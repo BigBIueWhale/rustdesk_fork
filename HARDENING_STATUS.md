@@ -2111,28 +2111,51 @@ shallow, sparse, and index-masking state, runs strict `git fsck`, and proves mou
 The release transaction creates no Git worktree registration and never reads, prunes, adopts, or removes the invoking
 repository's worktree registry.
 
-Every writable source consumer is enclosed by generated-state resets. The normalizer accepts only a recorded pass-A,
-pass-B, or workspace device/inode identity, rejects descendant mounts, requires `fs.protected_hardlinks=1`, and
+Every writable source consumer is enclosed by generated-state resets. The normalizer accepts only a recorded pass-A or
+pass-B device/inode identity, rejects descendant mounts, requires `fs.protected_hardlinks=1`, and
 re-verifies the digest-pinned Debian image. One no-pull, no-network container has a read-only root,
 no-new-privileges, a nonrecursive bind, and exactly `DAC_READ_SEARCH` plus `CHOWN`. Its helper retains every directory
 and non-directory inode descriptor, exact directory inventory, edge, mount identity, mode, link count, and internal
 hardlink count before mutation. Special objects, external hardlinks, changed inventories, or changed authorities abort.
-The 131,072-entry authority bound carries a 256-descriptor reserve; Docker fixes soft and hard `RLIMIT_NOFILE` at
-131,328, and the helper establishes and re-proves that budget before acquisition. A lower hard limit aborts.
-Only after that complete acquisition does it normalize ownership and modes through retained descriptors, stripping
+The 524,288-entry authority bound carries a 256-descriptor reserve over an enforced depth limit of 128, at most 64
+pre-existing descriptors, at most eight transient descriptors, one root, and contingency. The helper rejects excess
+depth or inherited descriptors before mutation, fixes and re-proves its soft `RLIMIT_NOFILE` at 524,544 before
+enumerating inherited descriptors, and rejects a
+lower hard limit. Docker fixes both limits at 524,544. Release preflight proves host and pinned-container capacity before
+the authenticated online snapshot or a build is created.
+The committed helper is opened once during workspace creation. Every host and container closure, normalization,
+preflight, and deletion execution reads from that descriptor and verifies the complete bounded in-memory bytes against
+the committed digest; no release operation executes or mounts the mutable helper pathname.
+The retained authority records and re-proves every file type, owner, group, mode, and link count before mutation. Only
+after that complete acquisition does it normalize ownership and modes through retained descriptors, stripping
 setuid, setgid, sticky, and group/world-write bits and returning the root to the invoking UID/GID at mode 0700. It
 re-proves the complete authority and postconditions before returning. Git then removes ignored state, requires an
 equivalent `-nffdx` dry run to be empty, and re-proves detached HEAD, index, and tracked bytes.
 
-Workspace deletion uses retained parent/root and non-directory inode descriptors. It re-proves exact edges,
-inventories, mount identity, filesystem closure, and complete hardlink closure; removes only descriptor-relative
-authenticated edges; requires retained non-directory link counts and the root link count to reach zero; synchronizes
-the parent; and reports every descriptor-close failure. It uses the same bounded retained-authority descriptor budget
-before acquiring the complete inode closure. A retained descriptor cannot make `unlinkat` or `fchown`
-conditional on an inode. The invoking UID is therefore the cooperating release authority, and admitted private trees
-must remain quiescent. Deliberately concurrent same-UID namespace mutation is not claimed to be contained.
+Production workspace deletion no longer normalizes the workspace or its authenticated online snapshot. Cleanup opens
+the exact helper, proves pathname/descriptor identity and its committed digest, and retains that descriptor. Every
+terminal invocation receives at most 1 MiB directly from the retained descriptor, hashes the complete bytes in memory
+against the committed digest, and only then compiles and dispatches them. Privileged execution resolves no mutable
+helper pathname. One no-pull, no-network, read-only-root container receives the workspace by nonrecursive bind and has
+only `DAC_OVERRIDE` and `FOWNER`. Before the online snapshot or any build, a disposable fixture
+proves that exact image, bind, descriptor, limit, and capability path against root-owned mode-0000 state and a
+current-user sticky-directory entry, then proves content deletion, empty-root removal, and absence. The helper
+acquires the complete bounded mount, type, depth, inventory, and hardlink authority before deletion; removes only
+descriptor-relative authenticated regular-file, symlink, and directory edges; requires every retained non-directory
+link count to reach zero; and proves the original mode-0700 root remains empty with unchanged identity and metadata.
+The host then re-authenticates the still-open helper bytes, re-acquires that exact empty root and its protected parent,
+refuses any late content instead of traversing it, removes only the root through its retained parent,
+requires the root link count to reach zero, synchronizes the parent, proves pathname absence, and closes the helper.
+Any uncertain precondition or postcondition preserves state and exits nonzero. The invoking UID is the cooperating
+release authority, admitted trees must remain quiescent, and deliberately concurrent same-UID namespace mutation is not
+claimed to be contained.
+Production cleanup without the exact pinned image preserves the workspace and fails; recursive host removal is confined
+to the non-privileged fixture transaction.
 
-Fail-loud dirty probes use exclusive random files. Identity, unlink, or absence failure emits status 125 plus a
+Fail-loud dirty probes use exclusive random files. The production dirty-source proof runs in its own mode-0700,
+complete-history, no-hardlink clone attached as `master` to the exact expected commit; it proves that baseline clean,
+introduces the probe as the sole invalid source state, invokes the clone's committed release wrapper, and removes its
+mount-closed and inode-link-closed root through recorded descriptor authority. Identity, unlink, or absence failure emits status 125 plus a
 dedicated marker, either of which the result classifier rejects. Every negative lifecycle case requires its exact
 reached-state and failure diagnostic. The source verifier and release orchestrator install traps before allocation,
 block further managed signals during cleanup, preserve primary and cleanup failures, and defer green markers until
@@ -2245,6 +2268,17 @@ snapshot, then stopped before platform compilation when pass-A verifier fixtures
 worktree as ambient stale state and invoked master-only source checks. It produced no artifact or manifest. The
 transaction-scoped fixture Git authority and branch-neutral exact-source contract above remove those assumptions;
 artifact evidence remains pending a new exact clean pushed commit and complete cold build.
+
+The exact pushed `b66d44d39317e3e3070aea54a8977d874116fc6c` cold build passed eight release gates, including the full
+runtime server smoke, then failed in pass A because the production dirty-source case invoked the master-only release
+wrapper from the detached pass repository. Cleanup then failed closed before mutation: the authenticated online tree
+alone had 188,598 descendants while the retained-authority helper admitted only 131,072; the complete retained workspace
+had 203,012 descendants. No Debian, Android, or Windows artifact, manifest, publication, release, or prerelease was
+created. Log `/tmp/rustdesk-build-b66d44d.log` has SHA-256
+`ca08d47857c7b243c445b5c011436f350148ccd72e15bbab1d658bba3de71d12`. The isolated production fixture,
+explicit capacity and capability proof, 524,288-entry bounded authority, authenticated executor, and empty-root-only
+terminal deletion design above supersede those failed paths. Exact-commit artifact evidence remains open pending a
+complete cold build from the exact pushed commit.
 
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
@@ -2899,7 +2933,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d8e0d8536e7b76100cb150ce0be90971c70d86217f21c2dff9530495da8533aa  requirements.html
+67dbb990dffd4691f15fbbbf5eacc401f1f9e987963f1903e28096ee10d288f9  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

@@ -91,6 +91,7 @@ fi
 readonly FINAL_OUT_DIR="$REPO_ROOT/dist"
 readonly DOCKER_HOST_URI=unix:///var/run/docker.sock
 readonly PRIVATE_TREE_CLOSURE_SOURCE="$SCRIPT_DIR/verify-private-tree-closure.py"
+readonly PRIVATE_TREE_CLOSURE_EXECUTOR='import hashlib, sys; source = sys.stdin.buffer.read(1048577); len(source) <= 1048576 or sys.exit(126); expected = sys.argv.pop(1); hashlib.sha256(source).hexdigest() == expected or sys.exit(126); exec(compile(source, "/probe.py", "exec"))'
 readonly FINALIZE_RELEASE_SET_SOURCE="$SCRIPT_DIR/finalize-release-set.py"
 readonly -a CANONICAL_ASSETS=(
     rustdesk-x86_64.deb
@@ -106,6 +107,8 @@ WORKSPACE=""
 WORKSPACE_ID=""
 DOCKER_CONFIG_DIR=""
 PRIVATE_TREE_CLOSURE_PROBE=""
+PRIVATE_TREE_CLOSURE_HASH=""
+PRIVATE_TREE_CLOSURE_FD=""
 FINALIZE_RELEASE_SET_PROBE=""
 SOURCE_A=""
 SOURCE_B=""
@@ -356,6 +359,7 @@ create_workspace() {
     private_hash="$(sha256sum "$PRIVATE_TREE_CLOSURE_PROBE" | awk '{print $1}')"
     [ "$private_hash" = "$source_hash" ] \
         || die "private-tree closure copy differs from its source"
+    PRIVATE_TREE_CLOSURE_HASH="$private_hash"
     if [ "$SELF_TEST" -eq 0 ]; then
         commit_hash="$(git_closed -C "$REPO_ROOT" show \
             "$PINNED_HEAD:scripts/verify-private-tree-closure.py" | sha256sum | awk '{print $1}')" \
@@ -383,6 +387,8 @@ create_workspace() {
     printf '{}\n' > "$DOCKER_CONFIG_DIR/config.json"
     chmod 0600 "$DOCKER_CONFIG_DIR/config.json"
     assert_release_docker_config
+    acquire_private_tree_closure_execution \
+        || die "cannot acquire the committed private-tree helper authority"
 }
 
 assert_release_online_snapshot() {
@@ -464,7 +470,7 @@ offline_normalize_exact_tree() {
         || { warn "$role identity cannot be inspected: $path"; return 1; }
     [ "$observed" = "$expected_identity" ] \
         || { warn "$role identity changed: $path"; return 1; }
-    if ! /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"; then
+    if ! run_private_tree_closure_from_descriptor --mount-root "$path"; then
         warn "$role contains a mount boundary: $path"
         return 1
     fi
@@ -475,15 +481,15 @@ offline_normalize_exact_tree() {
         return 1
     fi
     if ! (
-        docker_local run --rm --pull=never --network=none --read-only --user 0:0 \
+        docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
             --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \
             --security-opt no-new-privileges \
-            --ulimit nofile=131328:131328 \
+            --ulimit nofile=524544:524544 \
             --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \
-            --mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly" \
-            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py \
+            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
+            "$PRIVATE_TREE_CLOSURE_HASH" \
             --normalize-root /cleanup --expected-identity "$expected_identity" \
-            --owner "$uid" --group "$gid"
+            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
     ); then
         warn "$role offline ownership/access normalization failed: $path"
         return 1
@@ -492,10 +498,138 @@ offline_normalize_exact_tree() {
         || { warn "$role disappeared after normalization: $path"; return 1; }
     [ "$observed" = "$expected_identity" ] \
         || { warn "$role identity changed during normalization: $path"; return 1; }
-    if ! /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"; then
+    if ! run_private_tree_closure_from_descriptor --mount-root "$path"; then
         warn "$role gained a mount boundary during normalization: $path"
         return 1
     fi
+}
+
+verify_private_tree_authority_capacity() {
+    run_private_tree_closure_from_descriptor --check-descriptor-budget \
+        || { warn "release preflight cannot establish the host retained-authority budget"; return 1; }
+    docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
+        --cap-drop=ALL --security-opt no-new-privileges \
+        --ulimit nofile=524544:524544 \
+        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
+        "$PRIVATE_TREE_CLOSURE_HASH" --check-exact-descriptor-budget \
+        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD" \
+        || { warn "release preflight cannot establish the exact container retained-authority budget"; return 1; }
+}
+
+acquire_private_tree_closure_execution() {
+    local path_state descriptor_state observed_hash
+    [ -z "$PRIVATE_TREE_CLOSURE_FD" ] || return 1
+    [ -n "$PRIVATE_TREE_CLOSURE_HASH" ] || return 1
+    path_state="$(stat -c '%d:%i:%u:%g:%a:%h:%F' -- "$PRIVATE_TREE_CLOSURE_PROBE" 2>/dev/null)" \
+        || return 1
+    [ "$path_state" = "$(stat -c '%d:%i' -- "$PRIVATE_TREE_CLOSURE_PROBE"):$(id -u):$(id -g):500:1:regular file" ] \
+        || return 1
+    exec {PRIVATE_TREE_CLOSURE_FD}< "$PRIVATE_TREE_CLOSURE_PROBE" || return 1
+    descriptor_state="$(stat -Lc '%d:%i:%u:%g:%a:%h:%F' -- \
+        "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD" 2>/dev/null)" \
+        || return 1
+    [ "$descriptor_state" = "$path_state" ] || return 1
+    observed_hash="$(sha256sum "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD" | awk '{print $1}')" \
+        || return 1
+    [ "$observed_hash" = "$PRIVATE_TREE_CLOSURE_HASH" ]
+}
+
+close_private_tree_closure_execution() {
+    [ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 0
+    exec {PRIVATE_TREE_CLOSURE_FD}<&- || return 1
+    PRIVATE_TREE_CLOSURE_FD=""
+}
+
+run_private_tree_closure_from_descriptor() {
+    [ -n "$PRIVATE_TREE_CLOSURE_FD" ] && [ -n "$PRIVATE_TREE_CLOSURE_HASH" ] || return 1
+    /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
+        "$PRIVATE_TREE_CLOSURE_HASH" "$@" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
+}
+
+offline_remove_exact_tree_contents() {
+    local path="$1" expected_identity="$2" role="$3" resolved observed uid gid
+    uid="$(id -u)"
+    gid="$(id -g)"
+    [ -n "$expected_identity" ] || { warn "$role identity was not recorded"; return 1; }
+    case "$path" in /*) ;; *) warn "$role path is not absolute"; return 1 ;; esac
+    [ -d "$path" ] && [ ! -L "$path" ] \
+        || { warn "$role is not a real directory: $path"; return 1; }
+    resolved="$(readlink -f -- "$path" 2>/dev/null)" \
+        || { warn "$role cannot be resolved: $path"; return 1; }
+    [ "$resolved" = "$path" ] \
+        || { warn "$role path is not canonical: $path"; return 1; }
+    observed="$(stat -c '%d:%i:%u:%g:%a' -- "$path" 2>/dev/null)" \
+        || { warn "$role identity cannot be inspected: $path"; return 1; }
+    [ "$observed" = "$expected_identity:$uid:$gid:700" ] \
+        || { warn "$role root authority differs: $path"; return 1; }
+    run_private_tree_closure_from_descriptor --mount-root "$path" \
+        || { warn "$role contains a mount boundary: $path"; return 1; }
+    [ -n "$DEBIAN_IMAGE_ID" ] \
+        || { warn "$role cannot be removed without the pinned Debian image ID"; return 1; }
+    if ! (verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"); then
+        warn "$role removal image failed provenance verification"
+        return 1
+    fi
+    if ! docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
+        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
+        --security-opt no-new-privileges \
+        --ulimit nofile=524544:524544 \
+        --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \
+        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
+        "$PRIVATE_TREE_CLOSURE_HASH" \
+        --remove-tree-contents /cleanup --expected-identity "$expected_identity" \
+        --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"; then
+        warn "$role descriptor-bound content removal failed: $path"
+        return 1
+    fi
+    observed="$(stat -c '%d:%i:%u:%g:%a' -- "$path" 2>/dev/null)" \
+        || { warn "$role disappeared during content removal: $path"; return 1; }
+    [ "$observed" = "$expected_identity:$uid:$gid:700" ] \
+        || { warn "$role root authority changed during content removal: $path"; return 1; }
+}
+
+verify_private_tree_removal_capability() {
+    local fixture="$WORKSPACE/removal-capability-preflight" fixture_id observed uid gid
+    uid="$(id -u)"
+    gid="$(id -g)"
+    install -d -m 0700 "$fixture" || return 1
+    install -d -m 1700 "$fixture/sticky" || return 1
+    printf 'sticky-owner\n' > "$fixture/sticky/user-entry" || return 1
+    fixture_id="$(stat -c '%d:%i' -- "$fixture")" || return 1
+    if ! docker_local run --rm --pull=never --network=none --read-only --user 0:0 \
+        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
+        --security-opt no-new-privileges \
+        --ulimit nofile=524544:524544 \
+        --mount "type=bind,src=$fixture,dst=/capability,bind-recursive=disabled" \
+        "$DEBIAN_IMAGE_ID" /bin/sh -ceu '
+            printf root > /capability/root-entry
+            chmod 0000 /capability/root-entry
+            mkdir /capability/locked
+            printf root > /capability/locked/root-entry
+            chmod 0000 /capability/locked
+        '; then
+        warn "release preflight cannot prepare the exact terminal-removal capability fixture"
+        return 1
+    fi
+    observed="$(stat -c '%u:%g:%a' -- "$fixture/root-entry" 2>/dev/null)" || return 1
+    [ "$observed" = "0:0:0" ] \
+        || { warn "release preflight terminal-removal fixture lacks root-owned mode-0000 state"; return 1; }
+    offline_remove_exact_tree_contents "$fixture" "$fixture_id" \
+        "terminal-removal capability preflight" || return 1
+    run_private_tree_closure_from_descriptor --remove-empty-private-root "$fixture" \
+        --expected-identity "$fixture_id" || return 1
+    [ ! -e "$fixture" ] && [ ! -L "$fixture" ] \
+        || { warn "release preflight terminal-removal fixture remains present"; return 1; }
+}
+
+verify_private_tree_cleanup_preflight() {
+    local status=0
+    [ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 1
+    verify_private_tree_authority_capacity || status=1
+    if [ "$status" -eq 0 ]; then
+        verify_private_tree_removal_capability || status=1
+    fi
+    [ "$status" -eq 0 ]
 }
 
 normalize_snapshot_access() {
@@ -511,13 +645,6 @@ normalize_snapshot_access() {
     [ "$(stat -c '%d:%i:%u:%g:%a' "$source")" = \
       "$expected:$(id -u):$(id -g):700" ] \
         || die "$phase: snapshot root identity/owner/mode differs after normalization"
-}
-
-normalize_workspace_access() {
-    offline_normalize_exact_tree "$WORKSPACE" "$WORKSPACE_ID" "release workspace" \
-        || return 1
-    [ "$(stat -c '%d:%i:%u:%g:%a' "$WORKSPACE")" = \
-      "$WORKSPACE_ID:$(id -u):$(id -g):700" ]
 }
 
 cleanup_release_workspace() {
@@ -542,36 +669,38 @@ cleanup_release_workspace() {
             workspace_state=invalid
             cleanup_failed=1
         fi
-        if [ "$workspace_state" = valid ] && [ "$cleanup_failed" -eq 0 ]; then
-            if [ -f "$PRIVATE_TREE_CLOSURE_PROBE" ] && [ ! -L "$PRIVATE_TREE_CLOSURE_PROBE" ]; then
-                /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$WORKSPACE" \
-                    || cleanup_failed=1
+        [ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1
+        if [ "$FIXTURE_MODE" -eq 0 ] && [ "$workspace_state" = valid ] \
+            && [ "$cleanup_failed" -eq 0 ]; then
+            if [ -n "$DEBIAN_IMAGE_ID" ]; then
+                offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \
+                    "release workspace" || cleanup_failed=1
             else
-                cleanup_failed=1
-            fi
-        fi
-        if [ "$FIXTURE_MODE" -eq 0 ] && [ -n "$DEBIAN_IMAGE_ID" ] \
-            && [ "$workspace_state" = valid ] && [ "$cleanup_failed" -eq 0 ]; then
-            normalize_workspace_access || cleanup_failed=1
-        fi
-        if [ "$workspace_state" = valid ] && [ "$cleanup_failed" -eq 0 ]; then
-            if [ -f "$PRIVATE_TREE_CLOSURE_PROBE" ] && [ ! -L "$PRIVATE_TREE_CLOSURE_PROBE" ]; then
-                /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$WORKSPACE" \
-                    || cleanup_failed=1
-            else
+                printf 'build-release: production cleanup lacks the pinned terminal-removal image; retained path: %s\n' \
+                    "$WORKSPACE" >&2
                 cleanup_failed=1
             fi
         fi
         if [ "$workspace_state" = valid ] && [ "$cleanup_failed" -eq 0 ]; then
-            if ! /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" \
-                --remove-scratch-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"; then
+            if [ "$FIXTURE_MODE" -eq 0 ]; then
+                if ! run_private_tree_closure_from_descriptor \
+                    --remove-empty-private-root "$WORKSPACE" \
+                    --expected-identity "$WORKSPACE_ID"; then
+                    printf 'build-release: empty-root cleanup removal failed; retained path: %s\n' "$WORKSPACE" >&2
+                    cleanup_failed=1
+                fi
+            elif ! run_private_tree_closure_from_descriptor \
+                --remove-private-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"; then
                 printf 'build-release: cleanup removal failed; retained path: %s\n' "$WORKSPACE" >&2
                 cleanup_failed=1
-            elif [ -e "$WORKSPACE" ] || [ -L "$WORKSPACE" ]; then
+            fi
+            if [ "$cleanup_failed" -eq 0 ] \
+                && { [ -e "$WORKSPACE" ] || [ -L "$WORKSPACE" ]; }; then
                 printf 'build-release: cleanup removal postcondition failed: %s\n' "$WORKSPACE" >&2
                 cleanup_failed=1
             fi
         fi
+        close_private_tree_closure_execution || cleanup_failed=1
         if [ "$cleanup_failed" -ne 0 ]; then
             printf 'build-release: cleanup failed; recorded private workspace state is %s: %s\n' \
                 "$workspace_state" "$WORKSPACE" >&2
@@ -619,6 +748,8 @@ release_preflight() {
     ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
     WINDOWS_IMAGE_ID="${WIN_HELPER_IMAGE_ID:-}"
     verify_all_release_builder_images
+    verify_private_tree_cleanup_preflight \
+        || die "release preflight cannot establish the complete terminal cleanup authority"
     create_release_online_snapshot
     log "release preflight OK: clean pushed master ${PINNED_HEAD_SHORT}"
 }
@@ -694,9 +825,9 @@ create_snapshot() {
         A) SOURCE_A_ID="$identity" ;;
         B) SOURCE_B_ID="$identity" ;;
     esac
-    /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source" \
+    run_private_tree_closure_from_descriptor --mount-root "$source" \
         || die "release snapshot $label crosses a mount boundary"
-    /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source" \
+    run_private_tree_closure_from_descriptor --inode-root "$source" \
         || die "release snapshot $label contains an inode linked outside its private repository"
     assert_snapshot_exact "$source" "snapshot $label creation"
 }
@@ -704,11 +835,11 @@ create_snapshot() {
 reset_snapshot_build_state() {
     local source="$1" label="$2" ignored
     normalize_snapshot_access "$source" "$label"
-    /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source" \
+    run_private_tree_closure_from_descriptor --mount-root "$source" \
         || die "$label: snapshot contains a mount boundary before Git cleanup"
     git_closed -C "$source" clean -ffdx >/dev/null \
         || die "$label: cannot remove prior generated build state"
-    /usr/bin/python3 "$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source" \
+    run_private_tree_closure_from_descriptor --mount-root "$source" \
         || die "$label: snapshot contains a mount boundary after Git cleanup"
     ignored="$(git_closed -C "$source" clean -nffdx 2>/dev/null)" \
         || die "$label: cannot prove generated-state removal"
@@ -977,6 +1108,8 @@ run_reset_self_test() {
     [ -n "$DEBIAN_IMAGE_ID" ] || die "reset self-test has no pinned Debian image ID"
     docker_local version >/dev/null || die "reset self-test cannot reach the local Docker daemon"
     verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"
+    verify_private_tree_cleanup_preflight \
+        || die "reset self-test cannot establish the complete terminal cleanup authority"
     SOURCE_A="$WORKSPACE/pass-A/source"
     OUTPUT_A="$WORKSPACE/pass-A/outputs"
     SET_A="$WORKSPACE/pass-A/release-set"
@@ -1717,6 +1850,7 @@ main() {
         || die "cannot resolve repository HEAD"
     PINNED_HEAD_SHORT="${PINNED_HEAD:0:12}"
     export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
+    DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
     create_workspace
     release_preflight
     if [ "$DOCTOR" -eq 1 ]; then

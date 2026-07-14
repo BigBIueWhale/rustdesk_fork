@@ -70,7 +70,7 @@ cleanup_verify_tmp() {
       echo "verify: private workspace identity is unavailable or changed: $VERIFY_TMP" >&2
       cleanup_failed=1
     elif ! /usr/bin/python3 scripts/verify-private-tree-closure.py \
-      --remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"; then
+      --remove-private-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"; then
       echo "verify: failed to remove private workspace: $VERIFY_TMP" >&2
       cleanup_failed=1
     elif [ -e "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ]; then

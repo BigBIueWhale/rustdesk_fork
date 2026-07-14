@@ -2051,7 +2051,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   authority verifier now extracts each emitted `.deb` data archive, inspects every regular data member with ELF magic,
   requires current 64-bit little-endian x86-64 headers, `ET_EXEC`/`ET_DYN` for the runner, and `ET_DYN` for every other
   ELF. The runner has one exact mapped `/lib64/ld-linux-x86-64.so.2` interpreter; shared objects have none. Every load
-  is non-W+X and ABI-aligned, and every admitted ELF has one exact non-executable RW GNU stack. It directly parses
+  is non-W+X and ABI-aligned. Every admitted ELF has exactly one GNU-stack header with zero offset, addresses, and
+  sizes, exact RW permissions without execute or extra bits, and ABI-valid alignment: 0 or 1 for no constraint, or a
+  positive power of two. This admits the pinned producers' legitimate Dart 1, Flutter engine 0, and GNU 16 while
+  preserving the Linux/glibc permission contract and rejecting noncanonical header state. It directly parses
   exactly one consistently `PT_LOAD`-mapped loader-visible `PT_DYNAMIC` containing 16-byte
   records, requires canonical 8-byte segment alignment and a `DT_NULL` terminator with zero-only remainder, and maps
   its unique nonempty bounded string table through program headers. The table must begin and end with NUL; every
@@ -2060,9 +2063,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   The verifier rejects legacy RPATH, malformed or multiple tags, and empty RUNPATH,
   requires the runner to have exactly `$ORIGIN/lib`, allows only `$ORIGIN` on `libflutter_linux_gtk.so` and Flutter
   plugin libraries, and requires every other ELF including `librustdesk.so` to have no runtime-search tag. Its
-  handcrafted package and parser mutations cover wrong class/byte-order/machine/type, interpreter count/path/role,
-  executable stack, W+X load, and dynamic-segment identities, segment/load disagreement, wrong alignment, missing
-  termination, missing/duplicate/zero-sized/unmapped/oversized or
+  handcrafted package and parser mutations cover wrong class/byte-order/machine/type, interpreter count/path/role;
+  missing/duplicate GNU-stack headers, every nonzero no-content field, executable/missing/extra permission bits, and
+  malformed alignment, with positive 0/1/16 producer alignments; W+X loads and dynamic-segment identities,
+  segment/load disagreement, wrong alignment, missing termination, missing/duplicate/zero-sized/unmapped/oversized or
   non-NUL-bounded dynamic strings, out-of-bounds references, unsafe dependency/SONAME values, forbidden loader tags,
   `/tmp/rustdesk-bad`, empty, multiple, and legacy search paths, mandatory non-ELF substitution, and a bad ELF in the
   variable asset subtree; `scripts/build-debian.sh` runs the verifier before hashing each package.
@@ -2986,7 +2990,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-6c067f848c499c93aea92eeb0dd5710cacf486203003fe56a42ab2cd2e97ad41  requirements.html
+84007462c7627686075efb7916614ebd1ae937551ade3f598dc739effefc3d0c  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

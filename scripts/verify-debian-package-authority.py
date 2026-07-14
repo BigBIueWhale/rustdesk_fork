@@ -430,9 +430,16 @@ def validate_elf_identity(contents, name, label):
     for index in range(program_count):
         offset = program_offset + index * program_entry_size
         try:
-            segment_type, segment_flags, file_offset, virtual_address, _paddr, file_size, memory_size, align = struct.unpack_from(
-                "<IIQQQQQQ", contents, offset
-            )
+            (
+                segment_type,
+                segment_flags,
+                file_offset,
+                virtual_address,
+                physical_address,
+                file_size,
+                memory_size,
+                align,
+            ) = struct.unpack_from("<IIQQQQQQ", contents, offset)
         except struct.error as err:
             raise ValidationError(f"{label}: ELF program header cannot be decoded") from err
         if segment_type == 1:
@@ -451,7 +458,15 @@ def validate_elf_identity(contents, name, label):
                 (file_offset, virtual_address, file_size, memory_size, segment_flags, align)
             )
         elif segment_type == 0x6474E551:
-            stack_segments.append((file_size, memory_size, segment_flags, align))
+            stack_segments.append((
+                file_offset,
+                virtual_address,
+                physical_address,
+                file_size,
+                memory_size,
+                segment_flags,
+                align,
+            ))
 
     if name == "./usr/share/rustdesk/rustdesk":
         if len(interpreter_segments) != 1:
@@ -484,9 +499,27 @@ def validate_elf_identity(contents, name, label):
     elif interpreter_segments:
         raise ValidationError(f"{label}: ELF shared object contains a program interpreter")
 
-    if (len(stack_segments) != 1
-            or stack_segments[0] != (0, 0, 6, 16)):
-        raise ValidationError(f"{label}: ELF GNU stack contract is not exact non-executable RW")
+    if len(stack_segments) != 1:
+        raise ValidationError(f"{label}: ELF must contain exactly one GNU stack header")
+    (
+        stack_offset,
+        stack_address,
+        stack_physical_address,
+        stack_file_size,
+        stack_memory_size,
+        stack_flags,
+        stack_align,
+    ) = stack_segments[0]
+    if (stack_offset != 0
+            or stack_address != 0
+            or stack_physical_address != 0
+            or stack_file_size != 0
+            or stack_memory_size != 0):
+        raise ValidationError(f"{label}: ELF GNU stack header must not describe file or memory contents")
+    if stack_flags != 6:
+        raise ValidationError(f"{label}: ELF GNU stack permissions are not exact non-executable RW")
+    if stack_align not in (0, 1) and stack_align & (stack_align - 1) != 0:
+        raise ValidationError(f"{label}: ELF GNU stack alignment is not ABI-valid")
     if len(dynamic_segments) != 1:
         raise ValidationError(f"{label}: ELF must contain exactly one dynamic segment")
     dynamic_offset, dynamic_address, dynamic_size, dynamic_memory_size, dynamic_align = dynamic_segments[0]
@@ -2631,16 +2664,85 @@ def run_self_test(repo):
             "shared object contains a program interpreter",
         ))
 
-        stack_header = next(
+        stack_headers = [
             entry for entry in dynamic_layout["program_headers"]
             if entry[1][0] == 0x6474E551
-        )
+        ]
+        if len(stack_headers) != 1:
+            raise ValidationError("synthetic shared ELF does not contain one GNU stack header")
+        stack_header = stack_headers[0]
+
+        for label, alignment in (
+            ("no-stack-alignment", 0),
+            ("dart-stack-alignment", 1),
+            ("gnu-stack-alignment", 16),
+        ):
+            valid_stack_alignment = bytearray(librustdesk)
+            struct.pack_into("<Q", valid_stack_alignment, stack_header[0] + 48, alignment)
+            validate_elf_identity(
+                bytes(valid_stack_alignment),
+                "./usr/share/rustdesk/lib/librustdesk.so",
+                label,
+            )
+
+        missing_stack = bytearray(librustdesk)
+        struct.pack_into("<I", missing_stack, stack_header[0], 0)
+        elf_mutations.append((
+            "missing-stack",
+            bytes(missing_stack),
+            "must contain exactly one GNU stack header",
+        ))
+
+        duplicate_stack = bytearray(librustdesk)
+        struct.pack_into("<I", duplicate_stack, shared_interpreter_candidate[0], 0x6474E551)
+        elf_mutations.append((
+            "duplicate-stack",
+            bytes(duplicate_stack),
+            "must contain exactly one GNU stack header",
+        ))
+
+        for label, field_offset in (
+            ("stack-file-offset", 8),
+            ("stack-virtual-address", 16),
+            ("stack-physical-address", 24),
+            ("stack-file-size", 32),
+            ("stack-memory-size", 40),
+        ):
+            nonempty_stack = bytearray(librustdesk)
+            struct.pack_into("<Q", nonempty_stack, stack_header[0] + field_offset, 1)
+            elf_mutations.append((
+                label,
+                bytes(nonempty_stack),
+                "GNU stack header must not describe file or memory contents",
+            ))
+
         executable_stack = bytearray(librustdesk)
         struct.pack_into("<I", executable_stack, stack_header[0] + 4, stack_header[1][1] | 1)
         elf_mutations.append((
             "executable-stack",
             bytes(executable_stack),
-            "GNU stack contract is not exact non-executable RW",
+            "GNU stack permissions are not exact non-executable RW",
+        ))
+
+        for label, flags in (
+            ("read-only-stack", 4),
+            ("write-only-stack", 2),
+            ("unexpected-stack-flags", 14),
+        ):
+            wrong_stack_flags = bytearray(librustdesk)
+            struct.pack_into("<I", wrong_stack_flags, stack_header[0] + 4, flags)
+            elf_mutations.append((
+                label,
+                bytes(wrong_stack_flags),
+                "GNU stack permissions are not exact non-executable RW",
+            ))
+
+        invalid_stack_alignment = bytearray(librustdesk)
+        struct.pack_into("<Q", invalid_stack_alignment, stack_header[0] + 48, 3)
+        elf_mutations.append((
+            "invalid-stack-alignment",
+            bytes(invalid_stack_alignment),
+            "GNU stack alignment is not ABI-valid",
         ))
 
         writable_load = next(

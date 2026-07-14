@@ -103,8 +103,8 @@ release notes.
   import surface, undecorated runtime constructor identity, process-launch APIs, and exact package operation program.
   Producer and artifact library inventories are independently explicit; ignored Flutter-generated plugin metadata is
   not source authority, while the actual staged bundle and emitted archive must exact-match those policies.
-  Loader-visible ELF proof
-  requires exact x86-64 runtime identity and interpreter, non-W+X loads, a non-executable stack, bounded canonical
+  Loader-visible ELF proof requires exact x86-64 runtime identity and interpreter, non-W+X loads, one canonical
+  no-content GNU-stack header with exact non-executable RW permissions and ABI-valid producer alignment, bounded
   dynamic tables, safe dependency basenames and SONAMEs, no auxiliary loader injection tags, and only the role-specific
   bundle-relative RUNPATHs.
 

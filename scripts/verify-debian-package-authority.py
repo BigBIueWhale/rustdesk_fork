@@ -1342,31 +1342,6 @@ def validate_build_py(repo):
     if f"./{module.DEBIAN_VARIABLE_DATA_ROOT}" != DATA_VARIABLE_ROOT:
         raise ValidationError("build.py and artifact verifier variable data roots differ")
 
-    generated_plugins = (repo / "flutter/linux/flutter/generated_plugins.cmake").read_text(encoding="utf-8")
-    plugin_match = re.search(
-        r"list\(APPEND FLUTTER_PLUGIN_LIST\n(?P<body>.*?)\)",
-        generated_plugins,
-        re.DOTALL,
-    )
-    ffi_match = re.search(
-        r"list\(APPEND FLUTTER_FFI_PLUGIN_LIST\n(?P<body>.*?)\)",
-        generated_plugins,
-        re.DOTALL,
-    )
-    if plugin_match is None or ffi_match is None or ffi_match.group("body").strip():
-        raise ValidationError("generated Linux Flutter plugin inventory has an unsupported shape")
-    plugins = [line.strip() for line in plugin_match.group("body").splitlines() if line.strip()]
-    expected_libraries = {
-        "./usr/share/rustdesk/lib/libapp.so",
-        "./usr/share/rustdesk/lib/libflutter_linux_gtk.so",
-        "./usr/share/rustdesk/lib/librustdesk.so",
-    }
-    expected_libraries.update(
-        f"./usr/share/rustdesk/lib/lib{name}_plugin.so" for name in plugins
-    )
-    if expected_libraries != FLUTTER_LIBRARIES:
-        raise ValidationError("exact Debian library inventory differs from generated Linux Flutter plugins")
-
     option_strings = {
         option
         for action in module.make_parser()._actions
@@ -1779,7 +1754,6 @@ def run_source_gate_mutations(repo, tmp):
         "build.py",
         "Cargo.toml",
         "flutter/linux/CMakeLists.txt",
-        "flutter/linux/flutter/generated_plugins.cmake",
         "scripts/build-debian.sh",
         "res/DEBIAN/preinst",
         "res/DEBIAN/postinst",
@@ -2013,11 +1987,42 @@ def run_source_gate_mutations(repo, tmp):
             replace_once(baseline, "    system2('/bin/rm -rf build/linux')\n", ""),
             "pre-package inventory differs",
         ),
+        (
+            replace_once(
+                baseline,
+                '    "usr/share/rustdesk/lib/libwindow_size_plugin.so",\n',
+                "",
+            ),
+            "Flutter library inventories differ",
+        ),
+        (
+            replace_once(
+                baseline,
+                "usr/share/rustdesk/lib/libwindow_size_plugin.so",
+                "usr/share/rustdesk/lib/libunexpected_plugin.so",
+            ),
+            "Flutter library inventories differ",
+        ),
     )
     for mutated, expected in mutations:
         build_path.write_text(mutated, encoding="utf-8")
         expect_source_validation_failure(lambda: validate_build_py(fixture), expected)
     build_path.write_text(baseline, encoding="utf-8")
+    generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"
+    if generated_plugins.exists():
+        raise ValidationError("source-gate fixture unexpectedly contains generated Flutter plugin metadata")
+    validate_build_py(fixture)
+    generated_plugins.parent.mkdir(parents=True, exist_ok=True)
+    generated_plugins.write_text("adversarial generated state\n", encoding="utf-8")
+    validate_build_py(fixture)
+    generated_plugins.write_text(
+        "list(APPEND FLUTTER_PLUGIN_LIST\n"
+        "  unexpected\n"
+        ")\n"
+        "list(APPEND FLUTTER_FFI_PLUGIN_LIST\n"
+        ")\n",
+        encoding="utf-8",
+    )
     validate_build_py(fixture)
 
 
@@ -2105,6 +2110,28 @@ def run_production_finalizer_self_test(repo, tmp):
     expect_operation_failure(
         lambda: build_module.finalize_debian_package_tree(unexpected_data),
         "data inventory differs",
+    )
+
+    missing_plugin = tmp / "missing-plugin"
+    shutil.copytree(staging, missing_plugin)
+    (missing_plugin / "DEBIAN/md5sums").unlink()
+    (missing_plugin / "usr/share/rustdesk/lib/libwindow_size_plugin.so").unlink()
+    expect_operation_failure(
+        lambda: build_module.finalize_debian_package_tree(missing_plugin),
+        "missing files ['usr/share/rustdesk/lib/libwindow_size_plugin.so']",
+    )
+
+    unexpected_plugin = tmp / "unexpected-plugin"
+    shutil.copytree(staging, unexpected_plugin)
+    (unexpected_plugin / "DEBIAN/md5sums").unlink()
+    write_file(
+        unexpected_plugin / "usr/share/rustdesk/lib/libunexpected_plugin.so",
+        "unexpected\n",
+        0o600,
+    )
+    expect_operation_failure(
+        lambda: build_module.finalize_debian_package_tree(unexpected_plugin),
+        "unexpected files ['usr/share/rustdesk/lib/libunexpected_plugin.so']",
     )
 
     symlinked_sources = tmp / "symlinked-source-scripts"
@@ -2367,6 +2394,52 @@ def run_self_test(repo):
         )
         expect_validation_failure(missing_runtime_deb, "data inventory differs")
 
+        missing_plugin_deb = tmp / "missing-plugin.deb"
+        write_modified_deb(
+            good_deb,
+            missing_plugin_deb,
+            data_transform=replace_tar_member(
+                "./usr/share/rustdesk/lib/libwindow_size_plugin.so",
+                remove=True,
+            ),
+        )
+        expect_validation_failure(
+            missing_plugin_deb,
+            "missing files ['./usr/share/rustdesk/lib/libwindow_size_plugin.so']",
+        )
+
+        extra_plugin_deb = tmp / "extra-plugin.deb"
+        write_modified_deb(
+            good_deb,
+            extra_plugin_deb,
+            data_additions=(regular_tar_member(
+                "./usr/share/rustdesk/lib/libunexpected_plugin.so",
+                b"unexpected\n",
+            ),),
+        )
+        expect_validation_failure(
+            extra_plugin_deb,
+            "unexpected files ['./usr/share/rustdesk/lib/libunexpected_plugin.so']",
+        )
+
+        substituted_plugin_deb = tmp / "substituted-plugin.deb"
+        write_modified_deb(
+            good_deb,
+            substituted_plugin_deb,
+            data_transform=replace_tar_member(
+                "./usr/share/rustdesk/lib/libwindow_size_plugin.so",
+                remove=True,
+            ),
+            data_additions=(regular_tar_member(
+                "./usr/share/rustdesk/lib/libunexpected_plugin.so",
+                b"unexpected\n",
+            ),),
+        )
+        expect_validation_failure(
+            substituted_plugin_deb,
+            "missing files ['./usr/share/rustdesk/lib/libwindow_size_plugin.so']",
+        )
+
         non_elf_runtime_deb = tmp / "non-elf-runtime.deb"
         write_modified_deb(
             good_deb,
@@ -2374,6 +2447,17 @@ def run_self_test(repo):
             data_transform=replace_tar_member("./usr/share/rustdesk/lib/librustdesk.so", contents=b"not ELF\n"),
         )
         expect_validation_failure(non_elf_runtime_deb, "required runtime object is not ELF")
+
+        non_elf_plugin_deb = tmp / "non-elf-plugin.deb"
+        write_modified_deb(
+            good_deb,
+            non_elf_plugin_deb,
+            data_transform=replace_tar_member(
+                "./usr/share/rustdesk/lib/libwindow_size_plugin.so",
+                contents=b"not ELF\n",
+            ),
+        )
+        expect_validation_failure(non_elf_plugin_deb, "required runtime object is not ELF")
 
         good_data_tar = tar_stream_from_deb(good_deb, "--fsys-tarfile")
         good_data_members = tar_members_from_stream(good_data_tar, "good-data")

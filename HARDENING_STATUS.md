@@ -1945,8 +1945,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   R-S11c-10t closes the Linux Debian package tree authority in `build.py`, `scripts/build-debian.sh`, and
   `scripts/verify-debian-package-authority.py`. Debian packaging has one supported Flutter constructor; the unused
   `--package` and non-Flutter cargo-bundle/repackaging surfaces are absent. It removes prior Linux Flutter output,
-  requires the exact bundle root/runtime-library/fixed-resource shape with only generated `flutter_assets` variable,
-  and copies the exact four maintainer-script bodies without preserving checkout modes. The exact control inventory
+  requires the exact bundle root/runtime-library/fixed-resource shape with only generated `flutter_assets` variable.
+  `build.py` and the independent artifact verifier each enumerate the exact library set. Ignored Flutter plugin
+  registrants and generated CMake metadata are regenerated build mechanics, not source authority; the actual staged
+  bundle and emitted `.deb` are the dependency/plugin-output drift boundaries. It copies the exact four
+  maintainer-script bodies without preserving checkout modes. The exact control inventory
   includes `conffiles` for `startwm.sh`/`xorg.conf` and `md5sums` covering every non-conffile data file. The finalizer
   rejects unexpected entries, nested control directories, links, special files, and hardlinked regular files, then
   makes every directory `0755`, the runner and `startwm.sh` `0755`, all other data and ordinary control files `0644`,
@@ -1966,8 +1969,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   link names, non-root owner names, nonzero name/linkname/uname/gname/prefix padding, or otherwise non-canonical
   members; requires exact link-free data/control/conffile/md5 inventories; and checks every member's numeric ownership,
   raw type, and mode.
-  Production tests invoke the real finalizer under `umask 077` with `0600`/`0700` inputs. Handcrafted package mutations
-  cover wrong control/data modes, extra/missing/nested/special members, regular stowaways, links, raw-header aliases,
+  Source tests construct the authority fixture from tracked inputs, prove success without generated plugin metadata,
+  and prove stale or malformed ignored metadata has no effect. One-sided producer-library removal and rename,
+  finalizer-level missing/extra plugin libraries, and archive-level missing/extra/substituted/non-ELF plugin libraries
+  are explicit negatives. Production tests invoke the real finalizer under `umask 077` with `0600`/`0700` inputs.
+  Handcrafted package mutations cover wrong control/data modes, extra/missing/nested/special members, regular stowaways,
+  links, raw-header aliases,
   wrong-identity ELF objects, malformed conffiles/md5sums, and invalid/empty/multiple/legacy ELF search paths; source
   negatives cover hardlinked and individually symlinked scripts, a symlinked script directory, stale data,
   decorated constructor replacement, direct OS-process imports, byte-valued spawn/exec and re-exported subprocess
@@ -2979,7 +2986,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-342bb839a2b26e0b612e2bb5c51964acc7fc09bdb9cfbdc644e56c6054ad63ac  requirements.html
+6c067f848c499c93aea92eeb0dd5710cacf486203003fe56a42ab2cd2e97ad41  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

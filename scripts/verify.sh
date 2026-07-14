@@ -3518,6 +3518,24 @@ if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIA
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
 fi
 python3 scripts/verify-debian-package-authority.py --repo . --self-test || r_s11c10j="$r_s11c10j package:tree-authority"
+generated_plugin_authority_refs=$(
+  awk '
+    BEGIN { needle = "flutter/linux/flutter/generated_plugins.cmake" }
+    {
+      rest = $0
+      while ((position = index(rest, needle)) != 0) {
+        count++
+        rest = substr(rest, position + length(needle))
+      }
+    }
+    END { print count + 0 }
+  ' \
+    scripts/verify-debian-package-authority.py
+)
+if [ "$generated_plugin_authority_refs" -ne 1 ] ||
+   ! grep -qF 'generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"' scripts/verify-debian-package-authority.py; then
+  r_s11c10j="$r_s11c10j package:generated-plugin-metadata-became-authority"
+fi
 grep -qF 'R-S11c-10t closes the Linux Debian package tree authority' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j package:ledger-missing"
 grep -qF 'Linux Debian package tree authority' requirements.html || r_s11c10j="$r_s11c10j package:requirements-missing"
 grep -qF 'built .deb control script $script is not a mode-0755 non-hardlinked regular file' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-maintscript-mode-gate"

@@ -49,15 +49,24 @@ indistinguishable — so they are separate, and `FORK_VERSION` is the one you bu
    and after verification and target builds.
 8. **Run the full cold build.** Execute `./scripts/build-release.sh`. Its entrypoint starts from an empty
    environment, binds Docker to the local Unix socket, and supplies each child through an `env -i`
-   allowlist. It creates two private mode-0700 detached exact-commit worktrees. Debian, Android, and Windows
-   each run once in each worktree with independent target, Flutter, generated, output, and Windows state.
+   allowlist. It creates two independent `--no-hardlinks --reject-shallow`, mode-0700 private repositories, removes their remotes,
+   and checks out the exact commit detached. Debian, Android, and Windows each run once in each repository with
+   independent target, Flutter, generated, output, and Windows state.
    The orchestrator requires byte-identical SHA-256 values for all four artifacts across the two snapshots.
    Direct target scripts retain their own default internal double build; only this structural A/B
    orchestrator passes `DOUBLE_BUILD=0` to a direct target invocation.
 9. **Install one immutable local release set.** The exact A/B-equal files and nine-line manifest are copied
-   into a private sibling staging directory. The directory is atomically exchanged into `dist/`, then
-   revalidated for exact names, regular-file types, checksums, metadata, and read-only modes. Clean source
-   and live `origin/master` equality are proved again after the exchange. There is no partial release mode.
+   through unnamed synchronized files into a private same-parent payload on the required ext4 publication filesystem.
+   A synchronized read-only journal binds the complete descriptor-retrieved ext4 UUID and persistent object identities through
+   `initializing`, handle-bound `staging`, manifest-bound `prepared`, and explicit `rollback` or `cleanup`.
+   The payload is installed with kernel no-clobber when `dist/` is absent or atomically exchanged with the prior
+   set when it exists, then revalidated for exact names, regular-file types, checksums, metadata, and read-only
+   modes. Clean source and live `origin/master` equality are proved immediately before installation. Final
+   verification rejects any unresolved reserved publication state without repairing it. File edges are acquired with
+   `O_PATH|O_NOFOLLOW`, reopened nonblocking through retained descriptors, and re-proved before any read. Recovery requires
+   canonical state names to carry the active transaction token. Restart fixtures are logical process-restart proofs, not
+   physical power-loss simulation; the invoking UID is cooperative and root, the kernel, ext4, and storage are trusted.
+   There is no partial release mode.
 
 The Android signing identity is the public certificate SHA-256 pinned in `scripts/pins.env`. The build
 requires the keystore and password to be current-UID, non-symlink, mode-0600 files beneath two mode-0700

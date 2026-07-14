@@ -69,10 +69,8 @@ cleanup_verify_tmp() {
       || [ "$(stat -c '%d:%i' -- "$VERIFY_TMP" 2>/dev/null)" != "$VERIFY_TMP_ID" ]; then
       echo "verify: private workspace identity is unavailable or changed: $VERIFY_TMP" >&2
       cleanup_failed=1
-    elif ! /usr/bin/python3 scripts/verify-private-tree-closure.py --mount-root "$VERIFY_TMP"; then
-      echo "verify: private workspace contains a mount boundary: $VERIFY_TMP" >&2
-      cleanup_failed=1
-    elif ! rm -rf -- "$VERIFY_TMP"; then
+    elif ! /usr/bin/python3 scripts/verify-private-tree-closure.py \
+      --remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"; then
       echo "verify: failed to remove private workspace: $VERIFY_TMP" >&2
       cleanup_failed=1
     elif [ -e "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ]; then
@@ -120,6 +118,8 @@ if [ "$VERIFY_WORKSPACE_MISSING_SELF_TEST" -eq 1 ]; then
   exit 0
 fi
 verify_scan_self_test "$VERIFY_TMP"
+readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"
+install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
 
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
 # shellcheck source=scripts/fork-version.sh
@@ -137,7 +137,7 @@ rc=0
 
 echo "== (0) verifier workspace authority + release source/workflow ordering (R-S11c-10w/R-B2) =="
 r_s11c10w=
-if ! python3 scripts/verify-verifier-workspace.py --repo . --self-test; then
+if ! /usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo . --self-test --scratch "$VERIFIER_FIXTURE_TMP"; then
   r_s11c10w="$r_s11c10w workspace-or-release-source-mutation-gate-failed"
 fi
 grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"

@@ -1,18 +1,41 @@
 #!/usr/bin/env python3
 import argparse
+import array
 import ast
+import contextlib
+import ctypes
+import errno
+import fcntl
+import hashlib
 import json
 import os
+import pwd
 import re
 import selectors
 import signal
 import shlex
+import socket
+import stat
+import struct
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from pathlib import Path
+
+
+if not sys.flags.isolated or not sys.flags.no_site:
+    os.execve(
+        "/usr/bin/python3",
+        [
+            "/usr/bin/python3",
+            "-I",
+            "-S",
+            os.path.abspath(__file__),
+            *sys.argv[1:],
+        ],
+        dict(os.environ),
+    )
 
 
 WORKSPACE_BLOCKS = (
@@ -77,6 +100,372 @@ class VerificationError(RuntimeError):
     pass
 
 
+def attempt_cleanup(failures, label, function, *arguments):
+    try:
+        function(*arguments)
+        return True
+    except BaseException as error:
+        failures.append((label, error))
+        return False
+
+
+def report_cleanup_failures(primary_error, context, failures):
+    if not failures:
+        return
+    details = "; ".join(f"{label}: {error}" for label, error in failures)
+    if primary_error is not None:
+        primary_error.add_note(f"{context}: {details}")
+        return
+    error = VerificationError(f"{context}: {details}")
+    for label, failure in failures[1:]:
+        error.add_note(f"{label}: {failure}")
+    raise error from failures[0][1]
+
+
+def filesystem_identity(metadata):
+    return metadata.st_dev, metadata.st_ino
+
+
+def stable_file_metadata(metadata):
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def directory_is_empty(descriptor):
+    with os.scandir(descriptor) as entries:
+        return next(entries, None) is None
+
+
+def bounded_directory_names(descriptor, limit, diagnostic):
+    names = []
+    with os.scandir(descriptor) as entries:
+        for entry in entries:
+            if len(names) >= limit:
+                raise VerificationError(diagnostic)
+            names.append(entry.name)
+    return sorted(names, key=os.fsencode)
+
+
+def descriptor_mount_id(descriptor):
+    with open(f"/proc/self/fdinfo/{descriptor}", "rb", buffering=0) as information:
+        content = information.read(65537)
+    if len(content) > 65536:
+        raise VerificationError("descriptor mount information exceeds its byte bound")
+    prefix = b"mnt_id:\t"
+    values = [line[len(prefix):] for line in content.splitlines() if line.startswith(prefix)]
+    if len(values) != 1 or re.fullmatch(br"[1-9][0-9]*", values[0]) is None:
+        raise VerificationError("descriptor mount identity is unavailable")
+    return int(values[0])
+
+
+class ScratchDirectory:
+    def __init__(self, root, descriptor, name, recorded_identity):
+        self.root = root
+        self.fd = descriptor
+        self.name = name
+        self.identity = recorded_identity
+
+    @property
+    def descriptor_path(self):
+        return Path(f"/proc/self/fd/{self.fd}")
+
+    @property
+    def inherited_fds(self):
+        return (self.fd,)
+
+    def __fspath__(self):
+        return os.fspath(self.descriptor_path)
+
+    def __str__(self):
+        return os.fspath(self)
+
+    def __truediv__(self, component):
+        return self.descriptor_path / component
+
+    def assert_bound(self):
+        self.root.assert_bound()
+        metadata = os.fstat(self.fd)
+        edge = os.stat(self.name, dir_fd=self.root.fd, follow_symlinks=False)
+        if (
+            filesystem_identity(metadata) != self.identity
+            or filesystem_identity(edge) != self.identity
+            or descriptor_mount_id(self.fd) != self.root.mount_id
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_gid != os.getegid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise VerificationError("fixture directory authority changed")
+
+    def canonical_path(self):
+        self.assert_bound()
+        return Path(os.path.realpath(self.descriptor_path))
+
+
+class ScratchRoot:
+    def __init__(self, path):
+        rendered = os.fspath(path)
+        if not os.path.isabs(rendered) or os.path.normpath(rendered) != rendered:
+            raise VerificationError("verifier fixture scratch is not an absolute normalized path")
+        components = rendered.split("/")[1:]
+        if not components or any(not component or component in (".", "..") for component in components):
+            raise VerificationError("verifier fixture scratch path has an invalid component")
+        current_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        parent_fd = None
+        try:
+            for index, component in enumerate(components):
+                next_fd = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=current_fd,
+                )
+                if index == len(components) - 1:
+                    parent_fd = current_fd
+                    current_fd = next_fd
+                    break
+                os.close(current_fd)
+                current_fd = next_fd
+            if parent_fd is None:
+                raise VerificationError("verifier fixture scratch parent authority is unavailable")
+            metadata = os.fstat(current_fd)
+            edge = os.stat(components[-1], dir_fd=parent_fd, follow_symlinks=False)
+            if filesystem_identity(edge) != filesystem_identity(metadata):
+                raise VerificationError("verifier fixture scratch edge changed during acquisition")
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_gid != os.getegid()
+                or stat.S_IMODE(metadata.st_mode) != 0o700
+            ):
+                raise VerificationError(
+                    "verifier fixture scratch is not a current-principal mode-0700 directory"
+                )
+            if not directory_is_empty(current_fd):
+                raise VerificationError("verifier fixture scratch is not initially empty")
+            mount_id = descriptor_mount_id(current_fd)
+        except BaseException:
+            if parent_fd is not None:
+                os.close(parent_fd)
+            os.close(current_fd)
+            raise
+        self.path = rendered
+        self.basename = components[-1]
+        self.parent_fd = parent_fd
+        self.fd = current_fd
+        self.identity = filesystem_identity(metadata)
+        self.device = metadata.st_dev
+        self.mount_id = mount_id
+        self.closed = False
+
+    @property
+    def descriptor_path(self):
+        return Path(f"/proc/self/fd/{self.fd}")
+
+    def assert_bound(self):
+        if self.closed:
+            raise VerificationError("verifier fixture scratch authority is closed")
+        metadata = os.fstat(self.fd)
+        if filesystem_identity(metadata) != self.identity:
+            raise VerificationError("verifier fixture scratch descriptor identity changed")
+        if (
+            metadata.st_uid != os.geteuid()
+            or metadata.st_gid != os.getegid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise VerificationError("verifier fixture scratch metadata changed")
+        if descriptor_mount_id(self.fd) != self.mount_id:
+            raise VerificationError("verifier fixture scratch mount identity changed")
+        edge = os.stat(self.basename, dir_fd=self.parent_fd, follow_symlinks=False)
+        if filesystem_identity(edge) != self.identity:
+            raise VerificationError("verifier fixture scratch pathname was replaced")
+
+    def _remove_contents(self, directory_fd, remaining):
+        directory_metadata = os.fstat(directory_fd)
+        if directory_metadata.st_uid != os.geteuid() or directory_metadata.st_gid != os.getegid():
+            raise VerificationError("fixture cleanup encountered a foreign-owned directory")
+        os.fchmod(directory_fd, 0o700)
+        names = bounded_directory_names(
+            directory_fd,
+            remaining[0],
+            "fixture cleanup exceeds its entry bound",
+        )
+        for name in names:
+            remaining[0] -= 1
+            if remaining[0] < 0:
+                raise VerificationError("fixture cleanup exceeds its entry bound")
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if metadata.st_dev != self.device:
+                raise VerificationError("fixture cleanup crosses a filesystem boundary")
+            authority_fd = os.open(
+                name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd
+            )
+            try:
+                if (
+                    filesystem_identity(os.fstat(authority_fd)) != filesystem_identity(metadata)
+                    or descriptor_mount_id(authority_fd) != self.mount_id
+                ):
+                    raise VerificationError("fixture cleanup crosses a mount boundary")
+                if stat.S_ISDIR(metadata.st_mode):
+                    child_fd = os.open(
+                        name,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=directory_fd,
+                    )
+                    try:
+                        opened = os.fstat(child_fd)
+                        if filesystem_identity(opened) != filesystem_identity(metadata):
+                            raise VerificationError("fixture directory changed during cleanup open")
+                        if descriptor_mount_id(child_fd) != self.mount_id:
+                            raise VerificationError("fixture directory changed mount during cleanup open")
+                        self._remove_contents(child_fd, remaining)
+                        current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                        if filesystem_identity(current) != filesystem_identity(opened):
+                            raise VerificationError("fixture directory changed before cleanup removal")
+                        os.rmdir(name, dir_fd=directory_fd)
+                        if os.fstat(authority_fd).st_nlink != 0:
+                            raise VerificationError("fixture directory removal did not consume its edge")
+                    finally:
+                        os.close(child_fd)
+                else:
+                    current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                    if filesystem_identity(current) != filesystem_identity(metadata):
+                        raise VerificationError("fixture entry changed before cleanup removal")
+                    os.unlink(name, dir_fd=directory_fd)
+                    if os.fstat(authority_fd).st_nlink != metadata.st_nlink - 1:
+                        raise VerificationError("fixture unlink did not consume the authenticated edge")
+            finally:
+                os.close(authority_fd)
+
+    def _collect_inode_links(self, directory_fd, remaining, linked):
+        names = bounded_directory_names(
+            directory_fd,
+            remaining[0],
+            "fixture inode-closure inspection exceeds its entry bound",
+        )
+        for name in names:
+            remaining[0] -= 1
+            if remaining[0] < 0:
+                raise VerificationError("fixture inode-closure inspection exceeds its entry bound")
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if metadata.st_dev != self.device:
+                raise VerificationError("fixture inode-closure inspection crosses a filesystem boundary")
+            authority_fd = os.open(
+                name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd
+            )
+            try:
+                if (
+                    filesystem_identity(os.fstat(authority_fd)) != filesystem_identity(metadata)
+                    or descriptor_mount_id(authority_fd) != self.mount_id
+                ):
+                    raise VerificationError("fixture inode-closure inspection crosses a mount boundary")
+            finally:
+                os.close(authority_fd)
+            if stat.S_ISDIR(metadata.st_mode):
+                child_fd = os.open(
+                    name,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=directory_fd,
+                )
+                try:
+                    opened = os.fstat(child_fd)
+                    if filesystem_identity(opened) != filesystem_identity(metadata):
+                        raise VerificationError("fixture directory changed during inode-closure inspection")
+                    self._collect_inode_links(child_fd, remaining, linked)
+                finally:
+                    os.close(child_fd)
+            else:
+                if metadata.st_nlink < 1:
+                    raise VerificationError("fixture entry has an invalid link count")
+                key = filesystem_identity(metadata)
+                expected, count = linked.get(key, (metadata.st_nlink, 0))
+                if expected != metadata.st_nlink:
+                    raise VerificationError("fixture inode link count changed during inspection")
+                linked[key] = expected, count + 1
+
+    def _assert_inode_closure(self, directory_fd):
+        linked = {}
+        self._collect_inode_links(directory_fd, [131072], linked)
+        if any(count != expected for expected, count in linked.values()):
+            raise VerificationError("fixture contains a non-directory inode linked outside its boundary")
+
+    @contextlib.contextmanager
+    def directory(self, prefix):
+        self.assert_bound()
+        if re.fullmatch(r"[a-z0-9-]+", prefix) is None:
+            raise VerificationError("fixture directory prefix is invalid")
+        child_name = f"{prefix}{os.urandom(16).hex()}"
+        os.mkdir(child_name, 0o700, dir_fd=self.fd)
+        child_fd = None
+        child_identity = None
+        child_owned = False
+        try:
+            edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(edge.st_mode)
+                or edge.st_uid != os.geteuid()
+                or edge.st_gid != os.getegid()
+                or stat.S_IMODE(edge.st_mode) != 0o700
+            ):
+                raise VerificationError("fixture directory edge has invalid creation metadata")
+            child_identity = filesystem_identity(edge)
+            child_fd = os.open(
+                child_name,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=self.fd,
+            )
+            child_metadata = os.fstat(child_fd)
+            if child_identity != filesystem_identity(child_metadata):
+                raise VerificationError("fixture directory edge changed during creation")
+            if descriptor_mount_id(child_fd) != self.mount_id:
+                raise VerificationError("fixture directory was created across a mount boundary")
+            child_owned = True
+            yield ScratchDirectory(self, child_fd, child_name, child_identity)
+        finally:
+            cleanup_complete = False
+            try:
+                if child_owned:
+                    edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
+                    if filesystem_identity(edge) != child_identity:
+                        raise VerificationError("fixture directory edge changed before cleanup")
+                    if child_fd is not None:
+                        self._assert_inode_closure(child_fd)
+                        self._remove_contents(child_fd, [131072])
+                        if not directory_is_empty(child_fd):
+                            raise VerificationError("fixture directory remains nonempty after cleanup")
+                    edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
+                    if filesystem_identity(edge) != child_identity:
+                        raise VerificationError("fixture directory edge changed before root removal")
+                    os.rmdir(child_name, dir_fd=self.fd)
+                    if os.fstat(child_fd).st_nlink != 0:
+                        raise VerificationError("fixture root removal did not consume its edge")
+                    cleanup_complete = True
+            finally:
+                if child_fd is not None:
+                    os.close(child_fd)
+            if cleanup_complete:
+                self.assert_bound()
+
+    def close(self):
+        if self.closed:
+            return
+        try:
+            self.assert_bound()
+            if not directory_is_empty(self.fd):
+                raise VerificationError("verifier fixture scratch retained state after self-test")
+        finally:
+            self.closed = True
+            os.close(self.fd)
+            os.close(self.parent_fd)
+
+
 class ManagedSignal(BaseException):
     def __init__(self, signum):
         super().__init__(signum)
@@ -84,6 +473,12 @@ class ManagedSignal(BaseException):
 
 
 MANAGED_SIGNALS = (signal.SIGHUP, signal.SIGINT, signal.SIGTERM)
+MANAGED_UNIT_COLLECTION_SECONDS = 30
+VERIFIER_PROGRAM_LIMIT = 4 * 1024 * 1024
+VERIFIER_PROGRAM_SEALS = (
+    fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
+)
+_VERIFIER_PROGRAM_FD = None
 _MANAGED_SIGNAL_STATE = None
 
 
@@ -135,6 +530,58 @@ def extract_through(source, start_token, end_token, label):
     if end < 0:
         raise VerificationError(f"{label}: closing token is absent")
     return source[start : end + len(end_token)]
+
+
+def python_ast_span(source, node):
+    lines = source.splitlines(keepends=True)
+    line_offsets = [0]
+    for line in lines:
+        line_offsets.append(line_offsets[-1] + len(line))
+
+    def source_position(line_number, byte_column):
+        encoded = lines[line_number - 1].encode("utf-8")
+        if byte_column > len(encoded):
+            raise VerificationError("Python AST position exceeds its source line")
+        try:
+            prefix = encoded[:byte_column].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise VerificationError("Python AST position splits a source character") from exc
+        return line_offsets[line_number - 1] + len(prefix)
+
+    return (
+        source_position(node.lineno, node.col_offset),
+        source_position(node.end_lineno, node.end_col_offset),
+    )
+
+
+def extract_python_definition(source, module, name, label):
+    definitions = [
+        node
+        for node in module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and node.name == name
+    ]
+    if len(definitions) != 1:
+        raise VerificationError(f"{label}: expected one top-level {name} definition")
+    start, end = python_ast_span(source, definitions[0])
+    return source[start:end]
+
+
+def extract_python_method(source, module, class_name, method_name, label):
+    classes = [
+        node for node in module.body if isinstance(node, ast.ClassDef) and node.name == class_name
+    ]
+    if len(classes) != 1:
+        raise VerificationError(f"{label}: expected one top-level {class_name} class")
+    methods = [
+        node
+        for node in classes[0].body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == method_name
+    ]
+    if len(methods) != 1:
+        raise VerificationError(f"{label}: expected one {class_name}.{method_name} method")
+    start, end = python_ast_span(source, methods[0])
+    return source[start:end]
 
 
 def validate_popen_finally_ownership(source, function_name, cleanup_name, reaped_name, label):
@@ -267,8 +714,7 @@ def validate_verify_workspace(source):
     for text, label in (
         ('[ -z "$VERIFY_TMP_ID" ]', "workspace recorded identity requirement"),
         ('"$(stat -c \'%d:%i\' -- "$VERIFY_TMP"', "workspace live identity proof"),
-        ('scripts/verify-private-tree-closure.py --mount-root "$VERIFY_TMP"', "workspace mount closure"),
-        ('rm -rf -- "$VERIFY_TMP"', "workspace removal"),
+        ('--remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"', "identity-bound workspace removal"),
         ('[ -e "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ]', "workspace removal postcondition"),
         ('trap \'\' HUP INT TERM', "workspace cleanup signal exclusion"),
         ('echo "$VERIFY_SUCCESS_MESSAGE"', "deferred verify success output"),
@@ -279,8 +725,7 @@ def validate_verify_workspace(source):
         (
             "trap '' HUP INT TERM",
             '"$(stat -c \'%d:%i\' -- "$VERIFY_TMP"',
-            'scripts/verify-private-tree-closure.py --mount-root "$VERIFY_TMP"',
-            'rm -rf -- "$VERIFY_TMP"',
+            '--remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
             'echo "$VERIFY_SUCCESS_MESSAGE"',
             'exit "$status"',
         ),
@@ -305,6 +750,17 @@ def validate_verify_workspace(source):
         'native_watch_log=$(mktemp "$VERIFY_TMP/native-watch.XXXXXXXXXX")',
         "native watch log workspace ownership",
     )
+    require_text(
+        source,
+        'readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"',
+        "verifier fixture scratch ownership",
+    )
+    require_text(source, 'install -d -m 0700 "$VERIFIER_FIXTURE_TMP"', "verifier fixture scratch allocation")
+    require_text(
+        source,
+        'verify-verifier-workspace.py --repo . --self-test --scratch "$VERIFIER_FIXTURE_TMP"',
+        "verifier fixture scratch dispatch",
+    )
     for line_number, line in enumerate(lines, 1):
         if OLD_SCRATCH_PREFIX.search(line):
             raise VerificationError(f"line {line_number}: predictable public scratch prefix is present")
@@ -327,49 +783,6 @@ def validate_build_release(source):
         "normalize_snapshot_access() {",
         "\n}\n\nnormalize_workspace_access() {",
         "snapshot normalizer",
-    )
-    worktree_cleanup = extract_between(
-        source,
-        "query_git_worktree_registry() {",
-        "\n}\n\nprepare_existing_dist_removal() {",
-        "registered-worktree cleanup",
-    )
-    worktree_query = extract_between(
-        source,
-        "query_git_worktree_registry() {",
-        "\n}\n\nremove_snapshot_worktree_if_registered() {",
-        "registered-worktree registry query",
-    )
-    registry_python = extract_between(
-        worktree_query,
-        "<<'PY'\n",
-        "\nPY",
-        "embedded Git worktree registry parser",
-    ).split("\n", 1)[1]
-    validate_popen_finally_ownership(
-        registry_python,
-        "inspect_registry",
-        "stop_and_reap",
-        "producer_reaped",
-        "Git worktree registry teardown ownership",
-    )
-    worktree_registration_predicate = extract_between(
-        source,
-        "worktree_path_is_registered() {",
-        "\n}\n\nassert_no_stale_release_worktrees() {",
-        "exact worktree registration predicate",
-    )
-    invalid_registration_inspection = extract_between(
-        source,
-        "assert_snapshot_worktree_not_registered() {",
-        "\n}\n\nprepare_existing_dist_removal() {",
-        "invalid-workspace registration inspection",
-    )
-    unprivileged_workspace_cleanup = extract_between(
-        source,
-        "prepare_unprivileged_workspace_removal() {",
-        "\n}\n\nquery_git_worktree_registry() {",
-        "unprivileged workspace cleanup",
     )
     cleanup = extract_between(
         source,
@@ -419,102 +832,42 @@ def validate_build_release(source):
         "\n}\n\nassert_release_online_snapshot() {",
         "release workspace creation",
     )
-    publication = extract_between(
+    publication_tool = extract_between(
         source,
-        "assert_single_writer_publication_parent() {",
-        "\n}\n\nwrite_fixture_target() {",
-        "final-dist transaction",
-    )
-    existing_dist = extract_between(
-        source,
-        "prepare_existing_dist_removal() {",
-        "\n}\n\ncleanup_release_workspace() {",
-        "existing-dist inspection",
-    )
-    exchange = extract_between(
-        publication,
-        "atomic_exchange_or_install() {",
-        "\n}\n\npath_identity() {",
-        "atomic exchange helper",
-    )
-    publication_parent = extract_between(
-        publication,
-        "assert_single_writer_publication_parent() {",
-        "\n}\n\natomic_exchange_or_install() {",
-        "single-writer publication parent",
-    )
-    directory_sync = extract_between(
-        publication,
-        "sync_exact_directory() {",
-        "\n}\n\natomic_exchange_or_install() {",
-        "exact directory synchronization helper",
-    )
-    transaction_removal = extract_between(
-        publication,
-        "commit_registered_final_transaction_discard() {",
-        "\n}\n\nreconcile_final_publication() {",
-        "registered-transaction removal",
-    )
-    record_writer = extract_between(
-        publication,
-        "write_publication_record() {",
-        "\n}\n\nread_publication_record() {",
-        "durable publication record writer",
+        "publication_tool() {",
+        "\n}\n\nprove_published_dist() {",
+        "final release publisher dispatch",
     )
     published_proof = extract_between(
-        publication,
-        "prove_recorded_published_dist() {",
-        "\n}\n\nprove_published_dist() {",
-        "record-bound published-set proof",
-    )
-    payload_sync = extract_between(
-        publication,
-        "sync_staged_publication_payload() {",
-        "\n}\n\nsync_publication_directories() {",
-        "staged publication durability proof",
-    )
-    publication_sync = extract_between(
-        publication,
-        "sync_publication_directories() {",
-        "\n}\n\nwrite_publication_record() {",
-        "post-exchange publication durability proof",
-    )
-    record_reader = extract_between(
-        publication,
-        "read_publication_record() {",
-        "\n}\n\ncommit_registered_final_transaction_discard() {",
-        "durable publication record reader",
+        source,
+        "prove_published_dist() {",
+        "\n}\n\nrecover_pending_publications() {",
+        "published release-set proof dispatch",
     )
     reconciliation = extract_between(
-        publication,
+        source,
         "reconcile_final_publication() {",
-        "\n}\n\nrecover_pending_publications() {",
+        "\n}\n\natomic_install_dist() {",
         "publication reconciliation",
     )
     recovery = extract_between(
-        publication,
+        source,
         "recover_pending_publications() {",
-        "\n}\n\natomic_install_dist() {",
+        "\n}\n\nreconcile_final_publication() {",
         "restartable publication recovery",
     )
     atomic_install = extract_between(
-        publication,
+        source,
         "atomic_install_dist() {",
-        "\n}",
+        "\n}\n\nprepare_release_snapshots() {",
         "atomic final-dist installation",
     )
     main = extract_between(source, "main() {", "\n}\n\nmain\n", "release main transaction")
-    inspector_header = extract_through(
+    normalization_command = extract_between(
         normalizer,
         "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\",
-        '"$DEBIAN_IMAGE_ID" /usr/bin/python3 /probe.py --inode-root /inspect',
-        "read-only inode-closure inspector",
-    )
-    mutator_header = extract_through(
-        normalizer[normalizer.find(inspector_header) + len(inspector_header) :],
-        "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\",
-        '"$DEBIAN_IMAGE_ID" /bin/sh -ceu \'',
-        "private-tree ownership mutator",
+        "\n    ); then",
+        "descriptor-bound private-tree normalizer",
     )
     require_text(
         source,
@@ -560,10 +913,9 @@ def validate_build_release(source):
         (
             'require_cmd cmp git docker python3 sha256sum stat readlink install find date flock /usr/bin/grep',
             "acquire_publication_lock\n",
-            'CANONICAL_PUBLICATION_PARENT_ID="$(assert_single_writer_publication_parent "$REPO_ROOT")"',
+            "FINAL_PUBLICATION_RECONCILIATION=1",
             'recover_pending_publications "$REPO_ROOT" "$FINAL_OUT_DIR"',
-            "clear_final_publication_state\n",
-            "assert_no_stale_release_worktrees\n",
+            "assert_repo_state\n",
             'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
             "require_online_complete\n",
             "create_release_online_snapshot\n",
@@ -592,8 +944,60 @@ def validate_build_release(source):
             raise VerificationError(f"release transaction retains mutable image name {mutable_name}")
     require_text(source, 'create_snapshot A "$SOURCE_A"', "snapshot A creation")
     require_text(source, 'create_snapshot B "$SOURCE_B"', "snapshot B creation")
-    require_text(source, 'worktree add --quiet --detach "$source" "$PINNED_HEAD"', "detached exact-commit worktrees")
+    for operation in ("add", "remove", "prune"):
+        if re.search(rf"(?:^|\s)worktree\s+{operation}(?:\s|$)", source):
+            raise VerificationError(
+                f"release build retains production Git worktree {operation} authority"
+            )
+    for text, label in (
+        ('git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow', "independent complete-history snapshot clone"),
+        ('checkout --quiet --detach "$PINNED_HEAD"', "detached pinned-commit snapshot checkout"),
+        ('assert_git_object_authority "$source"', "snapshot object-authority rejection"),
+        ('"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source"', "snapshot mount closure"),
+        ('"$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source"', "snapshot inode-link closure"),
+    ):
+        require_text(create_snapshot, text, label)
+    require_exact_count(
+        source,
+        'assert_git_object_authority "$source"',
+        2,
+        "snapshot object-authority rejection",
+    )
+    require_order(
+        create_snapshot,
+        (
+            'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
+            'git_closed -C "$source" checkout --quiet --detach "$PINNED_HEAD"',
+            'git_closed -C "$source" remote remove origin',
+            '[ "$common" = "$source/.git" ]',
+            'assert_git_object_authority "$source"',
+            'git_closed -C "$source" fsck --full --strict --no-reflogs',
+            'chmod 0700 "$source"',
+            '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$source"',
+            '"$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source"',
+            'assert_snapshot_exact "$source" "snapshot $label creation"',
+        ),
+        "independent release snapshot acquisition",
+    )
     require_text(create_snapshot, 'chmod 0700 "$source"', "private release snapshot mode")
+    for text, label in (
+        ('shallow="$common_dir/shallow"', "shallow declaration authority"),
+        ('[ ! -e "$shallow" ] && [ ! -L "$shallow" ]', "shallow control-file rejection"),
+        ('rev-parse --is-shallow-repository', "Git shallow-state query"),
+        ('rev-parse --is-shallow-repository 2>/dev/null)" = false ]', "complete Git history requirement"),
+    ):
+        require_text(source, text, label)
+    require_text(
+        reset_self_test,
+        'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo"',
+        "reset fixture complete-history Git clone",
+    )
+    require_exact_count(
+        source,
+        "--reject-shallow",
+        2,
+        "complete-history private clone policy",
+    )
     require_text(
         create_snapshot,
         '[ "$(stat -c \'%u:%a\' "$source")" = "$(id -u):700" ]',
@@ -613,21 +1017,20 @@ def validate_build_release(source):
         ),
         "generated-state reset ordering",
     )
-    expected_inspector_header = """docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\
-            --cap-drop=ALL --cap-add=DAC_READ_SEARCH \\
-            --security-opt no-new-privileges \\
-            --mount "type=bind,src=$path,dst=/inspect,readonly,bind-recursive=disabled" \\
-            --mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly" \\
-            "$DEBIAN_IMAGE_ID" /usr/bin/python3 /probe.py --inode-root /inspect"""
-    if inspector_header != expected_inspector_header:
-        raise VerificationError("inode-closure inspector command is not the exact authority allowlist")
-    expected_mutator_header = """docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\
-            --cap-drop=ALL --cap-add=CHOWN \\
-            --security-opt no-new-privileges \\
-            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\
-            "$DEBIAN_IMAGE_ID" /bin/sh -ceu '"""
-    if mutator_header != expected_mutator_header:
-        raise VerificationError("private-tree mutator command is not the exact authority allowlist")
+    expected_normalization_command = (
+        "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+        "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\\n"
+        "            --security-opt no-new-privileges \\\n"
+        "            --ulimit nofile=131328:131328 \\\n"
+        '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
+        '            --mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly" \\\n'
+        '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py \\\n'
+        '            --normalize-root /cleanup --expected-identity "$expected_identity" \\\n'
+        '            --owner "$uid" --group "$gid"'
+    )
+    require_exact_count(normalizer, "docker_local run ", 1, "single descriptor-bound normalizer container")
+    if normalization_command != expected_normalization_command:
+        raise VerificationError("private-tree normalizer command is not the exact authority allowlist")
     for text, label in (
         ("--pull=never", "normalizer no-pull policy"),
         ("--network=none", "normalizer network isolation"),
@@ -637,30 +1040,23 @@ def validate_build_release(source):
         ("--cap-add=DAC_READ_SEARCH", "normalizer read-only inspection capability"),
         ("--cap-add=CHOWN", "normalizer chown capability"),
         ("--security-opt no-new-privileges", "normalizer privilege ceiling"),
-        ('"$DEBIAN_IMAGE_ID" /bin/sh -ceu', "content-ID normalizer image"),
-        ("/bin/chown --no-dereference 0:0 /cleanup", "normalizer process-owned root transition"),
-        ("/usr/bin/find -P /cleanup -type d", "normalizer physical directory walk"),
-        ("-exec /bin/chown --no-dereference 0:0 {}", "normalizer parent-first ownership transition"),
-        ("-exec /bin/chmod u+rwx,go-w {}", "normalizer directory access repair"),
-        ("/usr/bin/find -P /cleanup ! -type d ! -type l", "normalizer physical non-directory walk"),
-        ("/usr/bin/find -P /cleanup -type l", "normalizer physical symlink walk"),
-        ("/usr/bin/find -P /cleanup -depth -type d", "normalizer depth-first ownership restoration"),
+        ("--ulimit nofile=131328:131328", "normalizer retained-authority descriptor budget"),
+        ('"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py', "content-ID normalizer image"),
+        ('--normalize-root /cleanup --expected-identity "$expected_identity"', "identity-bound normalization dispatch"),
+        ('--owner "$uid" --group "$gid"', "normalizer destination ownership"),
         ('"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"', "normalizer mount closure proof"),
-        ('/probe.py --inode-root /inspect', "normalizer inode closure proof"),
+        ('src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly', "pinned normalizer implementation"),
         ("bind-recursive=disabled", "normalizer recursive-bind exclusion"),
         ('[ "$observed" = "$expected_identity" ]', "normalizer identity postcondition"),
-        ('! -uid "$uid" -o ! -gid "$gid"', "normalizer ownership postcondition"),
-        ('! -type l -perm /022', "normalizer non-writable postcondition"),
-        ('-type d ! -perm -0700', "normalizer owner-access postcondition"),
     ):
         require_text(normalizer, text, label)
     if re.findall(r"--cap-add=([A-Z_]+)", normalizer) != ["DAC_READ_SEARCH", "CHOWN"]:
-        raise VerificationError("normalizer capability partitions are not exact")
+        raise VerificationError("normalizer capability allowlist is not exact")
     if re.findall(r"--cap-add=([A-Z_]+)", reset_self_test) != ["CHOWN"]:
         raise VerificationError("reset fixture capability set is not exactly CHOWN")
-    require_exact_count(normalizer, "bind-recursive=disabled", 2, "normalizer recursive-bind exclusions")
-    require_exact_count(normalizer, '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"', 3, "normalizer mount closure stages")
-    require_exact_count(normalizer, '[ "$observed" = "$expected_identity" ]', 3, "normalizer identity stages")
+    require_exact_count(normalizer, "bind-recursive=disabled", 1, "normalizer recursive-bind exclusions")
+    require_exact_count(normalizer, '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"', 2, "normalizer mount closure stages")
+    require_exact_count(normalizer, '[ "$observed" = "$expected_identity" ]', 2, "normalizer identity stages")
     require_text(
         normalizer,
         'if ! (verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"); then\n'
@@ -677,16 +1073,11 @@ def validate_build_release(source):
             '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$path"',
             'verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"',
             "--cap-add=DAC_READ_SEARCH",
-            "disappeared after closure inspection",
-            "identity changed after closure inspection",
-            "gained a mount boundary after closure inspection",
             "--cap-add=CHOWN",
+            "--normalize-root /cleanup",
             "disappeared after normalization",
             "identity changed during normalization",
             "gained a mount boundary during normalization",
-            "retains foreign ownership after normalization",
-            "retains group/world-writable state after normalization",
-            "retains an owner-inaccessible directory after normalization",
         ),
         "private-tree authority ordering",
     )
@@ -706,6 +1097,10 @@ def validate_build_release(source):
         "--entrypoint",
         "seccomp=unconfined",
         "apparmor=unconfined",
+        "/bin/sh",
+        "/bin/chown",
+        "/bin/chmod",
+        "/usr/bin/find /cleanup",
     ):
         if forbidden in normalizer:
             raise VerificationError(f"private-tree normalizer retains forbidden Docker authority: {forbidden}")
@@ -715,16 +1110,14 @@ def validate_build_release(source):
         'offline_normalize_exact_tree "$source" "$expected" "$phase snapshot"',
         "snapshot normalizer exact-tree call",
     )
-    require_text(snapshot_normalizer, 'chmod 0700 "$source"', "snapshot root mode restoration")
     require_text(snapshot_normalizer, '"$expected:$(id -u):$(id -g):700"', "snapshot root metadata proof")
     require_order(
         cleanup,
         (
             'if [ "$WINDOWS_UNSAFE" -eq 1 ] || [ "$KEEP_WORKSPACE" -eq 1 ]',
+            "reconcile_final_publication",
             "normalize_workspace_access",
-            'remove_snapshot_worktree_if_registered "$SOURCE_A" "snapshot A"',
-            'remove_snapshot_worktree_if_registered "$SOURCE_B" "snapshot B"',
-            'rm -rf -- "$WORKSPACE"',
+            '--remove-scratch-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"',
         ),
         "whole-workspace cleanup ordering",
     )
@@ -742,37 +1135,27 @@ def validate_build_release(source):
         2,
         "workspace cleanup mount closure",
     )
-    require_order(
-        cleanup,
-        (
-            "workspace_state=invalid",
-            'if [ "$worktrees_safe" -eq 0 ]; then',
-            'assert_snapshot_worktree_not_registered "$SOURCE_A" "snapshot A"',
-            'assert_snapshot_worktree_not_registered "$SOURCE_B" "snapshot B"',
-        ),
-        "invalid-workspace registration inspection",
-    )
     if 'elif [ -n "$DEBIAN_IMAGE_ID" ]' in cleanup:
         raise VerificationError("workspace cleanup can delete without an installed closure probe")
-    if "chmod -R" in cleanup:
-        raise VerificationError("workspace cleanup changes non-directory metadata recursively")
-    for text, label in (
-        ('[ "$(stat -c \'%d:%i\' -- "$WORKSPACE"', "unprivileged workspace identity proof"),
-        ('"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$WORKSPACE"', "unprivileged workspace mount closure"),
-        ('find -P "$WORKSPACE" -type d', "unprivileged physical directory walk"),
-        ('! -uid "$(id -u)" -o ! -gid "$(id -g)"', "unprivileged directory ownership proof"),
-        ('-exec chmod u+rwx,go-w {} +', "directory-only removal access"),
-        ('"$WORKSPACE_ID:$(id -u):$(id -g):700"', "unprivileged workspace root postcondition"),
+    for forbidden in (
+        "prepare_unprivileged_workspace_removal",
+        'find -P "$WORKSPACE"',
+        "chmod -R",
     ):
-        require_text(unprivileged_workspace_cleanup, text, label)
-    require_exact_count(
-        unprivileged_workspace_cleanup,
-        '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$WORKSPACE"',
-        2,
-        "unprivileged workspace mount closure",
+        if forbidden in source:
+            raise VerificationError(
+                f"workspace cleanup retains pathname mutation authority: {forbidden}"
+            )
+    require_text(
+        cleanup,
+        'if [ "$FIXTURE_MODE" -eq 0 ] && [ -n "$DEBIAN_IMAGE_ID" ]',
+        "production-only retained-authority workspace normalization",
     )
-    if "chmod -R" in unprivileged_workspace_cleanup or "! -type d" in unprivileged_workspace_cleanup:
-        raise VerificationError("unprivileged workspace cleanup changes non-directory metadata")
+    require_text(
+        create_workspace,
+        'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
+        "private closure-probe installation",
+    )
     require_order(
         create_workspace,
         ("trap cleanup_release_workspace EXIT", 'mktemp -d /tmp/rustdesk-release.', 'chmod 0700 "$WORKSPACE"'),
@@ -785,9 +1168,13 @@ def validate_build_release(source):
             'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
             '"$PINNED_HEAD:scripts/verify-private-tree-closure.py"',
             '[ "$private_hash" = "$commit_hash" ]',
+            'FINALIZE_RELEASE_SET_PROBE="$WORKSPACE/finalize-release-set.py"',
+            'install -m 0500 "$FINALIZE_RELEASE_SET_SOURCE" "$FINALIZE_RELEASE_SET_PROBE"',
+            '"$PINNED_HEAD:scripts/finalize-release-set.py"',
+            '[ "$publisher_private_hash" = "$commit_hash" ]',
             'DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"',
         ),
-        "private closure-probe installation",
+        "private release-helper installation",
     )
     require_text(cleanup, "trap '' HUP INT TERM", "cleanup signal exclusion")
     require_exact_count(cleanup, '[ "$status" -ne 0 ] || status=1', 1, "cleanup original-status preservation")
@@ -795,8 +1182,8 @@ def validate_build_release(source):
         cleanup,
         (
             "trap '' HUP INT TERM",
-            'rm -rf -- "$WORKSPACE"',
-            'sync_exact_directory "$REPO_ROOT" "$CANONICAL_PUBLICATION_PARENT_ID"',
+            "reconcile_final_publication",
+            '--remove-scratch-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"',
             '[ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]',
             'log "$RELEASE_SUCCESS_MESSAGE"',
             'exit "$status"',
@@ -818,116 +1205,6 @@ def validate_build_release(source):
         'RELEASE_SUCCESS_MESSAGE="build-release root-owned reset self-test: OK"',
     ):
         require_text(source, marker, "deferred build-release success marker")
-    for text, label in (
-        ('"worktree",\n        "list",\n        "--porcelain",\n        "-z"', "exact Git worktree registry query"),
-        ('process = subprocess.Popen(', "streamed Git worktree registry query"),
-        ('stdout=subprocess.PIPE', "Git worktree registry output pipe"),
-        ('MAX_WORKTREE_FIELD_BYTES = 65536', "bounded Git worktree registry field"),
-        ('MAX_WORKTREE_TOTAL_BYTES = 4 * 1024 * 1024', "Git worktree registry total-byte bound"),
-        ('MAX_WORKTREE_FIELDS = 65536', "Git worktree registry field-count bound"),
-        ('QUERY_TIMEOUT_SECONDS = 15.0', "Git worktree registry deadline"),
-        ('deadline = time.monotonic() + timeout_seconds', "Git worktree registry deadline derivation"),
-        ('delimiter = pending.find(b"\\0", start)', "incremental NUL-delimited registry parser"),
-        ('del pending[:start]', "bounded registry buffer compaction"),
-        ('if len(pending) > MAX_WORKTREE_FIELD_BYTES:', "unterminated registry field bound"),
-        ('if field_count > MAX_WORKTREE_FIELDS:', "Git worktree registry field-count enforcement"),
-        ('if total_bytes > MAX_WORKTREE_TOTAL_BYTES:', "Git worktree registry byte-count enforcement"),
-        ('chunk = os.read(stream.fileno(), READ_SIZE)', "bounded Git worktree registry read"),
-        ('if not selector.select(remaining):', "Git worktree registry read deadline"),
-        ('returncode = process.wait(timeout=remaining)', "Git worktree registry producer deadline"),
-        ('process.terminate()', "Git worktree registry timeout termination"),
-        ('process.kill()', "Git worktree registry timeout kill"),
-        ('process.kill()\n        process.wait()', "Git worktree registry post-kill reap"),
-        ('process = None', "pre-spawn Git producer ownership"),
-        ('producer_reaped = False', "Git worktree registry producer ownership"),
-        (
-            'if process is not None and not producer_reaped:\n            stop_and_reap(process)',
-            "unexpected registry exception reap",
-        ),
-        (
-            'if returncode != 0:\n            raise RegistryQueryError(',
-            "Git worktree registry producer-status rejection",
-        ),
-        (
-            'if matches > 1:\n                raise RegistryQueryError(',
-            "duplicate exact worktree rejection",
-        ),
-        ('needle = b"worktree " + os.fsencode(source)', "byte-exact worktree path match"),
-        ('stale = None', "bounded stale-worktree result"),
-        ('partial output followed by producer failure', "partial-output registry fixture"),
-        ('an oversized field', "oversized registry-field fixture"),
-        ('an unterminated field', "unterminated registry-field fixture"),
-        ('duplicate exact worktree paths', "duplicate registry-path fixture"),
-        ('a field count above the total-work bound', "registry field-count fixture"),
-        ('a byte count above the total-work bound', "registry byte-count fixture"),
-        ('a nonterminating producer', "registry deadline fixture"),
-        ('a SIGTERM-ignoring producer', "registry forced-kill fixture"),
-        ('os.waitpid(process.pid, os.WNOHANG)', "forced-kill already-reaped proof"),
-        ('except ChildProcessError:', "forced-kill reaped result"),
-        ('registry parser self-test missed a late stale worktree', "multi-chunk stale registry fixture"),
-        ('except BaseException as exc:', "unexpected registry exception classification"),
-        ('exit_status = 2', "unexpected registry exception status"),
-        ('print("present" if result else "absent")', "explicit exact registry result token"),
-        ('return 3', "post-spawn retained-producer fixture failure status"),
-    ):
-        require_text(worktree_query, text, label)
-    require_text(source, "query_git_worktree_registry self-test", "worktree registry parser fixture dispatch")
-    require_text(
-        source,
-        "query_git_worktree_registry self-test-unexpected >/dev/null 2>&1 || query_status=$?",
-        "unexpected registry exception fixture dispatch",
-    )
-    require_text(
-        source,
-        "query_git_worktree_registry self-test-unexpected-after-spawn",
-        "post-spawn unexpected registry exception fixture dispatch",
-    )
-    require_order(
-        worktree_query,
-        (
-            'needle = b"worktree " + os.fsencode(source)',
-            'stale_pattern = re.compile(',
-            'process = None',
-            'producer_reaped = False',
-            'process = subprocess.Popen(',
-            'if after_spawn is not None:',
-            'after_spawn(process)',
-        ),
-        "pre-spawn registry setup and immediate producer ownership",
-    )
-    require_text(worktree_cleanup, 'present) return 0', "registered worktree token classification")
-    require_text(worktree_cleanup, 'absent) return 1', "absent worktree token classification")
-    for text, label in (
-        ('result="$(query_git_worktree_registry exact "$source")" || return 2', "exact query failure propagation"),
-        ('present) return 0', "registered worktree token classification"),
-        ('absent) return 1', "absent worktree token classification"),
-        ('*) return 2', "unexpected worktree token rejection"),
-    ):
-        require_text(worktree_registration_predicate, text, label)
-    require_text(
-        invalid_registration_inspection,
-        '*) warn "$role registration cannot be inspected"; return 1',
-        "invalid-workspace operational-error rejection",
-    )
-    for text, label in (
-        ('worktree remove --force --force "$source"', "locked registered snapshot removal"),
-        ('assert_no_stale_release_worktrees() {', "interrupted release worktree rejection"),
-        ('assert_snapshot_worktree_not_registered() {', "invalid-workspace read-only registration inspection"),
-    ):
-        require_text(worktree_cleanup, text, label)
-    if "worktree prune" in source:
-        raise VerificationError("cleanup mutates unrelated worktree registrations")
-    for forbidden in ('subprocess.run(', '.split(b"\\0")', "stale = []"):
-        if forbidden in worktree_query:
-            raise VerificationError("worktree registry query retains whole-registry buffering")
-    if '.git-worktree-registry"\n    git_closed' in worktree_cleanup:
-        raise VerificationError("worktree registry query materializes a followable workspace file")
-    require_exact_count(
-        worktree_cleanup,
-        'worktree remove --force --force "$source"',
-        2,
-        "present and absent locked-worktree removal",
-    )
     require_text(
         source,
         '--mount "type=bind,src=$SOURCE_A,dst=/fixture,bind-recursive=disabled"',
@@ -935,38 +1212,9 @@ def validate_build_release(source):
     )
     require_text(
         source,
-        'run_invalid_workspace_registration_self_test \\\n'
-        '        || die "reset self-test did not inspect registration under an invalid workspace root"',
-        "invalid-workspace registration fixture dispatch",
-    )
-    require_text(
-        source,
-        "invalid-workspace fixture accepted a surviving exact registration",
-        "invalid-workspace surviving-registration fixture",
-    )
-    require_text(
-        source,
         "printf 'build-release cleanup-missing self-test: REACHED\\n' >&2",
         "release missing-workspace reached marker",
     )
-    require_order(
-        create_snapshot,
-        (
-            'worktree add --quiet --detach "$source" "$PINNED_HEAD"',
-            'chmod 0700 "$source"',
-            'identity="$(stat -c \'%d:%i\' "$source")"',
-            'assert_snapshot_exact "$source" "snapshot $label creation"',
-        ),
-        "snapshot registration and identity ordering",
-    )
-    for stale_state in (
-        "SOURCE_A_ADD_PENDING",
-        "SOURCE_B_ADD_PENDING",
-        "SOURCE_A_REGISTERED",
-        "SOURCE_B_REGISTERED",
-    ):
-        if stale_state in source:
-            raise VerificationError("release cleanup retains unused in-memory worktree state")
     require_order(
         verification,
         (
@@ -991,281 +1239,56 @@ def validate_build_release(source):
     require_text(source, 'build_snapshot B "$SOURCE_B"', "snapshot B target execution")
     require_text(source, "independent snapshot mismatch for $name", "all-artifact A/B comparison")
     require_text(source, "# reproducibility: independent-snapshots-a-equals-b", "manifest reproducibility identity")
-    require_text(source, "renameat2 = libc.renameat2", "atomic final-dist exchange")
-    if "normalize_final_dist_access" in source:
-        raise VerificationError("final-dist transaction retains privileged destination normalization")
-    if "chmod" in existing_dist:
-        raise VerificationError("existing dist is weakened before the publication commit point")
-    pre_exchange = atomic_install[: atomic_install.find("atomic_exchange_or_install")]
-    if re.search(r"chmod[^\n]*\$destination", pre_exchange):
-        raise VerificationError("existing dist is weakened before the publication commit point")
-    require_text(exchange, "release staging identity changed before exchange", "exchange source identity proof")
-    require_text(exchange, "release destination identity changed before exchange", "exchange destination identity proof")
-    require_text(exchange, "installed release identity differs after exchange", "exchange installed identity proof")
-    require_text(exchange, "os.fsync(destination_parent_fd)", "exchange destination-parent durability proof")
-    require_text(exchange, "os.fsync(source_parent_fd)", "exchange transaction durability proof")
-    require_text(
-        exchange,
-        "source_parent_fd, source_name, destination_parent_fd, destination_name, 1",
-        "first-publication kernel no-clobber",
-    )
-    if "os.rename(\n            source_name" in exchange:
-        raise VerificationError("first publication can replace a destination after its absence check")
-    for text, label in (
-        ("metadata.st_uid != uid", "publication parent owner proof"),
-        ("stat.S_IWOTH", "publication parent world-writer rejection"),
-        ("stat.S_IWGRP", "publication parent group-writer proof"),
-        ("pwd.getpwall()", "publication parent primary-group enumeration"),
-        ("grp.getgrgid", "publication parent supplementary-group enumeration"),
-        ("system.posix_acl_access", "publication parent ACL rejection"),
-    ):
-        require_text(publication_parent, text, label)
-    for text, label in (
-        ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW", "directory-sync no-follow descriptor"),
-        ("metadata = os.fstat(descriptor)", "directory-sync descriptor metadata"),
-        ("(metadata.st_dev, metadata.st_ino) != expected", "directory-sync inode identity proof"),
-        ("os.fsync(descriptor)", "directory-sync durability syscall"),
-    ):
-        require_text(directory_sync, text, label)
     require_order(
-        directory_sync,
+        publication_tool,
         (
-            "descriptor = os.open(",
-            "metadata = os.fstat(descriptor)",
-            "(metadata.st_dev, metadata.st_ino) != expected",
-            "os.fsync(descriptor)",
+            '/usr/bin/python3 -I -S "$FINALIZE_RELEASE_SET_PROBE"',
+            '"$@"',
         ),
-        "identity-bound directory synchronization",
+        "isolated final release publisher dispatch",
     )
     require_order(
-        exchange,
+        published_proof,
         (
-            "source_parent_fd = os.open(source_parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)",
-            "destination_parent_fd = os.open(",
-            "source_parent_stat = os.fstat(source_parent_fd)",
-            "release transaction identity changed before exchange",
-            "destination_parent_stat = os.fstat(destination_parent_fd)",
-            "release parent identity changed before exchange",
-            "identity(source_parent_fd, source_name)",
-            "renameat2(",
-            "source_parent_fd, source_name, destination_parent_fd, destination_name, 1",
-            "source_parent_fd, source_name, destination_parent_fd, destination_name, 2",
-            "identity(destination_parent_fd, destination_name)",
-            "os.fsync(destination_parent_fd)",
-            "os.fsync(source_parent_fd)",
+            'publication_tool --verify --path "$destination"',
+            '--commit "$PINNED_HEAD" --version "$FORK_VER" --epoch "$SOURCE_DATE_EPOCH_PIN"',
         ),
-        "dirfd-bound final exchange",
-    )
-    for text, label in (
-        ("rustdesk-release-transaction-v1", "versioned publication record"),
-        ("transaction_id=", "record transaction identity"),
-        ("payload_id=", "record payload identity"),
-        ("old_id=", "record prior-destination identity"),
-        ("manifest_sha256=", "record manifest digest"),
-        ("os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW", "exclusive no-follow record creation"),
-        ("os.fsync(record_fd)", "publication record durability"),
-        ("os.rename(temporary, record", "atomic publication record commit"),
-        ("os.fsync(transaction_fd)", "transaction-directory record durability"),
-        ("os.fsync(parent_fd)", "publication-parent record durability"),
-    ):
-        require_text(record_writer, text, label)
-    for text, label in (
-        ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW", "payload root no-follow descriptor"),
-        ("stat.S_IMODE(directory.st_mode) != 0o700", "exchange-capable payload root mode"),
-        ("metadata.st_nlink != 1", "payload hardlink rejection"),
-        ("stat.S_IMODE(metadata.st_mode) != 0o444", "payload immutable-file mode proof"),
-        ("os.fsync(descriptor)", "payload file durability"),
-        ("os.fsync(directory_fd)", "payload directory durability"),
-        ("payload_metadata = os.stat", "payload name identity proof"),
-        ("os.fsync(transaction_fd)", "payload-name parent durability"),
-    ):
-        require_text(payload_sync, text, label)
-    require_order(
-        payload_sync,
-        (
-            "os.fsync(descriptor)",
-            "os.fsync(directory_fd)",
-            "transaction_fd = os.open(",
-            'payload_metadata = os.stat("payload"',
-            "os.fsync(transaction_fd)",
-        ),
-        "payload-name-before-record durability",
-    )
-    require_order(
-        atomic_install,
-        (
-            'strict_manifest_proof "$FINAL_STAGE"',
-            "sync_staged_publication_payload",
-            'write_publication_record "$manifest_hash"',
-        ),
-        "payload-before-record durability ordering",
-    )
-    for text, label in (
-        ("record_metadata.st_nlink != 1", "record hardlink rejection"),
-        ("len(contents) > 4096", "record size bound"),
-        ('lines[0] != "rustdesk-release-transaction-v1"', "record version proof"),
-        ('values["transaction_id"] != transaction_identity', "record inode binding"),
-        ('values["destination"] != expected_destination', "record destination binding"),
-        ('values["parent_id"] != expected_parent', "record parent binding"),
-        ('re.fullmatch(r"[0-9a-f]{64}", values["manifest_sha256"])', "record manifest validation"),
-    ):
-        require_text(record_reader, text, label)
-    for text, label in (
-        ('os.open("record", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=transaction_fd)', "record dirfd/no-follow open"),
-        ("record_metadata = os.fstat(record_fd)", "opened-record metadata proof"),
-        ("chunks.append(chunk)", "complete bounded record read"),
-    ):
-        require_text(record_reader, text, label)
-    for text, label in (
-        ("published_fd = os.open(destination, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)", "published root descriptor"),
-        ("published release identity changed before recovery sync", "published root identity proof"),
-        ("os.fsync(published_fd)", "published root durability"),
-        ("os.fsync(transaction_fd)", "post-exchange transaction durability"),
-        ("os.fsync(destination_fd)", "post-exchange parent durability"),
-    ):
-        require_text(publication_sync, text, label)
-    for text, label in (
-        ('chmod 0555 "$destination"', "post-exchange immutable-root finalization"),
-        ('"$root_identity:$(id -u):$(id -g):555"', "published-root identity/mode postcondition"),
-        ("published dist identity changed before root sync", "finalized-root identity reproof"),
-        ("os.fsync(descriptor)", "finalized-root durability"),
-    ):
-        require_text(published_proof, text, label)
-    require_text(
-        transaction_removal,
-        'os.rename(source_name, destination_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)',
-        "durable active-to-discard transition",
-    )
-    require_text(transaction_removal, "os.fsync(parent_fd)", "discard-transition durability")
-    require_text(
-        transaction_removal,
-        '"$PRIVATE_TREE_CLOSURE_PROBE" --mount-root "$FINAL_TRANSACTION"',
-        "transaction mount closure",
-    )
-    require_text(
-        transaction_removal,
-        '"$(path_identity "$FINAL_TRANSACTION")" = "$expected_identity"',
-        "transaction identity reproof",
-    )
-    require_text(
-        transaction_removal,
-        'find -P "$FINAL_TRANSACTION" -type d -exec chmod u+rwx,go-w {} +',
-        "transaction directory-only removal access",
-    )
-    if 'chmod -R' in transaction_removal or '! -type d' in transaction_removal:
-        raise VerificationError("transaction removal changes non-directory metadata")
-    require_order(
-        transaction_removal,
-        (
-            'rm -rf -- "$FINAL_TRANSACTION"',
-            "publication parent identity changed before discard-removal sync",
-            "os.fsync(descriptor)",
-            'FINAL_TRANSACTION=""',
-        ),
-        "durable discard removal",
-    )
-    require_text(
-        reconciliation,
-        '"$FINAL_DESTINATION" "$commit" "$version" "$epoch" "$manifest_hash"',
-        "record-bound published-set proof",
-    )
-    require_text(reconciliation, "sync_publication_directories", "post-exchange durability recovery")
-    require_text(reconciliation, 'FINAL_PUBLICATION_STATE=published', "publication commit state")
-    require_text(
-        reconciliation,
-        '[ "$FINAL_PUBLICATION_STATE" = idle ] || [ "$FINAL_PUBLICATION_STATE" = published ]',
-        "terminal publication cleanup state",
-    )
-    require_text(
-        reconciliation,
-        'remove_registered_final_transaction "$FINAL_TRANSACTION_ID"',
-        "post-commit transaction removal",
-    )
-    require_exact_count(
-        reconciliation,
-        'remove_registered_final_transaction "$FINAL_TRANSACTION_ID"',
-        3,
-        "post-commit transaction removal",
-    )
-    require_order(
-        reconciliation,
-        (
-            '[ "$destination_identity" = "$FINAL_STAGE_ID" ]',
-            "prove_recorded_published_dist",
-            "sync_publication_directories",
-            "FINAL_PUBLICATION_STATE=published",
-            'remove_registered_final_transaction "$FINAL_TRANSACTION_ID"',
-        ),
-        "publication proof before displaced-set removal",
-    )
-    for text, label in (
-        ('discards=("$parent/.$base-release-discard."*)', "restart discard discovery"),
-        ('transactions=("$parent/.$base-release-transaction."*)', "restart active-transaction discovery"),
-        ('[ "${#transactions[@]}" -le 1 ]', "ambiguous transaction-count rejection"),
-        ('read_publication_record "$transaction" "$base" "$parent_id"', "restart record proof"),
-        ("reconcile_final_publication || return 1", "restart identity reconciliation"),
-        ('sync_exact_directory "$parent" "$parent_id" "publication recovery parent"', "empty recovery parent sync"),
-    ):
-        require_text(recovery, text, label)
-    require_exact_count(
-        recovery,
-        'sync_exact_directory "$parent" "$parent_id" "publication recovery parent"',
-        2,
-        "recovery parent synchronization stages",
+        "exact published release-set proof dispatch",
     )
     require_order(
         recovery,
         (
-            'remove_registered_final_transaction "$transaction_id"',
-            'sync_exact_directory "$parent" "$parent_id" "publication recovery parent"',
-            '[ "${#transactions[@]}" -le 1 ]',
-            'if [ "${#transactions[@]}" -eq 0 ]',
+            '[ "$(dirname "$destination")" = "$parent" ]',
+            'base="$(basename "$destination")"',
+            'publication_tool --recover --parent "$parent" --destination "$base"',
         ),
-        "durable empty-recovery observation",
+        "bounded publication recovery dispatch",
     )
-    if "FINAL_PRESERVE_STATE" in source:
-        raise VerificationError("publication still relies on process-local preservation state")
+    require_order(
+        reconciliation,
+        (
+            '[ -n "$FINALIZE_RELEASE_SET_PROBE" ] || return 0',
+            '[ -f "$FINALIZE_RELEASE_SET_PROBE" ] && [ ! -L "$FINALIZE_RELEASE_SET_PROBE" ]',
+            'recover_pending_publications "$REPO_ROOT" "$FINAL_OUT_DIR"',
+        ),
+        "cleanup publication reconciliation authority",
+    )
     require_order(
         atomic_install,
         (
-            'recover_pending_publications "$parent" "$destination"',
-            'prepare_existing_dist_removal "$destination"',
-            'FINAL_OLD_ID="$(stat -c',
-            "FINAL_PUBLICATION_STATE=transaction-initializing",
-            'FINAL_TRANSACTION="$(umask 077 && mktemp',
-            'FINAL_STAGE="$FINAL_TRANSACTION/payload"',
-            'strict_manifest_proof "$FINAL_STAGE"',
-            'write_publication_record "$manifest_hash"',
-            'read_publication_record "$FINAL_TRANSACTION"',
-            'FINAL_PUBLICATION_STATE=exchange-pending',
-            'atomic_exchange_or_install "$FINAL_STAGE"',
-            "reconcile_final_publication",
-            '[ "$FINAL_PUBLICATION_STATE" = published ]',
-            "clear_final_publication_state",
+            'parent="$(dirname "$destination")"',
+            'base="$(basename "$destination")"',
+            'publication_tool --publish --parent "$parent" --destination "$base"',
+            '--source "$source" --commit "$PINNED_HEAD" --version "$FORK_VER"',
+            '--epoch "$SOURCE_DATE_EPOCH_PIN"',
         ),
-        "failure-atomic final-dist installation",
+        "exact final release publication dispatch",
     )
-    if 'chmod 0555 "$FINAL_STAGE"' in atomic_install:
-        raise VerificationError("cross-parent publication payload is made non-writable before exchange")
-    require_order(
-        atomic_install,
-        (
-            'if [ "$atomic_status" -ne 0 ]',
-            "reconcile_final_publication",
-            "clear_final_publication_state",
-            'die "atomic final-dist installation failed"',
-        ),
-        "conclusive failed-exchange cleanup",
-    )
-    require_order(
-        cleanup,
-        (
-            "reconcile_final_publication",
-            "normalize_workspace_access",
-            'rm -rf -- "$WORKSPACE"',
-        ),
-        "publication reconciliation before workspace cleanup",
-    )
+    for forbidden in ("renameat2", "RENAME_EXCHANGE", "RENAME_NOREPLACE", "O_TMPFILE"):
+        if forbidden in source:
+            raise VerificationError(
+                f"build-release retains inlined publication primitive {forbidden}"
+            )
     require_text(source, "git --no-replace-objects", "Git replacement-object suppression")
     require_text(source, "Git grafts are forbidden for release builds", "Git graft rejection")
     require_text(source, "Git object alternates are forbidden for release builds", "Git alternate rejection")
@@ -1275,8 +1298,6 @@ def validate_build_release(source):
         ('exec {PUBLICATION_LOCK_FD}< "$common_dir"', "repository-directory publication lock descriptor"),
         ('flock -n "$PUBLICATION_LOCK_FD"', "exclusive publication lock"),
         ('"/proc/self/fd/$PUBLICATION_LOCK_FD"', "publication lock descriptor identity proof"),
-        ('CANONICAL_PUBLICATION_PARENT_ID="$(assert_single_writer_publication_parent "$REPO_ROOT")"', "canonical parent identity capture"),
-        ('sync_exact_directory "$REPO_ROOT" "$CANONICAL_PUBLICATION_PARENT_ID"', "final parent durability barrier"),
     ):
         require_text(source, text, label)
     require_text(source, '--verify-apk "$SET_A/rustdesk-arm64.apk"', "staged final APK certificate proof")
@@ -1293,11 +1314,10 @@ def validate_build_release(source):
         ("external symlink target", "reset fixture no-follow proof"),
         ("accepted an inode linked outside the snapshot", "reset fixture external-hardlink rejection"),
         ("internal-a", "reset fixture closed internal hardlink"),
+        ("special-mode", "reset fixture special-mode input"),
         ("both root-owned mode-0000 directories", "reset fixture dual hostile-mode proof"),
         ("hostile Flutter directory", "reset fixture dual negative control"),
-        ("worktree query followed its hostile fixed-name symlink", "registry-query no-follow fixture"),
-        ("present locked worktree", "present locked-worktree fixture"),
-        ("absent locked worktree", "absent locked-worktree fixture"),
+        ("retained-authority normalization differs", "reset fixture retained-authority postcondition"),
         ("build-release root-owned reset self-test: OK", "reset fixture success marker"),
     ):
         require_text(reset_self_test, text, label)
@@ -1313,12 +1333,24 @@ def validate_build_release(source):
     )
     require_text(
         reset_self_test,
-        'assert_release_source_state "reset self-test"',
-        "reset fixture clean exact-HEAD caller",
+        'assert_exact_checkout_state "reset self-test"',
+        "reset fixture branch-neutral exact-checkout caller",
     )
-    require_text(
+    require_text(source, 'assert_exact_checkout_state "cleanup-missing self-test"', "cleanup-missing branch-neutral exact-checkout caller")
+    require_text(source, 'assert_exact_checkout_state "$phase"', "master-only release wrapper exact-checkout dispatch")
+    require_text(source, 'release checkout is detached', "master-only release detached-checkout rejection")
+    require_text(source, 'release branch must be master', "master-only release branch rejection")
+    for text, label in (
+        ('fixture-repository', "private fixture Git authority"),
+        ('git_closed init --quiet --initial-branch=master', "transaction fixture private Git initialization"),
+        ('git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow', "reset fixture complete-history Git clone"),
+        ('assert_git_object_authority', "reset fixture independent object-authority proof"),
+    ):
+        require_text(source, text, label)
+    require_exact_count(
         create_workspace,
         'if [ "$SELF_TEST" -eq 0 ]; then',
+        2,
         "reset fixture pinned closure-probe provenance",
     )
     require_order(
@@ -1332,6 +1364,9 @@ def validate_build_release(source):
             'if git_closed -C "$SOURCE_A" clean -ffdx',
             "negative control did not preserve the hostile directory",
             "negative control did not preserve the hostile Flutter directory",
+            'offline_normalize_exact_tree "$SOURCE_A" "$source_identity"',
+            '"$SOURCE_A/target/reset-proof/special-mode"',
+            "retained-authority normalization differs",
             'reset_snapshot_build_state "$SOURCE_A" "root-owned reset self-test"',
             '[ ! -e "$SOURCE_A/target/reset-proof" ]',
             '[ ! -e "$SOURCE_A/flutter/.dart_tool/reset-proof" ]',
@@ -1344,53 +1379,65 @@ def validate_build_release(source):
         'if [ "$SELF_TEST_RESET" -eq 1 ]; then\n        run_reset_self_test\n        return 0',
         "reset fixture main dispatch",
     )
+    require_text(
+        main,
+        'if [ "$SELF_TEST_SOURCE_STATE" -eq 1 ]; then\n        run_source_state_self_test\n        return 0',
+        "exact source-state fixture main dispatch",
+    )
+    require_text(source, 'assert_exact_checkout_state "source-state self-test"', "exact source-state fixture dispatch")
+    require_text(source, 'build-release source-state self-test: OK', "exact source-state fixture marker")
     for text, label in (
+        ('install -d -m 0770 "$writable"', "group-writable parent rejection fixture"),
+        ("publication accepted a group-writable parent", "group-writable parent rejection diagnostic"),
+        ("publication recovery deleted an unbound initializing payload", "unbound initializing-payload fixture"),
+        ("publication recovery accepted a raced first destination", "first-publication no-clobber race fixture"),
         ("first-publication fixture", "no-prior-destination fixture"),
-        ("no-clobber fixture", "first-publication no-clobber fixture"),
-        ("incomplete transaction restart fixture", "record-initialization restart fixture"),
-        ("pre-exchange restart fixture", "pre-exchange restart fixture"),
-        ("post-exchange restart fixture", "post-exchange restart fixture"),
-        ("discard restart fixture", "terminal-discard restart fixture"),
-        ("discard-removal gap restart", "post-removal parent-sync restart fixture"),
-        ("combined restart fixture", "stale-worktree plus publication fixture"),
-        ("forget_final_publication_fixture_state", "process-memory loss fixture"),
-        ('recover_pending_publications "$parent" "$destination"', "on-disk restart recovery fixture"),
-        ('atomic_exchange_or_install "$FINAL_STAGE" "$destination"', "post-exchange fixture production helper"),
-        ("prove_published_dist", "post-exchange fixture published proof"),
+        ("first-publication restart fixture", "first-publication restart fixture"),
+        ("publication restart fixture", "existing-destination restart fixture"),
+        ("partial-rollback fixture could not resume payload deletion", "partial rollback resumption fixture"),
+        ("publication recovery accepted an incomplete prepared payload", "incomplete prepared-payload rejection fixture"),
+        ("publication recovery accepted an unknown reserved namespace entry", "reserved-namespace rejection fixture"),
+        ("publication recovery did not classify malformed $category state exactly", "malformed reserved-namespace fixture"),
+        ("publication recovery did not reject a canonical wrong-token payload", "wrong-token payload ownership fixture"),
+        ("wrong-token payload rejection changed transaction state", "wrong-token payload preservation fixture"),
+        ("publication recovery did not reject a canonical wrong-token next record", "wrong-token next-record ownership fixture"),
+        ("wrong-token next-record rejection changed transaction state", "wrong-token next-record preservation fixture"),
+        ("publication recovery accepted multiple active transaction records", "multiple-record rejection fixture"),
+        ("publication recovery accepted an oversized transaction record", "record-size rejection fixture"),
+        ("publication recovery accepted a missing displaced prior set", "missing-prior rejection fixture"),
+        ("publication recovery accepted a content-equal replacement destination", "destination-ABA rejection fixture"),
+        ("publication recovery accepted a writable published artifact", "published-mode rejection fixture"),
+        ("publication recovery accepted a special release entry", "published-special-type rejection fixture"),
+        ("publication recovery accepted a multiply-linked published artifact", "published-hardlink rejection fixture"),
+        ("publication recovery accepted an artifact extended attribute", "published-xattr rejection fixture"),
+        ('publication_tool --publish --parent "$parent" --destination "$(basename "$destination")"', "production publisher fixture dispatch"),
+        ('recover_pending_publications "$parent" "$destination"', "production recovery fixture dispatch"),
+        ("prove_published_dist", "published-set fixture proof"),
     ):
         require_text(publication_self_test, text, label)
-    require_order(
+    require_exact_count(
         publication_self_test,
-        (
-            "FINAL_PUBLICATION_STATE=transaction-initializing",
-            "forget_final_publication_fixture_state",
-            "incomplete transaction restart fixture could not recover",
-            "clear_final_publication_fixture_state",
-            'stage_publication_fixture "$source" "$destination"',
-            "forget_final_publication_fixture_state",
-            "pre-exchange restart fixture could not recover",
-            "clear_final_publication_fixture_state",
-            'stage_publication_fixture "$source" "$destination"',
-            'atomic_exchange_or_install "$FINAL_STAGE" "$destination"',
-            "forget_final_publication_fixture_state",
-            "post-exchange restart fixture could not recover",
-            "clear_final_publication_fixture_state",
-            'stage_publication_fixture "$source" "$destination"',
-            "commit_registered_final_transaction_discard",
-            "forget_final_publication_fixture_state",
-            "discard restart fixture could not recover",
-        ),
-        "publication restart fixture ordering",
+        "for point in staging prepared rollback-record exchange cleanup-record payload-removal; do",
+        2,
+        "complete publication restart matrix",
+    )
+    require_exact_count(
+        publication_self_test,
+        "pre-exchange recovery at $point",
+        2,
+        "state-accurate pre-exchange recovery diagnostics",
+    )
+    if "prepared recovery" in publication_self_test:
+        raise VerificationError("publication fixture conflates durable recovery states")
+    require_text(
+        publication_self_test,
+        "for category in transaction next payload; do",
+        "complete malformed reserved-namespace matrix",
     )
     require_text(
         source,
         'run_publication_reconciliation_self_test "$SET_A"',
         "publication reconciliation fixture dispatch",
-    )
-    require_text(
-        source,
-        'assert_single_writer_publication_parent "$REPO_ROOT" >/dev/null',
-        "canonical publication-parent fixture",
     )
     require_exact_count(main, "compare_snapshots\n", 1, "release transaction")
     require_order(
@@ -1410,6 +1457,668 @@ def validate_build_release(source):
         ),
         "release transaction",
     )
+
+
+def validate_release_finalizer(source):
+    try:
+        module = ast.parse(source)
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"final release publisher syntax: Python source does not parse: {exc}"
+        ) from exc
+
+    assignments = {}
+    for node in module.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name):
+            try:
+                assignments[target.id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                pass
+    if assignments.get("ASSETS") != (
+        "rustdesk-x86_64.deb",
+        "rustdesk-arm64.apk",
+        "rustdesk-setup.exe",
+        "rustdesk.msi",
+    ):
+        raise VerificationError("final release publisher canonical asset set")
+    if assignments.get("SUPPORTED_FILESYSTEMS") != {0xEF53: "ext4"}:
+        raise VerificationError("final release publisher filesystem allowlist")
+    if assignments.get("ACL_XATTRS") != {
+        "system.posix_acl_access",
+        "system.posix_acl_default",
+    }:
+        raise VerificationError("final release publisher complete POSIX ACL rejection")
+    for declaration, name in (
+        ("MANIFEST_LIMIT = 65536", "MANIFEST_LIMIT"),
+        ("CONTENT_LIMIT = 2 * 1024 * 1024 * 1024", "CONTENT_LIMIT"),
+        ("RECORD_LIMIT = 4096", "RECORD_LIMIT"),
+        ("PARENT_ENTRY_LIMIT = 4096", "PARENT_ENTRY_LIMIT"),
+        ("PARENT_NAME_LIMIT = 1024 * 1024", "PARENT_NAME_LIMIT"),
+        ("MOUNTINFO_LIMIT = 4 * 1024 * 1024", "MOUNTINFO_LIMIT"),
+        ("MOUNTINFO_ENTRY_LIMIT = 4096", "MOUNTINFO_ENTRY_LIMIT"),
+        ("DEADLINE_SECONDS = 180", "DEADLINE_SECONDS"),
+        ("FS_IOC_GETFSUUID = 0x80111500", "FS_IOC_GETFSUUID"),
+        ("FILESYSTEM_UUID_SIZE = 16", "FILESYSTEM_UUID_SIZE"),
+    ):
+        require_text(source, declaration, f"final release publisher exact {name} bound")
+    frozen_assignments = {}
+    for node in module.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if (
+            not isinstance(target, ast.Name)
+            or not isinstance(node.value, ast.Call)
+            or not isinstance(node.value.func, ast.Name)
+            or node.value.func.id != "frozenset"
+            or len(node.value.args) != 1
+            or node.value.keywords
+        ):
+            continue
+        try:
+            frozen_assignments[target.id] = frozenset(ast.literal_eval(node.value.args[0]))
+        except (ValueError, TypeError):
+            pass
+    states = frozen_assignments.get("RECORD_STATES")
+    if states != frozenset({
+        "initializing",
+        "staging",
+        "prepared",
+        "rollback",
+        "cleanup",
+    }):
+        raise VerificationError("final release publisher durable staging and terminal states")
+    if frozen_assignments.get("RECORD_TRANSITIONS") != frozenset(
+        {
+            ("initializing", "staging"),
+            ("staging", "prepared"),
+            ("prepared", "rollback"),
+            ("prepared", "cleanup"),
+        }
+    ):
+        raise VerificationError("final release publisher exact crash-state transitions")
+
+    for node in ast.walk(module):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+            )
+            if any(name.split(".", 1)[0] in {"subprocess", "shutil"} for name in names):
+                raise VerificationError("final release publisher imports pathname-recursive authority")
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "os"
+            and node.func.attr in {"system", "popen", "spawnl", "spawnv"}
+        ):
+            raise VerificationError("final release publisher invokes an unmanaged process")
+
+    parent_init = extract_python_method(
+        source, module, "ParentAuthority", "__init__", "publication parent acquisition"
+    )
+    parent_assert = extract_python_method(
+        source, module, "ParentAuthority", "assert_bound", "publication parent authority"
+    )
+    path_authority = extract_python_method(
+        source, module, "ParentAuthority", "path_authority", "publication path authority"
+    )
+    canonical_security = extract_python_definition(
+        source, module, "require_canonical_security", "publication filesystem security"
+    )
+    mount_filesystem = extract_python_definition(
+        source, module, "mount_filesystem_type", "publication mount-table authority"
+    )
+    filesystem_authority = extract_python_definition(
+        source, module, "filesystem_authority", "publication filesystem UUID authority"
+    )
+    regular_open = extract_python_definition(
+        source, module, "open_regular_at", "nonblocking regular-file acquisition"
+    )
+    bounded_inventory = extract_python_definition(
+        source, module, "bounded_names", "publication bounded inventory"
+    )
+    release_set = "\n".join(
+        extract_python_definition(source, module, name, "published release-set authority")
+        for name in (
+            "open_release_set",
+            "prove_release_set",
+            "verify_release_set",
+            "finalize_staged_release_set",
+            "source_release",
+        )
+    )
+    record_validation = "\n".join(
+        extract_python_definition(source, module, name, "durable publication record")
+        for name in (
+            "canonical_record",
+            "validate_record",
+            "create_record_file",
+            "read_record",
+            "require_record_transition",
+            "replace_record",
+            "install_initial_record",
+            "update_record",
+            "unlink_record",
+        )
+    )
+    validate_record_functions = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "validate_record"
+    ]
+    if len(validate_record_functions) != 1:
+        raise VerificationError("durable publication record: expected one validator")
+    expected_key_assignments = [
+        node
+        for node in validate_record_functions[0].body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "expected_keys"
+            for target in node.targets
+        )
+    ]
+    expected_record_keys = {
+        "format",
+        "state",
+        "token",
+        "destination",
+        "filesystem",
+        "parent_handle",
+        "payload",
+        "payload_handle",
+        "prior_handle",
+        "commit",
+        "version",
+        "epoch",
+        "manifest_sha256",
+    }
+    try:
+        recorded_keys = (
+            ast.literal_eval(expected_key_assignments[0].value)
+            if len(expected_key_assignments) == 1
+            else None
+        )
+    except (ValueError, TypeError):
+        recorded_keys = None
+    if recorded_keys != expected_record_keys:
+        raise VerificationError("durable publication record key schema is not exact")
+    create_record = extract_python_definition(
+        source, module, "create_record_file", "durable publication record creation"
+    )
+    replace_record = extract_python_definition(
+        source, module, "replace_record", "durable publication record transition"
+    )
+    unlink_record = extract_python_definition(
+        source, module, "unlink_record", "durable publication record removal"
+    )
+    cleanup_payload = extract_python_definition(
+        source, module, "cleanup_payload", "descriptor-bound publication cleanup"
+    )
+    create_payload = extract_python_definition(
+        source, module, "create_payload_root", "durable publication payload creation"
+    )
+    stage_payload = extract_python_definition(
+        source, module, "stage_payload", "durable publication staging"
+    )
+    namespace = extract_python_definition(
+        source, module, "record_names", "publication reserved namespace"
+    )
+    transition = extract_python_definition(
+        source, module, "require_record_transition", "publication state transition"
+    )
+    recovery = extract_python_definition(
+        source, module, "recover", "restartable publication recovery"
+    )
+    finish_cleanup = extract_python_definition(
+        source, module, "finish_cleanup", "committed publication cleanup"
+    )
+    finish_rollback = extract_python_definition(
+        source, module, "finish_rollback", "durable publication rollback"
+    )
+    publish = extract_python_definition(
+        source, module, "publish", "failure-atomic publication"
+    )
+    initial_record = extract_python_definition(
+        source, module, "initial_record", "initial durable publication record"
+    )
+    run_with_parent = extract_python_definition(
+        source, module, "run_with_parent", "publication parent lifecycle"
+    )
+    quiescent_verify = extract_python_definition(
+        source, module, "verify_quiescent_release", "quiescent publication verification"
+    )
+    verify_path = extract_python_definition(
+        source, module, "verify_path", "publication verification dispatch"
+    )
+
+    for text, label in (
+        ("not os.path.isabs(parent)", "absolute publication parent"),
+        ("os.path.normpath(parent) != parent", "normalized publication parent"),
+        ("os.path.realpath(parent) != parent", "canonical publication parent"),
+        ('destination in (".", "..")', "dot-destination rejection"),
+        ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC", "no-follow parent descriptor"),
+        ("self.metadata.st_uid != self.uid", "publication parent owner proof"),
+        ("self.metadata.st_gid != self.gid", "publication parent group proof"),
+        ("self.metadata.st_mode & stat.S_IRWXU != stat.S_IRWXU", "publication parent owner access"),
+        ("fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)", "exclusive parent lock"),
+        ('require_no_extended_acl(descriptor, "publication parent")', "publication parent ACL proof"),
+        ("self.mount_id = descriptor_mount_id(descriptor)", "publication parent mount authority"),
+        ("self.filesystem = filesystem_authority(descriptor, self.mount_id)", "publication filesystem UUID proof"),
+        ("self.handle = persistent_handle(descriptor)", "durable publication parent identity"),
+        ("os.fpathconf(descriptor, \"PC_NAME_MAX\")", "publication sibling-name bound"),
+        ("self.metadata.st_mode & 0o022", "publication parent writer rejection"),
+        ("stable_metadata(edge) != stable_metadata(self.metadata)", "publication parent edge binding"),
+        ("close_descriptors(", "failed parent acquisition descriptor cleanup"),
+    ):
+        require_text(parent_init, text, label)
+    for text, label in (
+        ("identity(metadata) != self.identity", "retained publication parent identity"),
+        ("stable_metadata(edge) != stable_metadata(metadata)", "live publication parent edge"),
+        ("metadata.st_mode & 0o022", "live publication parent writer exclusion"),
+        ("metadata.st_uid != self.uid", "live publication parent owner proof"),
+        ("metadata.st_gid != self.gid", "live publication parent group proof"),
+        ("descriptor_mount_id(self.fd) != self.mount_id", "live publication mount identity"),
+        ("filesystem_authority(self.fd, self.mount_id) != self.filesystem", "live publication filesystem UUID"),
+        ("persistent_handle(self.fd) != self.handle", "live durable publication parent identity"),
+        ('require_no_extended_acl(self.fd, "publication parent")', "live publication ACL proof"),
+    ):
+        require_text(parent_assert, text, label)
+    for text, label in (
+        ("descriptor = os.open(", "publication path descriptor acquisition"),
+        ("stable_metadata(edge) != stable_metadata(metadata)", "publication path edge binding"),
+        ('"handle": persistent_handle(descriptor)', "publication path persistent object handle"),
+        ("close_descriptors(", "publication path descriptor cleanup"),
+    ):
+        require_text(path_authority, text, label)
+    for text, label in (
+        ("names = os.listxattr(descriptor)", "complete publication xattr inventory"),
+        ("if names:", "publication xattr rejection"),
+        ("fcntl.ioctl(descriptor, FS_IOC_GETFLAGS", "publication inode-flag inspection"),
+        ("flags[0] & ~FS_EXTENT_FL", "publication inode-flag allowlist"),
+        ("fcntl.ioctl(descriptor, FS_IOC_FSGETXATTR", "publication extended inode inspection"),
+        ("xflags, extsize, _nextents, project, cowextsize, pad0, pad1 = struct.unpack(", "publication extended inode field parsing"),
+        ("if xflags or extsize or project or cowextsize or pad0 or pad1:", "publication writable extended inode-state rejection"),
+    ):
+        require_text(canonical_security, text, label)
+    for text, label in (
+        ('"/proc/self/mountinfo"', "kernel mount-table source"),
+        ("while len(content) <= MOUNTINFO_LIMIT:", "bounded mount-table read"),
+        ("if len(lines) > MOUNTINFO_ENTRY_LIMIT:", "bounded mount-table records"),
+        ("if fields[0] == expected:", "runtime mount identity lookup"),
+        ("if len(matches) != 1:", "unique runtime mount binding"),
+        ('return matches[0].decode("ascii")', "canonical mount filesystem type"),
+    ):
+        require_text(mount_filesystem, text, label)
+    for text, label in (
+        ("LIBC.fstatfs(descriptor, ctypes.byref(result))", "descriptor-bound filesystem inspection"),
+        ("expected = SUPPORTED_FILESYSTEMS.get(value)", "exact filesystem allowlist dispatch"),
+        ("observed = mount_filesystem_type(mount_id)", "ext4 versus ext2/ext3 discrimination"),
+        ("if expected is None or observed != expected:", "filesystem type agreement"),
+        ("fcntl.ioctl(descriptor, FS_IOC_GETFSUUID, filesystem_uuid, True)", "descriptor-bound filesystem UUID"),
+        ("filesystem_uuid[0] != FILESYSTEM_UUID_SIZE", "exact filesystem UUID size"),
+        ("value == bytes(FILESYSTEM_UUID_SIZE)", "zero filesystem UUID rejection"),
+        ('return f"{observed}:{value.hex()}"', "complete filesystem UUID authority encoding"),
+    ):
+        require_text(filesystem_authority, text, label)
+    require_order(
+        regular_open,
+        (
+            "os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC",
+            "metadata = os.fstat(authority)",
+            "not stat.S_ISREG(metadata.st_mode)",
+            'f"/proc/self/fd/{authority}"',
+            "os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC",
+            "stable_metadata(current) != stable_metadata(metadata)",
+            "return descriptor",
+            "close_descriptors((authority,)",
+        ),
+        "nonblocking descriptor-bound regular-file acquisition",
+    )
+    for text, label in (
+        ("with os.scandir(descriptor) as entries:", "streamed publication inventory"),
+        ("if len(names) >= PARENT_ENTRY_LIMIT:", "publication entry-count bound"),
+        ("if name_bytes > PARENT_NAME_LIMIT:", "publication name-byte bound"),
+        ("return sorted(names, key=os.fsencode)", "canonical publication inventory ordering"),
+    ):
+        require_text(bounded_inventory, text, label)
+
+    for text, label in (
+        ("tuple(names) != tuple(sorted(ENTRY_NAMES, key=os.fsencode))", "exact five-file release inventory"),
+        ("open_regular_at(", "nonblocking release entry descriptors"),
+        ("not stat.S_ISREG(metadata.st_mode)", "regular release entries"),
+        ("stat.S_IMODE(metadata.st_mode) != 0o444", "immutable release entry modes"),
+        ("metadata.st_nlink != 1", "release entry hardlink rejection"),
+        ("metadata.st_dev != parent.metadata.st_dev", "release entry filesystem binding"),
+        ("descriptor_mount_id(descriptor) != parent.mount_id", "release entry mount binding"),
+        ("require_canonical_security(descriptor", "release entry filesystem-security proof"),
+        ("parse_manifest(manifest, commit, version, epoch)", "record-bound release manifest"),
+        ("hash_exact(", "bounded release artifact hashing"),
+        ("stable_metadata(current) != before[entry]", "retained release descriptor reproof"),
+        ("os.fchmod(root_fd, 0o555)", "published root finalization"),
+        ("name,\n        0o555,\n        False,", "exact published-root verification mode"),
+        ("name,\n        0o700,\n        True,", "explicit staged-root finalization mode"),
+        ("os.fsync(descriptor)", "published file durability"),
+        ("os.fsync(root_fd)", "published directory durability"),
+        ("parent.assert_bound()", "published parent reproof"),
+    ):
+        require_text(release_set, text, label)
+    require_exact_count(
+        release_set,
+        "open_regular_at(",
+        2,
+        "nonblocking release and source entry acquisition",
+    )
+
+    for text, label in (
+        ("ensure_ascii=True", "ASCII publication record"),
+        ("allow_nan=False", "non-finite record exclusion"),
+        ("sort_keys=True", "canonical record key ordering"),
+        ("set(record) != expected_keys", "exact record shape"),
+        ('record["destination"] != parent.destination', "record destination binding"),
+        ('record["format"] != "rustdesk-release-transaction-v3"', "record format binding"),
+        ('record["filesystem"] != parent.filesystem', "persistent record filesystem binding"),
+        ('parse_handle(record["parent_handle"]) != parent.handle', "durable record parent binding"),
+        ('for field in ("payload_handle", "prior_handle"):', "durable payload/prior handle validation"),
+        ('record["payload"] != f".{parent.destination}-release-payload.{token}"', "record payload-name binding"),
+        ("parse_handle(record[field])", "record object-handle validation"),
+        ("canonical_record(record) != content", "canonical record encoding proof"),
+        ("stat.S_IMODE(before.st_mode) != 0o400", "read-only record mode"),
+        ("before.st_nlink != 1", "record hardlink rejection"),
+        ("require_canonical_security(descriptor, \"publication record\")", "record filesystem-security proof"),
+        ("parse_constant=reject_json_constant", "non-finite JSON record rejection"),
+    ):
+        require_text(record_validation, text, label)
+    require_exact_count(
+        record_validation,
+        "open_regular_at(",
+        4,
+        "nonblocking publication record acquisition",
+    )
+    for text, label in (
+        ('"filesystem": parent.filesystem', "initial durable record filesystem binding"),
+        ('"parent_handle": parent.handle', "initial durable record parent binding"),
+        ('"payload_handle": None', "initial durable record payload state"),
+        ('"prior_handle": old_handle', "initial durable record prior binding"),
+    ):
+        require_text(initial_record, text, label)
+    require_text(
+        transition,
+        '(current["state"], following["state"]) not in RECORD_TRANSITIONS',
+        "exact publication transition allowlist",
+    )
+    for text, label in (
+        ('current["state"] == "initializing" and following["state"] == "staging"', "payload-handle binding transition"),
+        ('current_base["payload_handle"] = following_base["payload_handle"]', "payload-handle-only transition mutation"),
+        ('current["state"] == "staging" and following["state"] == "prepared"', "manifest binding transition"),
+        ('current_base["manifest_sha256"] = following_base["manifest_sha256"]', "manifest-only transition mutation"),
+    ):
+        require_text(transition, text, label)
+    require_order(
+        create_record,
+        (
+            "os.O_RDWR | os.O_TMPFILE | os.O_CLOEXEC",
+            "if written <= 0:",
+            "os.fchmod(descriptor, 0o400)",
+            "require_canonical_security(descriptor",
+            "os.fsync(descriptor)",
+            "link_unnamed_file(descriptor, parent.fd, name)",
+            "linked.st_nlink != 1",
+            "os.fsync(parent.fd)",
+        ),
+        "durable unnamed publication record commit",
+    )
+    require_order(
+        replace_record,
+        (
+            "parent.assert_bound()",
+            "os.replace(next_name, name, src_dir_fd=parent.fd, dst_dir_fd=parent.fd)",
+            "displaced.st_nlink != 0",
+            "path_metadata(parent.fd, next_name) is not None",
+            "os.fsync(parent.fd)",
+            "publication record transition changed after commit",
+        ),
+        "durable publication record transition",
+    )
+    require_order(
+        unlink_record,
+        (
+            "identity(metadata) != expected_identity",
+            "metadata.st_nlink != 1",
+            "parent.assert_bound()",
+            "os.unlink(name, dir_fd=parent.fd)",
+            "removed.st_nlink != 0",
+            "os.fsync(parent.fd)",
+            "publication record removal changed after commit",
+        ),
+        "durable exact record removal",
+    )
+
+    for text, label in (
+        ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC", "no-follow cleanup root"),
+        ("identity(root) != expected_identity", "cleanup root identity"),
+        ("descriptor_mount_id(root_fd) != parent.mount_id", "cleanup root mount binding"),
+        ("any(entry not in ENTRY_NAMES for entry in names)", "bounded cleanup inventory"),
+        ("metadata.st_nlink != 1", "cleanup hardlink rejection"),
+        ("require_canonical_security(descriptor", "cleanup entry security proof"),
+        ("os.fchmod(root_fd, 0o700)", "cleanup authorization mode"),
+        ("os.unlink(entry, dir_fd=root_fd)", "descriptor-relative entry removal"),
+        ("removed.st_nlink != 0", "cleanup edge-consumption proof"),
+        ("os.fsync(root_fd)", "cleanup directory durability"),
+        ("os.rmdir(name, dir_fd=parent.fd)", "descriptor-relative payload removal"),
+        ("os.fsync(parent.fd)", "payload-removal parent durability"),
+    ):
+        require_text(cleanup_payload, text, label)
+    require_exact_count(
+        cleanup_payload,
+        "open_regular_at(",
+        1,
+        "nonblocking cleanup entry acquisition",
+    )
+    require_order(
+        create_payload,
+        (
+            "parent.assert_bound()",
+            "os.mkdir(payload_name, 0o700, dir_fd=parent.fd)",
+            "os.fsync(parent.fd)",
+            "payload_fd = os.open(",
+            "or bounded_names(payload_fd)",
+            'require_canonical_security(payload_fd, "publication payload")',
+            "payload_handle = persistent_handle(payload_fd)",
+            "parent.assert_bound()",
+        ),
+        "durable empty payload authority before handle commit",
+    )
+    for text, label in (
+        ('record["state"] != "staging"', "staging-record authorization"),
+        ('persistent_handle(payload_fd) != expected_payload_handle', "staging persistent payload identity"),
+        ("deadline = time.monotonic() + DEADLINE_SECONDS", "publication staging deadline"),
+        ("os.O_WRONLY | os.O_TMPFILE | os.O_CLOEXEC", "unnamed staged files"),
+        ("if written <= 0:", "staging write-progress proof"),
+        ("stable_metadata(os.fstat(source_descriptor)) != stable_metadata(", "stable source descriptor"),
+        ("os.fchmod(destination, 0o444)", "staged entry immutable mode"),
+        ("final.st_nlink != 0", "unnamed staged-entry proof"),
+        ("os.fsync(destination)", "staged file durability"),
+        ("link_unnamed_file(destination, payload_fd, name)", "descriptor-bound staged link"),
+        ("linked.st_nlink != 1", "staged link binding"),
+        ("os.fsync(payload_fd)", "staged directory durability"),
+        ("os.fsync(parent.fd)", "staged payload-name durability"),
+        ("finalize_staged_release_set(", "post-staging exact-set finalization proof"),
+    ):
+        require_text(stage_payload, text, label)
+    for text, label in (
+        ('reserved_prefix = f".{parent.destination}-release-"', "complete reserved namespace"),
+        ("if name.startswith(reserved_prefix):", "unknown reserved-name rejection"),
+        ('"record": re.compile(rf"\\.{escaped}-release-transaction\\.([0-9a-f]{{64}})")', "canonical record namespace"),
+        ('"next": re.compile(rf"\\.{escaped}-release-next\\.([0-9a-f]{{64}})")', "canonical next-record namespace"),
+        ('"payload": re.compile(rf"\\.{escaped}-release-payload\\.([0-9a-f]{{64}})")', "canonical payload namespace"),
+        ("match = pattern.fullmatch(name)", "exact reserved-name classification"),
+    ):
+        require_text(namespace, text, label)
+
+    require_order(
+        recovery,
+        (
+            "parent.assert_bound()",
+            "found = record_names(parent)",
+            'if not found["record"]:',
+            'if found["next"] or found["payload"]:',
+            "os.fsync(parent.fd)",
+            "parent.assert_bound()",
+            "confirmed = record_names(parent)",
+            "if any(confirmed.values()):",
+            "return",
+        ),
+        "durable empty-recovery observation",
+    )
+    for text, label in (
+        ("if next_token != token:", "next-record transaction ownership"),
+        ("publication next record belongs to another transaction", "next-record ownership rejection"),
+        ('if found["payload"] and found["payload"][0] != (record["payload"], token):', "payload transaction ownership"),
+        ("publication payload belongs to another transaction", "payload ownership rejection"),
+    ):
+        require_text(recovery, text, label)
+    require_order(
+        recovery,
+        (
+            'if record["state"] == "initializing":',
+            "verify_prior_release(parent, old_handle)",
+            "if payload is not None:",
+            "initial publication record has an unbound payload identity",
+            "verify_prior_release(parent, old_handle)",
+            "unlink_record(",
+            "return",
+            'if record["state"] == "staging":',
+            "finish_rollback(",
+        ),
+        "unbound initialization rejection and bound staging rollback",
+    )
+    require_order(
+        recovery,
+        (
+            'if record["state"] == "prepared":',
+            "if before_exchange:",
+            "verify_release_set(",
+            'rollback_record["state"] = "rollback"',
+            "update_record(",
+            "record = rollback_record",
+            'if record["state"] == "rollback":',
+            "finish_rollback(",
+        ),
+        "durable prepared rollback authorization",
+    )
+    require_order(
+        finish_rollback,
+        (
+            "verify_prior_release(parent, old_handle)",
+            'payload["handle"] != new_handle',
+            "cleanup_payload(",
+            "(0o555, 0o700)",
+            "verify_prior_release(parent, old_handle)",
+            "unlink_record(",
+        ),
+        "resumable authorized publication rollback",
+    )
+    require_order(
+        recovery,
+        (
+            "if not after_exchange:",
+            "publication exchange outcome is ambiguous",
+            "verify_release_set(",
+            'cleanup_record["state"] = "cleanup"',
+            "update_record(",
+            "finish_cleanup(",
+        ),
+        "post-exchange recovery authorization",
+    )
+    require_order(
+        finish_cleanup,
+        (
+            'destination is None or destination["handle"] != expected_new',
+            "verify_release_set(",
+            'payload["handle"] != old_handle',
+            "cleanup_payload(",
+            "parent.assert_bound()",
+            "verify_release_set(",
+            "unlink_record(",
+        ),
+        "published proof before displaced-set cleanup",
+    )
+    require_text(publish, "os.urandom(32).hex()", "publication transaction entropy")
+    require_text(publish, "RENAME_NOREPLACE", "first-publication kernel no-clobber")
+    require_text(publish, "RENAME_EXCHANGE", "existing-publication atomic exchange")
+    require_order(
+        publish,
+        (
+            "recover(parent)",
+            "old = parent.path_authority(parent.destination)",
+            "verify_release_set(parent, parent.destination)",
+            "install_initial_record(",
+            "create_payload_root(",
+            'if stop_after == "payload-created":',
+            'staging["state"] = "staging"',
+            'staging["payload_handle"] = payload_handle',
+            "update_record(",
+            "stage_payload(",
+            'prepared["state"] = "prepared"',
+            "update_record(",
+            "read_record(parent, record_name, token)",
+            "record_names(parent)",
+            "verify_release_set(",
+            "renameat2(",
+            "RENAME_NOREPLACE",
+            "RENAME_EXCHANGE",
+            "post_destination = parent.path_authority(parent.destination)",
+            "os.fsync(parent.fd)",
+            "publication exchange binding changed after commit",
+            "verify_release_set(parent, parent.destination",
+            'cleanup_record["state"] = "cleanup"',
+            "update_record(",
+            "cleanup_payload(",
+            "verify_release_set(parent, parent.destination",
+            "unlink_record(",
+        ),
+        "failure-atomic publication state machine",
+    )
+    require_order(
+        quiescent_verify,
+        (
+            "parent.assert_bound()",
+            "if any(record_names(parent).values()):",
+            "verify_release_set(parent, parent.destination",
+            "parent.assert_bound()",
+            "if any(record_names(parent).values()):",
+            "return proof",
+        ),
+        "non-repairing quiescent publication verification",
+    )
+    require_text(
+        verify_path,
+        "lambda parent: verify_quiescent_release(parent, commit, version, epoch)",
+        "quiescent public verification dispatch",
+    )
+    require_text(
+        run_with_parent,
+        'report_cleanup_failures(primary, "publication parent descriptor close", failures)',
+        "publication parent cleanup failure preservation",
+    )
+    for text, label in (
+        ("def report_cleanup_failures(", "publication cleanup accumulator"),
+        ("primary.add_note(note)", "publication primary-error preservation"),
+        ("def close_descriptors(", "publication exhaustive descriptor cleanup"),
+        ("require_deadline(deadline)", "publication deadline enforcement"),
+        ("if written <= 0:", "publication zero-progress rejection"),
+        ("def persistent_handle(", "durable filesystem-object identity"),
+        ("LIBC.name_to_handle_at", "opaque filesystem-object handle acquisition"),
+        ('source = os.fsencode(f"/proc/self/fd/{file_fd}")', "portable unnamed-file link source"),
+        ("AT_SYMLINK_FOLLOW", "portable unnamed-file link authority"),
+    ):
+        require_text(source, text, label)
 
 
 def validate_target_scripts(debian, android, pins):
@@ -1555,16 +2264,103 @@ def validate_fork_version(source):
     require_text(source, "release dates must be newest-first", "date ordering")
 
 
-def validate_docs(source):
+def validate_docs(sources):
+    source = sources["docs"]
     for text in (
-        "two private mode-0700 detached exact-commit worktrees",
+        "two independent `--no-hardlinks --reject-shallow`, mode-0700 private repositories",
         "independent target, Flutter, generated, output, and Windows state",
-        "atomically exchanged into `dist/`",
+        "private same-parent payload",
+        "required ext4 publication filesystem",
+        "complete descriptor-retrieved ext4 UUID",
+        "`initializing`, handle-bound `staging`, manifest-bound `prepared`",
+        "immediately before installation",
+        "rejects any unresolved reserved publication state without repairing it",
+        "`O_PATH|O_NOFOLLOW`, reopened nonblocking through retained descriptors",
+        "canonical state names to carry the active transaction token",
+        "logical process-restart proofs, not",
+        "the invoking UID is cooperative and root, the kernel, ext4, and storage are trusted",
         "public certificate SHA-256 pinned in `scripts/pins.env`",
         "All five assets are uploaded to that draft",
         "never deletes uncertain remote state",
     ):
         require_text(source, text, "versioning transaction documentation")
+    if "proved again after installation" in source:
+        raise VerificationError("versioning documentation reverses source proof and installation")
+    for forbidden in (
+        "persistent filesystem identity",
+        "ext4, XFS",
+        "XFS, and Btrfs",
+        "prepared recovery",
+    ):
+        if forbidden in source:
+            raise VerificationError("versioning documentation retains superseded release authority")
+
+    requirements = sources["requirements"]
+    for text in (
+        "git clone --no-hardlinks --no-checkout --reject-shallow",
+        "shallow declarations or state",
+        "RLIMIT_NOFILE</code> 131,328",
+        "failed descriptor close preserve uncertainty and abort",
+        "FS_IOC_GETFSUUID",
+        "complete ext4 UUID",
+        "folded <code>f_fsid</code>",
+        "O_PATH|O_NOFOLLOW",
+        "active transaction token",
+        "wrong-token canonical names",
+        "Logical process-restart fixtures",
+        "They do not simulate physical power loss",
+        "Processes under the invoking UID must cooperate",
+    ):
+        require_text(requirements, text, "requirements release authority")
+    for forbidden in (
+        "ext4, XFS",
+        "XFS, and Btrfs",
+        "terminal discard",
+        "mode-0600 non-hardlinked transaction",
+        "prepared recovery",
+        "canonical ext4 filesystem identity",
+    ):
+        if forbidden in requirements:
+            raise VerificationError("requirements retain superseded release authority")
+
+    hardening = sources["hardening"]
+    for text in (
+        "Current `.6` source verdict (2026-07-14)",
+        "git clone --no-hardlinks --no-checkout --reject-shallow",
+        "131,328",
+        "FS_IOC_GETFSUUID",
+        "nonzero 16-byte external ext4 UUID",
+        "wrong-token payload and next-record names",
+        "logical process-restart proofs, not physical power-loss simulation",
+        "The invoking UID must keep the namespace",
+    ):
+        require_text(hardening, text, "hardening-status current release authority")
+    if "`f_fsid` must be nonzero" in hardening:
+        raise VerificationError("hardening-status retains folded filesystem identity authority")
+
+    changelog = sources["changelog"]
+    for text in (
+        "`--no-hardlinks --reject-shallow` private repository",
+        "independently reacquires and consumes a complete",
+        "complete descriptor-retrieved ext4 UUID",
+        "wrong-token canonical state",
+        "process-restart proofs; they do not claim physical power-loss simulation",
+    ):
+        require_text(changelog, text, "changelog current release authority")
+    for forbidden in (
+        "consumes the same recorded hardlink closure",
+        "persistent filesystem identity",
+        "prepared recovery",
+    ):
+        if forbidden in changelog:
+            raise VerificationError("changelog retains superseded release authority")
+
+    digest = hashlib.sha256(requirements.encode("utf-8")).hexdigest()
+    if f"{digest}  requirements.html" not in hardening:
+        raise VerificationError("hardening-status requirements hash is stale")
+    native_watch = sources["native_watch"]
+    if f"Requirements hash: {digest}" not in native_watch:
+        raise VerificationError("native-codec requirements hash is stale")
 
 
 def validate_scan_contract(scan, verify, apple, release):
@@ -1675,6 +2471,16 @@ def validate_faillo_contract(source):
         "root-owned reset exact command",
     )
     for text, label in (
+        ('${ONLINE_DIR:-$REPO_ROOT/online}/rust-${RV}.tar.xz', "effective online-directory diagnostic"),
+        ('"--self-test-source-state=$EXPECTED_SOURCE_COMMIT"', "exact source-state self-test command"),
+        ('--self-test-source-state=0000000000000000000000000000000000000000', "wrong source-state commit rejection"),
+        ('build-release source-state self-test: OK', "exact source-state success marker"),
+        ('source-state self-test: source tree is not clean, including untracked files', "exact source-state dirty rejection"),
+        ('production release source gate rejects a dirty checkout', "production release-source behavioral gate"),
+        ('run_with_dirty_probe doctor "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --doctor', "production release-source fixture dispatch"),
+    ):
+        require_text(source, text, label)
+    for text, label in (
         ("run_with_dirty_probe()", "exclusive dirty-probe lifecycle"),
         ('mktemp "$probe_parent/.faillo-${label}.XXXXXXXXXX"', "random exclusive dirty probe"),
         ("verify.sh emits success only after workspace removal", "verify cleanup success fixture"),
@@ -1719,6 +2525,8 @@ def validate_faillo_contract(source):
         "printf 'BUILD-FAILLO: DIRTY-PROBE-READY: %s\\n' \"$probe\" >&2",
         "dirty-probe reached-state marker",
     )
+    if "grep -qiE 'FATAL|FAIL" in source or 'grep -qiE \'FATAL|FAIL' in source:
+        raise VerificationError("fail-loud suite accepts a broad unrelated failure diagnostic")
     require_order(
         reached_contract,
         (
@@ -1729,8 +2537,6 @@ def validate_faillo_contract(source):
         ),
         "reached-state failure classification",
     )
-    if "grep -qiE 'FATAL|FAIL" in source or 'grep -qiE \'FATAL|FAIL' in source:
-        raise VerificationError("fail-loud suite accepts a broad unrelated failure diagnostic")
     for forbidden in (".faillo_ct_probe", ".faillo_dirt_probe"):
         if forbidden in source:
             raise VerificationError("fail-loud suite retains a fixed followable dirty probe")
@@ -1739,11 +2545,105 @@ def validate_faillo_contract(source):
 
 
 def validate_private_tree_closure(source):
+    try:
+        module = ast.parse(source)
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"private-tree closure syntax: Python source does not parse: {exc}"
+        ) from exc
+    closure_main = extract_python_definition(
+        source, module, "main", "private-tree closure main dispatch"
+    )
+    cleanup = extract_python_method(
+        source, module, "ScratchRoot", "remove_contents", "closure cleanup traversal"
+    )
+    inode_closure = extract_python_method(
+        source,
+        module,
+        "ScratchRoot",
+        "collect_inode_links",
+        "closure inode-closure traversal",
+    )
+    inode_closure_acquisition = extract_python_method(
+        source,
+        module,
+        "ScratchRoot",
+        "acquire_inode_closure",
+        "retained inode-closure acquisition",
+    )
+    normalization_init = extract_python_method(
+        source,
+        module,
+        "TreeNormalizationAuthority",
+        "__init__",
+        "normalization authority initialization",
+    )
+    normalization_collect = extract_python_method(
+        source,
+        module,
+        "TreeNormalizationAuthority",
+        "_collect",
+        "normalization authority acquisition",
+    )
+    normalization_assert = extract_python_method(
+        source,
+        module,
+        "TreeNormalizationAuthority",
+        "assert_bound",
+        "normalization authority reproof",
+    )
+    normalization_mutation = extract_python_method(
+        source,
+        module,
+        "TreeNormalizationAuthority",
+        "normalize",
+        "normalization authority mutation",
+    )
+    normalization_dispatch = extract_python_definition(
+        source, module, "normalize_tree", "normalization authority dispatch"
+    )
+    retained_descriptor_budget = extract_python_definition(
+        source,
+        module,
+        "require_retained_descriptor_budget",
+        "retained-authority descriptor budget",
+    )
+    close_collection = extract_python_definition(
+        source,
+        module,
+        "collect_descriptor_close_failures",
+        "descriptor close failure collection",
+    )
+    cleanup_reporting = extract_python_definition(
+        source, module, "report_cleanup_failures", "cleanup failure reporting"
+    )
+    descriptor_close = extract_python_definition(
+        source, module, "close_descriptors", "descriptor cleanup"
+    )
+    scratch_close = extract_python_method(
+        source, module, "ScratchRoot", "close", "scratch authority cleanup"
+    )
+    normalization_close = extract_python_method(
+        source,
+        module,
+        "TreeNormalizationAuthority",
+        "close",
+        "normalization authority cleanup",
+    )
+    for method, label in (
+        (cleanup, "closure cleanup mount-boundary proof"),
+        (inode_closure, "closure inode-closure mount-boundary proof"),
+        (normalization_collect, "normalization mount-boundary proof"),
+    ):
+        require_text(method, "descriptor_mount_id(authority_fd) != self.mount_id", label)
     for text, label in (
         ("os.lstat(path)", "physical inode inspection"),
         ("followlinks=False", "symlink traversal exclusion"),
         ("metadata.st_nlink", "inode link-count proof"),
-        ("count != expected", "external hardlink rejection"),
+        (
+            "for expected, count in linked.values():\n        if count != expected:",
+            "external hardlink rejection",
+        ),
         ('mount_path.startswith(prefix)', "descendant mount rejection"),
         ('modes.add_argument("--self-test"', "closure behavioral self-test"),
         ("os.link(internal", "internally closed hardlink fixture"),
@@ -1752,37 +2652,232 @@ def validate_private_tree_closure(source):
         ("external-symlink-link", "external hardlinked-symlink fixture"),
         ("0:1 /bound", "same-filesystem descendant mount fixture"),
         ("space\\040tab\\011line\\012slash\\134", "complete mountinfo escape fixture"),
+        ('parser.add_argument("--scratch-fd", type=int)', "closure fixture scratch descriptor option"),
+        ('ScratchRoot(inherited_fd=arguments.scratch_fd)', "closure inherited scratch authority"),
+        ('descriptor = os.dup(inherited_fd)', "closure scratch descriptor duplication"),
+        ('mount_id = descriptor_mount_id(descriptor)', "closure scratch mount authority acquisition"),
+        ('descriptor_mount_id(self.fd) != self.mount_id', "closure scratch live mount authority"),
+        ('os.mkdir(name, 0o700, dir_fd=self.fd)', "closure descriptor-relative fixture creation"),
+        ('os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC', "closure entry mount authority descriptor"),
+        ('descriptor_mount_id(authority_fd) != self.mount_id', "closure entry mount-boundary proof"),
+        ('def bounded_directory_names(descriptor, limit):\n    names = []\n    with os.scandir(f"/proc/self/fd/{descriptor}") as entries:', "closure descriptor-bound streamed cleanup inventory"),
+        ('os.rmdir(name, dir_fd=self.fd)', "closure descriptor-relative fixture removal"),
+        ('self-test fixture edge changed before cleanup', "closure live fixture edge cleanup gate"),
+        ('metadata.st_uid != os.geteuid()', "closure fixture scratch owner proof"),
+        ('metadata.st_gid != os.getegid()', "closure fixture scratch group proof"),
+        ('stat.S_IMODE(metadata.st_mode) != 0o700', "closure fixture scratch mode proof"),
+        ('modes.add_argument("--remove-scratch-root")', "closure scratch-root removal mode"),
+        ('scratch.remove_root((int(match.group(1)), int(match.group(2))))', "closure recorded root identity dispatch"),
+        ('os.rmdir(self.basename, dir_fd=self.parent_fd)', "closure descriptor-relative root removal"),
+        ('raise ClosureError("scratch authority options are valid only with their scratch modes")', "closure misplaced authority rejection"),
+        ('closure constructor leaked a descriptor after acquisition failure', "closure constructor descriptor inventory proof"),
+        ('closure child leaked a descriptor after acquisition failure', "closure child descriptor inventory proof"),
+        ('closure child acquisition failure did not preserve one ambiguous edge', "closure ambiguous-edge preservation proof"),
+        ('preserved closure child acquisition state is not exact', "closure preserved-edge metadata proof"),
+        ('modes.add_argument("--normalize-root")', "normalization mode dispatch"),
+        ('parser.add_argument("--owner", type=int)', "normalization owner authority"),
+        ('parser.add_argument("--group", type=int)', "normalization group authority"),
+        ('PROTECTED_HARDLINKS = "/proc/sys/fs/protected_hardlinks"', "kernel hardlink-protection source"),
+        ("TREE_ENTRY_LIMIT = 131072", "retained-authority exact entry bound"),
+        ("RETAINED_DESCRIPTOR_RESERVE = 256", "retained-authority descriptor reserve"),
+        ("TREE_ENTRY_LIMIT + RETAINED_DESCRIPTOR_RESERVE", "retained-authority descriptor limit derivation"),
+        ('if content != b"1\\n":', "exact kernel hardlink-protection policy"),
+        ('raise ClosureError("kernel hardlink protection is not enabled")', "disabled hardlink-protection rejection"),
+        ('return (stat.S_IMODE(mode) | required) & 0o755', "normalization special-mode stripping"),
+        ('exercise_normalization_authority(scratch)', "normalization behavioral fixture dispatch"),
+        ('require_retained_descriptor_budget()\n    parse_protected_hardlinks(b"1\\n")', "retained-authority live descriptor-budget fixture"),
+        ('require_rejection(parse_protected_hardlinks, b"0\\n")', "disabled hardlink-protection fixture"),
+        ('normalization constructor leaked a directory descriptor', "normalization descriptor-leak fixture"),
+        ('normalization directory inventory changed', "normalization complete-inventory fixture"),
+        ('normalization mode policy retained a special permission bit', "normalization special-mode fixture"),
+        ('exercise_cleanup_failure_accounting()', "descriptor cleanup-failure fixture dispatch"),
+        ('descriptor close failure fixture did not exhaust cleanup', "exhaustive descriptor-close fixture"),
+        ('descriptor close failure fixture replaced its primary error', "primary-error preservation fixture"),
+        ('descriptor close failure fixture lost cleanup errors', "complete close-error reporting fixture"),
     ):
         require_text(source, text, label)
-    if "os.stat(" in source or "followlinks=True" in source:
+    for text, label in (
+        ("for descriptor in descriptors:", "complete descriptor close iteration"),
+        ("if descriptor is None or descriptor in seen:", "descriptor close ownership deduplication"),
+        ("closer(descriptor)", "descriptor close sink"),
+        ("except BaseException as error:", "descriptor close failure capture"),
+        ("failures.append(error)", "descriptor close failure retention"),
+    ):
+        require_text(close_collection, text, label)
+    for text, label in (
+        ("if primary is not None:", "primary cleanup-error preservation"),
+        ("primary.add_note(note)", "primary cleanup-error annotation"),
+        ("for note in notes:", "complete cleanup-error reporting"),
+        ('raise error from failures[0]', "cleanup failure causality"),
+    ):
+        require_text(cleanup_reporting, text, label)
+    require_order(
+        descriptor_close,
+        (
+            "collect_descriptor_close_failures(descriptors)",
+            "report_cleanup_failures(",
+        ),
+        "descriptor close collection before reporting",
+    )
+    for text, label in (
+        ("failures.extend(collect_descriptor_close_failures((self.fd, self.parent_fd)))", "complete scratch descriptor close"),
+        ("self.fd = None", "scratch descriptor ownership retirement"),
+        ("self.parent_fd = None", "scratch parent-descriptor ownership retirement"),
+        ('report_cleanup_failures(primary, "self-test scratch cleanup", failures)', "scratch cleanup failure preservation"),
+    ):
+        require_text(scratch_close, text, label)
+    for text, label in (
+        ('descriptors = [authority["fd"] for authority in self.inodes.values()]', "complete normalization inode cleanup"),
+        ('descriptors.extend(directory["fd"] for directory in reversed(self.directories))', "complete normalization directory cleanup"),
+        ('close_descriptors(descriptors, "normalization authority close", primary)', "normalization cleanup failure preservation"),
+    ):
+        require_text(normalization_close, text, label)
+    require_exact_count(
+        source,
+        "os.close",
+        1,
+        "centralized descriptor-close authority",
+    )
+    for text, label in (
+        ("resource.getrlimit(resource.RLIMIT_NOFILE)", "normalization descriptor-limit inspection"),
+        ("hard < RETAINED_DESCRIPTOR_LIMIT", "retained-authority descriptor hard-limit rejection"),
+        ("resource.setrlimit(", "retained-authority soft descriptor-limit establishment"),
+        ("(RETAINED_DESCRIPTOR_LIMIT, hard)", "bounded retained-authority descriptor limit"),
+        ("observed < RETAINED_DESCRIPTOR_LIMIT", "retained-authority descriptor-limit reproof"),
+    ):
+        require_text(retained_descriptor_budget, text, label)
+    require_order(
+        normalization_dispatch,
+        (
+            "require_retained_descriptor_budget()",
+            "require_protected_hardlinks()",
+            "authority = TreeNormalizationAuthority(path, expected_identity)",
+            "authority.normalize(owner, group)",
+            "authority.close(sys.exc_info()[1])",
+        ),
+        "normalization authority dispatch",
+    )
+    require_text(
+        normalization_init,
+        "[TREE_ENTRY_LIMIT]",
+        "normalization collection uses its descriptor-derived tree bound",
+    )
+    require_order(
+        inode_closure_acquisition,
+        (
+            "require_retained_descriptor_budget()",
+            "self.collect_inode_links(descriptor, [TREE_ENTRY_LIMIT], linked)",
+        ),
+        "retained inode-closure descriptor budget",
+    )
+    for text, label in (
+        ("child_retained = False", "normalization child descriptor ownership"),
+        ("if not child_retained:", "normalization failed-acquisition descriptor cleanup"),
+        ("close_descriptors(", "normalization failed-acquisition descriptor close"),
+    ):
+        require_text(normalization_collect, text, label)
+    for text, label in (
+        ('bounded_directory_names(directory["fd"], len(directory["names"]) + 1)', "normalization complete inventory reproof"),
+        ('current.st_nlink != authority["nlink"]', "normalization retained link-count reproof"),
+        ('descriptor_mount_id(authority["fd"]) != self.mount_id', "normalization retained mount reproof"),
+    ):
+        require_text(normalization_assert, text, label)
+    require_order(
+        normalization_mutation,
+        (
+            "self.assert_bound()",
+            'os.fchown(directory["fd"], 0, 0)',
+            "descriptor_chown(authority[\"fd\"], 0, 0",
+            "os.fchmod(descriptor, normalized_mode(authority[\"mode\"]))",
+            "os.fchown(descriptor, owner, group)",
+            'os.fchown(directory["fd"], owner, group)',
+            "self.assert_bound()",
+        ),
+        "retained-authority normalization ordering",
+    )
+    for text, label in (
+        ('if authority["internal"] != authority["nlink"]:', "initial external-hardlink rejection"),
+        ("normalization tree contains a non-directory inode linked outside its boundary", "external-hardlink rejection diagnostic"),
+    ):
+        require_text(normalization_init, text, label)
+    for text, label in (
+        ("current.st_uid != owner or current.st_gid != group", "normalized inode ownership postcondition"),
+        ("normalization inode ownership postcondition differs", "normalized inode ownership rejection"),
+        ('!= normalized_mode(authority["mode"])', "normalized inode mode postcondition"),
+        ("normalization inode mode postcondition differs", "normalized inode mode rejection"),
+    ):
+        require_text(normalization_mutation, text, label)
+    require_text(
+        closure_main,
+        "exercise_scratch_acquisition_failures(scratch)",
+        "closure scratch acquisition fixture dispatch",
+    )
+    require_text(
+        closure_main,
+        "exercise_scratch_external_link_rejection(scratch)",
+        "closure scratch hardlink fixture dispatch",
+    )
+    require_text(
+        closure_main,
+        "exercise_scratch_root_removal(scratch)",
+        "closure scratch root-removal fixture dispatch",
+    )
+    require_order(
+        source,
+        (
+            'yield f"/proc/self/fd/{child}"',
+            "current = os.stat(name, dir_fd=self.fd, follow_symlinks=False)",
+            "if identity(current) != child_identity:",
+            'raise ClosureError("self-test fixture edge changed before cleanup")',
+            "authorities = self.acquire_inode_closure(child)",
+            "self.remove_contents(child, [TREE_ENTRY_LIMIT], authorities)",
+            "self.require_inode_authorities_consumed(authorities)",
+            "self.close_inode_authorities(authorities",
+        ),
+        "closure retained-authority cleanup gate",
+    )
+    require_order(
+        source,
+        (
+            "child_owned = False",
+            "child = os.open(",
+            "if descriptor_mount_id(child) != self.mount_id:",
+            "child_owned = True",
+            'yield f"/proc/self/fd/{child}"',
+        ),
+        "closure fixture acquisition authority",
+    )
+    if "TemporaryDirectory" in source or "tempfile" in source:
+        raise VerificationError("private-tree closure probe retains pathname temporary-directory authority")
+    if "followlinks=True" in source:
         raise VerificationError("private-tree closure probe follows filesystem aliases")
+    for node in ast.walk(module):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "os"
+            and node.func.attr == "stat"
+        ):
+            continue
+        nofollow = [keyword.value for keyword in node.keywords if keyword.arg == "follow_symlinks"]
+        if len(nofollow) != 1 or not isinstance(nofollow[0], ast.Constant) or nofollow[0].value is not False:
+            raise VerificationError("private-tree closure descriptor stat can follow a filesystem alias")
 
 
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
+    validate_release_finalizer(sources["finalizer"])
     validate_target_scripts(sources["debian"], sources["android"], sources["pins"])
     validate_publisher(sources["publish"])
     validate_fork_version(sources["version"])
-    validate_docs(sources["docs"])
+    validate_docs(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_smoke_contract(sources["smoke"])
     validate_faillo_contract(sources["faillo"])
     validate_private_tree_closure(sources["closure"])
     validate_workspace_verifier_self_contract(sources["workspace_verifier"])
-
-
-def run_command(command, cwd, env=None):
-    return subprocess.run(
-        command,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-        timeout=90,
-    )
 
 
 def handle_managed_signal(signum, frame):
@@ -1814,6 +2909,7 @@ def enter_managed_signal_scope():
             signal.signal(signum, handle_managed_signal)
         state = {
             "acquiring_process": False,
+            "acquiring_process_object": None,
             "caught": False,
             "pending_signum": None,
             "previous_handlers": previous_handlers,
@@ -1836,22 +2932,27 @@ def activate_managed_signal_scope(scope):
 
 def begin_managed_process_acquisition():
     state = _MANAGED_SIGNAL_STATE
-    if state is None or state["acquiring_process"]:
-        raise VerificationError("managed process acquisition ownership is unavailable")
+    if state is None:
+        raise VerificationError("managed process acquisition has no signal scope")
+    if state["acquiring_process"]:
+        raise VerificationError("managed process acquisition is already active")
     state["acquiring_process"] = True
+    state["acquiring_process_object"] = None
 
 
 def finish_managed_process_acquisition():
     state = _MANAGED_SIGNAL_STATE
-    if state is None or not state["acquiring_process"]:
-        raise VerificationError("managed process acquisition ownership is unavailable")
+    if state is None:
+        raise VerificationError("managed process acquisition finish has no signal scope")
+    if not state["acquiring_process"]:
+        raise VerificationError("managed process acquisition is not active at finish")
     previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, MANAGED_SIGNALS)
     state["acquiring_process"] = False
+    state["acquiring_process_object"] = None
     pending_signum = state["pending_signum"]
     state["pending_signum"] = None
-    if pending_signum is not None:
-        raise ManagedSignal(pending_signum)
     signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+    return pending_signum
 
 
 def leave_managed_signal_scope(scope, finalization_mask):
@@ -1878,57 +2979,1162 @@ def leave_managed_signal_scope(scope, finalization_mask):
     signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
-def process_group_exists(process_group):
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError as exc:
-        raise VerificationError(f"cannot inspect owned process group {process_group}") from exc
-    return True
-
-
-def wait_process_group_absent(process_group, timeout_seconds):
-    deadline = time.monotonic() + timeout_seconds
-    while process_group_exists(process_group):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        time.sleep(min(0.01, remaining))
-    return True
-
-
-def signal_process_group(process_group, signum):
-    try:
-        os.killpg(process_group, signum)
-    except ProcessLookupError:
-        pass
-
-
 def close_process_pipes(process):
-    for stream in (process.stdout, process.stderr):
+    if process is None:
+        return
+    failures = []
+    for stream in (process.stdin, process.stdout, process.stderr):
         if stream is not None and not stream.closed:
-            stream.close()
-
-
-def terminate_and_reap_process_group(process, cleanup_grace_seconds, kill_grace_seconds):
-    process_group = process.pid
-    try:
-        signal_process_group(process_group, signal.SIGTERM)
-        try:
-            process.wait(timeout=cleanup_grace_seconds)
-        except subprocess.TimeoutExpired:
-            signal_process_group(process_group, signal.SIGKILL)
             try:
-                process.wait(timeout=kill_grace_seconds)
-            except subprocess.TimeoutExpired as exc:
-                raise VerificationError("cannot reap a hard-killed managed command") from exc
-        if process_group_exists(process_group):
-            signal_process_group(process_group, signal.SIGKILL)
-            if not wait_process_group_absent(process_group, kill_grace_seconds):
-                raise VerificationError(f"managed command retained process group {process_group} after SIGKILL")
+                stream.close()
+            except OSError as exc:
+                failures.append(exc)
+    if failures:
+        raise VerificationError("managed-command process pipes could not all be closed") from failures[0]
+
+
+class ExactChildProcess:
+    def __init__(self, pid, pidfd, command, stdout, stderr):
+        self.pid = pid
+        self.pidfd = pidfd
+        self.args = command
+        self.returncode = None
+        self.stdin = None
+        self.stdout = stdout
+        self.stderr = stderr
+
+    def _record_status(self, status):
+        self.returncode = os.waitstatus_to_exitcode(status)
+        pidfd = self.pidfd
+        self.pidfd = None
+        if pidfd is not None:
+            os.close(pidfd)
+        return self.returncode
+
+    def poll(self):
+        if self.returncode is not None:
+            return self.returncode
+        try:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError as exc:
+            raise VerificationError("exact child process lost reap authority") from exc
+        if pid == 0:
+            return None
+        if pid != self.pid:
+            raise VerificationError("exact child process reaped an unexpected PID")
+        return self._record_status(status)
+
+    def wait(self, timeout=None):
+        if self.returncode is not None:
+            return self.returncode
+        if timeout is None:
+            while True:
+                try:
+                    pid, status = os.waitpid(self.pid, 0)
+                    break
+                except InterruptedError:
+                    continue
+            if pid != self.pid:
+                raise VerificationError("exact child process reaped an unexpected PID")
+            return self._record_status(status)
+        deadline = time.monotonic() + timeout
+        while True:
+            result = self.poll()
+            if result is not None:
+                return result
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(self.args, timeout)
+            time.sleep(min(0.01, remaining))
+
+    def send_signal(self, signum):
+        if self.returncode is not None:
+            return
+        if self.pidfd is None:
+            raise VerificationError("exact child process has no signal authority")
+        try:
+            signal.pidfd_send_signal(self.pidfd, signum)
+        except ProcessLookupError:
+            self.poll()
+        except OSError as pidfd_error:
+            try:
+                os.kill(self.pid, signum)
+            except ProcessLookupError:
+                self.poll()
+            except OSError as pid_error:
+                error = VerificationError("exact child process lost signal authority")
+                error.add_note(f"pidfd signaling failed: {pidfd_error}")
+                raise error from pid_error
+
+    def terminate(self):
+        self.send_signal(signal.SIGTERM)
+
+    def kill(self):
+        self.send_signal(signal.SIGKILL)
+
+    def communicate(self, timeout=None, max_output_bytes=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        output = {"stdout": bytearray(), "stderr": bytearray()}
+        selector = selectors.DefaultSelector()
+        for name, stream in (("stdout", self.stdout), ("stderr", self.stderr)):
+            if stream is not None and not stream.closed:
+                selector.register(stream, selectors.EVENT_READ, name)
+        try:
+            while selector.get_map():
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise subprocess.TimeoutExpired(
+                        self.args,
+                        timeout,
+                        output=bytes(output["stdout"]),
+                        stderr=bytes(output["stderr"]),
+                    )
+                events = selector.select(remaining)
+                if not events:
+                    raise subprocess.TimeoutExpired(
+                        self.args,
+                        timeout,
+                        output=bytes(output["stdout"]),
+                        stderr=bytes(output["stderr"]),
+                    )
+                for key, _ in events:
+                    chunk = os.read(key.fd, 65536)
+                    if chunk:
+                        if (
+                            max_output_bytes is not None
+                            and len(output["stdout"]) + len(output["stderr"]) + len(chunk)
+                            > max_output_bytes
+                        ):
+                            raise VerificationError("exact child process output exceeds its bound")
+                        output[key.data].extend(chunk)
+                    else:
+                        selector.unregister(key.fileobj)
+                        key.fileobj.close()
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            self.wait(timeout=remaining)
+            return bytes(output["stdout"]), bytes(output["stderr"])
+        finally:
+            selector.close()
+
+
+def open_descriptor_inventory():
+    descriptors = set()
+    for name in os.listdir("/proc/self/fd"):
+        if re.fullmatch(r"[0-9]+", name) is None:
+            raise VerificationError("process descriptor inventory is malformed")
+        descriptor = int(name)
+        try:
+            os.fstat(descriptor)
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                raise
+        else:
+            descriptors.add(descriptor)
+    return descriptors
+
+
+def require_single_native_thread():
+    tasks = os.listdir("/proc/self/task")
+    expected = str(os.getpid())
+    if tasks != [expected]:
+        raise VerificationError("exact child process creation requires one native thread")
+
+
+def open_exact_pipe():
+    read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
+    descriptors = [read_fd, write_fd]
+    duplicates = []
+    try:
+        for index, descriptor in enumerate(descriptors):
+            if descriptor >= 3:
+                continue
+            duplicate = fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)
+            duplicates.append(duplicate)
+            os.close(descriptor)
+            descriptors[index] = duplicate
+            duplicates.remove(duplicate)
+        return tuple(descriptors)
+    except BaseException as primary_error:
+        failures = []
+        for descriptor in descriptors + duplicates:
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    failures.append(exc)
+        for failure in failures:
+            primary_error.add_note(f"exact pipe cleanup failed: {failure}")
+        raise
+
+
+def reap_failed_exact_child(pid, pidfd):
+    failures = []
+    signaled = False
+    try:
+        if pidfd is not None:
+            signal.pidfd_send_signal(pidfd, signal.SIGKILL)
+        else:
+            os.kill(pid, signal.SIGKILL)
+        signaled = True
+    except ProcessLookupError:
+        signaled = True
+    except OSError as pidfd_error:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            signaled = True
+        except ProcessLookupError:
+            signaled = True
+        except BaseException as pid_error:
+            error = VerificationError("failed exact child process lost termination authority")
+            error.add_note(f"pidfd signaling failed: {pidfd_error}")
+            failures.append(error)
+            failures.append(pid_error)
+    if signaled:
+        try:
+            while True:
+                try:
+                    waited_pid, _ = os.waitpid(pid, 0)
+                    break
+                except InterruptedError:
+                    continue
+            if waited_pid != pid:
+                failures.append(VerificationError("failed exact child cleanup reaped an unexpected PID"))
+        except ChildProcessError:
+            pass
+        except BaseException as exc:
+            failures.append(exc)
+    if pidfd is not None:
+        try:
+            os.close(pidfd)
+        except BaseException as exc:
+            failures.append(exc)
+    if failures:
+        error = VerificationError("failed exact child process could not be fully reaped")
+        for failure in failures[1:]:
+            error.add_note(str(failure))
+        raise error from failures[0]
+
+
+def set_child_parent_death_signal(parent_pid):
+    libc = ctypes.CDLL(None, use_errno=True)
+    prctl = libc.prctl
+    prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    prctl.restype = ctypes.c_int
+    if prctl(1, signal.SIGKILL, 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if os.getppid() != parent_pid:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+
+def descriptor_fork_identity(descriptor):
+    metadata = os.fstat(descriptor)
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+        fcntl.fcntl(descriptor, fcntl.F_GETFL),
+    )
+
+
+def close_unlisted_child_descriptors(inherited, identities):
+    open_descriptors = open_descriptor_inventory()
+    for descriptor, expected in identities.items():
+        if descriptor_fork_identity(descriptor) != expected:
+            raise VerificationError("exact child inherited descriptor changed across fork")
+    for descriptor in open_descriptors:
+        if descriptor > 2 and descriptor not in inherited:
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    raise
+
+
+def spawn_exact_process(command, cwd, environment, stdin_fd, pass_fds=()):
+    if threading.current_thread() is not threading.main_thread() or threading.active_count() != 1:
+        raise VerificationError("exact child process creation requires the sole main thread")
+    require_single_native_thread()
+    if signal.getsignal(signal.SIGCHLD) is not signal.SIG_DFL:
+        raise VerificationError("exact child process creation requires default SIGCHLD ownership")
+    inherited = set(pass_fds)
+    if any(descriptor < 3 for descriptor in inherited) or len(inherited) != len(pass_fds):
+        raise VerificationError("exact child process descriptor allowlist is invalid")
+    for descriptor in inherited:
+        os.fstat(descriptor)
+    os.fstat(stdin_fd)
+    stdin_authority = None
+    stdout_read = None
+    stdout_write = None
+    stderr_read = None
+    stderr_write = None
+    pid = None
+    pidfd = None
+    process = None
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, MANAGED_SIGNALS)
+    try:
+        stdin_authority = fcntl.fcntl(stdin_fd, fcntl.F_DUPFD_CLOEXEC, 3)
+        stdout_read, stdout_write = open_exact_pipe()
+        stderr_read, stderr_write = open_exact_pipe()
+        child_inherited = set(inherited)
+        child_inherited.update((stdin_authority, stdout_write, stderr_write))
+        inherited_identities = {
+            descriptor: descriptor_fork_identity(descriptor) for descriptor in child_inherited
+        }
+        parent_pid = os.getpid()
+        require_single_native_thread()
+        pid = os.fork()
+        if pid == 0:
+            try:
+                set_child_parent_death_signal(parent_pid)
+                for signum in MANAGED_SIGNALS:
+                    signal.signal(signum, signal.SIG_DFL)
+                os.setsid()
+                os.chdir(cwd)
+                os.dup2(stdin_authority, 0, inheritable=True)
+                os.dup2(stdout_write, 1, inheritable=True)
+                os.dup2(stderr_write, 2, inheritable=True)
+                for descriptor in inherited:
+                    os.set_inheritable(descriptor, True)
+                close_unlisted_child_descriptors(inherited, inherited_identities)
+                target_mask = set(previous_mask) - set(MANAGED_SIGNALS)
+                signal.pthread_sigmask(signal.SIG_SETMASK, target_mask)
+                os.execve(command[0], command, environment)
+            except BaseException:
+                os._exit(127)
+        pidfd = os.pidfd_open(pid, 0)
+        stdout = os.fdopen(stdout_read, "rb", buffering=0)
+        stdout_read = None
+        try:
+            stderr = os.fdopen(stderr_read, "rb", buffering=0)
+        except BaseException:
+            stdout.close()
+            raise
+        stderr_read = None
+        process = ExactChildProcess(pid, pidfd, command, stdout, stderr)
+        pidfd = None
+        state = _MANAGED_SIGNAL_STATE
+        if state is not None and state["acquiring_process"]:
+            state["acquiring_process_object"] = process
+        failures = []
+        for descriptor in (stdout_read, stdout_write, stderr_read, stderr_write):
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        failures.append(exc)
+        stdout_read = stdout_write = stderr_read = stderr_write = None
+        try:
+            os.close(stdin_authority)
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                failures.append(exc)
+        stdin_authority = None
+        if failures:
+            error = VerificationError("exact child parent descriptors could not all be closed")
+            for failure in failures[1:]:
+                error.add_note(str(failure))
+            raise error from failures[0]
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        previous_mask = None
+        return process
+    except BaseException as primary_error:
+        cleanup_failures = []
+        if process is not None:
+            try:
+                process.kill()
+            except BaseException as exc:
+                cleanup_failures.append(exc)
+            try:
+                process.wait()
+            except BaseException as exc:
+                cleanup_failures.append(exc)
+            try:
+                close_process_pipes(process)
+            except BaseException as exc:
+                cleanup_failures.append(exc)
+        elif pid is not None:
+            try:
+                reap_failed_exact_child(pid, pidfd)
+            except BaseException as exc:
+                cleanup_failures.append(exc)
+            pidfd = None
+        for descriptor in (stdout_read, stdout_write, stderr_read, stderr_write, stdin_authority):
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        cleanup_failures.append(exc)
+        if previous_mask is not None:
+            try:
+                signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+            except BaseException as exc:
+                cleanup_failures.append(exc)
+            previous_mask = None
+        for failure in cleanup_failures:
+            primary_error.add_note(f"exact child acquisition cleanup failed: {failure}")
+        raise
+
+
+MANAGED_GATE_HELPER = r'''
+import array
+import fcntl
+import json
+import os
+import socket
+import signal
+import sys
+
+token = sys.argv[1]
+command = sys.argv[2:]
+if not command or not os.path.isabs(command[0]):
+    raise SystemExit(70)
+print(f"RUSTDESK-MANAGED-READY {token} {os.getpid()}", flush=True)
+channel = socket.socket(fileno=0)
+descriptor_capacity = 64
+descriptor_size = array.array("i").itemsize
+frame, controls, flags, address = channel.recvmsg(
+    1024 * 1024 + 1,
+    socket.CMSG_SPACE(descriptor_capacity * descriptor_size),
+    socket.MSG_CMSG_CLOEXEC,
+)
+if address is not None or flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC):
+    raise SystemExit(71)
+payload = json.loads(frame)
+if not isinstance(payload, dict) or set(payload) != {"token", "environment", "descriptors"}:
+    raise SystemExit(72)
+if (
+    payload["token"] != token
+    or not isinstance(payload["environment"], dict)
+    or not isinstance(payload["descriptors"], list)
+    or len(payload["descriptors"]) > descriptor_capacity
+    or any(
+        isinstance(descriptor, bool)
+        or not isinstance(descriptor, int)
+        or descriptor < 3
+        or descriptor > 1048575
+        for descriptor in payload["descriptors"]
+    )
+    or len(set(payload["descriptors"])) != len(payload["descriptors"])
+):
+    raise SystemExit(73)
+environment = payload["environment"]
+if any(
+    not isinstance(key, str)
+    or not isinstance(value, str)
+    or not key
+    or "=" in key
+    or "\0" in key
+    or "\0" in value
+    for key, value in environment.items()
+):
+    raise SystemExit(74)
+received = array.array("i")
+for level, kind, data in controls:
+    if level != socket.SOL_SOCKET or kind != socket.SCM_RIGHTS or len(data) % descriptor_size:
+        raise SystemExit(75)
+    received.frombytes(data)
+if len(received) != len(payload["descriptors"]):
+    raise SystemExit(76)
+temporary = []
+reservations = []
+targets = set(payload["descriptors"])
+try:
+    try:
+        for descriptor in received:
+            while True:
+                duplicate = fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)
+                if duplicate in targets:
+                    reservations.append(duplicate)
+                    continue
+                temporary.append(duplicate)
+                break
+    except BaseException:
+        for descriptor in temporary + reservations:
+            os.close(descriptor)
+        raise
+finally:
+    for descriptor in received:
+        os.close(descriptor)
+try:
+    for descriptor in reservations:
+        os.close(descriptor)
+    reservations.clear()
+    for descriptor, target in zip(temporary, payload["descriptors"]):
+        os.dup2(descriptor, target, inheritable=True)
+finally:
+    for descriptor in temporary + reservations:
+        os.close(descriptor)
+channel.close()
+descriptor = os.open("/dev/null", os.O_RDONLY | os.O_CLOEXEC)
+if descriptor != 0:
+    os.dup2(descriptor, 0)
+    os.close(descriptor)
+else:
+    os.set_inheritable(0, True)
+signal.pthread_sigmask(signal.SIG_UNBLOCK, (signal.SIGHUP, signal.SIGINT, signal.SIGTERM))
+os.execve(command[0], command, environment)
+'''
+
+
+def require_system_tool(path):
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        raise VerificationError(f"managed-command control tool path is not absolute: {path}")
+    current = "/"
+    for component in path.split("/")[1:]:
+        current = os.path.join(current, component)
+        metadata = os.lstat(current)
+        if metadata.st_uid != 0 or (
+            not stat.S_ISLNK(metadata.st_mode) and metadata.st_mode & 0o022
+        ):
+            raise VerificationError(f"managed-command control path is not protected: {current}")
+    resolved = os.path.realpath(path)
+    if not os.path.isabs(resolved):
+        raise VerificationError(f"managed-command control tool target is not absolute: {path}")
+    metadata = os.stat(resolved, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != 0
+        or metadata.st_mode & 0o022
+        or not metadata.st_mode & 0o111
+    ):
+        raise VerificationError(f"managed-command control tool is not trusted: {path}")
+
+
+def systemd_control_environment():
+    runtime = Path(f"/run/user/{os.geteuid()}")
+    metadata = runtime.stat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise VerificationError("systemd user runtime directory is not exact authority")
+    bus = runtime / "bus"
+    bus_metadata = bus.stat()
+    if not stat.S_ISSOCK(bus_metadata.st_mode) or bus_metadata.st_uid != os.geteuid():
+        raise VerificationError("systemd user bus is not current-UID socket authority")
+    return {
+        "HOME": pwd.getpwuid(os.geteuid()).pw_dir,
+        "PATH": "/usr/bin:/bin",
+        "LC_ALL": "C",
+        "LANG": "C",
+        "TZ": "UTC",
+        "XDG_RUNTIME_DIR": str(runtime),
+        "DBUS_SESSION_BUS_ADDRESS": f"unix:path={bus}",
+    }
+
+
+def run_systemd_control(arguments, environment, timeout_seconds=5):
+    result = subprocess.run(
+        arguments,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+        check=False,
+        timeout=timeout_seconds,
+    )
+    if len(result.stdout) + len(result.stderr) > 1024 * 1024:
+        raise VerificationError("systemd control output exceeds its byte bound")
+    return result
+
+
+def systemd_unit_properties(unit, environment):
+    properties = (
+        "Id",
+        "Names",
+        "Description",
+        "LoadState",
+        "ActiveState",
+        "Transient",
+        "CollectMode",
+        "InvocationID",
+        "ControlGroup",
+        "Slice",
+        "Delegate",
+        "KillMode",
+        "KillSignal",
+        "FinalKillSignal",
+        "SendSIGKILL",
+        "TimeoutStopUSec",
+        "RuntimeMaxUSec",
+    )
+    command = ["/usr/bin/systemctl", "--user", "show", unit, "--no-pager"]
+    for name in properties:
+        command.extend(("--property", name))
+    result = run_systemd_control(command, environment)
+    if result.returncode != 0:
+        raise VerificationError(
+            "cannot inspect managed-command unit: "
+            + result.stderr.decode("utf-8", errors="surrogateescape")
+        )
+    parsed = {}
+    for line in result.stdout.splitlines():
+        if b"=" not in line:
+            raise VerificationError("systemd unit property output is malformed")
+        raw_name, value = line.split(b"=", 1)
+        name = raw_name.decode("ascii")
+        if name in parsed or name not in properties:
+            raise VerificationError("systemd unit property output has an unexpected key")
+        parsed[name] = value.decode("utf-8", errors="surrogateescape")
+    if set(parsed) != set(properties):
+        raise VerificationError("systemd unit property output is incomplete")
+    return parsed
+
+
+def unit_is_absent(unit, environment):
+    properties = systemd_unit_properties(unit, environment)
+    return properties["LoadState"] == "not-found"
+
+
+def parse_systemd_second_duration(value):
+    scales = {
+        "w": 7 * 24 * 60 * 60,
+        "d": 24 * 60 * 60,
+        "h": 60 * 60,
+        "min": 60,
+        "s": 1,
+    }
+    order = {name: index for index, name in enumerate(scales)}
+    tokens = value.split(" ")
+    if not tokens or any(not token for token in tokens):
+        raise VerificationError("managed-command unit duration property is malformed")
+    total = 0
+    previous = -1
+    for token in tokens:
+        match = re.fullmatch(r"([0-9]+)(w|d|h|min|s)", token)
+        if match is None or order[match.group(2)] <= previous:
+            raise VerificationError("managed-command unit duration property is malformed")
+        previous = order[match.group(2)]
+        total += int(match.group(1)) * scales[match.group(2)]
+    return total
+
+
+def open_cgroup_authority(control_group):
+    if not control_group.startswith("/"):
+        raise VerificationError("managed-command cgroup path is not absolute")
+    components = control_group.split("/")[1:]
+    if not components or any(not part or part in (".", "..") for part in components):
+        raise VerificationError("managed-command cgroup path has an invalid component")
+    descriptor = os.open("/sys/fs/cgroup", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    events = None
+    kill = None
+    processes = None
+    controllers = None
+    kind = None
+    try:
+        controllers = os.open("cgroup.controllers", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        owned_controllers = controllers
+        controllers = None
+        os.close(owned_controllers)
+        for component in components:
+            child = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=descriptor,
+            )
+            previous = descriptor
+            descriptor = child
+            os.close(previous)
+        events = os.open("cgroup.events", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        kill = os.open("cgroup.kill", os.O_WRONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        processes = os.open("cgroup.procs", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        kind = os.open("cgroup.type", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        primary_error = None
+        try:
+            cgroup_type = os.read(kind, 128)
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            failures = []
+            attempt_cleanup(failures, "cgroup type descriptor", os.close, kind)
+            kind = None
+            report_cleanup_failures(
+                primary_error,
+                "managed-command cgroup type cleanup failed",
+                failures,
+            )
+        if cgroup_type != b"domain\n":
+            raise VerificationError("managed-command cgroup is not a domain cgroup")
+        return {
+            "directory": descriptor,
+            "events": events,
+            "kill": kill,
+            "processes": processes,
+            "identity": filesystem_identity(os.fstat(descriptor)),
+            "path": "/sys/fs/cgroup" + control_group,
+        }
+    except BaseException as primary_error:
+        failures = []
+        for label, owned in (
+            ("cgroup type descriptor", kind),
+            ("cgroup controller descriptor", controllers),
+            ("cgroup processes descriptor", processes),
+            ("cgroup kill descriptor", kill),
+            ("cgroup events descriptor", events),
+            ("cgroup directory descriptor", descriptor),
+        ):
+            if owned is not None:
+                attempt_cleanup(failures, label, os.close, owned)
+        report_cleanup_failures(
+            primary_error,
+            "managed-command cgroup acquisition cleanup failed",
+            failures,
+        )
+        raise
+
+
+def close_cgroup_authority(authority):
+    if authority is None:
+        return
+    failures = []
+    for name in ("events", "kill", "processes", "directory"):
+        descriptor = authority.get(name)
+        if descriptor is not None:
+            authority[name] = None
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                failures.append((name, exc))
+    if failures:
+        names = ", ".join(name for name, _ in failures)
+        raise VerificationError(f"managed-command cgroup descriptors could not be closed: {names}") from failures[0][1]
+
+
+def cgroup_is_populated(authority):
+    if filesystem_identity(os.fstat(authority["directory"])) != authority["identity"]:
+        raise VerificationError("managed-command cgroup descriptor identity changed")
+    try:
+        os.lseek(authority["events"], 0, os.SEEK_SET)
+        content = os.read(authority["events"], 4096)
+    except OSError as exc:
+        if exc.errno == errno.ENODEV and not os.path.lexists(authority["path"]):
+            return False
+        raise VerificationError("managed-command cgroup events became unavailable") from exc
+    if len(content) == 4096:
+        raise VerificationError("managed-command cgroup events exceed their byte bound")
+    values = {}
+    for line in content.splitlines():
+        fields = line.split()
+        if len(fields) != 2 or fields[0] in values:
+            raise VerificationError("managed-command cgroup events are malformed")
+        values[fields[0]] = fields[1]
+    if values.get(b"populated") not in (b"0", b"1"):
+        raise VerificationError("managed-command cgroup population state is unavailable")
+    return values[b"populated"] == b"1"
+
+
+def authenticate_managed_unit(
+    unit, description, token, target_pid, environment, stop_limit, runtime_limit
+):
+    properties = systemd_unit_properties(unit, environment)
+    expected = {
+        "Id": unit,
+        "Names": unit,
+        "Description": description,
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "Transient": "yes",
+        "CollectMode": "inactive-or-failed",
+        "Slice": "app.slice",
+        "Delegate": "no",
+        "KillMode": "control-group",
+        "KillSignal": "15",
+        "FinalKillSignal": "9",
+        "SendSIGKILL": "yes",
+    }
+    for name, value in expected.items():
+        if properties[name] != value:
+            raise VerificationError(f"managed-command unit property differs: {name}")
+    if (
+        parse_systemd_second_duration(properties["TimeoutStopUSec"]) != stop_limit
+        or parse_systemd_second_duration(properties["RuntimeMaxUSec"]) != runtime_limit
+    ):
+        raise VerificationError("managed-command unit duration policy differs")
+    if re.fullmatch(r"[0-9a-f]{32}", properties["InvocationID"]) is None:
+        raise VerificationError("managed-command invocation identity is malformed")
+    if not properties["ControlGroup"].endswith("/" + unit):
+        raise VerificationError("managed-command cgroup is not bound to its exact unit")
+    authority = open_cgroup_authority(properties["ControlGroup"])
+    try:
+        process_cgroup = read_process_cgroup(target_pid)
+        if process_cgroup != f"0::{properties['ControlGroup']}\n".encode("ascii"):
+            raise VerificationError("managed-command gate process is outside its authenticated cgroup")
+        repeated = systemd_unit_properties(unit, environment)
+        if (
+            repeated["InvocationID"] != properties["InvocationID"]
+            or repeated["ControlGroup"] != properties["ControlGroup"]
+            or repeated["Description"] != description
+        ):
+            raise VerificationError("managed-command unit identity changed during acquisition")
+        if not cgroup_is_populated(authority):
+            raise VerificationError("managed-command cgroup is empty before target release")
+        authority["unit"] = unit
+        authority["description"] = description
+        authority["invocation"] = properties["InvocationID"]
+        authority["control_group"] = properties["ControlGroup"]
+        authority["token"] = token
+        return authority
+    except BaseException as primary_error:
+        failures = []
+        attempt_cleanup(
+            failures,
+            "unacquired cgroup authority",
+            close_cgroup_authority,
+            authority,
+        )
+        report_cleanup_failures(
+            primary_error,
+            "unacquired managed-command authority cleanup failed",
+            failures,
+        )
+        raise
+
+
+def cgroup_process_ids(authority):
+    os.lseek(authority["processes"], 0, os.SEEK_SET)
+    content = os.read(authority["processes"], 1024 * 1024 + 1)
+    if len(content) > 1024 * 1024:
+        raise VerificationError("managed-command cgroup process inventory exceeds its byte bound")
+    process_ids = []
+    seen = set()
+    for line in content.splitlines():
+        if re.fullmatch(br"[1-9][0-9]*", line) is None:
+            raise VerificationError("managed-command cgroup process inventory is malformed")
+        process_id = int(line)
+        if process_id not in seen:
+            seen.add(process_id)
+            process_ids.append(process_id)
+    return process_ids
+
+
+def read_process_cgroup(process_id):
+    descriptor = os.open(
+        f"/proc/{process_id}/cgroup",
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+    )
+    try:
+        content = os.read(descriptor, 4097)
     finally:
-        close_process_pipes(process)
+        os.close(descriptor)
+    if len(content) > 4096:
+        raise VerificationError("managed-command process cgroup exceeds its byte bound")
+    return content
+
+
+def signal_managed_unit(authority, environment, signum):
+    del environment
+    numeric_signal = signal.Signals["SIG" + signum]
+    for process_id in cgroup_process_ids(authority):
+        try:
+            pidfd = os.pidfd_open(process_id, 0)
+        except ProcessLookupError:
+            continue
+        try:
+            try:
+                process_cgroup = read_process_cgroup(process_id)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            if process_cgroup != f"0::{authority['control_group']}\n".encode("ascii"):
+                raise VerificationError("managed-command process left its authenticated cgroup")
+            try:
+                signal.pidfd_send_signal(pidfd, numeric_signal)
+            except ProcessLookupError:
+                pass
+        finally:
+            os.close(pidfd)
+
+
+def wait_cgroup_empty(authority):
+    while cgroup_is_populated(authority):
+        time.sleep(0.01)
+
+
+def hard_kill_cgroup(authority):
+    if cgroup_is_populated(authority):
+        os.write(authority["kill"], b"1")
+    wait_cgroup_empty(authority)
+
+
+def gracefully_stop_managed_unit(authority, environment, cleanup_grace_seconds):
+    deadline = time.monotonic() + cleanup_grace_seconds
+    while cgroup_is_populated(authority):
+        signal_managed_unit(authority, environment, "TERM")
+        if time.monotonic() >= deadline:
+            hard_kill_cgroup(authority)
+            return
+        time.sleep(0.01)
+
+
+def authenticate_unacquired_unit(unit, description, environment):
+    properties = systemd_unit_properties(unit, environment)
+    if properties["LoadState"] == "not-found":
+        return None
+    if (
+        properties["Description"] != description
+        or properties["Transient"] != "yes"
+        or re.fullmatch(r"[0-9a-f]{32}", properties["InvocationID"]) is None
+        or not properties["ControlGroup"].endswith("/" + unit)
+    ):
+        raise VerificationError("unacquired managed-command unit identity is ambiguous")
+    authority = open_cgroup_authority(properties["ControlGroup"])
+    try:
+        repeated = systemd_unit_properties(unit, environment)
+        if (
+            repeated["InvocationID"] != properties["InvocationID"]
+            or repeated["ControlGroup"] != properties["ControlGroup"]
+            or repeated["Description"] != description
+        ):
+            raise VerificationError("unacquired managed-command unit changed during acquisition")
+        authority["unit"] = unit
+        authority["description"] = description
+        authority["invocation"] = properties["InvocationID"]
+        authority["control_group"] = properties["ControlGroup"]
+        return authority
+    except BaseException as primary_error:
+        failures = []
+        attempt_cleanup(
+            failures,
+            "unacquired cgroup authority close",
+            close_cgroup_authority,
+            authority,
+        )
+        report_cleanup_failures(
+            primary_error,
+            "unacquired managed-command authority cleanup failed",
+            failures,
+        )
+        raise
+
+
+def terminate_and_reap_unacquired_launcher(process):
+    if process.returncode is not None:
+        return
+    failures = []
+    try:
+        process.terminate()
+    except BaseException as error:
+        failures.append(("launcher termination", error))
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except BaseException as error:
+            failures.append(("launcher forced termination", error))
+        try:
+            process.wait()
+        except BaseException as error:
+            failures.append(("launcher reap", error))
+    except BaseException as error:
+        failures.append(("launcher reap", error))
+    if process.returncode is None:
+        failures.append(
+            (
+                "launcher absence proof",
+                VerificationError("managed-command launcher remains unreaped"),
+            )
+        )
+    report_cleanup_failures(
+        None,
+        "unacquired managed-command launcher cleanup failed",
+        failures,
+    )
+
+
+def kill_observed_target(target_pidfd):
+    if target_pidfd is None:
+        return
+    try:
+        signal.pidfd_send_signal(target_pidfd, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+
+
+def resolve_unacquired_unit(process, target_pidfd, unit, description, environment):
+    invocation = None
+    authority = None
+    launcher_reaped = False
+    deadline = time.monotonic() + MANAGED_UNIT_COLLECTION_SECONDS
+    primary_error = None
+    try:
+        authority = authenticate_unacquired_unit(unit, description, environment)
+        if authority is not None:
+            invocation = authority["invocation"]
+            hard_kill_cgroup(authority)
+        terminate_and_reap_unacquired_launcher(process)
+        launcher_reaped = True
+        if authority is not None:
+            close_cgroup_authority(authority)
+            authority = None
+        while True:
+            if time.monotonic() >= deadline:
+                raise VerificationError("unacquired managed-command unit survived collection deadline")
+            properties = systemd_unit_properties(unit, environment)
+            if properties["LoadState"] == "not-found":
+                return
+            if invocation is None:
+                authority = authenticate_unacquired_unit(unit, description, environment)
+                if authority is None:
+                    continue
+                invocation = authority["invocation"]
+                hard_kill_cgroup(authority)
+                close_cgroup_authority(authority)
+                authority = None
+                continue
+            if properties["InvocationID"] != invocation:
+                raise VerificationError("unacquired managed-command unit was replaced during cleanup")
+            time.sleep(0.01)
+    except BaseException as error:
+        primary_error = error
+        raise
+    finally:
+        failures = []
+        attempt_cleanup(
+            failures,
+            "unacquired cgroup authority close",
+            close_cgroup_authority,
+            authority,
+        )
+        attempt_cleanup(
+            failures,
+            "unacquired target termination",
+            kill_observed_target,
+            target_pidfd,
+        )
+        if not launcher_reaped:
+            attempt_cleanup(
+                failures,
+                "unacquired launcher termination and reap",
+                terminate_and_reap_unacquired_launcher,
+                process,
+            )
+        report_cleanup_failures(
+            primary_error,
+            "unacquired managed-command finalization failed",
+            failures,
+        )
+
+
+def read_managed_ready(process, token, deadline, output, max_output_bytes):
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+    ready = bytearray()
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise VerificationError("managed-command cgroup acquisition exceeded its deadline")
+            events = selector.select(remaining)
+            if not events:
+                raise VerificationError("managed-command cgroup acquisition exceeded its deadline")
+            for key, _ in events:
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    raise VerificationError("managed-command gate exited before authority acquisition")
+                if key.data == "stderr":
+                    output["stderr"].extend(chunk)
+                else:
+                    ready.extend(chunk)
+                if len(ready) + len(output["stderr"]) > max_output_bytes:
+                    raise VerificationError("managed command output exceeds its bound during acquisition")
+                if b"\n" in ready:
+                    line, remainder = bytes(ready).split(b"\n", 1)
+                    match = re.fullmatch(
+                        rb"RUSTDESK-MANAGED-READY " + token.encode("ascii") + rb" ([1-9][0-9]*)",
+                        line,
+                    )
+                    if match is None or remainder:
+                        raise VerificationError("managed-command gate returned a malformed readiness frame")
+                    return int(match.group(1))
+    finally:
+        selector.close()
+
+
+def finalize_managed_unit(process, authority, environment):
+    control_group_path = authority["path"]
+    unit = authority["unit"]
+    invocation = authority["invocation"]
+    failures = []
+    attempt_cleanup(
+        failures,
+        "managed cgroup forced termination",
+        hard_kill_cgroup,
+        authority,
+    )
+    attempt_cleanup(
+        failures,
+        "managed launcher termination and reap",
+        terminate_and_reap_unacquired_launcher,
+        process,
+    )
+    attempt_cleanup(
+        failures,
+        "managed cgroup authority close",
+        close_cgroup_authority,
+        authority,
+    )
+    deadline = time.monotonic() + MANAGED_UNIT_COLLECTION_SECONDS
+    try:
+        while True:
+            properties = systemd_unit_properties(unit, environment)
+            if properties["LoadState"] == "not-found":
+                break
+            if properties["InvocationID"] != invocation:
+                raise VerificationError("managed-command unit was replaced during collection")
+            if time.monotonic() >= deadline:
+                raise VerificationError("managed-command unit survived its collection deadline")
+            time.sleep(0.01)
+    except BaseException as error:
+        failures.append(("managed unit collection", error))
+    try:
+        if os.path.lexists(control_group_path):
+            raise VerificationError("managed-command cgroup pathname survived collection")
+    except BaseException as error:
+        failures.append(("managed cgroup pathname absence", error))
+    report_cleanup_failures(
+        None,
+        "managed-command unit finalization failed",
+        failures,
+    )
+
+
+def close_private_descriptors(descriptors):
+    failures = []
+    while descriptors:
+        descriptor = descriptors.pop()
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            failures.append(exc)
+    if failures:
+        raise VerificationError("managed private descriptors could not be closed") from failures[0]
+
+
+def acquire_private_descriptors(descriptors):
+    acquired = []
+    try:
+        for descriptor in descriptors:
+            duplicate = os.dup(descriptor)
+            os.set_inheritable(duplicate, False)
+            os.fstat(duplicate)
+            acquired.append(duplicate)
+        return acquired
+    except BaseException as primary_error:
+        try:
+            close_private_descriptors(acquired)
+        except VerificationError as cleanup_error:
+            raise VerificationError(
+                f"{primary_error}; managed private descriptor acquisition cleanup failed: {cleanup_error}"
+            ) from primary_error
+        raise
 
 
 def run_managed_command(
@@ -1939,142 +4145,1266 @@ def run_managed_command(
     cleanup_grace_seconds=120,
     kill_grace_seconds=10,
     max_output_bytes=32 * 1024 * 1024,
+    inherited_fds=(),
 ):
+    if not command or not os.path.isabs(os.fspath(command[0])):
+        raise VerificationError("managed command executable is not absolute")
+    target_environment = dict(os.environ if env is None else env)
+    if any(not isinstance(key, str) or not isinstance(value, str) for key, value in target_environment.items()):
+        raise VerificationError("managed command environment is not textual")
+    if not isinstance(inherited_fds, (tuple, list)):
+        raise VerificationError("managed command inherited descriptor allowlist is malformed")
+    if len(inherited_fds) > 64:
+        raise VerificationError("managed command inherited descriptor allowlist exceeds its bound")
+    normalized_fds = []
+    for descriptor in inherited_fds:
+        if (
+            isinstance(descriptor, bool)
+            or not isinstance(descriptor, int)
+            or descriptor < 3
+            or descriptor > 1048575
+        ):
+            raise VerificationError("managed command inherited descriptor is invalid")
+        normalized_fds.append(descriptor)
+    if len(set(normalized_fds)) != len(normalized_fds):
+        raise VerificationError("managed command inherited descriptor allowlist has duplicates")
+    normalized_fds = tuple(sorted(normalized_fds))
+    descriptor_authority = acquire_private_descriptors(normalized_fds)
+    try:
+        for tool in ("/usr/bin/systemd-run", "/usr/bin/systemctl", "/usr/bin/python3"):
+            require_system_tool(tool)
+        control_environment = systemd_control_environment()
+        token = os.urandom(32).hex()
+        nonce = os.urandom(32).hex()
+        unit = f"rustdesk-verifier-{token}.scope"
+        description = f"rustdesk-verifier:{nonce}"
+        if not unit_is_absent(unit, control_environment):
+            raise VerificationError("managed-command transient unit name is already loaded")
+        runtime_limit = max(
+            1, int(timeout_seconds + cleanup_grace_seconds + kill_grace_seconds + 60)
+        )
+        stop_limit = max(1, int(cleanup_grace_seconds))
+    except BaseException as primary_error:
+        try:
+            close_private_descriptors(descriptor_authority)
+        except VerificationError as cleanup_error:
+            raise VerificationError(
+                f"{primary_error}; managed private descriptor setup cleanup failed: {cleanup_error}"
+            ) from primary_error
+        raise
+    launcher = [
+        "/usr/bin/systemd-run",
+        "--user",
+        "--scope",
+        "--quiet",
+        "--collect",
+        "--no-ask-password",
+        "--expand-environment=no",
+        f"--unit={unit}",
+        f"--description={description}",
+        "--slice=app.slice",
+        "--property=Delegate=no",
+        "--property=KillMode=control-group",
+        "--property=KillSignal=SIGTERM",
+        "--property=FinalKillSignal=SIGKILL",
+        "--property=SendSIGKILL=yes",
+        f"--property=TimeoutStopSec={stop_limit}s",
+        f"--property=RuntimeMaxSec={runtime_limit}s",
+        "--",
+        "/usr/bin/python3",
+        "-I",
+        "-S",
+        "-c",
+        MANAGED_GATE_HELPER,
+        token,
+        *[os.fspath(argument) for argument in command],
+    ]
     process = None
-    process_reaped = False
+    authority = None
+    target_pidfd = None
     selector = None
     signal_scope = None
+    control_socket = None
+    child_socket = None
+    output = {"stdout": bytearray(), "stderr": bytearray()}
+    completed = False
+    acquisition_active = False
     try:
+        control_socket, child_socket = socket.socketpair(
+            socket.AF_UNIX,
+            socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC,
+        )
         signal_scope = enter_managed_signal_scope()
         activate_managed_signal_scope(signal_scope)
         begin_managed_process_acquisition()
-        try:
-            process = subprocess.Popen(
-                command,
-                cwd=cwd,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-            )
-        finally:
-            finish_managed_process_acquisition()
+        acquisition_active = True
+        process = spawn_exact_process(
+            launcher,
+            cwd,
+            control_environment,
+            child_socket.fileno(),
+        )
+        child_socket.close()
+        child_socket = None
         if process.stdout is None or process.stderr is None:
             raise VerificationError("managed command has no output streams")
+        acquisition_deadline = time.monotonic() + min(30, timeout_seconds)
+        target_pid = read_managed_ready(process, token, acquisition_deadline, output, max_output_bytes)
+        target_pidfd = os.pidfd_open(target_pid, 0)
+        authority = authenticate_managed_unit(
+            unit,
+            description,
+            token,
+            target_pid,
+            control_environment,
+            stop_limit,
+            runtime_limit,
+        )
+        acquisition_active = False
+        pending_signum = finish_managed_process_acquisition()
+        if pending_signum is not None:
+            raise ManagedSignal(pending_signum)
+        frame = json.dumps(
+            {
+                "token": token,
+                "environment": target_environment,
+                "descriptors": list(normalized_fds),
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("ascii") + b"\n"
+        if len(frame) > 1024 * 1024:
+            raise VerificationError("managed command environment exceeds its byte bound")
+        controls = []
+        if normalized_fds:
+            controls.append(
+                (socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", descriptor_authority))
+            )
+        if control_socket.sendmsg([frame], controls) != len(frame):
+            raise VerificationError("managed command descriptor handoff was incomplete")
+        control_socket.close()
+        control_socket = None
         selector = selectors.DefaultSelector()
         selector.register(process.stdout, selectors.EVENT_READ, "stdout")
         selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-        output = {"stdout": bytearray(), "stderr": bytearray()}
-        output_bytes = 0
+        selector.register(target_pidfd, selectors.EVENT_READ, "target")
         timed_out = False
-        phase = "running"
+        lingering = False
+        target_exit_observed = None
         deadline = time.monotonic() + timeout_seconds
-
-        def advance_timeout():
-            nonlocal deadline, phase, timed_out
-            if phase == "running":
-                timed_out = True
-                phase = "terminating"
-                signal_process_group(process.pid, signal.SIGTERM)
-                deadline = time.monotonic() + cleanup_grace_seconds
-            elif phase == "terminating":
-                phase = "killing"
-                signal_process_group(process.pid, signal.SIGKILL)
-                deadline = time.monotonic() + kill_grace_seconds
-            else:
-                raise VerificationError("cannot reap a hard-killed managed command process group")
-
-        while selector.get_map():
+        while process.poll() is None or any(
+            key.data in ("stdout", "stderr") for key in selector.get_map().values()
+        ):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                advance_timeout()
-                continue
-            events = selector.select(remaining)
+                timed_out = True
+                break
+            wait_seconds = remaining
+            if target_exit_observed is not None:
+                wait_seconds = min(
+                    wait_seconds,
+                    max(0.0, 0.1 - (time.monotonic() - target_exit_observed)),
+                )
+            events = selector.select(wait_seconds)
             if not events:
-                advance_timeout()
+                if target_exit_observed is not None and cgroup_is_populated(authority):
+                    lingering = True
+                    break
+                if time.monotonic() >= deadline:
+                    timed_out = True
+                    break
                 continue
             for key, _ in events:
+                if key.data == "target":
+                    selector.unregister(target_pidfd)
+                    target_exit_observed = time.monotonic()
+                    continue
                 chunk = os.read(key.fd, 65536)
                 if not chunk:
                     selector.unregister(key.fileobj)
                     key.fileobj.close()
                     continue
-                output_bytes += len(chunk)
-                if output_bytes > max_output_bytes:
+                if len(output["stdout"]) + len(output["stderr"]) + len(chunk) > max_output_bytes:
                     raise VerificationError("managed command output exceeds its bound")
                 output[key.data].extend(chunk)
+            if (
+                target_exit_observed is not None
+                and time.monotonic() - target_exit_observed >= 0.1
+                and cgroup_is_populated(authority)
+            ):
+                lingering = True
+                break
 
-        while process.poll() is None:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                advance_timeout()
-                continue
+        if timed_out:
+            gracefully_stop_managed_unit(
+                authority,
+                control_environment,
+                cleanup_grace_seconds,
+            )
+        elif lingering:
+            hard_kill_cgroup(authority)
+        elif cgroup_is_populated(authority):
+            if process.poll() is not None:
+                lingering = True
+                hard_kill_cgroup(authority)
+            else:
+                raise VerificationError("managed command stopped producing output while still active")
+        if timed_out or lingering:
+            remaining_budget = max_output_bytes - len(output["stdout"]) - len(output["stderr"])
             try:
-                process.wait(timeout=remaining)
-            except subprocess.TimeoutExpired:
-                advance_timeout()
-        process_reaped = True
-
-        if process_group_exists(process.pid):
-            signal_process_group(process.pid, signal.SIGKILL)
-            if not wait_process_group_absent(process.pid, kill_grace_seconds):
-                raise VerificationError(f"managed command retained process group {process.pid}")
-            if not timed_out:
-                raise VerificationError("managed command exited while descendants remained")
+                remaining_stdout, remaining_stderr = process.communicate(
+                    timeout=kill_grace_seconds,
+                    max_output_bytes=remaining_budget,
+                )
+            except subprocess.TimeoutExpired as exc:
+                remaining_stdout = exc.output or b""
+                remaining_stderr = exc.stderr or b""
+            if (
+                len(output["stdout"])
+                + len(output["stderr"])
+                + len(remaining_stdout)
+                + len(remaining_stderr)
+                > max_output_bytes
+            ):
+                raise VerificationError("managed command output exceeds its bound during cleanup")
+            output["stdout"].extend(remaining_stdout)
+            output["stderr"].extend(remaining_stderr)
+        close_process_pipes(process)
+        owned_authority = authority
+        authority = None
+        finalize_managed_unit(
+            process, owned_authority, control_environment
+        )
+        completed = True
 
         stdout = output["stdout"].decode("utf-8", errors="surrogateescape")
         stderr = output["stderr"].decode("utf-8", errors="surrogateescape")
         if timed_out:
             stderr += "\nmanaged command exceeded its deadline"
+        if lingering:
+            raise VerificationError("managed command exited while cgroup descendants remained")
         return subprocess.CompletedProcess(command, 124 if timed_out else process.returncode, stdout, stderr)
     finally:
+        primary_exception = sys.exc_info()[1]
+        cleanup_failures = []
+        pending_signum = None
+        finalization_mask = signal.pthread_sigmask(signal.SIG_BLOCK, MANAGED_SIGNALS)
+        if authority is not None:
+            owned_authority = authority
+            authority = None
+            attempt_cleanup(
+                cleanup_failures,
+                "managed process pipe close before shutdown",
+                close_process_pipes,
+                process,
+            )
+            attempt_cleanup(
+                cleanup_failures,
+                "managed unit graceful shutdown",
+                gracefully_stop_managed_unit,
+                owned_authority,
+                control_environment,
+                cleanup_grace_seconds,
+            )
+            attempt_cleanup(
+                cleanup_failures,
+                "managed unit forced finalization",
+                finalize_managed_unit,
+                process,
+                owned_authority,
+                control_environment,
+            )
+        elif process is not None and not completed:
+            attempt_cleanup(
+                cleanup_failures,
+                "unacquired managed unit resolution",
+                resolve_unacquired_unit,
+                process,
+                target_pidfd,
+                unit,
+                description,
+                control_environment,
+            )
+        if control_socket is not None:
+            owned_socket = control_socket
+            control_socket = None
+            attempt_cleanup(
+                cleanup_failures,
+                "managed control socket close",
+                owned_socket.close,
+            )
+        if child_socket is not None:
+            owned_socket = child_socket
+            child_socket = None
+            attempt_cleanup(
+                cleanup_failures,
+                "managed child socket close",
+                owned_socket.close,
+            )
+        if selector is not None:
+            attempt_cleanup(
+                cleanup_failures,
+                "managed selector close",
+                selector.close,
+            )
+            selector = None
+        if target_pidfd is not None:
+            owned_pidfd = target_pidfd
+            target_pidfd = None
+            attempt_cleanup(
+                cleanup_failures,
+                "managed target pidfd close",
+                os.close,
+                owned_pidfd,
+            )
+        if process is not None:
+            attempt_cleanup(
+                cleanup_failures,
+                "managed process pipe close",
+                close_process_pipes,
+                process,
+            )
+        attempt_cleanup(
+            cleanup_failures,
+            "managed private descriptor close",
+            close_private_descriptors,
+            descriptor_authority,
+        )
+        if acquisition_active:
+            acquisition_active = False
+            try:
+                pending_signum = finish_managed_process_acquisition()
+            except BaseException as error:
+                cleanup_failures.append(("managed process acquisition finish", error))
+        if signal_scope is not None:
+            attempt_cleanup(
+                cleanup_failures,
+                "managed signal-scope release",
+                leave_managed_signal_scope,
+                signal_scope,
+                finalization_mask,
+            )
+        else:
+            attempt_cleanup(
+                cleanup_failures,
+                "managed signal-mask restoration",
+                signal.pthread_sigmask,
+                signal.SIG_SETMASK,
+                finalization_mask,
+            )
+        report_cleanup_failures(
+            primary_exception,
+            "managed-command finalization failed",
+            cleanup_failures,
+        )
+        if pending_signum is not None:
+            if primary_exception is None:
+                raise ManagedSignal(pending_signum)
+            primary_exception.add_note(
+                f"managed signal {pending_signum} was deferred until admission cleanup completed"
+            )
+
+
+class StatxTimestamp(ctypes.Structure):
+    _fields_ = [
+        ("seconds", ctypes.c_int64),
+        ("nanoseconds", ctypes.c_uint32),
+        ("reserved", ctypes.c_int32),
+    ]
+
+
+class Statx(ctypes.Structure):
+    _fields_ = [
+        ("mask", ctypes.c_uint32),
+        ("block_size", ctypes.c_uint32),
+        ("attributes", ctypes.c_uint64),
+        ("link_count", ctypes.c_uint32),
+        ("uid", ctypes.c_uint32),
+        ("gid", ctypes.c_uint32),
+        ("mode", ctypes.c_uint16),
+        ("spare0", ctypes.c_uint16),
+        ("inode", ctypes.c_uint64),
+        ("size", ctypes.c_uint64),
+        ("blocks", ctypes.c_uint64),
+        ("attributes_mask", ctypes.c_uint64),
+        ("access_time", StatxTimestamp),
+        ("birth_time", StatxTimestamp),
+        ("change_time", StatxTimestamp),
+        ("modify_time", StatxTimestamp),
+        ("rdev_major", ctypes.c_uint32),
+        ("rdev_minor", ctypes.c_uint32),
+        ("dev_major", ctypes.c_uint32),
+        ("dev_minor", ctypes.c_uint32),
+        ("mount_id", ctypes.c_uint64),
+        ("dio_memory_alignment", ctypes.c_uint32),
+        ("dio_offset_alignment", ctypes.c_uint32),
+        ("spare3", ctypes.c_uint64 * 12),
+    ]
+
+
+STATX_BASIC_STATS = 0x000007FF
+STATX_BTIME = 0x00000800
+STATX_MNT_ID = 0x00001000
+AT_EMPTY_PATH = 0x1000
+AT_NO_AUTOMOUNT = 0x800
+FS_IOC_GETFLAGS = 0x80086601
+FS_IOC_FSGETXATTR = 0x801C581F
+PUBLICATION_ENTRY_LIMIT = 128
+PUBLICATION_DEPTH_LIMIT = 16
+PUBLICATION_CONTENT_LIMIT = 2 * 1024 * 1024 * 1024
+PUBLICATION_XATTR_VALUE_LIMIT = 64 * 1024
+PUBLICATION_XATTR_NAME_LIMIT = 64 * 1024
+PUBLICATION_XATTR_TOTAL_LIMIT = 16 * 1024 * 1024
+PUBLICATION_XATTR_PER_INODE_COUNT_LIMIT = 1024
+PUBLICATION_XATTR_TOTAL_COUNT_LIMIT = 65536
+PUBLICATION_REPOSITORY_ENTRY_LIMIT = 4096
+PUBLICATION_REPOSITORY_BYTE_LIMIT = 1024 * 1024
+PUBLICATION_NAMESPACE_LIMIT = 17
+PUBLICATION_SERIALIZED_RESULT_LIMIT = 16 * 1024 * 1024
+PUBLICATION_OUTPUT_LIMIT = 16 * 1024 * 1024
+PUBLICATION_DEADLINE_SECONDS = 120
+
+
+def descriptor_statx(descriptor):
+    libc = ctypes.CDLL(None, use_errno=True)
+    function = libc.statx
+    function.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_uint,
+        ctypes.POINTER(Statx),
+    ]
+    function.restype = ctypes.c_int
+    result = Statx()
+    requested = STATX_BASIC_STATS | STATX_BTIME | STATX_MNT_ID
+    if function(descriptor, b"", AT_EMPTY_PATH | AT_NO_AUTOMOUNT, requested, ctypes.byref(result)) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if result.mask & (STATX_BASIC_STATS | STATX_MNT_ID) != STATX_BASIC_STATS | STATX_MNT_ID:
+        raise VerificationError("publication statx result omitted required basic or mount identity")
+    birth = None
+    if result.mask & STATX_BTIME:
+        birth = (result.birth_time.seconds, result.birth_time.nanoseconds)
+    return (
+        result.mask,
+        result.block_size,
+        result.attributes,
+        result.attributes_mask,
+        result.link_count,
+        result.uid,
+        result.gid,
+        result.mode,
+        result.inode,
+        result.size,
+        result.blocks,
+        (result.change_time.seconds, result.change_time.nanoseconds),
+        (result.modify_time.seconds, result.modify_time.nanoseconds),
+        birth,
+        result.rdev_major,
+        result.rdev_minor,
+        result.dev_major,
+        result.dev_minor,
+        result.mount_id,
+    )
+
+
+def publication_ioctl_state(descriptor, request, size, label):
+    value = bytearray(size)
+    try:
+        fcntl.ioctl(descriptor, request, value, True)
+    except OSError as exc:
+        if exc.errno in (errno.ENOTTY, errno.EOPNOTSUPP):
+            return ("unsupported", exc.errno)
+        raise VerificationError(f"cannot inspect publication {label}: {exc}") from exc
+    return ("supported", value.hex())
+
+
+def publication_security_state(descriptor, budget):
+    metadata = os.fstat(descriptor)
+    ordinary = (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_blocks,
+        metadata.st_rdev,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+    names = sorted(os.listxattr(descriptor), key=os.fsencode)
+    encoded_names = [os.fsencode(name) for name in names]
+    if len(names) > PUBLICATION_XATTR_PER_INODE_COUNT_LIMIT:
+        raise VerificationError("canonical publication state exceeds the xattr-count bound")
+    if sum(len(name) + 1 for name in encoded_names) > PUBLICATION_XATTR_NAME_LIMIT:
+        raise VerificationError("canonical publication state exceeds the xattr-name bound")
+    xattrs = []
+    by_name = {}
+    for name, encoded in zip(names, encoded_names):
+        value = os.getxattr(descriptor, name)
+        if len(value) > PUBLICATION_XATTR_VALUE_LIMIT:
+            raise VerificationError("canonical publication state exceeds the per-xattr byte bound")
+        budget["xattr_bytes"] += len(value)
+        budget["xattr_count"] += 1
+        if budget["xattr_bytes"] > PUBLICATION_XATTR_TOTAL_LIMIT:
+            raise VerificationError("canonical publication state exceeds the xattr byte bound")
+        if budget["xattr_count"] > PUBLICATION_XATTR_TOTAL_COUNT_LIMIT:
+            raise VerificationError("canonical publication state exceeds the shared xattr-count bound")
+        record = (encoded.hex(), len(value), hashlib.sha256(value).hexdigest())
+        xattrs.append(record)
+        by_name[encoded] = record
+    explicit = []
+    for encoded in (
+        b"system.posix_acl_access",
+        b"system.posix_acl_default",
+        b"security.capability",
+    ):
+        try:
+            value = os.getxattr(descriptor, encoded)
+        except OSError as exc:
+            if exc.errno == errno.ENODATA:
+                explicit.append((encoded.hex(), "absent"))
+                continue
+            if exc.errno == errno.EOPNOTSUPP:
+                explicit.append((encoded.hex(), "unsupported"))
+                continue
+            raise VerificationError(f"cannot inspect publication security xattr {encoded!r}: {exc}") from exc
+        record = (encoded.hex(), len(value), hashlib.sha256(value).hexdigest())
+        if by_name.get(encoded) != record:
+            raise VerificationError("publication security xattr enumeration is inconsistent")
+        explicit.append(record)
+    filesystem = os.fstatvfs(descriptor)
+    return (
+        ordinary,
+        descriptor_statx(descriptor),
+        filesystem.f_flag,
+        publication_ioctl_state(descriptor, FS_IOC_GETFLAGS, 4, "inode flags"),
+        publication_ioctl_state(descriptor, FS_IOC_FSGETXATTR, 28, "extended inode flags"),
+        tuple(xattrs),
+        tuple(explicit),
+    )
+
+
+def publication_directory_inventory(descriptor, budget, repository_root=False):
+    inventory_fd = os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+    try:
+        entry_limit = (
+            PUBLICATION_REPOSITORY_ENTRY_LIMIT
+            if repository_root
+            else max(0, PUBLICATION_ENTRY_LIMIT - budget["entries"])
+        )
+        names = []
+        name_bytes = 0
+        with os.scandir(inventory_fd) as entries:
+            for entry in entries:
+                if len(names) >= entry_limit:
+                    if repository_root:
+                        raise VerificationError(
+                            "canonical publication repository inventory exceeds its entry bound"
+                        )
+                    raise VerificationError("canonical publication state exceeds the entry bound")
+                encoded_size = len(os.fsencode(entry.name)) + 1
+                if (
+                    repository_root
+                    and name_bytes + encoded_size > PUBLICATION_REPOSITORY_BYTE_LIMIT
+                ):
+                    raise VerificationError(
+                        "canonical publication repository inventory exceeds its byte bound"
+                    )
+                names.append(entry.name)
+                name_bytes += encoded_size
+    finally:
+        os.close(inventory_fd)
+    return sorted(names, key=os.fsencode)
+
+
+def publication_path_snapshot(parent_fd, name, root_device, budget):
+    records = []
+
+    def visit(directory_fd, entry_name, relative, depth):
+        if depth > PUBLICATION_DEPTH_LIMIT:
+            raise VerificationError("canonical publication state exceeds the depth bound")
+        if budget["entries"] >= PUBLICATION_ENTRY_LIMIT:
+            raise VerificationError("canonical publication state exceeds the entry bound")
+        try:
+            edge = os.stat(entry_name, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            records.append((relative, "absent"))
+            budget["entries"] += 1
+            return
+        if edge.st_dev != root_device:
+            raise VerificationError("canonical publication state crosses a filesystem boundary")
+        if stat.S_ISREG(edge.st_mode):
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        elif stat.S_ISDIR(edge.st_mode):
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        else:
+            raise VerificationError("canonical publication state contains a link or special entry")
+        descriptor = os.open(entry_name, flags, dir_fd=directory_fd)
+        try:
+            opened = os.fstat(descriptor)
+            if filesystem_identity(opened) != filesystem_identity(edge):
+                raise VerificationError("canonical publication entry changed during open")
+            before = publication_security_state(descriptor, budget)
+            budget["entries"] += 1
+            if stat.S_ISREG(opened.st_mode):
+                if opened.st_size > budget["content_remaining"]:
+                    raise VerificationError("canonical publication state exceeds the content byte bound")
+                digest = hashlib.sha256()
+                offset = 0
+                while offset < opened.st_size:
+                    chunk = os.pread(descriptor, min(1024 * 1024, opened.st_size - offset), offset)
+                    if not chunk:
+                        raise VerificationError("canonical publication file ended before its recorded size")
+                    digest.update(chunk)
+                    offset += len(chunk)
+                if os.pread(descriptor, 1, opened.st_size):
+                    raise VerificationError("canonical publication file exceeds its recorded size")
+                budget["content_remaining"] -= opened.st_size
+                after = publication_security_state(descriptor, budget)
+                if after != before:
+                    raise VerificationError("canonical publication file changed during snapshot")
+                records.append((relative, "file", before, digest.hexdigest()))
+            else:
+                first_inventory = publication_directory_inventory(descriptor, budget)
+                records.append((relative, "directory", before, tuple(first_inventory)))
+                for child_name in first_inventory:
+                    visit(descriptor, child_name, os.path.join(relative, child_name), depth + 1)
+                second_inventory = publication_directory_inventory(descriptor, budget)
+                after = publication_security_state(descriptor, budget)
+                if second_inventory != first_inventory or after != before:
+                    raise VerificationError("canonical publication directory changed during snapshot")
+            final_edge = os.stat(entry_name, dir_fd=directory_fd, follow_symlinks=False)
+            if filesystem_identity(final_edge) != filesystem_identity(opened):
+                raise VerificationError("canonical publication parent edge changed during snapshot")
+        finally:
+            os.close(descriptor)
+
+    visit(parent_fd, name, name, 0)
+    return tuple(records)
+
+
+def publication_snapshot_worker(repo, test_gate_fd=None):
+    if test_gate_fd is not None:
+        os.read(test_gate_fd, 1)
+    descriptor_match = re.fullmatch(r"/proc/self/fd/([1-9][0-9]*)", os.fspath(repo))
+    if descriptor_match is None:
+        repository_fd = os.open(repo, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    else:
+        inherited_fd = int(descriptor_match.group(1))
+        repository_fd = os.dup(inherited_fd)
+        if not stat.S_ISDIR(os.fstat(repository_fd).st_mode):
+            os.close(repository_fd)
+            raise VerificationError("publication repository descriptor is not a directory")
+    try:
+        repository_metadata = os.fstat(repository_fd)
+        budget = {
+            "entries": 0,
+            "content_remaining": PUBLICATION_CONTENT_LIMIT,
+            "xattr_bytes": 0,
+            "xattr_count": 0,
+        }
+        before = publication_security_state(repository_fd, budget)
+        first_inventory = publication_directory_inventory(repository_fd, budget, repository_root=True)
+        names = ["dist"]
+        for name in first_inventory:
+            if name.startswith(".dist-release-"):
+                names.append(name)
+        names = sorted(set(names), key=os.fsencode)
+        if len(names) > PUBLICATION_NAMESPACE_LIMIT:
+            raise VerificationError("canonical publication namespace exceeds the path bound")
+        snapshot = tuple(
+            (
+                name,
+                publication_path_snapshot(repository_fd, name, repository_metadata.st_dev, budget),
+            )
+            for name in names
+        )
+        second_inventory = publication_directory_inventory(repository_fd, budget, repository_root=True)
+        after = publication_security_state(repository_fd, budget)
+        if second_inventory != first_inventory or after != before:
+            raise VerificationError("repository root changed during publication-state snapshot")
+        return snapshot
+    finally:
+        os.close(repository_fd)
+
+
+def encode_publication_worker_result(message):
+    payload = json.dumps(message, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    if len(payload) <= PUBLICATION_SERIALIZED_RESULT_LIMIT:
+        return payload
+    fallback = b'{"ok":false,"error":"publication snapshot result exceeds its byte bound"}'
+    if len(fallback) > PUBLICATION_SERIALIZED_RESULT_LIMIT:
+        raise VerificationError("publication result bound cannot contain its failure result")
+    return fallback
+
+
+def append_publication_worker_output(payload, diagnostics, target, chunk):
+    if len(payload) + len(diagnostics) + len(chunk) > PUBLICATION_OUTPUT_LIMIT:
+        raise VerificationError("publication snapshot worker output exceeds its byte bound")
+    target.extend(chunk)
+
+
+def run_publication_snapshot_worker(repository_fd, test_gate_fd):
+    try:
+        state = publication_snapshot_worker(
+            f"/proc/self/fd/{repository_fd}", test_gate_fd=test_gate_fd
+        )
+        message = {"ok": True, "state": state}
+    except BaseException as exc:
+        message = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    payload = encode_publication_worker_result(message)
+    offset = 0
+    while offset < len(payload):
+        offset += os.write(1, payload[offset:])
+    return 0
+
+
+def acquire_verifier_program(repo):
+    repository_fd = os.open(repo, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    scripts_fd = None
+    source_fd = None
+    sealed_fd = None
+    try:
+        scripts_fd = os.open(
+            "scripts",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=repository_fd,
+        )
+        source_fd = os.open(
+            "verify-verifier-workspace.py",
+            os.O_RDONLY | os.O_NOFOLLOW,
+            dir_fd=scripts_fd,
+        )
+        before = os.fstat(source_fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > VERIFIER_PROGRAM_LIMIT:
+            raise VerificationError("verifier program source is not a bounded regular file")
+        content = bytearray()
+        while len(content) <= VERIFIER_PROGRAM_LIMIT:
+            chunk = os.read(source_fd, min(65536, VERIFIER_PROGRAM_LIMIT + 1 - len(content)))
+            if not chunk:
+                break
+            content.extend(chunk)
+        if len(content) > VERIFIER_PROGRAM_LIMIT or len(content) != before.st_size:
+            raise VerificationError("verifier program source exceeds its byte bound")
+        after = os.fstat(source_fd)
+        edge = os.stat(
+            "verify-verifier-workspace.py",
+            dir_fd=scripts_fd,
+            follow_symlinks=False,
+        )
+        if (
+            stable_file_metadata(after) != stable_file_metadata(before)
+            or filesystem_identity(edge) != filesystem_identity(before)
+        ):
+            raise VerificationError("verifier program source changed during acquisition")
+        source = bytes(content).decode("utf-8")
+        sealed_fd = os.memfd_create(
+            "rustdesk-verifier-program",
+            os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING,
+        )
+        offset = 0
+        while offset < len(content):
+            offset += os.write(sealed_fd, content[offset:])
+        os.lseek(sealed_fd, 0, os.SEEK_SET)
+        fcntl.fcntl(sealed_fd, fcntl.F_ADD_SEALS, VERIFIER_PROGRAM_SEALS)
+        if fcntl.fcntl(sealed_fd, fcntl.F_GET_SEALS) != VERIFIER_PROGRAM_SEALS:
+            raise VerificationError("verifier program authority is not immutably sealed")
+        result_fd = sealed_fd
+        sealed_fd = None
+        return source, result_fd
+    finally:
+        failures = []
+        for label, descriptor in (
+            ("sealed verifier program", sealed_fd),
+            ("verifier source", source_fd),
+            ("verifier scripts directory", scripts_fd),
+            ("verifier repository", repository_fd),
+        ):
+            if descriptor is not None:
+                attempt_cleanup(failures, f"{label} close", os.close, descriptor)
+        report_cleanup_failures(
+            sys.exc_info()[1],
+            "verifier program acquisition cleanup failed",
+            failures,
+        )
+
+
+def canonical_publication_state(repo, timeout_seconds=PUBLICATION_DEADLINE_SECONDS, test_gate_fd=None):
+    if _VERIFIER_PROGRAM_FD is None:
+        raise VerificationError("publication snapshot worker program authority is unavailable")
+    descriptor_match = re.fullmatch(r"/proc/self/fd/([1-9][0-9]*)", os.fspath(repo))
+    if descriptor_match is None:
+        repository_fd = os.open(repo, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    else:
+        repository_fd = os.dup(int(descriptor_match.group(1)))
+    if not stat.S_ISDIR(os.fstat(repository_fd).st_mode):
+        os.close(repository_fd)
+        raise VerificationError("publication repository descriptor is not a directory")
+    try:
+        worker_fd = os.dup(_VERIFIER_PROGRAM_FD)
+    except BaseException:
+        os.close(repository_fd)
+        raise
+    try:
+        if (
+            not stat.S_ISREG(os.fstat(worker_fd).st_mode)
+            or fcntl.fcntl(worker_fd, fcntl.F_GET_SEALS) != VERIFIER_PROGRAM_SEALS
+        ):
+            raise VerificationError("publication snapshot worker program is not immutably sealed")
+    except BaseException:
+        os.close(worker_fd)
+        os.close(repository_fd)
+        raise
+    command = [
+        "/usr/bin/python3",
+        "-I",
+        "-S",
+        f"/proc/self/fd/{worker_fd}",
+        "--publication-worker-fd",
+        str(repository_fd),
+    ]
+    inherited = [repository_fd, worker_fd]
+    if test_gate_fd is not None:
+        command.extend(("--publication-worker-gate-fd", str(test_gate_fd)))
+        inherited.append(test_gate_fd)
+    process = None
+    pidfd = None
+    signal_scope = None
+    selector = selectors.DefaultSelector()
+    payload = bytearray()
+    diagnostics = bytearray()
+    exited = False
+    reaped = False
+    timed_out = False
+    stdin_fd = None
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        signal_scope = enter_managed_signal_scope()
+        activate_managed_signal_scope(signal_scope)
+        begin_managed_process_acquisition()
+        try:
+            stdin_fd = os.open("/dev/null", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            process = spawn_exact_process(
+                command,
+                "/",
+                {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "LANG": "C", "TZ": "UTC"},
+                stdin_fd,
+                tuple(inherited),
+            )
+        finally:
+            acquisition_error = sys.exc_info()[1]
+            acquisition_failures = []
+            if stdin_fd is not None:
+                attempt_cleanup(
+                    acquisition_failures,
+                    "publication worker stdin close",
+                    os.close,
+                    stdin_fd,
+                )
+                stdin_fd = None
+            pending_signum = None
+            try:
+                pending_signum = finish_managed_process_acquisition()
+            except BaseException as error:
+                acquisition_failures.append(("publication worker acquisition finish", error))
+            deferred_signal = None
+            if pending_signum is not None:
+                if acquisition_error is None:
+                    deferred_signal = pending_signum
+                else:
+                    acquisition_error.add_note(
+                        f"managed signal {pending_signum} was deferred until publication-worker cleanup"
+                    )
+            report_cleanup_failures(
+                acquisition_error,
+                "publication worker acquisition cleanup failed",
+                acquisition_failures,
+            )
+            if deferred_signal is not None:
+                raise ManagedSignal(deferred_signal)
+        os.close(repository_fd)
+        repository_fd = -1
+        os.close(worker_fd)
+        worker_fd = -1
+        if process.stdout is None or process.stderr is None:
+            raise VerificationError("publication snapshot worker has no output streams")
+        pidfd = os.pidfd_open(process.pid, 0)
+        selector.register(process.stdout, selectors.EVENT_READ, "result")
+        selector.register(process.stderr, selectors.EVENT_READ, "diagnostic")
+        selector.register(pidfd, selectors.EVENT_READ, "pidfd")
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            events = selector.select(remaining)
+            if not events:
+                timed_out = True
+                break
+            for key, _ in events:
+                if key.data == "pidfd":
+                    exited = True
+                    selector.unregister(pidfd)
+                    continue
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                target = payload if key.data == "result" else diagnostics
+                append_publication_worker_output(payload, diagnostics, target, chunk)
+        if timed_out:
+            process.kill()
+            process.wait()
+            reaped = True
+            exited = True
+            raise VerificationError("canonical publication state snapshot exceeded its deadline")
+        if not exited:
+            status = os.waitid(os.P_PIDFD, pidfd, os.WEXITED | os.WNOWAIT)
+            exited = status is not None
+        if not exited:
+            raise VerificationError("publication snapshot worker status is unavailable")
+        process.wait()
+        reaped = True
+        if process.returncode != 0:
+            raise VerificationError(
+                "publication snapshot worker exited unsuccessfully: "
+                + diagnostics.decode("utf-8", errors="surrogateescape")
+            )
+        if diagnostics:
+            raise VerificationError(
+                "publication snapshot worker emitted diagnostics: "
+                + diagnostics.decode("utf-8", errors="surrogateescape")
+            )
+        message = json.loads(payload.decode("ascii"))
+        if not isinstance(message, dict) or set(message) not in ({"ok", "state"}, {"ok", "error"}):
+            raise VerificationError("publication snapshot worker returned a malformed result")
+        if message.get("ok") is not True:
+            raise VerificationError(f"publication snapshot worker failed: {message.get('error')}")
+        return message["state"]
+    finally:
+        primary_error = sys.exc_info()[1]
+        cleanup_failures = []
         finalization_mask = signal.pthread_sigmask(signal.SIG_BLOCK, MANAGED_SIGNALS)
         try:
-            try:
-                if process is not None and not process_reaped:
-                    terminate_and_reap_process_group(process, cleanup_grace_seconds, kill_grace_seconds)
-            finally:
-                if selector is not None:
-                    selector.close()
+            if process is not None and not reaped:
+                terminated = attempt_cleanup(
+                    cleanup_failures,
+                    "publication worker termination",
+                    process.kill,
+                )
+                if terminated and attempt_cleanup(
+                    cleanup_failures,
+                    "publication worker reap",
+                    process.wait,
+                ):
+                    reaped = True
+                    exited = True
+            if process is not None:
+                attempt_cleanup(
+                    cleanup_failures,
+                    "publication worker stream close",
+                    close_process_pipes,
+                    process,
+                )
+            attempt_cleanup(
+                cleanup_failures,
+                "publication worker selector close",
+                selector.close,
+            )
+            if repository_fd >= 0:
+                attempt_cleanup(
+                    cleanup_failures,
+                    "publication repository descriptor close",
+                    os.close,
+                    repository_fd,
+                )
+                repository_fd = -1
+            if worker_fd >= 0:
+                attempt_cleanup(
+                    cleanup_failures,
+                    "publication program descriptor close",
+                    os.close,
+                    worker_fd,
+                )
+                worker_fd = -1
+            if pidfd is not None:
+                attempt_cleanup(
+                    cleanup_failures,
+                    "publication worker observation pidfd close",
+                    os.close,
+                    pidfd,
+                )
+                pidfd = None
         finally:
             if signal_scope is not None:
-                leave_managed_signal_scope(signal_scope, finalization_mask)
+                attempt_cleanup(
+                    cleanup_failures,
+                    "publication worker signal-scope release",
+                    leave_managed_signal_scope,
+                    signal_scope,
+                    finalization_mask,
+                )
             else:
-                signal.pthread_sigmask(signal.SIG_SETMASK, finalization_mask)
+                attempt_cleanup(
+                    cleanup_failures,
+                    "publication worker signal-mask restoration",
+                    signal.pthread_sigmask,
+                    signal.SIG_SETMASK,
+                    finalization_mask,
+                )
+        report_cleanup_failures(
+            primary_error,
+            "publication worker finalization failed",
+            cleanup_failures,
+        )
+
+
+def expect_publication_rejection(function, diagnostic, label):
+    try:
+        function()
+    except VerificationError as exc:
+        if diagnostic not in str(exc):
+            raise VerificationError(f"{label} failed for the wrong reason: {exc}") from exc
+        return
+    raise VerificationError(f"{label} accepted input above its bound")
+
+
+def exercise_publication_limit(constant, temporary_value, function, diagnostic, label):
+    original = globals()[constant]
+    globals()[constant] = temporary_value
+    try:
+        expect_publication_rejection(function, diagnostic, label)
+    finally:
+        globals()[constant] = original
+
+
+def exercise_canonical_publication_snapshot(scratch):
+    with scratch.directory("publication-state-") as repository:
+        destination = repository / "dist"
+        destination.mkdir(mode=0o700)
+        artifact = destination / "artifact"
+        artifact.write_bytes(b"original")
+        external = repository / "external"
+        external.write_bytes(b"outside-a")
+        external_link = destination / "external-link"
+        external_link.symlink_to(external)
+        try:
+            canonical_publication_state(repository)
+        except VerificationError:
+            pass
+        else:
+            raise VerificationError("canonical publication snapshot accepted a symlink")
+        external_link.unlink()
+        before = canonical_publication_state(repository)
+        artifact_metadata = artifact.stat()
+        artifact.write_bytes(b"mutated!")
+        os.utime(artifact, ns=(artifact_metadata.st_atime_ns, artifact_metadata.st_mtime_ns))
+        if canonical_publication_state(repository) == before:
+            raise VerificationError("canonical publication snapshot omitted same-size content mutation")
+        artifact.write_bytes(b"original")
+        os.utime(artifact, ns=(artifact_metadata.st_atime_ns, artifact_metadata.st_mtime_ns))
+        restored = canonical_publication_state(repository)
+        external.write_bytes(b"outside-b")
+        if canonical_publication_state(repository) != restored:
+            raise VerificationError("canonical publication snapshot included noncanonical repository content")
+        os.setxattr(artifact, b"user.rustdesk-verifier", b"original")
+        xattr_before = canonical_publication_state(repository)
+        os.setxattr(artifact, b"user.rustdesk-verifier", b"mutated!")
+        if canonical_publication_state(repository) == xattr_before:
+            raise VerificationError("canonical publication snapshot omitted visible xattr mutation")
+        artifact_fd = os.open(artifact, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            def security_state(xattr_bytes=0, xattr_count=0):
+                return publication_security_state(
+                    artifact_fd,
+                    {
+                        "xattr_bytes": xattr_bytes,
+                        "xattr_count": xattr_count,
+                    },
+                )
+
+            exercise_publication_limit(
+                "PUBLICATION_XATTR_VALUE_LIMIT",
+                0,
+                security_state,
+                "per-xattr byte bound",
+                "publication per-xattr behavioral fixture",
+            )
+            exercise_publication_limit(
+                "PUBLICATION_XATTR_NAME_LIMIT",
+                0,
+                security_state,
+                "xattr-name bound",
+                "publication xattr-name behavioral fixture",
+            )
+            exercise_publication_limit(
+                "PUBLICATION_XATTR_PER_INODE_COUNT_LIMIT",
+                0,
+                security_state,
+                "xattr-count bound",
+                "publication per-inode xattr-count behavioral fixture",
+            )
+            expect_publication_rejection(
+                lambda: security_state(xattr_bytes=PUBLICATION_XATTR_TOTAL_LIMIT),
+                "xattr byte bound",
+                "publication aggregate-xattr behavioral fixture",
+            )
+            expect_publication_rejection(
+                lambda: security_state(xattr_count=PUBLICATION_XATTR_TOTAL_COUNT_LIMIT),
+                "shared xattr-count bound",
+                "publication shared-xattr-count behavioral fixture",
+            )
+        finally:
+            os.close(artifact_fd)
+        os.removexattr(artifact, b"user.rustdesk-verifier")
+        ctime_before = canonical_publication_state(repository)
+        original_mode = stat.S_IMODE(artifact.stat().st_mode)
+        artifact.chmod(0o600)
+        artifact.chmod(original_mode)
+        if canonical_publication_state(repository) == ctime_before:
+            raise VerificationError("canonical publication snapshot omitted ctime-only mutation")
+
+        repository_fd = os.dup(repository.fd)
+        try:
+            exercise_publication_limit(
+                "PUBLICATION_REPOSITORY_ENTRY_LIMIT",
+                0,
+                lambda: publication_directory_inventory(repository_fd, {}, repository_root=True),
+                "repository inventory exceeds its entry bound",
+                "publication repository-entry behavioral fixture",
+            )
+            exercise_publication_limit(
+                "PUBLICATION_REPOSITORY_BYTE_LIMIT",
+                0,
+                lambda: publication_directory_inventory(repository_fd, {}, repository_root=True),
+                "repository inventory exceeds its byte bound",
+                "publication repository-byte behavioral fixture",
+            )
+        finally:
+            os.close(repository_fd)
+        exercise_publication_limit(
+            "PUBLICATION_NAMESPACE_LIMIT",
+            0,
+            lambda: publication_snapshot_worker(repository),
+            "namespace exceeds the path bound",
+            "publication namespace behavioral fixture",
+        )
+
+        original_result_limit = globals()["PUBLICATION_SERIALIZED_RESULT_LIMIT"]
+        globals()["PUBLICATION_SERIALIZED_RESULT_LIMIT"] = 128
+        try:
+            encoded = encode_publication_worker_result({"ok": True, "state": "x" * 1024})
+            if encoded != b'{"ok":false,"error":"publication snapshot result exceeds its byte bound"}':
+                raise VerificationError("publication serialized-result behavioral fixture missed its fallback")
+        finally:
+            globals()["PUBLICATION_SERIALIZED_RESULT_LIMIT"] = original_result_limit
+        original_output_limit = globals()["PUBLICATION_OUTPUT_LIMIT"]
+        globals()["PUBLICATION_OUTPUT_LIMIT"] = 128
+        try:
+            expect_publication_rejection(
+                lambda: append_publication_worker_output(bytearray(), bytearray(), bytearray(), b"x" * 129),
+                "worker output exceeds its byte bound",
+                "publication aggregate-output behavioral fixture",
+            )
+        finally:
+            globals()["PUBLICATION_OUTPUT_LIMIT"] = original_output_limit
+
+        oversized = destination / "oversized"
+        with oversized.open("wb") as output:
+            output.truncate(PUBLICATION_CONTENT_LIMIT + 1)
+        expect_publication_rejection(
+            lambda: canonical_publication_state(repository),
+            "content byte bound",
+            "canonical publication snapshot content fixture",
+        )
+        oversized.unlink()
+
+        bounded_entries = []
+        for index in range(PUBLICATION_ENTRY_LIMIT):
+            path = destination / f"entry-{index:03d}"
+            path.write_bytes(b"")
+            bounded_entries.append(path)
+        expect_publication_rejection(
+            lambda: canonical_publication_state(repository),
+            "entry bound",
+            "canonical publication snapshot entry fixture",
+        )
+        for path in bounded_entries:
+            path.unlink()
+
+        depth_root = destination / "depth-root"
+        depth_root.mkdir()
+        depth_cursor = depth_root
+        for index in range(PUBLICATION_DEPTH_LIMIT + 1):
+            depth_cursor = depth_cursor / f"level-{index:02d}"
+            depth_cursor.mkdir()
+        try:
+            expect_publication_rejection(
+                lambda: canonical_publication_state(repository),
+                "depth bound",
+                "publication depth behavioral fixture",
+            )
+        finally:
+            for path in reversed(list(depth_root.rglob("*"))):
+                path.rmdir()
+            depth_root.rmdir()
+
+        gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+        try:
+            try:
+                canonical_publication_state(repository, timeout_seconds=0.05, test_gate_fd=gate_read)
+            except VerificationError as exc:
+                if "exceeded its deadline" not in str(exc):
+                    raise
+            else:
+                raise VerificationError("canonical publication snapshot worker ignored its deadline")
+        finally:
+            os.close(gate_read)
+            os.close(gate_write)
+
+        real_spawn = spawn_exact_process
+        pre_assignment_workers = []
+
+        def signal_before_publication_spawn_return(*arguments, **keywords):
+            worker = real_spawn(*arguments, **keywords)
+            command = arguments[0]
+            if "--publication-worker-fd" in command:
+                pre_assignment_workers.append(worker)
+                handle_managed_signal(signal.SIGTERM, None)
+            return worker
+
+        gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+        globals()["spawn_exact_process"] = signal_before_publication_spawn_return
+        try:
+            try:
+                canonical_publication_state(repository, timeout_seconds=5, test_gate_fd=gate_read)
+            except ManagedSignal as exc:
+                if exc.signum != signal.SIGTERM:
+                    raise
+            else:
+                raise VerificationError(
+                    "publication snapshot pre-assignment signal fixture did not raise"
+                )
+        finally:
+            globals()["spawn_exact_process"] = real_spawn
+            os.close(gate_read)
+            os.close(gate_write)
+        if len(pre_assignment_workers) != 1:
+            raise VerificationError(
+                "publication snapshot pre-assignment signal fixture did not capture one worker"
+            )
+        assert_process_absent(
+            pre_assignment_workers[0].pid,
+            "publication snapshot pre-assignment signal worker",
+        )
 
 
 def reserved_release_state(repo):
-    result = run_managed_command(
-        [
-            "/usr/bin/git",
-            "--no-replace-objects",
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-C",
-            str(repo),
-            "worktree",
-            "list",
-            "--porcelain",
-            "-z",
-        ],
-        repo,
-        timeout_seconds=30,
-        cleanup_grace_seconds=5,
-        kill_grace_seconds=2,
-        max_output_bytes=8 * 1024 * 1024,
-    )
-    if result.returncode != 0:
-        raise VerificationError("cannot snapshot Git worktrees around a stateful fixture")
-    worktree_pattern = re.compile(r"\Aworktree (/tmp/rustdesk-release\.[A-Za-z0-9]{10}/[^\0]+)\Z")
-    worktrees = set()
-    for field in result.stdout.split("\0"):
-        match = worktree_pattern.match(field)
-        if match:
-            if match.group(1) in worktrees:
-                raise VerificationError("reserved release worktree registry contains a duplicate exact path")
-            worktrees.add(match.group(1))
-
     directory_pattern = re.compile(r"\Arustdesk-release\.[A-Za-z0-9]{10}\Z")
     directories = {}
     with os.scandir("/tmp") as entries:
@@ -2083,17 +5413,15 @@ def reserved_release_state(repo):
                 continue
             metadata = entry.stat(follow_symlinks=False)
             directories[entry.path] = (metadata.st_dev, metadata.st_ino, metadata.st_mode)
-    return worktrees, directories
+    return directories, canonical_publication_state(repo)
 
 
 def assert_reserved_release_state_unchanged(before, cwd, execution_error=None):
     after = reserved_release_state(cwd)
     if after != before:
-        before_worktrees, before_directories = before
-        after_worktrees, after_directories = after
+        before_directories, before_publication = before
+        after_directories, after_publication = after
         detail = {
-            "new_worktrees": sorted(after_worktrees - before_worktrees),
-            "missing_worktrees": sorted(before_worktrees - after_worktrees),
             "new_directories": sorted(set(after_directories) - set(before_directories)),
             "missing_directories": sorted(set(before_directories) - set(after_directories)),
             "changed_directories": sorted(
@@ -2101,6 +5429,7 @@ def assert_reserved_release_state_unchanged(before, cwd, execution_error=None):
                 for path in set(before_directories) & set(after_directories)
                 if before_directories[path] != after_directories[path]
             ),
+            "canonical_publication_changed": before_publication != after_publication,
         }
         state_error = VerificationError(f"stateful fixture changed reserved release state: {detail}")
         if execution_error is not None:
@@ -2115,6 +5444,7 @@ def run_stateful_command(
     timeout_seconds=300,
     cleanup_grace_seconds=120,
     kill_grace_seconds=10,
+    inherited_fds=(),
 ):
     signal_scope = None
     before = None
@@ -2132,6 +5462,7 @@ def run_stateful_command(
                 timeout_seconds,
                 cleanup_grace_seconds,
                 kill_grace_seconds,
+                inherited_fds=inherited_fds,
             )
         except BaseException as exc:
             execution_error = exc
@@ -2160,11 +5491,236 @@ def assert_process_absent(pid, label):
         return
     except PermissionError as exc:
         raise VerificationError(f"{label} process ownership cannot be inspected") from exc
-    raise VerificationError(f"{label} process remains after process-group cleanup: {pid}")
+    raise VerificationError(f"{label} process remains after cgroup cleanup: {pid}")
 
 
-def run_stateful_timeout_fixtures(repo):
+def run_stateful_timeout_fixtures(repo, scratch):
+    finalization_events = []
+
+    def injected_finalization_failure(label):
+        def fail(*_arguments):
+            finalization_events.append(label)
+            raise OSError(errno.EIO, label)
+
+        return fail
+
+    finalization_functions = (
+        "hard_kill_cgroup",
+        "terminate_and_reap_unacquired_launcher",
+        "close_cgroup_authority",
+        "systemd_unit_properties",
+    )
+    original_finalization_functions = {
+        name: globals()[name] for name in finalization_functions
+    }
+    original_lexists = os.path.lexists
+    expected_finalization_events = [
+        "forced termination",
+        "launcher reap",
+        "authority close",
+        "unit collection",
+        "pathname absence",
+    ]
+    try:
+        for name, label in zip(
+            finalization_functions, expected_finalization_events[:4]
+        ):
+            globals()[name] = injected_finalization_failure(label)
+
+        def fail_finalization_pathname(_path):
+            finalization_events.append(expected_finalization_events[4])
+            raise OSError(errno.EIO, expected_finalization_events[4])
+
+        os.path.lexists = fail_finalization_pathname
+        try:
+            finalize_managed_unit(
+                object(),
+                {
+                    "path": "/injected-managed-finalization",
+                    "unit": "injected.service",
+                    "invocation": "0" * 32,
+                },
+                {},
+            )
+        except VerificationError as exc:
+            diagnostic = str(exc)
+            if not all(label in diagnostic for label in expected_finalization_events):
+                raise VerificationError(
+                    "managed finalization accumulator fixture lost a cleanup failure"
+                ) from exc
+        else:
+            raise VerificationError(
+                "managed finalization accumulator fixture accepted cleanup failures"
+            )
+    finally:
+        for name, function in original_finalization_functions.items():
+            globals()[name] = function
+        os.path.lexists = original_lexists
+    if finalization_events != expected_finalization_events:
+        raise VerificationError(
+            "managed finalization accumulator fixture did not exhaust cleanup"
+        )
+
+    descriptor_inventory = live_descriptor_inventory()
+    descriptors = []
+    try:
+        for _ in range(4):
+            descriptors.append(os.open("/dev/null", os.O_RDONLY | os.O_CLOEXEC))
+    except BaseException:
+        for descriptor in descriptors:
+            os.close(descriptor)
+        raise
+    authority = dict(zip(("events", "kill", "processes", "directory"), descriptors))
+    attempted = []
+    real_close = os.close
+
+    def fail_first_cgroup_close(descriptor):
+        attempted.append(descriptor)
+        if descriptor == descriptors[0]:
+            raise OSError(errno.EIO, "injected cgroup descriptor close failure")
+        real_close(descriptor)
+
+    os.close = fail_first_cgroup_close
+    try:
+        try:
+            close_cgroup_authority(authority)
+        except VerificationError as exc:
+            if "cgroup descriptors could not be closed: events" not in str(exc):
+                raise
+        else:
+            raise VerificationError("cgroup descriptor close fixture accepted an injected failure")
+    finally:
+        os.close = real_close
+        for descriptor in descriptors:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    raise
+            else:
+                real_close(descriptor)
+    if attempted != descriptors or any(authority[name] is not None for name in authority):
+        raise VerificationError("cgroup descriptor close fixture did not exhaust its authority")
+    if live_descriptor_inventory() != descriptor_inventory:
+        raise VerificationError("cgroup descriptor close fixture leaked a descriptor")
+
+    control_environment = systemd_control_environment()
     injected_processes = []
+    injected_units = []
+
+    real_spawn = spawn_exact_process
+    real_authenticate = authenticate_managed_unit
+    admission_launchers = []
+    admission_targets = []
+    admission_units = []
+
+    def capture_admission_launcher(*arguments, **keywords):
+        process = real_spawn(*arguments, **keywords)
+        if arguments and arguments[0] and arguments[0][0] == "/usr/bin/systemd-run":
+            admission_launchers.append(process.pid)
+        return process
+
+    def reject_managed_unit_authentication(*arguments, **keywords):
+        authority = real_authenticate(*arguments, **keywords)
+        admission_units.append(arguments[0])
+        admission_targets.append(arguments[3])
+        close_cgroup_authority(authority)
+        raise RuntimeError("STATEFUL-UNACQUIRED-CLEANUP")
+
+    globals()["spawn_exact_process"] = capture_admission_launcher
+    globals()["authenticate_managed_unit"] = reject_managed_unit_authentication
+    try:
+        try:
+            run_managed_command(
+                ["/usr/bin/bash", "--noprofile", "--norc", "-c", "trap '' TERM; sleep 60"],
+                repo,
+                timeout_seconds=30,
+                cleanup_grace_seconds=0.1,
+                kill_grace_seconds=2,
+            )
+        except RuntimeError as exc:
+            if str(exc) != "STATEFUL-UNACQUIRED-CLEANUP":
+                raise
+        else:
+            raise VerificationError("unacquired managed-command fixture did not inject its failure")
+    finally:
+        globals()["authenticate_managed_unit"] = real_authenticate
+        globals()["spawn_exact_process"] = real_spawn
+    if len(admission_launchers) != 1 or len(admission_targets) != 1 or len(admission_units) != 1:
+        raise VerificationError("unacquired managed-command fixture did not capture exact ownership")
+    assert_process_absent(admission_launchers[0], "unacquired managed-command launcher")
+    assert_process_absent(admission_targets[0], "unacquired managed-command gate")
+    if not unit_is_absent(admission_units[0], control_environment):
+        raise VerificationError("unacquired managed-command fixture retained its transient unit")
+
+    with scratch.directory("descriptor-reuse-") as descriptor_fixture:
+        descriptor_inventory = live_descriptor_inventory()
+        original_path = descriptor_fixture / "original"
+        replacement_path = descriptor_fixture / "replacement"
+        original_path.write_bytes(b"original-authority\n")
+        replacement_path.write_bytes(b"replacement-authority\n")
+        target_fd = None
+        replacement_fd = None
+
+        def replace_caller_descriptor(*arguments, **keywords):
+            authority = real_authenticate(*arguments, **keywords)
+            os.dup2(replacement_fd, target_fd, inheritable=False)
+            return authority
+
+        try:
+            target_fd = os.open(original_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            replacement_fd = os.open(
+                replacement_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+            )
+            globals()["authenticate_managed_unit"] = replace_caller_descriptor
+            descriptor_result = run_managed_command(
+                [
+                    "/usr/bin/python3",
+                    "-I",
+                    "-S",
+                    "-c",
+                    "import os,sys; os.write(1, os.read(int(sys.argv[1]), 64))",
+                    str(target_fd),
+                ],
+                repo,
+                timeout_seconds=5,
+                cleanup_grace_seconds=1,
+                kill_grace_seconds=2,
+                inherited_fds=(target_fd,),
+            )
+        finally:
+            globals()["authenticate_managed_unit"] = real_authenticate
+            if replacement_fd is not None:
+                os.close(replacement_fd)
+            if target_fd is not None:
+                os.close(target_fd)
+        if live_descriptor_inventory() != descriptor_inventory:
+            raise VerificationError("managed descriptor handoff leaked a private descriptor")
+        if descriptor_result.returncode != 0 or descriptor_result.stdout != "original-authority\n":
+            raise VerificationError("managed descriptor handoff followed a reused caller descriptor number")
+
+    entry_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    try:
+        blocked_signal_result = run_managed_command(
+            [
+                "/usr/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                "trap 'echo STATEFUL-UNBLOCKED-TERM; exit 143' TERM; while :; do sleep 1; done",
+            ],
+            repo,
+            timeout_seconds=0.1,
+            cleanup_grace_seconds=5,
+            kill_grace_seconds=2,
+        )
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, entry_mask)
+    if (
+        blocked_signal_result.returncode != 124
+        or "STATEFUL-UNBLOCKED-TERM" not in blocked_signal_result.stdout
+    ):
+        raise VerificationError("managed target inherited the verifier's blocked SIGTERM state")
 
     def inject_after_spawn(frame, event, argument):
         del argument
@@ -2172,11 +5728,13 @@ def run_stateful_timeout_fixtures(repo):
             process = frame.f_locals.get("process")
             state = _MANAGED_SIGNAL_STATE
             if (
-                isinstance(process, subprocess.Popen)
+                isinstance(process, ExactChildProcess)
                 and state is not None
                 and not state["acquiring_process"]
+                and frame.f_locals.get("authority") is not None
             ):
                 injected_processes.append(process.pid)
+                injected_units.append(frame.f_locals["unit"])
                 raise RuntimeError("STATEFUL-POST-SPAWN-CLEANUP")
         return inject_after_spawn
 
@@ -2197,22 +5755,27 @@ def run_stateful_timeout_fixtures(repo):
         raise VerificationError("stateful post-spawn exception fixture did not inject its failure")
     finally:
         sys.settrace(previous_trace)
-    if len(injected_processes) != 1:
+    if len(injected_processes) != 1 or len(injected_units) != 1:
         raise VerificationError("stateful post-spawn exception fixture did not capture one process")
     assert_process_absent(injected_processes[0], "stateful post-spawn exception")
-    if process_group_exists(injected_processes[0]):
-        raise VerificationError("stateful post-spawn exception retained its process group")
+    if not unit_is_absent(injected_units[0], control_environment):
+        raise VerificationError("stateful post-spawn exception retained its transient unit")
 
-    real_popen = subprocess.Popen
     pre_assignment_processes = []
+    pre_assignment_units = []
 
-    def signal_before_popen_return(*arguments, **keywords):
-        process = real_popen(*arguments, **keywords)
+    def signal_before_spawn_return(*arguments, **keywords):
+        process = real_spawn(*arguments, **keywords)
+        if not arguments or not arguments[0] or arguments[0][0] != "/usr/bin/systemd-run":
+            return process
         pre_assignment_processes.append(process)
+        for argument in arguments[0]:
+            if argument.startswith("--unit="):
+                pre_assignment_units.append(argument.split("=", 1)[1])
         handle_managed_signal(signal.SIGTERM, None)
         return process
 
-    subprocess.Popen = signal_before_popen_return
+    globals()["spawn_exact_process"] = signal_before_spawn_return
     try:
         try:
             run_managed_command(
@@ -2228,112 +5791,64 @@ def run_stateful_timeout_fixtures(repo):
         else:
             raise VerificationError("pre-assignment managed signal fixture did not raise its recorded signal")
     finally:
-        subprocess.Popen = real_popen
-    if len(pre_assignment_processes) != 1:
+        globals()["spawn_exact_process"] = real_spawn
+    if len(pre_assignment_processes) != 1 or len(pre_assignment_units) != 1:
         raise VerificationError("pre-assignment managed signal fixture did not capture one process")
     pre_assignment_process = pre_assignment_processes[0]
-    pre_assignment_group_alive = process_group_exists(pre_assignment_process.pid)
-    pre_assignment_leader_alive = pre_assignment_process.poll() is None
-    if pre_assignment_group_alive or pre_assignment_leader_alive:
-        signal_process_group(pre_assignment_process.pid, signal.SIGKILL)
-        if pre_assignment_leader_alive:
-            pre_assignment_process.wait(timeout=2)
-        wait_process_group_absent(pre_assignment_process.pid, 2)
-        close_process_pipes(pre_assignment_process)
-        raise VerificationError("pre-assignment managed signal retained its process or process group")
     assert_process_absent(pre_assignment_process.pid, "pre-assignment managed signal")
+    if not unit_is_absent(pre_assignment_units[0], control_environment):
+        raise VerificationError("pre-assignment managed signal retained its transient unit")
 
-    with tempfile.TemporaryDirectory(prefix="rustdesk-stateful-signal-") as directory:
-        fixture_root = Path(directory)
+    with scratch.directory("stateful-signal-") as fixture_root:
         leader_file = fixture_root / "leader"
         descendant_file = fixture_root / "descendant"
-        nested_program = r'''
-import importlib.util
-import sys
-from pathlib import Path
-
-module_path = Path(sys.argv[1])
-repo = Path(sys.argv[2])
-leader_file = sys.argv[3]
-descendant_file = sys.argv[4]
-spec = importlib.util.spec_from_file_location("nested_workspace_verifier", module_path)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-command = [
-    "/usr/bin/bash",
-    "--noprofile",
-    "--norc",
-    "-c",
-    "trap 'kill -TERM \"$child\" 2>/dev/null || true; wait \"$child\" 2>/dev/null || true; exit 143' TERM; "
-    "printf '%s' \"$$\" >\"$1\"; sleep 60 & child=$!; printf '%s' \"$child\" >\"$2\"; wait \"$child\"",
-    "_",
-    leader_file,
-    descendant_file,
-]
-try:
-    module.run_stateful_command(
-        command,
-        repo,
-        timeout_seconds=30,
-        cleanup_grace_seconds=5,
-        kill_grace_seconds=2,
-    )
-except module.ManagedSignal as exc:
-    print(f"STATEFUL-PARENT-SIGNAL-STATE-CHECKED:{exc.signum}", flush=True)
-    raise SystemExit(128 + exc.signum)
-raise SystemExit("nested stateful signal fixture completed without its parent signal")
-'''
-        nested = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                nested_program,
-                str(Path(__file__).resolve()),
-                str(repo),
-                str(leader_file),
-                str(descendant_file),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-        )
-        leader_pid = None
-        descendant_pid = None
-        try:
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                if leader_file.exists() and descendant_file.exists():
-                    leader_pid = int(leader_file.read_text(encoding="ascii"))
-                    descendant_pid = int(descendant_file.read_text(encoding="ascii"))
-                    break
-                if nested.poll() is not None:
-                    break
-                time.sleep(0.01)
-            if leader_pid is None or descendant_pid is None:
-                raise VerificationError("stateful parent-signal fixture did not reach its managed descendant")
-            os.kill(nested.pid, signal.SIGTERM)
-            os.kill(nested.pid, signal.SIGTERM)
+        cleanup_file = fixture_root / "cleanup"
+        verifier_pid = os.getpid()
+        sender_pid = os.fork()
+        if sender_pid == 0:
             try:
-                stdout, stderr = nested.communicate(timeout=15)
-            except subprocess.TimeoutExpired as exc:
-                raise VerificationError("stateful parent-signal fixture did not terminate") from exc
-            if nested.returncode != 143 or "STATEFUL-PARENT-SIGNAL-STATE-CHECKED:15" not in stdout:
-                raise VerificationError(
-                    f"stateful parent-signal fixture bypassed cleanup or state proof: {stdout}{stderr}"
-                )
+                time.sleep(1)
+                os.kill(verifier_pid, signal.SIGTERM)
+                os._exit(0)
+            except BaseException:
+                os._exit(1)
+        try:
+            run_stateful_command(
+                [
+                    "/usr/bin/bash",
+                    "--noprofile",
+                    "--norc",
+                    "-c",
+                    "trap 'printf cleaned >\"$3\"; kill -TERM \"$child\" 2>/dev/null || true; "
+                    "wait \"$child\" 2>/dev/null || true; exit 143' TERM; "
+                    "printf '%s' \"$$\" >\"$1\"; setsid sleep 60 & child=$!; "
+                    "printf '%s' \"$child\" >\"$2\"; wait \"$child\"",
+                    "_",
+                    str(leader_file),
+                    str(descendant_file),
+                    str(cleanup_file),
+                ],
+                repo,
+                timeout_seconds=30,
+                cleanup_grace_seconds=5,
+                kill_grace_seconds=2,
+                inherited_fds=fixture_root.inherited_fds,
+            )
+        except ManagedSignal as exc:
+            if exc.signum != signal.SIGTERM:
+                raise
+        else:
+            raise VerificationError("stateful parent-signal fixture did not raise its signal")
         finally:
-            if nested.poll() is None:
-                os.killpg(nested.pid, signal.SIGKILL)
-                nested.wait(timeout=2)
-            if leader_pid is not None and process_group_exists(leader_pid):
-                signal_process_group(leader_pid, signal.SIGKILL)
-                wait_process_group_absent(leader_pid, 2)
+            waited_sender, sender_status = os.waitpid(sender_pid, 0)
+        if waited_sender != sender_pid or os.waitstatus_to_exitcode(sender_status) != 0:
+            raise VerificationError("stateful parent-signal sender failed")
+        leader_pid = int(leader_file.read_text(encoding="ascii"))
+        descendant_pid = int(descendant_file.read_text(encoding="ascii"))
+        if cleanup_file.read_text(encoding="ascii") != "cleaned":
+            raise VerificationError("stateful parent-signal fixture skipped graceful target cleanup")
         assert_process_absent(leader_pid, "stateful parent-signal leader")
         assert_process_absent(descendant_pid, "stateful parent-signal descendant")
-        if process_group_exists(leader_pid):
-            raise VerificationError("stateful parent signal retained its managed process group")
 
     graceful = run_stateful_command(
         [
@@ -2363,7 +5878,7 @@ raise SystemExit("nested stateful signal fixture completed without its parent si
             "--norc",
             "-c",
             "trap '' TERM; /usr/bin/bash --noprofile --norc -c "
-            "'trap \"\" TERM; sleep 60' & child=$!; echo STATEFUL-RESISTANT-CHILD:$child; wait \"$child\"",
+            "'trap \"\" TERM; setsid sleep 60' & child=$!; echo STATEFUL-RESISTANT-CHILD:$child; wait \"$child\"",
         ],
         repo,
         timeout_seconds=0.1,
@@ -2375,6 +5890,67 @@ raise SystemExit("nested stateful signal fixture completed without its parent si
     if resistant.returncode != 124 or match is None:
         raise VerificationError("stateful hard-timeout fixture did not reach its resistant descendant")
     assert_process_absent(int(match.group(1)), "stateful hard-timeout descendant")
+
+    try:
+        run_stateful_command(
+            [
+                "/usr/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                "setsid /usr/bin/bash --noprofile --norc -c 'sleep 60' & "
+                "echo STATEFUL-LINGERING-CHILD:$!; exit 0",
+            ],
+            repo,
+            timeout_seconds=5,
+            cleanup_grace_seconds=1,
+            kill_grace_seconds=2,
+        )
+    except VerificationError as exc:
+        if "cgroup descendants remained" not in str(exc):
+            raise
+    else:
+        raise VerificationError("stateful normal-exit fixture accepted a lingering setsid descendant")
+
+    with scratch.directory("double-fork-") as fixture_root:
+        descendant_file = fixture_root / "grandchild"
+        program = (
+            "import os,time,sys\n"
+            "pid=os.fork()\n"
+            "if pid: raise SystemExit(0)\n"
+            "os.setsid()\n"
+            "pid=os.fork()\n"
+            "if pid: raise SystemExit(0)\n"
+            "open(sys.argv[1],'w',encoding='ascii').write(str(os.getpid()))\n"
+            "os.close(0); os.close(1); os.close(2); time.sleep(60)\n"
+        )
+        try:
+            result = run_stateful_command(
+                ["/usr/bin/python3", "-I", "-S", "-c", program, str(descendant_file)],
+                repo,
+                timeout_seconds=5,
+                cleanup_grace_seconds=1,
+                kill_grace_seconds=2,
+                inherited_fds=fixture_root.inherited_fds,
+            )
+        except VerificationError as exc:
+            if "cgroup descendants remained" not in str(exc):
+                raise
+        else:
+            raise VerificationError(
+                "stateful double-fork fixture accepted a daemonized descendant: "
+                f"{result.returncode}: {(result.stdout + result.stderr)[-2000:]}: "
+                f"recorded={descendant_file.exists()}"
+            )
+        deadline = time.monotonic() + 2
+        while not descendant_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        if not descendant_file.exists():
+            raise VerificationError("stateful double-fork fixture did not record its grandchild")
+        assert_process_absent(
+            int(descendant_file.read_text(encoding="ascii")),
+            "stateful double-fork grandchild",
+        )
 
 
 def require_success(result, label, marker):
@@ -2411,7 +5987,7 @@ def run_transaction_fixtures(repo):
         mode = "--self-test-reset" if "root-owned reset" in label else "--self-test"
         result = run_stateful_command([str(path), mode], repo, poison)
         require_success(result, label, marker)
-        bypass = run_command(
+        bypass = run_stateful_command(
             ["/usr/bin/bash", "--noprofile", "--norc", str(path), mode],
             repo,
             poison,
@@ -2420,7 +5996,7 @@ def run_transaction_fixtures(repo):
             raise VerificationError(f"{label} accepted a poisoned environment through an explicit Bash bypass")
 
 
-def run_target_contract_fixtures(sources):
+def run_target_contract_fixtures(sources, scratch):
     commit = "a" * 40
     image_ids = {
         "debian": "sha256:" + "d" * 64,
@@ -2428,8 +6004,8 @@ def run_target_contract_fixtures(sources):
     }
     roles = {"debian": "deb-builder", "android": "android-builder"}
     pin_names = {"debian": "DEB_BUILDER_IMAGE_ID", "android": "ANDROID_BUILDER_IMAGE_ID"}
-    with tempfile.TemporaryDirectory(prefix="rustdesk-target-contract-") as directory:
-        root = Path(directory)
+    with scratch.directory("target-contract-") as root_authority:
+        root = root_authority.canonical_path()
         scripts = root / "scripts"
         tools = root / "bin"
         scripts.mkdir(mode=0o700)
@@ -2557,6 +6133,7 @@ raise SystemExit(17)
         docker_log = root / "docker.log"
 
         def invoke(target, *, release=True, supplied_snapshot=snapshot, extra_env=None):
+            root_authority.assert_bound()
             helper_log.write_text("", encoding="ascii")
             docker_log.write_text("", encoding="ascii")
             environment = {
@@ -2586,7 +6163,17 @@ raise SystemExit(17)
             command = ["/usr/bin/bash", str(scripts / f"build-{target}.sh")]
             if target == "android":
                 command.extend(("--verify-apk", str(apk)))
-            return run_command(command, root, environment)
+            try:
+                return run_managed_command(
+                    command,
+                    root,
+                    environment,
+                    timeout_seconds=90,
+                    cleanup_grace_seconds=5,
+                    kill_grace_seconds=2,
+                )
+            finally:
+                root_authority.assert_bound()
 
         def output_of(result):
             return result.stdout + result.stderr
@@ -2598,7 +6185,10 @@ raise SystemExit(17)
             helper_lines = helper_log.read_text(encoding="ascii").splitlines()
             expected_helper = f"{roles[target]}|{image_ids[target]}"
             if helper_lines != [expected_helper]:
-                raise VerificationError(f"{target} did not verify exactly its pinned builder image: {helper_lines}")
+                raise VerificationError(
+                    f"{target} did not verify exactly its pinned builder image: {helper_lines}: "
+                    f"{output_of(result)[-2000:]}"
+                )
             docker_lines = docker_log.read_text(encoding="ascii").splitlines()
             if len(docker_lines) != 1:
                 raise VerificationError(f"{target} did not make exactly one fixture Docker invocation")
@@ -2678,9 +6268,8 @@ raise SystemExit(17)
                 raise VerificationError(f"{target} direct invocation consumed the mutable canonical online tree")
 
 
-def run_fork_version_fixture(version_source, fork_version, changelog, cargo="1.4.7", expected=True):
-    with tempfile.TemporaryDirectory(prefix="rustdesk-version-fixture-") as directory:
-        root = Path(directory)
+def run_fork_version_fixture(version_source, fork_version, changelog, scratch, cargo="1.4.7", expected=True):
+    with scratch.directory("version-fixture-") as root:
         (root / "scripts").mkdir()
         (root / "scripts/fork-version.sh").write_text(version_source, encoding="utf-8")
         (root / "Cargo.toml").write_text(
@@ -2688,21 +6277,62 @@ def run_fork_version_fixture(version_source, fork_version, changelog, cargo="1.4
         )
         (root / "FORK_VERSION").write_text(fork_version, encoding="utf-8")
         (root / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
-        result = run_command(["/usr/bin/bash", str(root / "scripts/fork-version.sh")], root)
+        result = run_managed_command(
+            ["/usr/bin/bash", str(root / "scripts/fork-version.sh")],
+            root,
+            timeout_seconds=90,
+            cleanup_grace_seconds=5,
+            kill_grace_seconds=2,
+            inherited_fds=root.inherited_fds,
+        )
         if (result.returncode == 0) != expected:
             raise VerificationError(
                 f"fork-version fixture expected success={expected}, got {result.returncode}: {result.stderr.strip()}"
             )
 
 
-def run_version_fixtures(version_source):
+def run_hostile_fork_version_fixture(scratch):
+    with scratch.directory("version-descendant-") as root:
+        script = root / "fork-version.sh"
+        descendant = root / "descendant"
+        script.write_text(
+            "#!/usr/bin/bash\n"
+            "set -euo pipefail\n"
+            "setsid /usr/bin/bash --noprofile --norc -c 'trap \"\" TERM; sleep 60' &\n"
+            "printf '%s' \"$!\" > \"$1\"\n",
+            encoding="utf-8",
+        )
+        script.chmod(0o700)
+        try:
+            run_managed_command(
+                [str(script), str(descendant)],
+                root,
+                timeout_seconds=5,
+                cleanup_grace_seconds=1,
+                kill_grace_seconds=2,
+                inherited_fds=root.inherited_fds,
+            )
+        except VerificationError as exc:
+            if "cgroup descendants remained" not in str(exc):
+                raise
+        else:
+            raise VerificationError("fork-version fixture accepted a daemonized descendant")
+        if not descendant.exists():
+            raise VerificationError("fork-version descendant fixture did not record its process")
+        assert_process_absent(
+            int(descendant.read_text(encoding="ascii")),
+            "fork-version fixture descendant",
+        )
+
+
+def run_version_fixtures(version_source, scratch):
     valid = (
         "# Changelog\n\n"
         "## 1.4.7-hardened.6 - 2026-07-13\n\n"
         "## 1.4.7-hardened.5 — 2026-07-11\n\n"
         "## 1.4.7-hardened.4 - 2026-07-08\n"
     )
-    run_fork_version_fixture(version_source, "1.4.7-hardened.6\n", valid)
+    run_fork_version_fixture(version_source, "1.4.7-hardened.6\n", valid, scratch)
     invalid = (
         ("1.4.7-hardened.6", valid, "1.4.7"),
         ("1.4.7-hardened.6\n", valid.replace("2026-07-13", "2026-02-30"), "1.4.7"),
@@ -2713,20 +6343,22 @@ def run_version_fixtures(version_source):
         ("1.4.7-hardened.06\n", valid, "1.4.7"),
     )
     for fork_version, changelog, cargo in invalid:
-        run_fork_version_fixture(version_source, fork_version, changelog, cargo, expected=False)
+        run_fork_version_fixture(version_source, fork_version, changelog, scratch, cargo, expected=False)
     transition = (
         "# Changelog\n\n"
         "## 1.4.8-hardened.1 - 2026-07-14\n\n"
         "## 1.4.7-hardened.6 - 2026-07-13\n"
     )
-    run_fork_version_fixture(version_source, "1.4.8-hardened.1\n", transition, "1.4.8")
+    run_fork_version_fixture(version_source, "1.4.8-hardened.1\n", transition, scratch, "1.4.8")
     run_fork_version_fixture(
         version_source,
         "1.4.8-hardened.2\n",
         transition.replace("1.4.8-hardened.1", "1.4.8-hardened.2"),
+        scratch,
         "1.4.8",
         expected=False,
     )
+    run_hostile_fork_version_fixture(scratch)
 
 
 def expect_workspace_rejection(lines, expected):
@@ -2756,6 +6388,46 @@ def run_workspace_mutations(lines, positions):
     )
 
 
+def mutation_offsets(source, needle):
+    offsets = []
+    cursor = 0
+    while True:
+        offset = source.find(needle, cursor)
+        if offset < 0:
+            return offsets
+        offsets.append(offset)
+        cursor = offset + len(needle)
+
+
+def python_mutation_scopes(source, offsets):
+    module = ast.parse(source)
+
+    def node_span(node):
+        return python_ast_span(source, node)
+
+    excluded = []
+    named = []
+    for node in module.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        start, end = node_span(node)
+        named.append((start, end, node.name))
+        if node.name.startswith("validate_") or node.name == "run_source_mutations":
+            excluded.append((start, end))
+    result = []
+    for offset in offsets:
+        if any(start <= offset < end for start, end in excluded):
+            continue
+        owners = [
+            (end - start, name)
+            for start, end, name in named
+            if start <= offset < end
+        ]
+        scope = min(owners)[1] if owners else "<module>"
+        result.append((offset, scope))
+    return result
+
+
 def run_source_mutations(sources):
     mutations = (
         (
@@ -2767,9 +6439,57 @@ def run_source_mutations(sources):
         ("build", 'create_snapshot B "$SOURCE_B"', 'true # snapshot B removed', "snapshot B creation"),
         (
             "build",
-            'chmod 0700 "$source"',
-            'chmod 0711 "$source"',
-            "snapshot root mode restoration",
+            'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
+            'git_closed clone --quiet --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
+            "independent complete-history snapshot clone",
+        ),
+        (
+            "build",
+            'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
+            'git_closed worktree add --quiet --detach "$source" "$PINNED_HEAD"',
+            "release build retains production Git worktree add authority",
+        ),
+        (
+            "build",
+            'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
+            'git_closed clone --quiet --no-hardlinks --no-checkout "$REPO_ROOT" "$source"',
+            "independent complete-history snapshot clone",
+        ),
+        (
+            "build",
+            'git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$fixture_repo"',
+            'git_closed clone --quiet --no-hardlinks --no-checkout "$REPO_ROOT" "$fixture_repo"',
+            "reset fixture complete-history Git clone",
+        ),
+        (
+            "build",
+            'git_closed -C "$source" checkout --quiet --detach "$PINNED_HEAD"',
+            'git_closed -C "$source" checkout --quiet master',
+            "detached pinned-commit snapshot checkout",
+        ),
+        (
+            "build",
+            'assert_git_object_authority "$source"',
+            'true # snapshot object substitution proof removed',
+            "snapshot object-authority rejection",
+        ),
+        (
+            "build",
+            '[ "$(git_closed -C "$repository" rev-parse --is-shallow-repository 2>/dev/null)" = false ]',
+            'true # shallow Git authority proof removed',
+            "Git shallow-state query",
+        ),
+        (
+            "build",
+            '"$expected:$(id -u):$(id -g):700" ] \\\n        || die "$phase: snapshot root identity/owner/mode differs after normalization"',
+            '"$expected:$(id -u):$(id -g):711" ] \\\n        || die "$phase: snapshot root identity/owner/mode differs after normalization"',
+            "snapshot root metadata proof",
+        ),
+        (
+            "build",
+            '"$PRIVATE_TREE_CLOSURE_PROBE" --inode-root "$source"',
+            'true # snapshot inode-link closure removed',
+            "snapshot inode-link closure",
         ),
         (
             "build",
@@ -2809,21 +6529,76 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "docker_local run --rm --pull=never --network=none --read-only --user 0:0",
-            "docker_local run --rm --pull=never --network=bridge --read-only --user 0:0",
-            "read-only inode-closure inspector",
+            "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            "docker_local run --rm --pull=never --network=bridge --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            "descriptor-bound private-tree normalizer",
         ),
         (
             "build",
+            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
+            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN --cap-add=FOWNER \\",
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
             "--cap-drop=ALL --cap-add=CHOWN \\",
-            "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER \\",
-            "private-tree mutator command",
+            "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            "-exec /bin/chmod u+rwx,go-w {} \\;",
-            "-print # directory access repair removed",
-            "normalizer directory access repair",
+            "--ulimit nofile=131328:131328 \\",
+            "--ulimit nofile=1024:1024 \\",
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
+            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly"',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
+            '--mount "type=bind,src=$path,dst=/cleanup"',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py,readonly"',
+            '--mount "type=bind,src=$PRIVATE_TREE_CLOSURE_PROBE,dst=/probe.py"',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py \\\n            --normalize-root /cleanup',
+            '"$DEBIAN_IMAGE_ID" /bin/sh -ceu \'/usr/bin/find /cleanup\' -- \\\n            --normalize-root /cleanup',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--normalize-root /cleanup --expected-identity "$expected_identity"',
+            '--normalize-root /cleanup',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            '--owner "$uid" --group "$gid"',
+            '--owner 0 --group 0',
+            "private-tree normalizer command is not the exact authority allowlist",
+        ),
+        (
+            "build",
+            "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
+            "docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH \\\n"
+            "            --security-opt no-new-privileges \\\n"
+            '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly" \\\n'
+            '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S /probe.py --inode-root /cleanup\n'
+            "        docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
+            "single descriptor-bound normalizer container",
         ),
         (
             "build",
@@ -2833,168 +6608,15 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'find -P "$WORKSPACE" -type d -exec chmod u+rwx,go-w {} +',
-            'chmod -R u+rwX,go-w "$WORKSPACE"',
-            "directory-only removal access",
+            'normalize_workspace_access || cleanup_failed=1',
+            'normalize_workspace_access || cleanup_failed=1\n            find -P "$WORKSPACE" -type d -exec chmod u+rwx {} +',
+            "workspace cleanup retains pathname mutation authority",
         ),
         (
             "build",
             'trap cleanup_release_workspace EXIT\n    trap \'exit 129\' HUP',
             'true # workspace cleanup trap delayed\n    trap \'exit 129\' HUP',
             "workspace trap installation",
-        ),
-        (
-            "build",
-            '"worktree",\n        "list",\n        "--porcelain",\n        "-z",',
-            '"worktree",\n        "list",\n        "--porcelain",',
-            "exact Git worktree registry query",
-        ),
-        (
-            "build",
-            'worktree remove --force --force "$source"',
-            'worktree remove --force "$source"',
-            "present and absent locked-worktree removal",
-        ),
-        (
-            "build",
-            'chunk = os.read(stream.fileno(), READ_SIZE)',
-            'chunk = os.read(stream.fileno(), MAX_WORKTREE_TOTAL_BYTES)',
-            "bounded Git worktree registry read",
-        ),
-        (
-            "build",
-            'returncode = process.wait(timeout=remaining)',
-            'returncode = process.wait()',
-            "Git worktree registry producer deadline",
-        ),
-        (
-            "build",
-            'if returncode != 0:\n            raise RegistryQueryError(',
-            'if False:\n            raise RegistryQueryError(',
-            "Git worktree registry producer-status rejection",
-        ),
-        (
-            "build",
-            'if matches > 1:\n                raise RegistryQueryError(',
-            'if matches > 1:\n                return True # duplicate accepted\n            if False:\n                raise RegistryQueryError(',
-            "duplicate exact worktree rejection",
-        ),
-        (
-            "build",
-            'if field_count > MAX_WORKTREE_FIELDS:',
-            'if False:',
-            "Git worktree registry field-count enforcement",
-        ),
-        (
-            "build",
-            'if total_bytes > MAX_WORKTREE_TOTAL_BYTES:',
-            'if False:',
-            "Git worktree registry byte-count enforcement",
-        ),
-        (
-            "build",
-            'if not selector.select(remaining):',
-            'if not selector.select(None):',
-            "Git worktree registry read deadline",
-        ),
-        (
-            "build",
-            'deadline = time.monotonic() + timeout_seconds',
-            'deadline = time.monotonic() + 3600.0',
-            "Git worktree registry deadline derivation",
-        ),
-        (
-            "build",
-            'except BaseException as exc:\n    print(f"unexpected Git worktree registry query failure: {type(exc).__name__}: {exc}", file=sys.stderr)\n    exit_status = 2',
-            'except BaseException as exc:\n    print(f"unexpected Git worktree registry query failure: {type(exc).__name__}: {exc}", file=sys.stderr)\n    exit_status = 1',
-            "unexpected registry exception status",
-        ),
-        (
-            "build",
-            'if process is not None and not producer_reaped:\n            stop_and_reap(process)',
-            'if False:\n            stop_and_reap(process)',
-            "Git worktree registry teardown ownership",
-        ),
-        (
-            "build",
-            'process.kill()\n        process.wait()',
-            'process.kill()\n        return',
-            "Git worktree registry post-kill reap",
-        ),
-        (
-            "build",
-            'process = None\n    producer_reaped = False',
-            'producer_reaped = False # pre-spawn process ownership removed',
-            "pre-spawn Git producer ownership",
-        ),
-        (
-            "build",
-            '''    try:
-        try:
-            process = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-            )
-        except OSError as exc:
-            raise RegistryQueryError(f"cannot start Git worktree registry query: {exc}") from exc
-        if after_spawn is not None:''',
-            '''    try:
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError as exc:
-        raise RegistryQueryError(f"cannot start Git worktree registry query: {exc}") from exc
-    try:
-        if after_spawn is not None:''',
-            "Git worktree registry teardown ownership",
-        ),
-        (
-            "build",
-            'absent) return 1',
-            'absent) return 0',
-            "absent worktree token classification",
-        ),
-        (
-            "build",
-            'result="$(query_git_worktree_registry exact "$source")" || return 2',
-            'result="$(query_git_worktree_registry exact "$source")" || return 1',
-            "exact query failure propagation",
-        ),
-        (
-            "build",
-            'absent) return 1 ;;\n        *) return 2',
-            'absent) return 1 ;;\n        *) return 1',
-            "unexpected worktree token rejection",
-        ),
-        (
-            "build",
-            '*) warn "$role registration cannot be inspected"; return 1',
-            '*) warn "$role registration cannot be inspected"; return 0',
-            "invalid-workspace operational-error rejection",
-        ),
-        (
-            "build",
-            'query_git_worktree_registry self-test-unexpected >/dev/null 2>&1 || query_status=$?',
-            'query_status=2 # unexpected-exception fixture removed',
-            "unexpected registry exception fixture dispatch",
-        ),
-        (
-            "build",
-            'query_git_worktree_registry self-test-unexpected-after-spawn >/dev/null 2>&1 \\\n'
-            '        || query_status=$?',
-            'query_status=2 # post-spawn exception fixture removed',
-            "post-spawn unexpected registry exception fixture dispatch",
-        ),
-        (
-            "build",
-            'print("post-spawn exception fixture retained its producer", file=sys.stderr)\n                return 3',
-            'print("post-spawn exception fixture retained its producer", file=sys.stderr)\n                raise RuntimeError("retained producer")',
-            "post-spawn retained-producer fixture failure status",
         ),
         (
             "build",
@@ -3010,27 +6632,14 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'if [ "$worktrees_safe" -eq 0 ]; then',
-            'if false; then',
-            "invalid-workspace registration inspection",
-        ),
-        (
-            "build",
-            'run_invalid_workspace_registration_self_test \\\n'
-            '        || die "reset self-test did not inspect registration under an invalid workspace root"',
-            'true # invalid-workspace registration fixture removed',
-            "invalid-workspace registration fixture dispatch",
-        ),
-        (
-            "build",
             'if [ "$SELF_TEST" -eq 0 ]; then',
             'if [ "$SELF_TEST" -eq 0 ] && [ "$SELF_TEST_RESET" -eq 0 ]; then',
             "reset fixture pinned closure-probe provenance",
         ),
         (
             "build",
-            "trap '' HUP INT TERM",
-            "trap - HUP INT TERM",
+            "trap - EXIT\n    trap '' HUP INT TERM",
+            "trap - EXIT\n    trap - HUP INT TERM",
             "cleanup signal exclusion",
         ),
         (
@@ -3066,15 +6675,9 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH \\",
-            "--privileged --cap-drop=ALL --cap-add=DAC_READ_SEARCH \\",
-            "inode-closure inspector command",
-        ),
-        (
-            "build",
             '--mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled"',
             '--mount "type=bind,src=$WORKSPACE,dst=/cleanup,bind-recursive=disabled"',
-            "private-tree mutator command",
+            "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
@@ -3123,9 +6726,63 @@ def run_source_mutations(sources):
         ),
         (
             "closure",
-            "if count != expected:",
-            "if False:",
+            "for expected, count in linked.values():\n        if count != expected:",
+            "for expected, count in linked.values():\n        if False:",
             "external hardlink rejection",
+        ),
+        (
+            "closure",
+            "    require_retained_descriptor_budget()\n    require_protected_hardlinks()",
+            "    require_protected_hardlinks() # descriptor budget removed",
+            "normalization authority dispatch",
+        ),
+        (
+            "closure",
+            "RETAINED_DESCRIPTOR_RESERVE = 256",
+            "RETAINED_DESCRIPTOR_RESERVE = 0",
+            "retained-authority descriptor reserve",
+        ),
+        (
+            "closure",
+            "        require_retained_descriptor_budget()\n        linked = {}",
+            "        linked = {} # retained inode descriptor budget removed",
+            "retained inode-closure descriptor budget",
+        ),
+        (
+            "closure",
+            "    require_protected_hardlinks()\n    authority = TreeNormalizationAuthority(path, expected_identity)",
+            "    authority = TreeNormalizationAuthority(path, expected_identity) # hardlink prerequisite removed",
+            "normalization authority dispatch",
+        ),
+        (
+            "closure",
+            "        authority.normalize(owner, group)",
+            "        authority.assert_bound() # normalization mutation removed",
+            "normalization authority dispatch",
+        ),
+        (
+            "closure",
+            '                if authority["internal"] != authority["nlink"]:',
+            "                if False: # initial external-hardlink rejection removed",
+            "initial external-hardlink rejection",
+        ),
+        (
+            "closure",
+            "            if current.st_uid != owner or current.st_gid != group:",
+            "            if False: # normalized inode ownership postcondition removed",
+            "normalized inode ownership postcondition",
+        ),
+        (
+            "closure",
+            "    for descriptor in descriptors:",
+            "    for descriptor in list(descriptors)[:1]:",
+            "complete descriptor close iteration",
+        ),
+        (
+            "closure",
+            "            primary.add_note(note)",
+            "            pass # cleanup failures discarded",
+            "primary cleanup-error annotation",
         ),
         (
             "build",
@@ -3138,78 +6795,6 @@ def run_source_mutations(sources):
             'install -m 0500 "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
             'cp "$PRIVATE_TREE_CLOSURE_SOURCE" "$PRIVATE_TREE_CLOSURE_PROBE"',
             "private closure-probe installation",
-        ),
-        (
-            "build",
-            "os.fsync(destination_parent_fd)",
-            "true # destination parent durability proof removed",
-            "exchange destination-parent durability proof",
-        ),
-        (
-            "build",
-            "source_parent_fd, source_name, destination_parent_fd, destination_name, 1",
-            "source_parent_fd, source_name, destination_parent_fd, destination_name, 0",
-            "first-publication kernel no-clobber",
-        ),
-        (
-            "build",
-            'payload_metadata = os.stat("payload", dir_fd=transaction_fd, follow_symlinks=False)',
-            'payload_metadata = os.fstat(transaction_fd)',
-            "payload name identity proof",
-        ),
-        (
-            "build",
-            'sync_exact_directory "$parent" "$parent_id" "publication recovery parent"',
-            'true # empty recovery parent sync removed',
-            "recovery parent synchronization stages",
-        ),
-        (
-            "build",
-            'raise SystemExit(f"{role} identity changed before synchronization")\n    os.fsync(descriptor)',
-            'raise SystemExit(f"{role} identity changed before synchronization")\n    pass',
-            "directory-sync durability syscall",
-        ),
-        (
-            "build",
-            'sync_exact_directory "$REPO_ROOT" "$CANONICAL_PUBLICATION_PARENT_ID"',
-            'true # final publication parent sync removed',
-            "success-after-cleanup finalization",
-        ),
-        (
-            "build",
-            "os.fsync(record_fd)",
-            "true # durable record sync removed",
-            "publication record durability",
-        ),
-        (
-            "build",
-            "record_metadata.st_nlink != 1",
-            "False",
-            "record hardlink rejection",
-        ),
-        (
-            "build",
-            'strict_manifest_proof "$FINAL_STAGE"\n    sync_staged_publication_payload',
-            "true # staged payload durability removed",
-            "payload-before-record durability ordering",
-        ),
-        (
-            "build",
-            "os.fsync(published_fd)",
-            "true # published root sync removed",
-            "published root durability",
-        ),
-        (
-            "build",
-            "publication parent identity changed before discard-removal sync",
-            "discard removal parent identity unchecked",
-            "durable discard removal",
-        ),
-        (
-            "build",
-            'transactions=("$parent/.$base-release-transaction."*)',
-            "transactions=() # restart discovery removed",
-            "restart active-transaction discovery",
         ),
         (
             "build",
@@ -3267,8 +6852,8 @@ def run_source_mutations(sources):
         ),
         (
             "faillo",
-            "grep -qF 'BUILD-FAILLO: DIRTY-PROBE-CLEANUP-FAILURE:'",
-            "/bin/false # dirty-probe cleanup rejection removed",
+            "&& ! printf '%s' \"$out\" | grep -qF 'BUILD-FAILLO: DIRTY-PROBE-CLEANUP-FAILURE:'",
+            "&& /bin/false # dirty-probe cleanup rejection removed",
             "dirty-probe cleanup rejection",
         ),
         (
@@ -3333,8 +6918,8 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
-            'if state["acquiring_process"]:',
-            "if False:",
+            'state["caught"] = True\n    if state["acquiring_process"]:',
+            'state["caught"] = True\n    if False:',
             "managed command signal ownership",
         ),
         (
@@ -3345,27 +6930,33 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
-            "signal_scope = enter_managed_signal_scope()\n        activate_managed_signal_scope(signal_scope)",
-            "signal_scope = None # managed signal handlers removed",
-            "managed command process-group ownership",
+            "control_socket, child_socket = socket.socketpair(\n            socket.AF_UNIX,\n            socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC,\n        )\n        signal_scope = enter_managed_signal_scope()\n        activate_managed_signal_scope(signal_scope)",
+            "control_socket, child_socket = socket.socketpair(\n            socket.AF_UNIX,\n            socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC,\n        )\n        signal_scope = None # managed signal handlers removed",
+            "managed command cgroup ownership",
         ),
         (
             "workspace_verifier",
-            "begin_managed_process_acquisition()\n        try:\n            process = subprocess.Popen(",
-            "try:\n            process = subprocess.Popen(",
-            "managed command process-group ownership",
+            "begin_managed_process_acquisition()\n        acquisition_active = True\n        process = spawn_exact_process(",
+            "acquisition_active = True\n        process = spawn_exact_process(",
+            "managed command cgroup ownership",
         ),
         (
             "workspace_verifier",
-            "finally:\n            finish_managed_process_acquisition()",
-            "finally:\n            pass # process acquisition handoff removed",
-            "managed command process-group ownership",
+            "acquisition_active = False\n        pending_signum = finish_managed_process_acquisition()",
+            "acquisition_active = False\n        pending_signum = None # process acquisition handoff removed",
+            "managed command cgroup ownership",
         ),
         (
             "workspace_verifier",
-            "leave_managed_signal_scope(signal_scope, finalization_mask)",
-            "signal.pthread_sigmask(signal.SIG_SETMASK, finalization_mask)",
-            "managed command process-group ownership",
+            '        "managed-command unit finalization failed",\n        failures,\n    )',
+            '        "managed-command unit finalization failed",\n        [],\n    )',
+            "managed cleanup accumulator does not report the complete failure list",
+        ),
+        (
+            "workspace_verifier",
+            "if signal_scope is not None:\n            leave_managed_signal_scope(signal_scope, finalization_mask)\n        else:\n            signal.pthread_sigmask(signal.SIG_SETMASK, finalization_mask)",
+            "signal.pthread_sigmask(signal.SIG_SETMASK, finalization_mask) # managed scope restoration removed",
+            "stateful release-state proof",
         ),
         (
             "workspace_verifier",
@@ -3375,92 +6966,116 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
-            "subprocess.Popen = signal_before_popen_return\n    try:",
-            "subprocess.Popen = real_popen # pre-assignment fixture removed\n    try:",
+            'globals()["spawn_exact_process"] = signal_before_spawn_return\n    try:',
+            'globals()["spawn_exact_process"] = real_spawn # pre-assignment fixture removed\n    try:',
             "pre-assignment managed signal fixture",
         ),
         (
             "workspace_verifier",
-            "STATEFUL-PARENT-SIGNAL-STATE-CHECKED:{exc.signum}",
-            "STATEFUL-PARENT-SIGNAL-CLEANUP-UNPROVEN:{exc.signum}",
+            'assert_process_absent(descendant_pid, "stateful parent-signal descendant")',
+            'assert_process_absent(descendant_pid, "stateful parent-signal cleanup unproven")',
             "external parent-signal cleanup fixture",
         ),
         (
             "workspace_verifier",
-            "except ManagedSignal as exc:\n        print(f\"verify-verifier-workspace: interrupted by signal {exc.signum}\"",
-            "except Exception as exc:\n        print(f\"verify-verifier-workspace: interrupted by signal {exc.signum}\"",
+            'except ManagedSignal as exc:\n        failure = (128 + exc.signum, f"interrupted by signal {exc.signum}")',
+            'except Exception as exc:\n        failure = (128 + exc.signum, f"interrupted by signal {exc.signum}")',
             "managed signal main classification",
         ),
         (
             "workspace_verifier",
-            "start_new_session=True",
-            "start_new_session=False",
-            "managed command process-group ownership",
+            '"--scope",',
+            '"--service",',
+            "transient scope execution",
         ),
         (
             "workspace_verifier",
-            "signal_process_group(process.pid, signal.SIGTERM)",
-            "signal_process_group(process.pid, signal.SIGKILL)",
-            "managed command process-group ownership",
+            '"descriptors": list(normalized_fds)',
+            '"descriptors": []',
+            "managed descriptor allowlist frame",
         ),
         (
             "workspace_verifier",
-            "deadline = time.monotonic() + cleanup_grace_seconds",
-            "deadline = time.monotonic()",
-            "managed command process-group ownership",
+            "if control_socket.sendmsg([frame], controls) != len(frame):",
+            "if control_socket.send(frame) != len(frame): # descriptor rights omitted",
+            "managed descriptor handoff",
         ),
         (
             "workspace_verifier",
-            '''    selector = None
-    signal_scope = None
-    try:
-        signal_scope = enter_managed_signal_scope()
-        activate_managed_signal_scope(signal_scope)
-        begin_managed_process_acquisition()
-        try:
-            process = subprocess.Popen(
-                command,
-                cwd=cwd,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-            )
-        finally:
-            finish_managed_process_acquisition()
-        if process.stdout is None or process.stderr is None:''',
-            '''    selector = None
-    signal_scope = None
-    signal_scope = enter_managed_signal_scope()
-    activate_managed_signal_scope(signal_scope)
-    begin_managed_process_acquisition()
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        )
-    finally:
-        finish_managed_process_acquisition()
-    try:
-        if process.stdout is None or process.stderr is None:''',
-            "managed command process-group ownership",
+            "target_pidfd = os.pidfd_open(target_pid, 0)",
+            "target_pidfd = None # target identity authority removed",
+            "managed command cgroup ownership",
         ),
         (
             "workspace_verifier",
-            "if process is not None and not process_reaped:\n                    terminate_and_reap_process_group(process, cleanup_grace_seconds, kill_grace_seconds)",
-            "if False:\n                    terminate_and_reap_process_group(process, cleanup_grace_seconds, kill_grace_seconds)",
-            "managed command process-group ownership",
+            'parse_systemd_second_duration(properties["RuntimeMaxUSec"]) != runtime_limit',
+            "False # runtime backstop authentication removed",
+            "exact runtime-duration policy",
         ),
         (
             "workspace_verifier",
-            "if after != before:",
-            "if False:",
+            "authority = authenticate_managed_unit(\n            unit,\n            description,\n            token,\n            target_pid,\n            control_environment,\n            stop_limit,\n            runtime_limit,\n        )",
+            "authority = None # managed unit authentication removed",
+            "managed command cgroup ownership",
+        ),
+        (
+            "workspace_verifier",
+            'os.write(authority["kill"], b"1")',
+            'os.write(authority["kill"], b"")',
+            "exact cgroup.kill operation",
+        ),
+        (
+            "workspace_verifier",
+            "def hard_kill_cgroup(authority):\n    if cgroup_is_populated(authority):\n        os.write(authority[\"kill\"], b\"1\")\n    wait_cgroup_empty(authority)",
+            "def hard_kill_cgroup(authority):\n    if cgroup_is_populated(authority):\n        os.write(authority[\"kill\"], b\"1\")\n    pass # recursive cgroup emptiness proof removed",
+            "recursive cgroup emptiness proof",
+        ),
+        (
+            "workspace_verifier",
+            '"unacquired managed unit resolution",\n                resolve_unacquired_unit,',
+            '"unacquired managed unit resolution",\n                lambda *ignored: None,',
+            "unacquired gate retained through cgroup reacquisition",
+        ),
+        (
+            "workspace_verifier",
+            "hard_kill_cgroup(authority)\n        terminate_and_reap_unacquired_launcher(process)",
+            "hard_kill_cgroup(authority)\n        pass # primary unacquired launcher reap removed",
+            "unacquired launcher cleanup ordering",
+        ),
+        (
+            "workspace_verifier",
+            '"unacquired launcher termination and reap",\n                terminate_and_reap_unacquired_launcher,',
+            '"unacquired launcher termination and reap",\n                lambda ignored: None,',
+            "unacquired launcher cleanup ordering",
+        ),
+        (
+            "workspace_verifier",
+            "authority = authenticate_unacquired_unit(unit, description, environment)",
+            "authority = None # unacquired authority reacquisition removed",
+            "unacquired launcher cleanup ordering",
+        ),
+        (
+            "workspace_verifier",
+            '"managed unit graceful shutdown",\n                gracefully_stop_managed_unit,',
+            '"managed unit graceful shutdown",\n                hard_kill_cgroup,',
+            "graceful exceptional managed cleanup",
+        ),
+        (
+            "workspace_verifier",
+            "while process.poll() is None or any(\n            key.data in (\"stdout\", \"stderr\") for key in selector.get_map().values()\n        ):\n            remaining = deadline - time.monotonic()",
+            "while process.poll() is None or any(\n            key.data in (\"stdout\", \"stderr\") for key in selector.get_map().values()\n        ):\n            if process.poll() is not None:\n                process.stdout.read(max_output_bytes + 1)\n            remaining = deadline - time.monotonic()",
+            "managed command performs an unbounded post-exit pipe read",
+        ),
+        (
+            "workspace_verifier",
+            "owned_authority = authority",
+            "owned_authority = None # finalization ownership handoff removed",
+            "managed finalization authority handoff",
+        ),
+        (
+            "workspace_verifier",
+            "after = reserved_release_state(cwd)\n    if after != before:",
+            "after = reserved_release_state(cwd)\n    if False:",
             "stateful release-state proof",
         ),
         (
@@ -3471,39 +7086,10 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
-            "            run_stateful_timeout_fixtures(repo)\n            run_transaction_fixtures(repo)",
-            "            run_transaction_fixtures(repo) # stateful timeout fixtures removed",
+            '            run_fixture_stage("managed lifecycle fixture", run_stateful_timeout_fixtures, repo, scratch)\n'
+            '            run_fixture_stage("transaction fixture", run_transaction_fixtures, repo)',
+            '            run_fixture_stage("transaction fixture", run_transaction_fixtures, repo) # stateful timeout fixtures removed',
             "stateful timeout fixture dispatch",
-        ),
-        (
-            "build",
-            'os.getxattr(path, "system.posix_acl_access", follow_symlinks=False)',
-            'b"" # ACL inspection removed',
-            "publication parent ACL rejection",
-        ),
-        (
-            "build",
-            "source_parent_fd, source_name, destination_parent_fd, destination_name, 2",
-            "-100, source_name, -100, destination_name, 2",
-            "dirfd-bound final exchange",
-        ),
-        (
-            "build",
-            '"$FINAL_DESTINATION" "$commit" "$version" "$epoch" "$manifest_hash"',
-            'true # installed manifest proof removed',
-            "record-bound published-set proof",
-        ),
-        (
-            "build",
-            'remove_registered_final_transaction "$FINAL_TRANSACTION_ID"',
-            'rm -rf -- "$FINAL_TRANSACTION"',
-            "post-commit transaction removal",
-        ),
-        (
-            "build",
-            'prepare_existing_dist_removal "$destination"',
-            'prepare_existing_dist_removal "$destination"\n        chmod -R u+rwX "$destination"',
-            "existing dist is weakened before the publication commit point",
         ),
         (
             "build",
@@ -3519,9 +7105,255 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'assert_single_writer_publication_parent "$REPO_ROOT" >/dev/null',
-            'true # canonical parent proof removed',
-            "canonical publication-parent fixture",
+            "for point in staging prepared rollback-record exchange cleanup-record payload-removal; do",
+            "for point in prepared exchange payload-removal; do",
+            "complete publication restart matrix",
+        ),
+        (
+            "build",
+            "pre-exchange recovery at $point",
+            "prepared recovery",
+            "state-accurate pre-exchange recovery diagnostics",
+        ),
+        (
+            "build",
+            "publication recovery did not reject a canonical wrong-token payload",
+            "wrong-token payload fixture removed",
+            "wrong-token payload ownership fixture",
+        ),
+        (
+            "build",
+            "publication recovery did not reject a canonical wrong-token next record",
+            "wrong-token next-record fixture removed",
+            "wrong-token next-record ownership fixture",
+        ),
+        (
+            "build",
+            'install -d -m 0770 "$writable"',
+            'install -d -m 0700 "$writable"',
+            "group-writable parent rejection fixture",
+        ),
+        (
+            "finalizer",
+            'SUPPORTED_FILESYSTEMS = {\n    0xEF53: "ext4",\n}',
+            'SUPPORTED_FILESYSTEMS = {\n    0xEF53: "ext4",\n    0x58465342: "xfs",\n}',
+            "final release publisher filesystem allowlist",
+        ),
+        (
+            "finalizer",
+            '("initializing", "staging", "prepared", "rollback", "cleanup")',
+            '("initializing", "prepared", "rollback", "cleanup")',
+            "final release publisher durable staging and terminal states",
+        ),
+        (
+            "finalizer",
+            '("initializing", "staging"),',
+            '("initializing", "prepared"),',
+            "final release publisher exact crash-state transitions",
+        ),
+        (
+            "finalizer",
+            "observed = mount_filesystem_type(mount_id)",
+            'observed = "ext4" # mount-table type proof removed',
+            "ext4 versus ext2/ext3 discrimination",
+        ),
+        (
+            "finalizer",
+            "fcntl.ioctl(descriptor, FS_IOC_GETFSUUID, filesystem_uuid, True)",
+            "filesystem_uuid[1:] = bytes.fromhex('01' * 16) # filesystem UUID ioctl removed",
+            "descriptor-bound filesystem UUID",
+        ),
+        (
+            "finalizer",
+            '                "handle": persistent_handle(descriptor),',
+            '                "handle": "", # path object handle removed',
+            "publication path persistent object handle",
+        ),
+        (
+            "finalizer",
+            "name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent_fd",
+            "name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent_fd",
+            "nonblocking descriptor-bound regular-file acquisition",
+        ),
+        (
+            "finalizer",
+            "os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC,",
+            "os.O_RDONLY | os.O_CLOEXEC,",
+            "nonblocking descriptor-bound regular-file acquisition",
+        ),
+        (
+            "finalizer",
+            '        "filesystem": parent.filesystem,',
+            '        "filesystem": "", # initial filesystem authority removed',
+            "initial durable record filesystem binding",
+        ),
+        (
+            "finalizer",
+            'current["state"] == "initializing" and following["state"] == "staging"',
+            "False",
+            "payload-handle binding transition",
+        ),
+        (
+            "finalizer",
+            "os.mkdir(payload_name, 0o700, dir_fd=parent.fd)\n    os.fsync(parent.fd)",
+            "os.mkdir(payload_name, 0o700, dir_fd=parent.fd) # payload parent fsync removed",
+            "durable empty payload authority before handle commit",
+        ),
+        (
+            "finalizer",
+            'if record["state"] == "staging":\n        finish_rollback(parent, record_name, record, record_identity)',
+            'if False: # staging rollback removed\n        finish_rollback(parent, record_name, record, record_identity)',
+            "unbound initialization rejection and bound staging rollback",
+        ),
+        (
+            "finalizer",
+            'if record["state"] == "initializing":\n        verify_prior_release(parent, old_handle)\n        if payload is not None:',
+            'if record["state"] == "initializing":\n        verify_prior_release(parent, old_handle)\n        if False: # unbound payload accepted',
+            "unbound initialization rejection and bound staging rollback",
+        ),
+        (
+            "finalizer",
+            "        if next_token != token:",
+            "        if False: # next-record transaction ownership removed",
+            "next-record transaction ownership",
+        ),
+        (
+            "finalizer",
+            '    if found["payload"] and found["payload"][0] != (record["payload"], token):',
+            "    if False: # payload transaction ownership removed",
+            "payload transaction ownership",
+        ),
+        (
+            "finalizer",
+            'record_identity = update_record(parent, record_name, token, record_identity, staging)',
+            "record_identity = record_identity # staging record durability removed",
+            "failure-atomic publication state machine",
+        ),
+        (
+            "finalizer",
+            "if any(record_names(parent).values()):",
+            "if False: # quiescent publication-state proof removed",
+            "non-repairing quiescent publication verification",
+        ),
+        (
+            "finalizer",
+            'ACL_XATTRS = {"system.posix_acl_access", "system.posix_acl_default"}',
+            'ACL_XATTRS = {"system.posix_acl_access"}',
+            "final release publisher complete POSIX ACL rejection",
+        ),
+        (
+            "finalizer",
+            "or destination in (\".\", \"..\")",
+            "or False # dot destinations accepted",
+            "dot-destination rejection",
+        ),
+        (
+            "finalizer",
+            "fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)",
+            "True # publication parent lock removed",
+            "exclusive parent lock",
+        ),
+        (
+            "finalizer",
+            "if self.metadata.st_mode & 0o022:",
+            "if False: # publication parent writer rejection removed",
+            "publication parent writer rejection",
+        ),
+        (
+            "finalizer",
+            "or self.metadata.st_gid != self.gid",
+            "or False # publication parent group proof removed",
+            "publication parent group proof",
+        ),
+        (
+            "finalizer",
+            "or metadata.st_gid != self.gid",
+            "or False # live publication parent group proof removed",
+            "live publication parent group proof",
+        ),
+        (
+            "finalizer",
+            '        "parent_handle": parent.handle,',
+            '        "parent_id": parent.handle,',
+            "initial durable record parent binding",
+        ),
+        (
+            "finalizer",
+            "parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC",
+            "parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC",
+            "no-follow parent descriptor",
+        ),
+        (
+            "finalizer",
+            "if names:\n        raise PublicationError(f\"{label} has filesystem extended attributes\")",
+            "if False:\n        raise PublicationError(f\"{label} has filesystem extended attributes\")",
+            "publication xattr rejection",
+        ),
+        (
+            "finalizer",
+            "DEADLINE_SECONDS = 180",
+            "DEADLINE_SECONDS = 0",
+            "final release publisher exact DEADLINE_SECONDS bound",
+        ),
+        (
+            "finalizer",
+            "os.O_RDWR | os.O_TMPFILE | os.O_CLOEXEC",
+            "os.O_RDWR | os.O_CREAT | os.O_CLOEXEC",
+            "durable unnamed publication record commit",
+        ),
+        (
+            "finalizer",
+            "os.fsync(descriptor)\n        link_unnamed_file(descriptor, parent.fd, name)",
+            "link_unnamed_file(descriptor, parent.fd, name) # record fsync removed",
+            "durable unnamed publication record commit",
+        ),
+        (
+            "finalizer",
+            "os.replace(next_name, name, src_dir_fd=parent.fd, dst_dir_fd=parent.fd)",
+            "os.rename(next_name, name, src_dir_fd=parent.fd, dst_dir_fd=parent.fd)",
+            "durable publication record transition",
+        ),
+        (
+            "finalizer",
+            "if name.startswith(reserved_prefix):",
+            "if False: # unknown reserved names accepted",
+            "unknown reserved-name rejection",
+        ),
+        (
+            "finalizer",
+            "match = pattern.fullmatch(name)",
+            "match = pattern.match(name)",
+            "exact reserved-name classification",
+        ),
+        (
+            "finalizer",
+            "renameat2(parent.fd, record[\"payload\"], parent.destination, RENAME_NOREPLACE)",
+            "renameat2(parent.fd, record[\"payload\"], parent.destination, 0)",
+            "first-publication kernel no-clobber",
+        ),
+        (
+            "finalizer",
+            "renameat2(parent.fd, record[\"payload\"], parent.destination, RENAME_EXCHANGE)",
+            "renameat2(parent.fd, record[\"payload\"], parent.destination, 0)",
+            "existing-publication atomic exchange",
+        ),
+        (
+            "finalizer",
+            "parent.assert_bound()\n    os.fsync(parent.fd)\n    if (\n        parent.path_authority(parent.destination) != post_destination",
+            "parent.assert_bound()\n    if (\n        parent.path_authority(parent.destination) != post_destination",
+            "failure-atomic publication state machine",
+        ),
+        (
+            "finalizer",
+            "os.O_WRONLY | os.O_TMPFILE | os.O_CLOEXEC",
+            "os.O_WRONLY | os.O_CREAT | os.O_CLOEXEC",
+            "unnamed staged files",
+        ),
+        (
+            "finalizer",
+            'report_cleanup_failures(primary, "publication parent descriptor close", failures)',
+            "pass # publication parent close failures discarded",
+            "publication parent cleanup failure preservation",
         ),
         (
             "scan",
@@ -3571,7 +7403,6 @@ def run_source_mutations(sources):
             'pkill -TERM -f "rustdesk --server" || true',
             "non-root smoke runner retains forbidden source/process authority",
         ),
-        ("build", "renameat2 = libc.renameat2", "renameat2 = libc.rename", "atomic final-dist exchange"),
         ("build", "git --no-replace-objects", "git", "Git replacement-object suppression"),
         (
             "build",
@@ -3633,29 +7464,721 @@ def run_source_mutations(sources):
             "-c core.hooksPath=/dev/null",
             "publisher Git replacement suppression",
         ),
+        (
+            "closure",
+            'os.mkdir(name, 0o700, dir_fd=self.fd)',
+            'os.mkdir(os.path.join("/tmp", name), 0o700)',
+            "closure descriptor-relative fixture creation",
+        ),
+        (
+            "closure",
+            '                    if identity(current) != child_identity:\n                        raise ClosureError("self-test fixture edge changed before cleanup")',
+            '                    if False:\n                        raise ClosureError("self-test fixture edge changed before cleanup")',
+            "closure retained-authority cleanup gate",
+        ),
+        (
+            "closure",
+            'or descriptor_mount_id(authority_fd) != self.mount_id',
+            'or False # closure entry mount proof removed',
+            "mount-boundary proof",
+        ),
+        (
+            "closure",
+            'if descriptor_mount_id(self.fd) != self.mount_id:',
+            'if False: # closure root mount proof removed',
+            "closure scratch live mount authority",
+        ),
+        (
+            "closure",
+            "def bounded_directory_names(descriptor, limit):\n    names = []\n    with os.scandir(f\"/proc/self/fd/{descriptor}\") as entries:",
+            "def bounded_directory_names(descriptor, limit):\n    names = []\n    with contextlib.nullcontext(os.listdir(descriptor)) as entries:",
+            "closure descriptor-bound streamed cleanup inventory",
+        ),
+        (
+            "closure",
+            "                exercise_scratch_acquisition_failures(scratch)",
+            "                pass # scratch acquisition fixture removed",
+            "closure scratch acquisition fixture dispatch",
+        ),
+        (
+            "closure",
+            "                exercise_scratch_external_link_rejection(scratch)",
+            "                pass # scratch hardlink fixture removed",
+            "closure scratch hardlink fixture dispatch",
+        ),
+        (
+            "closure",
+            "                exercise_scratch_root_removal(scratch)",
+            "                pass # scratch root-removal fixture removed",
+            "closure scratch root-removal fixture dispatch",
+        ),
+        (
+            "workspace_verifier",
+            "metadata.st_blocks,\n        metadata.st_rdev,\n        metadata.st_mtime_ns,\n        metadata.st_ctime_ns,",
+            "metadata.st_blocks,\n        metadata.st_rdev,\n        metadata.st_mtime_ns,\n        metadata.st_mtime_ns, # publication ctime omitted",
+            "publication ctime metadata",
+        ),
+        (
+            "workspace_verifier",
+            'publication_ioctl_state(descriptor, FS_IOC_GETFLAGS, 4, "inode flags")',
+            '("omitted",), # inode flags omitted',
+            "publication inode flags",
+        ),
+        (
+            "workspace_verifier",
+            'publication_ioctl_state(descriptor, FS_IOC_FSGETXATTR, 28, "extended inode flags")',
+            '("omitted",), # extended inode flags omitted',
+            "publication extended inode flags",
+        ),
+        (
+            "workspace_verifier",
+            'if depth > PUBLICATION_DEPTH_LIMIT:',
+            'if False: # publication depth bound removed',
+            "publication depth bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if budget["entries"] >= PUBLICATION_ENTRY_LIMIT:',
+            'if False: # publication entry bound removed',
+            "publication entry bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if opened.st_size > budget["content_remaining"]:',
+            'if False: # publication content bound removed',
+            "publication content bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if len(value) > PUBLICATION_XATTR_VALUE_LIMIT:',
+            'if False: # publication per-xattr bound removed',
+            "publication per-xattr value bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if sum(len(name) + 1 for name in encoded_names) > PUBLICATION_XATTR_NAME_LIMIT:',
+            'if False: # publication xattr-name bound removed',
+            "publication xattr names bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if len(names) > PUBLICATION_XATTR_PER_INODE_COUNT_LIMIT:',
+            'if False: # publication per-inode xattr-count bound removed',
+            "publication per-inode xattr count bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if budget["xattr_bytes"] > PUBLICATION_XATTR_TOTAL_LIMIT:',
+            'if False: # publication xattr byte bound removed',
+            "publication aggregate xattr bytes bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if budget["xattr_count"] > PUBLICATION_XATTR_TOTAL_COUNT_LIMIT:',
+            'if False: # publication xattr count bound removed',
+            "publication aggregate xattr count bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if len(names) >= entry_limit:',
+            'if False: # publication streamed entry bound removed',
+            "publication repository entries bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'and name_bytes + encoded_size > PUBLICATION_REPOSITORY_BYTE_LIMIT',
+            'and False # publication streamed repository-byte bound removed',
+            "publication repository name bytes bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            "with os.scandir(inventory_fd) as entries:",
+            "with contextlib.nullcontext(os.listdir(inventory_fd)) as entries:",
+            "publication streamed directory inventory",
+        ),
+        (
+            "workspace_verifier",
+            'if len(names) > PUBLICATION_NAMESPACE_LIMIT:',
+            'if False: # publication namespace bound removed',
+            "publication canonical namespace bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if len(payload) <= PUBLICATION_SERIALIZED_RESULT_LIMIT:',
+            'if True: # publication serialized-result bound removed',
+            "publication serialized worker result bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            'if len(payload) + len(diagnostics) + len(chunk) > PUBLICATION_OUTPUT_LIMIT:',
+            'if False: # publication aggregate-output bound removed',
+            "publication aggregate worker output bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            "while selector.get_map():\n            remaining = deadline - time.monotonic()\n            if remaining <= 0:\n                timed_out = True",
+            "while selector.get_map():\n            remaining = deadline - time.monotonic()\n            if False:\n                timed_out = True",
+            "publication worker deadline bound enforcement",
+        ),
+        (
+            "workspace_verifier",
+            "if timed_out:\n            process.kill()",
+            "if timed_out:\n            process.send_signal(0)",
+            "publication worker exact timeout kill",
+        ),
+        (
+            "workspace_verifier",
+            "pending_signum = None\n            try:\n                pending_signum = finish_managed_process_acquisition()\n            except BaseException as error:\n                acquisition_failures.append((\"publication worker acquisition finish\", error))",
+            "pending_signum = None\n            try:\n                pending_signum = None # publication worker acquisition handoff removed\n            except BaseException as error:\n                acquisition_failures.append((\"publication worker acquisition finish\", error))",
+            "publication worker acquisition handoff",
+        ),
+        (
+            "workspace_verifier",
+            "if filesystem_identity(edge) != self.identity:\n            raise VerificationError(\"verifier fixture scratch pathname was replaced\")",
+            "if False:\n            raise VerificationError(\"verifier fixture scratch pathname was replaced\")",
+            "fixture scratch edge authority",
+        ),
+        (
+            "workspace_verifier",
+            "if filesystem_identity(edge) != child_identity:\n                        raise VerificationError(\"fixture directory edge changed before cleanup\")",
+            "if False:\n                        raise VerificationError(\"fixture directory edge changed before cleanup\")",
+            "live fixture edge cleanup gate",
+        ),
+        (
+            "workspace_verifier",
+            'or descriptor_mount_id(authority_fd) != self.mount_id',
+            'or False # fixture entry mount proof removed',
+            "mount-boundary proof",
+        ),
+        (
+            "workspace_verifier",
+            'if descriptor_mount_id(self.fd) != self.mount_id:',
+            'if False: # fixture root mount proof removed',
+            "fixture scratch mount authority",
+        ),
+        (
+            "workspace_verifier",
+            "if len(inherited_fds) > 64:",
+            "if False: # inherited descriptor count bound removed",
+            "managed descriptor count bound",
+        ),
+        (
+            "workspace_verifier",
+            "or descriptor > 1048575",
+            "or False # inherited descriptor-number bound removed",
+            "managed descriptor number bound",
+        ),
+        (
+            "workspace_verifier",
+            "if level != socket.SOL_SOCKET or kind != socket.SCM_RIGHTS or len(data) % descriptor_size:",
+            "if False: # descriptor control validation removed",
+            "managed descriptor control validation",
+        ),
+        (
+            "workspace_verifier",
+            "if len(received) != len(payload[\"descriptors\"]):",
+            "if False: # exact received descriptor count removed",
+            "managed descriptor count equality",
+        ),
+        (
+            "workspace_verifier",
+            "socket.MSG_CMSG_CLOEXEC,",
+            "0, # received descriptor close-on-exec removed",
+            "managed descriptor receive close-on-exec",
+        ),
+        (
+            "workspace_verifier",
+            "duplicate = fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)\n                if duplicate in targets:",
+            "duplicate = descriptor # descriptor collision isolation removed\n                if duplicate in targets:",
+            "managed descriptor collision isolation",
+        ),
+        (
+            "workspace_verifier",
+            "os.dup2(descriptor, target, inheritable=True)",
+            "os.dup2(descriptor, target, inheritable=False)",
+            "managed descriptor inheritance restoration",
+        ),
+        (
+            "workspace_verifier",
+            "digest.update(chunk)\n                    offset += len(chunk)",
+            "offset += len(chunk) # publication digest update removed",
+            "publication content digest update",
+        ),
+        (
+            "workspace_verifier",
+            "return directories, canonical_publication_state(repo)",
+            "return directories, ()",
+            "canonical publication state inclusion",
+        ),
+        (
+            "workspace_verifier",
+            "bypass = run_stateful_command(\n            [\"/usr/bin/bash\", \"--noprofile\", \"--norc\", str(path), mode]",
+            "bypass = run_command(\n            [\"/usr/bin/bash\", \"--noprofile\", \"--norc\", str(path), mode]",
+            "explicit-Bash transaction fixtures use the stateful runner",
+        ),
+        (
+            "workspace_verifier",
+            'os.mkdir(child_name, 0o700, dir_fd=self.fd)',
+            'os.mkdir(child_name, 0o700)',
+            "descriptor-relative fixture creation",
+        ),
+        (
+            "workspace_verifier",
+            "def bounded_directory_names(descriptor, limit, diagnostic):\n    names = []\n    with os.scandir(descriptor) as entries:",
+            "def bounded_directory_names(descriptor, limit, diagnostic):\n    names = []\n    with contextlib.nullcontext(os.listdir(descriptor)) as entries:",
+            "fixture streamed bounded cleanup inventory",
+        ),
+        (
+            "workspace_verifier",
+            'run_fixture_stage("publication snapshot fixture", exercise_canonical_publication_snapshot, scratch)\n'
+            '            run_fixture_stage("workspace mutation fixture", run_workspace_mutations, lines, positions)',
+            'run_fixture_stage("workspace mutation fixture", run_workspace_mutations, lines, positions)',
+            "canonical publication snapshot fixture dispatch",
+        ),
+        (
+            "workspace_verifier",
+            'run_fixture_stage("scratch acquisition fixture", exercise_scratch_acquisition_failures, scratch)',
+            'run_fixture_stage("scratch acquisition fixture", lambda ignored: None, scratch)',
+            "scratch acquisition fixture dispatch",
+        ),
+        (
+            "workspace_verifier",
+            "descriptor_mount_id = reject_constructor_mount",
+            "descriptor_mount_id = original # constructor failure injection removed",
+            "scratch constructor acquisition fixture",
+        ),
+        (
+            "workspace_verifier",
+            "child_owned = True\n            yield ScratchDirectory(self, child_fd, child_name, child_identity)",
+            "child_owned = False\n            yield ScratchDirectory(self, child_fd, child_name, child_identity)",
+            "fixture child acquisition authority",
+        ),
+        (
+            "workspace_verifier",
+            '"--scratch-fd",\n                    str(scratch.fd),',
+            '"--scratch-omitted",',
+            "closure fixture scratch descriptor dispatch",
+        ),
+        (
+            "workspace_verifier",
+            "if not directory_is_empty(self.fd):\n                raise VerificationError(\"verifier fixture scratch retained state after self-test\")",
+            "if False:\n                raise VerificationError(\"verifier fixture scratch retained state after self-test\")",
+            "fixture scratch final emptiness proof",
+        ),
+        (
+            "verify",
+            'readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"',
+            'VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"',
+            "verifier fixture scratch ownership",
+        ),
+        (
+            "verify",
+            '--remove-scratch-root "$VERIFY_TMP" --expected-identity "$VERIFY_TMP_ID"',
+            '--remove-scratch-root "$VERIFY_TMP"',
+            "identity-bound workspace removal",
+        ),
+        (
+            "docs",
+            "required ext4 publication filesystem",
+            "supported publication filesystem",
+            "versioning transaction documentation",
+        ),
+        (
+            "docs",
+            "immediately before installation",
+            "again after installation",
+            "versioning transaction documentation",
+        ),
+        (
+            "requirements",
+            "FS_IOC_GETFSUUID",
+            "f_fsid",
+            "requirements release authority",
+        ),
+        (
+            "hardening",
+            "Current `.6` source verdict (2026-07-14)",
+            "Current `.6` source verdict (2026-07-13)",
+            "hardening-status current release authority",
+        ),
+        (
+            "changelog",
+            "independently reacquires and consumes a complete",
+            "consumes the same recorded",
+            "changelog current release authority",
+        ),
+        (
+            "native_watch",
+            "Requirements hash:",
+            "Requirements digest:",
+            "native-codec requirements hash is stale",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
-        if sources[key].count(old) < 1:
+        offsets = mutation_offsets(sources[key], old)
+        if not offsets:
             raise VerificationError(f"mutation fixture target is absent: {old}")
-        mutated = dict(sources)
-        mutated[key] = mutated[key].replace(old, new, 1)
-        try:
-            validate_sources(mutated)
-        except VerificationError as exc:
-            if expected not in str(exc):
-                raise VerificationError(f"mutation rejected for {exc}, expected {expected}") from exc
+        if key in ("workspace_verifier", "finalizer"):
+            candidates = python_mutation_scopes(sources[key], offsets)
         else:
-            raise VerificationError(f"source mutation was accepted: {expected}")
+            candidates = [(offset, f"line {sources[key].count(chr(10), 0, offset) + 1}") for offset in offsets]
+        if not candidates:
+            raise VerificationError(f"mutation fixture has no runtime target: {expected}")
+        effective = []
+        outcomes = []
+        for offset, scope in candidates:
+            changed = sources[key][:offset] + new + sources[key][offset + len(old):]
+            mutated = dict(sources)
+            mutated[key] = changed
+            try:
+                validate_sources(mutated)
+            except VerificationError as exc:
+                outcome = str(exc)
+                outcomes.append((scope, outcome))
+                if expected in outcome:
+                    effective.append((offset, scope))
+            else:
+                outcomes.append((scope, "accepted"))
+        if len(effective) != len(candidates):
+            summary = "; ".join(f"{scope}: {outcome}" for scope, outcome in outcomes[:8])
+            raise VerificationError(
+                f"mutation fixture has {len(effective)} of {len(candidates)} effective runtime targets "
+                f"for {expected} at {old[:120]!r}: {summary}"
+            )
+
+
+def validate_fixture_scratch(path):
+    return ScratchRoot(path)
+
+
+def run_fixture_stage(label, function, *arguments):
+    try:
+        return function(*arguments)
+    except (OSError, UnicodeError, subprocess.TimeoutExpired, VerificationError) as exc:
+        raise VerificationError(f"{label}: {exc}") from exc
+
+
+def live_descriptor_inventory():
+    descriptors = set()
+    for name in os.listdir("/proc/self/fd"):
+        if re.fullmatch(r"[0-9]+", name) is None:
+            raise VerificationError("process descriptor inventory is malformed")
+        descriptor = int(name)
+        try:
+            os.fstat(descriptor)
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                raise
+        else:
+            descriptors.add(descriptor)
+    return descriptors
+
+
+def exercise_scratch_acquisition_failures(scratch):
+    global descriptor_mount_id
+    with scratch.directory("constructor-failure-") as directory:
+        path = directory.canonical_path()
+        before = live_descriptor_inventory()
+        original = descriptor_mount_id
+
+        def reject_constructor_mount(descriptor):
+            del descriptor
+            raise VerificationError("injected scratch constructor mount failure")
+
+        descriptor_mount_id = reject_constructor_mount
+        try:
+            try:
+                ScratchRoot(path)
+            except VerificationError as exc:
+                if "injected scratch constructor mount failure" not in str(exc):
+                    raise
+            else:
+                raise VerificationError("scratch constructor accepted a missing mount authority")
+        finally:
+            descriptor_mount_id = original
+        if live_descriptor_inventory() != before:
+            raise VerificationError("scratch constructor leaked a descriptor after acquisition failure")
+
+    prefix = "child-acquisition-failure-"
+    before = live_descriptor_inventory()
+    original = descriptor_mount_id
+
+    def reject_child_mount(descriptor):
+        if descriptor == scratch.fd:
+            return original(descriptor)
+        raise VerificationError("injected scratch child mount failure")
+
+    descriptor_mount_id = reject_child_mount
+    try:
+        try:
+            with scratch.directory("child-acquisition-failure-"):
+                pass
+        except VerificationError as exc:
+            if "injected scratch child mount failure" not in str(exc):
+                raise
+        else:
+            raise VerificationError("scratch child accepted a missing mount authority")
+    finally:
+        descriptor_mount_id = original
+    if live_descriptor_inventory() != before:
+        raise VerificationError("scratch child leaked a descriptor after acquisition failure")
+    retained = [name for name in os.listdir(scratch.fd) if name.startswith(prefix)]
+    if len(retained) != 1:
+        raise VerificationError("scratch child acquisition failure did not preserve one ambiguous edge")
+    name = retained[0]
+    child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=scratch.fd)
+    try:
+        metadata = os.fstat(child)
+        if (
+            metadata.st_uid != os.geteuid()
+            or metadata.st_gid != os.getegid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+            or descriptor_mount_id(child) != scratch.mount_id
+            or os.listdir(child)
+        ):
+            raise VerificationError("preserved scratch child acquisition state is not exact")
+    finally:
+        os.close(child)
+    os.rmdir(name, dir_fd=scratch.fd)
+    scratch.assert_bound()
+
+
+def exercise_scratch_external_link_rejection(scratch):
+    external_name = f"external-link-{os.urandom(16).hex()}"
+    try:
+        try:
+            with scratch.directory("external-link-rejection-") as directory:
+                descriptor = os.open(
+                    "payload",
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC,
+                    0o600,
+                    dir_fd=directory.fd,
+                )
+                try:
+                    os.write(descriptor, b"retained\n")
+                finally:
+                    os.close(descriptor)
+                os.link(
+                    "payload",
+                    external_name,
+                    src_dir_fd=directory.fd,
+                    dst_dir_fd=scratch.fd,
+                    follow_symlinks=False,
+                )
+        except VerificationError as exc:
+            if "linked outside its boundary" not in str(exc):
+                raise
+        else:
+            raise VerificationError("scratch cleanup accepted an externally linked fixture inode")
+        retained = [
+            name for name in os.listdir(scratch.fd) if name.startswith("external-link-rejection-")
+        ]
+        if len(retained) != 1:
+            raise VerificationError("scratch external-link fixture did not preserve its directory")
+        child_name = retained[0]
+        child_fd = os.open(
+            child_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=scratch.fd,
+        )
+        try:
+            payload = os.stat("payload", dir_fd=child_fd, follow_symlinks=False)
+            external = os.stat(external_name, dir_fd=scratch.fd, follow_symlinks=False)
+            if filesystem_identity(payload) != filesystem_identity(external) or payload.st_nlink != 2:
+                raise VerificationError("scratch external-link fixture did not preserve exact inode state")
+            os.unlink(external_name, dir_fd=scratch.fd)
+            external_name = None
+            scratch._assert_inode_closure(child_fd)
+            scratch._remove_contents(child_fd, [131072])
+        finally:
+            os.close(child_fd)
+        os.rmdir(child_name, dir_fd=scratch.fd)
+    finally:
+        if external_name is not None:
+            try:
+                os.unlink(external_name, dir_fd=scratch.fd)
+            except FileNotFoundError:
+                pass
+    scratch.assert_bound()
+
+
+def exercise_scratch_path_replacement(scratch):
+    scratch.assert_bound()
+    suffix = os.urandom(16).hex()
+    live_name = None
+    live_moved = None
+    live_identity = None
+    replacement_identity = None
+    try:
+        with scratch.directory("live-edge-") as directory:
+            live_name = directory.name
+            live_moved = f".{live_name}.moved-{suffix}"
+            os.rename(live_name, live_moved, src_dir_fd=scratch.fd, dst_dir_fd=scratch.fd)
+            live_identity = filesystem_identity(
+                os.stat(live_moved, dir_fd=scratch.fd, follow_symlinks=False)
+            )
+            os.mkdir(live_name, 0o700, dir_fd=scratch.fd)
+            replacement_identity = filesystem_identity(
+                os.stat(live_name, dir_fd=scratch.fd, follow_symlinks=False)
+            )
+            result = run_managed_command(
+                [
+                    "/usr/bin/python3",
+                    "-I",
+                    "-S",
+                    "-c",
+                    "open(__import__('sys').argv[1], 'wb').write(b'descriptor-owned\\n')",
+                    str(directory / "consumer-write"),
+                ],
+                Path("/"),
+                timeout_seconds=5,
+                cleanup_grace_seconds=1,
+                kill_grace_seconds=2,
+                inherited_fds=directory.inherited_fds,
+            )
+            if result.returncode != 0:
+                raise VerificationError("scratch replacement fixture consumer command failed")
+    except VerificationError as exc:
+        if "fixture directory edge changed before cleanup" not in str(exc):
+            raise
+    else:
+        raise VerificationError("scratch replacement fixture accepted a replaced live fixture edge")
+    if live_name is None or live_moved is None or live_identity is None or replacement_identity is None:
+        raise VerificationError("scratch replacement fixture did not establish live edge authority")
+    replacement = os.stat(live_name, dir_fd=scratch.fd, follow_symlinks=False)
+    displaced = os.stat(live_moved, dir_fd=scratch.fd, follow_symlinks=False)
+    if (
+        filesystem_identity(replacement) != replacement_identity
+        or filesystem_identity(displaced) != live_identity
+    ):
+        raise VerificationError("scratch replacement fixture changed a rejected live directory")
+    replacement_fd = os.open(
+        live_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=scratch.fd
+    )
+    displaced_fd = os.open(
+        live_moved, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=scratch.fd
+    )
+    try:
+        if os.listdir(replacement_fd):
+            raise VerificationError("scratch replacement fixture modified the replacement directory")
+        if os.listdir(displaced_fd) != ["consumer-write"]:
+            raise VerificationError("scratch replacement fixture missed the descriptor-owned directory")
+        payload_fd = os.open("consumer-write", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=displaced_fd)
+        try:
+            if os.read(payload_fd, 64) != b"descriptor-owned\n" or os.read(payload_fd, 1):
+                raise VerificationError("scratch replacement fixture consumer bytes differ")
+        finally:
+            os.close(payload_fd)
+        os.unlink("consumer-write", dir_fd=displaced_fd)
+    finally:
+        os.close(displaced_fd)
+        os.close(replacement_fd)
+    os.rmdir(live_name, dir_fd=scratch.fd)
+    os.rename(live_moved, live_name, src_dir_fd=scratch.fd, dst_dir_fd=scratch.fd)
+    os.rmdir(live_name, dir_fd=scratch.fd)
+
+    moved = f".{scratch.basename}.moved-{suffix}"
+    external = f".{scratch.basename}.external-{suffix}"
+    moved_identity = None
+    external_identity = None
+    try:
+        os.rename(scratch.basename, moved, src_dir_fd=scratch.parent_fd, dst_dir_fd=scratch.parent_fd)
+        moved_identity = filesystem_identity(
+            os.stat(moved, dir_fd=scratch.parent_fd, follow_symlinks=False)
+        )
+        if moved_identity != scratch.identity:
+            raise VerificationError("scratch replacement fixture moved the wrong inode")
+        os.mkdir(external, 0o700, dir_fd=scratch.parent_fd)
+        external_identity = filesystem_identity(
+            os.stat(external, dir_fd=scratch.parent_fd, follow_symlinks=False)
+        )
+        os.symlink(external, scratch.basename, dir_fd=scratch.parent_fd)
+        try:
+            with scratch.directory("replacement-proof-"):
+                pass
+        except VerificationError:
+            pass
+        else:
+            raise VerificationError("scratch replacement fixture accepted a replaced pathname edge")
+        external_fd = os.open(
+            external,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=scratch.parent_fd,
+        )
+        try:
+            if os.listdir(external_fd):
+                raise VerificationError("scratch replacement fixture wrote through the replacement symlink")
+        finally:
+            os.close(external_fd)
+        os.unlink(scratch.basename, dir_fd=scratch.parent_fd)
+        os.rename(moved, scratch.basename, src_dir_fd=scratch.parent_fd, dst_dir_fd=scratch.parent_fd)
+        moved_identity = None
+        os.rmdir(external, dir_fd=scratch.parent_fd)
+        external_identity = None
+        with scratch.directory("replacement-proof-") as directory:
+            (directory / "descriptor-bound").write_bytes(b"bound\n")
+    finally:
+        try:
+            current = os.stat(scratch.basename, dir_fd=scratch.parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            current = None
+        if current is not None and stat.S_ISLNK(current.st_mode):
+            os.unlink(scratch.basename, dir_fd=scratch.parent_fd)
+            current = None
+        if moved_identity is not None:
+            moved_current = os.stat(moved, dir_fd=scratch.parent_fd, follow_symlinks=False)
+            if filesystem_identity(moved_current) != moved_identity or current is not None:
+                raise VerificationError("scratch replacement fixture cannot restore its recorded root")
+            os.rename(moved, scratch.basename, src_dir_fd=scratch.parent_fd, dst_dir_fd=scratch.parent_fd)
+        if external_identity is not None:
+            external_current = os.stat(external, dir_fd=scratch.parent_fd, follow_symlinks=False)
+            if filesystem_identity(external_current) != external_identity:
+                raise VerificationError("scratch replacement fixture external identity changed")
+            external_fd = os.open(
+                external,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=scratch.parent_fd,
+            )
+            try:
+                if os.listdir(external_fd):
+                    raise VerificationError("scratch replacement fixture external directory is not empty")
+            finally:
+                os.close(external_fd)
+            os.rmdir(external, dir_fd=scratch.parent_fd)
+        scratch.assert_bound()
 
 
 def main():
+    global _VERIFIER_PROGRAM_FD
     parser = argparse.ArgumentParser(description="Verify private workspace and release transactions.")
     parser.add_argument("--repo", default=".", help="repository root")
     parser.add_argument("--self-test", action="store_true", help="run executable and mutation fixtures")
+    parser.add_argument("--scratch", help="preallocated private fixture scratch directory")
+    parser.add_argument("--publication-worker-fd", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--publication-worker-gate-fd", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.publication_worker_fd is not None:
+        if args.self_test or args.scratch is not None or args.repo != ".":
+            parser.error("publication worker mode cannot be combined with verifier options")
+        return run_publication_snapshot_worker(
+            args.publication_worker_fd, args.publication_worker_gate_fd
+        )
+    if args.publication_worker_gate_fd is not None:
+        parser.error("publication worker gate requires publication worker mode")
+    scratch = None
+    verifier_program_fd = None
+    failure = None
     try:
         repo = Path(args.repo).resolve()
+        verifier_program_source, verifier_program_fd = acquire_verifier_program(repo)
+        _VERIFIER_PROGRAM_FD = verifier_program_fd
+        if args.self_test:
+            if args.scratch is None:
+                raise VerificationError("verifier self-test requires an owned --scratch directory")
+            scratch = validate_fixture_scratch(Path(args.scratch))
+        elif args.scratch is not None:
+            raise VerificationError("--scratch is valid only with --self-test")
         lines, positions = validate_verify_workspace((repo / "scripts/verify.sh").read_text(encoding="utf-8"))
         sources = {
             "build": (repo / "scripts/build-release.sh").read_text(encoding="utf-8"),
@@ -3666,33 +8189,73 @@ def main():
             "smoke": (repo / "scripts/smoke-server.sh").read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
             "closure": (repo / "scripts/verify-private-tree-closure.py").read_text(encoding="utf-8"),
+            "finalizer": (repo / "scripts/finalize-release-set.py").read_text(encoding="utf-8"),
             "publish": (repo / "scripts/publish-github-release.sh").read_text(encoding="utf-8"),
             "version": (repo / "scripts/fork-version.sh").read_text(encoding="utf-8"),
             "debian": (repo / "scripts/build-debian.sh").read_text(encoding="utf-8"),
             "android": (repo / "scripts/build-android.sh").read_text(encoding="utf-8"),
             "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
             "docs": (repo / "docs/VERSIONING.md").read_text(encoding="utf-8"),
-            "workspace_verifier": (repo / "scripts/verify-verifier-workspace.py").read_text(encoding="utf-8"),
+            "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
+            "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
+            "changelog": (repo / "CHANGELOG.md").read_text(encoding="utf-8"),
+            "native_watch": (repo / "docs/NATIVE-CODEC-WATCH.md").read_text(encoding="utf-8"),
+            "workspace_verifier": verifier_program_source,
         }
         validate_sources(sources)
         if args.self_test:
-            run_workspace_mutations(lines, positions)
-            run_source_mutations(sources)
-            run_version_fixtures(sources["version"])
-            run_target_contract_fixtures(sources)
-            run_stateful_timeout_fixtures(repo)
-            run_transaction_fixtures(repo)
-            closure = run_command(
-                [sys.executable, str(repo / "scripts/verify-private-tree-closure.py"), "--self-test"],
+            run_fixture_stage("scratch acquisition fixture", exercise_scratch_acquisition_failures, scratch)
+            run_fixture_stage("scratch hardlink fixture", exercise_scratch_external_link_rejection, scratch)
+            run_fixture_stage("scratch replacement fixture", exercise_scratch_path_replacement, scratch)
+            run_fixture_stage("publication snapshot fixture", exercise_canonical_publication_snapshot, scratch)
+            run_fixture_stage("workspace mutation fixture", run_workspace_mutations, lines, positions)
+            run_fixture_stage("source mutation fixture", run_source_mutations, sources)
+            run_fixture_stage("version fixture", run_version_fixtures, sources["version"], scratch)
+            run_fixture_stage("target-contract fixture", run_target_contract_fixtures, sources, scratch)
+            run_fixture_stage("managed lifecycle fixture", run_stateful_timeout_fixtures, repo, scratch)
+            run_fixture_stage("transaction fixture", run_transaction_fixtures, repo)
+            closure = run_managed_command(
+                [
+                    "/usr/bin/python3",
+                    str(repo / "scripts/verify-private-tree-closure.py"),
+                    "--self-test",
+                    "--scratch-fd",
+                    str(scratch.fd),
+                ],
                 repo,
+                timeout_seconds=90,
+                cleanup_grace_seconds=5,
+                kill_grace_seconds=2,
+                inherited_fds=(scratch.fd,),
             )
             require_success(closure, "private-tree closure fixture", "")
     except ManagedSignal as exc:
-        print(f"verify-verifier-workspace: interrupted by signal {exc.signum}", file=sys.stderr)
-        return 128 + exc.signum
+        failure = (128 + exc.signum, f"interrupted by signal {exc.signum}")
     except (OSError, UnicodeError, subprocess.TimeoutExpired, VerificationError) as exc:
-        print(f"verify-verifier-workspace: FAIL: {exc}", file=sys.stderr)
-        return 1
+        failure = (1, f"FAIL: {exc}")
+    finally:
+        if verifier_program_fd is not None:
+            descriptor = verifier_program_fd
+            verifier_program_fd = None
+            _VERIFIER_PROGRAM_FD = None
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                if failure is None:
+                    failure = (1, f"FAIL: {exc}")
+                else:
+                    failure = (failure[0], f"{failure[1]}; verifier program cleanup failed: {exc}")
+        if scratch is not None:
+            try:
+                scratch.close()
+            except (OSError, VerificationError) as exc:
+                if failure is None:
+                    failure = (1, f"FAIL: {exc}")
+                else:
+                    failure = (failure[0], f"{failure[1]}; scratch cleanup failed: {exc}")
+    if failure is not None:
+        print(f"verify-verifier-workspace: {failure[1]}", file=sys.stderr)
+        return failure[0]
     print("verify-verifier-workspace: ok")
     return 0
 
@@ -3713,23 +8276,111 @@ def validate_workspace_verifier_self_contract(source):
     ).body[0].value
     if len(signal_assignments) != 1 or ast.dump(signal_assignments[0].value) != ast.dump(expected_signals):
         raise VerificationError("managed command signal ownership: exact managed signal set is absent")
+    temporary_directories = [
+        node
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "tempfile"
+        and node.func.attr == "TemporaryDirectory"
+    ]
+    tempfile_imports = [
+        node
+        for node in ast.walk(module)
+        if isinstance(node, ast.Import)
+        and any(alias.name == "tempfile" for alias in node.names)
+    ]
+    if temporary_directories or tempfile_imports:
+        raise VerificationError("verifier retains pathname temporary-directory authority")
+    scratch_directories = [
+        node
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "scratch"
+        and node.func.attr == "directory"
+    ]
+    if not scratch_directories:
+        raise VerificationError("verifier has no descriptor-owned scratch allocation")
+    for call in scratch_directories:
+        if (
+            len(call.args) != 1
+            or call.keywords
+            or not isinstance(call.args[0], ast.Constant)
+            or not isinstance(call.args[0].value, str)
+            or re.fullmatch(r"[a-z0-9-]+", call.args[0].value) is None
+        ):
+            raise VerificationError("verifier fixture scratch allocation is not a literal bounded prefix")
+    parents = {}
+    for parent in ast.walk(module):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def enclosing_function(node):
+        current = parents.get(node)
+        while current is not None and not isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            current = parents.get(current)
+        return None if current is None else current.name
+
+    allowed_subprocess_calls = {
+        ("run_systemd_control", "run"),
+    }
+    for node in ast.walk(module):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+            and node.func.attr in ("run", "Popen")
+        ):
+            continue
+        owner = enclosing_function(node)
+        if (owner, node.func.attr) not in allowed_subprocess_calls:
+            raise VerificationError(
+                f"unmanaged subprocess execution remains in {owner or '<module>'}"
+            )
+    systemd_control_owners = [
+        enclosing_function(node)
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "run_systemd_control"
+    ]
+    if systemd_control_owners != ["systemd_unit_properties"]:
+        raise VerificationError("name-based systemd destructive action exclusion")
+    if any(isinstance(node, ast.FunctionDef) and node.name == "run_command" for node in module.body):
+        raise VerificationError("verifier retains an unmanaged fixture command runner")
     signal_boundary = extract_between(
         source,
         "def handle_managed_signal(",
-        "\n\ndef process_group_exists(",
+        "\n\ndef close_process_pipes(",
         "managed verifier signal boundary",
     )
-    terminator = extract_between(
+    managed_support = extract_between(
         source,
-        "def terminate_and_reap_process_group(",
+        "def close_process_pipes(",
         "\n\ndef run_managed_command(",
-        "managed verifier process-group teardown",
+        "managed verifier cgroup authority",
     )
     managed = extract_between(
         source,
         "def run_managed_command(",
-        "\n\ndef reserved_release_state(",
+        "\n\nclass StatxTimestamp(",
         "managed verifier command runner",
+    )
+    publication_state = extract_between(
+        source,
+        "class StatxTimestamp(",
+        "\n\ndef reserved_release_state(",
+        "canonical publication-state snapshot",
+    )
+    reserved_state = extract_between(
+        source,
+        "def reserved_release_state(",
+        "\n\ndef assert_reserved_release_state_unchanged(",
+        "reserved release-state snapshot",
     )
     state_proof = extract_between(
         source,
@@ -3751,15 +8402,71 @@ def validate_workspace_verifier_self_contract(source):
     )
     timeout_fixtures = extract_between(
         source,
-        "def run_stateful_timeout_fixtures(repo):",
+        "def run_stateful_timeout_fixtures(repo, scratch):",
         "\n\ndef require_success(",
         "stateful timeout behavioral fixtures",
     )
-    main = extract_between(
+    target_contract_fixtures = extract_python_definition(
         source,
-        "def main():",
-        "\n\ndef validate_workspace_verifier_self_contract(",
-        "verifier main dispatch",
+        module,
+        "run_target_contract_fixtures",
+        "target-contract behavioral fixtures",
+    )
+    version_fixtures = "\n".join(
+        extract_python_definition(source, module, name, "fork-version behavioral fixtures")
+        for name in (
+            "run_fork_version_fixture",
+            "run_hostile_fork_version_fixture",
+            "run_version_fixtures",
+        )
+    )
+    scratch_acquisition_fixtures = extract_python_definition(
+        source,
+        module,
+        "exercise_scratch_acquisition_failures",
+        "scratch acquisition behavioral fixtures",
+    )
+    scratch_replacement_fixtures = extract_python_definition(
+        source,
+        module,
+        "exercise_scratch_path_replacement",
+        "scratch replacement behavioral fixtures",
+    )
+    main = extract_python_definition(
+        source, module, "main", "verifier main dispatch"
+    )
+    scratch_validator = "\n".join(
+        extract_python_definition(
+            source, module, name, "verifier descriptor-bound scratch authority"
+        )
+        for name in (
+            "directory_is_empty",
+            "bounded_directory_names",
+            "ScratchDirectory",
+            "ScratchRoot",
+            "validate_fixture_scratch",
+        )
+    )
+    scratch_cleanup = extract_python_method(
+        source, module, "ScratchRoot", "_remove_contents", "fixture cleanup traversal"
+    )
+    scratch_inode_closure = extract_python_method(
+        source,
+        module,
+        "ScratchRoot",
+        "_collect_inode_links",
+        "fixture inode-closure traversal",
+    )
+    for method, label in (
+        (scratch_cleanup, "fixture cleanup mount-boundary proof"),
+        (scratch_inode_closure, "fixture inode-closure mount-boundary proof"),
+    ):
+        require_text(method, "descriptor_mount_id(authority_fd) != self.mount_id", label)
+    bounded_cleanup_inventory = extract_python_definition(
+        source,
+        module,
+        "bounded_directory_names",
+        "fixture bounded cleanup inventory",
     )
     require_order(
         signal_boundary,
@@ -3784,7 +8491,7 @@ def validate_workspace_verifier_self_contract(source):
             "previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, MANAGED_SIGNALS)",
             'state["acquiring_process"] = False',
             'pending_signum = state["pending_signum"]',
-            "raise ManagedSignal(pending_signum)",
+            "return pending_signum",
             "def leave_managed_signal_scope(scope, finalization_mask):",
             'if state["caught"]:',
             "signal.signal(signum, signal.SIG_IGN)",
@@ -3795,53 +8502,385 @@ def validate_workspace_verifier_self_contract(source):
         ),
         "managed command signal ownership",
     )
-    validate_popen_finally_ownership(
+    managed_functions = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "run_managed_command"
+    ]
+    if len(managed_functions) != 1:
+        raise VerificationError("managed command cgroup ownership: expected one runner")
+    managed_function = managed_functions[0]
+    unacquired_cleanup = extract_python_definition(
         source,
-        "run_managed_command",
-        "terminate_and_reap_process_group",
-        "process_reaped",
-        "managed command process-group ownership",
+        module,
+        "resolve_unacquired_unit",
+        "unacquired launcher cleanup ordering",
+    )
+    unacquired_authentication = extract_python_definition(
+        source,
+        module,
+        "authenticate_unacquired_unit",
+        "unacquired authority cleanup",
+    )
+    target_backstop = extract_python_definition(
+        source, module, "kill_observed_target", "unacquired target pidfd backstop"
+    )
+    launcher_cleanup = extract_python_definition(
+        source,
+        module,
+        "terminate_and_reap_unacquired_launcher",
+        "unacquired launcher cleanup",
+    )
+    managed_finalization = extract_python_definition(
+        source, module, "finalize_managed_unit", "managed cleanup accumulator"
+    )
+    managed_finalization_functions = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "finalize_managed_unit"
+    ]
+    if len(managed_finalization_functions) != 1:
+        raise VerificationError("managed cleanup accumulator: expected one finalizer")
+    finalization_reports = [
+        node
+        for node in ast.walk(managed_finalization_functions[0])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "report_cleanup_failures"
+    ]
+    if (
+        len(finalization_reports) != 1
+        or len(finalization_reports[0].args) != 3
+        or finalization_reports[0].keywords
+        or not isinstance(finalization_reports[0].args[0], ast.Constant)
+        or finalization_reports[0].args[0].value is not None
+        or not isinstance(finalization_reports[0].args[1], ast.Constant)
+        or finalization_reports[0].args[1].value
+        != "managed-command unit finalization failed"
+        or not isinstance(finalization_reports[0].args[2], ast.Name)
+        or finalization_reports[0].args[2].id != "failures"
+    ):
+        raise VerificationError(
+            "managed cleanup accumulator does not report the complete failure list"
+        )
+    require_order(
+        unacquired_cleanup,
+        (
+            "authority = authenticate_unacquired_unit(unit, description, environment)",
+            "hard_kill_cgroup(authority)",
+            "terminate_and_reap_unacquired_launcher(process)",
+            "while True:",
+            "if invocation is None:",
+            "authority = authenticate_unacquired_unit(unit, description, environment)",
+            "hard_kill_cgroup(authority)",
+            "finally:",
+            '"unacquired cgroup authority close"',
+            "close_cgroup_authority",
+            '"unacquired target termination"',
+            "kill_observed_target",
+            "if not launcher_reaped:",
+            '"unacquired launcher termination and reap"',
+            "terminate_and_reap_unacquired_launcher",
+            "report_cleanup_failures(",
+        ),
+        "unacquired launcher cleanup ordering",
+    )
+    for text, label in (
+        ("except BaseException as primary_error:", "unacquired authentication primary-error preservation"),
+        ("attempt_cleanup(", "unacquired authentication cleanup accumulator"),
+        ("close_cgroup_authority", "unacquired authentication authority close"),
+        ("report_cleanup_failures(", "unacquired authentication cleanup reporting"),
+    ):
+        require_text(unacquired_authentication, text, label)
+    require_text(
+        target_backstop,
+        "signal.pidfd_send_signal(target_pidfd, signal.SIGKILL)",
+        "unacquired target pidfd backstop",
     )
     require_order(
-        terminator,
+        launcher_cleanup,
         (
-            "process_group = process.pid",
-            "signal_process_group(process_group, signal.SIGTERM)",
-            "process.wait(timeout=cleanup_grace_seconds)",
-            "signal_process_group(process_group, signal.SIGKILL)",
-            "process.wait(timeout=kill_grace_seconds)",
-            "if process_group_exists(process_group):",
-            "signal_process_group(process_group, signal.SIGKILL)",
-            "wait_process_group_absent(process_group, kill_grace_seconds)",
-            "close_process_pipes(process)",
+            "process.terminate()",
+            "process.wait(timeout=1)",
+            "process.kill()",
+            "process.wait()",
+            "if process.returncode is None:",
+            "report_cleanup_failures(",
         ),
-        "managed command process-group ownership",
+        "unacquired launcher exact reap",
+    )
+    require_order(
+        managed_finalization,
+        (
+            '"managed cgroup forced termination"',
+            "hard_kill_cgroup",
+            '"managed launcher termination and reap"',
+            "terminate_and_reap_unacquired_launcher",
+            '"managed cgroup authority close"',
+            "close_cgroup_authority",
+            "while True:",
+            '"managed unit collection"',
+            "os.path.lexists(control_group_path)",
+            '"managed cgroup pathname absence"',
+            "report_cleanup_failures(",
+        ),
+        "managed cleanup accumulator",
+    )
+    require_text(
+        timeout_fixtures,
+        "managed finalization accumulator fixture did not exhaust cleanup",
+        "managed finalization accumulator behavioral fixture",
+    )
+    exact_spawn_calls = [
+        node
+        for node in ast.walk(managed_function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "spawn_exact_process"
+    ]
+    if len(exact_spawn_calls) != 1 or not any(
+        isinstance(node, ast.Try) for node in managed_function.body
+    ):
+        raise VerificationError("managed command cgroup ownership: launcher escapes its teardown try")
+    managed_contract = managed_support + managed
+    if ".read(max_output_bytes + 1)" in managed:
+        raise VerificationError("managed command performs an unbounded post-exit pipe read")
+    require_exact_count(
+        managed,
+        "owned_authority = authority",
+        2,
+        "managed finalization authority handoff",
+    )
+    for text, label in (
+        ('"/usr/bin/systemd-run"', "fixed systemd-run authority"),
+        ('"/usr/bin/systemctl"', "fixed systemctl authority"),
+        ('"--scope"', "transient scope execution"),
+        ('"--collect"', "transient scope collection"),
+        ('"--expand-environment=no"', "systemd environment expansion exclusion"),
+        ('"--property=Delegate=no"', "cgroup delegation exclusion"),
+        ('"--property=KillMode=control-group"', "whole-cgroup systemd signaling"),
+        ('"--property=FinalKillSignal=SIGKILL"', "systemd hard-kill backstop"),
+        ('"--property=RuntimeMaxSec={runtime_limit}s"', "parent-death runtime backstop"),
+        ('"TimeoutStopUSec"', "authenticated stop-duration property"),
+        ('"RuntimeMaxUSec"', "authenticated runtime-duration property"),
+        ('parse_systemd_second_duration(properties["TimeoutStopUSec"]) != stop_limit', "exact stop-duration policy"),
+        ('parse_systemd_second_duration(properties["RuntimeMaxUSec"]) != runtime_limit', "exact runtime-duration policy"),
+        ('pwd.getpwuid(os.geteuid()).pw_dir', "fixed current-principal control HOME"),
+        ('os.O_DIRECTORY | os.O_NOFOLLOW', "descriptor cgroup walk"),
+        ('os.open("cgroup.events"', "retained cgroup population authority"),
+        ('os.open("cgroup.kill"', "retained cgroup kill authority"),
+        ('os.open("cgroup.procs"', "retained cgroup process inventory authority"),
+        ('cgroup_type != b"domain\\n"', "domain cgroup proof"),
+        ('process_cgroup != f"0::{properties[\'ControlGroup\']}\\n"', "gated process cgroup membership"),
+        ('repeated["InvocationID"] != properties["InvocationID"]', "unit acquisition identity stability"),
+        ('os.write(authority["kill"], b"1")', "exact cgroup.kill operation"),
+        ('wait_cgroup_empty(authority)', "unbounded recursive cgroup emptiness proof"),
+        ('if os.path.lexists(control_group_path):', "collected cgroup pathname absence"),
+        ('properties["InvocationID"] != invocation', "collected unit replacement rejection"),
+        ('def resolve_unacquired_unit(', "synchronous unacquired-unit resolution"),
+        ('authority = authenticate_unacquired_unit(unit, description, environment)', "unacquired cgroup authority reacquisition"),
+        ('kill_observed_target(target_pidfd)', "unacquired target pidfd backstop dispatch"),
+        ('terminate_and_reap_unacquired_launcher(process)', "unacquired launcher reap"),
+        ('unacquired managed-command unit was replaced during cleanup', "unacquired unit replacement rejection"),
+        ('signal.pidfd_send_signal(pidfd, numeric_signal)', "pidfd-bound graceful signaling"),
+        ('"managed unit graceful shutdown"', "graceful exceptional managed cleanup"),
+        ('socket.SOCK_SEQPACKET | socket.SOCK_CLOEXEC', "managed descriptor control channel"),
+        ('socket.SCM_RIGHTS', "managed descriptor rights transfer"),
+        ('"descriptors": list(normalized_fds)', "managed descriptor allowlist frame"),
+        ('os.dup2(descriptor, target, inheritable=True)', "managed descriptor inheritance restoration"),
+        ('control_socket.sendmsg([frame], controls)', "managed descriptor handoff"),
+    ):
+        require_text(managed_contract, text, label)
+    require_text(managed, "if len(inherited_fds) > 64:", "managed descriptor count bound")
+    require_text(managed, "or descriptor > 1048575", "managed descriptor number bound")
+    private_descriptor_acquisition = extract_python_definition(
+        source, module, "acquire_private_descriptors", "private managed descriptor acquisition"
+    )
+    require_text(
+        private_descriptor_acquisition,
+        "duplicate = os.dup(descriptor)",
+        "private managed descriptor duplication",
+    )
+    require_text(
+        managed,
+        '"unacquired managed unit resolution",\n                resolve_unacquired_unit,',
+        "unacquired gate retained through cgroup reacquisition",
+    )
+    require_text(
+        managed,
+        '"managed unit graceful shutdown",\n                gracefully_stop_managed_unit,',
+        "graceful exceptional managed cleanup",
     )
     require_order(
         managed,
         (
+            "descriptor_authority = acquire_private_descriptors(normalized_fds)",
+            'for tool in ("/usr/bin/systemd-run", "/usr/bin/systemctl", "/usr/bin/python3"):',
             "process = None",
-            "process_reaped = False",
+            "authority = None",
             "try:",
             "signal_scope = enter_managed_signal_scope()",
             "activate_managed_signal_scope(signal_scope)",
             "begin_managed_process_acquisition()",
-            "try:",
-            "process = subprocess.Popen(",
-            "start_new_session=True",
-            "finally:",
+            "acquisition_active = True",
+            "process = spawn_exact_process(",
+            "child_socket.fileno()",
+            "target_pid = read_managed_ready(",
+            "target_pidfd = os.pidfd_open(target_pid, 0)",
+            "authority = authenticate_managed_unit(",
+            "acquisition_active = False",
             "finish_managed_process_acquisition()",
-            "signal_process_group(process.pid, signal.SIGTERM)",
-            "deadline = time.monotonic() + cleanup_grace_seconds",
-            "signal_process_group(process.pid, signal.SIGKILL)",
-            "deadline = time.monotonic() + kill_grace_seconds",
-            "if output_bytes > max_output_bytes:",
-            "process_reaped = True",
+            "control_socket.sendmsg([frame], controls)",
+            'selector.register(target_pidfd, selectors.EVENT_READ, "target")',
+            "gracefully_stop_managed_unit(",
+            "hard_kill_cgroup(authority)",
+            "process, owned_authority, control_environment",
             "finally:",
-            "terminate_and_reap_process_group(process, cleanup_grace_seconds, kill_grace_seconds)",
-            "leave_managed_signal_scope(signal_scope, finalization_mask)",
+            '"managed process pipe close before shutdown"',
+            '"managed unit graceful shutdown"',
+            '"managed unit forced finalization"',
+            '"unacquired managed unit resolution"',
+            '"managed control socket close"',
+            '"managed child socket close"',
+            '"managed selector close"',
+            '"managed target pidfd close"',
+            '"managed process pipe close"',
+            '"managed private descriptor close"',
+            "if acquisition_active:",
+            '"managed process acquisition finish"',
+            '"managed signal-scope release"',
+            '"managed signal-mask restoration"',
+            "report_cleanup_failures(",
         ),
-        "managed command process-group ownership",
+        "managed command cgroup ownership",
+    )
+    gate_helper = extract_between(
+        managed_support,
+        "MANAGED_GATE_HELPER = r'''",
+        "\n'''\n\n\ndef require_system_tool(",
+        "managed descriptor gate helper",
+    )
+    cgroup_close = extract_python_definition(
+        source, module, "close_cgroup_authority", "managed cgroup descriptor finalizer"
+    )
+    cgroup_open = extract_python_definition(
+        source, module, "open_cgroup_authority", "managed cgroup authority acquisition"
+    )
+    hard_kill = extract_python_definition(
+        source, module, "hard_kill_cgroup", "recursive cgroup emptiness proof"
+    )
+    require_text(
+        hard_kill,
+        "wait_cgroup_empty(authority)",
+        "recursive cgroup emptiness proof",
+    )
+    require_text(
+        cgroup_close,
+        'for name in ("events", "kill", "processes", "directory"):',
+        "exhaustive cgroup descriptor close",
+    )
+    for text, label in (
+        ('os.open("cgroup.controllers"', "cgroup-v2 controller authority"),
+        ('os.open("cgroup.type"', "cgroup type authority"),
+        ('"cgroup type descriptor"', "cgroup type descriptor cleanup"),
+        ('"cgroup controller descriptor"', "cgroup controller descriptor cleanup"),
+        ('"cgroup processes descriptor"', "cgroup process descriptor cleanup"),
+        ('"cgroup kill descriptor"', "cgroup kill descriptor cleanup"),
+        ('"cgroup events descriptor"', "cgroup event descriptor cleanup"),
+        ('"cgroup directory descriptor"', "cgroup directory descriptor cleanup"),
+        ("attempt_cleanup(", "cgroup acquisition cleanup accumulator"),
+        ("report_cleanup_failures(", "cgroup acquisition cleanup reporting"),
+    ):
+        require_text(cgroup_open, text, label)
+    process_cgroup_reader = extract_python_definition(
+        source, module, "read_process_cgroup", "managed process cgroup reader"
+    )
+    for text, label in (
+        ("os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC", "no-follow process cgroup read"),
+        ("content = os.read(descriptor, 4097)", "bounded process cgroup read"),
+        ("if len(content) > 4096:", "process cgroup overflow rejection"),
+    ):
+        require_text(process_cgroup_reader, text, label)
+    require_exact_count(
+        managed_support,
+        "read_process_cgroup(",
+        3,
+        "descriptor-bound process cgroup inspection",
+    )
+    if 'Path(f"/proc/{' in managed_support:
+        raise VerificationError("managed process cgroup inspection retains an unbounded pathname read")
+    exact_spawn = extract_python_definition(
+        source, module, "spawn_exact_process", "exact child process creation"
+    )
+    for text, label in (
+        ("threading.active_count() != 1", "single-threaded exact fork boundary"),
+        ("require_single_native_thread()", "native single-threaded exact fork boundary"),
+        ("signal.pthread_sigmask(signal.SIG_BLOCK, MANAGED_SIGNALS)", "pre-fork signal exclusion"),
+        ("pid = os.fork()", "immediate child PID authority"),
+        ("set_child_parent_death_signal(parent_pid)", "exact child parent-death backstop"),
+        ("signal.signal(signum, signal.SIG_DFL)", "exact child default signal disposition"),
+        ("os.setsid()", "exact child process session ownership"),
+        ("close_unlisted_child_descriptors(inherited, inherited_identities)", "post-fork exact child descriptor closure"),
+        ("target_mask = set(previous_mask) - set(MANAGED_SIGNALS)", "exact child managed-signal unblocking"),
+        ("os.execve(command[0], command, environment)", "exact child executable boundary"),
+        ('state["acquiring_process_object"] = process', "pre-return child authority publication"),
+    ):
+        require_text(exact_spawn, text, label)
+    for text, label in (
+        ("or descriptor > 1048575", "managed descriptor number bound"),
+        (
+            "signal.pthread_sigmask(signal.SIG_UNBLOCK, (signal.SIGHUP, signal.SIGINT, signal.SIGTERM))",
+            "managed target signal-mask reset",
+        ),
+        (
+            "if level != socket.SOL_SOCKET or kind != socket.SCM_RIGHTS or len(data) % descriptor_size:",
+            "managed descriptor control validation",
+        ),
+        (
+            'if len(received) != len(payload["descriptors"]):',
+            "managed descriptor count equality",
+        ),
+        ("socket.MSG_CMSG_CLOEXEC", "managed descriptor receive close-on-exec"),
+        (
+            "duplicate = fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)",
+            "managed descriptor collision isolation",
+        ),
+        (
+            "os.dup2(descriptor, target, inheritable=True)",
+            "managed descriptor inheritance restoration",
+        ),
+    ):
+        require_text(gate_helper, text, label)
+    require_order(
+        gate_helper,
+        (
+            "descriptor_capacity = 64",
+            "channel.recvmsg(",
+            "socket.CMSG_SPACE(descriptor_capacity * descriptor_size)",
+            "socket.MSG_CMSG_CLOEXEC",
+            "flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC)",
+            'set(payload) != {"token", "environment", "descriptors"}',
+            'len(payload["descriptors"]) > descriptor_capacity',
+            "or descriptor > 1048575",
+            'len(set(payload["descriptors"])) != len(payload["descriptors"])',
+            "for level, kind, data in controls:",
+            "level != socket.SOL_SOCKET",
+            "kind != socket.SCM_RIGHTS",
+            'len(received) != len(payload["descriptors"])',
+            'targets = set(payload["descriptors"])',
+            "for descriptor in received:",
+            "duplicate = fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)",
+            "if duplicate in targets:",
+            "reservations.append(duplicate)",
+            "temporary.append(duplicate)",
+            "os.close(descriptor)",
+            "for descriptor in reservations:",
+            'for descriptor, target in zip(temporary, payload["descriptors"]):',
+            "os.dup2(descriptor, target, inheritable=True)",
+            "channel.close()",
+            'os.execve(command[0], command, environment)',
+        ),
+        "managed descriptor gate contract",
     )
     require_order(
         stateful,
@@ -3867,9 +8906,9 @@ def validate_workspace_verifier_self_contract(source):
         (
             "after = reserved_release_state(cwd)",
             "if after != before:",
-            '"new_worktrees"',
             '"new_directories"',
             '"changed_directories"',
+            '"canonical_publication_changed"',
             "raise state_error",
         ),
         "stateful release-state proof",
@@ -3877,7 +8916,8 @@ def validate_workspace_verifier_self_contract(source):
     for text, label in (
         ("stateful fixture changed reserved release state", "stateful reserved-state mismatch rejection"),
         ("managed command output exceeds its bound", "managed command output bound"),
-        ("cannot reap a hard-killed managed command process group", "managed command hard-kill reap"),
+        ("managed command exited while cgroup descendants remained", "normal-exit descendant rejection"),
+        ("wait_cgroup_empty(authority)", "unbounded managed cgroup drain"),
     ):
         require_text(source, text, label)
     require_text(
@@ -3885,27 +8925,289 @@ def validate_workspace_verifier_self_contract(source):
         "result = run_stateful_command([str(path), mode], repo, poison)",
         "transaction fixtures use the stateful runner",
     )
+    require_text(
+        transactions,
+        "bypass = run_stateful_command(",
+        "explicit-Bash transaction fixtures use the stateful runner",
+    )
     for text, label in (
+        (
+            "cgroup descriptor close fixture did not exhaust its authority",
+            "cgroup descriptor close fixture",
+        ),
+        (
+            "managed descriptor handoff leaked a private descriptor",
+            "managed descriptor leak fixture",
+        ),
         ("STATEFUL-POST-SPAWN-CLEANUP", "post-spawn exception cleanup fixture"),
-        ("def signal_before_popen_return", "pre-assignment managed signal fixture"),
-        ("subprocess.Popen = signal_before_popen_return", "pre-assignment managed signal fixture"),
+        ("def signal_before_spawn_return", "pre-assignment managed signal fixture"),
+        ('globals()["spawn_exact_process"] = signal_before_spawn_return', "pre-assignment managed signal fixture"),
         (
             "handle_managed_signal(signal.SIGTERM, None)",
             "pre-assignment managed signal injection",
         ),
-        ("pre-assignment managed signal retained", "pre-assignment process-group absence proof"),
-        (
-            'print(f"STATEFUL-PARENT-SIGNAL-STATE-CHECKED:{exc.signum}", flush=True)',
-            "external parent-signal cleanup fixture",
-        ),
-        ("STATEFUL-GRACEFUL-CLEANUP", "graceful process-group cleanup fixture"),
-        ("STATEFUL-RESISTANT-CHILD", "hard-kill process-group cleanup fixture"),
+        ("pre-assignment managed signal retained", "pre-assignment cgroup absence proof"),
+        ('assert_process_absent(descendant_pid, "stateful parent-signal descendant")', "external parent-signal cleanup fixture"),
+        ("stateful parent-signal fixture skipped graceful target cleanup", "external-signal graceful cleanup proof"),
+        ("STATEFUL-GRACEFUL-CLEANUP", "graceful cgroup cleanup fixture"),
+        ("STATEFUL-RESISTANT-CHILD", "hard-kill cgroup cleanup fixture"),
+        ("STATEFUL-LINGERING-CHILD", "normal-exit lingering cgroup fixture"),
+        ('with scratch.directory("double-fork-")', "double-fork cgroup fixture"),
+        ("stateful double-fork fixture accepted a daemonized descendant", "double-fork descendant rejection"),
         ("assert_process_absent", "timeout descendant absence proof"),
     ):
         require_text(timeout_fixtures, text, label)
-    require_text(main, "run_stateful_timeout_fixtures(repo)", "stateful timeout fixture dispatch")
+    for text, label in (
+        ('parser.add_argument("--scratch"', "verifier fixture scratch option"),
+        ('scratch = validate_fixture_scratch(Path(args.scratch))', "verifier fixture scratch validation dispatch"),
+        ('elif args.scratch is not None:', "verifier non-self-test scratch rejection"),
+        ('run_fixture_stage("publication snapshot fixture", exercise_canonical_publication_snapshot, scratch)', "canonical publication snapshot fixture dispatch"),
+        ('run_fixture_stage("scratch acquisition fixture", exercise_scratch_acquisition_failures, scratch)', "scratch acquisition fixture dispatch"),
+        ('run_fixture_stage("scratch replacement fixture", exercise_scratch_path_replacement, scratch)', "scratch replacement fixture dispatch"),
+        ('run_fixture_stage("managed lifecycle fixture", run_stateful_timeout_fixtures, repo, scratch)', "stateful timeout fixture dispatch"),
+        ('run_fixture_stage("version fixture", run_version_fixtures, sources["version"], scratch)', "fork-version fixture dispatch"),
+        ('run_fixture_stage("target-contract fixture", run_target_contract_fixtures, sources, scratch)', "target fixture scratch dispatch"),
+        ('"--scratch-fd",\n                    str(scratch.fd)', "closure fixture scratch descriptor dispatch"),
+        ('failure = (failure[0], f"{failure[1]}; scratch cleanup failed: {exc}")', "scratch cleanup failure preservation"),
+    ):
+        require_text(main, text, label)
+    for text, label in (
+        ("os.path.isabs(rendered)", "fixture scratch absolute-path proof"),
+        ("os.path.normpath(rendered) != rendered", "fixture scratch normalized-path proof"),
+        (
+            "def bounded_directory_names(descriptor, limit, diagnostic):",
+            "fixture bounded cleanup inventory",
+        ),
+        ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW", "fixture scratch descriptor walk"),
+        ("dir_fd=current_fd", "fixture scratch component-relative acquisition"),
+        ("metadata.st_uid != os.geteuid()", "fixture scratch owner proof"),
+        ("metadata.st_gid != os.getegid()", "fixture scratch group proof"),
+        ("stat.S_IMODE(metadata.st_mode) != 0o700", "fixture scratch mode proof"),
+        ("if not directory_is_empty(current_fd):", "fixture scratch initial emptiness proof"),
+        ("descriptor_mount_id(self.fd) != self.mount_id", "fixture scratch mount authority"),
+        ('return Path(f"/proc/self/fd/{self.fd}")', "unresolved fixture descriptor path"),
+        ("return (self.fd,)", "fixture descriptor inheritance allowlist"),
+        ("os.mkdir(child_name, 0o700, dir_fd=self.fd)", "descriptor-relative fixture creation"),
+        ("descriptor_mount_id(child_fd) != self.mount_id", "fixture child mount authority"),
+        ("yield ScratchDirectory(self, child_fd, child_name, child_identity)", "fixture child authority handoff"),
+        ("os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC", "fixture cleanup entry authority"),
+        ("descriptor_mount_id(authority_fd) != self.mount_id", "fixture cleanup mount-boundary proof"),
+        ("os.rmdir(child_name, dir_fd=self.fd)", "descriptor-relative fixture removal"),
+        ("if not directory_is_empty(self.fd):", "fixture scratch final emptiness proof"),
+        ("scratch pathname was replaced", "fixture scratch edge replacement rejection"),
+        ("fixture directory edge changed before cleanup", "live fixture edge cleanup gate"),
+    ):
+        require_text(scratch_validator, text, label)
+    require_text(
+        bounded_cleanup_inventory,
+        "with os.scandir(descriptor) as entries:",
+        "fixture streamed bounded cleanup inventory",
+    )
+    for text, label in (
+        ("descriptor_mount_id = reject_constructor_mount", "scratch constructor acquisition fixture"),
+        ("scratch constructor leaked a descriptor after acquisition failure", "scratch constructor descriptor inventory proof"),
+        ("descriptor_mount_id = reject_child_mount", "scratch child acquisition fixture"),
+        ("scratch child leaked a descriptor after acquisition failure", "scratch child descriptor inventory proof"),
+        ("scratch child acquisition failure did not preserve one ambiguous edge", "scratch ambiguous-edge preservation proof"),
+        ("preserved scratch child acquisition state is not exact", "scratch preserved-edge metadata proof"),
+    ):
+        require_text(scratch_acquisition_fixtures, text, label)
+    for text, label in (
+        ("wrote through the replacement symlink", "scratch replacement non-traversal proof"),
+        ("modified the replacement directory", "live fixture replacement preservation proof"),
+        ("descriptor-owned\\n", "descriptor-bound consumer-write fixture"),
+        ("inherited_fds=directory.inherited_fds", "exact consumer descriptor inheritance"),
+    ):
+        require_text(scratch_replacement_fixtures, text, label)
+    for text, label in (
+        ("fork-version fixture accepted a daemonized descendant", "fork-version descendant fixture"),
+        ("inherited_fds=root.inherited_fds", "fork-version exact descriptor inheritance"),
+    ):
+        require_text(version_fixtures, text, label)
+    for text, label in (
+        ("root = root_authority.canonical_path()", "canonical-path target-contract exception"),
+        ("root_authority.assert_bound()", "target-contract edge authority proof"),
+    ):
+        require_text(target_contract_fixtures, text, label)
+    require_order(
+        scratch_validator,
+        (
+            "def assert_bound(self):",
+            "metadata = os.fstat(self.fd)",
+            "edge = os.stat(self.basename, dir_fd=self.parent_fd, follow_symlinks=False)",
+            "if filesystem_identity(edge) != self.identity:",
+            'raise VerificationError("verifier fixture scratch pathname was replaced")',
+        ),
+        "fixture scratch edge authority",
+    )
+    require_text(
+        scratch_validator,
+        "child_owned = True\n            yield ScratchDirectory(self, child_fd, child_name, child_identity)",
+        "fixture child acquisition authority",
+    )
+    require_order(
+        scratch_validator,
+        (
+            "child_owned = False",
+            "child_fd = os.open(",
+            "if descriptor_mount_id(child_fd) != self.mount_id:",
+            "child_owned = True",
+            "yield ScratchDirectory(self, child_fd, child_name, child_identity)",
+            "edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)",
+            "if filesystem_identity(edge) != child_identity:",
+            'raise VerificationError("fixture directory edge changed before cleanup")',
+            "self._remove_contents(child_fd, [131072])",
+        ),
+        "live fixture edge cleanup gate",
+    )
+    for text, label in (
+        ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW", "publication snapshot no-follow directory descriptors"),
+        ("dir_fd=directory_fd", "publication snapshot descriptor-relative traversal"),
+        ("with os.scandir(inventory_fd) as entries:", "publication streamed directory inventory"),
+        ("canonical publication directory changed during snapshot", "publication directory stability proof"),
+        ("canonical publication file changed during snapshot", "publication file stability proof"),
+        ("canonical publication state contains a link or special entry", "publication alias and special-entry rejection"),
+        ("metadata.st_ctime_ns", "publication ctime metadata"),
+        ("descriptor_statx(descriptor)", "publication statx metadata"),
+        ("result.mount_id", "publication mount identity"),
+        ("os.fstatvfs(descriptor)", "publication mount-policy metadata"),
+        ("os.listxattr(descriptor)", "publication visible xattr inventory"),
+        ("system.posix_acl_access", "publication ACL probe"),
+        ("security.capability", "publication capability probe"),
+        ('publication_ioctl_state(descriptor, FS_IOC_GETFLAGS, 4, "inode flags")', "publication inode flags"),
+        ('publication_ioctl_state(descriptor, FS_IOC_FSGETXATTR, 28, "extended inode flags")', "publication extended inode flags"),
+        ("second_inventory = publication_directory_inventory", "publication second directory inventory"),
+        ("canonical publication parent edge changed during snapshot", "publication final parent-edge proof"),
+        ("hashlib.sha256()", "publication content digest"),
+        ("digest.update(chunk)", "publication content digest update"),
+        ('names = ["dist"]', "canonical dist state"),
+        ('name.startswith(".dist-release-")', "complete reserved publication state"),
+        ('"--publication-worker-fd"', "publication isolated worker mode"),
+        ("process = spawn_exact_process(", "publication exact worker process"),
+        ("worker_fd = os.dup(_VERIFIER_PROGRAM_FD)", "publication worker program descriptor"),
+        ("fcntl.fcntl(worker_fd, fcntl.F_GET_SEALS) != VERIFIER_PROGRAM_SEALS", "publication sealed worker program"),
+        ('f"/proc/self/fd/{worker_fd}"', "publication descriptor-bound worker program"),
+        ("tuple(inherited)", "publication worker descriptor inheritance"),
+        ("begin_managed_process_acquisition()", "publication worker signal-safe acquisition"),
+        ("finish_managed_process_acquisition()", "publication worker acquisition handoff"),
+        ("pidfd = os.pidfd_open(process.pid, 0)", "publication worker pidfd authority"),
+        ("process.kill()", "publication worker exact timeout kill"),
+        ("os.waitid(os.P_PIDFD, pidfd", "publication worker deadline observation"),
+        ("same-size content mutation", "publication content mutation fixture"),
+        ("omitted visible xattr mutation", "publication xattr mutation fixture"),
+        ("omitted ctime-only mutation", "publication ctime mutation fixture"),
+        ("accepted a symlink", "publication symlink rejection fixture"),
+        ("canonical publication snapshot content fixture", "publication content-bound fixture"),
+        ("canonical publication snapshot entry fixture", "publication entry-bound fixture"),
+        ("worker ignored its deadline", "publication deadline fixture"),
+        ("signal_before_publication_spawn_return", "publication pre-assignment signal fixture"),
+        ("publication snapshot pre-assignment signal worker", "publication pre-assignment worker absence proof"),
+    ):
+        require_text(publication_state, text, label)
+    publication_bound_matrix = (
+        (
+            "PUBLICATION_ENTRY_LIMIT = 128",
+            'if budget["entries"] >= PUBLICATION_ENTRY_LIMIT:',
+            "canonical publication snapshot entry fixture",
+            "entry",
+        ),
+        (
+            "PUBLICATION_DEPTH_LIMIT = 16",
+            "if depth > PUBLICATION_DEPTH_LIMIT:",
+            "publication depth behavioral fixture",
+            "depth",
+        ),
+        (
+            "PUBLICATION_CONTENT_LIMIT = 2 * 1024 * 1024 * 1024",
+            'if opened.st_size > budget["content_remaining"]:',
+            "canonical publication snapshot content fixture",
+            "content",
+        ),
+        (
+            "PUBLICATION_XATTR_VALUE_LIMIT = 64 * 1024",
+            "if len(value) > PUBLICATION_XATTR_VALUE_LIMIT:",
+            "publication per-xattr behavioral fixture",
+            "per-xattr value",
+        ),
+        (
+            "PUBLICATION_XATTR_NAME_LIMIT = 64 * 1024",
+            "if sum(len(name) + 1 for name in encoded_names) > PUBLICATION_XATTR_NAME_LIMIT:",
+            "publication xattr-name behavioral fixture",
+            "xattr names",
+        ),
+        (
+            "PUBLICATION_XATTR_TOTAL_LIMIT = 16 * 1024 * 1024",
+            'if budget["xattr_bytes"] > PUBLICATION_XATTR_TOTAL_LIMIT:',
+            "publication aggregate-xattr behavioral fixture",
+            "aggregate xattr bytes",
+        ),
+        (
+            "PUBLICATION_XATTR_PER_INODE_COUNT_LIMIT = 1024",
+            "if len(names) > PUBLICATION_XATTR_PER_INODE_COUNT_LIMIT:",
+            "publication per-inode xattr-count behavioral fixture",
+            "per-inode xattr count",
+        ),
+        (
+            "PUBLICATION_XATTR_TOTAL_COUNT_LIMIT = 65536",
+            'if budget["xattr_count"] > PUBLICATION_XATTR_TOTAL_COUNT_LIMIT:',
+            "publication shared-xattr-count behavioral fixture",
+            "aggregate xattr count",
+        ),
+        (
+            "PUBLICATION_REPOSITORY_ENTRY_LIMIT = 4096",
+            "if len(names) >= entry_limit:",
+            "publication repository-entry behavioral fixture",
+            "repository entries",
+        ),
+        (
+            "PUBLICATION_REPOSITORY_BYTE_LIMIT = 1024 * 1024",
+            "and name_bytes + encoded_size > PUBLICATION_REPOSITORY_BYTE_LIMIT",
+            "publication repository-byte behavioral fixture",
+            "repository name bytes",
+        ),
+        (
+            "PUBLICATION_NAMESPACE_LIMIT = 17",
+            "if len(names) > PUBLICATION_NAMESPACE_LIMIT:",
+            "publication namespace behavioral fixture",
+            "canonical namespace",
+        ),
+        (
+            "PUBLICATION_SERIALIZED_RESULT_LIMIT = 16 * 1024 * 1024",
+            "if len(payload) <= PUBLICATION_SERIALIZED_RESULT_LIMIT:",
+            "serialized-result behavioral fixture",
+            "serialized worker result",
+        ),
+        (
+            "PUBLICATION_OUTPUT_LIMIT = 16 * 1024 * 1024",
+            "if len(payload) + len(diagnostics) + len(chunk) > PUBLICATION_OUTPUT_LIMIT:",
+            "aggregate-output behavioral fixture",
+            "aggregate worker output",
+        ),
+        (
+            "PUBLICATION_DEADLINE_SECONDS = 120",
+            "while selector.get_map():\n            remaining = deadline - time.monotonic()\n            if remaining <= 0:\n                timed_out = True",
+            "worker ignored its deadline",
+            "worker deadline",
+        ),
+    )
+    for constant, predicate, fixture, label in publication_bound_matrix:
+        require_text(publication_state, constant, f"publication {label} bound")
+        require_text(publication_state, predicate, f"publication {label} bound enforcement")
+        require_text(publication_state, fixture, f"publication {label} behavioral fixture")
+    require_exact_count(
+        publication_state,
+        "process.kill",
+        2,
+        "publication worker exact timeout kill",
+    )
+    require_text(
+        reserved_state,
+        "return directories, canonical_publication_state(repo)",
+        "canonical publication state inclusion",
+    )
     require_text(main, "except ManagedSignal as exc:", "managed signal main classification")
-    require_text(main, "return 128 + exc.signum", "managed signal exit status")
+    require_text(main, "failure = (128 + exc.signum", "managed signal exit status")
+    require_text(main, "return failure[0]", "managed failure status return")
 
 
 if __name__ == "__main__":

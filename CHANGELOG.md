@@ -5,7 +5,7 @@ All notable changes to the hardened fork, newest first. Each entry's heading is 
 truth for the exact code a release contains is the **commit** it was built from, linked in the GitHub
 release notes.
 
-## 1.4.7-hardened.6 - 2026-07-13
+## 1.4.7-hardened.6 - 2026-07-14
 
 ### Privileged authority and unattended credentials
 - Made installed-service credential changes explicit privileged transactions rather than generic
@@ -100,22 +100,42 @@ release notes.
 ### Verification and release discipline
 - Confined verifier scratch state to private workspaces and made mutation self-tests prove that source,
   lockfile, release-ordering, and workspace-authority failures are detected.
+- Bound verifier fixture allocation and cleanup to retained no-follow scratch descriptors. Random descriptor-relative
+  creation, mount/identity-checked cleanup, acquisition-failure fixtures, exact descriptor inheritance, and a real
+  consumer pathname-replacement fixture reject redirection and preserve ambiguous edges.
+- Routed lifecycle-capable verifier commands through authenticated transient cgroup scopes with gated execution,
+  post-authentication `SCM_RIGHTS` descriptor handoff, pidfd target identity, exact unit/cgroup authentication,
+  `cgroup.kill`, recursive emptiness proof, and unit collection. Fixtures cover signals, `setsid`, lingering
+  descendants, and double-fork daemonization.
+- Moved canonical publication snapshots to a fresh pidfd-supervised worker and included ctime, `statx` mount and
+  attribute state, mount flags, visible xattrs, explicit ACL/capability probes, inode flags, two inventories,
+  exact content/EOF, final edges, and independent resource/deadline mutation gates.
 - Closed source-gate text scanning to fixed, root-owned GNU `grep`, with explicit match/no-match/error
   status handling and a release preflight that runs before the online closure is copied.
 - Made the non-root portable password smoke stage execute from an immutable owner-scoped fixture, prove
   its portable role and exact process ownership, and leave the mode-0700 release source bind unchanged.
-- Made every release consumer return its private exact-commit snapshot to an empty generated-state baseline,
-  rejecting descendant mounts and externally escaping hardlinks before the pinned offline Debian image uses
-  one read-only inspection capability and one CHOWN-only mutation phase ahead of fail-closed Git cleanup. Cleanup
-  streams Git's exact registry without a workspace temporary, removes initialization-locked registrations, and
-  rejects missing, changed, or preserved private workspace state before proving the whole deletion boundary.
-- Made final `dist` installation identity-bound, failure-atomic, and restartable through a durable fsynced transaction
-  record. Payload-name durability precedes that record; first installation is kernel no-clobber, and every recovery
-  observation plus final success synchronizes the exact publication parent. The prior set is not weakened before
-  exchange; restart recovery conclusively rolls back an unpublished payload or completes a record-proven installed
-  set before a terminal discard is removed.
-- Deferred release success until signal-excluded final cleanup has reconciled publication, removed exact registered
-  worktrees and the private workspace, and completed post-deletion Git pruning.
+- Made each release pass an independent `--no-hardlinks --reject-shallow` private repository with its own object database, detached exact
+  commit, no remotes, strict object validation, mount closure, and complete inode-link closure. The release transaction
+  creates no Git worktree registration and never inspects or mutates the invoking repository's worktree registry.
+- Made generated-state normalization one retained-authority operation. It requires kernel hardlink protection and a
+  bounded descriptor budget, retains every directory and unique non-directory inode, rejects external links, mounts,
+  special objects, and changed inventories, strips dangerous mode bits, and re-proves the exact private tree before
+  fail-closed Git cleanup. Descriptor-bound workspace removal independently reacquires and consumes a complete
+  hardlink closure under the same bounded descriptor policy.
+- Made managed verifier finalization preserve the complete forced-kill, launcher-reap, descriptor-close,
+  unit-collection, and cgroup-path failure set instead of allowing one cleanup failure to hide another.
+- Made final `dist` installation an ext4-only same-parent transaction bound to the complete descriptor-retrieved ext4 UUID and
+  opaque object handles. Nonblocking retained-descriptor opens reject special-file substitution before reads; public
+  verification rejects unresolved journal state without repair.
+- Made the durable v3 journal advance through `initializing`, handle-bound `staging`, manifest-bound `prepared`, and
+  explicit `rollback` or `cleanup`. Unbound payloads are preserved as ambiguous, partial staging is removed only under
+  its recorded handle, first installation is kernel no-clobber, and replacement uses one atomic exchange.
+- Expanded restart and corruption fixtures across first and replacement publication, partial cleanup, no-clobber,
+  wrong-token canonical state, malformed reserved state, object substitution, modes, hardlinks, xattrs, root metadata,
+  and special-file types.
+  These are process-restart proofs; they do not claim physical power-loss simulation.
+- Deferred release success until signal-excluded final cleanup has reconciled publication, removed the exact private
+  workspace through retained descriptors, and proved its deletion boundary.
 - Made the complete release build require one clean committed `HEAD` before verification, after
   verification, and after all cold reproducible target builds. Windows artifacts must be archived from
   that same commit; generated checksums record the exact source commit and fork version.

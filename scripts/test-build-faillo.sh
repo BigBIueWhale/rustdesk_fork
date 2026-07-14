@@ -14,6 +14,11 @@ RV="$(. scripts/pins.env; echo "$RUST_VERSION")"
 TEST_HOME="$(getent passwd "$(id -u)" | awk -F: 'NF == 7 { print $6 }')"
 [ -n "$TEST_HOME" ] && [ -d "$TEST_HOME" ] || { echo "BUILD-FAILLO: FATAL - cannot resolve test home"; exit 1; }
 CLEAN_SCRIPT_ENV=(env -i HOME="$TEST_HOME" PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC)
+EXPECTED_SOURCE_COMMIT="$(/usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null \
+  -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+  || { echo "BUILD-FAILLO: FATAL - cannot resolve exact source commit"; exit 1; }
+[[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+  || { echo "BUILD-FAILLO: FATAL - source commit is not lowercase 40-hex"; exit 1; }
 DIRTY_PROBE_PARENT="$REPO_ROOT/scripts"
 P=0; F=0
 
@@ -163,7 +168,7 @@ run_die "SOURCE_DATE_EPOCH non-integer"    "SOURCE_DATE_EPOCH is unset or not an
 run_ok  "SOURCE_DATE_EPOCH from the pin"   'export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"; assert_source_date_epoch'
 run_die "verify_sha256 R-B12 sentinel"     "is pinned to the R-B12 sentinel" 'verify_sha256 /etc/hostname "$SHA_PENDING"'
 run_die "verify_sha256 missing file"       "verify_sha256: file not found: /online/DOES-NOT-EXIST.tar.xz" 'verify_sha256 /online/DOES-NOT-EXIST.tar.xz 00000000000000000000000000000000000000000000000000000000deadbeef'
-run_die "verify_online_shas wrong SHA"     "SHA-256 mismatch for $REPO_ROOT/online/rust-${RV}.tar.xz" "verify_online_shas rust-${RV}.tar.xz 0000000000000000000000000000000000000000000000000000000000000000"
+run_die "verify_online_shas wrong SHA"     "SHA-256 mismatch for ${ONLINE_DIR:-$REPO_ROOT/online}/rust-${RV}.tar.xz" "verify_online_shas rust-${RV}.tar.xz 0000000000000000000000000000000000000000000000000000000000000000"
 run_die "verify_online_shas odd arg count" "verify_online_shas: odd argument count" 'verify_online_shas loneName'
 run_die "require_cmd missing tool"         "required tool(s) not found: this_tool_does_not_exist_xyz" 'require_cmd this_tool_does_not_exist_xyz'
 run_script_die_reached "clean-worktree guard dies dirty" \
@@ -204,8 +209,23 @@ run_script_die_reached_without_marker "build-release.sh rejects a missing record
 run_script_ok_marker "pinned offline reset removes root-owned inaccessible generated state" \
   "build-release root-owned reset self-test: OK" \
   "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --self-test-reset
-run_script_die_reached "build-release.sh --doctor rejects a dirty tree" \
-  "release preflight: source tree is not clean, including untracked files" "BUILD-FAILLO: DIRTY-PROBE-READY:" \
+run_script_ok_marker "exact source-state self-test accepts a clean checkout" \
+  "build-release source-state self-test: OK" \
+  "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh \
+  "--self-test-source-state=$EXPECTED_SOURCE_COMMIT"
+run_script_die "exact source-state self-test rejects a different expected commit" \
+  "source-state self-test: HEAD changed" \
+  "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh \
+  --self-test-source-state=0000000000000000000000000000000000000000
+run_script_die_reached_without_marker "exact source-state self-test rejects a dirty checkout" \
+  "BUILD-FAILLO: DIRTY-PROBE-READY:" \
+  "source-state self-test: source tree is not clean, including untracked files" \
+  "build-release source-state self-test: OK" \
+  run_with_dirty_probe source-state "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh \
+  "--self-test-source-state=$EXPECTED_SOURCE_COMMIT"
+run_script_die_reached "production release source gate rejects a dirty checkout" \
+  "release preflight: source tree is not clean, including untracked files" \
+  "BUILD-FAILLO: DIRTY-PROBE-READY:" \
   run_with_dirty_probe doctor "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --doctor
 run_script_die "gen-android-keystore refuses to overwrite" "refusing to overwrite existing keystore: scripts/lib.sh" \
   bash scripts/gen-android-keystore.sh scripts/lib.sh /tmp/faillo-nonexistent-pass

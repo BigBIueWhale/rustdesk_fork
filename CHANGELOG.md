@@ -96,6 +96,15 @@ release notes.
 - Hardened dependency and build inputs, including bundled native libraries, runner libraries, Android
   signing and final-manifest checks, Debian payload ownership and ELF search paths, and Apple
   service/helper provenance.
+- Made the Debian package tree independent of checkout ownership, modes, and umask: one supported Flutter
+  constructor now cleans and exact-matches its payload shape, emits canonical public data/control modes, declares
+  editable `/etc/rustdesk` conffiles, rejects links and ambiguous inventories, requires canonical raw tar types,
+  names, owner fields, and padding, and is checked member-by-member before release hashing. Its source gate pins the
+  import surface, undecorated runtime constructor identity, process-launch APIs, and exact package operation program.
+  Loader-visible ELF proof
+  requires exact x86-64 runtime identity and interpreter, non-W+X loads, a non-executable stack, bounded canonical
+  dynamic tables, safe dependency basenames and SONAMEs, no auxiliary loader injection tags, and only the role-specific
+  bundle-relative RUNPATHs.
 
 ### Verification and release discipline
 - Confined verifier scratch state to private workspaces and made mutation self-tests prove that source,

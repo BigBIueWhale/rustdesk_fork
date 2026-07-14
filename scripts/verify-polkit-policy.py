@@ -88,7 +88,7 @@ def validate_repo_rules(repo):
                 continue
             path = Path(root) / name
             try:
-                text = path.read_text(errors="replace")
+                text = path.read_text(encoding="utf-8", errors="replace")
             except OSError as err:
                 fail(f"failed to read polkit rules file {path}: {err}")
             if ACTION_ID in text:
@@ -97,7 +97,7 @@ def validate_repo_rules(repo):
 
 def validate_build_py(repo):
     path = repo / "build.py"
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     copy_re = re.compile(
         r"""['"]cp\s+(?:\.\./)?res/com\.carriez\.RustDesk\.policy\s+tmpdeb/usr/share/polkit-1/actions/?['"]"""
     )
@@ -105,10 +105,10 @@ def validate_build_py(repo):
 
     copies = copy_re.findall(text)
     mkdirs = mkdir_re.findall(text)
-    if len(copies) != 3:
-        fail(f"build.py must stage the polkit policy in all three Debian paths; found {len(copies)} copies")
-    if len(mkdirs) != 3:
-        fail(f"build.py must create the polkit action directory in all three Debian paths; found {len(mkdirs)} mkdirs")
+    if len(copies) != 1:
+        fail(f"build.py must stage the polkit policy in the sole Debian path; found {len(copies)} copies")
+    if len(mkdirs) != 1:
+        fail(f"build.py must create the polkit action directory in the sole Debian path; found {len(mkdirs)} mkdirs")
 
     for line_no, line in enumerate(text.splitlines(), 1):
         if "com.carriez.RustDesk.policy" in line and "cp " in line and not copy_re.search(line):
@@ -121,7 +121,10 @@ def deb_contents(deb):
     if shutil.which("dpkg-deb") is None:
         fail("dpkg-deb is required to validate a built .deb policy payload")
     try:
-        return subprocess.check_output(["dpkg-deb", "--contents", str(deb)], text=True)
+        return subprocess.check_output(
+            ["dpkg-deb", "--contents", str(deb)],
+            universal_newlines=True,
+        )
     except subprocess.CalledProcessError as err:
         fail(f"{deb}: dpkg-deb --contents failed with status {err.returncode}")
 
@@ -138,7 +141,11 @@ def parse_deb_contents_line(line):
 
 def validate_deb(repo, deb):
     contents = deb_contents(deb)
-    entries = [parsed for line in contents.splitlines() if (parsed := parse_deb_contents_line(line))]
+    entries = []
+    for line in contents.splitlines():
+        parsed = parse_deb_contents_line(line)
+        if parsed is not None:
+            entries.append(parsed)
 
     policy_entries = [entry for entry in entries if entry[2].startswith("usr/share/polkit-1/actions/") and entry[2].endswith(".policy")]
     expected_entries = [entry for entry in policy_entries if entry[2] == str(DEB_POLICY)]

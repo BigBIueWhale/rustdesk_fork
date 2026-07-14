@@ -1942,14 +1942,37 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Debian bundle layout and the existing `$ORIGIN/lib` install RPATH, with explicit immediate/local binding. Missing
   bundled core or missing `rustdesk_core_main` now makes the runner exit nonzero. The legacy package-manager advice
   path is deleted, so a load failure no longer probes `PATH` for `apt`, `dnf`, `yum`, `zypper`, or `pacman`.
-  R-S11c-10t closes the Linux Debian package payload ownership authority in `build.py`,
-  `scripts/build-debian.sh`, and `scripts/verify-debian-package-authority.py`: direct Debian package creation no
-  longer lets staging-tree uid/gid become installed root-service authority. Every `build.py` Debian package creation
-  path uses `dpkg-deb --root-owner-group -b`; the release wrapper validates the emitted archive before hashing it;
-  and the source gate inspects the data/control tar members directly, requiring the root-loaded `/usr/share/rustdesk`
-  tree, service unit, polkit policy, and maintainer scripts to be root-owned, non-group/world-writable, type-correct,
-  and link-free where authority-bearing. Synthetic negative tests prove the verifier rejects user-owned payloads and
-  writable package parents.
+  R-S11c-10t closes the Linux Debian package tree authority in `build.py`, `scripts/build-debian.sh`, and
+  `scripts/verify-debian-package-authority.py`. Debian packaging has one supported Flutter constructor; the unused
+  `--package` and non-Flutter cargo-bundle/repackaging surfaces are absent. It removes prior Linux Flutter output,
+  requires the exact bundle root/runtime-library/fixed-resource shape with only generated `flutter_assets` variable,
+  and copies the exact four maintainer-script bodies without preserving checkout modes. The exact control inventory
+  includes `conffiles` for `startwm.sh`/`xorg.conf` and `md5sums` covering every non-conffile data file. The finalizer
+  rejects unexpected entries, nested control directories, links, special files, and hardlinked regular files, then
+  makes every directory `0755`, the runner and `startwm.sh` `0755`, all other data and ordinary control files `0644`,
+  and all maintainer scripts `0755`. One `subprocess.run(..., check=True)` argv boundary invokes
+  `dpkg-deb --root-owner-group -b`; AST validation admits only that archiver and the exact PE canonicalizer process,
+  pins the complete top-level import inventory, rejects decorators, direct and re-exported alternate process-launch
+  members, callable aliases, direct stores, dynamic namespace/evaluation APIs, function/module/frame namespace reach,
+  and explicit early termination, and requires every package authority's loaded name/code origin to match its sole
+  synchronous top-level definition. It resolves concatenated, joined, and interpolated constant strings, requires exact
+  shell-wrapper and FFI-helper bodies, the four-function shell-call ownership inventory, and the exact 21-operation
+  Flutter pre-finalization program,
+  requires contiguous reachable direct staging/finalization/archive operations, and permits only the exact
+  cleanup/versioned-rename/chdir publication tail afterward. The release
+  wrapper validates the emitted archive and locale-independent exact extracted-script metadata before hashing it. The
+  independent verifier reads raw tar headers and rejects duplicate, absolute, traversing, extended, parser-normalized,
+  root-alias, wrong-prefix, wrong-trailing-slash, alternate regular/contiguous/sparse typeflags, nonempty regular-file
+  link names, non-root owner names, nonzero name/linkname/uname/gname/prefix padding, or otherwise non-canonical
+  members; requires exact link-free data/control/conffile/md5 inventories; and checks every member's numeric ownership,
+  raw type, and mode.
+  Production tests invoke the real finalizer under `umask 077` with `0600`/`0700` inputs. Handcrafted package mutations
+  cover wrong control/data modes, extra/missing/nested/special members, regular stowaways, links, raw-header aliases,
+  wrong-identity ELF objects, malformed conffiles/md5sums, and invalid/empty/multiple/legacy ELF search paths; source
+  negatives cover hardlinked and individually symlinked scripts, a symlinked script directory, stale data,
+  decorated constructor replacement, direct OS-process imports, byte-valued spawn/exec and re-exported subprocess
+  launches, literal/concatenated/joined/interpolated-f-string/aliased archive commands, early termination, direct or
+  dynamic authority rebinding, intervening or reordered package operations, user ownership, and writable/private modes.
   R-S11c-10u closes the Linux XDO libxdo dynamic-library provenance path in
   `libs/libxdo-sys-stub/src/lib.rs`: the service-reachable Linux input backend no longer opens bare
   `libxdo.so.*` names through ambient dynamic-loader search. The wrapper now considers only fixed absolute
@@ -2018,12 +2041,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/src/flutter/linux/flutter/ephemeral` build RUNPATHs. Cargo release rpath is now pinned off in `Cargo.toml`,
   `build.py`, and `scripts/build-debian.sh`; Flutter plugin targets are built with install RUNPATH and
   `$ORIGIN`, so copied plugin artifacts are bundle-relative rather than build-tree-relative. The Debian package
-  authority verifier now extracts each emitted `.deb` data archive, inspects every ELF under
-  `/usr/share/rustdesk`, rejects any legacy RPATH, requires the runner to have exactly `$ORIGIN/lib`, allows only
-  `$ORIGIN` on `libflutter_linux_gtk.so` and Flutter plugin libraries, and requires every other bundled ELF
-  including `librustdesk.so` to have no runtime search path. Its self-test builds synthetic accepted and rejected
-  ELF packages, including a `/tmp/rustdesk-bad` RUNPATH negative case, and `scripts/build-debian.sh` runs the
-  verifier before hashing each release package.
+  authority verifier now extracts each emitted `.deb` data archive, inspects every regular data member with ELF magic,
+  requires current 64-bit little-endian x86-64 headers, `ET_EXEC`/`ET_DYN` for the runner, and `ET_DYN` for every other
+  ELF. The runner has one exact mapped `/lib64/ld-linux-x86-64.so.2` interpreter; shared objects have none. Every load
+  is non-W+X and ABI-aligned, and every admitted ELF has one exact non-executable RW GNU stack. It directly parses
+  exactly one consistently `PT_LOAD`-mapped loader-visible `PT_DYNAMIC` containing 16-byte
+  records, requires canonical 8-byte segment alignment and a `DT_NULL` terminator with zero-only remainder, and maps
+  its unique nonempty bounded string table through program headers. The table must begin and end with NUL; every
+  recognized loader string reference is bounded and ASCII. `DT_NEEDED` values are safe basenames, an optional sole
+  `DT_SONAME` equals the installed basename, and CONFIG/DEPAUDIT/AUDIT/AUXILIARY/FILTER loader controls are forbidden.
+  The verifier rejects legacy RPATH, malformed or multiple tags, and empty RUNPATH,
+  requires the runner to have exactly `$ORIGIN/lib`, allows only `$ORIGIN` on `libflutter_linux_gtk.so` and Flutter
+  plugin libraries, and requires every other ELF including `librustdesk.so` to have no runtime-search tag. Its
+  handcrafted package and parser mutations cover wrong class/byte-order/machine/type, interpreter count/path/role,
+  executable stack, W+X load, and dynamic-segment identities, segment/load disagreement, wrong alignment, missing
+  termination, missing/duplicate/zero-sized/unmapped/oversized or
+  non-NUL-bounded dynamic strings, out-of-bounds references, unsafe dependency/SONAME values, forbidden loader tags,
+  `/tmp/rustdesk-bad`, empty, multiple, and legacy search paths, mandatory non-ELF substitution, and a bad ELF in the
+  variable asset subtree; `scripts/build-debian.sh` runs the verifier before hashing each package.
   Remaining closure:
   no currently listed R-S11c-10 service/display discovery probe remains open; keep treating any newly found
   root-context shell interpolation as a new tracked closure item. `xrandr|tr` is closed by R-S11c-10c;
@@ -2037,7 +2072,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   closed by R-S11c-10o; Linux self-relaunch AppImage fallback is closed by R-S11c-10p; Linux clipboard FUSE
   root-process denial is closed by R-S11c-10q; Linux clipboard FUSE fixed-helper fd-passing mount is closed
   by R-S11c-10r; Linux Flutter runner core-library load provenance is closed by R-S11c-10s; Linux Debian package
-  payload ownership authority is closed by R-S11c-10t; Linux XDO libxdo dynamic-library provenance is closed by
+  tree authority is closed by R-S11c-10t; Linux XDO libxdo dynamic-library provenance is closed by
   R-S11c-10u.
 - **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
@@ -2279,6 +2314,17 @@ created. Log `/tmp/rustdesk-build-b66d44d.log` has SHA-256
 explicit capacity and capability proof, 524,288-entry bounded authority, authenticated executor, and empty-root-only
 terminal deletion design above supersede those failed paths. Exact-commit artifact evidence remains open pending a
 complete cold build from the exact pushed commit.
+
+The exact pushed `6d4030c05eae830c43d90d0a233759f660297db2` cold build passed all nine pass-A release gates, including
+core verification, the Windows harness, runtime server smoke, Flutter/Dart, native codec, Apple, Rust/Dart audit, and
+all fail-loud fixtures. Its first Debian package build then failed closed because `dpkg-deb` rejected mode-`0700`
+`preinst`; the private release snapshot's `umask 077` modes had crossed the package boundary through mode-preserving
+control-script copies. The same review established that ordinary copied payload files could retain private
+`0600`/`0700` modes even after `--root-owner-group` normalized archive ownership. The wrapper removed its workspace
+and produced no artifact, manifest, publication, release, or prerelease. Log `/tmp/rustdesk-build-6d4030c.log` has
+SHA-256 `aa19faf67ca0debec5fc1c9b5c7f3268e5f9baed92e878fe4d69d9ffd511a537`. The single exact-mode Debian tree
+constructor and archive-wide verifier above replace mode inheritance; exact-commit artifact evidence remains open
+pending a complete cold build from the corrected pushed commit.
 
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
@@ -2933,7 +2979,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-67dbb990dffd4691f15fbbbf5eacc401f1f9e987963f1903e28096ee10d288f9  requirements.html
+342bb839a2b26e0b612e2bb5c51964acc7fc09bdb9cfbdc644e56c6054ad63ac  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

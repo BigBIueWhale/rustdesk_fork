@@ -8,7 +8,9 @@ import urllib.request
 import shutil
 import hashlib
 import argparse
+import re
 import subprocess
+import stat
 import sys
 from pathlib import Path
 
@@ -25,6 +27,70 @@ else:
     flutter_build_dir = 'build/linux/x64/release/bundle/'
 flutter_build_dir_2 = f'flutter/{flutter_build_dir}'
 skip_cargo = False
+
+DEBIAN_MAINTAINER_SCRIPTS = ("preinst", "postinst", "prerm", "postrm")
+DEBIAN_CONFFILES = ("etc/rustdesk/startwm.sh", "etc/rustdesk/xorg.conf")
+DEBIAN_CONTROL_MODES = {
+    "control": 0o644,
+    "conffiles": 0o644,
+    "md5sums": 0o644,
+    **{name: 0o755 for name in DEBIAN_MAINTAINER_SCRIPTS},
+}
+DEBIAN_DATA_EXECUTABLES = {
+    "etc/rustdesk/startwm.sh",
+    "usr/share/rustdesk/rustdesk",
+}
+DEBIAN_FLUTTER_LIBRARIES = {
+    "usr/share/rustdesk/lib/libapp.so",
+    "usr/share/rustdesk/lib/libdesktop_drop_plugin.so",
+    "usr/share/rustdesk/lib/libdesktop_multi_window_plugin.so",
+    "usr/share/rustdesk/lib/libflutter_custom_cursor_plugin.so",
+    "usr/share/rustdesk/lib/libflutter_linux_gtk.so",
+    "usr/share/rustdesk/lib/librustdesk.so",
+    "usr/share/rustdesk/lib/libscreen_retriever_plugin.so",
+    "usr/share/rustdesk/lib/libtexture_rgba_renderer_plugin.so",
+    "usr/share/rustdesk/lib/liburl_launcher_linux_plugin.so",
+    "usr/share/rustdesk/lib/libwindow_manager_plugin.so",
+    "usr/share/rustdesk/lib/libwindow_size_plugin.so",
+}
+DEBIAN_DATA_REQUIRED_DIRECTORIES = {
+    "etc",
+    "etc/rustdesk",
+    "usr",
+    "usr/share",
+    "usr/share/applications",
+    "usr/share/icons",
+    "usr/share/icons/hicolor",
+    "usr/share/icons/hicolor/256x256",
+    "usr/share/icons/hicolor/256x256/apps",
+    "usr/share/icons/hicolor/scalable",
+    "usr/share/icons/hicolor/scalable/apps",
+    "usr/share/polkit-1",
+    "usr/share/polkit-1/actions",
+    "usr/share/rustdesk",
+    "usr/share/rustdesk/data",
+    "usr/share/rustdesk/data/flutter_assets",
+    "usr/share/rustdesk/files",
+    "usr/share/rustdesk/files/systemd",
+    "usr/share/rustdesk/lib",
+}
+DEBIAN_DATA_REQUIRED_FILES = {
+    "etc/rustdesk/startwm.sh",
+    "etc/rustdesk/xorg.conf",
+    "usr/share/applications/rustdesk-link.desktop",
+    "usr/share/applications/rustdesk.desktop",
+    "usr/share/icons/hicolor/256x256/apps/rustdesk.png",
+    "usr/share/icons/hicolor/scalable/apps/rustdesk.svg",
+    "usr/share/polkit-1/actions/com.carriez.RustDesk.policy",
+    "usr/share/rustdesk/data/flutter_assets/AssetManifest.bin",
+    "usr/share/rustdesk/data/flutter_assets/FontManifest.json",
+    "usr/share/rustdesk/data/flutter_assets/NOTICES.Z",
+    "usr/share/rustdesk/data/icudtl.dat",
+    "usr/share/rustdesk/files/systemd/rustdesk.service",
+    "usr/share/rustdesk/rustdesk",
+}
+DEBIAN_DATA_REQUIRED_FILES.update(DEBIAN_FLUTTER_LIBRARIES)
+DEBIAN_VARIABLE_DATA_ROOT = "usr/share/rustdesk/data/flutter_assets"
 
 os.environ["CARGO_PROFILE_RELEASE_RPATH"] = "false"
 
@@ -121,10 +187,6 @@ def make_parser():
         action='store_true',
         help='Skip cargo build process, only flutter version + Linux supported currently'
     )
-    parser.add_argument(
-        "--package",
-        type=str
-    )
     if osx:
         parser.add_argument(
             '--screencapturekit',
@@ -138,8 +200,6 @@ def make_parser():
 # We can use this function in an offline build environment.
 # Even in an online environment, we recommend building third-party resources yourself.
 def download_extract_features(features, res_dir):
-    import re
-
     proxy = ''
 
     def req(url):
@@ -229,10 +289,7 @@ def get_features(args):
     return features
 
 
-def generate_control_file(version):
-    control_file_path = "../res/DEBIAN/control"
-    system2('/bin/rm -rf %s' % control_file_path)
-
+def generate_control_file(version, destination):
     content = """Package: rustdesk
 Section: net
 Priority: optional
@@ -245,9 +302,170 @@ Recommends: libayatana-appindicator3-1
 Description: A remote control software.
 
 """ % (version, get_deb_arch(), get_deb_extra_depends())
-    file = open(control_file_path, "w")
-    file.write(content)
-    file.close()
+    with Path(destination).open("x", encoding="utf-8", newline="\n") as file:
+        file.write(content)
+    os.chmod(destination, 0o644)
+
+
+def stage_debian_control_files(version, source_dir, control_dir):
+    source_dir = Path(source_dir)
+    control_dir = Path(control_dir)
+    source_dir_info = os.lstat(source_dir)
+    if not stat.S_ISDIR(source_dir_info.st_mode):
+        raise RuntimeError(f"Debian maintainer-script source is not a directory: {source_dir}")
+    source_entries = {entry.name for entry in os.scandir(source_dir)}
+    expected_sources = set(DEBIAN_MAINTAINER_SCRIPTS)
+    if source_entries != expected_sources:
+        raise RuntimeError(
+            f"Debian maintainer-script inventory differs: {sorted(source_entries)}"
+        )
+    control_dir.mkdir(mode=0o755)
+    os.chmod(control_dir, 0o755)
+    generate_control_file(version, control_dir / "control")
+    conffiles = control_dir / "conffiles"
+    with conffiles.open("x", encoding="ascii", newline="\n") as output:
+        for name in DEBIAN_CONFFILES:
+            output.write(f"/{name}\n")
+    os.chmod(conffiles, 0o644)
+    for name in DEBIAN_MAINTAINER_SCRIPTS:
+        source = source_dir / name
+        source_info = os.lstat(source)
+        if not stat.S_ISREG(source_info.st_mode) or source_info.st_nlink != 1:
+            raise RuntimeError(f"Debian maintainer script is not a non-hardlinked regular file: {source}")
+        destination = control_dir / name
+        shutil.copyfile(source, destination)
+        os.chmod(destination, 0o755)
+        destination_info = os.lstat(destination)
+        if (not stat.S_ISREG(destination_info.st_mode)
+                or destination_info.st_nlink != 1
+                or stat.S_IMODE(destination_info.st_mode) != 0o755
+                or source.read_bytes() != destination.read_bytes()):
+            raise RuntimeError(f"Debian maintainer script staging failed: {name}")
+
+
+def inventory_debian_package_tree(root):
+    directories = {}
+    files = {}
+
+    def visit(directory, relative):
+        with os.scandir(directory) as iterator:
+            entries = sorted(iterator, key=lambda entry: os.fsencode(entry.name))
+        for entry in entries:
+            if any(character in entry.name for character in ("/", "\n", "\r", "\0")):
+                raise RuntimeError(f"unsupported Debian package entry name: {entry.name!r}")
+            entry_relative = relative / entry.name
+            relative_text = entry_relative.as_posix()
+            info = entry.stat(follow_symlinks=False)
+            if stat.S_ISDIR(info.st_mode):
+                directories[relative_text] = info
+                visit(Path(entry.path), entry_relative)
+            elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                files[relative_text] = info
+            else:
+                raise RuntimeError(
+                    f"Debian package tree contains a link, special file, or hardlink: {relative_text}"
+                )
+
+    root = Path(root)
+    root_info = os.lstat(root)
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise RuntimeError(f"Debian package staging root is not a directory: {root}")
+    visit(root, Path())
+    return directories, files
+
+
+def finalize_debian_package_tree(root):
+    root = Path(root)
+    directories, files = inventory_debian_package_tree(root)
+    if {entry.name for entry in os.scandir(root)} != {"DEBIAN", "etc", "usr"}:
+        raise RuntimeError("Debian package staging root has an unexpected top-level inventory")
+    if not {"DEBIAN", "etc", "usr"}.issubset(directories):
+        raise RuntimeError("Debian package staging root lacks a required top-level directory")
+    if any(name.startswith("DEBIAN/") for name in directories):
+        raise RuntimeError("Debian control area contains a nested directory")
+    control_files = {
+        name[len("DEBIAN/"):]
+        for name in files
+        if name.startswith("DEBIAN/")
+    }
+    expected_before_md5 = set(DEBIAN_CONTROL_MODES) - {"md5sums"}
+    if control_files != expected_before_md5:
+        raise RuntimeError(f"Debian control inventory differs: {sorted(control_files)}")
+
+    data_directories = set(directories) - {"DEBIAN"}
+    data_files = {name for name in files if not name.startswith("DEBIAN/")}
+    missing_directories = DEBIAN_DATA_REQUIRED_DIRECTORIES - data_directories
+    missing_files = DEBIAN_DATA_REQUIRED_FILES - data_files
+    unexpected_directories = {
+        name for name in data_directories
+        if name not in DEBIAN_DATA_REQUIRED_DIRECTORIES
+        and not name.startswith(f"{DEBIAN_VARIABLE_DATA_ROOT}/")
+    }
+    unexpected_files = {
+        name for name in data_files
+        if name not in DEBIAN_DATA_REQUIRED_FILES
+        and not name.startswith(f"{DEBIAN_VARIABLE_DATA_ROOT}/")
+    }
+    if missing_directories or missing_files or unexpected_directories or unexpected_files:
+        raise RuntimeError(
+            "Debian package data inventory differs: "
+            f"missing directories {sorted(missing_directories)}, "
+            f"missing files {sorted(missing_files)}, "
+            f"unexpected directories {sorted(unexpected_directories)}, "
+            f"unexpected files {sorted(unexpected_files)}"
+        )
+
+    md5sums = root / "DEBIAN/md5sums"
+    with md5sums.open("x", encoding="ascii", newline="\n") as output:
+        for name in sorted(data_files - set(DEBIAN_CONFFILES)):
+            digest = hashlib.md5()
+            with (root / name).open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            output.write(f"{digest.hexdigest()}  /{name}\n")
+
+    directories, files = inventory_debian_package_tree(root)
+    control_files = {
+        name[len("DEBIAN/"):]
+        for name in files
+        if name.startswith("DEBIAN/")
+    }
+    if control_files != set(DEBIAN_CONTROL_MODES):
+        raise RuntimeError(f"final Debian control inventory differs: {sorted(control_files)}")
+
+    os.chmod(root, 0o755)
+    for name in sorted(directories):
+        os.chmod(root / name, 0o755)
+    for name in sorted(files):
+        if name.startswith("DEBIAN/"):
+            mode = DEBIAN_CONTROL_MODES[name[len("DEBIAN/"):]]
+        else:
+            mode = 0o755 if name in DEBIAN_DATA_EXECUTABLES else 0o644
+        os.chmod(root / name, mode)
+
+    root_info = os.lstat(root)
+    if stat.S_IMODE(root_info.st_mode) != 0o755:
+        raise RuntimeError("Debian package staging root mode is not 0755")
+    final_directories, final_files = inventory_debian_package_tree(root)
+    if set(final_directories) != set(directories) or set(final_files) != set(files):
+        raise RuntimeError("Debian package inventory changed during mode finalization")
+    for name, info in final_directories.items():
+        if stat.S_IMODE(info.st_mode) != 0o755:
+            raise RuntimeError(f"Debian package directory mode is not 0755: {name}")
+    for name, info in final_files.items():
+        if name.startswith("DEBIAN/"):
+            expected = DEBIAN_CONTROL_MODES[name[len("DEBIAN/"):]]
+        else:
+            expected = 0o755 if name in DEBIAN_DATA_EXECUTABLES else 0o644
+        if stat.S_IMODE(info.st_mode) != expected:
+            raise RuntimeError(f"Debian package file mode differs for {name}: {stat.S_IMODE(info.st_mode):04o}")
+
+
+def build_debian_archive(staging, destination):
+    subprocess.run(
+        ["dpkg-deb", "--root-owner-group", "-b", str(staging), str(destination)],
+        check=True,
+    )
 
 
 def ffi_bindgen_function_refactor():
@@ -261,9 +479,9 @@ def build_flutter_deb(version, features):
         system2(f'cargo build --locked --features {features} --lib --release')
         ffi_bindgen_function_refactor()
     os.chdir('flutter')
+    system2('/bin/rm -rf build/linux')
     system2('flutter build linux --release')
     system2('/bin/rm -rf tmpdeb')
-    system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/etc/rustdesk/')
     system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
@@ -271,7 +489,6 @@ def build_flutter_deb(version, features):
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
     system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2('rm -f tmpdeb/usr/bin/rustdesk')
     system2(
         f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
     system2(
@@ -290,51 +507,11 @@ def build_flutter_deb(version, features):
         'cp ../res/startwm.sh tmpdeb/etc/rustdesk/')
     system2(
         'cp ../res/xorg.conf tmpdeb/etc/rustdesk/')
-    system2('mkdir -p tmpdeb/DEBIAN')
-    generate_control_file(version)
-    system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
-    md5_file_folder("tmpdeb/")
-    system2('dpkg-deb --root-owner-group -b tmpdeb rustdesk.deb;')
+    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")
+    finalize_debian_package_tree("tmpdeb")
+    build_debian_archive("tmpdeb", "rustdesk.deb")
 
     system2('/bin/rm -rf tmpdeb/')
-    system2('/bin/rm -rf ../res/DEBIAN/control')
-    os.rename('rustdesk.deb', '../rustdesk-%s.deb' % version)
-    os.chdir("..")
-
-
-def build_deb_from_folder(version, binary_folder):
-    os.chdir('flutter')
-    system2('/bin/rm -rf tmpdeb')
-    system2('mkdir -p tmpdeb/usr/bin/')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
-    system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
-    system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
-    system2('mkdir -p tmpdeb/usr/share/applications/')
-    system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2('rm -f tmpdeb/usr/bin/rustdesk')
-    system2(
-        f'cp -r ../{binary_folder}/* tmpdeb/usr/share/rustdesk/')
-    system2(
-        'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
-    system2(
-        'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
-    system2(
-        'cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg')
-    system2(
-        'cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
-    system2(
-        'cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
-    system2(
-        'cp ../res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/')
-    system2('mkdir -p tmpdeb/DEBIAN')
-    generate_control_file(version)
-    system2('cp -a ../res/DEBIAN/* tmpdeb/DEBIAN/')
-    md5_file_folder("tmpdeb/")
-    system2('dpkg-deb --root-owner-group -b tmpdeb rustdesk.deb;')
-
-    system2('/bin/rm -rf tmpdeb/')
-    system2('/bin/rm -rf ../res/DEBIAN/control')
     os.rename('rustdesk.deb', '../rustdesk-%s.deb' % version)
     os.chdir("..")
 
@@ -407,6 +584,8 @@ def main():
     parser = make_parser()
     args = parser.parse_args()
 
+    if not args.flutter:
+        raise SystemExit("build.py requires --flutter")
     if os.path.exists(exe_path):
         os.unlink(exe_path)
     # R-B6/R-R2: the Sciter pre-build steps are gone with the Sciter UI — the Arch `git checkout
@@ -418,113 +597,15 @@ def main():
     print(args.skip_cargo)
     if args.skip_cargo:
         skip_cargo = True
-    package = args.package
-    if package:
-        build_deb_from_folder(version, package)
-        return
     res_dir = 'resources'
     external_resources(flutter, args, res_dir)
     if windows:
-        if flutter:
-            build_flutter_windows(features)
-            return
-        raise SystemExit('Windows builds require --flutter')
+        build_flutter_windows(features)
+        return
+    if osx:
+        build_flutter_dmg(version, features)
     else:
-        if flutter:
-            if osx:
-                build_flutter_dmg(version, features)
-                pass
-            else:
-                # system2(
-                #     'mv target/release/bundle/deb/rustdesk*.deb ./flutter/rustdesk.deb')
-                build_flutter_deb(version, features)
-        else:
-            system2('cargo --locked bundle --release --features ' + features)
-            if osx:
-                system2(
-                    'strip target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk')
-                # R-B6: no libsciter.dylib to bundle (Sciter UI removed; macOS GUI is Flutter).
-                # https://github.com/sindresorhus/create-dmg
-                system2('/bin/rm -rf *.dmg')
-                pa = os.environ.get('P')
-                if pa:
-                    system2('''
-    # buggy: rcodesign sign ... path/*, have to sign one by one
-    # install rcodesign via cargo install apple-codesign
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/libsciter.dylib
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app
-    # goto "Keychain Access" -> "My Certificates" for below id which starts with "Developer ID Application:"
-    codesign -s "Developer ID Application: {0}" --force --options runtime  ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/*
-    codesign -s "Developer ID Application: {0}" --force --options runtime  ./target/release/bundle/osx/RustDesk.app
-    '''.format(pa))
-                system2(
-                    'create-dmg "RustDesk %s.dmg" "target/release/bundle/osx/RustDesk.app"' % version)
-                os.rename('RustDesk %s.dmg' %
-                          version, 'rustdesk-%s.dmg' % version)
-                if pa:
-                    system2('''
-    # https://pyoxidizer.readthedocs.io/en/apple-codesign-0.14.0/apple_codesign.html
-    # https://pyoxidizer.readthedocs.io/en/stable/tugger_code_signing.html
-    # https://developer.apple.com/developer-id/
-    # goto xcode and login with apple id, manager certificates (Developer ID Application and/or Developer ID Installer) online there (only download and double click (install) cer file can not export p12 because no private key)
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./rustdesk-{1}.dmg
-    codesign -s "Developer ID Application: {0}" --force --options runtime ./rustdesk-{1}.dmg
-    # https://appstoreconnect.apple.com/access/api
-    # https://gregoryszorc.com/docs/apple-codesign/stable/apple_codesign_getting_started.html#apple-codesign-app-store-connect-api-key
-    # p8 file is generated when you generate api key (can download only once)
-    rcodesign notary-submit --api-key-path ../.p12/api-key.json  --staple rustdesk-{1}.dmg
-    # verify:  spctl -a -t exec -v /Applications/RustDesk.app
-    '''.format(pa, version))
-                else:
-                    print('Not signed')
-            else:
-                # build deb package
-                system2(
-                    'mv target/release/bundle/deb/rustdesk*.deb ./rustdesk.deb')
-                system2('/bin/rm -rf tmpdeb')
-                system2('dpkg-deb -R rustdesk.deb tmpdeb')
-                system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
-                system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
-                system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
-                system2(
-                    'cp res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
-                system2(
-                    'cp res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
-                system2(
-                    'cp res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg')
-                system2(
-                    'cp res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
-                system2(
-                    'cp res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
-                system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-                system2(
-                    'cp res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/')
-                system2('mkdir -p tmpdeb/etc/rustdesk/')
-                system2('cp -a res/startwm.sh tmpdeb/etc/rustdesk/')
-                system2('mkdir -p tmpdeb/etc/X11/rustdesk/')
-                system2('cp res/xorg.conf tmpdeb/etc/X11/rustdesk/')
-                system2('cp -a DEBIAN/* tmpdeb/DEBIAN/')
-                system2('strip tmpdeb/usr/bin/rustdesk')
-                system2('mkdir -p tmpdeb/usr/share/rustdesk')
-                system2('mv tmpdeb/usr/bin/rustdesk tmpdeb/usr/share/rustdesk/')
-                # R-B6: no libsciter-gtk.so to bundle (Sciter UI removed; Linux GUI is Flutter).
-                md5_file_folder("tmpdeb/")
-                system2('dpkg-deb --root-owner-group -b tmpdeb rustdesk.deb;')
-                system2('/bin/rm -rf tmpdeb/')
-                os.rename('rustdesk.deb', 'rustdesk-%s.deb' % version)
-
-
-def md5_file(fn):
-    md5 = hashlib.md5(open('tmpdeb/' + fn, 'rb').read()).hexdigest()
-    system2('echo "%s  /%s" >> tmpdeb/DEBIAN/md5sums' % (md5, fn))
-
-def md5_file_folder(base_dir):
-    base_path = Path(base_dir)
-    for file in base_path.rglob('*'):
-        if file.is_file() and 'DEBIAN' not in file.parts:
-            relative_path = file.relative_to(base_path)
-            md5_file(str(relative_path))
+        build_flutter_deb(version, features)
 
 
 if __name__ == "__main__":

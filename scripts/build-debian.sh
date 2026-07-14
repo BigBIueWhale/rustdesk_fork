@@ -184,6 +184,12 @@ verify_deb_control_scripts() {
     tmp_control="$(mktemp -d)"
     dpkg-deb -e "$deb" "$tmp_control"
     for script in preinst postinst prerm postrm; do
+        [ -f "$tmp_control/$script" ] \
+          && [ ! -L "$tmp_control/$script" ] \
+          && [ "$(stat -c '%a:%h' "$tmp_control/$script" 2>/dev/null)" = "755:1" ] || {
+            rm -rf "$tmp_control"
+            die "built .deb control script $script is not a mode-0755 non-hardlinked regular file"
+        }
         cmp -s "$REPO_ROOT/res/DEBIAN/$script" "$tmp_control/$script" || {
             rm -rf "$tmp_control"
             die "built .deb control script $script differs from res/DEBIAN/$script"

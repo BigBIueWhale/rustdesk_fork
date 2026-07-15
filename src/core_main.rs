@@ -347,6 +347,12 @@ pub fn core_main() -> Option<Vec<String>> {
             return None;
         } else if args[0] == "--service" {
             log::info!("start --service");
+            #[cfg(target_os = "linux")]
+            if let Err(err) = crate::start_os_service() {
+                log::error!("Linux service lifecycle authority failed closed: {err}");
+                std::process::exit(1);
+            }
+            #[cfg(not(target_os = "linux"))]
             crate::start_os_service();
             return None;
         } else if args[0] == "--server" {

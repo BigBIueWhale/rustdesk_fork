@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 773 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 796 lexical `unsafe {`
 blocks across 243 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -2599,11 +2599,51 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     native credential drop, pre/post-exec parent-death checks, bounded exact-child termination, environment
     clearing, and no-server-sweep source shape.
 
-    This is deliberately **partial closure only**. The durable, atomic root-owned crash record; restart-time
-    `pidfd` acquisition and full identity revalidation; supported-kernel fallback; corrupt/stale/PID-reuse and
-    executable replacement/deletion behavior matrix; packaging integration for every supported init path;
-    real non-systemd and privilege-drop/exec lifecycle harnesses; and the concurrent Docker survival proof
-    below remain mandatory before this parent item or the upcoming release can close.
+  - **R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED
+    2026-07-16; PARENT ITEM REMAINS OPEN.** The service now acquires one close-on-exec, nonblocking exclusive
+    `flock` lease in a descriptor-opened `/run/rustdesk` directory whose opened inode must be a root-owned
+    mode-0700 directory. A second installed/manual supervisor fails before it starts IPC or a child. Each
+    supervisor obtains a fresh canonical generation UUID from the kernel and passes it only in the cleared
+    service-child environment. After `Command::spawn()` has completed the real privilege-drop/exec boundary,
+    the supervisor reads the exact child's `/proc` identity and refuses registration unless UID, boot ID,
+    start time, executable device/inode, exact three-element service role, and unique generation entry all
+    agree. It then writes the bounded, versioned, strict-order record to a newly-created root-owned mode-0600
+    temporary inode, `fsync`s it, publishes with `renameat2(RENAME_NOREPLACE)` (atomic `renameat` compatibility
+    fallback under the exclusive lease), and `fsync`s the directory. Existing, malformed, linked, mis-owned,
+    mis-moded, overlong, noncanonical, or wrong-role records are never overwritten. Normal replacement and
+    stop still act only on the retained direct `Child`; record removal occurs only after that child is reaped
+    and only when the parsed record equals the retained identity.
+
+    Crash recovery is a separate pre-loop path. Missing evidence logs and signals nothing. A valid record from
+    another boot or an absent/exited PID is reported stale and removed without signaling. On Linux 5.3+ the
+    new supervisor first opens `pidfd_open(2)`, then immediately before `SIGTERM` revalidates current boot ID,
+    `/proc/<pid>/stat` field 22 both before and after the inspection, `/proc/<pid>` UID, dereferenced
+    `/proc/<pid>/exe` device/inode (so path replacement, deletion, and mount-namespace pathname aliases do not
+    weaken identity), exact role argv, and the generation environment entry. Bounded exit polling occurs on
+    the pidfd itself. A still-live child is fully revalidated again before pidfd-bound `SIGKILL`; any mismatch
+    or unreadable live identity signals nothing further, preserves the record, fails `--service` nonzero, and
+    lets the init supervisor report/retry rather than starting a second child. Pre-5.3 kernels use the same
+    full revalidation immediately before each `kill(2)` and during the bounded waits; the diagnostic explicitly
+    records that the final check-to-kill PID-reuse race cannot be eliminated without pidfds. This is a
+    compatibility fallback, not an assurance-equivalent claim. The systemd unit creates the identical
+    root-only runtime directory, preserves crash evidence across automatic restart, admits the pidfd/atomic
+    publication syscalls through its allowlist, and retains `KillMode=control-group` only as an additional
+    containment layer. The design follows the Linux `pidfd_open(2)`, `pidfd_send_signal(2)`, `proc_pid_stat(5)`,
+    `proc_pid_exe(5)`, `flock(2)`, `openat(2)`, and `renameat2(2)` contracts. Focused tests prove strict record
+    rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
+    removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
+    tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
+    blocks; the current machine inventory is 796 across the unchanged 243 tracked Rust files/66 nonzero files,
+    with per-file-count digest `15ff4c67c568c59d588b8f2625a8c58d1b57a727c3a81d33392d3084621c3526`.
+
+    This remains deliberately **partial closure only**. The complete behavior matrix still needs release
+    harness evidence for graceful restart/stop, a TERM-wedged child and bounded escalation, real supervisor
+    crash/restart, malformed/stale/PID-reuse records, executable replacement/deletion, identical argv backed
+    by another executable/in-container inode, user-owned/non-root servers, and the actual installed
+    privilege-drop/exec chain. Packaging/service integration and lifecycle proof for the supported SysV init,
+    OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime
+    pre-pidfd fallback exercise, and the concurrent Docker survival proof also remain mandatory before this
+    parent item or the upcoming release can close.
 
   Required implementation and release closure:
 
@@ -3216,7 +3256,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c1a17ab52a143435d628a039fa3018bc269a7fa37271bae67d798bf2db3aade0  requirements.html
+91d9ec5358f705cc9648053bc93838be0ecfbe7f87ac08e5245cfc4b095138ea  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #130. It is a

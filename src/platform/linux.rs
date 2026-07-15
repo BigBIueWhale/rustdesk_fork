@@ -16,10 +16,14 @@ use libxdo_sys::{self, xdo_t, Window};
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
-    fs,
-    os::unix::{
-        fs::{FileTypeExt, MetadataExt},
-        process::CommandExt,
+    fs::{self, File},
+    io::{Read as _, Write as _},
+    os::{
+        fd::{AsRawFd as _, FromRawFd as _},
+        unix::{
+            fs::{FileTypeExt, MetadataExt},
+            process::CommandExt,
+        },
     },
     path::{Component, Path, PathBuf},
     process::{Child, Command},
@@ -43,6 +47,13 @@ struct ActiveUserLookupCache {
 const INVALID_TERM_VALUES: [&str; 3] = ["", "unknown", "dumb"];
 const SHELL_PROCESSES: [&str; 4] = ["bash", "zsh", "fish", "sh"];
 const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);
+const SERVICE_CHILD_FORCED_STOP_TIMEOUT: Duration = Duration::from_secs(8);
+const SERVICE_CHILD_RECORD_MAX_BYTES: usize = 1024;
+const SERVICE_CHILD_RECORD_ROLE: &str = "--server+--service-owned-server";
+const SERVICE_RUNTIME_DIR: &[u8] = b"/run/rustdesk\0";
+const SERVICE_RUNTIME_LOCK: &[u8] = b"service-supervisor.lock\0";
+const SERVICE_CHILD_RECORD: &[u8] = b"service-child.record\0";
+const SERVICE_CHILD_RECORD_TMP: &[u8] = b"service-child.record.tmp\0";
 const SUDO_PATHS: [&str; 2] = ["/usr/bin/sudo", "/bin/sudo"];
 const ENV_PATHS: [&str; 2] = ["/usr/bin/env", "/bin/env"];
 const W_PATHS: [&str; 2] = ["/usr/bin/w", "/bin/w"];
@@ -668,8 +679,999 @@ impl ServiceChildCredentials {
     }
 }
 
+// Linux service-child authority has two deliberately separate paths:
+//
+// * While the supervisor is alive, `OwnedServiceChild` retains the direct `Child`; routine
+//   restart and shutdown never rediscover a PID.
+// * After a supervisor crash, a new supervisor first takes the close-on-exec `flock` lease,
+//   consumes one bounded root-only record, opens a pidfd where the kernel supports it, and
+//   revalidates every recorded field immediately before each signal. `pidfd_send_signal(2)`
+//   then binds the signal to that opened process rather than to a recyclable integer PID.
+//
+// Publication is temp-file fsync -> renameat2(RENAME_NOREPLACE) -> directory fsync. A malformed
+// or ambiguous record is preserved and stops service startup; it is never replaced by a new child.
+// Linux before pidfd_open(2) gets the same full checks around kill(2), with the irreducible final
+// check-to-kill race reported explicitly instead of being presented as equivalent assurance.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ServiceChildRecord {
+    pid: u32,
+    start_time: u64,
+    boot_id: String,
+    executable_device: u64,
+    executable_inode: u64,
+    uid: u32,
+    generation: String,
+}
+
+impl ServiceChildRecord {
+    fn encode(&self) -> Vec<u8> {
+        format!(
+            "version=1\npid={}\nstart_time={}\nboot_id={}\nexe_dev={}\nexe_ino={}\nuid={}\ngeneration={}\nrole={}\n",
+            self.pid,
+            self.start_time,
+            self.boot_id,
+            self.executable_device,
+            self.executable_inode,
+            self.uid,
+            self.generation,
+            SERVICE_CHILD_RECORD_ROLE,
+        )
+        .into_bytes()
+    }
+
+    fn decode(bytes: &[u8]) -> ResultType<Self> {
+        if bytes.is_empty() || bytes.len() > SERVICE_CHILD_RECORD_MAX_BYTES {
+            bail!("Service child record has an invalid length");
+        }
+        let text = std::str::from_utf8(bytes)
+            .map_err(|err| anyhow!("Service child record is not UTF-8: {err}"))?;
+        if !text.ends_with('\n') {
+            bail!("Service child record is not newline terminated");
+        }
+        let mut lines = text.lines();
+        let version = service_child_record_field(&mut lines, "version")?;
+        if version != "1" {
+            bail!("Unsupported service child record version");
+        }
+        let pid = parse_service_child_record_number::<u32>(
+            service_child_record_field(&mut lines, "pid")?,
+            "pid",
+        )?;
+        if pid == 0 || pid > hbb_common::libc::pid_t::MAX as u32 {
+            bail!("Service child record pid is outside pid_t range");
+        }
+        let start_time = parse_service_child_record_number::<u64>(
+            service_child_record_field(&mut lines, "start_time")?,
+            "start_time",
+        )?;
+        if start_time == 0 {
+            bail!("Service child record start time is zero");
+        }
+        let boot_id = service_child_record_field(&mut lines, "boot_id")?.to_owned();
+        validate_canonical_uuid(&boot_id, "boot id")?;
+        let executable_device = parse_service_child_record_number::<u64>(
+            service_child_record_field(&mut lines, "exe_dev")?,
+            "executable device",
+        )?;
+        let executable_inode = parse_service_child_record_number::<u64>(
+            service_child_record_field(&mut lines, "exe_ino")?,
+            "executable inode",
+        )?;
+        if executable_inode == 0 {
+            bail!("Service child record executable inode is zero");
+        }
+        let uid = parse_service_child_record_number::<u32>(
+            service_child_record_field(&mut lines, "uid")?,
+            "uid",
+        )?;
+        let generation = service_child_record_field(&mut lines, "generation")?.to_owned();
+        validate_canonical_uuid(&generation, "service generation")?;
+        if service_child_record_field(&mut lines, "role")? != SERVICE_CHILD_RECORD_ROLE {
+            bail!("Service child record role marker is invalid");
+        }
+        if lines.next().is_some() {
+            bail!("Service child record has trailing fields");
+        }
+        Ok(Self {
+            pid,
+            start_time,
+            boot_id,
+            executable_device,
+            executable_inode,
+            uid,
+            generation,
+        })
+    }
+}
+
+fn service_child_record_field<'a>(
+    lines: &mut std::str::Lines<'a>,
+    expected_name: &str,
+) -> ResultType<&'a str> {
+    let line = lines
+        .next()
+        .ok_or_else(|| anyhow!("Service child record is missing '{expected_name}'"))?;
+    let expected_prefix = format!("{expected_name}=");
+    line.strip_prefix(&expected_prefix)
+        .ok_or_else(|| anyhow!("Service child record field order is invalid at '{expected_name}'"))
+}
+
+fn parse_service_child_record_number<T>(value: &str, label: &str) -> ResultType<T>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    if value.is_empty() || value.len() > 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        bail!("Service child record {label} is not canonical decimal");
+    }
+    if value.len() > 1 && value.starts_with('0') {
+        bail!("Service child record {label} has a leading zero");
+    }
+    value
+        .parse::<T>()
+        .map_err(|err| anyhow!("Service child record {label} is invalid: {err}"))
+}
+
+fn validate_canonical_uuid(value: &str, label: &str) -> ResultType<()> {
+    let parsed = hbb_common::uuid::Uuid::parse_str(value)
+        .map_err(|err| anyhow!("Linux service child {label} is invalid: {err}"))?;
+    if parsed.to_string() != value {
+        bail!("Linux service child {label} is not canonical");
+    }
+    Ok(())
+}
+
+struct ServiceRuntime {
+    directory: File,
+    _lease: File,
+    generation: String,
+    owner_uid: u32,
+}
+
+impl ServiceRuntime {
+    fn acquire() -> ResultType<Self> {
+        let owner_uid = unsafe { hbb_common::libc::geteuid() as u32 };
+        if owner_uid != 0 {
+            bail!("Linux --service requires root for its lifecycle authority directory");
+        }
+
+        let mkdir_rc = unsafe {
+            hbb_common::libc::mkdir(
+                SERVICE_RUNTIME_DIR.as_ptr() as *const c_char,
+                0o700 as hbb_common::libc::mode_t,
+            )
+        };
+        let created_directory = mkdir_rc == 0;
+        if mkdir_rc != 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() != Some(hbb_common::libc::EEXIST) {
+                return Err(anyhow!("Failed to create /run/rustdesk: {err}"));
+            }
+        }
+
+        let directory_fd = unsafe {
+            hbb_common::libc::open(
+                SERVICE_RUNTIME_DIR.as_ptr() as *const c_char,
+                hbb_common::libc::O_RDONLY
+                    | hbb_common::libc::O_DIRECTORY
+                    | hbb_common::libc::O_NOFOLLOW
+                    | hbb_common::libc::O_CLOEXEC,
+            )
+        };
+        if directory_fd < 0 {
+            return Err(anyhow!(
+                "Failed to open /run/rustdesk without following links: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let directory = unsafe { File::from_raw_fd(directory_fd) };
+        if created_directory {
+            set_service_runtime_mode(&directory, 0o700, "new service runtime directory")?;
+        }
+        validate_service_runtime_directory(&directory, owner_uid)?;
+
+        let lease = open_service_runtime_file(
+            &directory,
+            SERVICE_RUNTIME_LOCK,
+            hbb_common::libc::O_RDWR
+                | hbb_common::libc::O_CREAT
+                | hbb_common::libc::O_NOFOLLOW
+                | hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_NONBLOCK,
+            0o600,
+            "service supervisor lease",
+        )?;
+        set_service_runtime_mode(&lease, 0o600, "service supervisor lease")?;
+        validate_service_runtime_regular_file(&lease, owner_uid, "service supervisor lease")?;
+        if unsafe {
+            hbb_common::libc::flock(
+                lease.as_raw_fd(),
+                hbb_common::libc::LOCK_EX | hbb_common::libc::LOCK_NB,
+            )
+        } != 0
+        {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(hbb_common::libc::EWOULDBLOCK) {
+                bail!("Another Linux service supervisor owns the lifecycle lease");
+            }
+            return Err(anyhow!("Failed to acquire service supervisor lease: {err}"));
+        }
+
+        let runtime = Self {
+            directory,
+            _lease: lease,
+            generation: read_kernel_uuid("/proc/sys/kernel/random/uuid", "service generation")?,
+            owner_uid,
+        };
+        runtime.remove_incomplete_record()?;
+        Ok(runtime)
+    }
+
+    fn publish_record(&self, record: &ServiceChildRecord) -> ResultType<()> {
+        if self.read_record()?.is_some() {
+            bail!("Refusing to overwrite an existing service child record");
+        }
+        self.remove_incomplete_record()?;
+
+        let mut temporary = open_service_runtime_file(
+            &self.directory,
+            SERVICE_CHILD_RECORD_TMP,
+            hbb_common::libc::O_WRONLY
+                | hbb_common::libc::O_CREAT
+                | hbb_common::libc::O_EXCL
+                | hbb_common::libc::O_NOFOLLOW
+                | hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_NONBLOCK,
+            0o600,
+            "temporary service child record",
+        )?;
+        if let Err(err) =
+            set_service_runtime_mode(&temporary, 0o600, "temporary service child record").and_then(
+                |_| {
+                    validate_service_runtime_regular_file(
+                        &temporary,
+                        self.owner_uid,
+                        "temporary service child record",
+                    )
+                },
+            )
+        {
+            drop(temporary);
+            let _ = self.remove_runtime_entry(SERVICE_CHILD_RECORD_TMP, "temporary record");
+            return Err(err);
+        }
+        let encoded = record.encode();
+        if encoded.len() > SERVICE_CHILD_RECORD_MAX_BYTES {
+            bail!("Encoded service child record exceeds its bound");
+        }
+        if let Err(err) = temporary
+            .write_all(&encoded)
+            .and_then(|_| temporary.sync_all())
+        {
+            drop(temporary);
+            let _ = self.remove_runtime_entry(SERVICE_CHILD_RECORD_TMP, "temporary record");
+            return Err(anyhow!("Failed to persist service child record: {err}"));
+        }
+        drop(temporary);
+
+        let rename_rc = unsafe {
+            hbb_common::libc::renameat2(
+                self.directory.as_raw_fd(),
+                SERVICE_CHILD_RECORD_TMP.as_ptr() as *const c_char,
+                self.directory.as_raw_fd(),
+                SERVICE_CHILD_RECORD.as_ptr() as *const c_char,
+                hbb_common::libc::RENAME_NOREPLACE,
+            )
+        };
+        if rename_rc != 0 {
+            let err = std::io::Error::last_os_error();
+            if matches!(
+                err.raw_os_error(),
+                Some(hbb_common::libc::ENOSYS) | Some(hbb_common::libc::EINVAL)
+            ) {
+                if self.read_record()?.is_some() {
+                    let _ = self.remove_runtime_entry(SERVICE_CHILD_RECORD_TMP, "temporary record");
+                    bail!("Refusing to replace a service child record during rename fallback");
+                }
+                if unsafe {
+                    hbb_common::libc::renameat(
+                        self.directory.as_raw_fd(),
+                        SERVICE_CHILD_RECORD_TMP.as_ptr() as *const c_char,
+                        self.directory.as_raw_fd(),
+                        SERVICE_CHILD_RECORD.as_ptr() as *const c_char,
+                    )
+                } != 0
+                {
+                    let fallback_err = std::io::Error::last_os_error();
+                    let _ = self.remove_runtime_entry(SERVICE_CHILD_RECORD_TMP, "temporary record");
+                    return Err(anyhow!(
+                        "Failed to atomically publish service child record: {fallback_err}"
+                    ));
+                }
+            } else {
+                let _ = self.remove_runtime_entry(SERVICE_CHILD_RECORD_TMP, "temporary record");
+                return Err(anyhow!(
+                    "Failed to atomically publish service child record: {err}"
+                ));
+            }
+        }
+        self.directory
+            .sync_all()
+            .map_err(|err| anyhow!("Failed to sync service runtime directory: {err}"))?;
+        Ok(())
+    }
+
+    fn read_record(&self) -> ResultType<Option<ServiceChildRecord>> {
+        let fd = unsafe {
+            hbb_common::libc::openat(
+                self.directory.as_raw_fd(),
+                SERVICE_CHILD_RECORD.as_ptr() as *const c_char,
+                hbb_common::libc::O_RDONLY
+                    | hbb_common::libc::O_NOFOLLOW
+                    | hbb_common::libc::O_CLOEXEC
+                    | hbb_common::libc::O_NONBLOCK,
+            )
+        };
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(hbb_common::libc::ENOENT) {
+                return Ok(None);
+            }
+            return Err(anyhow!("Failed to open service child record: {err}"));
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        validate_service_runtime_regular_file(&file, self.owner_uid, "service child record")?;
+        let metadata = file
+            .metadata()
+            .map_err(|err| anyhow!("Failed to inspect service child record size: {err}"))?;
+        if metadata.len() == 0 || metadata.len() > SERVICE_CHILD_RECORD_MAX_BYTES as u64 {
+            bail!("Service child record has an invalid on-disk length");
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.take((SERVICE_CHILD_RECORD_MAX_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|err| anyhow!("Failed to read service child record: {err}"))?;
+        if bytes.len() > SERVICE_CHILD_RECORD_MAX_BYTES {
+            bail!("Service child record exceeds its read bound");
+        }
+        ServiceChildRecord::decode(&bytes).map(Some)
+    }
+
+    fn remove_record(&self, expected: &ServiceChildRecord) -> ResultType<()> {
+        let Some(actual) = self.read_record()? else {
+            bail!("Service child record disappeared before exact removal");
+        };
+        if actual != *expected {
+            bail!("Refusing to remove a service child record for a different identity");
+        }
+        self.remove_runtime_entry(SERVICE_CHILD_RECORD, "service child record")?;
+        self.directory
+            .sync_all()
+            .map_err(|err| anyhow!("Failed to sync removal of service child record: {err}"))
+    }
+
+    fn remove_incomplete_record(&self) -> ResultType<()> {
+        self.remove_runtime_entry_if_present(
+            SERVICE_CHILD_RECORD_TMP,
+            "incomplete temporary service child record",
+        )
+    }
+
+    fn remove_runtime_entry_if_present(&self, name: &[u8], label: &str) -> ResultType<()> {
+        let mut stat: hbb_common::libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe {
+            hbb_common::libc::fstatat(
+                self.directory.as_raw_fd(),
+                name.as_ptr() as *const c_char,
+                &mut stat,
+                hbb_common::libc::AT_SYMLINK_NOFOLLOW,
+            )
+        } != 0
+        {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(hbb_common::libc::ENOENT) {
+                return Ok(());
+            }
+            return Err(anyhow!("Failed to inspect {label}: {err}"));
+        }
+        let file_type = stat.st_mode & hbb_common::libc::S_IFMT;
+        if file_type != hbb_common::libc::S_IFREG
+            || stat.st_uid as u32 != self.owner_uid
+            || stat.st_mode & 0o7777 != 0o600
+            || stat.st_nlink != 1
+        {
+            bail!("Refusing to remove an untrusted {label}");
+        }
+        self.remove_runtime_entry(name, label)
+    }
+
+    fn remove_runtime_entry(&self, name: &[u8], label: &str) -> ResultType<()> {
+        if unsafe {
+            hbb_common::libc::unlinkat(
+                self.directory.as_raw_fd(),
+                name.as_ptr() as *const c_char,
+                0,
+            )
+        } != 0
+        {
+            return Err(anyhow!(
+                "Failed to remove {label}: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl ServiceRuntime {
+    fn for_test(directory_path: &Path, generation: &str) -> Self {
+        let directory = File::open(directory_path).unwrap();
+        let lease = directory.try_clone().unwrap();
+        Self {
+            directory,
+            _lease: lease,
+            generation: generation.to_owned(),
+            owner_uid: unsafe { hbb_common::libc::geteuid() as u32 },
+        }
+    }
+}
+
+fn open_service_runtime_file(
+    directory: &File,
+    name: &[u8],
+    flags: c_int,
+    mode: hbb_common::libc::mode_t,
+    label: &str,
+) -> ResultType<File> {
+    let fd = unsafe {
+        hbb_common::libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr() as *const c_char,
+            flags,
+            mode,
+        )
+    };
+    if fd < 0 {
+        return Err(anyhow!(
+            "Failed to open {label}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn validate_service_runtime_directory(directory: &File, owner_uid: u32) -> ResultType<()> {
+    let metadata = directory
+        .metadata()
+        .map_err(|err| anyhow!("Failed to inspect /run/rustdesk: {err}"))?;
+    if !metadata.file_type().is_dir()
+        || metadata.uid() != owner_uid
+        || metadata.mode() & 0o7777 != 0o700
+    {
+        bail!("Refusing untrusted /run/rustdesk ownership, type, or mode");
+    }
+    Ok(())
+}
+
+fn set_service_runtime_mode(
+    file: &File,
+    mode: hbb_common::libc::mode_t,
+    label: &str,
+) -> ResultType<()> {
+    if unsafe { hbb_common::libc::fchmod(file.as_raw_fd(), mode) } != 0 {
+        return Err(anyhow!(
+            "Failed to set owner-only mode on {label}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_service_runtime_regular_file(
+    file: &File,
+    owner_uid: u32,
+    label: &str,
+) -> ResultType<()> {
+    let metadata = file
+        .metadata()
+        .map_err(|err| anyhow!("Failed to inspect {label}: {err}"))?;
+    if !metadata.file_type().is_file()
+        || metadata.uid() != owner_uid
+        || metadata.mode() & 0o7777 != 0o600
+        || metadata.nlink() != 1
+    {
+        bail!("Refusing untrusted {label} ownership, type, mode, or link count");
+    }
+    Ok(())
+}
+
+fn read_kernel_uuid(path: &str, label: &str) -> ResultType<String> {
+    let value = fs::read_to_string(path)
+        .map_err(|err| anyhow!("Failed to read Linux {label} from {path}: {err}"))?;
+    let value = value.trim();
+    validate_canonical_uuid(value, label)?;
+    Ok(value.to_owned())
+}
+
 struct OwnedServiceChild {
     process: Child,
+    record: ServiceChildRecord,
+}
+
+enum ServiceChildIdentityState {
+    Match,
+    Exited,
+    Absent,
+    Mismatch(String),
+    Unavailable(String),
+}
+
+enum PidFdOpen {
+    Available(File),
+    Unsupported,
+    Absent,
+}
+
+impl ServiceRuntime {
+    fn recover_previous_child(&self) -> ResultType<()> {
+        let Some(record) = self.read_record()? else {
+            log::info!("No prior Linux service child record; recovery signals nothing");
+            return Ok(());
+        };
+        let current_boot_id = read_kernel_uuid("/proc/sys/kernel/random/boot_id", "boot id")?;
+        if record.boot_id != current_boot_id {
+            log::warn!(
+                "Discarding stale Linux service child record from boot {} without signaling pid {}",
+                record.boot_id,
+                record.pid
+            );
+            return self.remove_record(&record);
+        }
+
+        match open_service_child_pidfd(record.pid)? {
+            PidFdOpen::Available(pidfd) => self.recover_previous_child_with_pidfd(&record, &pidfd),
+            PidFdOpen::Unsupported => self.recover_previous_child_without_pidfd(&record),
+            PidFdOpen::Absent => {
+                log::warn!(
+                    "Discarding stale Linux service child record for absent pid {} without signaling",
+                    record.pid
+                );
+                self.remove_record(&record)
+            }
+        }
+    }
+
+    fn recover_previous_child_with_pidfd(
+        &self,
+        record: &ServiceChildRecord,
+        pidfd: &File,
+    ) -> ResultType<()> {
+        if service_child_pidfd_exited(pidfd, Duration::ZERO)? {
+            log::warn!(
+                "Discarding exited Linux service child record for pid {} without signaling",
+                record.pid
+            );
+            return self.remove_record(record);
+        }
+        require_service_child_identity_match(record, "pidfd recovery before SIGTERM")?;
+        if send_service_child_pidfd_signal(pidfd, hbb_common::libc::SIGTERM)? {
+            log::warn!(
+                "Prior Linux service child pid {} exited before recovery SIGTERM",
+                record.pid
+            );
+            return self.remove_record(record);
+        }
+        if service_child_pidfd_exited(pidfd, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)? {
+            log::info!(
+                "Recovered prior Linux service child pid {} with bounded SIGTERM",
+                record.pid
+            );
+            return self.remove_record(record);
+        }
+
+        require_service_child_identity_match(record, "pidfd recovery before SIGKILL")?;
+        log::warn!(
+            "Prior Linux service child pid {} did not exit after SIGTERM; sending pidfd-bound SIGKILL",
+            record.pid
+        );
+        if !send_service_child_pidfd_signal(pidfd, hbb_common::libc::SIGKILL)?
+            && !service_child_pidfd_exited(pidfd, SERVICE_CHILD_FORCED_STOP_TIMEOUT)?
+        {
+            bail!(
+                "Prior Linux service child pid {} remained live after pidfd-bound SIGKILL",
+                record.pid
+            );
+        }
+        self.remove_record(record)
+    }
+
+    fn recover_previous_child_without_pidfd(&self, record: &ServiceChildRecord) -> ResultType<()> {
+        match inspect_service_child_identity(record) {
+            ServiceChildIdentityState::Match => {}
+            ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent => {
+                log::warn!(
+                    "Discarding stale Linux service child record for pid {} on a pre-pidfd kernel",
+                    record.pid
+                );
+                return self.remove_record(record);
+            }
+            ServiceChildIdentityState::Mismatch(reason) => {
+                bail!(
+                    "Refusing ambiguous pre-pidfd Linux service child recovery for pid {}: {reason}",
+                    record.pid
+                );
+            }
+            ServiceChildIdentityState::Unavailable(reason) => {
+                bail!(
+                    "Refusing unverifiable pre-pidfd Linux service child recovery for pid {}: {reason}",
+                    record.pid
+                );
+            }
+        }
+        log::warn!(
+            "Kernel lacks pidfd_open; recovery revalidates pid {} immediately before each kill(2), but the final identity-check-to-kill race cannot be eliminated on this kernel",
+            record.pid
+        );
+
+        if send_revalidated_service_child_pid_signal(record, hbb_common::libc::SIGTERM)? {
+            return self.remove_record(record);
+        }
+        if wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)? {
+            return self.remove_record(record);
+        }
+
+        log::warn!(
+            "Prior Linux service child pid {} did not exit after SIGTERM; using revalidated kill(2) SIGKILL fallback",
+            record.pid
+        );
+        if !send_revalidated_service_child_pid_signal(record, hbb_common::libc::SIGKILL)?
+            && !wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)?
+        {
+            bail!(
+                "Prior Linux service child pid {} remained live after fallback SIGKILL",
+                record.pid
+            );
+        }
+        self.remove_record(record)
+    }
+}
+
+fn service_child_record_for_process(
+    pid: u32,
+    uid: u32,
+    generation: &str,
+) -> ResultType<ServiceChildRecord> {
+    let (start_time, state) = read_service_child_proc_stat(pid)?;
+    if matches!(state, 'Z' | 'X' | 'x') {
+        bail!("Service child pid {pid} exited before record publication");
+    }
+    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
+    let proc_metadata = fs::metadata(&proc_dir)
+        .map_err(|err| anyhow!("Failed to inspect service child pid {pid}: {err}"))?;
+    if proc_metadata.uid() != uid {
+        bail!(
+            "Service child uid mismatch before record publication: expected {uid}, got {}",
+            proc_metadata.uid()
+        );
+    }
+    let executable = fs::metadata(proc_dir.join("exe"))
+        .map_err(|err| anyhow!("Failed to inspect service child executable pid {pid}: {err}"))?;
+    let record = ServiceChildRecord {
+        pid,
+        start_time,
+        boot_id: read_kernel_uuid("/proc/sys/kernel/random/boot_id", "boot id")?,
+        executable_device: executable.dev(),
+        executable_inode: executable.ino(),
+        uid,
+        generation: generation.to_owned(),
+    };
+    require_service_child_identity_match(&record, "record publication")?;
+    Ok(record)
+}
+
+fn inspect_service_child_identity(record: &ServiceChildRecord) -> ServiceChildIdentityState {
+    let current_boot_id = match read_kernel_uuid("/proc/sys/kernel/random/boot_id", "boot id") {
+        Ok(value) => value,
+        Err(err) => {
+            return ServiceChildIdentityState::Unavailable(format!(
+                "boot identity unavailable: {err}"
+            ));
+        }
+    };
+    if current_boot_id != record.boot_id {
+        return ServiceChildIdentityState::Mismatch("boot identity changed".to_owned());
+    }
+
+    let (first_start_time, state) = match read_service_child_proc_stat(record.pid) {
+        Ok(identity) => identity,
+        Err(err) => return classify_service_child_proc_error(record.pid, "stat", err),
+    };
+    if matches!(state, 'Z' | 'X' | 'x') {
+        return ServiceChildIdentityState::Exited;
+    }
+    if first_start_time != record.start_time {
+        return ServiceChildIdentityState::Mismatch(format!(
+            "start time changed from {} to {first_start_time}",
+            record.start_time
+        ));
+    }
+
+    let proc_dir = PathBuf::from(format!("/proc/{}", record.pid));
+    let proc_metadata = match fs::metadata(&proc_dir) {
+        Ok(metadata) => metadata,
+        Err(err) => return classify_service_child_proc_error(record.pid, "directory", err.into()),
+    };
+    if proc_metadata.uid() != record.uid {
+        return ServiceChildIdentityState::Mismatch(format!(
+            "uid changed from {} to {}",
+            record.uid,
+            proc_metadata.uid()
+        ));
+    }
+
+    let executable = match fs::metadata(proc_dir.join("exe")) {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            return classify_service_child_proc_error(record.pid, "executable", err.into());
+        }
+    };
+    if executable.dev() != record.executable_device || executable.ino() != record.executable_inode {
+        return ServiceChildIdentityState::Mismatch(format!(
+            "executable identity changed from {}:{} to {}:{}",
+            record.executable_device,
+            record.executable_inode,
+            executable.dev(),
+            executable.ino()
+        ));
+    }
+
+    let cmdline = match read_bounded_service_proc_file(&proc_dir.join("cmdline"), 64 * 1024) {
+        Ok(bytes) => bytes,
+        Err(err) => return classify_service_child_proc_error(record.pid, "cmdline", err),
+    };
+    if !service_child_cmdline_has_exact_role(&cmdline) {
+        return ServiceChildIdentityState::Mismatch(
+            "exact service-owned role marker is absent".to_owned(),
+        );
+    }
+
+    let environ = match read_bounded_service_proc_file(&proc_dir.join("environ"), 64 * 1024) {
+        Ok(bytes) => bytes,
+        Err(err) => return classify_service_child_proc_error(record.pid, "environment", err),
+    };
+    if !service_child_environment_has_generation(&environ, &record.generation) {
+        return ServiceChildIdentityState::Mismatch(
+            "service generation is absent or duplicated".to_owned(),
+        );
+    }
+
+    let (last_start_time, last_state) = match read_service_child_proc_stat(record.pid) {
+        Ok(identity) => identity,
+        Err(err) => return classify_service_child_proc_error(record.pid, "final stat", err),
+    };
+    if matches!(last_state, 'Z' | 'X' | 'x') {
+        return ServiceChildIdentityState::Exited;
+    }
+    if last_start_time != record.start_time || last_start_time != first_start_time {
+        return ServiceChildIdentityState::Mismatch(
+            "process identity changed during revalidation".to_owned(),
+        );
+    }
+    ServiceChildIdentityState::Match
+}
+
+fn require_service_child_identity_match(
+    record: &ServiceChildRecord,
+    operation: &str,
+) -> ResultType<()> {
+    match inspect_service_child_identity(record) {
+        ServiceChildIdentityState::Match => Ok(()),
+        ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent => bail!(
+            "Service child pid {} exited during {operation}; signaling nothing",
+            record.pid
+        ),
+        ServiceChildIdentityState::Mismatch(reason) => bail!(
+            "Service child pid {} identity mismatch during {operation}: {reason}; signaling nothing",
+            record.pid
+        ),
+        ServiceChildIdentityState::Unavailable(reason) => bail!(
+            "Service child pid {} identity unavailable during {operation}: {reason}; signaling nothing",
+            record.pid
+        ),
+    }
+}
+
+fn read_service_child_proc_stat(pid: u32) -> ResultType<(u64, char)> {
+    let path = PathBuf::from(format!("/proc/{pid}/stat"));
+    let bytes = read_bounded_service_proc_file(&path, 4096)?;
+    let stat = std::str::from_utf8(&bytes)
+        .map_err(|err| anyhow!("Failed to parse /proc/{pid}/stat as UTF-8: {err}"))?;
+    let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+        bail!("Failed to parse /proc/{pid}/stat: missing command terminator");
+    };
+    let fields: Vec<_> = after_comm.split_whitespace().collect();
+    let state = fields
+        .first()
+        .and_then(|field| field.chars().next())
+        .ok_or_else(|| anyhow!("Failed to parse /proc/{pid}/stat state"))?;
+    let start_time = fields
+        .get(19)
+        .ok_or_else(|| anyhow!("Failed to parse /proc/{pid}/stat start time"))?
+        .parse::<u64>()
+        .map_err(|err| anyhow!("Failed to parse /proc/{pid}/stat start time: {err}"))?;
+    Ok((start_time, state))
+}
+
+fn read_bounded_service_proc_file(path: &Path, max_bytes: usize) -> ResultType<Vec<u8>> {
+    let file =
+        File::open(path).map_err(|err| anyhow!("Failed to open '{}': {err}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take((max_bytes + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|err| anyhow!("Failed to read '{}': {err}", path.display()))?;
+    if bytes.len() > max_bytes {
+        bail!("Bounded proc file '{}' is too large", path.display());
+    }
+    Ok(bytes)
+}
+
+fn service_child_cmdline_has_exact_role(cmdline: &[u8]) -> bool {
+    let args: Vec<_> = cmdline
+        .split(|byte| *byte == 0)
+        .filter(|arg| !arg.is_empty())
+        .collect();
+    args.len() == 3
+        && args[1] == b"--server"
+        && args[2] == crate::common::SERVICE_OWNED_SERVER_ARG.as_bytes()
+}
+
+fn service_child_environment_has_generation(environ: &[u8], generation: &str) -> bool {
+    let prefix = format!("{}=", crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV);
+    let mut matches = environ
+        .split(|byte| *byte == 0)
+        .filter(|entry| entry.starts_with(prefix.as_bytes()))
+        .map(|entry| &entry[prefix.len()..]);
+    matches.next() == Some(generation.as_bytes()) && matches.next().is_none()
+}
+
+fn classify_service_child_proc_error(
+    pid: u32,
+    label: &str,
+    err: hbb_common::anyhow::Error,
+) -> ServiceChildIdentityState {
+    if !service_child_pid_exists(pid) {
+        ServiceChildIdentityState::Absent
+    } else {
+        ServiceChildIdentityState::Unavailable(format!("{label} unavailable: {err}"))
+    }
+}
+
+fn service_child_pid_exists(pid: u32) -> bool {
+    let Ok(pid) = hbb_common::libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    if unsafe { hbb_common::libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() != Some(hbb_common::libc::ESRCH)
+}
+
+fn open_service_child_pidfd(pid: u32) -> ResultType<PidFdOpen> {
+    let pid = hbb_common::libc::pid_t::try_from(pid)
+        .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
+    let fd = unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_pidfd_open, pid, 0) };
+    if fd >= 0 {
+        let fd = c_int::try_from(fd).map_err(|_| anyhow!("pidfd does not fit c_int"))?;
+        return Ok(PidFdOpen::Available(unsafe { File::from_raw_fd(fd) }));
+    }
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(hbb_common::libc::ENOSYS) => Ok(PidFdOpen::Unsupported),
+        Some(hbb_common::libc::ESRCH) => Ok(PidFdOpen::Absent),
+        _ => Err(anyhow!(
+            "Failed to open pidfd for service child pid {pid}: {err}"
+        )),
+    }
+}
+
+fn service_child_pidfd_exited(pidfd: &File, timeout: Duration) -> ResultType<bool> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let timeout_ms = if timeout.is_zero() {
+            0
+        } else {
+            i32::try_from(remaining.as_millis().min(i32::MAX as u128)).unwrap_or(i32::MAX)
+        };
+        let mut pollfd = hbb_common::libc::pollfd {
+            fd: pidfd.as_raw_fd(),
+            events: hbb_common::libc::POLLIN,
+            revents: 0,
+        };
+        let rc = unsafe { hbb_common::libc::poll(&mut pollfd, 1, timeout_ms) };
+        if rc > 0 {
+            if pollfd.revents & (hbb_common::libc::POLLIN | hbb_common::libc::POLLHUP) != 0 {
+                return Ok(true);
+            }
+            bail!("Unexpected pidfd poll events: {}", pollfd.revents);
+        }
+        if rc == 0 {
+            return Ok(false);
+        }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(hbb_common::libc::EINTR) {
+            return Err(anyhow!("Failed to poll service child pidfd: {err}"));
+        }
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+    }
+}
+
+fn send_service_child_pidfd_signal(pidfd: &File, signal: c_int) -> ResultType<bool> {
+    let rc = unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_pidfd_send_signal,
+            pidfd.as_raw_fd(),
+            signal,
+            std::ptr::null::<hbb_common::libc::siginfo_t>(),
+            0,
+        )
+    };
+    if rc == 0 {
+        return Ok(false);
+    }
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(hbb_common::libc::ESRCH) {
+        return Ok(true);
+    }
+    Err(anyhow!(
+        "Failed to signal service child through pidfd: {err}"
+    ))
+}
+
+fn send_revalidated_service_child_pid_signal(
+    record: &ServiceChildRecord,
+    signal: c_int,
+) -> ResultType<bool> {
+    require_service_child_identity_match(record, "pre-pidfd kill fallback")?;
+    let pid = hbb_common::libc::pid_t::try_from(record.pid)
+        .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
+    if unsafe { hbb_common::libc::kill(pid, signal) } == 0 {
+        return Ok(false);
+    }
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(hbb_common::libc::ESRCH) {
+        return Ok(true);
+    }
+    Err(anyhow!(
+        "Failed to signal revalidated service child pid {pid}: {err}"
+    ))
+}
+
+fn wait_revalidated_service_child_pid_exit(
+    record: &ServiceChildRecord,
+    timeout: Duration,
+) -> ResultType<bool> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match inspect_service_child_identity(record) {
+            ServiceChildIdentityState::Match if Instant::now() < deadline => sleep_millis(50),
+            ServiceChildIdentityState::Match => return Ok(false),
+            ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent => {
+                return Ok(true);
+            }
+            ServiceChildIdentityState::Mismatch(reason) => bail!(
+                "Service child pid {} changed identity while awaiting exit: {reason}; signaling nothing further",
+                record.pid
+            ),
+            ServiceChildIdentityState::Unavailable(reason) => bail!(
+                "Service child pid {} became unverifiable while awaiting exit: {reason}; signaling nothing further",
+                record.pid
+            ),
+        }
+    }
 }
 
 fn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {
@@ -752,7 +1754,10 @@ fn insert_nonempty_env(command: &mut Command, key: &str, value: &str) {
     }
 }
 
-fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<OwnedServiceChild> {
+fn try_start_server_(
+    desktop: Option<&Desktop>,
+    runtime: &ServiceRuntime,
+) -> ResultType<OwnedServiceChild> {
     let parent_pid = hbb_common::libc::pid_t::try_from(std::process::id())
         .map_err(|_| anyhow!("Service supervisor pid does not fit pid_t"))?;
     let credentials = match desktop {
@@ -762,6 +1767,10 @@ fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<OwnedServiceChild>
         )?),
         None => None,
     };
+    let expected_child_uid = credentials
+        .as_ref()
+        .map(|credentials| credentials.uid as u32)
+        .unwrap_or_else(|| unsafe { hbb_common::libc::geteuid() as u32 });
 
     // `/proc/self/exe` is resolved in the forked child and therefore names the same
     // executable object as this supervisor even if a package replacement concurrently
@@ -776,6 +1785,10 @@ fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<OwnedServiceChild>
         .env(
             crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
             parent_pid.to_string(),
+        )
+        .env(
+            crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+            &runtime.generation,
         );
 
     match (&credentials, desktop) {
@@ -814,9 +1827,43 @@ fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<OwnedServiceChild>
     }
 
     configure_service_child_pre_exec(&mut command, parent_pid, credentials);
-    Ok(OwnedServiceChild {
-        process: command.spawn()?,
-    })
+    let mut process = command.spawn()?;
+    let pid = process.id();
+    let record =
+        match service_child_record_for_process(pid, expected_child_uid, &runtime.generation) {
+            Ok(record) => record,
+            Err(err) => {
+                stop_unregistered_service_child(&mut process, pid);
+                return Err(err);
+            }
+        };
+    if let Err(err) = runtime.publish_record(&record) {
+        stop_unregistered_service_child(&mut process, pid);
+        match runtime.read_record() {
+            Ok(Some(actual)) if actual == record => {
+                if let Err(remove_err) = runtime.remove_record(&record) {
+                    log::error!(
+                        "Failed to remove the exact record after child registration failed: {remove_err}"
+                    );
+                }
+            }
+            Ok(_) => {}
+            Err(read_err) => log::error!(
+                "Failed to inspect the record after child registration failed: {read_err}"
+            ),
+        }
+        return Err(err);
+    }
+    Ok(OwnedServiceChild { process, record })
+}
+
+fn stop_unregistered_service_child(process: &mut Child, pid: u32) {
+    if let Err(err) = process.kill() {
+        log::error!("Failed to force-stop unregistered Linux service child pid {pid}: {err}");
+    }
+    if let Err(err) = process.wait() {
+        log::error!("Failed to reap unregistered Linux service child pid {pid}: {err}");
+    }
 }
 
 pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
@@ -830,13 +1877,20 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
     if expected_parent <= 0 {
         bail!("Service-owned server launch parent is invalid");
     }
+    let generation = std::env::var(crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV)
+        .map_err(|_| anyhow!("Service-owned server generation is unavailable"))?;
+    validate_canonical_uuid(&generation, "service generation")?;
     arm_service_child_parent_death(expected_parent)?;
     Ok(())
 }
 
 #[inline]
-fn start_server(desktop: Option<&Desktop>, server: &mut Option<OwnedServiceChild>) {
-    match try_start_server_(desktop) {
+fn start_server(
+    desktop: Option<&Desktop>,
+    server: &mut Option<OwnedServiceChild>,
+    runtime: &ServiceRuntime,
+) {
+    match try_start_server_(desktop, runtime) {
         Ok(ps) => *server = Some(ps),
         Err(err) => {
             log::error!("Failed to start server: {}", err);
@@ -891,21 +1945,49 @@ fn wait_child_exit(child: &mut OwnedServiceChild, timeout: Duration, label: &str
     }
 }
 
-fn terminate_child(mut child: OwnedServiceChild, label: &str) {
+fn remove_reaped_service_child_record(
+    runtime: &ServiceRuntime,
+    child: &OwnedServiceChild,
+    label: &str,
+) {
+    if let Err(err) = runtime.remove_record(&child.record) {
+        log::error!(
+            "Failed to remove exact {label} child record for pid {}: {err}",
+            child.record.pid
+        );
+    }
+}
+
+fn terminate_child(mut child: OwnedServiceChild, label: &str, runtime: &ServiceRuntime) {
     if signal_child(&child, hbb_common::libc::SIGTERM, label)
         && wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)
     {
+        remove_reaped_service_child_record(runtime, &child, label);
         return;
     }
 
     log::warn!("{label} child did not exit after SIGTERM; forcing stop");
-    allow_err!(child.process.kill());
-    allow_err!(child.process.wait());
+    if let Err(err) = child.process.kill() {
+        log::warn!(
+            "Failed to force-stop exact {label} child pid {}: {err}",
+            child.record.pid
+        );
+    }
+    match child.process.wait() {
+        Ok(status) => {
+            log::info!("{label} child exited with {status}");
+            remove_reaped_service_child_record(runtime, &child, label);
+        }
+        Err(err) => log::error!(
+            "Failed to reap exact {label} child pid {}; preserving its recovery record: {err}",
+            child.record.pid
+        ),
+    }
 }
 
-fn stop_server(server: &mut Option<OwnedServiceChild>) {
+fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime) {
     if let Some(ps) = server.take() {
-        terminate_child(ps, "--server");
+        terminate_child(ps, "--server", runtime);
     }
 }
 
@@ -935,6 +2017,7 @@ fn should_start_server(
     cm0: &mut bool,
     last_restart: &mut Instant,
     server: &mut Option<OwnedServiceChild>,
+    runtime: &ServiceRuntime,
 ) -> bool {
     let cm = get_cm();
     let mut start_new = false;
@@ -974,27 +2057,43 @@ fn should_start_server(
 
     if should_kill {
         if let Some(ps) = server.take() {
-            terminate_child(ps, "--server");
+            terminate_child(ps, "--server", runtime);
             *last_restart = Instant::now();
         }
     }
 
-    if let Some(ps) = server.as_mut() {
+    let exited = if let Some(ps) = server.as_mut() {
         match ps.process.try_wait() {
-            Ok(Some(_)) => {
-                *server = None;
-                start_new = true;
+            Ok(Some(status)) => {
+                log::info!("--server child exited with {status}");
+                true
             }
-            _ => {}
+            Ok(None) => false,
+            Err(err) => {
+                log::error!(
+                    "Failed to inspect owned --server child pid {}; preserving ownership: {err}",
+                    ps.record.pid
+                );
+                false
+            }
         }
     } else {
+        start_new = true;
+        false
+    };
+    if exited {
+        if let Some(ps) = server.take() {
+            remove_reaped_service_child_record(runtime, &ps, "--server");
+        }
         start_new = true;
     }
     *cm0 = cm;
     start_new
 }
 
-pub fn start_os_service() {
+pub fn start_os_service() -> ResultType<()> {
+    let runtime = ServiceRuntime::acquire()?;
+    runtime.recover_previous_child()?;
     stop_subprocess();
     // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
     // fork XTEST/enigo is the sole injection backend, so the world-mode _uinput_*
@@ -1029,7 +2128,7 @@ pub fn start_os_service() {
         // Login wayland will try to start a headless --server.
         if desktop.username == "root" || desktop.is_login_wayland() {
             // try kill subprocess "--server"
-            stop_server(&mut user_server);
+            stop_server(&mut user_server, &runtime);
             // try start subprocess "--server"
             // No need to check is_display_changed here.
             if should_start_server(
@@ -1040,13 +2139,14 @@ pub fn start_os_service() {
                 &mut cm0,
                 &mut last_restart,
                 &mut server,
+                &runtime,
             ) {
                 stop_subprocess();
-                start_server(None, &mut server);
+                start_server(None, &mut server, &runtime);
             }
         } else if desktop.username != "" {
             // try kill subprocess "--server"
-            stop_server(&mut server);
+            stop_server(&mut server, &runtime);
 
             let is_display_changed = desktop.display != display || desktop.xauth != xauth;
             display = desktop.display.clone();
@@ -1061,13 +2161,14 @@ pub fn start_os_service() {
                 &mut cm0,
                 &mut last_restart,
                 &mut user_server,
+                &runtime,
             ) {
                 stop_subprocess();
-                start_server(Some(&desktop), &mut user_server);
+                start_server(Some(&desktop), &mut user_server, &runtime);
             }
         } else {
-            stop_server(&mut user_server);
-            stop_server(&mut server);
+            stop_server(&mut user_server, &runtime);
+            stop_server(&mut server, &runtime);
         }
 
         let keeps_headless = sid.is_empty() && desktop.is_headless();
@@ -1084,12 +2185,13 @@ pub fn start_os_service() {
     }
 
     if let Some(ps) = user_server.take() {
-        terminate_child(ps, "--server");
+        terminate_child(ps, "--server", &runtime);
     }
     if let Some(ps) = server.take() {
-        terminate_child(ps, "--server");
+        terminate_child(ps, "--server", &runtime);
     }
     log::info!("Exit");
+    Ok(())
 }
 
 #[inline]
@@ -1915,6 +3017,145 @@ mod process_cleanup_tests {
             let _ = fs::remove_file(self.0.join("ready.sock"));
             let _ = fs::remove_dir(&self.0);
         }
+    }
+
+    struct ServiceRuntimeTestDir(PathBuf);
+
+    impl Drop for ServiceRuntimeTestDir {
+        fn drop(&mut self) {
+            if let Ok(entries) = fs::read_dir(&self.0) {
+                for entry in entries.flatten() {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+            let _ = fs::remove_dir(&self.0);
+        }
+    }
+
+    fn sample_service_child_record() -> ServiceChildRecord {
+        ServiceChildRecord {
+            pid: 4242,
+            start_time: 991_337,
+            boot_id: "11111111-2222-4333-8444-555555555555".to_owned(),
+            executable_device: 2049,
+            executable_inode: 123_456,
+            uid: 1000,
+            generation: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee".to_owned(),
+        }
+    }
+
+    #[test]
+    fn r_s11c27b_service_child_record_is_strict_and_canonical() {
+        let record = sample_service_child_record();
+        assert_eq!(
+            ServiceChildRecord::decode(&record.encode()).unwrap(),
+            record
+        );
+
+        let valid = String::from_utf8(record.encode()).unwrap();
+        for malformed in [
+            valid.trim_end().to_owned(),
+            valid.replace("version=1", "version=2"),
+            valid.replace("pid=4242", "pid=04242"),
+            valid.replace(
+                "boot_id=11111111-2222-4333-8444-555555555555",
+                "boot_id=11111111-2222-4333-8444-555555555555\nunknown=x",
+            ),
+            valid.replace(
+                "generation=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "generation=AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+            ),
+            valid.replace("role=--server+--service-owned-server", "role=--server"),
+        ] {
+            assert!(
+                ServiceChildRecord::decode(malformed.as_bytes()).is_err(),
+                "malformed record was accepted: {malformed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn r_s11c27b_service_child_record_publication_is_atomic_and_exact() {
+        use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "rustdesk-service-runtime-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let _guard = ServiceRuntimeTestDir(root.clone());
+        let runtime = ServiceRuntime::for_test(&root, "01234567-89ab-4cde-8fab-0123456789ab");
+        let record = sample_service_child_record();
+
+        runtime.publish_record(&record).unwrap();
+        assert_eq!(runtime.read_record().unwrap(), Some(record.clone()));
+        let metadata = fs::symlink_metadata(root.join("service-child.record")).unwrap();
+        assert!(metadata.file_type().is_file());
+        assert_eq!(metadata.mode() & 0o7777, 0o600);
+        assert_eq!(metadata.nlink(), 1);
+        assert!(!root.join("service-child.record.tmp").exists());
+
+        let mut other = record.clone();
+        other.start_time += 1;
+        assert!(runtime.publish_record(&other).is_err());
+        assert!(runtime.remove_record(&other).is_err());
+        assert_eq!(runtime.read_record().unwrap(), Some(record.clone()));
+
+        runtime.remove_record(&record).unwrap();
+        assert!(runtime.read_record().unwrap().is_none());
+        fs::write(root.join("service-child.record"), b"version=1\n").unwrap();
+        fs::set_permissions(
+            root.join("service-child.record"),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        assert!(runtime.read_record().is_err());
+        assert!(runtime.publish_record(&record).is_err());
+        assert_eq!(
+            fs::read(root.join("service-child.record")).unwrap(),
+            b"version=1\n"
+        );
+    }
+
+    #[test]
+    fn r_s11c27b_service_child_role_and_generation_are_exact() {
+        let exact_cmdline = b"/proc/self/exe\0--server\0--service-owned-server\0";
+        assert!(service_child_cmdline_has_exact_role(exact_cmdline));
+        assert!(!service_child_cmdline_has_exact_role(
+            b"/proc/self/exe\0--server\0--service-owned-server-extra\0"
+        ));
+        assert!(!service_child_cmdline_has_exact_role(
+            b"/proc/self/exe\0--server\0--service-owned-server\0extra\0"
+        ));
+
+        let generation = "01234567-89ab-4cde-8fab-0123456789ab";
+        let exact_environment = format!(
+            "PATH=/usr/bin:/bin\0{}={}\0",
+            crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+            generation
+        );
+        assert!(service_child_environment_has_generation(
+            exact_environment.as_bytes(),
+            generation
+        ));
+        let duplicate = format!(
+            "{}{}={}\0",
+            exact_environment,
+            crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+            generation
+        );
+        assert!(!service_child_environment_has_generation(
+            duplicate.as_bytes(),
+            generation
+        ));
+        assert!(!service_child_environment_has_generation(
+            exact_environment.as_bytes(),
+            "fedcba98-7654-4cba-8fed-fedcba987654"
+        ));
     }
 
     #[test]

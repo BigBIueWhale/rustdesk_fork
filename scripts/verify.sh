@@ -3054,7 +3054,8 @@ fi
 if ! echo "$tray_cleanup_block" | grep -q 'hbb_common::libc::SIGTERM'; then
   r_s11c10b="$r_s11c10b tray-cleanup-not-sigterm"
 fi
-if [ "$(echo "$tray_cleanup_block" | grep -c '"--tray"')" -lt 2 ]; then
+tray_cleanup_compact=$(printf '%s' "$tray_cleanup_block" | tr -d '[:space:]')
+if ! echo "$tray_cleanup_compact" | grep -qE 'signal_current_exe_processes_with_arg\("--tray","--tray",hbb_common::libc::SIGTERM,?\);'; then
   r_s11c10b="$r_s11c10b tray-cleanup-not-exact-tray-argv"
 fi
 linux_process_cleanup_blocks=$(
@@ -3112,7 +3113,7 @@ fi
 service_child_final_arm_block=$(awk '/pub fn require_service_owned_server_parent_liveness/,/^}/' src/platform/linux.rs)
 echo "$service_child_final_arm_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a parent-death-binding-not-rearmed-after-exec"
 grep -qF 'crate::platform::require_service_owned_server_parent_liveness()' src/core_main.rs || r_s11c27a="$r_s11c27a final-server-image-not-rearmed"
-grep -qF 'fn terminate_child(mut child: OwnedServiceChild, label: &str)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-termination-helper-missing"
+grep -qF 'fn terminate_child(mut child: OwnedServiceChild, label: &str, runtime: &ServiceRuntime)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-termination-helper-missing"
 grep -qF 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-bounded-wait-missing"
 grep -qF 'child.process.kill()' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-forced-stop-missing"
 if echo "$service_child_launch_block" | grep -Eq 'run_as_user\(|run_me|SUDO_PATHS'; then
@@ -3126,6 +3127,56 @@ fi
 grep -qF 'R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a hardening-ledger-missing"
 if [ -n "$r_s11c27a" ]; then echo "  FAIL R-S11c-27a Linux direct service-child ownership:$r_s11c27a"; rc=1; else
   echo "  ok  R-S11c-27a supervisor owns the final server Child, drops credentials without a wrapper, blocks exec privilege regain, binds child death to supervisor death across exec, and never sweeps unrelated servers"; fi
+
+echo "== (3b-iii-h2c) Linux service-child durable crash recovery authority (R-S11c-27b) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27b_ --color never
+r_s11c27b=
+grep -qF 'struct ServiceChildRecord {' src/platform/linux.rs || r_s11c27b="$r_s11c27b no-durable-record-type"
+for field in 'pid: u32' 'start_time: u64' 'boot_id: String' 'executable_device: u64' 'executable_inode: u64' 'uid: u32' 'generation: String'; do
+  grep -qF "$field" src/platform/linux.rs || r_s11c27b="$r_s11c27b record-field-missing:$field"
+done
+grep -qF 'const SERVICE_CHILD_RECORD_MAX_BYTES: usize = 1024;' src/platform/linux.rs || r_s11c27b="$r_s11c27b record-byte-bound-missing"
+grep -qF 'const SERVICE_CHILD_RECORD_ROLE: &str = "--server+--service-owned-server";' src/platform/linux.rs || r_s11c27b="$r_s11c27b role-binding-missing"
+grep -qF 'SERVICE_OWNED_SERVER_GENERATION_ENV' src/common.rs || r_s11c27b="$r_s11c27b generation-environment-name-missing"
+service_runtime_block=$(awk '/struct ServiceRuntime \{/,/struct OwnedServiceChild \{/' src/platform/linux.rs)
+echo "$service_runtime_block" | grep -qF 'SERVICE_RUNTIME_DIR' || r_s11c27b="$r_s11c27b root-runtime-directory-missing"
+echo "$service_runtime_block" | grep -qF 'O_DIRECTORY' || r_s11c27b="$r_s11c27b runtime-directory-not-descriptor-opened"
+echo "$service_runtime_block" | grep -qF 'O_NOFOLLOW' || r_s11c27b="$r_s11c27b runtime-path-no-follow-missing"
+echo "$service_runtime_block" | grep -qF 'LOCK_EX | hbb_common::libc::LOCK_NB' || r_s11c27b="$r_s11c27b singleton-supervisor-lease-missing"
+echo "$service_runtime_block" | grep -qF 'metadata.mode() & 0o7777 != 0o700' || r_s11c27b="$r_s11c27b root-only-directory-mode-missing"
+echo "$service_runtime_block" | grep -qF 'metadata.mode() & 0o7777 != 0o600' || r_s11c27b="$r_s11c27b root-only-record-mode-missing"
+echo "$service_runtime_block" | grep -qF 'RENAME_NOREPLACE' || r_s11c27b="$r_s11c27b atomic-no-replace-publication-missing"
+echo "$service_runtime_block" | grep -qF '.sync_all()' || r_s11c27b="$r_s11c27b record-or-directory-fsync-missing"
+echo "$service_runtime_block" | grep -qF 'Refusing to overwrite an existing service child record' || r_s11c27b="$r_s11c27b record-overwrite-fail-closed-missing"
+service_recovery_block=$(awk '/fn recover_previous_child\(&self\)/,/fn syscall_succeeded/' src/platform/linux.rs)
+echo "$service_recovery_block" | grep -qF 'SYS_pidfd_open' || r_s11c27b="$r_s11c27b pidfd-acquisition-missing"
+echo "$service_recovery_block" | grep -qF 'SYS_pidfd_send_signal' || r_s11c27b="$r_s11c27b pidfd-signaling-missing"
+echo "$service_recovery_block" | grep -qF 'require_service_child_identity_match(record, "pidfd recovery before SIGTERM")' || r_s11c27b="$r_s11c27b pre-term-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'require_service_child_identity_match(record, "pidfd recovery before SIGKILL")' || r_s11c27b="$r_s11c27b pre-kill-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'read_service_child_proc_stat(record.pid)' || r_s11c27b="$r_s11c27b proc-start-time-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'executable.dev() != record.executable_device' || r_s11c27b="$r_s11c27b executable-device-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'executable.ino() != record.executable_inode' || r_s11c27b="$r_s11c27b executable-inode-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'service_child_cmdline_has_exact_role' || r_s11c27b="$r_s11c27b exact-role-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'service_child_environment_has_generation' || r_s11c27b="$r_s11c27b generation-revalidation-missing"
+echo "$service_recovery_block" | grep -qF 'final identity-check-to-kill race cannot be eliminated' || r_s11c27b="$r_s11c27b pre-pidfd-residual-race-not-explicit"
+echo "$service_recovery_block" | grep -qF 'send_revalidated_service_child_pid_signal' || r_s11c27b="$r_s11c27b pre-pidfd-revalidated-fallback-missing"
+service_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/stop_subprocess\(\);/' src/platform/linux.rs)
+if ! echo "$service_entry_block" | awk '
+  /ServiceRuntime::acquire/ { lease = NR }
+  /recover_previous_child/ { recovery = NR }
+  /stop_subprocess/ { loop_start = NR }
+  END { exit !(lease && recovery && loop_start && lease < recovery && recovery < loop_start) }
+'; then
+  r_s11c27b="$r_s11c27b recovery-not-before-service-loop"
+fi
+grep -qF 'Linux service lifecycle authority failed closed' src/core_main.rs || r_s11c27b="$r_s11c27b service-entry-not-fail-closed"
+grep -qE '^RuntimeDirectory=rustdesk$' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-runtime-directory-missing"
+grep -qE '^RuntimeDirectoryMode=0700$' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-runtime-mode-missing"
+grep -qE '^RuntimeDirectoryPreserve=restart$' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-crash-record-preservation-missing"
+grep -qE '^SystemCallFilter=.*pidfd_open.*pidfd_send_signal.*renameat2' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-lifecycle-syscalls-not-allowed"
+grep -qF 'R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27b="$r_s11c27b hardening-ledger-missing"
+if [ -n "$r_s11c27b" ]; then echo "  FAIL R-S11c-27b Linux durable service-child crash recovery:$r_s11c27b"; rc=1; else
+  echo "  ok  R-S11c-27b root-only atomic records + singleton lease + pidfd-first full identity revalidation + explicit pre-pidfd fallback"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
@@ -3647,7 +3698,7 @@ if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIF
 fi
 grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
 grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
-grep -q 'fn terminate_child(mut child: OwnedServiceChild, label: &str)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
+grep -qF 'fn terminate_child(mut child: OwnedServiceChild, label: &str, runtime: &ServiceRuntime)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
 grep -q 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
 linux_child_stop_block=$(
@@ -5552,7 +5603,7 @@ fi
 r_d3a_missing=
 grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
 grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
-grep -qE '^SystemCallFilter=@system-service mount umount umount2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-owner-terminal-mounts"
+grep -qE '^SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-owner-terminal-mounts-and-service-recovery"
 grep -qE '^SystemCallFilter=~@reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
 grep -qF 'authenticated owner'\''s root terminal' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-terminal-syscall-comment"
 grep -qF 'Linux file clipboard uses fixed-path fusermount fd passing' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-fixed-fuse-helper-comment"

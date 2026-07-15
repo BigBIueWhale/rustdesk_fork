@@ -22,6 +22,12 @@ PIDFile=/run/rustdesk.pid
 KillMode=control-group
 TimeoutStopSec=30
 User=root
+# The portable supervisor protocol owns this directory on every init system.
+# systemd creates the same root-only shape and preserves crash evidence across
+# automatic restarts; a clean stop may remove it after the supervisor exits.
+RuntimeDirectory=rustdesk
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=restart
 # ── R-T1(a) / §20: bound an unauthenticated connection flood's blast radius ───────
 # An unbounded flood must OOM-kill THIS service inside its own cgroup (then auto-
 # restart), never the HOST (R-D3 "defensible without a firewall"). These OS ceilings
@@ -63,7 +69,7 @@ SystemCallArchitectures=native
 # @system-service plus mount/umount for the authenticated owner's root terminal.
 # Linux file clipboard uses fixed-path fusermount fd passing, not RustDesk mount(2).
 # Keep reboot/swap and the broader @mount namespace/root-changing set out.
-SystemCallFilter=@system-service mount umount umount2
+SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2
 SystemCallFilter=~@reboot @swap
 # MemoryDenyWriteExecute (W^X for the root service): block any runtime W+X mmap/mprotect
 # — the classic code-injection primitive a memory-corruption bug would reach for. R-D3a

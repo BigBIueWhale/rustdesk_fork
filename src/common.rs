@@ -97,6 +97,8 @@ pub const SERVICE_OWNED_SERVER_ARG: &str = "--service-owned-server";
 #[cfg(target_os = "linux")]
 pub const SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV: &str =
     "RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT";
+#[cfg(target_os = "linux")]
+pub const SERVICE_OWNED_SERVER_GENERATION_ENV: &str = "RUSTDESK_SERVICE_OWNED_SERVER_GENERATION";
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub const CM_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_CM_LAUNCH_TOKEN";
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

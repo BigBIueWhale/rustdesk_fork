@@ -39,6 +39,8 @@ pub(crate) use ipc_auth::current_windows_process_identity_key;
 pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::ensure_user_owned_main_server_is_trusted;
+#[cfg(target_os = "linux")]
+use ipc_auth::linux_proc_start_time;
 #[cfg(all(target_os = "linux", test))]
 use ipc_auth::linux_proc_stat_start_time;
 #[cfg(windows)]
@@ -148,7 +150,11 @@ const PASSWORD_MUTATION_ID_BYTES: usize = 36;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const PASSWORD_MUTATION_RESULT_BUDGET: usize = 64;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-const PASSWORD_MUTATION_RECOVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+/// Maximum time a client may spend resolving one admitted password mutation.
+pub const PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS: u64 = 600;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PASSWORD_MUTATION_RECOVERY_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const UNATTENDED_PASSWORD_MAX_BYTES: usize = 4096;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1737,6 +1743,14 @@ pub struct MainStatusSnapshot {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub struct MainReadinessSnapshot {
+    pub permanent_password_set: bool,
+    pub user_owned_permanent_password_writable: bool,
+    pub direct_listener_bound: bool,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum MainStatusOptionKey {
     AccessMode,
@@ -2371,6 +2385,7 @@ impl WindowsCredentialStopApplyModel {
 #[serde(tag = "t", content = "c")]
 pub enum MainIpcRequest {
     StatusSnapshot,
+    ReadinessSnapshot,
     Config(MainConfigKey),
     SetVoiceCallInput(String),
     PasswordMutationStatus {
@@ -2399,6 +2414,7 @@ pub enum MainIpcRequest {
 #[serde(tag = "t", content = "c")]
 pub enum MainIpcResponse {
     StatusSnapshot(MainStatusSnapshot),
+    ReadinessSnapshot(MainReadinessSnapshot),
     Config {
         key: MainConfigKey,
         value: Option<String>,
@@ -3095,6 +3111,15 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
                 options,
                 id,
                 file_transfer_enabled,
+            })
+        }
+        MainIpcRequest::ReadinessSnapshot => {
+            MainIpcResponse::ReadinessSnapshot(MainReadinessSnapshot {
+                permanent_password_set: permanent_password_is_set_for_current_process().await,
+                user_owned_permanent_password_writable:
+                    current_process_allows_user_owned_permanent_password_write()
+                        && !Config::is_disable_change_permanent_password(),
+                direct_listener_bound: crate::direct_service::is_direct_listener_bound(),
             })
         }
         MainIpcRequest::Config(key) => {
@@ -6519,6 +6544,59 @@ pub async fn get_main_status_snapshot(ms_timeout: u64) -> ResultType<MainStatusS
         MainIpcResponse::StatusSnapshot(snapshot) => Ok(snapshot),
         _ => bail!("invalid main IPC status response"),
     }
+}
+
+#[cfg(target_os = "linux")]
+pub async fn get_main_readiness_snapshot_for_process(
+    expected_pid: u32,
+    expected_start_time: &str,
+    ms_timeout: u64,
+) -> ResultType<MainReadinessSnapshot> {
+    if expected_pid == 0 || ms_timeout == 0 {
+        bail!("main IPC readiness identity and timeout must be nonzero");
+    }
+    let canonical_start_time = expected_start_time
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("main IPC readiness start identity is invalid"))?;
+    if canonical_start_time == 0 || canonical_start_time.to_string() != expected_start_time {
+        bail!("main IPC readiness start identity is not canonical");
+    }
+    let deadline = tokio::time::Instant::now()
+        .checked_add(std::time::Duration::from_millis(ms_timeout))
+        .ok_or_else(|| anyhow::anyhow!("main IPC readiness deadline is invalid"))?;
+    tokio::time::timeout_at(deadline, async {
+        let mut stream = connect(password::remaining_millis(deadline)?, "").await?;
+        let peer_pid = stream
+            .peer_pid()
+            .ok_or_else(|| anyhow::anyhow!("main IPC readiness peer pid is unavailable"))?;
+        if peer_pid != expected_pid {
+            bail!(
+                "main IPC readiness peer pid mismatch: expected={expected_pid}, actual={peer_pid}"
+            );
+        }
+        if linux_proc_start_time(peer_pid)? != expected_start_time {
+            bail!("main IPC readiness peer identity changed before request");
+        }
+        stream
+            .send_main_request_timeout(
+                &MainIpcRequest::ReadinessSnapshot,
+                password::remaining_millis(deadline)?,
+            )
+            .await?;
+        let response = stream
+            .next_main_response_timeout(password::remaining_millis(deadline)?)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("main IPC readiness returned a malformed response"))?;
+        if linux_proc_start_time(peer_pid)? != expected_start_time {
+            bail!("main IPC readiness peer identity changed after response");
+        }
+        match response {
+            MainIpcResponse::ReadinessSnapshot(snapshot) => Ok(snapshot),
+            _ => bail!("invalid main IPC readiness response"),
+        }
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("main IPC readiness transaction timed out"))?
 }
 
 #[cfg(target_os = "windows")]

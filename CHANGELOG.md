@@ -136,6 +136,15 @@ release notes.
   status handling and a release preflight that runs before the online closure is copied.
 - Made the non-root portable password smoke stage execute from an immutable owner-scoped fixture, prove
   its portable role and exact process ownership, and leave the mode-0700 release source bind unchanged.
+- Replaced runtime-smoke startup, event, capture, and teardown delays with bounded monotonic proof of one
+  retained child identity, exact listener ownership, and a dedicated typed readiness transaction bound to
+  that PID/start pair by `SO_PEERCRED`. Both UID-scoped IPC listener kernel inodes must belong to that process
+  before and after the transaction; probe and log evidence is descriptor-pinned, the complete transaction has
+  an outer hard deadline, and signals use pidfds without a raw-PID fallback. Runtime stages mount source
+  read-only; only the transcript-preserving build stage receives a writable source bind. Strict isolated
+  stages retain their complete output and real exit status; password watchdogs derive from the admitted-operation
+  recovery bound and enforce a finite kill ceiling, and file-transfer success requires successful serialization
+  and sends plus a non-empty peer identity rather than CPace keying alone.
 - Made each release pass an independent `--no-hardlinks --reject-shallow` private repository with its own object database, detached exact
   commit, no remotes, strict object validation, mount closure, and complete inode-link closure. The release transaction
   creates no Git worktree registration and never inspects or mutates the invoking repository's worktree registry.

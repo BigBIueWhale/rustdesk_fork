@@ -2932,7 +2932,9 @@ def validate_scan_contract(scan, verify, apple, release):
     )
 
 
-def validate_smoke_contract(smoke):
+def validate_smoke_contract(
+    verify, smoke, readiness, readiness_mode, typed_probe, session_probe, ipc_source
+):
     for text, label in (
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
         ('install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"', "protected fixture directories"),
@@ -2940,15 +2942,63 @@ def validate_smoke_contract(smoke):
         ('install -o root -g "$gid" -m 0550 target/debug/rustdesk "$fixture/bin/rustdesk"', "portable server fixture"),
         ('install -o root -g "$gid" -m 0550 target/debug/examples/seed_password "$fixture/bin/seed_password"', "password seeder fixture"),
         ('install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"', "probe client fixture"),
+        ('install -o root -g "$gid" -m 0550 target/debug/examples/smoke_readiness "$fixture/bin/smoke_readiness"', "typed readiness probe fixture"),
         ('install -o root -g "$gid" -m 0440 target/smoke-bind-loopback.so "$fixture/bin/smoke-bind-loopback.so"', "bind shim fixture"),
+        ('install -o root -g "$gid" -m 0550 scripts/smoke-ready.sh "$fixture/bin/smoke-ready.sh"', "readiness checker fixture"),
         ('su -s /bin/bash -c /tmp/rd-smoke-nonroot/run.sh rduser', "non-root runner dispatch"),
         ('echo SOURCE_BIND_UNCHANGED=yes', "source-bind postcondition"),
         ("SERVER_EXIT=0", "server reaping assertion"),
         ("SOURCE_BIND_UNCHANGED=yes", "source-bind assertion"),
+        ('BUILD_RUN=(docker run --rm', "writable build-only container"),
+        ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
+        ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
+        ('record_stage_status R-B4-build', "build status preservation"),
+        ('STAGE_STATUS=$?', "isolated command failure status preservation"),
+        ('bash /work/scripts/smoke-ready.sh --self-test', "readiness checker behavioral self-test"),
+        ('/work/scripts/smoke-ready.sh --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0', "parked-server readiness proof"),
+        ('/work/scripts/smoke-ready.sh --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0', "root user-owned IPC readiness proof"),
+        ('"$bin/smoke-ready.sh" --wait-user-server "$SRV" "$SRV_START" "$HOME/srv2c.log" "$bin/smoke_readiness" 4000', "non-root user-owned IPC readiness proof"),
+        ('/work/scripts/smoke-ready.sh --wait-key-failure', "key-failure observation proof"),
+        ('/work/scripts/smoke-ready.sh --wait-capacity-shed', "capacity-shed observation proof"),
+        ('/work/scripts/smoke-ready.sh --wait-tcp-listener', "tunnel-target listener proof"),
+        ('/work/scripts/smoke-ready.sh --interrupt "$TCPD" "$TCPD_START"', "capture completion proof"),
+        ('wait "$TCPD" || exit 1', "capture exit-status proof"),
+        ('/work/scripts/smoke-ready.sh --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval"', "identity-monitored limiter-decay interval"),
     ):
         require_text(smoke, text, label)
-    if smoke.count('install -o root -g "$gid"') != 4:
-        raise VerificationError("non-root smoke fixture must stage exactly four root-owned runtime files")
+    if smoke.count('install -o root -g "$gid"') != 6:
+        raise VerificationError("non-root smoke fixture must stage exactly six root-owned runtime files")
+    if smoke.count('/work/scripts/smoke-ready.sh --wait-server') < 10:
+        raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
+    if smoke.count('/work/scripts/smoke-ready.sh --terminate-server') < 10:
+        raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
+    if smoke.count('SRV_START=$(/work/scripts/smoke-ready.sh --identity "$SRV")') < 13:
+        raise VerificationError("runtime smoke does not retain every root server identity after spawn")
+    if smoke.count('run_stage out') < 14 or smoke.count('record_stage_status ') < 15:
+        raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
+    if smoke.count('bash -euo pipefail -c') < 15:
+        raise VerificationError("runtime smoke retains a non-strict isolated stage shell")
+    if re.search(r'out[0-9a-z]*=\$\("\$\{RUN\[@\]\}"', smoke) or re.search(
+        r'(?:\./target/debug/examples/probe_client|"\$bin/probe_client")[^\n]*\|', smoke
+    ):
+        raise VerificationError("runtime smoke retains status suppression or a lossy probe execution pipeline")
+    if re.search(r'echo "\$out[0-9a-z]*"\s*\|\s*grep\s+-[^\n]*q', smoke):
+        raise VerificationError("runtime smoke retains a pipefail-sensitive output assertion")
+    for forbidden in ("timeout 15", "TCPDUMP_ABSENT", "SKIP R-A9"):
+        if forbidden in smoke:
+            raise VerificationError(f"runtime smoke retains a forbidden fallback or stale bound: {forbidden}")
+    if smoke.count('timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))"') != 3:
+        raise VerificationError("every password watchdog must derive from recovery and have a forced-kill ceiling")
+    if smoke.count('[ "$RECOVERY_SECONDS" = 600 ]') != 3:
+        raise VerificationError("runtime smoke does not bind every password CLI watchdog to the exported recovery bound")
+    fixed_delays = re.findall(r"(?<![A-Za-z0-9_-])sleep[ \t]+([0-9]+(?:\.[0-9]+)?)", smoke)
+    if fixed_delays:
+        raise VerificationError("runtime smoke retains a fixed timing guess outside the real 60-second limiter-decay window")
+    require_text(
+        verify,
+        "smoke_nonroot_stage=$(awk '/^run_stage out2c /{capture=1}",
+        "verify non-root smoke extraction follows the strict stage form",
+    )
     marker = 'cat > "$fixture/run.sh" <<"EOS"\n'
     start = smoke.find(marker)
     if start < 0:
@@ -2962,9 +3012,94 @@ def validate_smoke_contract(smoke):
         if forbidden in runner:
             raise VerificationError(f"non-root smoke runner retains forbidden source/process authority: {forbidden}")
     require_text(runner, 'export HOME=/tmp/rd-smoke-nonroot/home', "fixture-owned runner home")
-    require_text(runner, 'kill -TERM "$SRV"', "exact server stop")
+    require_text(runner, 'SRV_START=$("$bin/smoke-ready.sh" --identity "$SRV")', "retained non-root server identity")
+    require_text(runner, '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START"', "bounded exact server stop")
     require_text(runner, 'wait "$SRV"', "exact server reap")
     require_text(runner, 'SERVICE_ROLE_MARKER=absent', "portable-role proof")
+    if stat.S_IMODE(readiness_mode) != 0o755 or not stat.S_ISREG(readiness_mode):
+        raise VerificationError("smoke readiness checker is not a regular mode-0755 executable")
+    for text, label in (
+        ("readonly READY_WAIT_SECONDS=60", "fixed 60-second readiness bound"),
+        ('[[ "$1" =~ ^[1-9][0-9]*$ ]] || fail "invalid duration: $1"', "strict monitored-duration validation"),
+        ("monotonic_millis()", "millisecond monotonic readiness clock"),
+        ('[[ "$uptime" =~ ^([0-9]+)\\.([0-9]+)$ ]]', "validated monotonic clock syntax"),
+        ('rest=${stat##*) }', "pid stat command-name parsing"),
+        ('start=${fields[19]}', "pid start identity extraction"),
+        ('[ "$start" = "$expected_start" ] || return 2', "pid start identity enforcement"),
+        ('capture_pid_start "$2"', "dedicated retained-identity capture"),
+        ('pidfd = os.pidfd_open(pid, 0)', "pidfd acquisition"),
+        ('signal.pidfd_send_signal(pidfd, signals[signal_name], None, 0)', "pidfd signal delivery"),
+        ('pid_owns_listener "$pid" "$SERVER_LISTEN_HEX"', "server listener process ownership"),
+        ('inode=$(unix_listener_inode "$path")', "Unix listener kernel-inode lookup"),
+        ('$4 == "00010000" && $5 == "0001" && $6 == "01"', "Unix stream listening-state proof"),
+        ('pid_owns_socket_inode "$pid" "$inode"', "Unix listener exact-process ownership"),
+        ('pid_owns_unix_listener "$pid" "$socket" || return 1', "both IPC paths bound to the exact process"),
+        ('[ "$(tcp_listen_count)" = 1 ]', "exact TCP listener count"),
+        ('[ "$(udp_socket_count)" = 0 ]', "zero UDP socket count"),
+        ('[ "$(stat -c %u:%a -- "$parent")" = "$uid:700" ]', "IPC parent ownership and mode"),
+        ('[ "$(stat -c %u:%a -- "$socket")" = "$uid:600" ]', "IPC socket ownership and mode"),
+        ('[ -S "$socket" ] && [ ! -L "$socket" ]', "IPC socket type and symlink rejection"),
+        ('typed_ipc_ready "$probe" "$expected" "$pid" "$expected_start" "$deadline"', "successful typed IPC readiness transaction"),
+        ('[ "$output" = "SMOKE_TYPED_IPC_READY state=$expected" ]', "exact typed IPC output comparison"),
+        ('timeout --signal=TERM --kill-after=1s "$duration" "$probe" "$expected" "$pid" "$expected_start" "$remaining"', "hard outer typed-probe deadline"),
+        ('if "$predicate" "$pid" "$expected_start" "$pinned_log" "$deadline" "$@"; then', "retained identity passed into every predicate"),
+        ('[ "$now" -le "$deadline" ] && pid_is_same_and_running "$pid" "$expected_start"', "post-observation PID identity and deadline enforcement"),
+        ('self-test accepted socket files without a successful typed IPC transaction', "stale-socket rejection self-test"),
+        ('self-test accepted IPC listeners owned by another process', "foreign IPC owner rejection self-test"),
+        ('self-test accepted a typed IPC transaction past its hard deadline', "hard typed deadline self-test"),
+        ('deadline=$((now + seconds * 1000))', "bounded readiness deadline"),
+        ('sleep 0.05', "condition polling interval"),
+        ('signal_and_wait "$READY_WAIT_SECONDS" TERM', "bounded exact-pid termination"),
+        ('wait_for_condition "$READY_WAIT_SECONDS"', "bounded external readiness dispatch"),
+        ('wait_for_duration 1 "$SELF_TEST_SERVER_PID" "$SELF_TEST_SERVER_START"', "monitored-duration behavioral self-test"),
+        ('wait_for_duration "$5" "$2" "$3" "$4" "$6"', "bounded monitored-duration dispatch"),
+        ('self-test accepted readiness from a dead process', "dead-process rejection self-test"),
+        ('SELF_TEST_IPC_PARENT_ID=$(path_identity "$parent")', "self-test IPC root inode retention"),
+        ('SELF_TEST_IPC_MAIN_ID=$(path_identity "$parent/ipc")', "self-test main IPC inode retention"),
+        ('SELF_TEST_IPC_PASSWORD_ID=$(path_identity "$parent/ipc_password")', "self-test password IPC inode retention"),
+        ('preserving changed self-test IPC root', "changed self-test IPC preservation"),
+        ('rm -- "$parent/ipc" "$parent/ipc_password"', "exact self-test IPC entry removal"),
+    ):
+        require_text(readiness, text, label)
+    if "SMOKE_READY_TIMEOUT" in readiness or "READY_WAIT_SECONDS:-" in readiness:
+        raise VerificationError("smoke readiness deadline accepts ambient override authority")
+    if "rm -rf" in readiness:
+        raise VerificationError("smoke readiness self-test retains recursive cleanup authority")
+    if re.search(r'(?m)^\s*kill\s', readiness):
+        raise VerificationError("smoke readiness retains raw kill signal authority")
+    for text, label in (
+        ("ipc::get_main_readiness_snapshot_for_process(", "typed process-bound main-IPC readiness transaction"),
+        ('"parked" => (false, false, None)', "parked password/listener state proof"),
+        ('"server" => (true, true, None)', "listening state proof"),
+        ('"user-server" => (true, true, Some(true))', "user-owned password authority proof"),
+        ('if actual_values.0 != expected_values.0', "individual readiness fact comparison"),
+        ("ipc::PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS", "exported password recovery bound"),
+        ('SMOKE_TYPED_IPC_READY state={expected}', "exact typed readiness result"),
+    ):
+        require_text(typed_probe, text, label)
+    for text, label in (
+        ("pub const PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS: u64 = 600;", "password recovery source constant"),
+        ("std::time::Duration::from_secs(PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS)", "password recovery duration derivation"),
+        ("pub struct MainReadinessSnapshot", "dedicated readiness response type"),
+        ("MainIpcRequest::ReadinessSnapshot", "dedicated readiness request handler"),
+        ("get_main_readiness_snapshot_for_process", "process-bound readiness API"),
+        ("peer_pid != expected_pid", "SO_PEERCRED peer-pid binding"),
+        ("linux_proc_start_time(peer_pid)? != expected_start_time", "peer start-identity binding"),
+        ("tokio::time::timeout_at(deadline, async {", "one hard readiness transaction deadline"),
+    ):
+        require_text(ipc_source, text, label)
+    for text, label in (
+        ("peer_username_nonempty = !peer.username.is_empty();", "file-transfer PeerInfo semantic proof"),
+        ("FT-LOGIN-SEND-ERROR", "file-transfer login send-error propagation"),
+        ("FT-READDIR-SEND-ERROR", "file-transfer ReadDir send-error propagation"),
+        ("FT-LOGIN-SERIALIZE-ERROR", "file-transfer login serialization-error propagation"),
+        ("FT-READDIR-SERIALIZE-ERROR", "file-transfer ReadDir serialization-error propagation"),
+        ("let login_bytes = match msg.write_to_bytes()", "file-transfer login serialization result"),
+        ("let readdir_bytes = match m.write_to_bytes()", "file-transfer ReadDir serialization result"),
+        ('mode != "filetransfer" || file_transfer_ok', "file-transfer semantic pass condition"),
+        ("if !peer_username_nonempty || !readdir_send_ok", "missing/empty PeerInfo failure"),
+    ):
+        require_text(session_probe, text, label)
 
 
 def validate_faillo_contract(source):
@@ -3636,7 +3771,15 @@ def validate_sources(sources):
     validate_r_b2_version_metadata(sources)
     validate_docs(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
-    validate_smoke_contract(sources["smoke"])
+    validate_smoke_contract(
+        sources["verify"],
+        sources["smoke"],
+        sources["smoke_ready"],
+        sources["smoke_ready_mode"],
+        sources["smoke_typed_probe"],
+        sources["session_probe"],
+        sources["ipc_source"],
+    )
     validate_faillo_contract(sources["faillo"])
     validate_private_tree_closure(sources["closure"])
     validate_workspace_verifier_self_contract(sources["workspace_verifier"])
@@ -8485,6 +8628,12 @@ def run_source_mutations(sources):
             "anchored IDD dependency scan",
         ),
         (
+            "verify",
+            "smoke_nonroot_stage=$(awk '/^run_stage out2c /{capture=1}",
+            "smoke_nonroot_stage=$(awk '/^out2c=/{capture=1}",
+            "verify non-root smoke extraction follows the strict stage form",
+        ),
+        (
             "smoke",
             'cd "$HOME"',
             "cd /work",
@@ -8498,9 +8647,147 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'kill -TERM "$SRV" 2>/dev/null || true',
+            '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START" "$HOME/srv2c.log" || exit 1',
             'pkill -TERM -f "rustdesk --server" || true',
             "non-root smoke runner retains forbidden source/process authority",
+        ),
+        (
+            "smoke",
+            '/work/scripts/smoke-ready.sh --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0 || exit 1',
+            'true # root IPC readiness proof removed',
+            "root user-owned IPC readiness proof",
+        ),
+        (
+            "smoke",
+            '/work/scripts/smoke-ready.sh --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval" || exit 1',
+            'sleep 6',
+            "identity-monitored limiter-decay interval",
+        ),
+        (
+            "smoke",
+            "STAGE_STATUS=$?",
+            "STAGE_STATUS=0",
+            "isolated command failure status preservation",
+        ),
+        (
+            "smoke",
+            'timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))"',
+            'timeout "$((RECOVERY_SECONDS + 60))"',
+            "every password watchdog must derive from recovery and have a forced-kill ceiling",
+        ),
+        (
+            "smoke",
+            'wait "$TCPD" || exit 1',
+            'wait "$TCPD" 2>/dev/null || true',
+            "capture exit-status proof",
+        ),
+        (
+            "smoke_ready",
+            "readonly READY_WAIT_SECONDS=60",
+            "readonly READY_WAIT_SECONDS=0",
+            "fixed 60-second readiness bound",
+        ),
+        (
+            "smoke_ready",
+            '[ "$start" = "$expected_start" ] || return 2',
+            'true # pid start identity accepted',
+            "pid start identity enforcement",
+        ),
+        (
+            "smoke_ready",
+            '[ "$now" -le "$deadline" ] && pid_is_same_and_running "$pid" "$expected_start"',
+            'true # post-observation identity and deadline accepted',
+            "post-observation PID identity and deadline enforcement",
+        ),
+        (
+            "smoke_ready",
+            '[ "$(stat -c %u:%a -- "$socket")" = "$uid:600" ]',
+            '[ "$(stat -c %u:%a -- "$socket")" = "$uid:666" ]',
+            "IPC socket ownership and mode",
+        ),
+        (
+            "smoke_ready",
+            'SELF_TEST_IPC_PARENT_ID=$(path_identity "$parent")',
+            'SELF_TEST_IPC_PARENT_ID=assumed',
+            "self-test IPC root inode retention",
+        ),
+        (
+            "smoke_ready",
+            'typed_ipc_ready "$probe" "$expected" "$pid" "$expected_start" "$deadline" || return 1',
+            'true # typed IPC transaction removed',
+            "successful typed IPC readiness transaction",
+        ),
+        (
+            "smoke_ready",
+            '[ "$output" = "SMOKE_TYPED_IPC_READY state=$expected" ]',
+            "true # typed IPC output accepted",
+            "exact typed IPC output comparison",
+        ),
+        (
+            "smoke_ready",
+            '$4 == "00010000" && $5 == "0001" && $6 == "01"',
+            '$5 == "0001" && $6 == "01"',
+            "Unix stream listening-state proof",
+        ),
+        (
+            "smoke_ready",
+            'pid_owns_unix_listener "$pid" "$socket" || return 1',
+            "true # IPC socket process ownership accepted",
+            "both IPC paths bound to the exact process",
+        ),
+        (
+            "smoke_ready",
+            "signal.pidfd_send_signal(pidfd, signals[signal_name], None, 0)",
+            "os.kill(pid, signals[signal_name])",
+            "pidfd signal delivery",
+        ),
+        (
+            "smoke_typed_probe",
+            "ipc::get_main_readiness_snapshot_for_process(",
+            "async { Ok(Default::default()) }",
+            "typed process-bound main-IPC readiness transaction",
+        ),
+        (
+            "smoke_typed_probe",
+            "if actual_values.0 != expected_values.0",
+            "if true",
+            "individual readiness fact comparison",
+        ),
+        (
+            "session_probe",
+            'mode != "filetransfer" || file_transfer_ok',
+            'mode != "filetransfer" || true',
+            "file-transfer semantic pass condition",
+        ),
+        (
+            "session_probe",
+            "let login_bytes = match msg.write_to_bytes()",
+            "let login_bytes = msg.write_to_bytes().unwrap_or_default(); // serialization result discarded",
+            "file-transfer login serialization result",
+        ),
+        (
+            "session_probe",
+            "if !peer_username_nonempty || !readdir_send_ok",
+            "if !readdir_send_ok",
+            "missing/empty PeerInfo failure",
+        ),
+        (
+            "ipc_source",
+            "std::time::Duration::from_secs(PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS)",
+            "std::time::Duration::from_secs(600)",
+            "password recovery duration derivation",
+        ),
+        (
+            "ipc_source",
+            "if peer_pid != expected_pid",
+            "if false",
+            "SO_PEERCRED peer-pid binding",
+        ),
+        (
+            "ipc_source",
+            "tokio::time::timeout_at(deadline, async {",
+            "async {",
+            "one hard readiness transaction deadline",
         ),
         ("build", "git --no-replace-objects", "git", "Git replacement-object suppression"),
         (
@@ -9460,6 +9747,11 @@ def main():
             "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
             "release": (repo / "scripts/verify-release.sh").read_text(encoding="utf-8"),
             "smoke": (repo / "scripts/smoke-server.sh").read_text(encoding="utf-8"),
+            "smoke_ready": (repo / "scripts/smoke-ready.sh").read_text(encoding="utf-8"),
+            "smoke_ready_mode": os.lstat(repo / "scripts/smoke-ready.sh").st_mode,
+            "smoke_typed_probe": (repo / "examples/smoke_readiness.rs").read_text(encoding="utf-8"),
+            "session_probe": (repo / "examples/probe_client.rs").read_text(encoding="utf-8"),
+            "ipc_source": (repo / "src/ipc.rs").read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
             "closure": (repo / "scripts/verify-private-tree-closure.py").read_text(encoding="utf-8"),
             "finalizer": (repo / "scripts/finalize-release-set.py").read_text(encoding="utf-8"),

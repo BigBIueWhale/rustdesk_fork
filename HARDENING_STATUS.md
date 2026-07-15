@@ -19,7 +19,7 @@ zero enabled definitions, seven inert `.disabled` reference definitions, one doc
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
 there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 766 lexical `unsafe {`
-blocks across 242 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
+blocks across 243 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -2372,6 +2372,34 @@ mount- and inode-closed and removed through the authenticated descriptor-based c
 contract above removes the contradiction; exact-commit artifact evidence remains open pending a complete cold
 build from the corrected pushed commit.
 
+The exact pushed `f4e77bebb1d8f05045b4d2d27c091a2f58103d64` cold build passed eleven of twelve release source
+gates and stopped in `smoke-server.sh` before any Debian, Android, or Windows target build. Under the
+source-gate load, the root portable password stage and headless file-transfer stage acted after fixed
+eight- and six-second startup delays before their independent IPC and direct-listener threads were ready;
+the former completed no mutation and the latter's execution-time `grep` discarded the pre-listener
+`CONNECT_FAIL` diagnostic. The isolated workspace was proved and removed, and no artifact, manifest,
+publication, release, or prerelease was created. Log `/tmp/rustdesk-build-f4e77be.log` has SHA-256
+`54a90796f549a8e8b7d6f6ec6374bb07bcc20431191ca82e6e24cd9b189ef3c7`. A standalone rerun reproduced
+both failures, while an immediate exact stage-2b run that first observed the live TCP and IPC objects
+completed the production password transaction and credential keying in 8.7 seconds. The source contract
+now removes every startup, event, capture, and teardown timing guess. A fixed 60-second monotonic checker
+captures the child start identity once immediately after spawn and requires that retained identity for every
+later observation and pidfd signal. Listening and parked proofs require exact TCP/UDP state, exact-process
+listener ownership, transition records, and both UID-scoped Unix-listener kernel inodes in that process's
+descriptor table. A dedicated typed main-IPC readiness response is connected under one hard deadline, bound
+by `SO_PEERCRED` to the retained PID, and start-identity checked before request and after response; the shell
+adds an outer hard timeout and re-proves both IPC inode mappings afterward. Probe and log files are
+descriptor-pinned, cleanup authority records device/inode identity before removing only exact entries, and
+the limiter's sole 64-second semantic interval continuously checks the retained child. The behavioral fixture
+rejects dead or substituted processes, foreign-owned IPC listeners, stale socket paths without a successful
+typed transaction, and a transaction that exceeds its complete deadline. Runtime containers mount source
+read-only; only the full-transcript build stage receives a writable bind. Isolated stages preserve their real
+exit status and use non-pipeline output assertions. The password watchdog is derived from the exported
+600-second admitted-operation recovery bound and has a finite forced-kill ceiling, and the file-transfer probe
+reports success only after successful serialization, successful protocol sends, and a non-empty
+`PeerInfo.username`. Exact-commit artifact evidence remains open pending a complete cold build from the
+corrected pushed commit.
+
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
 `docs/ANDROID-SIGNING-RECOVERY.md` closes the Android break-glass obligation: verified offline backup is the
@@ -3025,7 +3053,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-140d8a35734c4b8a84c90252bf4bba71b3c3974b1a9be5fe1242bcbdaf94763a  requirements.html
+73211cebb6a429ae32ea9cf0e6d23a95d32c0da420f6dbfa9d4033c0ee84cc3f  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

@@ -56,7 +56,7 @@ fn main() {
     let prs = hbb_common::config::derive_cpace_prs(&pw).unwrap_or_default();
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
-    let (keyed, postkey) = rt.block_on(async {
+    let (keyed, postkey, file_transfer_ok) = rt.block_on(async {
         let mut stream = match FramedStream::new(&addr, local, 5000).await {
             Ok(s) => s,
             Err(e) => {
@@ -185,8 +185,20 @@ fn main() {
                         });
                         let mut msg = Message::new();
                         msg.set_login_request(lr);
-                        let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
+                        let login_bytes = match msg.write_to_bytes() {
+                            Ok(bytes) => bytes,
+                            Err(err) => {
+                                pk.push_str(&format!("[FT-LOGIN-SERIALIZE-ERROR {err}] "));
+                                return (true, pk, false);
+                            }
+                        };
+                        if let Err(err) = stream.send_raw(login_bytes).await {
+                            pk.push_str(&format!("[FT-LOGIN-SEND-ERROR {err}] "));
+                            return (true, pk, false);
+                        }
                         let mut sent_readdir = false;
+                        let mut peer_username_nonempty = false;
+                        let mut readdir_send_ok = true;
                         for _ in 0..10 {
                             let bytes = match stream.next_timeout(4000).await {
                                 Some(Ok(b)) => b,
@@ -198,6 +210,7 @@ fn main() {
                             match Message::parse_from_bytes(&bytes).map(|m| m.union) {
                                 Ok(Some(message::Union::LoginResponse(r))) => match r.union {
                                     Some(login_response::Union::PeerInfo(peer)) => {
+                                        peer_username_nonempty = !peer.username.is_empty();
                                         pk.push_str(&format!(
                                             "[FT-PEERINFO username_nonempty={} username={:?} platform={:?}] ",
                                             !peer.username.is_empty(),
@@ -213,7 +226,19 @@ fn main() {
                                             });
                                             let mut m = Message::new();
                                             m.set_file_action(fa);
-                                            let _ = stream.send_raw(m.write_to_bytes().unwrap_or_default()).await;
+                                            let readdir_bytes = match m.write_to_bytes() {
+                                                Ok(bytes) => bytes,
+                                                Err(err) => {
+                                                    pk.push_str(&format!("[FT-READDIR-SERIALIZE-ERROR {err}] "));
+                                                    readdir_send_ok = false;
+                                                    break;
+                                                }
+                                            };
+                                            if let Err(err) = stream.send_raw(readdir_bytes).await {
+                                                pk.push_str(&format!("[FT-READDIR-SEND-ERROR {err}] "));
+                                                readdir_send_ok = false;
+                                                break;
+                                            }
                                             sent_readdir = true;
                                         }
                                     }
@@ -240,6 +265,9 @@ fn main() {
                                 },
                                 _ => {}
                             }
+                        }
+                        if !peer_username_nonempty || !readdir_send_ok {
+                            return (true, pk, false);
                         }
                     }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward
@@ -283,9 +311,9 @@ fn main() {
                         let _ = stream.next_timeout(2500).await;
                     }
                 }
-                (true, pk)
+                (true, pk, true)
             }
-            Err(_) => (false, String::new()),
+            Err(_) => (false, String::new(), false),
         }
     });
 
@@ -294,11 +322,12 @@ fn main() {
         println!("probe_client: post-key = {postkey}");
     }
 
-    let pass = match expect.as_str() {
+    let keying_matches = match expect.as_str() {
         "ok" => keyed,
         "fail" => !keyed,
         _ => false,
     };
+    let pass = keying_matches && (mode != "filetransfer" || file_transfer_ok);
     if pass {
         println!("probe_client: PASS");
     } else {

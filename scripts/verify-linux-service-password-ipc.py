@@ -1109,6 +1109,20 @@ def verify_mutation_coordinators(rust: Mapping[str, RustSource]) -> None:
 
     ipc.all().require(
         (
+            "pub",
+            "const",
+            "PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS",
+            ":",
+            "u64",
+            "=",
+            "600",
+            ";",
+        ),
+        "exported overall password mutation recovery bound",
+        unique=True,
+    )
+    ipc.all().require(
+        (
             "const",
             "PASSWORD_MUTATION_RECOVERY_TIMEOUT",
             ":",
@@ -1126,11 +1140,11 @@ def verify_mutation_coordinators(rust: Mapping[str, RustSource]) -> None:
             "::",
             "from_secs",
             "(",
-            "600",
+            "PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS",
             ")",
             ";",
         ),
-        "fixed overall password mutation recovery deadline",
+        "overall password mutation recovery deadline derivation",
         unique=True,
     )
 
@@ -1819,6 +1833,18 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc.rs",
             "Ok(Some(status)) if status.success() => return true,",
             "Ok(Some(status)) if !status.success() => return true,",
+        ),
+        Mutation(
+            "password recovery exported bound changes",
+            "src/ipc.rs",
+            "pub const PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS: u64 = 600;",
+            "pub const PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS: u64 = 0;",
+        ),
+        Mutation(
+            "password recovery duration bypasses its exported bound",
+            "src/ipc.rs",
+            "const PASSWORD_MUTATION_RECOVERY_TIMEOUT: std::time::Duration =\n    std::time::Duration::from_secs(PASSWORD_MUTATION_RECOVERY_TIMEOUT_SECONDS);",
+            "const PASSWORD_MUTATION_RECOVERY_TIMEOUT: std::time::Duration =\n    std::time::Duration::from_secs(600);",
         ),
         Mutation(
             "password recovery loses its overall deadline",

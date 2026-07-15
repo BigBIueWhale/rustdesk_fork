@@ -3685,13 +3685,14 @@ grep -Fq 'sudo rustdesk --password' docs/DEPLOYMENT.md || r_s11e16="$r_s11e16 sa
 grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' docs/DEPLOYMENT.md && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
 [ "$(grep -c -- '--password-stdin' scripts/smoke-server.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
 grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
-smoke_nonroot_stage=$(awk '/^out2c=/{capture=1} capture{print} /^echo "\$out2c"$/{exit}' scripts/smoke-server.sh)
+smoke_nonroot_stage=$(awk '/^run_stage out2c /{capture=1} capture{print} /^echo "\$out2c"$/{exit}' scripts/smoke-server.sh)
 smoke_nonroot_runner=$(printf '%s\n' "$smoke_nonroot_stage" | awk '/cat > "\$fixture\/run\.sh"/{capture=1; next} capture && /^EOS$/{exit} capture{print}')
 printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"' || r_s11e16="$r_s11e16 nonroot-smoke-protected-fixture-missing"
 printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'install -d -o rduser -g "$gid" -m 0700 "$fixture/home"' || r_s11e16="$r_s11e16 nonroot-smoke-private-home-missing"
-[ "$(printf '%s\n' "$smoke_nonroot_stage" | grep -cF 'install -o root -g "$gid"')" -eq 4 ] || r_s11e16="$r_s11e16 nonroot-smoke-fixture-file-set-not-exact"
+[ "$(printf '%s\n' "$smoke_nonroot_stage" | grep -cF 'install -o root -g "$gid"')" -eq 6 ] || r_s11e16="$r_s11e16 nonroot-smoke-fixture-file-set-not-exact"
 printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'export HOME=/tmp/rd-smoke-nonroot/home' || r_s11e16="$r_s11e16 nonroot-smoke-runner-not-fixture-rooted"
-printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'kill -TERM "$SRV"' || r_s11e16="$r_s11e16 nonroot-smoke-exact-server-stop-missing"
+printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'SRV_START=$("$bin/smoke-ready.sh" --identity "$SRV")' || r_s11e16="$r_s11e16 nonroot-smoke-retained-server-identity-missing"
+printf '%s\n' "$smoke_nonroot_runner" | grep -Fq '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START"' || r_s11e16="$r_s11e16 nonroot-smoke-bounded-server-stop-missing"
 printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'wait "$SRV"' || r_s11e16="$r_s11e16 nonroot-smoke-server-reap-missing"
 printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'SOURCE_BIND_UNCHANGED=yes' || r_s11e16="$r_s11e16 nonroot-smoke-source-bind-proof-missing"
 if printf '%s\n' "$smoke_nonroot_runner" | grep -Eq '/work|target/debug|pkill'; then

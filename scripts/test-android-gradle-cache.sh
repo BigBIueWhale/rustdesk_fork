@@ -100,14 +100,14 @@ inside_container() {
             echo "Android build accepted invalid APK_MODE '$invalid'" >&2
             exit 1
         fi
-        grep -Fq 'APK_MODE must be exactly offline or warm' /tmp/invalid-apk-mode-output
+        grep -Fq 'APK_MODE must be exactly offline, warm, or rust-check' /tmp/invalid-apk-mode-output
     done
     if env -u APK_MODE /bin/bash "$CONTAINER_TEST_ROOT/android-apk-build.sh" \
         >/tmp/invalid-apk-mode-output 2>&1; then
         echo "Android build accepted absent APK_MODE" >&2
         exit 1
     fi
-    grep -Fq 'APK_MODE must be exactly offline or warm' /tmp/invalid-apk-mode-output
+    grep -Fq 'APK_MODE must be exactly offline, warm, or rust-check' /tmp/invalid-apk-mode-output
 
     if APK_MODE=offline RUSTDESK_GRADLE_OFFLINE=1 \
         /bin/bash "$CONTAINER_TEST_ROOT/android-apk-build.sh" >/tmp/internal-flag-output 2>&1; then

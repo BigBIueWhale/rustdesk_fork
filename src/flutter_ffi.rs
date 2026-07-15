@@ -12,6 +12,7 @@ use crate::{
     ui_interface::{self, *},
 };
 use flutter_rust_bridge::{StreamSink, SyncReturn};
+use hbb_common::anyhow::Result;
 use hbb_common::{
     config::{self, LocalConfig, PeerConfig},
     fs, lazy_static, log,
@@ -1461,7 +1462,7 @@ pub fn session_add_port_forward(
     local_port: i32,
     remote_host: String,
     remote_port: i32,
-) -> ResultType<()> {
+) -> Result<()> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _ = (session_id, local_port, remote_host, remote_port);
@@ -1479,7 +1480,7 @@ pub fn session_add_port_forward(
     }
 }
 
-pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> ResultType<()> {
+pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _ = (session_id, local_port);
@@ -1497,7 +1498,7 @@ pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Re
     }
 }
 
-pub fn session_new_rdp(session_id: SessionID) -> ResultType<()> {
+pub fn session_new_rdp(session_id: SessionID) -> Result<()> {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _ = session_id;
@@ -1919,7 +1920,7 @@ pub fn cm_get_click_time() -> f64 {
     return 0 as _;
 }
 
-pub fn cm_should_hide() -> ResultType<bool> {
+pub fn cm_should_hide() -> Result<bool> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         return Ok(crate::ipc::get_config("hide_cm")?

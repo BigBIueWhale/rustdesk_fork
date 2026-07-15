@@ -416,8 +416,15 @@ if grep -qE '\bcm_get_config\b|\bcmGetConfig\b' src/flutter_ffi.rs flutter/lib/c
   flutter/lib/main.dart flutter/lib/web/bridge.dart; then
   mobile_authority_bad="$mobile_authority_bad generic-cm-config-bus"
 fi
-grep -qF 'pub fn cm_should_hide() -> ResultType<bool>' src/flutter_ffi.rs \
+grep -qF 'pub fn cm_should_hide() -> Result<bool>' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad typed-cm-visibility-missing"
+grep -A5 -F 'pub fn session_add_port_forward(' src/flutter_ffi.rs \
+  | grep -Fq ') -> Result<()> {' \
+  || mobile_authority_bad="$mobile_authority_bad port-forward-add-not-fallible"
+grep -qF 'pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> Result<()> {' src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad port-forward-remove-not-fallible"
+grep -qF 'pub fn session_new_rdp(session_id: SessionID) -> Result<()> {' src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad rdp-constructor-not-fallible"
 grep -qF 'crate::ipc::get_config("hide_cm")?' src/flutter_ffi.rs \
   || mobile_authority_bad="$mobile_authority_bad desktop-cm-visibility-not-fixed-key"
 grep -qF 'crate::common::is_custom_client() && hbb_common::password_security::hide_cm()' src/flutter_ffi.rs \
@@ -7407,7 +7414,7 @@ grep -qF 'require_online_complete' scripts/android-rust-check.sh \
 grep -qF 'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"' scripts/android-rust-check.sh \
   || android_rust_gate_bad="$android_rust_gate_bad unpinned-builder"
 for contract in '--pull=never' '--network=none' '--read-only' '--cap-drop=ALL' \
-  '--security-opt no-new-privileges' '--tmpfs /tmp:rw,nosuid,nodev,mode=1777' \
+  '--security-opt no-new-privileges' '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777' \
   '-e RUSTDESK_CANARY_OFFLINE=1' '-e APK_MODE=rust-check' '-v "$repo:/src"' \
   '-v "$online:/online:ro"'; do
   grep -qF -- "$contract" scripts/android-rust-check.sh \

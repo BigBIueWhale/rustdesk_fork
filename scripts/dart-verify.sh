@@ -46,16 +46,21 @@ echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors 
     exit 1
   fi
   cd /work
+  frb_log=/tmp/rustdesk-frb-codegen.log
   # Prime build_runner once if a cold asset graph prevents FRB code generation.
   if ! flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
-        --dart-output ./flutter/lib/generated_bridge.dart >/dev/null 2>&1; then
+        --dart-output ./flutter/lib/generated_bridge.dart >"$frb_log" 2>&1; then
     echo "  WARN: FRB codegen failed once (cold build_runner asset-cache) — priming + retrying"
     ( cd /work/flutter && flutter pub run build_runner build --delete-conflicting-outputs \
         --enable-experiment=class-modifiers ) >/dev/null 2>&1 || true
-    flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
-        --dart-output ./flutter/lib/generated_bridge.dart >/dev/null 2>&1 \
-      || { echo "DART-VERIFY: FAILED — FRB codegen failed after prime+retry"; exit 1; }
+    if ! flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
+        --dart-output ./flutter/lib/generated_bridge.dart >"$frb_log" 2>&1; then
+      cat "$frb_log" >&2
+      echo "DART-VERIFY: FAILED — FRB codegen failed after prime+retry"
+      exit 1
+    fi
   fi
+  rm -f "$frb_log"
   cd /work/flutter
   out="$(flutter analyze lib/ 2>&1 || true)"
   errs="$(printf "%s\n" "$out" | grep -c "error •" || true)"

@@ -19,7 +19,7 @@ docker run --rm --pull=never --network=none --read-only \
     --user "$(id -u):$(id -g)" \
     --cap-drop=ALL \
     --security-opt no-new-privileges \
-    --tmpfs /tmp:rw,nosuid,nodev,mode=1777 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777 \
     -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" \
     -e RUSTDESK_CANARY_OFFLINE=1 \
     -e APK_MODE=rust-check \

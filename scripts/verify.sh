@@ -3039,7 +3039,9 @@ grep -q 'fn proc_exe_matches_path' src/platform/linux.rs || r_s11c10b="$r_s11c10
 grep -q 'fn process_has_exact_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-exact-argv-matcher"
 grep -q 'fn kill_process' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-kill-helper"
 grep -q 'hbb_common::libc::kill' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-kill-syscall"
-grep -q 'kill_current_exe_processes_with_arg("--server", "--server")' src/platform/linux.rs || r_s11c10b="$r_s11c10b server-cleanup-not-argv-backed"
+if grep -qF 'kill_current_exe_processes_with_arg("--server"' src/platform/linux.rs; then
+  r_s11c10b="$r_s11c10b global-server-sweep-regressed"
+fi
 grep -q 'kill_xorg_processes_with_config(&xorg_config)' src/platform/linux.rs || r_s11c10b="$r_s11c10b xorg-cleanup-not-argv-backed"
 grep -q 'kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui")' src/platform/linux.rs || r_s11c10b="$r_s11c10b cm-cleanup-not-argv-backed"
 grep -q 'fn signal_current_exe_processes_with_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-signal-helper"
@@ -3056,7 +3058,7 @@ if [ "$(echo "$tray_cleanup_block" | grep -c '"--tray"')" -lt 2 ]; then
   r_s11c10b="$r_s11c10b tray-cleanup-not-exact-tray-argv"
 fi
 linux_process_cleanup_blocks=$(
-  awk '/fn stop_rustdesk_servers/,/fn should_start_server/' src/platform/linux.rs
+  awk '/fn stop_subprocess/,/fn should_start_server/' src/platform/linux.rs
   awk '/fn all_process_cmdlines/,/fn any_process_cmdline_contains/' src/platform/linux.rs
 )
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
@@ -3067,7 +3069,63 @@ if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/l
   r_s11c10b="$r_s11c10b pkill-tray-cleanup-regressed"
 fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
-  echo "  ok  R-S11c-10b Linux service/tray cleanup verifies /proc exe identity, uses exact argv matches plus kill(2), and avoids ps/grep/awk/xargs/pkill shell pipelines"; fi
+  echo "  ok  R-S11c-10b Linux CM/Xorg/tray cleanup verifies process identity and exact argv, while server lifecycle has no global process sweep"; fi
+
+echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27a_linux_service_child_parent_death --color never
+r_s11c27a=
+service_child_launch_block=$(awk '/fn try_start_server_/,/pub fn require_service_owned_server_parent_liveness/' src/platform/linux.rs)
+grep -qF 'struct OwnedServiceChild {' src/platform/linux.rs || r_s11c27a="$r_s11c27a no-owned-child-type"
+echo "$service_child_launch_block" | grep -qF 'let mut command = Command::new("/proc/self/exe");' || r_s11c27a="$r_s11c27a launch-not-current-executable-object"
+echo "$service_child_launch_block" | grep -qF '.arg("--server")' || r_s11c27a="$r_s11c27a server-role-argument-missing"
+echo "$service_child_launch_block" | grep -qF '.arg(crate::common::SERVICE_OWNED_SERVER_ARG)' || r_s11c27a="$r_s11c27a service-owned-role-marker-missing"
+echo "$service_child_launch_block" | grep -qF 'crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' || r_s11c27a="$r_s11c27a launch-parent-binding-missing"
+echo "$service_child_launch_block" | grep -qF '.env_clear()' || r_s11c27a="$r_s11c27a inherited-root-environment-not-cleared"
+service_child_pre_exec_block=$(awk '/fn configure_service_child_pre_exec/,/fn insert_nonempty_env/' src/platform/linux.rs)
+echo "$service_child_pre_exec_block" | grep -qF 'command.pre_exec(move || {' || r_s11c27a="$r_s11c27a no-final-pre-exec-hook"
+echo "$service_child_pre_exec_block" | grep -qF 'SYS_setgroups' || r_s11c27a="$r_s11c27a supplementary-groups-not-dropped"
+echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresgid' || r_s11c27a="$r_s11c27a gid-drop-not-native"
+echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresuid' || r_s11c27a="$r_s11c27a uid-drop-not-native"
+echo "$service_child_pre_exec_block" | grep -qF 'PR_SET_NO_NEW_PRIVS' || r_s11c27a="$r_s11c27a exec-privilege-regain-not-blocked"
+echo "$service_child_pre_exec_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a pre-exec-parent-death-binding-missing"
+if ! echo "$service_child_pre_exec_block" | awk '
+  /SYS_setgroups/ { groups = NR }
+  /SYS_setresgid/ { gid = NR }
+  /SYS_setresuid/ { uid = NR }
+  /PR_SET_NO_NEW_PRIVS/ { no_new_privs = NR }
+  /arm_service_child_parent_death\(expected_parent\)/ { death = NR }
+  END { exit !(groups && groups < gid && gid < uid && uid < no_new_privs && no_new_privs < death) }
+'; then
+  r_s11c27a="$r_s11c27a credential-drop-or-parent-binding-order-regressed"
+fi
+service_child_parent_death_block=$(awk '/fn arm_service_child_parent_death/,/fn configure_service_child_pre_exec/' src/platform/linux.rs)
+echo "$service_child_parent_death_block" | grep -qF 'PR_SET_PDEATHSIG' || r_s11c27a="$r_s11c27a no-parent-death-binding"
+echo "$service_child_parent_death_block" | grep -qF 'hbb_common::libc::SIGKILL' || r_s11c27a="$r_s11c27a no-crash-death-signal"
+echo "$service_child_parent_death_block" | grep -qF 'hbb_common::libc::SYS_getppid' || r_s11c27a="$r_s11c27a parent-exit-race-not-checked"
+if ! echo "$service_child_parent_death_block" | awk '
+  /PR_SET_PDEATHSIG/ { death = NR }
+  /SYS_getppid/ { parent = NR }
+  END { exit !(death && death < parent) }
+'; then
+  r_s11c27a="$r_s11c27a parent-death-set-then-check-order-regressed"
+fi
+service_child_final_arm_block=$(awk '/pub fn require_service_owned_server_parent_liveness/,/^}/' src/platform/linux.rs)
+echo "$service_child_final_arm_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a parent-death-binding-not-rearmed-after-exec"
+grep -qF 'crate::platform::require_service_owned_server_parent_liveness()' src/core_main.rs || r_s11c27a="$r_s11c27a final-server-image-not-rearmed"
+grep -qF 'fn terminate_child(mut child: OwnedServiceChild, label: &str)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-termination-helper-missing"
+grep -qF 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-bounded-wait-missing"
+grep -qF 'child.process.kill()' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-forced-stop-missing"
+if echo "$service_child_launch_block" | grep -Eq 'run_as_user\(|run_me|SUDO_PATHS'; then
+  r_s11c27a="$r_s11c27a wrapper-child-launch-regressed"
+fi
+if grep -qF 'fn stop_rustdesk_servers' src/platform/linux.rs ||
+   grep -qF 'fn force_stop_server' src/platform/linux.rs ||
+   grep -qF 'kill_current_exe_processes_with_arg("--server"' src/platform/linux.rs; then
+  r_s11c27a="$r_s11c27a process-table-server-authority-regressed"
+fi
+grep -qF 'R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a hardening-ledger-missing"
+if [ -n "$r_s11c27a" ]; then echo "  FAIL R-S11c-27a Linux direct service-child ownership:$r_s11c27a"; rc=1; else
+  echo "  ok  R-S11c-27a supervisor owns the final server Child, drops credentials without a wrapper, blocks exec privilege regain, binds child death to supervisor death across exec, and never sweeps unrelated servers"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
@@ -3589,7 +3647,7 @@ if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIF
 fi
 grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
 grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
-grep -q 'fn terminate_child(mut child: Child, label: &str)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
+grep -q 'fn terminate_child(mut child: OwnedServiceChild, label: &str)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
 grep -q 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
 linux_child_stop_block=$(

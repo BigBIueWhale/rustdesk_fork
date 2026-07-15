@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 766 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 773 lexical `unsafe {`
 blocks across 243 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -935,17 +935,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   environment lookup reads `/proc/<pid>/environ` with exact key matching. Verification closure:
   `scripts/verify.sh` runs the `r_s11c10_` Linux unit tests and asserts that the touched discovery function
   bodies contain no shell-shaped passwd/proc/process pipeline.
-- **R-S11c-10b — Linux service lifecycle process cleanup shell pipelines — CLOSED 2026-07-09.**
-  Platform: Linux installed service lifecycle cleanup. Surfaces: `stop_rustdesk_servers()` and
-  `stop_subprocess()` in `src/platform/linux.rs`. Boundary: root service lifecycle management ↔ local
-  process table. Attack surface closed: root-context cleanup no longer interpolates the app name into
-  `ps | grep | awk | xargs kill -9` shell pipelines. It enumerates `/proc/<pid>/cmdline` directly, matches
-  RustDesk `--server` and `--cm-no-ui` processes by `/proc/<pid>/exe` equality to the current executable
-  plus exact argv, matches Xorg cleanup by basename `Xorg` plus the exact `/etc/<app>/xorg.conf` argv, and sends `SIGKILL` with
-  `kill(2)` only to positive, non-current pids. Verification closure: `scripts/verify.sh` runs the
-  `r_s11c10_process_kill_*` unit test and asserts the lifecycle cleanup block uses the `/proc` argv helpers
-  and `hbb_common::libc::kill`, with no `run_cmds`, `ps`, `grep`, `awk`, `sed`, `xargs`, or `kill -9`
-  shell-shaped cleanup path.
+- **R-S11c-10b — Linux helper/tray process cleanup shell pipelines — CLOSED 2026-07-09;
+  server authority superseded 2026-07-16.** Platform: Linux installed-service helper and tray cleanup.
+  Surfaces: `stop_subprocess()` and `stop_tray_processes()` in `src/platform/linux.rs`. Boundary: root service
+  helper cleanup ↔ local process table. Attack surface closed: root-context cleanup no longer interpolates the
+  app name into `ps | grep | awk | xargs kill -9` shell pipelines. It enumerates `/proc/<pid>/cmdline`
+  directly, matches RustDesk `--cm-no-ui` and `--tray` helpers by `/proc/<pid>/exe` equality to the current
+  executable plus exact argv, matches Xorg cleanup by basename `Xorg` plus the exact
+  `/etc/<app>/xorg.conf` argv, and signals only positive, non-current pids. R-S11c-27a subsequently deletes
+  the analogous global `--server` sweep entirely: process-table discovery is no longer service-child
+  lifecycle authority. Verification closure: `scripts/verify.sh` runs the `r_s11c10_process_kill_*` unit test
+  and asserts the remaining helper cleanup block uses the `/proc` argv helpers and direct signals, contains no
+  shell-shaped cleanup path, and cannot regress a global `--server` sweep.
 - **R-S11c-10c — Linux xrandr resolution discovery shell pipeline — CLOSED 2026-07-09.**
   Platform: Linux installed service/display helper path. Surfaces: supported-resolution discovery and current
   resolution lookup in `src/platform/linux.rs`. Boundary: display metadata lookup ↔ root-context process
@@ -1864,8 +1865,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   primary IPC findings because the main spawn path is argv-based and inputs are mostly OS-discovered, but root
   shell strings are not acceptable. Current state: R-S11c-10a closes the prelogin/home/env/Xorg/subprocess
   desktop-discovery cluster with `users` + direct `/proc` reads and a source gate; R-S11c-10b closes the
-  service lifecycle process-kill pipelines with `/proc/<pid>/exe` identity, direct `/proc/<pid>/cmdline`
-  argv matching, and `kill(2)`.
+  remaining CM/Xorg/tray shell cleanup pipelines with direct `/proc` parsing and signals. Its historical
+  `/proc`-selected global server cleanup is deleted, not retained as authority, by R-S11c-27a.
   R-S11c-10e closes Linux distro metadata parsing: `Distro::new()` now reads `/etc/os-release` or
   `/usr/lib/os-release` directly and parses shell-compatible assignments as data; the dormant OpenSUSE
   elevation helper that used `cat /etc/os-release | grep opensuse` is deleted with the commented elevation
@@ -2575,6 +2576,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the currently deployed host service**, which is operationally running an older
   release.
 
+  - **R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED
+    2026-07-16; PARENT ITEM REMAINS OPEN.** This coherent first slice replaces server process-table authority
+    on the live supervisor path. `try_start_server_()` now launches `/proc/self/exe` directly and retains an
+    `OwnedServiceChild` containing the final RustDesk `Child`; there is no `sudo`, `env`, or `run_me` wrapper
+    between the supervisor and server. For an active desktop, the parent resolves the exact passwd identity
+    and supplementary groups before `fork`, clears the inherited root environment, supplies only the bounded
+    session environment, and performs raw `setgroups` → `setresgid` → `setresuid` syscalls in the pre-exec
+    hook. It then sets irreversible `PR_SET_NO_NEW_PRIVS`, preventing the final `exec` (and later descendants)
+    from reacquiring setuid/setgid or file-capability privilege. The same hook arms `PR_SET_PDEATHSIG(SIGKILL)`
+    and immediately verifies `getppid()` against the expected supervisor, closing the set-after-parent-exit race.
+    Because Linux may clear the setting while executing a privileged/capability-bearing file, the final
+    service-owned `--server` image re-arms and revalidates it before starting server state. Normal replacement
+    and service shutdown send `SIGTERM` to the retained child, wait the existing bounded eight-second interval,
+    and force-stop/reap only that same `Child`; abnormal supervisor death uses the kernel binding to stop its
+    exact child independently of any init system. Ordinary portable/user-owned `--server` launches do not carry
+    the service marker and do not enter this path. The old `stop_rustdesk_servers()`/`force_stop_server()` global sweep and every
+    `kill_current_exe_processes_with_arg("--server", ...)` call are deleted, so another installation, smoke
+    process, portable server, or container is not selected by visible path text or argv. Verification:
+    `r_s11c27a_linux_service_child_parent_death_kills_owned_child` uses an exec-chained supervisor/worker plus
+    `pidfd` to behavior-test the actual post-exec kernel helper, and `scripts/verify.sh` binds the direct-child,
+    native credential drop, pre/post-exec parent-death checks, bounded exact-child termination, environment
+    clearing, and no-server-sweep source shape.
+
+    This is deliberately **partial closure only**. The durable, atomic root-owned crash record; restart-time
+    `pidfd` acquisition and full identity revalidation; supported-kernel fallback; corrupt/stale/PID-reuse and
+    executable replacement/deletion behavior matrix; packaging integration for every supported init path;
+    real non-systemd and privilege-drop/exec lifecycle harnesses; and the concurrent Docker survival proof
+    below remain mandatory before this parent item or the upcoming release can close.
+
   Required implementation and release closure:
 
   - The `--service` supervisor must retain direct ownership of every server child
@@ -3186,7 +3216,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-90fce7314b16cc7de651ce746891b5878a354b173e82d752ba7d2df84f1c2aef  requirements.html
+c1a17ab52a143435d628a039fa3018bc269a7fa37271bae67d798bf2db3aade0  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #130. It is a

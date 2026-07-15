@@ -17,7 +17,10 @@ use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
     fs,
-    os::unix::fs::{FileTypeExt, MetadataExt},
+    os::unix::{
+        fs::{FileTypeExt, MetadataExt},
+        process::CommandExt,
+    },
     path::{Component, Path, PathBuf},
     process::{Child, Command},
     string::String,
@@ -628,72 +631,233 @@ fn get_all_term_values(uid: &str) -> Vec<String> {
     terms
 }
 
-#[inline]
-fn service_owned_server_launch_env() -> (&'static str, String) {
-    (
-        crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
-        std::process::id().to_string(),
-    )
+struct ServiceChildCredentials {
+    uid: hbb_common::libc::uid_t,
+    gid: hbb_common::libc::gid_t,
+    supplementary_groups: Vec<hbb_common::libc::gid_t>,
+    username: String,
+    home: PathBuf,
 }
 
-fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<Option<Child>> {
-    match desktop {
-        Some(desktop) => {
-            let mut envs = vec![];
-            if !desktop.display.is_empty() {
-                envs.push(("DISPLAY", desktop.display.clone()));
-            }
-            if !desktop.xauth.is_empty() {
-                envs.push(("XAUTHORITY", desktop.xauth.clone()));
-            }
-            if !desktop.wl_display.is_empty() {
-                envs.push(("WAYLAND_DISPLAY", desktop.wl_display.clone()));
-            }
-            if !desktop.home.is_empty() {
-                envs.push(("HOME", desktop.home.clone()));
-            }
-            if !desktop.dbus.is_empty() {
-                envs.push(("DBUS_SESSION_BUS_ADDRESS", desktop.dbus.clone()));
-            }
-            envs.push((
-                "TERM",
-                get_cur_term(&desktop.uid).unwrap_or_else(|| suggest_best_term()),
-            ));
-            envs.push(service_owned_server_launch_env());
-            run_as_user(
-                vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
-                Some((desktop.uid.clone(), desktop.username.clone())),
-                envs,
-            )
+impl ServiceChildCredentials {
+    fn resolve(uid: &str, username: &str) -> ResultType<Self> {
+        let expected_uid = uid
+            .parse::<hbb_common::libc::uid_t>()
+            .map_err(|err| anyhow!("Invalid service child uid {uid}: {err}"))?;
+        if expected_uid == 0 || username.is_empty() {
+            bail!("Refusing a root or unnamed active-user service child");
         }
-        None => Ok(Some(crate::run_me_with_env(
-            vec!["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
-            [service_owned_server_launch_env()],
-        )?)),
+        let user = get_user_by_name(username)
+            .ok_or_else(|| anyhow!("Service child user '{username}' is unavailable"))?;
+        if user.uid() != expected_uid || user.name() != OsStr::new(username) {
+            bail!(
+                "Service child user identity mismatch: requested uid={expected_uid}, username={username}"
+            );
+        }
+        let gid = user.primary_group_id();
+        let groups = hbb_common::users::get_user_groups(username, gid)
+            .ok_or_else(|| anyhow!("Failed to resolve supplementary groups for '{username}'"))?;
+        let supplementary_groups = groups.into_iter().map(|group| group.gid()).collect();
+        Ok(Self {
+            uid: expected_uid,
+            gid,
+            supplementary_groups,
+            username: username.to_owned(),
+            home: user.home_dir().to_path_buf(),
+        })
     }
 }
 
+struct OwnedServiceChild {
+    process: Child,
+}
+
+fn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {
+    if result == -1 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn arm_service_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> std::io::Result<()> {
+    // `PR_SET_PDEATHSIG` is cleared by a credential change and can also be cleared by
+    // executing a privileged file. Arm it after the optional uid/gid drop in the pre-exec
+    // hook, and arm it again in the final RustDesk image before server startup. Setting it
+    // before checking getppid closes the parent-exit race: an earlier exit changes the
+    // observed parent, while a later exit delivers SIGKILL to this exact child.
+    syscall_succeeded(unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_prctl,
+            hbb_common::libc::PR_SET_PDEATHSIG,
+            hbb_common::libc::SIGKILL,
+            0,
+            0,
+            0,
+        )
+    })?;
+    let actual_parent = unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_getppid) };
+    if actual_parent != hbb_common::libc::c_long::from(expected_parent) {
+        // Keep the pre-exec error path allocation-free as well as the success path.
+        return Err(std::io::Error::from_raw_os_error(hbb_common::libc::ESRCH));
+    }
+    Ok(())
+}
+
+fn configure_service_child_pre_exec(
+    command: &mut Command,
+    expected_parent: hbb_common::libc::pid_t,
+    credentials: Option<ServiceChildCredentials>,
+) {
+    // The closure performs only raw Linux syscalls and reads already-owned memory. It does
+    // not allocate, lock, inspect the environment, or call NSS after fork. The parent
+    // resolves the complete credential set before registering this hook.
+    unsafe {
+        command.pre_exec(move || {
+            if let Some(credentials) = credentials.as_ref() {
+                syscall_succeeded(hbb_common::libc::syscall(
+                    hbb_common::libc::SYS_setgroups,
+                    credentials.supplementary_groups.len(),
+                    credentials.supplementary_groups.as_ptr(),
+                ))?;
+                syscall_succeeded(hbb_common::libc::syscall(
+                    hbb_common::libc::SYS_setresgid,
+                    credentials.gid,
+                    credentials.gid,
+                    credentials.gid,
+                ))?;
+                syscall_succeeded(hbb_common::libc::syscall(
+                    hbb_common::libc::SYS_setresuid,
+                    credentials.uid,
+                    credentials.uid,
+                    credentials.uid,
+                ))?;
+            }
+            syscall_succeeded(hbb_common::libc::syscall(
+                hbb_common::libc::SYS_prctl,
+                hbb_common::libc::PR_SET_NO_NEW_PRIVS,
+                1,
+                0,
+                0,
+                0,
+            ))?;
+            arm_service_child_parent_death(expected_parent)
+        });
+    }
+}
+
+fn insert_nonempty_env(command: &mut Command, key: &str, value: &str) {
+    if !value.is_empty() {
+        command.env(key, value);
+    }
+}
+
+fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<OwnedServiceChild> {
+    let parent_pid = hbb_common::libc::pid_t::try_from(std::process::id())
+        .map_err(|_| anyhow!("Service supervisor pid does not fit pid_t"))?;
+    let credentials = match desktop {
+        Some(desktop) => Some(ServiceChildCredentials::resolve(
+            &desktop.uid,
+            &desktop.username,
+        )?),
+        None => None,
+    };
+
+    // `/proc/self/exe` is resolved in the forked child and therefore names the same
+    // executable object as this supervisor even if a package replacement concurrently
+    // changes the installed pathname. There is no sudo/env wrapper: the returned Child is
+    // the exact RustDesk process that the supervisor later signals and reaps.
+    let mut command = Command::new("/proc/self/exe");
+    command
+        .arg("--server")
+        .arg(crate::common::SERVICE_OWNED_SERVER_ARG)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env(
+            crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
+            parent_pid.to_string(),
+        );
+
+    match (&credentials, desktop) {
+        (Some(credentials), Some(desktop)) => {
+            command
+                .env("HOME", &credentials.home)
+                .env("USER", &credentials.username)
+                .env("LOGNAME", &credentials.username)
+                .env("XDG_RUNTIME_DIR", format!("/run/user/{}", credentials.uid));
+            insert_nonempty_env(&mut command, "DISPLAY", &desktop.display);
+            insert_nonempty_env(&mut command, "XAUTHORITY", &desktop.xauth);
+            insert_nonempty_env(&mut command, "WAYLAND_DISPLAY", &desktop.wl_display);
+            insert_nonempty_env(&mut command, "DBUS_SESSION_BUS_ADDRESS", &desktop.dbus);
+            command.env(
+                "TERM",
+                get_cur_term(&desktop.uid).unwrap_or_else(|| suggest_best_term()),
+            );
+        }
+        (None, None) => {
+            for key in [
+                "DISPLAY",
+                "XAUTHORITY",
+                "WAYLAND_DISPLAY",
+                "HOME",
+                "DBUS_SESSION_BUS_ADDRESS",
+                "TERM",
+                "PULSE_LATENCY_MSEC",
+                "PIPEWIRE_LATENCY",
+            ] {
+                if let Some(value) = std::env::var_os(key) {
+                    command.env(key, value);
+                }
+            }
+        }
+        _ => bail!("Inconsistent service child desktop credential state"),
+    }
+
+    configure_service_child_pre_exec(&mut command, parent_pid, credentials);
+    Ok(OwnedServiceChild {
+        process: command.spawn()?,
+    })
+}
+
+pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
+    if !crate::common::is_service_owned_server_process() {
+        bail!("Parent liveness is available only to a service-owned server");
+    }
+    let expected_parent = std::env::var(crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV)
+        .map_err(|_| anyhow!("Service-owned server launch parent is unavailable"))?
+        .parse::<hbb_common::libc::pid_t>()
+        .map_err(|err| anyhow!("Service-owned server launch parent is invalid: {err}"))?;
+    if expected_parent <= 0 {
+        bail!("Service-owned server launch parent is invalid");
+    }
+    arm_service_child_parent_death(expected_parent)?;
+    Ok(())
+}
+
 #[inline]
-fn start_server(desktop: Option<&Desktop>, server: &mut Option<Child>) {
+fn start_server(desktop: Option<&Desktop>, server: &mut Option<OwnedServiceChild>) {
     match try_start_server_(desktop) {
-        Ok(ps) => *server = ps,
+        Ok(ps) => *server = Some(ps),
         Err(err) => {
             log::error!("Failed to start server: {}", err);
         }
     }
 }
 
-fn child_pid(child: &Child, label: &str) -> Option<hbb_common::libc::pid_t> {
-    match hbb_common::libc::pid_t::try_from(child.id()) {
+fn child_pid(child: &OwnedServiceChild, label: &str) -> Option<hbb_common::libc::pid_t> {
+    match hbb_common::libc::pid_t::try_from(child.process.id()) {
         Ok(pid) if pid > 0 => Some(pid),
         _ => {
-            log::warn!("Refusing to signal {label} child with invalid pid {}", child.id());
+            log::warn!(
+                "Refusing to signal {label} child with invalid pid {}",
+                child.process.id()
+            );
             None
         }
     }
 }
 
-fn signal_child(child: &Child, signal: c_int, label: &str) -> bool {
+fn signal_child(child: &OwnedServiceChild, signal: c_int, label: &str) -> bool {
     let Some(pid) = child_pid(child, label) else {
         return false;
     };
@@ -709,10 +873,10 @@ fn signal_child(child: &Child, signal: c_int, label: &str) -> bool {
     false
 }
 
-fn wait_child_exit(child: &mut Child, timeout: Duration, label: &str) -> bool {
+fn wait_child_exit(child: &mut OwnedServiceChild, timeout: Duration, label: &str) -> bool {
     let started = Instant::now();
     loop {
-        match child.try_wait() {
+        match child.process.try_wait() {
             Ok(Some(status)) => {
                 log::info!("{label} child exited with {status}");
                 return true;
@@ -727,7 +891,7 @@ fn wait_child_exit(child: &mut Child, timeout: Duration, label: &str) -> bool {
     }
 }
 
-fn terminate_child(mut child: Child, label: &str) {
+fn terminate_child(mut child: OwnedServiceChild, label: &str) {
     if signal_child(&child, hbb_common::libc::SIGTERM, label)
         && wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)
     {
@@ -735,11 +899,11 @@ fn terminate_child(mut child: Child, label: &str) {
     }
 
     log::warn!("{label} child did not exit after SIGTERM; forcing stop");
-    allow_err!(child.kill());
-    allow_err!(child.wait());
+    allow_err!(child.process.kill());
+    allow_err!(child.process.wait());
 }
 
-fn stop_server(server: &mut Option<Child>) {
+fn stop_server(server: &mut Option<OwnedServiceChild>) {
     if let Some(ps) = server.take() {
         terminate_child(ps, "--server");
     }
@@ -757,11 +921,6 @@ fn set_x11_env(desktop: &Desktop) {
 }
 
 #[inline]
-fn stop_rustdesk_servers() {
-    kill_current_exe_processes_with_arg("--server", "--server");
-}
-
-#[inline]
 fn stop_subprocess() {
     let xorg_config = format!("/etc/{}/xorg.conf", crate::get_app_name().to_lowercase());
     kill_xorg_processes_with_config(&xorg_config);
@@ -775,7 +934,7 @@ fn should_start_server(
     desktop: &Desktop,
     cm0: &mut bool,
     last_restart: &mut Instant,
-    server: &mut Option<Child>,
+    server: &mut Option<OwnedServiceChild>,
 ) -> bool {
     let cm = get_cm();
     let mut start_new = false;
@@ -821,7 +980,7 @@ fn should_start_server(
     }
 
     if let Some(ps) = server.as_mut() {
-        match ps.try_wait() {
+        match ps.process.try_wait() {
             Ok(Some(_)) => {
                 *server = None;
                 start_new = true;
@@ -835,13 +994,7 @@ fn should_start_server(
     start_new
 }
 
-fn force_stop_server() {
-    stop_rustdesk_servers();
-    sleep_millis(super::SERVICE_INTERVAL);
-}
-
 pub fn start_os_service() {
-    stop_rustdesk_servers();
     stop_subprocess();
     // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
     // fork XTEST/enigo is the sole injection backend, so the world-mode _uinput_*
@@ -858,8 +1011,8 @@ pub fn start_os_service() {
     let mut desktop = Desktop::default();
     let mut sid = "".to_owned();
     let mut uid = "".to_owned();
-    let mut server: Option<Child> = None;
-    let mut user_server: Option<Child> = None;
+    let mut server: Option<OwnedServiceChild> = None;
+    let mut user_server: Option<OwnedServiceChild> = None;
     if let Err(err) = ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
     }) {
@@ -889,7 +1042,6 @@ pub fn start_os_service() {
                 &mut server,
             ) {
                 stop_subprocess();
-                force_stop_server();
                 start_server(None, &mut server);
             }
         } else if desktop.username != "" {
@@ -911,11 +1063,9 @@ pub fn start_os_service() {
                 &mut user_server,
             ) {
                 stop_subprocess();
-                force_stop_server();
                 start_server(Some(&desktop), &mut user_server);
             }
         } else {
-            force_stop_server();
             stop_server(&mut user_server);
             stop_server(&mut server);
         }
@@ -1748,6 +1898,147 @@ extern "C" {
 #[cfg(test)]
 mod process_cleanup_tests {
     use super::*;
+
+    struct ServiceChildTestSupervisor(Child);
+
+    impl Drop for ServiceChildTestSupervisor {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    struct ServiceChildTestSocketDir(PathBuf);
+
+    impl Drop for ServiceChildTestSocketDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(self.0.join("ready.sock"));
+            let _ = fs::remove_dir(&self.0);
+        }
+    }
+
+    #[test]
+    fn r_s11c27a_linux_service_child_parent_death_kills_owned_child() {
+        use std::{
+            io::{ErrorKind, Read as _, Write as _},
+            os::{
+                fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
+                unix::{
+                    fs::DirBuilderExt as _,
+                    net::{UnixListener, UnixStream},
+                },
+            },
+        };
+
+        const TEST_NAME: &str = "platform::linux::process_cleanup_tests::r_s11c27a_linux_service_child_parent_death_kills_owned_child";
+        const ROLE_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_ROLE";
+        const SOCKET_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_SOCKET";
+        const PARENT_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_PARENT";
+
+        match std::env::var(ROLE_ENV).as_deref() {
+            Ok("supervisor") => {
+                let expected_parent = std::process::id().to_string();
+                let _worker = Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .env(ROLE_ENV, "worker")
+                    .env(SOCKET_ENV, std::env::var_os(SOCKET_ENV).unwrap())
+                    .env(PARENT_ENV, expected_parent)
+                    .spawn()
+                    .unwrap();
+                loop {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok("worker") => {
+                let expected_parent = std::env::var(PARENT_ENV)
+                    .unwrap()
+                    .parse::<hbb_common::libc::pid_t>()
+                    .unwrap();
+                arm_service_child_parent_death(expected_parent).unwrap();
+                let mut stream =
+                    UnixStream::connect(std::env::var_os(SOCKET_ENV).unwrap()).unwrap();
+                stream.write_all(&std::process::id().to_ne_bytes()).unwrap();
+                loop {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok(role) => panic!("unexpected service-child test role: {role}"),
+            Err(_) => {}
+        }
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let socket_root = std::env::temp_dir().join(format!(
+            "rustdesk-service-child-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&socket_root)
+            .unwrap();
+        let _socket_guard = ServiceChildTestSocketDir(socket_root.clone());
+        let socket_path = socket_root.join("ready.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut supervisor = ServiceChildTestSupervisor(
+            Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST_NAME, "--nocapture"])
+                .env(ROLE_ENV, "supervisor")
+                .env(SOCKET_ENV, &socket_path)
+                .spawn()
+                .unwrap(),
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut worker_stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(err) if err.kind() == ErrorKind::WouldBlock && Instant::now() < deadline => {
+                    if let Some(status) = supervisor.0.try_wait().unwrap() {
+                        panic!("service-child test supervisor exited early: {status}");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(err) => {
+                    panic!("service-child test worker did not connect: {err}");
+                }
+            }
+        };
+        let mut worker_pid = [0u8; std::mem::size_of::<u32>()];
+        worker_stream.read_exact(&mut worker_pid).unwrap();
+        let worker_pid = hbb_common::libc::pid_t::try_from(u32::from_ne_bytes(worker_pid)).unwrap();
+
+        let pidfd =
+            unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_pidfd_open, worker_pid, 0) };
+        if pidfd < 0 {
+            panic!("pidfd_open is required for the service-child lifecycle test");
+        }
+        let pidfd = unsafe { OwnedFd::from_raw_fd(pidfd as c_int) };
+
+        supervisor.0.kill().unwrap();
+        supervisor.0.wait().unwrap();
+        let mut pollfd = hbb_common::libc::pollfd {
+            fd: pidfd.as_raw_fd(),
+            events: hbb_common::libc::POLLIN,
+            revents: 0,
+        };
+        let observed = unsafe { hbb_common::libc::poll(&mut pollfd, 1, 5_000) };
+        if observed != 1 || pollfd.revents & hbb_common::libc::POLLIN == 0 {
+            unsafe {
+                hbb_common::libc::syscall(
+                    hbb_common::libc::SYS_pidfd_send_signal,
+                    pidfd.as_raw_fd(),
+                    hbb_common::libc::SIGKILL,
+                    std::ptr::null::<hbb_common::libc::siginfo_t>(),
+                    0,
+                );
+            }
+        }
+        assert_eq!(observed, 1, "owned worker survived supervisor death");
+        assert_ne!(pollfd.revents & hbb_common::libc::POLLIN, 0);
+    }
 
     #[test]
     fn r_s11c10_process_kill_matchers_are_exact_argv_based() {

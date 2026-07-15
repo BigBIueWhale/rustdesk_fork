@@ -130,6 +130,16 @@ fn set_cli_permanent_password(
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<Vec<String>> {
+    #[cfg(target_os = "linux")]
+    if crate::common::is_service_owned_server_process() {
+        if let Err(err) = crate::platform::require_service_owned_server_parent_liveness() {
+            log::error!(
+                "Rejected Linux service-owned --server without a live owning supervisor: {}",
+                err
+            );
+            std::process::exit(1);
+        }
+    }
     if !crate::common::global_init() {
         return None;
     }

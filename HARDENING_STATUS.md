@@ -2565,6 +2565,139 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
 ## Open residuals (tracked, not regressions)
 
+- **UPCOMING RELEASES — Linux service-child lifecycle ownership — USER-REQUESTED
+  2026-07-16; OPEN.** Replace process-name/text-based server cleanup with an
+  init-system-independent ownership protocol. This is required to support Debian
+  installations using SysV init, OpenRC, runit, or a manually supervised daemon;
+  systemd cgroups may be defense-in-depth on systemd hosts, but MUST NOT be the
+  foundation of correctness. This item is future-release work and is explicitly
+  **not authorization to stop, restart, upgrade, reconfigure, or otherwise disturb
+  the currently deployed host service**, which is operationally running an older
+  release.
+
+  Required implementation and release closure:
+
+  - The `--service` supervisor must retain direct ownership of every server child
+    it launches. Normal replacement/shutdown must target that owned `Child` or a
+    Linux `pidfd`, send `SIGTERM`, wait for a bounded graceful-exit interval, and
+    use `SIGKILL` only for the same revalidated child if the interval expires.
+  - Each service-owned server must inherit a dedicated parent-liveness
+    pipe/socket (or an equivalently race-safe kernel primitive) across the actual
+    privilege-drop/exec path. Supervisor death closes the channel and causes that
+    child to shut down; this behavior must not depend on systemd and must not
+    apply to user-owned/portable `rustdesk --server` processes.
+  - Crash recovery must use an atomically written, root-owned child record that
+    binds at least PID, `/proc/<pid>/stat` start time, boot identity, executable
+    device/inode, service generation, and the service-owned role marker. A new
+    supervisor must open a `pidfd` where supported and revalidate every available
+    identity field immediately before signaling. Missing, malformed, stale, or
+    ambiguous evidence must fail closed by signaling nothing and reporting the
+    condition; a PID or command line alone is never ownership proof. A compatible
+    fallback for supported kernels without `pidfd` must perform the same
+    start-time/file-identity revalidation around `kill(2)` and handle the residual
+    race explicitly.
+  - Delete the global `ps | grep | awk | xargs kill`, broad `pkill -f`, and any
+    equivalent sweep as lifecycle authorities. The current `/proc/<pid>/exe`
+    pathname-string fallback must not be treated as executable identity across
+    mount namespaces: use file identity plus the service-owned relationship.
+    Another installation, a portable server, a build/smoke process, and a Docker
+    process must remain untargetable even when their visible argv contains
+    `rustdesk --server` or their in-namespace path is identical.
+  - On systemd, `KillMode=control-group` remains an additional containment layer
+    for unit-owned descendants, never a substitute for the portable supervisor
+    protocol. Packaging and service scripts for every supported init path must
+    invoke the same graceful supervisor shutdown rather than rediscovering
+    processes by name.
+  - Release gates must behavior-test normal restart, graceful stop, a wedged
+    child requiring bounded escalation, supervisor crash, stale/corrupt records,
+    PID reuse, executable replacement/deletion, identical argv from a different
+    executable, an identical in-container pathname backed by a different inode,
+    user-owned and non-root servers, and the real privilege-drop/exec chain. At
+    least one Debian non-systemd lifecycle harness is mandatory alongside the
+    systemd test. The release must also prove that a concurrent Docker smoke
+    `rustdesk --server` survives every service lifecycle event for which it is
+    not an owned child.
+
+- **CURRENT RELEASE HARNESS — same-host smoke coexistence with an operational
+  older RustDesk service — USER-REQUESTED 2026-07-16; CLOSED / RUNTIME PROVEN.**
+  The current release verifier must
+  be safe to run on a build host whose currently deployed RustDesk release is
+  operationally untouchable and may still contain the historical root
+  `ps | grep -E 'rustdesk +--server' | ... | kill -9` cleanup. The verifier and
+  smoke harness MUST NOT request sudo/polkit, stop/restart/upgrade/reconfigure the
+  service, signal any pre-existing RustDesk process, or require a VM merely to
+  avoid that historical matcher. Failure to establish safe coexistence must stop
+  before the runtime stage and leave the release smoke **unproven**; it must never
+  silently skip the gate or claim a full release pass.
+
+  Required smoke-harness closure:
+
+  - Remove literal `rustdesk --server` text from host-visible Docker-client and
+    container-shell command lines. In particular, do not pass the current large
+    inline `bash -c` stage bodies through `docker run`; invoke mounted, immutable
+    stage files (or an equivalently inspectable mechanism) whose contents are not
+    copied into those processes' argv.
+  - Launch the exact built RustDesk executable through a minimal audited smoke
+    launcher that supplies a neutral test-only `argv[0]` and exact argument 1
+    `--server`. The executable file, `/proc/<pid>/exe`, role argument, environment,
+    HOME/config behavior, privilege/UID cases, IPC, bind shim, and runtime code
+    must otherwise remain the same. A source/behavior gate must prove that Linux
+    RustDesk role selection and security identity ignore `argv[0]`, consume
+    `--server` from argument 1, and obtain executable identity from
+    `current_exe()`/`/proc`; any future semantic use of `argv[0]` invalidates this
+    compatibility launcher and fails the release gate.
+  - Before the smoke, record the host's pre-existing matcher baseline without
+    signaling anything. While every runtime stage is live, prove that no new
+    Docker client, shell, launcher, RustDesk server, helper, or cleanup process is
+    selectable by the historical regex. The expected old host server may remain
+    in the immutable baseline; the smoke must add zero matches. The proof must
+    cover the full host-visible process tree, not only `/proc` inside the
+    container.
+  - Add a non-destructive regression fixture for the historical selector and
+    prove it selects a production-shaped `argv[0]=rustdesk, argv[1]=--server`
+    control process but does not select any smoke process. Separately prove via
+    `/proc/<pid>/exe` and NUL-delimited `/proc/<pid>/cmdline` that the smoke still
+    runs the exact intended executable with exact role argument; textual evasion
+    must not become executable substitution or role weakening.
+  - Preserve the existing network invariants: Docker publishes no host port, the
+    test listener is rewritten only to container loopback `127.0.0.1:21118`, and
+    the runtime socket audit still requires exactly one IPv4 TCP listener and
+    zero UDP. Smoke cleanup must retain and signal only stage-owned identities,
+    never use `pkill`/name scans, and remain bounded on every failure path.
+  - `scripts/verify-release.sh` must exercise this coexistence contract as part
+    of the mandatory smoke gate. Its test must include an inert pre-existing
+    production-shaped matcher baseline and must fail if any stage reintroduces a
+    host-visible `rustdesk +--server` candidate. Documentation and diagnostics
+    must distinguish this current harness compatibility work from the separate
+    upcoming-release fix to RustDesk service-child ownership above. This smoke
+    work must be completed before the current verifier is resumed on the
+    operational host.
+
+  Implemented current-release closure: `scripts/smoke-server-stage.sh` removes
+  inline stage bodies from host-visible Docker argv; the descriptor-bound
+  `scripts/smoke-server-launcher.c` executes the intended ELF with neutral
+  `argv[0]=rd-smoke-server` and exact argument 1 `--server`; and
+  `scripts/smoke-process-guard.py` records and monitors the full host `/proc`
+  selector baseline without signal authority. Each server start separately
+  proves exact PID/start time, executable device/inode, and NUL-delimited argv.
+  The release source gate rejects host networking/PID sharing, published ports,
+  inline shell bodies, broad signals, selector-shaped launches, weakened process
+  proof, or any Rust semantic dependency on argv zero. Runtime source remains
+  read-only after the build, binds only container loopback, and the existing
+  one-TCP/zero-UDP audit remains mandatory. This closure makes no lifecycle
+  change to RustDesk itself and does not close or advance the upcoming-release
+  service-child ownership item above.
+
+  Closure evidence (2026-07-16): the complete default `scripts/smoke-server.sh`
+  passed beside three stable pre-existing historical-selector matches. The
+  whole-host monitor reported `baseline_matches=3` and zero new matches; every
+  tested server reported exact executable device/inode plus
+  `argv0=rd-smoke-server role=--server`; the runtime socket proof reported only
+  `127.0.0.1:21118` inside the container and zero UDP; and the final guard drain
+  completed cleanly. No service operation or pre-existing-process signal was
+  performed. The separate upcoming-release Linux service-child lifecycle item
+  remains **OPEN**.
+
 - **Appendix C #2b decode sandbox** — accepted residual (above); SHOULD, not MUST.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
@@ -3053,8 +3186,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-73211cebb6a429ae32ea9cf0e6d23a95d32c0da420f6dbfa9d4033c0ee84cc3f  requirements.html
+90fce7314b16cc7de651ce746891b5878a354b173e82d752ba7d2df84f1c2aef  requirements.html
 ```
 
-This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a
+This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #130. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

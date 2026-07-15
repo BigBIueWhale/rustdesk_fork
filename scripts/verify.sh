@@ -3683,13 +3683,13 @@ grep -q 'fn password_cli_rejects_positional_secrets' src/core_main.rs || r_s11e1
 grep -q 'fn password_stdin_reader_is_line_bounded_and_utf8_only' src/core_main.rs || r_s11e16="$r_s11e16 bounded-stdin-test-missing"
 grep -Fq 'sudo rustdesk --password' docs/DEPLOYMENT.md || r_s11e16="$r_s11e16 safe-deployment-command-missing"
 grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' docs/DEPLOYMENT.md && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
-[ "$(grep -c -- '--password-stdin' scripts/smoke-server.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
-grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
-smoke_nonroot_stage=$(awk '/^run_stage out2c /{capture=1} capture{print} /^echo "\$out2c"$/{exit}' scripts/smoke-server.sh)
+[ "$(awk '/--password-stdin/{count++} END{print count+0}' scripts/smoke-server.sh scripts/smoke-server-stage.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
+grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh scripts/smoke-server-stage.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
+smoke_nonroot_stage=$(awk '/^  password-nonroot\)/{capture=1} capture{print} /^  password-installed\)/{exit}' scripts/smoke-server-stage.sh)
 smoke_nonroot_runner=$(printf '%s\n' "$smoke_nonroot_stage" | awk '/cat > "\$fixture\/run\.sh"/{capture=1; next} capture && /^EOS$/{exit} capture{print}')
 printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"' || r_s11e16="$r_s11e16 nonroot-smoke-protected-fixture-missing"
 printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'install -d -o rduser -g "$gid" -m 0700 "$fixture/home"' || r_s11e16="$r_s11e16 nonroot-smoke-private-home-missing"
-[ "$(printf '%s\n' "$smoke_nonroot_stage" | grep -cF 'install -o root -g "$gid"')" -eq 6 ] || r_s11e16="$r_s11e16 nonroot-smoke-fixture-file-set-not-exact"
+[ "$(printf '%s\n' "$smoke_nonroot_stage" | grep -cF 'install -o root -g "$gid"')" -eq 8 ] || r_s11e16="$r_s11e16 nonroot-smoke-fixture-file-set-not-exact"
 printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'export HOME=/tmp/rd-smoke-nonroot/home' || r_s11e16="$r_s11e16 nonroot-smoke-runner-not-fixture-rooted"
 printf '%s\n' "$smoke_nonroot_runner" | grep -Fq 'SRV_START=$("$bin/smoke-ready.sh" --identity "$SRV")' || r_s11e16="$r_s11e16 nonroot-smoke-retained-server-identity-missing"
 printf '%s\n' "$smoke_nonroot_runner" | grep -Fq '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START"' || r_s11e16="$r_s11e16 nonroot-smoke-bounded-server-stop-missing"
@@ -6643,7 +6643,7 @@ grep -qF 'GATES=(' "$release_gate" || release_gate_bad="$release_gate_bad no-gat
 grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"' "$release_gate" || release_gate_bad="$release_gate_bad missing-verify"
 grep -qF '"verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"' "$release_gate" || release_gate_bad="$release_gate_bad missing-windows-harness"
 grep -qF '"android-rust-check.sh|pinned offline aarch64 Android Rust check"' "$release_gate" || release_gate_bad="$release_gate_bad missing-android-rust-check"
-grep -qF '"smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
+grep -qF '"smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
@@ -6661,7 +6661,7 @@ expected = [
     "online-input-provenance.py --self-test|immutable online-input snapshot mutation suite",
     "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics",
     "android-rust-check.sh|pinned offline aarch64 Android Rust check",
-    "smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session",
+    "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session",
     "dart-verify.sh|flutter analyze lib/ (zero errors)",
     "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin",
     "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks",

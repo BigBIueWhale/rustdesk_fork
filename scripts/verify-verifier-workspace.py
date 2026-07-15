@@ -2835,6 +2835,9 @@ def validate_docs(sources):
         "Logical process-restart fixtures",
         "They do not simulate physical power loss",
         "Processes under the invoking UID must cooperate",
+        "Same-host release-smoke coexistence with an operational older RustDesk service",
+        "This is a current-release harness defect",
+        "The separate Linux service-child lifecycle redesign remains open for upcoming releases",
     ):
         require_text(requirements, text, "requirements release authority")
     for forbidden in (
@@ -2866,6 +2869,8 @@ def validate_docs(sources):
         "wrong-token payload and next-record names",
         "logical process-restart proofs, not physical power-loss simulation",
         "The invoking UID must keep the namespace",
+        "Implemented current-release closure",
+        "does not close or advance the upcoming-release",
     ):
         require_text(hardening, text, "hardening-status current release authority")
     if "`f_fsid` must be nonzero" in hardening:
@@ -2884,6 +2889,8 @@ def validate_docs(sources):
         "complete descriptor-retrieved ext4 UUID",
         "wrong-token canonical state",
         "process-restart proofs; they do not claim physical power-loss simulation",
+        "Release-smoke coexistence",
+        "installed service or close the separately tracked upcoming Linux service-child lifecycle redesign",
     ):
         require_text(changelog, text, "changelog current release authority")
     for forbidden in (
@@ -2937,8 +2944,50 @@ def smoke_readiness_mode_is_valid(mode):
 
 
 def validate_smoke_contract(
-    verify, smoke, readiness, readiness_mode, typed_probe, session_probe, ipc_source
+    verify, smoke, stage, stage_mode, process_guard, process_guard_mode, launcher,
+    readiness, readiness_mode, typed_probe, session_probe, ipc_source, core_main,
+    common_source, linux_source,
 ):
+    for text, label in (
+        ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
+        ('mktemp -d /tmp/rustdesk-smoke-host.XXXXXXXXXX', "private host guard workspace"),
+        ('"$HOST_GUARD" record "$HOST_GUARD_ROOT/baseline.json"', "pre-smoke host selector baseline"),
+        ('"$HOST_GUARD" monitor "$HOST_GUARD_ROOT/baseline.json"', "whole-smoke host selector monitor"),
+        ('host_guard_checkpoint', "per-stage host monitor checkpoint"),
+        ('if ! stop_host_guard; then', "final host monitor drain"),
+        ("trap 'exit 129' HUP", "host guard hangup cleanup"),
+        ("trap 'exit 130' INT", "host guard interrupt cleanup"),
+        ("trap 'exit 143' TERM", "host guard termination cleanup"),
+        ('BUILD_RUN=(docker run --rm', "writable build-only container"),
+        ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
+        ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
+        ('record_stage_status R-B4-build', "build status preservation"),
+        ('STAGE_STATUS=$?', "isolated command failure status preservation"),
+        ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
+    ):
+        require_text(smoke, text, label)
+    for forbidden in (
+        "bash -euo pipefail -c", "--network=host", "--pid=host", "--privileged",
+        "--publish", "--publish-all", "sudo ", "pkill",
+    ):
+        if forbidden in smoke:
+            raise VerificationError(
+                f"runtime smoke retains forbidden host argv/network/service authority: {forbidden}"
+            )
+    if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
+        raise VerificationError("runtime smoke publishes a container port")
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 16:
+        raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
+    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 17:
+        raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
+    if "rustdesk --server" in smoke:
+        raise VerificationError("host smoke orchestrator retains historical-selector launch text")
+
+    if not smoke_readiness_mode_is_valid(stage_mode):
+        raise VerificationError("mounted smoke stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(process_guard_mode):
+        raise VerificationError("smoke process guard is not a regular executable file")
     for text, label in (
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
         ('install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"', "protected fixture directories"),
@@ -2948,78 +2997,121 @@ def validate_smoke_contract(
         ('install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"', "probe client fixture"),
         ('install -o root -g "$gid" -m 0550 target/debug/examples/smoke_readiness "$fixture/bin/smoke_readiness"', "typed readiness probe fixture"),
         ('install -o root -g "$gid" -m 0440 target/smoke-bind-loopback.so "$fixture/bin/smoke-bind-loopback.so"', "bind shim fixture"),
+        ('install -o root -g "$gid" -m 0550 target/smoke-server-launcher "$fixture/bin/smoke-server-launcher"', "neutral launcher fixture"),
         ('install -o root -g "$gid" -m 0550 scripts/smoke-ready.sh "$fixture/bin/smoke-ready.sh"', "readiness checker fixture"),
+        ('install -o root -g "$gid" -m 0550 scripts/smoke-process-guard.py "$fixture/bin/smoke-process-guard.py"', "process proof fixture"),
         ('su -s /bin/bash -c /tmp/rd-smoke-nonroot/run.sh rduser', "non-root runner dispatch"),
         ('echo SOURCE_BIND_UNCHANGED=yes', "source-bind postcondition"),
-        ("SERVER_EXIT=0", "server reaping assertion"),
-        ("SOURCE_BIND_UNCHANGED=yes", "source-bind assertion"),
-        ('BUILD_RUN=(docker run --rm', "writable build-only container"),
-        ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
-        ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
-        ('record_stage_status R-B4-build', "build status preservation"),
-        ('STAGE_STATUS=$?', "isolated command failure status preservation"),
-        ('bash /work/scripts/smoke-ready.sh --self-test', "readiness checker behavioral self-test"),
-        ('/work/scripts/smoke-ready.sh --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0', "parked-server readiness proof"),
-        ('/work/scripts/smoke-ready.sh --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0', "root user-owned IPC readiness proof"),
+        ('$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0', "parked-server readiness proof"),
+        ('$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0', "root user-owned IPC readiness proof"),
         ('"$bin/smoke-ready.sh" --wait-user-server "$SRV" "$SRV_START" "$HOME/srv2c.log" "$bin/smoke_readiness" 4000', "non-root user-owned IPC readiness proof"),
-        ('/work/scripts/smoke-ready.sh --wait-key-failure', "key-failure observation proof"),
-        ('/work/scripts/smoke-ready.sh --wait-capacity-shed', "capacity-shed observation proof"),
-        ('/work/scripts/smoke-ready.sh --wait-tcp-listener', "tunnel-target listener proof"),
-        ('/work/scripts/smoke-ready.sh --interrupt "$TCPD" "$TCPD_START"', "capture completion proof"),
-        ('wait "$TCPD" || exit 1', "capture exit-status proof"),
-        ('/work/scripts/smoke-ready.sh --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval"', "identity-monitored limiter-decay interval"),
+        ('$READY --wait-key-failure', "key-failure observation proof"),
+        ('$READY --wait-capacity-shed', "capacity-shed observation proof"),
+        ('$READY --wait-tcp-listener', "tunnel-target listener proof"),
+        ('$READY --interrupt "$TCPD" "$TCPD_START"', "capture completion proof"),
+        ('$READY --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval"', "identity-monitored limiter-decay interval"),
+        ('LD_PRELOAD="$BIND_SHIM" "$SERVER_LAUNCHER" "$executable"', "neutral server launcher use"),
+        ('"$PROCESS_GUARD" wait-server "$SRV" "$SRV_START" "$executable"', "exact executable and argv proof"),
     ):
-        require_text(smoke, text, label)
-    if smoke.count('install -o root -g "$gid"') != 6:
-        raise VerificationError("non-root smoke fixture must stage exactly six root-owned runtime files")
-    if smoke.count('/work/scripts/smoke-ready.sh --wait-server') < 10:
+        require_text(stage, text, label)
+    require_exact_count(stage, '    wait "$TCPD"\n', 1, "capture exit-status proof")
+    if stage.count('install -o root -g "$gid"') != 8:
+        raise VerificationError("non-root smoke fixture must stage exactly eight root-owned runtime files")
+    if stage.count('$READY --wait-server') < 10:
         raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
-    if smoke.count('/work/scripts/smoke-ready.sh --terminate-server') < 10:
+    if stage.count('$READY --terminate-server') < 10:
         raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
-    if smoke.count('SRV_START=$(/work/scripts/smoke-ready.sh --identity "$SRV")') < 13:
-        raise VerificationError("runtime smoke does not retain every root server identity after spawn")
-    if smoke.count('run_stage out') < 14 or smoke.count('record_stage_status ') < 15:
-        raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
-    if smoke.count('bash -euo pipefail -c') < 15:
-        raise VerificationError("runtime smoke retains a non-strict isolated stage shell")
-    if re.search(r'out[0-9a-z]*=\$\("\$\{RUN\[@\]\}"', smoke) or re.search(
-        r'(?:\./target/debug/examples/probe_client|"\$bin/probe_client")[^\n]*\|', smoke
-    ):
-        raise VerificationError("runtime smoke retains status suppression or a lossy probe execution pipeline")
+    if stage.count('start_server /work/target/debug/rustdesk') != 12:
+        raise VerificationError("runtime smoke does not route every ordinary server through the launcher")
+    if stage.count('start_server /usr/share/rustdesk/rustdesk') != 1:
+        raise VerificationError("installed-layout smoke does not route through the launcher")
+    if "rustdesk --server" in stage or re.search(r'rustdesk[" ]+--server', stage):
+        raise VerificationError("mounted smoke stage retains historical-selector launch text")
+    if "pkill" in stage or re.search(r'(?m)^\s*kill\s', stage):
+        raise VerificationError("mounted smoke stage retains broad or raw signal authority")
+    if re.search(r'(?:\./target/debug/examples/probe_client|"\$bin/probe_client")[^\n]*\|', stage):
+        raise VerificationError("runtime smoke retains a lossy probe execution pipeline")
     if re.search(r'echo "\$out[0-9a-z]*"\s*\|\s*grep\s+-[^\n]*q', smoke):
         raise VerificationError("runtime smoke retains a pipefail-sensitive output assertion")
     for forbidden in ("timeout 15", "TCPDUMP_ABSENT", "SKIP R-A9"):
-        if forbidden in smoke:
+        if forbidden in stage:
             raise VerificationError(f"runtime smoke retains a forbidden fallback or stale bound: {forbidden}")
-    if smoke.count('timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))"') != 3:
+    if stage.count('timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))"') != 3:
         raise VerificationError("every password watchdog must derive from recovery and have a forced-kill ceiling")
-    if smoke.count('[ "$RECOVERY_SECONDS" = 600 ]') != 3:
+    if stage.count('[ "$RECOVERY_SECONDS" = 600 ]') != 3:
         raise VerificationError("runtime smoke does not bind every password CLI watchdog to the exported recovery bound")
-    fixed_delays = re.findall(r"(?<![A-Za-z0-9_-])sleep[ \t]+([0-9]+(?:\.[0-9]+)?)", smoke)
+    fixed_delays = re.findall(r"(?<![A-Za-z0-9_-])sleep[ \t]+([0-9]+(?:\.[0-9]+)?)", stage)
     if fixed_delays:
-        raise VerificationError("runtime smoke retains a fixed timing guess outside the real 60-second limiter-decay window")
+        raise VerificationError("runtime smoke retains a fixed timing guess outside the real limiter-decay window")
     require_text(
         verify,
-        "smoke_nonroot_stage=$(awk '/^run_stage out2c /{capture=1}",
-        "verify non-root smoke extraction follows the strict stage form",
+        "smoke_nonroot_stage=$(awk '/^  password-nonroot\\)/{capture=1}",
+        "verify non-root smoke extraction follows the mounted stage form",
     )
-    marker = 'cat > "$fixture/run.sh" <<"EOS"\n'
-    start = smoke.find(marker)
+    marker = 'cat > "$fixture/run.sh" <<\'EOS\'\n'
+    start = stage.find(marker)
     if start < 0:
         raise VerificationError("non-root smoke runner heredoc is absent")
     start += len(marker)
-    end = smoke.find("\nEOS\n", start)
+    end = stage.find("\nEOS\n", start)
     if end < 0:
         raise VerificationError("non-root smoke runner heredoc is unterminated")
-    runner = smoke[start:end]
+    runner = stage[start:end]
     for forbidden in ("/work", "target/debug", "pkill"):
         if forbidden in runner:
             raise VerificationError(f"non-root smoke runner retains forbidden source/process authority: {forbidden}")
     require_text(runner, 'export HOME=/tmp/rd-smoke-nonroot/home', "fixture-owned runner home")
     require_text(runner, 'SRV_START=$("$bin/smoke-ready.sh" --identity "$SRV")', "retained non-root server identity")
+    require_text(runner, '"$bin/smoke-process-guard.py" wait-server', "non-root exact executable and argv proof")
+    require_text(runner, '"$bin/smoke-server-launcher" "$bin/rustdesk"', "non-root neutral launcher")
     require_text(runner, '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START"', "bounded exact server stop")
     require_text(runner, 'wait "$SRV"', "exact server reap")
     require_text(runner, 'SERVICE_ROLE_MARKER=absent', "portable-role proof")
+
+    for text, label in (
+        ('SELECTOR = re.compile(br"rustdesk +--server")', "historical selector implementation"),
+        ('NEUTRAL_ARGV0 = b"rd-smoke-server"', "neutral argv constant"),
+        ('cmdline.rstrip(b"\\0").replace(b"\\0", b" ")', "NUL argv reconstruction"),
+        ('before = read_process_identity(pid, proc_root)', "pre-cmdline start identity"),
+        ('after = read_process_identity(pid, proc_root)', "post-cmdline start identity"),
+        ('matches = stable_baseline()', "stable host baseline"),
+        ('violations = new_matches(baseline, current)', "new-match rejection"),
+        ('time.sleep(MONITOR_INTERVAL_SECONDS)', "bounded host monitor polling"),
+        ('os.stat("/proc/{}/exe".format(pid))', "running executable object proof"),
+        ('argv == [NEUTRAL_ARGV0, SERVER_ROLE]', "exact neutral argv and role proof"),
+        ('baseline fixture did not reject a new production-shaped match', "selector baseline regression fixture"),
+    ):
+        require_text(process_guard, text, label)
+    require_exact_count(
+        process_guard,
+        "violations = new_matches(baseline, current)",
+        2,
+        "new-match rejection",
+    )
+    for text, label in (
+        ('static const char *const SMOKE_ARGV0 = "rd-smoke-server";', "launcher neutral argv"),
+        ('static const char *const SERVER_ROLE = "--server";', "launcher exact role"),
+        ('O_RDONLY | O_CLOEXEC | O_NOFOLLOW', "launcher no-follow executable pin"),
+        ('fstat(executable_fd, &metadata)', "launcher opened-object validation"),
+        ('fexecve(executable_fd, server_argv, environ);', "descriptor-bound exact executable launch"),
+    ):
+        require_text(launcher, text, label)
+    if "system(" in launcher or "popen(" in launcher:
+        raise VerificationError("smoke launcher retains shell authority")
+
+    args_collection = extract_between(
+        core_main, "    let mut args = Vec::new();", "    #[cfg(any(target_os = \"linux\", target_os = \"windows\"))]",
+        "core argv collection",
+    )
+    require_text(args_collection, "for arg in std::env::args()", "Rust role argv source")
+    require_text(args_collection, "if i > 0", "Rust argv0 exclusion")
+    require_text(args_collection, "args.push(arg);", "retained role argument collection")
+    require_text(core_main, 'args[0] == "--server"', "server dispatch from argument one")
+    require_text(common_source, 'std::env::args().nth(1) == Some("--server".to_owned())', "server role argument-one predicate")
+    require_text(linux_source, "std::env::current_exe().ok()", "Linux executable identity source")
+    for source in (core_main, common_source):
+        if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
+            raise VerificationError("Rust server role regressed to semantic argv0 use")
     if not smoke_readiness_mode_is_valid(readiness_mode):
         raise VerificationError(
             "private release-snapshot readiness executable mode is invalid"
@@ -3780,11 +3872,19 @@ def validate_sources(sources):
     validate_smoke_contract(
         sources["verify"],
         sources["smoke"],
+        sources["smoke_stage"],
+        sources["smoke_stage_mode"],
+        sources["smoke_process_guard"],
+        sources["smoke_process_guard_mode"],
+        sources["smoke_launcher"],
         sources["smoke_ready"],
         sources["smoke_ready_mode"],
         sources["smoke_typed_probe"],
         sources["session_probe"],
         sources["ipc_source"],
+        sources["core_main"],
+        sources["common_source"],
+        sources["linux_source"],
     )
     validate_faillo_contract(sources["faillo"])
     validate_private_tree_closure(sources["closure"])
@@ -8635,37 +8735,37 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
+            "smoke_nonroot_stage=$(awk '/^  password-nonroot\\)/{capture=1}",
             "smoke_nonroot_stage=$(awk '/^run_stage out2c /{capture=1}",
-            "smoke_nonroot_stage=$(awk '/^out2c=/{capture=1}",
-            "verify non-root smoke extraction follows the strict stage form",
+            "verify non-root smoke extraction follows the mounted stage form",
         ),
         (
-            "smoke",
+            "smoke_stage",
             'cd "$HOME"',
             "cd /work",
             "non-root smoke runner retains forbidden source/process authority",
         ),
         (
-            "smoke",
+            "smoke_stage",
             'install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"',
             "true # probe client fixture removed",
             "probe client fixture",
         ),
         (
-            "smoke",
-            '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START" "$HOME/srv2c.log" || exit 1',
-            'pkill -TERM -f "rustdesk --server" || true',
-            "non-root smoke runner retains forbidden source/process authority",
+            "smoke_stage",
+            '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START" "$HOME/srv2c.log"',
+            'pkill -TERM -x rustdesk || true',
+            "mounted smoke stage retains broad or raw signal authority",
         ),
         (
-            "smoke",
-            '/work/scripts/smoke-ready.sh --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0 || exit 1',
+            "smoke_stage",
+            '$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0',
             'true # root IPC readiness proof removed',
             "root user-owned IPC readiness proof",
         ),
         (
-            "smoke",
-            '/work/scripts/smoke-ready.sh --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval" || exit 1',
+            "smoke_stage",
+            '$READY --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval"',
             'sleep 6',
             "identity-monitored limiter-decay interval",
         ),
@@ -8676,16 +8776,58 @@ def run_source_mutations(sources):
             "isolated command failure status preservation",
         ),
         (
-            "smoke",
+            "smoke_stage",
             'timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))"',
             'timeout "$((RECOVERY_SECONDS + 60))"',
             "every password watchdog must derive from recovery and have a forced-kill ceiling",
         ),
         (
-            "smoke",
-            'wait "$TCPD" || exit 1',
+            "smoke_stage",
+            'wait "$TCPD"',
             'wait "$TCPD" 2>/dev/null || true',
             "capture exit-status proof",
+        ),
+        (
+            "smoke",
+            '"$HOST_GUARD" record "$HOST_GUARD_ROOT/baseline.json"',
+            'true # host selector baseline removed',
+            "pre-smoke host selector baseline",
+        ),
+        (
+            "smoke",
+            'bash --noprofile --norc /work/scripts/smoke-server-stage.sh parked',
+            'bash -c "/work/target/debug/rustdesk --server"',
+            "exact mounted stage dispatch",
+        ),
+        (
+            "smoke_stage",
+            'LD_PRELOAD="$BIND_SHIM" "$SERVER_LAUNCHER" "$executable"',
+            'LD_PRELOAD="$BIND_SHIM" "$executable" --server',
+            "neutral server launcher use",
+        ),
+        (
+            "smoke_process_guard",
+            'argv == [NEUTRAL_ARGV0, SERVER_ROLE]',
+            'argv[-1:] == [SERVER_ROLE]',
+            "exact neutral argv and role proof",
+        ),
+        (
+            "smoke_process_guard",
+            'violations = new_matches(baseline, current)',
+            'violations = [] # new matches accepted',
+            "new-match rejection",
+        ),
+        (
+            "smoke_launcher",
+            'fexecve(executable_fd, server_argv, environ);',
+            'execve(argv[1], server_argv, environ);',
+            "descriptor-bound exact executable launch",
+        ),
+        (
+            "core_main",
+            '        if i > 0 {',
+            '        if i >= 0 {',
+            "Rust argv0 exclusion",
         ),
         (
             "smoke_ready",
@@ -9380,6 +9522,24 @@ def run_source_mutations(sources):
             "changelog current release authority",
         ),
         (
+            "requirements",
+            "This is a current-release harness defect",
+            "This is deferred upcoming-release lifecycle work",
+            "requirements release authority",
+        ),
+        (
+            "hardening",
+            "does not close or advance the upcoming-release",
+            "also closes the upcoming-release",
+            "hardening-status current release authority",
+        ),
+        (
+            "changelog",
+            "installed service or close the separately tracked upcoming Linux service-child lifecycle redesign",
+            "installed service and close the Linux service-child lifecycle redesign",
+            "changelog current release authority",
+        ),
+        (
             "native_watch",
             "Requirements hash:",
             "Requirements digest:",
@@ -9759,6 +9919,11 @@ def main():
             "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
             "release": (repo / "scripts/verify-release.sh").read_text(encoding="utf-8"),
             "smoke": (repo / "scripts/smoke-server.sh").read_text(encoding="utf-8"),
+            "smoke_stage": (repo / "scripts/smoke-server-stage.sh").read_text(encoding="utf-8"),
+            "smoke_stage_mode": os.lstat(repo / "scripts/smoke-server-stage.sh").st_mode,
+            "smoke_process_guard": (repo / "scripts/smoke-process-guard.py").read_text(encoding="utf-8"),
+            "smoke_process_guard_mode": os.lstat(repo / "scripts/smoke-process-guard.py").st_mode,
+            "smoke_launcher": (repo / "scripts/smoke-server-launcher.c").read_text(encoding="utf-8"),
             "smoke_ready": (repo / "scripts/smoke-ready.sh").read_text(encoding="utf-8"),
             "smoke_ready_mode": os.lstat(repo / "scripts/smoke-ready.sh").st_mode,
             "smoke_typed_probe": (repo / "examples/smoke_readiness.rs").read_text(encoding="utf-8"),
@@ -9774,6 +9939,8 @@ def main():
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
             "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
+            "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
+            "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "gitignore": (repo / ".gitignore").read_text(encoding="utf-8"),
             "android_rust": (repo / "scripts/android-rust-check.sh").read_text(encoding="utf-8"),
             "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),

@@ -7,6 +7,18 @@ release notes.
 
 ## 1.4.7-hardened.6 - 2026-07-14
 
+### Release-smoke coexistence
+- Made the mandatory Docker runtime smoke safe to execute beside an operational older RustDesk
+  installation. Runtime stages are mounted scripts rather than inline Docker argv, and the exact tested
+  executable is descriptor-launched with a neutral smoke-only argv zero plus the unchanged `--server`
+  role argument.
+- Added a signal-free full-host process guard that admits an exact stable baseline of pre-existing
+  historical `rustdesk +--server` matches and fails if the smoke adds any new match. Each test server is
+  independently bound to its PID/start time, executable device/inode, and exact NUL-delimited argv.
+- Kept the smoke in Docker's isolated PID/network namespaces with no published ports and preserved the
+  one-IPv4-TCP-on-container-loopback/zero-UDP runtime assertion. This harness fix does not change the
+  installed service or close the separately tracked upcoming Linux service-child lifecycle redesign.
+
 ### Privileged authority and unattended credentials
 - Made installed-service credential changes explicit privileged transactions rather than generic
   configuration writes. Linux uses administrator-authorized service ownership, macOS uses the root

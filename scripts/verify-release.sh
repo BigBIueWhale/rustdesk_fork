@@ -30,7 +30,7 @@ GATES=(
   "online-input-provenance.py --self-test|immutable online-input snapshot mutation suite"
   "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics"
   "android-rust-check.sh|pinned offline aarch64 Android Rust check"
-  "smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
+  "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
   "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"

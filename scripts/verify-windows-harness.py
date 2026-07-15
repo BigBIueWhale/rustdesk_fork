@@ -293,6 +293,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     stop_owned_process = shell_function(host, "stop_owned_process")
     virsh_bounded = shell_function(host, "virsh_bounded")
     wait_for_domain = shell_function(host, "wait_for_domain")
+    path_disjointness = shell_function(host, "assert_disjoint_paths")
     preflight = shell_function(host, "preflight")
     snapshot_golden = shell_function(host, "snapshot_golden")
     verify_private_golden = shell_function(host, "verify_private_golden")
@@ -315,6 +316,39 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(host, "trap cleanup EXIT", "EXIT cleanup")
     for status in (129, 130, 143):
         require(host, f"signal_exit {status}", f"signal cleanup status {status}")
+    require(path_disjointness, '[ "$first" != / ] && [ "$second" != / ]', "filesystem-root path rejection")
+    require(path_disjointness, '[ "$first" != "$second" ]', "unequal Windows state/output paths")
+    require(
+        path_disjointness,
+        '"$second/"*) die "$first_label must not be beneath $second_label" ;;',
+        "Windows state/output descendant rejection",
+    )
+    require(
+        path_disjointness,
+        '"$first/"*) die "$second_label must not be beneath $first_label" ;;',
+        "Windows state/output ancestor rejection",
+    )
+    require_order(
+        preflight,
+        (
+            'planned_state="$(realpath -m -- "$STATE_DIR")"',
+            'planned_output="$(realpath -m -- "$OUT_DIR")"',
+            'assert_disjoint_paths "$planned_state"',
+            'mkdir -p "$STATE_DIR"',
+            'STATE_DIR="$(realpath -e "$STATE_DIR")"',
+            'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"',
+            'assert_disjoint_paths "$STATE_DIR"',
+            '{ [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; }',
+        ),
+        "pre-creation and post-canonicalization Windows path disjointness",
+    )
+    for description in (
+        "Windows path-disjointness self-test accepted equal paths",
+        "Windows path-disjointness self-test accepted output beneath state",
+        "Windows path-disjointness self-test accepted state beneath output",
+        "Windows path-disjointness self-test accepted the filesystem root",
+    ):
+        require(host, description, description)
     require(
         process_identity,
         '''printf '%s %s %s %s\\n' "$1" "${20}" "$3" "$4"''',
@@ -505,6 +539,18 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(host, 'chmod -R a-w "$media_root"', "immutable source media tree")
     require(host, "source identity changed while source media was created", "source identity media postcondition")
     require(host, 'mv -T --no-clobber -- "$staging" "$OUT_DIR"', "atomic no-clobber result publication")
+    require_order(
+        host_main,
+        (
+            "run_pass A",
+            'if [ "${DOUBLE_BUILD:-1}" = "1" ]; then',
+            "run_pass B",
+            'elif [ "${DOUBLE_BUILD:-1}" != "0" ]; then',
+            'die "DOUBLE_BUILD must be 0 or 1"',
+            'publish_result "$RUN_ROOT/pass-A/result"',
+        ),
+        "direct Windows double-build contract",
+    )
 
     require(frb, "--source-root", "explicit FRB source interface")
     require(frb, "--online-root", "explicit FRB online interface")
@@ -967,6 +1013,48 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
 
 def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     mutations = [
+        (
+            "Windows state/output filesystem root",
+            "host",
+            '{ [ "$first" != / ] && [ "$second" != / ]; } \\\n        || die "$first_label and $second_label cannot be disjoint from the filesystem root"',
+            "true # filesystem root accepted",
+        ),
+        (
+            "Windows state/output equality",
+            "host",
+            '[ "$first" != "$second" ] \\\n        || die "$first_label and $second_label must be disjoint"',
+            "true # equal paths accepted",
+        ),
+        (
+            "Windows state/output descendant",
+            "host",
+            '"$second/"*) die "$first_label must not be beneath $second_label" ;;',
+            '"$second/"*) : ;;',
+        ),
+        (
+            "Windows state/output ancestor",
+            "host",
+            '"$first/"*) die "$second_label must not be beneath $first_label" ;;',
+            '"$first/"*) : ;;',
+        ),
+        (
+            "planned Windows path disjointness",
+            "host",
+            'assert_disjoint_paths "$planned_state" "Windows harness state" \\\n        "$planned_output" "Windows output"',
+            "true # planned path disjointness removed",
+        ),
+        (
+            "canonical Windows path disjointness",
+            "host",
+            'assert_disjoint_paths "$STATE_DIR" "Windows harness state" "$OUT_DIR" "Windows output"',
+            "true # canonical path disjointness removed",
+        ),
+        (
+            "direct Windows double-build",
+            "host",
+            'if [ "${DOUBLE_BUILD:-1}" = "1" ]; then',
+            'if [ "${DOUBLE_BUILD:-1}" = "0" ]; then',
+        ),
         ("domain UUID", "host", '--uuid "$CURRENT_DOMAIN_UUID"', '--uuid "$RUN_ID"'),
         ("VM deadline", "host", "VM_TIMEOUT_SECONDS=7200", "VM_TIMEOUT_SECONDS=0"),
         ("VM creation deadline", "host", "CREATE_TIMEOUT_SECONDS=300", "CREATE_TIMEOUT_SECONDS=0"),

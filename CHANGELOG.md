@@ -174,6 +174,10 @@ release notes.
 - Made the complete release build require one clean committed `HEAD` before verification, after
   verification, and after all cold reproducible target builds. Windows artifacts must be archived from
   that same commit; generated checksums record the exact source commit and fork version.
+- Made target publication ownership explicit: each builder receives an absent output path and owns its
+  creation, while mutable Windows harness state remains pass-private and output-disjoint. Behavioral and
+  mutation fixtures reject precreated publication paths, equal or nested Windows state, non-atomic Windows
+  publication, and state authority on other targets.
 - Made release verification authenticate the manifest digest, full commit, and fork version through an
   independent channel before checking artifacts. Documented fail-closed Android signing-key loss and
   compromise handling: no pin bypass, and a suspected compromise retires the package identity.

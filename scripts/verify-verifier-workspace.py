@@ -851,11 +851,23 @@ def validate_build_release(source):
         "\n}\n\ncopy_artifact() {",
         "release verification consumer",
     )
+    target_invocation = extract_between(
+        source,
+        "invoke_target() {",
+        "\n}\n\nbuild_snapshot() {",
+        "release target invocation",
+    )
     build_snapshot = extract_between(
         source,
         "build_snapshot() {",
         "\n}\n\nassert_exact_set() {",
         "snapshot build loop",
+    )
+    fixture_target = extract_between(
+        source,
+        "write_fixture_target() {",
+        "\n}\n\nrun_reset_self_test() {",
+        "release target fixture writer",
     )
     reset_self_test = extract_between(
         source,
@@ -868,6 +880,12 @@ def validate_build_release(source):
         "run_publication_reconciliation_self_test() {",
         "\n}\n\nrun_self_test() {",
         "publication reconciliation self-test",
+    )
+    transaction_self_test = extract_between(
+        source,
+        "run_self_test() {",
+        "\n}\n\nmain() {",
+        "release transaction self-test",
     )
     create_workspace = extract_between(
         source,
@@ -1431,6 +1449,50 @@ def validate_build_release(source):
         ),
         "post-target reset ordering",
     )
+    require_text(
+        build_snapshot,
+        'invoke_target "$label" "$target" "$source" "$output/$target" "$set_dir"',
+        "exact target-leaf invocation topology",
+    )
+    if re.search(r'(?m)^\s*(?:mkdir|install)\b[^\n]*\$output\b', target_invocation):
+        raise VerificationError("release orchestrator precreates a target publication path")
+    require_order(
+        target_invocation,
+        (
+            '{ [ ! -e "$output" ] && [ ! -L "$output" ]; }',
+            'case "$target" in',
+            'windows_state="$(dirname "$source")/windows-state"',
+            '{ [ ! -e "$windows_state" ] && [ ! -L "$windows_state" ]; }',
+            "WINDOWS_UNSAFE=1",
+            'HARNESS_STATE_DIR="$windows_state"',
+            '"$source/scripts/build-windows-vm.sh"',
+        ),
+        "absent target publication and output-disjoint Windows state",
+    )
+    for text, label in (
+        ('[ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]', "fixture target-output absence proof"),
+        ('[ ! -e "$HARNESS_STATE_DIR" ] && [ ! -L "$HARNESS_STATE_DIR" ]', "fixture Windows-state absence proof"),
+        ('state_path="$(realpath -m -- "$HARNESS_STATE_DIR")"', "fixture canonical Windows-state path"),
+        ('output_path="$(realpath -m -- "$fixture_output")"', "fixture canonical Windows-output path"),
+        ('case "$state_path/" in "$output_path/"*) exit 1 ;; esac', "fixture Windows-state descendant rejection"),
+        ('case "$output_path/" in "$state_path/"*) exit 1 ;; esac', "fixture Windows-state ancestor rejection"),
+        ('OUT_DIR="$(mktemp -d "$(dirname "$fixture_output")/.windows-publish.XXXXXXXX")"', "fixture private Windows staging directory"),
+        ('mv -T --no-clobber -- "$OUT_DIR" "$fixture_output"', "fixture atomic Windows publication"),
+        ('[ -z "${HARNESS_STATE_DIR+x}" ]', "fixture non-Windows state-authority rejection"),
+    ):
+        require_text(fixture_target, text, label)
+    require_exact_count(
+        fixture_target,
+        '[ ! -e "$fixture_output" ] && [ ! -L "$fixture_output" ]',
+        1,
+        "fixture post-state Windows-output absence proof",
+    )
+    for text, label in (
+        ("release self-test target output topology is not exact", "exact target-output fixture topology"),
+        ("release self-test gave non-Windows targets harness state authority", "non-Windows fixture state isolation"),
+        ("release self-test Windows state is not pass-private and output-disjoint", "Windows fixture state isolation"),
+    ):
+        require_text(transaction_self_test, text, label)
     require_exact_count(source, "DOUBLE_BUILD=0", 3, "single target invocation per outer snapshot")
     require_text(source, 'build_snapshot A "$SOURCE_A"', "snapshot A target execution")
     require_text(source, 'build_snapshot B "$SOURCE_B"', "snapshot B target execution")
@@ -7497,6 +7559,49 @@ def run_source_mutations(sources):
             'reset_snapshot_build_state "$source" "$label after $target"',
             'assert_snapshot_exact "$source" "$label after $target"',
             "post-target reset ordering",
+        ),
+        (
+            "build",
+            '{ [ ! -e "$output" ] && [ ! -L "$output" ]; } \\\n'
+            '        || die "$label: $target output path must be absent before target publication"',
+            'mkdir -p "$output" # target publication path precreated',
+            "release orchestrator precreates a target publication path",
+        ),
+        (
+            "build",
+            'windows_state="$(dirname "$source")/windows-state"',
+            'windows_state="$output/windows-state"',
+            "absent target publication and output-disjoint Windows state",
+        ),
+        (
+            "build",
+            "        printf '[ ! -e \"$OUT_DIR\" ] && [ ! -L \"$OUT_DIR\" ]\\n'",
+            "        printf 'true # target output absence proof removed\\n'",
+            "fixture target-output absence proof",
+        ),
+        (
+            "build",
+            "            printf 'case \"$state_path/\" in \"$output_path/\"*) exit 1 ;; esac\\n'",
+            "            printf 'true # Windows state descendant rejection removed\\n'",
+            "fixture Windows-state descendant rejection",
+        ),
+        (
+            "build",
+            "            printf 'case \"$output_path/\" in \"$state_path/\"*) exit 1 ;; esac\\n'",
+            "            printf 'true # Windows state ancestor rejection removed\\n'",
+            "fixture Windows-state ancestor rejection",
+        ),
+        (
+            "build",
+            "            printf '[ ! -e \"$fixture_output\" ] && [ ! -L \"$fixture_output\" ]\\n'",
+            "            printf 'true # post-state output absence proof removed\\n'",
+            "fixture post-state Windows-output absence proof",
+        ),
+        (
+            "build",
+            "            printf 'mv -T --no-clobber -- \"$OUT_DIR\" \"$fixture_output\"\\n'",
+            "            printf 'mv -T -- \"$OUT_DIR\" \"$fixture_output\"\\n'",
+            "fixture atomic Windows publication",
         ),
         (
             "build",

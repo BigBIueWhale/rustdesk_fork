@@ -66,6 +66,20 @@ assert_safe_path() {
     fi
 }
 
+assert_disjoint_paths() {
+    local first="$1" first_label="$2" second="$3" second_label="$4"
+    { [ "$first" != / ] && [ "$second" != / ]; } \
+        || die "$first_label and $second_label cannot be disjoint from the filesystem root"
+    [ "$first" != "$second" ] \
+        || die "$first_label and $second_label must be disjoint"
+    case "$first/" in
+        "$second/"*) die "$first_label must not be beneath $second_label" ;;
+    esac
+    case "$second/" in
+        "$first/"*) die "$second_label must not be beneath $first_label" ;;
+    esac
+}
+
 assert_uuid() {
     [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] \
         || die "kernel random UUID is malformed: $1"
@@ -317,6 +331,7 @@ verify_active_online_snapshot() {
 }
 
 preflight() {
+    local planned_state planned_output
     require_cmd qemu-img virt-install virsh xorriso docker git python3 realpath sha256sum sha512sum timeout setsid
     assert_no_build_host_network_residual
     [ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
@@ -330,6 +345,14 @@ preflight() {
     [[ "$DOMAIN_PREFIX" =~ ^[A-Za-z0-9._-]+$ ]] || die "HARNESS_PREFIX contains an invalid domain-name character"
     [ "${#DOMAIN_PREFIX}" -le 32 ] || die "HARNESS_PREFIX is too long"
 
+    planned_state="$(realpath -m -- "$STATE_DIR")" \
+        || die "cannot canonicalize the planned Windows harness state path"
+    planned_output="$(realpath -m -- "$OUT_DIR")" \
+        || die "cannot canonicalize the planned Windows output path"
+    assert_safe_path "$planned_state" "planned state directory"
+    assert_safe_path "$planned_output" "planned output directory"
+    assert_disjoint_paths "$planned_state" "Windows harness state" \
+        "$planned_output" "Windows output"
     mkdir -p "$STATE_DIR"
     STATE_DIR="$(realpath -e "$STATE_DIR")"
     [ "$(stat -c '%u:%a' "$STATE_DIR")" = "$(id -u):700" ] \
@@ -351,6 +374,7 @@ preflight() {
     for pair in "$STATE_DIR|state directory" "$GOLDEN|golden image" "$ONLINE_DIR|online cache" "$OUT_DIR|output directory"; do
         assert_safe_path "${pair%%|*}" "${pair#*|}"
     done
+    assert_disjoint_paths "$STATE_DIR" "Windows harness state" "$OUT_DIR" "Windows output"
     { [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; } \
         || die "Windows output directory must be absent for atomic publication: $OUT_DIR"
     [ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ] || die "golden image is not a regular file"
@@ -1142,6 +1166,20 @@ harness_self_test() {
     require_cmd python3 sha256sum setsid timeout
     RUN_ROOT="$(mktemp -d /tmp/rustdesk-windows-harness-test.XXXXXXXX)"
     chmod 0700 "$RUN_ROOT"
+
+    assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/output" "output"
+    if (assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/state" "output") >/dev/null 2>&1; then
+        die "Windows path-disjointness self-test accepted equal paths"
+    fi
+    if (assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/state/output" "output") >/dev/null 2>&1; then
+        die "Windows path-disjointness self-test accepted output beneath state"
+    fi
+    if (assert_disjoint_paths "$RUN_ROOT/output/state" "state" "$RUN_ROOT/output" "output") >/dev/null 2>&1; then
+        die "Windows path-disjointness self-test accepted state beneath output"
+    fi
+    if (assert_disjoint_paths / "state" "$RUN_ROOT/output" "output") >/dev/null 2>&1; then
+        die "Windows path-disjointness self-test accepted the filesystem root"
+    fi
 
     local safe_root="$RUN_ROOT/safe-source"
     mkdir "$safe_root"

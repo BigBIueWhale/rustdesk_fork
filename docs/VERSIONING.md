@@ -52,6 +52,9 @@ indistinguishable — so they are separate, and `FORK_VERSION` is the one you bu
    allowlist. It creates two independent `--no-hardlinks --reject-shallow`, mode-0700 private repositories, removes their remotes,
    and checks out the exact commit detached. Debian, Android, and Windows each run once in each repository with
    independent target, Flutter, generated, output, and Windows state.
+   Each pass owns the `outputs/` parent but leaves its three target leaves absent. Debian and Android create their
+   leaves; Windows publishes its complete leaf by a sibling staging rename with no clobber. Its mutable
+   `windows-state/` is a pass-private sibling of `outputs/`, never equal to, above, or beneath the Windows output.
    The orchestrator requires byte-identical SHA-256 values for all four artifacts across the two snapshots.
    Direct target scripts retain their own default internal double build; only this structural A/B
    orchestrator passes `DOUBLE_BUILD=0` to a direct target invocation.

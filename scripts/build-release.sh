@@ -882,12 +882,14 @@ copy_artifact() {
 
 invoke_target() {
     local label="$1" target="$2" source="$3" output="$4" set_dir="$5"
+    local windows_state=""
     local -a fixture_env=()
     [ -z "$FIXTURE_LOG" ] || fixture_env=(
         RELEASE_FIXTURE_LOG="$FIXTURE_LOG"
         RELEASE_FIXTURE_ONLINE="$ONLINE_SNAPSHOT_PARENT/online"
     )
-    install -d -m 0700 "$output"
+    { [ ! -e "$output" ] && [ ! -L "$output" ]; } \
+        || die "$label: $target output path must be absent before target publication"
     case "$target" in
         debian)
             run_snapshot_consumer "$label Debian build" run_child "${fixture_env[@]}" \
@@ -909,12 +911,15 @@ invoke_target() {
             copy_artifact "$output/rustdesk-arm64.apk" "$set_dir/rustdesk-arm64.apk"
             ;;
         windows)
+            windows_state="$(dirname "$source")/windows-state"
+            { [ ! -e "$windows_state" ] && [ ! -L "$windows_state" ]; } \
+                || die "$label: Windows harness state path must be absent before target execution"
             WINDOWS_UNSAFE=1
             if ! run_snapshot_consumer "$label Windows build" run_child "${fixture_env[@]}" \
                 RUSTDESK_RELEASE_ONLINE_SNAPSHOT="$ONLINE_SNAPSHOT_PARENT" OUT_DIR="$output" \
                 DOUBLE_BUILD=0 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" ALLOW_DIRTY_TREE=0 \
                 RELEASE_SRC_COMMIT="$PINNED_HEAD" WINDOWS_BUILD_SOURCE=head \
-                HARNESS_STATE_DIR="$output/windows-state" WINDOWS_GOLDEN_IMAGE="$HOST_GOLDEN" \
+                HARNESS_STATE_DIR="$windows_state" WINDOWS_GOLDEN_IMAGE="$HOST_GOLDEN" \
                 /usr/bin/bash --noprofile --norc "$source/scripts/build-windows-vm.sh"; then
                 KEEP_WORKSPACE=1
                 die "$label: Windows build returned failure; workspace retained because VM ownership is unresolved"
@@ -1081,10 +1086,32 @@ write_fixture_target() {
         printf 'fixture_online="$RUSTDESK_RELEASE_ONLINE_SNAPSHOT/online"\n'
         printf '[ "$fixture_online" = "${RELEASE_FIXTURE_ONLINE:?}" ]\n'
         printf '[ -r "$fixture_online/fixture-input" ]\n'
+        printf '[ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]\n'
+        printf 'fixture_output="$OUT_DIR"\n'
+        if [ "$target" = windows ]; then
+            printf '[ -n "${HARNESS_STATE_DIR:-}" ]\n'
+            printf '[ ! -e "$HARNESS_STATE_DIR" ] && [ ! -L "$HARNESS_STATE_DIR" ]\n'
+            printf 'state_path="$(realpath -m -- "$HARNESS_STATE_DIR")"\n'
+            printf 'output_path="$(realpath -m -- "$fixture_output")"\n'
+            printf '[ "$state_path" != "$output_path" ]\n'
+            printf 'case "$state_path/" in "$output_path/"*) exit 1 ;; esac\n'
+            printf 'case "$output_path/" in "$state_path/"*) exit 1 ;; esac\n'
+            printf 'mkdir -p "$HARNESS_STATE_DIR"\n'
+            printf '[ ! -e "$fixture_output" ] && [ ! -L "$fixture_output" ]\n'
+        else
+            printf '[ -z "${HARNESS_STATE_DIR+x}" ]\n'
+        fi
         printf 'docker fixture-probe >/dev/null\n'
-        printf 'mkdir -p "$OUT_DIR"\n'
-        printf 'printf "%%s|%%s|%%s|%%s\\n" "%s" "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" "$OUT_DIR" "$fixture_online" >> "$RELEASE_FIXTURE_LOG"\n' "$target"
+        if [ "$target" = windows ]; then
+            printf 'OUT_DIR="$(mktemp -d "$(dirname "$fixture_output")/.windows-publish.XXXXXXXX")"\n'
+        else
+            printf 'mkdir -p "$OUT_DIR"\n'
+        fi
+        printf 'printf "%%s|%%s|%%s|%%s|%%s\\n" "%s" "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" "$fixture_output" "$fixture_online" "${HARNESS_STATE_DIR:-}" >> "$RELEASE_FIXTURE_LOG"\n' "$target"
         printf '%s\n' "$body"
+        if [ "$target" = windows ]; then
+            printf 'mv -T --no-clobber -- "$OUT_DIR" "$fixture_output"\n'
+        fi
     } > "$source/scripts/build-$script_target.sh"
     chmod 0700 "$source/scripts/build-$script_target.sh"
 }
@@ -1799,10 +1826,19 @@ run_self_test() {
         || die "release self-test did not use two independent snapshots"
     [ "$(awk -F'|' '{print $3}' "$FIXTURE_LOG" | sort -u | wc -l)" -eq 6 ] \
         || die "release self-test target outputs are not distinct"
+    [ "$(awk -F'|' '{print $3}' "$FIXTURE_LOG" | sort)" = \
+      "$(printf '%s\n' "$OUTPUT_A/android" "$OUTPUT_A/debian" "$OUTPUT_A/windows" \
+          "$OUTPUT_B/android" "$OUTPUT_B/debian" "$OUTPUT_B/windows" | sort)" ] \
+        || die "release self-test target output topology is not exact"
     [ "$(awk -F'|' '{print $4}' "$FIXTURE_LOG" | sort -u | wc -l)" -eq 1 ] \
         || die "release self-test did not give every target the same online snapshot"
     [ "$(awk -F'|' 'NR == 1 { print $4 }' "$FIXTURE_LOG")" = "$ONLINE_SNAPSHOT_PARENT/online" ] \
         || die "release self-test target online path is not the transaction snapshot"
+    awk -F'|' '$1 != "windows" && $5 != "" { bad=1 } END { exit bad ? 1 : 0 }' "$FIXTURE_LOG" \
+        || die "release self-test gave non-Windows targets harness state authority"
+    [ "$(awk -F'|' '$1 == "windows" { print $5 }' "$FIXTURE_LOG" | sort)" = \
+      "$(printf '%s\n%s\n' "$WORKSPACE/pass-A/windows-state" "$WORKSPACE/pass-B/windows-state" | sort)" ] \
+        || die "release self-test Windows state is not pass-private and output-disjoint"
     if (
         run_snapshot_consumer "mutation fixture" /usr/bin/bash --noprofile --norc -c \
             'chmod 0600 "$1/fixture-input"; printf mutated > "$1/fixture-input"' \

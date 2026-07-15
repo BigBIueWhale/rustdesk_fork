@@ -2135,6 +2135,12 @@ under Cargo's private `OUT_DIR`. The root and Apple Cargo gates mount source rea
 epochs fail the build; only an absent epoch retains wall-clock behavior for ordinary developer builds.
 The same root build script requires one canonical newline-terminated `FORK_VERSION` whose numeric base equals
 `CARGO_PKG_VERSION`; it has no missing, unreadable, empty, malformed, mismatched, or package-version fallback.
+Each pass gives every target builder an absent publication path and leaves its creation to that builder. Windows
+VM lifecycle state is a pass-private sibling of the source and output roots, not a descendant of `OUT_DIR`.
+The Windows harness canonicalizes and rejects equal, ancestor, or descendant state/output paths before creating
+either path and re-proves disjointness afterward. Executable transaction fixtures prove output absence at target
+entry, state/output disjointness, exact pass isolation, target-owned creation, Windows no-clobber publication, and
+the absence of Windows state authority from Debian and Android; structural mutations make each boundary mandatory.
 
 **R-B10 Android Gradle execution cache — SOURCE IMPLEMENTED; ARTIFACT PROOF PENDING.**
 The immutable online Gradle seed is projected descriptor-relatively into a fresh non-root owner-only execution
@@ -2352,6 +2358,19 @@ and produced no artifact, manifest, publication, release, or prerelease. Log `/t
 SHA-256 `aa19faf67ca0debec5fc1c9b5c7f3268e5f9baed92e878fe4d69d9ffd511a537`. The single exact-mode Debian tree
 constructor and archive-wide verifier above replace mode inheritance; exact-commit artifact evidence remains open
 pending a complete cold build from the corrected pushed commit.
+
+The exact pushed `3bd8d4faad27d484d8d77d7e5aff91ce5dd4debf` cold build passed all twelve release source gates,
+built and verified pass-A Debian SHA-256
+`0cfd0dfabef51b26aa91be5d242172d23572b9ecc658f6cda96242fa5afb68f0` and Android SHA-256
+`b9729f337970868422530bdb9fa909ae7d6f918273bd015963e61a759c4a9f61`, then stopped before Windows VM
+startup because the outer orchestrator had precreated the Windows publication path and nested harness state
+beneath it while the Windows builder correctly required an absent `OUT_DIR` for atomic publication. No Windows
+target build, pass B, manifest, publication, release, or prerelease followed. The retained workspace was proved
+mount- and inode-closed and removed through the authenticated descriptor-based cleanup helper. Log
+`/tmp/rustdesk-build-3bd8d4f.log` has SHA-256
+`b946f9501a6e6115302cfc99029eb21b1b062739a2c827d01916ada1133dbb07`. The output-ownership and disjoint-state
+contract above removes the contradiction; exact-commit artifact evidence remains open pending a complete cold
+build from the corrected pushed commit.
 
 `docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
 same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
@@ -3006,7 +3025,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-091e2fe27bdf5279f65b36e1e0eaab8b42cbb2711b085da7cd813954b3e89170  requirements.html
+140d8a35734c4b8a84c90252bf4bba71b3c3974b1a9be5fe1242bcbdaf94763a  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

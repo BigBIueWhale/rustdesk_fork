@@ -2932,6 +2932,10 @@ def validate_scan_contract(scan, verify, apple, release):
     )
 
 
+def smoke_readiness_mode_is_valid(mode):
+    return stat.S_ISREG(mode) and stat.S_IMODE(mode) in (0o700, 0o755)
+
+
 def validate_smoke_contract(
     verify, smoke, readiness, readiness_mode, typed_probe, session_probe, ipc_source
 ):
@@ -3016,8 +3020,10 @@ def validate_smoke_contract(
     require_text(runner, '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START"', "bounded exact server stop")
     require_text(runner, 'wait "$SRV"', "exact server reap")
     require_text(runner, 'SERVICE_ROLE_MARKER=absent', "portable-role proof")
-    if stat.S_IMODE(readiness_mode) != 0o755 or not stat.S_ISREG(readiness_mode):
-        raise VerificationError("smoke readiness checker is not a regular mode-0755 executable")
+    if not smoke_readiness_mode_is_valid(readiness_mode):
+        raise VerificationError(
+            "private release-snapshot readiness executable mode is invalid"
+        )
     for text, label in (
         ("readonly READY_WAIT_SECONDS=60", "fixed 60-second readiness bound"),
         ('[[ "$1" =~ ^[1-9][0-9]*$ ]] || fail "invalid duration: $1"', "strict monitored-duration validation"),
@@ -8900,6 +8906,12 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
+            "stat.S_IMODE(mode) in (0o700, 0o755)",
+            "stat.S_IMODE(mode) == 0o755",
+            "private release-snapshot readiness executable mode",
+        ),
+        (
+            "workspace_verifier",
             "metadata.st_blocks,\n        metadata.st_rdev,\n        metadata.st_mtime_ns,\n        metadata.st_ctime_ns,",
             "metadata.st_blocks,\n        metadata.st_rdev,\n        metadata.st_mtime_ns,\n        metadata.st_mtime_ns, # publication ctime omitted",
             "publication ctime metadata",
@@ -9839,6 +9851,17 @@ def validate_workspace_verifier_self_contract(source):
         module = ast.parse(source)
     except SyntaxError as exc:
         raise VerificationError(f"managed command signal ownership: Python source does not parse: {exc}") from exc
+    readiness_mode_validator = extract_python_definition(
+        source,
+        module,
+        "smoke_readiness_mode_is_valid",
+        "private release-snapshot readiness executable mode",
+    )
+    require_text(
+        readiness_mode_validator,
+        "stat.S_IMODE(mode) in (0o700, 0o755)",
+        "private release-snapshot readiness executable mode",
+    )
     signal_assignments = [
         node
         for node in module.body

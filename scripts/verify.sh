@@ -53,6 +53,10 @@ done
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib.sh
+source scripts/lib.sh
+load_pins
+
 # shellcheck source=scripts/verify-scan.sh
 source scripts/verify-scan.sh
 verify_scan_preflight
@@ -126,12 +130,13 @@ install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
 source scripts/fork-version.sh
 IMG=rd-devcheck
 RUN=(docker run --rm
-  -v "$PWD:/work:rw"
+  -v "$PWD:/work:ro"
   -v rd-cargo-cache:/usr/local/cargo/registry
   -v rd-git-cache:/usr/local/cargo/git
   -v rd-verify-target:/build
   -e CARGO_TARGET_DIR=/build
   -e RUSTUP_TOOLCHAIN=1.75.0
+  -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
   -w /work "$IMG")
 rc=0
 
@@ -4020,6 +4025,7 @@ echo "== (3c-iii-d) CLIPRDR file-contents read_size overflow guard (§20) =="
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib clamp_file_read_size --color never
 
 echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary, R-R2b) =="
+"${RUN[@]}" cargo clean -p rustdesk
 "${RUN[@]}" cargo check --features linux-pkg-config --color never
 
 # (4a) the SHIPPED release ALSO enables unix-file-copy-paste (build.py --flutter --unix-file-copy-paste,
@@ -4028,6 +4034,71 @@ echo "== (4) main crate compile check (hardening is UNCONDITIONAL — one binary
 # can_sub_file_clipboard_service() gate stay buildable (this feature pulls the FUSE clipboard-file path).
 echo "== (4a) unix-file-copy-paste feature compile check (the shipped clipboard-file arm) =="
 "${RUN[@]}" cargo check --features linux-pkg-config,unix-file-copy-paste --color never
+
+echo "== (4b) Cargo version metadata stays inside OUT_DIR (R-B2) =="
+version_output_bad=
+[ ! -e src/version.rs ] && ! git ls-files --error-unmatch src/version.rs >/dev/null 2>&1 \
+  || version_output_bad="$version_output_bad source-version-output"
+grep -qF 'include!(concat!(env!("OUT_DIR"), "/version.rs"));' src/lib.rs \
+  || version_output_bad="$version_output_bad non-out-dir-include"
+grep -qF 'let out_dir = env::var_os("OUT_DIR")' build.rs \
+  || version_output_bad="$version_output_bad no-out-dir-authority"
+grep -qF 'let version = env::var("CARGO_PKG_VERSION")?;' build.rs \
+  || version_output_bad="$version_output_bad reparsed-package-version"
+grep -qF 'emit_fork_version(&version)?;' build.rs \
+  || version_output_bad="$version_output_bad fallible-fork-version-not-called"
+grep -qF 'generate_version(&version)?;' build.rs \
+  || version_output_bad="$version_output_bad fallible-version-generator-not-called"
+grep -qF 'PathBuf::from(out_dir).join("version.rs")' build.rs \
+  || version_output_bad="$version_output_bad wrong-generated-path"
+grep -qF 'cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH' build.rs \
+  || version_output_bad="$version_output_bad untracked-epoch-input"
+grep -qF '!raw.bytes().all(|byte| byte.is_ascii_digit())' build.rs \
+  || version_output_bad="$version_output_bad malformed-epoch-fallback"
+grep -qF "raw.len() > 1 && raw.starts_with('0')" build.rs \
+  || version_output_bad="$version_output_bad noncanonical-epoch-admission"
+grep -qF 'Err(env::VarError::NotPresent) =>' build.rs \
+  || version_output_bad="$version_output_bad non-explicit-local-time-fallback"
+grep -qF 'DateTime::<chrono::Utc>::from_timestamp(epoch, 0).ok_or_else' build.rs \
+  || version_output_bad="$version_output_bad out-of-range-epoch-fallback"
+if grep -qE 'hbb_common::gen_version|pub fn gen_version' build.rs libs/hbb_common/src/lib.rs; then
+  version_output_bad="$version_output_bad legacy-source-writer"
+fi
+version_ref_count=0
+while IFS= read -r -d '' cargo_build_script; do
+  refs="$(grep -cF 'version.rs' "$cargo_build_script" || true)"
+  if [ "$refs" -ne 0 ]; then
+    version_ref_count=$((version_ref_count + refs))
+    [ "$cargo_build_script" = ./build.rs ] && [ "$refs" -eq 1 ] \
+      || version_output_bad="$version_output_bad foreign-build-script-version-output"
+  fi
+done < <(find . -path ./target -prune -o -path ./online -prune -o -name build.rs -type f -print0)
+[ "$version_ref_count" -eq 1 ] \
+  || version_output_bad="$version_output_bad non-unique-version-output-reference"
+set +e
+git check-ignore --no-index -q -- src/version.rs
+version_ignore_status=$?
+set -e
+case "$version_ignore_status" in
+  0) version_output_bad="$version_output_bad ignored-source-output" ;;
+  1) ;;
+  *) version_output_bad="$version_output_bad ignore-matcher-failed" ;;
+esac
+verify_run_block="$(awk '/^RUN=\(docker run --rm$/{inside=1} inside{print} inside && /^  -w \/work "\$IMG"\)$/{exit}' scripts/verify.sh)"
+case "$verify_run_block" in
+  *'-v "$PWD:/work:ro"'*) ;;
+  *) version_output_bad="$version_output_bad mutable-main-cargo-source" ;;
+esac
+[ -x scripts/version-metadata-check.sh ] \
+  || version_output_bad="$version_output_bad behavioral-checker-not-executable"
+if ! "${RUN[@]}" bash scripts/version-metadata-check.sh; then
+  version_output_bad="$version_output_bad behavioral-version-metadata-proof"
+fi
+if [ -n "$version_output_bad" ]; then
+  echo "  FAIL R-B2: Cargo version metadata authority regressed:$version_output_bad"; rc=1
+else
+  echo "  ok  R-B2 Cargo generates VERSION/BUILD_DATE only in OUT_DIR; the read-only source tree remains absent of generated version code"
+fi
 
 echo "== (5) R-A6 forbidden-token greps =="
 # Greps run over the Rust source only, never requirements.html / the status docs
@@ -4072,7 +4143,10 @@ if [ -n "$fork_ver" ] && [ -f CHANGELOG.md ]; then
   esac
 fi
 grep -qF 'RUSTDESK_FORK_VERSION' build.rs           || ver_gate="$ver_gate build.rs-no-fork-version-env"
-grep -qF 'RUSTDESK_FORK_VERSION' src/core_main.rs   || ver_gate="$ver_gate --fork-version-not-wired"
+grep -qF 'env!("RUSTDESK_FORK_VERSION")' src/core_main.rs || ver_gate="$ver_gate --fork-version-not-required"
+if grep -qF 'option_env!("RUSTDESK_FORK_VERSION")' src/core_main.rs; then
+  ver_gate="$ver_gate --fork-version-runtime-fallback"
+fi
 # res/msi/preprocess.py runs `rustdesk --version` and needs a NUMERIC version embedded in the binary
 # (it becomes the WiX ProductVersion); so --version MUST print crate::VERSION verbatim (the app
 # version), never the fork string. The MSI packaging depends on this numeric --version; the fork
@@ -6547,8 +6621,11 @@ grep -qF 'plistlib' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-parse
 grep -qF 'duplicate plist key' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-duplicate-check"
 grep -qF 'APPLE_POD_ALLOWLISTS' "$apple_gate" || apple_gate_bad="$apple_gate_bad pod-allowlist"
 grep -qF 'PBXShellScriptBuildPhase allow-list' "$apple_gate" || apple_gate_bad="$apple_gate_bad pbx-shell-allowlist"
-grep -qF 'SOURCE_DATE_EPOCH=1700000000' "$apple_gate" || apple_gate_bad="$apple_gate_bad source-date-epoch"
-grep -qF 'src/version.rs hash unchanged' "$apple_gate" || apple_gate_bad="$apple_gate_bad non-mutating-version-proof"
+grep -qF 'source scripts/lib.sh' "$apple_gate" || apple_gate_bad="$apple_gate_bad pin-loader-missing"
+grep -qF 'load_pins' "$apple_gate" || apple_gate_bad="$apple_gate_bad pins-not-loaded"
+grep -qF -- '-e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"' "$apple_gate" || apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"
+grep -qF -- '-v "$REPO:/work:ro"' "$apple_gate" || apple_gate_bad="$apple_gate_bad mutable-source-bind"
+grep -qF 'source tree has no generated src/version.rs' "$apple_gate" || apple_gate_bad="$apple_gate_bad non-mutating-version-proof"
 grep -qF 'VCPKG_ROOT="$stub"' "$apple_gate" || apple_gate_bad="$apple_gate_bad apple-vcpkg-stub"
 if [ -n "$apple_gate_bad" ]; then
   echo "  FAIL R-R2/R-A6 Apple companion gate lost required hardening structure:$apple_gate_bad"; rc=1
@@ -7067,11 +7144,16 @@ grep -qE 'installDate[[:space:]]*=[[:space:]]*datetime' res/msi/preprocess.py &&
 grep -qF 'os.environ.get("SOURCE_DATE_EPOCH")' res/msi/preprocess.py          || r_b2msi="$r_b2msi no-SOURCE_DATE_EPOCH-honored"
 # Behavioral proof: with a pinned SDE the date is a FIXED function of SDE, independent of today's clock.
 if command -v python3 >/dev/null 2>&1; then
-  SOURCE_DATE_EPOCH=1700000000 python3 - <<'PY' >/dev/null 2>&1 || r_b2msi="$r_b2msi InstallDate-behaviorally-nondeterministic"
-import sys; sys.path.insert(0, 'res/msi')
+  SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" python3 - <<'PY' >/dev/null 2>&1 || r_b2msi="$r_b2msi InstallDate-behaviorally-nondeterministic"
+import datetime
+import os
+import sys
+sys.path.insert(0, 'res/msi')
 import preprocess
-assert preprocess._reproducible_utc_date('%Y%m%d') == '20231114'   # SDE 1700000000 -> 2023-11-14 UTC (NOT today)
-assert preprocess.default_revision_version() == 28333333
+epoch = int(os.environ['SOURCE_DATE_EPOCH'])
+expected_date = datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime('%Y%m%d')
+assert preprocess._reproducible_utc_date('%Y%m%d') == expected_date
+assert preprocess.default_revision_version() == epoch // 60
 PY
 else
   echo "  note R-B2 .msi date behavioral proof skipped (python3 absent on this host); token guards still enforced"
@@ -7415,6 +7497,7 @@ grep -qF 'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_I
   || android_rust_gate_bad="$android_rust_gate_bad unpinned-builder"
 for contract in '--pull=never' '--network=none' '--read-only' '--cap-drop=ALL' \
   '--security-opt no-new-privileges' '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777' \
+  '--user "$(id -u):$(id -g)"' \
   '-e RUSTDESK_CANARY_OFFLINE=1' '-e APK_MODE=rust-check' '-v "$repo:/src"' \
   '-v "$online:/online:ro"'; do
   grep -qF -- "$contract" scripts/android-rust-check.sh \

@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 
@@ -2460,6 +2461,261 @@ def validate_fork_version(source):
     require_text(source, "release dates must be newest-first", "date ordering")
 
 
+def validate_r_b2_version_metadata(sources):
+    build_script = sources["build_rs"]
+    fork_emitter = extract_between(
+        build_script,
+        "fn emit_fork_version(",
+        "\n}\n\nfn generate_version(",
+        "R-B2 fork-version emitter",
+    )
+    generator = extract_between(
+        build_script,
+        "fn generate_version(",
+        "\n}\n\nfn main()",
+        "R-B2 version-metadata generator",
+    )
+    for text, label in (
+        ('let version = env::var("CARGO_PKG_VERSION")?;', "Cargo package version authority"),
+        ('emit_fork_version(&version)?;', "fallible fork-version generation"),
+        ('generate_version(&version)?;', "fallible version-metadata generation"),
+        ("fn canonical_numeric_version(value: &str) -> bool", "canonical package-version grammar"),
+    ):
+        require_text(build_script, text, label)
+    for text, label in (
+        ('fs::symlink_metadata("FORK_VERSION")?.file_type().is_file()', "regular fork-version file"),
+        ('let contents = fs::read_to_string("FORK_VERSION")?;', "fallible fork-version read"),
+        ("contents.strip_suffix('\\n').ok_or_else", "newline-terminated fork-version input"),
+        ('strip_prefix(&format!("{version}-hardened."))', "fork-version package-base equality"),
+        ('!counter.bytes().all(|byte| byte.is_ascii_digit())', "numeric fork-version counter"),
+        ("counter.starts_with('0')", "positive canonical fork-version counter"),
+        ('cargo:rustc-env=RUSTDESK_FORK_VERSION={fork_version}', "required fork-version compile environment"),
+    ):
+        require_text(fork_emitter, text, label)
+    require_order(
+        fork_emitter,
+        (
+            'fs::symlink_metadata("FORK_VERSION")?.file_type().is_file()',
+            'fs::read_to_string("FORK_VERSION")?',
+            "contents.strip_suffix('\\n').ok_or_else",
+            'strip_prefix(&format!("{version}-hardened."))',
+            '!counter.bytes().all(|byte| byte.is_ascii_digit())',
+            'cargo:rustc-env=RUSTDESK_FORK_VERSION={fork_version}',
+        ),
+        "R-B2 fork-version validation and emission ordering",
+    )
+    for forbidden in ("unwrap_or", "unwrap_or_default", "option_env!"):
+        if forbidden in fork_emitter:
+            raise VerificationError(f"R-B2 fork-version emitter retains fallback: {forbidden}")
+    for text, label in (
+        ('let out_dir = env::var_os("OUT_DIR")', "Cargo OUT_DIR authority"),
+        ('PathBuf::from(out_dir).join("version.rs")', "Cargo OUT_DIR output path"),
+        ('cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH', "epoch rerun authority"),
+        ('!raw.bytes().all(|byte| byte.is_ascii_digit())', "explicit malformed epoch rejection"),
+        ("raw.len() > 1 && raw.starts_with('0')", "explicit noncanonical epoch rejection"),
+        ('raw.parse::<i64>().map_err', "explicit integer-overflow epoch rejection"),
+        (
+            'DateTime::<chrono::Utc>::from_timestamp(epoch, 0).ok_or_else',
+            "explicit chrono-range epoch rejection",
+        ),
+        ('Err(env::VarError::NotPresent) => chrono::Local::now()', "absent developer epoch fallback"),
+        ('Err(error) => return Err(error.into())', "explicit epoch read failure"),
+        ('fs::write(PathBuf::from(out_dir).join("version.rs"), generated)?;', "fallible OUT_DIR write"),
+    ):
+        require_text(generator, text, label)
+    require_order(
+        generator,
+        (
+            'env::var("SOURCE_DATE_EPOCH")',
+            '!raw.bytes().all(|byte| byte.is_ascii_digit())',
+            'raw.parse::<i64>().map_err',
+            'DateTime::<chrono::Utc>::from_timestamp(epoch, 0).ok_or_else',
+            'Err(env::VarError::NotPresent) => chrono::Local::now()',
+            'Err(error) => return Err(error.into())',
+            'fs::write(PathBuf::from(out_dir).join("version.rs"), generated)?;',
+        ),
+        "R-B2 explicit epoch validation and output ordering",
+    )
+    for forbidden in ("unwrap_or", "unwrap_or_default", "./src/version.rs", "src/version.rs"):
+        if forbidden in generator:
+            raise VerificationError(
+                f"R-B2 version-metadata generator retains fallback or source output: {forbidden}"
+            )
+
+    require_exact_count(
+        sources["root_lib"],
+        'include!(concat!(env!("OUT_DIR"), "/version.rs"));',
+        1,
+        "root OUT_DIR version include",
+    )
+    fork_version_branch = extract_between(
+        sources["core_main"],
+        '} else if args[0] == "--fork-version" {',
+        '} else if args[0] == "--build-date" {',
+        "required fork-version executable output",
+    )
+    require_exact_count(
+        fork_version_branch,
+        'println!("{}", env!("RUSTDESK_FORK_VERSION"));',
+        1,
+        "required fork-version compile-time environment",
+    )
+    if 'option_env!("RUSTDESK_FORK_VERSION")' in sources["core_main"]:
+        raise VerificationError("fork-version executable retains optional compile-time metadata")
+    fork_version_code = "\n".join(line.split("//", 1)[0] for line in fork_version_branch.splitlines())
+    if "crate::VERSION" in fork_version_code:
+        raise VerificationError("fork-version executable retains crate::VERSION fallback")
+    if re.search(
+        r"(?:gen_version|src/version[.]rs|File::create\s*\([^\n]*version[.]rs|fs::write\s*\([^\n]*version[.]rs)",
+        sources["hbb_common_lib"],
+    ):
+        raise VerificationError("common source version writer absence: legacy writer remains")
+
+    try:
+        manifest = tomllib.loads(sources["root_cargo"])
+    except tomllib.TOMLDecodeError as exc:
+        raise VerificationError(f"root Cargo manifest cannot be parsed: {exc}") from exc
+    package_version = manifest.get("package", {}).get("version")
+    if not isinstance(package_version, str) or re.fullmatch(
+        r"(?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)", package_version
+    ) is None:
+        raise VerificationError("root Cargo package version is not canonical numeric metadata")
+    build_dependencies = manifest.get("build-dependencies")
+    if not isinstance(build_dependencies, dict):
+        raise VerificationError("root Cargo build dependencies are absent")
+    if build_dependencies.get("chrono") != "0.4":
+        raise VerificationError("root Cargo build dependencies do not pin chrono 0.4")
+    if "hbb_common" in build_dependencies:
+        raise VerificationError("root Cargo build dependencies retain hbb_common")
+
+    verify_run = extract_between(
+        sources["verify"],
+        "RUN=(docker run --rm\n",
+        '\n  -w /work "$IMG")',
+        "verifier Cargo container",
+    )
+    require_exact_count(verify_run, '-v "$PWD:/work:ro"', 1, "verifier read-only Cargo source bind")
+    if '-v "$PWD:/work:rw"' in verify_run or '-v "$PWD:/work"' in verify_run:
+        raise VerificationError("verifier Cargo source bind is mutable")
+    for text, label in (
+        ('"${RUN[@]}" cargo clean -p rustdesk', "version-metadata Cargo clean"),
+        ('"${RUN[@]}" cargo check --features linux-pkg-config --color never', "version-metadata primary Cargo build"),
+        ('if ! "${RUN[@]}" bash scripts/version-metadata-check.sh; then', "version-metadata behavioral checker invocation"),
+    ):
+        require_exact_count(sources["verify"], text, 1, label)
+    require_order(
+        sources["verify"],
+        (
+            '"${RUN[@]}" cargo clean -p rustdesk',
+            '"${RUN[@]}" cargo check --features linux-pkg-config --color never',
+            '"${RUN[@]}" cargo check --features linux-pkg-config,unix-file-copy-paste --color never',
+            'if ! "${RUN[@]}" bash scripts/version-metadata-check.sh; then',
+        ),
+        "clean committed Cargo version-metadata proof ordering",
+    )
+    require_text(
+        sources["verify"],
+        "git check-ignore --no-index -q -- src/version.rs\nversion_ignore_status=$?",
+        "Git ignore matching for source version output",
+    )
+    require_text(
+        sources["verify"],
+        '0) version_output_bad="$version_output_bad ignored-source-output"',
+        "ignored source version output rejection",
+    )
+    require_text(
+        sources["verify"],
+        '*) version_output_bad="$version_output_bad ignore-matcher-failed"',
+        "Git ignore matcher operational failure",
+    )
+    for text, label in (
+        ("find . -path ./target -prune -o -path ./online -prune -o -name build.rs -type f -print0", "complete Cargo build-script scan"),
+        ('[ "$cargo_build_script" = ./build.rs ] && [ "$refs" -eq 1 ]', "sole root version-output reference"),
+        ('[ "$version_ref_count" -eq 1 ]', "unique Cargo version-output reference"),
+    ):
+        require_text(sources["verify"], text, label)
+
+    checker = sources["version_metadata_checker"]
+    if not stat.S_ISREG(sources["version_metadata_checker_mode"]):
+        raise VerificationError("version-metadata behavioral checker is not a regular file")
+    if (sources["version_metadata_checker_mode"] & 0o111) == 0:
+        raise VerificationError("version-metadata behavioral checker is not executable")
+    invalid_epoch = extract_between(
+        checker,
+        "run_invalid_epoch() {",
+        "\n}\n\nrun_invalid_package_version() {",
+        "version-metadata invalid-epoch checker",
+    )
+    invalid_package = extract_between(
+        checker,
+        "run_invalid_package_version() {",
+        "\n}\n\nrun_invalid_fork() {",
+        "version-metadata invalid-package checker",
+    )
+    invalid_fork = extract_between(
+        checker,
+        "run_invalid_fork() {",
+        "\n}\n\nfor build_script in",
+        "version-metadata invalid-fork checker",
+    )
+    for text, label in (
+        ('[ "$PWD" = /work ]', "checker fixed read-only source mount"),
+        ('[ "${CARGO_TARGET_DIR:-}" = /build ]', "checker external Cargo target"),
+        ('cargo metadata --locked --no-deps --format-version 1', "checker Cargo metadata authority"),
+        ('if ("chrono", "build") not in build_dependencies:', "checker chrono build dependency"),
+        ('if ("hbb_common", "build") in build_dependencies:', "checker hbb_common build-dependency rejection"),
+        ("expected_date=\"$(date -u -d \"@$SOURCE_DATE_EPOCH\" '+%Y-%m-%d %H:%M')\"", "checker pinned UTC date"),
+        ("find /build/debug/build -path '/build/debug/build/rustdesk-*/out/version.rs'", "checker Cargo OUT_DIR output discovery"),
+        ("find /build/debug/build -path '/build/debug/build/rustdesk-*/build-script-build'", "checker executable build-script discovery"),
+        ("for value in '' -1 +1 abc 01700000000 9223372036854775808 9223372036854775807; do", "checker malformed and out-of-range epochs"),
+        ('run_invalid_epoch "$build_script" "$value"', "checker invalid-epoch dispatch"),
+        ("for value in '' 1.4 1.04.7 1.4.7-beta; do", "checker invalid package-version fixtures"),
+        ('run_invalid_package_version "$build_script" "$value"', "checker invalid package-version dispatch"),
+        ('run_invalid_fork "$build_script" missing', "checker missing fork-version fixture"),
+        ('run_invalid_fork "$build_script" directory', "checker directory fork-version fixture"),
+        ('run_invalid_fork "$build_script" symlink', "checker symlink fork-version fixture"),
+        ('run_invalid_fork "$build_script" multiline', "checker multiline fork-version fixture"),
+        ('run_invalid_fork "$build_script" wrong-base', "checker mismatched fork-version fixture"),
+        ('run_invalid_fork "$build_script" leading-zero-counter', "checker noncanonical fork-version fixture"),
+        ('[ ! -e /work/src/version.rs ]', "checker source version-output absence"),
+        ("VERSION-METADATA-CHECK: exact OUT_DIR bytes and fail-closed metadata inputs are GREEN", "checker completion marker"),
+    ):
+        require_text(checker, text, label)
+    for text, label in (
+        ('SOURCE_DATE_EPOCH="$value"', "checker explicit epoch injection"),
+        ('if env \\', "checker invalid epoch must fail"),
+        ('[ ! -e "$out/version.rs" ]', "checker invalid epoch no-output postcondition"),
+    ):
+        require_text(invalid_epoch, text, label)
+    for text, label in (
+        ('CARGO_PKG_VERSION="$value"', "checker explicit package-version injection"),
+        ('[ ! -e "$out/version.rs" ]', "checker invalid package-version no-output postcondition"),
+    ):
+        require_text(invalid_package, text, label)
+    for text, label in (
+        ('missing) ;;', "checker missing fork-version setup"),
+        ('directory) mkdir "$root/FORK_VERSION"', "checker non-file fork-version setup"),
+        ('symlink)', "checker symlink fork-version setup"),
+        ('[ ! -e "$root/generated/version.rs" ]', "checker invalid fork-version no-output postcondition"),
+    ):
+        require_text(invalid_fork, text, label)
+
+    if any(
+        line.strip() in ("src/version.rs", "/src/version.rs")
+        for line in sources["gitignore"].splitlines()
+    ):
+        raise VerificationError("Git ignore matching permits src/version.rs")
+
+    require_exact_count(
+        sources["android_rust"],
+        '--user "$(id -u):$(id -g)"',
+        1,
+        "Android target non-root user",
+    )
+    if re.search(r"--user(?:=|\s+)['\"]?0:0", sources["android_rust"]):
+        raise VerificationError("Android target gate runs as root")
+
+
 def validate_docs(sources):
     source = sources["docs"]
     for text in (
@@ -3315,6 +3571,7 @@ def validate_sources(sources):
     validate_target_scripts(sources["debian"], sources["android"], sources["pins"])
     validate_publisher(sources["publish"])
     validate_fork_version(sources["version"])
+    validate_r_b2_version_metadata(sources)
     validate_docs(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_smoke_contract(sources["smoke"])
@@ -8515,6 +8772,162 @@ def run_source_mutations(sources):
             "identity-bound workspace removal",
         ),
         (
+            "build_rs",
+            'let version = env::var("CARGO_PKG_VERSION")?;',
+            'let version = env::var("RUSTDESK_VERSION")?;',
+            "Cargo package version authority",
+        ),
+        (
+            "build_rs",
+            'generate_version(&version)?;',
+            'generate_version("1.4.7")?;',
+            "fallible version-metadata generation",
+        ),
+        (
+            "build_rs",
+            'emit_fork_version(&version)?;',
+            'let _ = emit_fork_version(&version);',
+            "fallible fork-version generation",
+        ),
+        (
+            "build_rs",
+            'fs::symlink_metadata("FORK_VERSION")?.file_type().is_file()',
+            'fs::metadata("FORK_VERSION")?.file_type().is_file()',
+            "regular fork-version file",
+        ),
+        (
+            "build_rs",
+            'let contents = fs::read_to_string("FORK_VERSION")?;',
+            'let contents = fs::read_to_string("FORK_VERSION").unwrap_or_default();',
+            "fallible fork-version read",
+        ),
+        (
+            "build_rs",
+            'strip_prefix(&format!("{version}-hardened."))',
+            'strip_prefix("hardened.")',
+            "fork-version package-base equality",
+        ),
+        (
+            "build_rs",
+            'PathBuf::from(out_dir).join("version.rs")',
+            'PathBuf::from(out_dir).join("../src/version.rs")',
+            "Cargo OUT_DIR output path",
+        ),
+        (
+            "build_rs",
+            '!raw.bytes().all(|byte| byte.is_ascii_digit())',
+            'raw.bytes().all(|byte| byte.is_ascii_digit())',
+            "explicit malformed epoch rejection",
+        ),
+        (
+            "build_rs",
+            'raw.parse::<i64>().map_err',
+            'raw.parse::<i64>().unwrap_or_else',
+            "explicit integer-overflow epoch rejection",
+        ),
+        (
+            "build_rs",
+            'DateTime::<chrono::Utc>::from_timestamp(epoch, 0).ok_or_else',
+            'DateTime::<chrono::Utc>::from_timestamp(epoch, 0).or_else',
+            "explicit chrono-range epoch rejection",
+        ),
+        (
+            "root_lib",
+            'include!(concat!(env!("OUT_DIR"), "/version.rs"));',
+            'include!("version.rs");',
+            "root OUT_DIR version include",
+        ),
+        (
+            "hbb_common_lib",
+            "pub mod compress;\n",
+            "pub fn gen_version() {}\npub mod compress;\n",
+            "common source version writer absence",
+        ),
+        (
+            "root_cargo",
+            '[build-dependencies]\ncc = "1.0"\nchrono = "0.4"',
+            '[build-dependencies]\ncc = "1.0"\nhbb_common = { path = "libs/hbb_common" }',
+            "root Cargo build dependencies",
+        ),
+        (
+            "verify",
+            'RUN=(docker run --rm\n  -v "$PWD:/work:ro"',
+            'RUN=(docker run --rm\n  -v "$PWD:/work:rw"',
+            "verifier read-only Cargo source bind",
+        ),
+        (
+            "core_main",
+            'println!("{}", env!("RUSTDESK_FORK_VERSION"));',
+            'println!("{}", option_env!("RUSTDESK_FORK_VERSION").unwrap_or(crate::VERSION));',
+            "required fork-version compile-time environment",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo clean -p rustdesk',
+            'true # Cargo package clean removed',
+            "version-metadata Cargo clean",
+        ),
+        (
+            "verify",
+            'if ! "${RUN[@]}" bash scripts/version-metadata-check.sh; then',
+            'if ! "${RUN[@]}" true; then',
+            "version-metadata behavioral checker invocation",
+        ),
+        (
+            "verify",
+            "find . -path ./target -prune -o -path ./online -prune -o -name build.rs -type f -print0",
+            "find ./build.rs -type f -print0",
+            "complete Cargo build-script scan",
+        ),
+        (
+            "verify",
+            "git check-ignore --no-index -q -- src/version.rs\nversion_ignore_status=$?",
+            "grep -qF src/version.rs .gitignore\nversion_ignore_status=$?",
+            "Git ignore matching for source version output",
+        ),
+        (
+            "version_metadata_checker",
+            "find /build/debug/build -path '/build/debug/build/rustdesk-*/out/version.rs'",
+            "find /work -path '/work/src/version.rs'",
+            "checker Cargo OUT_DIR output discovery",
+        ),
+        (
+            "version_metadata_checker",
+            "for value in '' -1 +1 abc 01700000000 9223372036854775808 9223372036854775807; do",
+            "for value in '' -1 +1 abc 01700000000; do",
+            "checker malformed and out-of-range epochs",
+        ),
+        (
+            "version_metadata_checker",
+            "for value in '' 1.4 1.04.7 1.4.7-beta; do",
+            "for value in ''; do",
+            "checker invalid package-version fixtures",
+        ),
+        (
+            "version_metadata_checker",
+            'run_invalid_fork "$build_script" missing',
+            'true # missing FORK_VERSION fixture removed',
+            "checker missing fork-version fixture",
+        ),
+        (
+            "version_metadata_checker",
+            'run_invalid_epoch() {\n  local build_script="$1" value="$2" out\n  out="$(mktemp -d "$tmp/epoch.XXXXXXXXXX")"\n  if env \\',
+            'run_invalid_epoch() {\n  local build_script="$1" value="$2" out\n  out="$(mktemp -d "$tmp/epoch.XXXXXXXXXX")"\n  if ! env \\',
+            "checker invalid epoch must fail",
+        ),
+        (
+            "gitignore",
+            ".claude/\n",
+            ".claude/\nsrc/version.rs\n",
+            "Git ignore matching permits src/version.rs",
+        ),
+        (
+            "android_rust",
+            '--user "$(id -u):$(id -g)"',
+            '--user "0:0"',
+            "Android target non-root user",
+        ),
+        (
             "docs",
             "required ext4 publication filesystem",
             "supported publication filesystem",
@@ -8947,6 +9360,15 @@ def main():
             "finalizer": (repo / "scripts/finalize-release-set.py").read_text(encoding="utf-8"),
             "publish": (repo / "scripts/publish-github-release.sh").read_text(encoding="utf-8"),
             "version": (repo / "scripts/fork-version.sh").read_text(encoding="utf-8"),
+            "build_rs": (repo / "build.rs").read_text(encoding="utf-8"),
+            "root_cargo": (repo / "Cargo.toml").read_text(encoding="utf-8"),
+            "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
+            "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
+            "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
+            "gitignore": (repo / ".gitignore").read_text(encoding="utf-8"),
+            "android_rust": (repo / "scripts/android-rust-check.sh").read_text(encoding="utf-8"),
+            "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),
+            "version_metadata_checker_mode": os.lstat(repo / "scripts/version-metadata-check.sh").st_mode,
             "debian": (repo / "scripts/build-debian.sh").read_text(encoding="utf-8"),
             "android": (repo / "scripts/build-android.sh").read_text(encoding="utf-8"),
             "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),

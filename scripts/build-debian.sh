@@ -27,7 +27,7 @@ OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # The §3.2 x64-linux feature set minus hwcodec: CPU-only VP8/VP9.
 FEATURES="--flutter --unix-file-copy-paste"
 # Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
-# NOT a commit date — so the .deb depends only on the source tree; gen_version() honours it. (An
+# NOT a commit date — so the .deb depends only on the source tree; build.rs honours it. (An
 # operator override, `export SOURCE_DATE_EPOCH=...`, still wins.)
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # The pinned .deb build image: the digest-pinned ubuntu:18.04 baseline + the system

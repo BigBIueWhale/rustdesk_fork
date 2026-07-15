@@ -248,8 +248,11 @@ exercise_dirty_probe_cleanup_failure() (
 )
 
 echo "== build-harness fail-loud proofs (guard level) =="
-run_die "SOURCE_DATE_EPOCH unset"          "SOURCE_DATE_EPOCH is unset or not an integer ('')" 'unset SOURCE_DATE_EPOCH; assert_source_date_epoch'
-run_die "SOURCE_DATE_EPOCH non-integer"    "SOURCE_DATE_EPOCH is unset or not an integer ('notanum')" 'export SOURCE_DATE_EPOCH=notanum; assert_source_date_epoch'
+run_die "SOURCE_DATE_EPOCH unset"          "SOURCE_DATE_EPOCH is unset or not a canonical non-negative integer ('')" 'unset SOURCE_DATE_EPOCH; assert_source_date_epoch'
+run_die "SOURCE_DATE_EPOCH non-integer"    "SOURCE_DATE_EPOCH is unset or not a canonical non-negative integer ('notanum')" 'export SOURCE_DATE_EPOCH=notanum; assert_source_date_epoch'
+run_die "SOURCE_DATE_EPOCH negative"       "SOURCE_DATE_EPOCH is unset or not a canonical non-negative integer ('-1')" 'export SOURCE_DATE_EPOCH=-1; assert_source_date_epoch'
+run_die "SOURCE_DATE_EPOCH leading sign"   "SOURCE_DATE_EPOCH is unset or not a canonical non-negative integer ('+1')" 'export SOURCE_DATE_EPOCH=+1; assert_source_date_epoch'
+run_die "SOURCE_DATE_EPOCH non-canonical"  "SOURCE_DATE_EPOCH is unset or not a canonical non-negative integer ('01700000000')" 'export SOURCE_DATE_EPOCH=01700000000; assert_source_date_epoch'
 run_ok  "SOURCE_DATE_EPOCH from the pin"   'export SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"; assert_source_date_epoch'
 run_die "verify_sha256 R-B12 sentinel"     "is pinned to the R-B12 sentinel" 'verify_sha256 /etc/hostname "$SHA_PENDING"'
 run_die "verify_sha256 missing file"       "verify_sha256: file not found: /online/DOES-NOT-EXIST.tar.xz" 'verify_sha256 /online/DOES-NOT-EXIST.tar.xz 00000000000000000000000000000000000000000000000000000000deadbeef'

@@ -589,7 +589,7 @@ function Build {
     # honors -- rustc's link (librustdesk.dll + rustdesk-portable-packer.exe), the flutter runner (rustdesk.exe),
     # and the plugin DLLs. Without it those PE timestamps drift every build, and since the portable packer
     # brotli-compresses the flutter build dir INTO the final .exe, the deltas amplify across ~97% of it (proved:
-    # build#1 4a7dbe4d vs build#2 7e08ce99, identical source). SOURCE_DATE_EPOCH only fixes the gen_version
+    # build#1 4a7dbe4d vs build#2 7e08ce99, identical source). SOURCE_DATE_EPOCH only fixes the build.rs
     # BUILD_DATE string, not PE headers -- both are needed for R-B2.
     $env:LINK = '/Brepro'
     Write-Host "[harness] R-B2: LINK=/Brepro (reproducible PE TimeDateStamp across rustc + flutter MSVC links)"

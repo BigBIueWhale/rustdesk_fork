@@ -215,13 +215,13 @@ verify_online_shas() {
 }
 
 # assert_source_date_epoch: the reproducible-build timestamp MUST be a valid integer that actually
-# propagated. gen_version() (libs/hbb_common/src/lib.rs) and every mtime-stamping step depend on it;
-# if unset or non-numeric it silently bakes a wall-clock date and only a double-build catches it
-# (R-B2). Assert it is a plain integer and LOG the value so it is visible — a broken git-derived
-# fallback cannot pass unnoticed.
+# propagated. build.rs version generation and every mtime-stamping step depend on it; if unset or
+# non-numeric, release builds refuse to proceed before any wall-clock value can enter an artifact
+# (R-B2). Assert its canonical non-negative decimal form and log the value so a malformed caller
+# override cannot pass unnoticed.
 assert_source_date_epoch() {
     case "${SOURCE_DATE_EPOCH:-}" in
-        ''|*[!0-9]*) die "SOURCE_DATE_EPOCH is unset or not an integer ('${SOURCE_DATE_EPOCH:-}') — refusing to build with a non-deterministic timestamp (R-B2). It derives from the release commit's author date; check RUSTDESK_COMMIT (pins.env) resolves in this repo." ;;
+        ''|*[!0-9]*|0[0-9]*) die "SOURCE_DATE_EPOCH is unset or not a canonical non-negative integer ('${SOURCE_DATE_EPOCH:-}') — refusing to build with a non-deterministic timestamp (R-B2). Release entry points supply the explicit SOURCE_DATE_EPOCH_PIN from scripts/pins.env." ;;
     esac
     log "SOURCE_DATE_EPOCH = $SOURCE_DATE_EPOCH (deterministic build timestamp, R-B2)"
 }

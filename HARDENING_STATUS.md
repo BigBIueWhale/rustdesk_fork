@@ -161,8 +161,8 @@ conformant on both sides.
 compile under `linux-pkg-config,unix-file-copy-paste` + the R-A6 done-set
 greps). The full server binary builds and the loopback runtime smoke
 (`scripts/smoke-server.sh`) exercises the one-TCP/zero-UDP surface, fail-closed
-startup, graceful shutdown, and the no-plaintext wire-capture. The reproducible
-release builds hold.
+startup, graceful shutdown, and the no-plaintext wire-capture. Reproducible-build checks passed for the
+historical commits recorded with that validation; this paragraph is not artifact evidence for the current tree.
 
 **R-S19 — capability-confinement class (CWE-863) — status.** requirements.html §7 R-S19 pins
 the class: every peer-triggerable capability MUST key on the session's `AuthConnType`, not on the
@@ -2129,6 +2129,12 @@ native and reproducibility evidence is owned by the exact-commit R-B2 transactio
 runs the release gates, performs cold Debian/Android/Windows double-builds, requires A==B for each target, and
 writes the coherent commit/version/artifact identity to `dist/SHA256SUMS`. Publication is a separate optional
 action through `scripts/publish-github-release.sh`; it is not part of building or verifying `.6`.
+Cargo version metadata is generated from `CARGO_PKG_VERSION` and the canonical pinned `SOURCE_DATE_EPOCH` only
+under Cargo's private `OUT_DIR`. The root and Apple Cargo gates mount source read-only, require
+`src/version.rs` to remain absent, and keep the Android target check non-root. Explicit malformed or out-of-range
+epochs fail the build; only an absent epoch retains wall-clock behavior for ordinary developer builds.
+The same root build script requires one canonical newline-terminated `FORK_VERSION` whose numeric base equals
+`CARGO_PKG_VERSION`; it has no missing, unreadable, empty, malformed, mismatched, or package-version fallback.
 
 **R-B10 Android Gradle execution cache — SOURCE IMPLEMENTED; ARTIFACT PROOF PENDING.**
 The immutable online Gradle seed is projected descriptor-relatively into a fresh non-root owner-only execution
@@ -2166,7 +2172,8 @@ shallow, sparse, and index-masking state, runs strict `git fsck`, and proves mou
 The release transaction creates no Git worktree registration and never reads, prunes, adopts, or removes the invoking
 repository's worktree registry.
 
-Every writable source consumer is enclosed by generated-state resets. The normalizer accepts only a recorded pass-A or
+Every source consumer that necessarily generates Flutter, Gradle, or package state is enclosed by generated-state
+resets; compilation-only consumers mount source read-only. The normalizer accepts only a recorded pass-A or
 pass-B device/inode identity, rejects descendant mounts, requires `fs.protected_hardlinks=1`, and
 re-verifies the digest-pinned Debian image. One no-pull, no-network container has a read-only root,
 no-new-privileges, a nonrecursive bind, and exactly `DAC_READ_SEARCH` plus `CHOWN`. Its helper retains every directory
@@ -2999,7 +3006,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b69acd3fad0d8a2d559c7a79f8ebb9754e5543bf1560dc6050c8a48fff624702  requirements.html
+091e2fe27bdf5279f65b36e1e0eaab8b42cbb2711b085da7cd813954b3e89170  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

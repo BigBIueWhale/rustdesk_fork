@@ -22,6 +22,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
 
+# shellcheck source=scripts/lib.sh
+source scripts/lib.sh
+load_pins
+
 # shellcheck source=scripts/verify-scan.sh
 source scripts/verify-scan.sh
 verify_scan_preflight
@@ -132,14 +136,6 @@ target_triplet(){
 }
 target_env_lower(){ echo "$1" | tr '-' '_'; }
 target_env_upper(){ echo "$1" | tr '[:lower:]-' '[:upper:]_'; }
-version_hash(){
-  if [ -e "$REPO/src/version.rs" ]; then
-    sha256sum "$REPO/src/version.rs" | awk '{print $1}'
-  else
-    echo "__MISSING__"
-  fi
-}
-
 for t in "${SELECTED_APPLE_TARGETS[@]}"; do
   valid_apple_target "$t" || die "unsupported APPLE_TARGETS entry '$t'"
 done
@@ -1705,15 +1701,18 @@ SH
 
 echo "== (4) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
 echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"
-before_version_hash=$(version_hash)
+[ ! -e "$REPO/src/version.rs" ] || {
+  echo "  FAIL non-mutating Apple gate: source tree contains generated src/version.rs"
+  rc=1
+}
 COMMON_CHECK=( docker run --rm
-  -v "$REPO:/work:rw"
+  -v "$REPO:/work:ro"
   -v rd-cargo-cache:/usr/local/cargo/registry
   -v rd-git-cache:/usr/local/cargo/git
   -v rd-apple-target:/build
   -e CARGO_TARGET_DIR=/build
   -e RUSTUP_TOOLCHAIN=1.81.0
-  -e SOURCE_DATE_EPOCH=1700000000
+  -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
   -e PKG_CONFIG_ALLOW_CROSS=1
   -w /work )
 
@@ -1834,13 +1833,11 @@ else
   note "ok  macOS shares immutable target, exclusive bind, bounded admission/control, fail-stop nonblocking owner-reaper handoff, independent owner-runtime drain, post-login relay, and cfg-native second-bind test"
 fi
 
-after_version_hash=$(version_hash)
-if [ "$before_version_hash" != "$after_version_hash" ]; then
-  echo "  FAIL non-mutating Apple gate: src/version.rs changed during cargo check"
-  echo "       before=$before_version_hash after=$after_version_hash"
+if [ -e "$REPO/src/version.rs" ]; then
+  echo "  FAIL non-mutating Apple gate: cargo check created source-tree version output"
   rc=1
 else
-  note "ok  non-mutating source proof: src/version.rs hash unchanged (SOURCE_DATE_EPOCH=1700000000)"
+  note "ok  non-mutating source proof: read-only source tree has no generated src/version.rs"
 fi
 
 echo

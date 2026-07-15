@@ -32,7 +32,9 @@ pub mod ipc;
 // cfg-gated out of the shipped (--flutter) artifacts. Flutter is the sole front-end (§19). The
 // non-flutter, non-cli build is now headless (a core compile/verify target + the `--server` runtime),
 // so it no longer carries a second UI stack, the `sciter-rs` fork dependency, or the .tis tree.
-mod version;
+mod version {
+    include!(concat!(env!("OUT_DIR"), "/version.rs"));
+}
 pub use version::*;
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 mod bridge_generated;

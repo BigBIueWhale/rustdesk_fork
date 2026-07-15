@@ -1,3 +1,5 @@
+use std::{env, error::Error, fs, io, path::PathBuf};
+
 #[cfg(windows)]
 fn build_windows() {
     let file = "src/platform/windows.cc";
@@ -111,40 +113,144 @@ fn r_b10_offline_canary() {
             }
         }
     }
-    println!("cargo:warning=R-B10 canary: build confirmed network-isolated (offline compile stage).");
+    println!(
+        "cargo:warning=R-B10 canary: build confirmed network-isolated (offline compile stage)."
+    );
 }
 
 // The FORK RELEASE identity for `rustdesk --version` / the About dialog (docs/VERSIONING.md). It is
 // DISTINCT from crate::VERSION, which stays the upstream base (the wire/protocol version peers exchange
 // for feature-negotiation, hbb_common::get_version_number). Single source of truth is the repo-root
-// FORK_VERSION file; emit it as a compile-time env so the binary reads it with option_env!. Reading a
+// FORK_VERSION file; emit it as a compile-time env so the binary reads it with env!. Reading a
 // committed, fixed file keeps it deterministic (R-B2); rerun-if-changed rebuilds when the file is
-// bumped. Falls back to the upstream base if the file is somehow absent (a verify.sh gate enforces
-// its presence + format).
-fn emit_fork_version() {
-    println!("cargo:rerun-if-changed=FORK_VERSION");
-    let fork_version = std::fs::read_to_string("FORK_VERSION")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
-    println!("cargo:rustc-env=RUSTDESK_FORK_VERSION={fork_version}");
+// bumped. Missing or malformed release identity aborts the build.
+fn canonical_numeric_version(value: &str) -> bool {
+    let mut components = value.split('.');
+    let canonical_component = |component: &str| {
+        !component.is_empty()
+            && component.bytes().all(|byte| byte.is_ascii_digit())
+            && (component == "0" || !component.starts_with('0'))
+    };
+    matches!(
+        (components.next(), components.next(), components.next(), components.next()),
+        (Some(major), Some(minor), Some(patch), None)
+            if canonical_component(major)
+                && canonical_component(minor)
+                && canonical_component(patch)
+    )
 }
 
-fn main() {
+fn emit_fork_version(version: &str) -> Result<(), Box<dyn Error>> {
+    println!("cargo:rerun-if-changed=FORK_VERSION");
+    if !canonical_numeric_version(version) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "CARGO_PKG_VERSION is not a canonical numeric version",
+        )
+        .into());
+    }
+    if !fs::symlink_metadata("FORK_VERSION")?.file_type().is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "FORK_VERSION must be a regular file",
+        )
+        .into());
+    }
+    let contents = fs::read_to_string("FORK_VERSION")?;
+    let fork_version = contents.strip_suffix('\n').ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "FORK_VERSION must contain exactly one newline-terminated line",
+        )
+    })?;
+    if fork_version.is_empty() || fork_version.contains('\r') || fork_version.contains('\n') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "FORK_VERSION must contain exactly one newline-terminated line",
+        )
+        .into());
+    }
+    let counter = fork_version
+        .strip_prefix(&format!("{version}-hardened."))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "FORK_VERSION base must equal CARGO_PKG_VERSION",
+            )
+        })?;
+    if counter.is_empty()
+        || !counter.bytes().all(|byte| byte.is_ascii_digit())
+        || counter.starts_with('0')
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "FORK_VERSION must end in a positive canonical hardened counter",
+        )
+        .into());
+    }
+    println!("cargo:rustc-env=RUSTDESK_FORK_VERSION={fork_version}");
+    Ok(())
+}
+
+fn generate_version(version: &str) -> Result<(), Box<dyn Error>> {
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
+
+    let out_dir = env::var_os("OUT_DIR")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "OUT_DIR is not set"))?;
+    let build_date = match env::var("SOURCE_DATE_EPOCH") {
+        Ok(raw) => {
+            if raw.is_empty()
+                || !raw.bytes().all(|byte| byte.is_ascii_digit())
+                || (raw.len() > 1 && raw.starts_with('0'))
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "SOURCE_DATE_EPOCH is not a canonical non-negative integer",
+                )
+                .into());
+            }
+            let epoch = raw.parse::<i64>().map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("SOURCE_DATE_EPOCH is outside the supported integer range: {error}"),
+                )
+            })?;
+            let date =
+                chrono::DateTime::<chrono::Utc>::from_timestamp(epoch, 0).ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "SOURCE_DATE_EPOCH is outside chrono's supported range",
+                    )
+                })?;
+            date.format("%Y-%m-%d %H:%M").to_string()
+        }
+        Err(env::VarError::NotPresent) => chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+        Err(error) => return Err(error.into()),
+    };
+    let generated = format!(
+        "pub const VERSION: &str = {version:?};\n#[allow(dead_code)]\npub const BUILD_DATE: &str = {build_date:?};\n"
+    );
+    fs::write(PathBuf::from(out_dir).join("version.rs"), generated)?;
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
     r_b10_offline_canary();
-    emit_fork_version();
-    hbb_common::gen_version();
+    let version = env::var("CARGO_PKG_VERSION")?;
+    emit_fork_version(&version)?;
+    generate_version(&version)?;
     install_android_deps();
     #[cfg(all(windows, feature = "inline"))]
     build_manifest();
     #[cfg(windows)]
     build_windows();
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS")?;
     if target_os == "macos" {
         #[cfg(target_os = "macos")]
         build_mac();
         println!("cargo:rustc-link-lib=framework=ApplicationServices");
     }
     println!("cargo:rerun-if-changed=build.rs");
+    Ok(())
 }

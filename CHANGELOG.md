@@ -300,9 +300,10 @@ A hardened, **direct-IP-only** RustDesk, built on upstream RustDesk 1.4.7.
   remote input is best-effort within Android's limits — the phone is viewer-dominant in practice.
 
 ### Build + release
-- **Reproducible (R-B2).** Debian, Android, and Windows each cold double-build byte-for-byte identically
-  (`SOURCE_DATE_EPOCH` pinned); `dist/SHA256SUMS` records the exact commit. Apple targets are
-  source-conformance-checked (not built here).
+- **Reproducible (R-B2).** A release set is accepted only after Debian, Android, Windows EXE, and Windows
+  MSI each cold double-build byte-for-byte identically with the pinned `SOURCE_DATE_EPOCH`. Cargo generates
+  version metadata only under `OUT_DIR`, and compilation-only verification mounts source read-only.
+  `dist/SHA256SUMS` records the exact commit. Apple targets are source-conformance-checked (not built here).
 - **The commit is the source of truth.** A release is identified by its build commit; the fork version is
   the human-readable name. `rustdesk --version` reports the app version (`1.4.7`); `rustdesk --fork-version`
   reports the fork release.

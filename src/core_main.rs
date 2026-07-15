@@ -222,10 +222,7 @@ pub fn core_main() -> Option<Vec<String>> {
             // The fork RELEASE identity (docs/VERSIONING.md): <app-version>-hardened.<N>, embedded at
             // build time from the repo-root FORK_VERSION file (build.rs -> RUSTDESK_FORK_VERSION).
             // crate::VERSION (--version, above) stays the upstream base for tooling + wire negotiation.
-            println!(
-                "{}",
-                option_env!("RUSTDESK_FORK_VERSION").unwrap_or(crate::VERSION)
-            );
+            println!("{}", env!("RUSTDESK_FORK_VERSION"));
             return None;
         } else if args[0] == "--build-date" {
             println!("{}", crate::BUILD_DATE);

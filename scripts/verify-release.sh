@@ -29,6 +29,7 @@ GATES=(
   "verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"
   "online-input-provenance.py --self-test|immutable online-input snapshot mutation suite"
   "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics"
+  "android-rust-check.sh|pinned offline aarch64 Android Rust check"
   "smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
   "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
@@ -65,7 +66,7 @@ if [ "$fail" = 0 ]; then
   echo "VERIFY-RELEASE: ALL GATES GREEN"
   echo "NOTE: these are SOURCE gates (compile + flutter analyze + KATs + greps + advisories) — they do"
   echo "      NOT build the shipped artifacts. A project-specific Gradle / CMake / msbuild / Android"
-  echo "      resource-theme or pubspec break can pass here yet fail the platform build (analyze != build)."
+  echo "      resource-theme break can pass here yet fail the platform build. Android Rust is target-checked."
   echo "      For buildability + reproducible A==B artifacts + a SHA256SUMS manifest: scripts/build-release.sh"
 else
   echo "VERIFY-RELEASE: ONE OR MORE GATES FAILED"

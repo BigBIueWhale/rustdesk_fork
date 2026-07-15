@@ -1322,6 +1322,11 @@ pub fn session_add(
     is_shared_password: bool,
     conn_token: Option<String>,
 ) -> ResultType<FlutterSession> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    if is_port_forward || is_rdp {
+        bail!("Port forwarding is unavailable on mobile");
+    }
+
     let conn_type = if is_file_transfer {
         ConnType::FILE_TRANSFER
     } else if is_view_camera {

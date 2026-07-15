@@ -3294,7 +3294,6 @@ class FFI {
     // If tabWindowId != null, this session is a "tab -> window" one.
     // Else this session is a new one.
     if (isNewPeer) {
-      // ignore: unused_local_variable
       final addRes = bind.sessionAddSync(
         sessionId: sessionId,
         id: id,
@@ -3310,6 +3309,10 @@ class FFI {
         isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,
       );
+      if (addRes != '') {
+        debugPrint('Failed to add session to $id, $addRes');
+        return;
+      }
     } else if (display != null) {
       if (displays == null) {
         debugPrint(

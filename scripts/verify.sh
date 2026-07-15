@@ -404,6 +404,38 @@ fi
 if [ -n "$r_s11" ]; then echo "  FAIL R-S11/R-S11g bounded main IPC:$r_s11"; rc=1; else
   echo "  ok  R-S11/R-S11g main IPC is a capped, closed, one-request transaction protocol with owned tasks, typed responses, receiver-scoped mutations, authenticated clients, and a separate SYSTEM-only Windows service-control endpoint"; fi
 
+echo "== (3b-ii-a) mobile has no desktop main-IPC or port-forward authority (R-S11/R-T17) =="
+mobile_authority_bad=
+grep -B1 -F 'pub async fn get_config(name: &str)' src/ipc.rs \
+  | grep -Fq '#[tokio::main(flavor = "current_thread")]' \
+  || mobile_authority_bad="$mobile_authority_bad main-config-client-shape"
+grep -B2 -F 'pub async fn get_config(name: &str)' src/ipc.rs \
+  | grep -Fq '#[cfg(not(any(target_os = "android", target_os = "ios")))]' \
+  || mobile_authority_bad="$mobile_authority_bad main-config-client-not-desktop-only"
+if grep -qE '\bcm_get_config\b|\bcmGetConfig\b' src/flutter_ffi.rs flutter/lib/common.dart \
+  flutter/lib/main.dart flutter/lib/web/bridge.dart; then
+  mobile_authority_bad="$mobile_authority_bad generic-cm-config-bus"
+fi
+grep -qF 'pub fn cm_should_hide() -> ResultType<bool>' src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad typed-cm-visibility-missing"
+grep -qF 'crate::ipc::get_config("hide_cm")?' src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad desktop-cm-visibility-not-fixed-key"
+grep -qF 'crate::common::is_custom_client() && hbb_common::password_security::hide_cm()' src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad mobile-cm-visibility-not-local"
+grep -qF 'if is_port_forward || is_rdp {' src/flutter.rs \
+  || mobile_authority_bad="$mobile_authority_bad mobile-session-constructor-not-rejected"
+grep -qF '"Port forwarding is unavailable on mobile"' src/flutter.rs src/flutter_ffi.rs \
+  || mobile_authority_bad="$mobile_authority_bad mobile-port-forward-error-missing"
+grep -qF 'command == '"'"'--port-forward'"'"' || command == '"'"'--rdp'"'"'' flutter/lib/common.dart \
+  || mobile_authority_bad="$mobile_authority_bad mobile-deep-link-not-rejected"
+grep -qF '!isDesktop && (isTcpTunneling || isRDP)' flutter/lib/common.dart \
+  || mobile_authority_bad="$mobile_authority_bad mobile-connect-route-not-rejected"
+if [ -n "$mobile_authority_bad" ]; then
+  echo "  FAIL R-S11/R-T17: mobile desktop-authority boundary regressed:$mobile_authority_bad"; rc=1
+else
+  echo "  ok  R-S11/R-T17 mobile state is direct and typed; desktop main IPC, port-forward/RDP construction, commands, and routes are absent or explicitly rejected"
+fi
+
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
 r_s11b3f=
@@ -6525,6 +6557,7 @@ release_gate=scripts/verify-release.sh
 grep -qF 'GATES=(' "$release_gate" || release_gate_bad="$release_gate_bad no-gate-array"
 grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"' "$release_gate" || release_gate_bad="$release_gate_bad missing-verify"
 grep -qF '"verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"' "$release_gate" || release_gate_bad="$release_gate_bad missing-windows-harness"
+grep -qF '"android-rust-check.sh|pinned offline aarch64 Android Rust check"' "$release_gate" || release_gate_bad="$release_gate_bad missing-android-rust-check"
 grep -qF '"smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
@@ -6542,6 +6575,7 @@ expected = [
     "verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites",
     "online-input-provenance.py --self-test|immutable online-input snapshot mutation suite",
     "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics",
+    "android-rust-check.sh|pinned offline aarch64 Android Rust check",
     "smoke-server.sh|runtime: one-TCP/zero-UDP, fail-closed, keying, provisioning, full session",
     "dart-verify.sh|flutter analyze lib/ (zero errors)",
     "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin",
@@ -6563,10 +6597,10 @@ for line in lines[start + 1:end]:
         raise SystemExit("malformed release GATES entry: {!r}".format(line))
     observed.append(match.group(1))
 if observed != expected:
-    raise SystemExit("release GATES array is not the exact ordered eleven-gate contract")
+    raise SystemExit("release GATES array is not the exact ordered twelve-gate contract")
 PY
 then
-  release_gate_bad="$release_gate_bad non-exact-eleven-gate-bundle"
+  release_gate_bad="$release_gate_bad non-exact-twelve-gate-bundle"
 fi
 grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
 grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"
@@ -7360,6 +7394,33 @@ if [ -n "$android_gradle_bad" ]; then
   echo "  FAIL R-B9/R-B10: Android Gradle cache/offline authority regressed:$android_gradle_bad"; rc=1
 else
   echo "  ok  R-B9/R-B10 Android Gradle cache: immutable seed -> fresh owner-only projection; tracked init authority sets the real offline start parameter; pinned-image behavioral and online-snapshot mutation suites are release gates"
+fi
+
+echo "== (6c-a3) Android Rust target check is a mandatory pinned offline release gate (R-B9/R-B10) =="
+android_rust_gate_bad=
+git ls-files --error-unmatch scripts/android-rust-check.sh >/dev/null 2>&1 \
+  || android_rust_gate_bad="$android_rust_gate_bad untracked-gate"
+grep -qF 'android-rust-check.sh|pinned offline aarch64 Android Rust check' scripts/verify-release.sh \
+  || android_rust_gate_bad="$android_rust_gate_bad absent-from-release"
+grep -qF 'require_online_complete' scripts/android-rust-check.sh \
+  || android_rust_gate_bad="$android_rust_gate_bad unauthenticated-online-closure"
+grep -qF 'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"' scripts/android-rust-check.sh \
+  || android_rust_gate_bad="$android_rust_gate_bad unpinned-builder"
+for contract in '--pull=never' '--network=none' '--read-only' '--cap-drop=ALL' \
+  '--security-opt no-new-privileges' '--tmpfs /tmp:rw,nosuid,nodev,mode=1777' \
+  '-e RUSTDESK_CANARY_OFFLINE=1' '-e APK_MODE=rust-check' '-v "$repo:/src"' \
+  '-v "$online:/online:ro"'; do
+  grep -qF -- "$contract" scripts/android-rust-check.sh \
+    || android_rust_gate_bad="$android_rust_gate_bad missing:$contract"
+done
+grep -qF 'cargo ndk --platform 21 --target aarch64-linux-android' scripts/android-apk-build.sh \
+  || android_rust_gate_bad="$android_rust_gate_bad wrong-target"
+grep -qF 'check --locked --release --features flutter --lib' scripts/android-apk-build.sh \
+  || android_rust_gate_bad="$android_rust_gate_bad wrong-cargo-contract"
+if [ -n "$android_rust_gate_bad" ]; then
+  echo "  FAIL R-B9/R-B10: Android Rust release compile gate regressed:$android_rust_gate_bad"; rc=1
+else
+  echo "  ok  R-B9/R-B10 release verification generates the real bridge and target-checks the pinned aarch64 Android Rust library offline"
 fi
 
 # (6c-i) R-B10 the offline-build network CANARY (MUST — "proven, not trusted"): the spec mandates a

@@ -3064,10 +3064,13 @@ pub enum Data {
     RemoveFile((i32, String, i32, bool)),
     CreateDir((i32, String, bool)),
     CancelJob(i32),
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     RemovePortForward(i32),
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     AddPortForward((i32, String, i32)),
     #[cfg(all(target_os = "windows", not(feature = "flutter")))]
     ToggleClipboardFile,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     NewRDP,
     SetConfirmOverrideFile((i32, i32, bool, bool, bool)),
     AddJob((i32, JobType, String, String, i32, bool, bool)),

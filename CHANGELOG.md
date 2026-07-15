@@ -109,6 +109,13 @@ release notes.
   bundle-relative RUNPATHs.
 
 ### Verification and release discipline
+- Made the desktop main-IPC protocol compile-time absent on mobile and replaced the inherited generic
+  mobile config crossing with one typed connection-manager visibility query. Android input validation
+  now compiles against the shared protocol constants. Mobile port-forward/RDP construction, deep links,
+  connect routing, and commands are rejected explicitly without creating a session, changing peer
+  configuration, or enqueueing an unconsumed command.
+- Added a mandatory pinned, offline Android Rust release gate that generates the real Flutter bridge and
+  checks the <code>aarch64-linux-android</code> release library with the APK build's exact toolchain and features.
 - Projected the immutable Android Gradle seed into a fresh non-root owner-only execution cache, rejected ambient
   init authority and unsafe topology, and replaced the ignored `org.gradle.offline` property with a tracked init
   script that sets Gradle's actual offline start parameter. Pinned Gradle execution and online-snapshot mutation

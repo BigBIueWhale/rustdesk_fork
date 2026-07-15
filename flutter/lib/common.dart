@@ -2263,6 +2263,10 @@ bool handleUriLink({List<String>? cmdArgs, Uri? uri, String? uriString}) {
     }
   }
   if (type != null && id != null) {
+    if (!isDesktop &&
+        (type == UriLinkType.portForward || type == UriLinkType.rdp)) {
+      return false;
+    }
     if (hasRelayRouteSyntax(id!)) {
       return false;
     }
@@ -2419,6 +2423,9 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   // (The explicit deep-link-connect confirmation gate is layered on top; see R-X6 / handleUriLink.)
 
   if (isMobile && id != null) {
+    if (command == '--port-forward' || command == '--rdp') {
+      return null;
+    }
     final cid = id;
     late final VoidCallback doConnect;
     if (command == '--file-transfer') {
@@ -2496,6 +2503,10 @@ connect(BuildContext context, String id,
     String? connToken,
     bool? isSharedPassword}) async {
   if (id == '') return;
+  if (!isDesktop && (isTcpTunneling || isRDP)) {
+    showToast(translate('Unsupported'));
+    return;
+  }
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
       if (Get.isRegistered<IDTextEditingController>()) {

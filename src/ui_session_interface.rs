@@ -24,11 +24,12 @@ use hbb_common::{
     },
     whoami, Stream,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::ResultType;
 use rdev::{Event, EventType::*, KeyCode};
 #[cfg(all(feature = "vram", feature = "flutter"))]
 use std::ffi::c_void;
 use std::{
-    collections::HashMap,
     ops::{Deref, DerefMut},
     str::FromStr,
     sync::{
@@ -42,9 +43,11 @@ use uuid::Uuid;
 use crate::client::io_loop::Remote;
 use crate::client::{
     check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, input_os_password,
-    send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler, PortForwardTarget,
-    QualityStatus, KEY_MAP,
+    send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus,
+    KEY_MAP,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::client::PortForwardTarget;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::GrabState;
 use crate::keyboard;
@@ -55,6 +58,8 @@ use crate::port_forward::{
     PortForwardControlReceiver, PortForwardMappingPermit, RdpLaunchRequest,
     MAX_OWNED_PORT_FORWARD_MAPPINGS,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use std::collections::HashMap;
 use crate::{client::Data, client::Interface};
 
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
@@ -586,7 +591,8 @@ impl<T: InvokeUiSession> Session<T> {
         crate::platform::is_xfce()
     }
 
-    pub fn remove_port_forward(&self, port: i32) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn remove_port_forward(&self, port: i32) -> ResultType<()> {
         let mut config = self.load_config();
         config.port_forwards = config
             .port_forwards
@@ -595,29 +601,30 @@ impl<T: InvokeUiSession> Session<T> {
             .collect();
         self.save_config(config);
         self.send(Data::RemovePortForward(port));
+        Ok(())
     }
 
-    pub fn add_port_forward(&self, port: i32, remote_host: String, remote_port: i32) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn add_port_forward(
+        &self,
+        port: i32,
+        remote_host: String,
+        remote_port: i32,
+    ) -> ResultType<()> {
         let mut config = self.load_config();
-        if config
-            .port_forwards
-            .iter()
-            .filter(|x| x.0 == port)
-            .next()
-            .is_some()
-        {
-            return;
+        if config.port_forwards.iter().any(|x| x.0 == port) {
+            return Ok(());
         }
         if config.port_forwards.len() >= MAX_OWNED_PORT_FORWARD_MAPPINGS {
-            self.on_error(&format!(
+            return Err(hbb_common::anyhow::anyhow!(
                 "Port-forward mapping limit ({MAX_OWNED_PORT_FORWARD_MAPPINGS}) reached"
             ));
-            return;
         }
         let pf = (port, remote_host, remote_port);
         config.port_forwards.push(pf.clone());
         self.save_config(config);
         self.send(Data::AddPortForward(pf));
+        Ok(())
     }
 
     pub fn get_option(&self, k: String) -> String {
@@ -1366,6 +1373,7 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::Login((password, remember)));
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn new_rdp(&self) {
         self.send(Data::NewRDP);
     }

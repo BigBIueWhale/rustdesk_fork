@@ -5,7 +5,6 @@ use crate::clipboard::try_empty_clipboard_files;
 use crate::clipboard::{update_clipboard, ClipboardSide};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use crate::clipboard_file::*;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::input::{MOUSE_TYPE_MASK, MOUSE_TYPE_TRACKPAD, MOUSE_TYPE_WHEEL};
 #[cfg(target_os = "android")]
 use crate::keyboard::client::map_key_to_control_key;
@@ -1247,7 +1246,7 @@ fn apply_block_input(blocked: bool) -> (bool, String) {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn apply_block_input(blocked: bool) -> (bool, String) {
     crate::platform::block_input(blocked)
 }

@@ -2655,8 +2655,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   still runs outside the default fast `verify.sh` loop because it needs the `rd-apple-check`
   image plus Apple target cross-checks, but it is now part of the release source-gate bundle:
   `scripts/verify-release.sh` runs it with `verify.sh`, the Windows harness self-test, the online-input mutation
-  suite, the Android Gradle execution-cache gate, `smoke-server.sh`, `dart-verify.sh`, `native-codec-watch.sh`,
-  `audit.sh`, `dart-audit.sh`, and `test-build-faillo.sh`. The fast verifier asserts that exact ordered eleven-gate
+  suite, the Android Gradle execution-cache gate, the Android Rust target check, `smoke-server.sh`,
+  `dart-verify.sh`, `native-codec-watch.sh`, `audit.sh`, `dart-audit.sh`, and `test-build-faillo.sh`. The fast verifier asserts that exact ordered twelve-gate
   bundle, including the Apple gate and the release-gate ledger/requirements
   wording, so future Apple-source drift fails release verification rather than passing a
   "complete/proven" milestone silently.
@@ -2999,7 +2999,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-225eb08ea3ad98159fd2490047fa37e5f63b56af3a0e89fb931d75f49e3f03d1  requirements.html
+b69acd3fad0d8a2d559c7a79f8ebb9754e5543bf1560dc6050c8a48fff624702  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #129. It is a

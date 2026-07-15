@@ -3685,16 +3685,19 @@ impl MainIpcAuthority {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]
 fn current_process_allows_user_owned_permanent_password_write() -> bool {
     MainIpcAuthority::for_current_process().allows_main_channel_user_owned_password_write()
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]
 fn current_process_allows_main_channel_options_write() -> bool {
     MainIpcAuthority::for_current_process().allows_main_channel_options_write()
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]
 fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool {
     MainIpcAuthority::for_current_process().allows_main_channel_password_storage_sync()
@@ -5691,11 +5694,13 @@ where
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 pub async fn get_config(name: &str) -> ResultType<Option<String>> {
     get_config_async(name, 1_000).await
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<String>> {
     let Some(key) = main_config_key(name) else {
         return Ok(None);
@@ -5709,6 +5714,7 @@ async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<Stri
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn main_config_key(name: &str) -> Option<MainConfigKey> {
     match name {
         "id" => Some(MainConfigKey::Id),
@@ -5727,6 +5733,7 @@ fn main_config_key(name: &str) -> Option<MainConfigKey> {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn connect_user_owned_password_main(
     ms_timeout: u64,
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
@@ -5979,6 +5986,7 @@ async fn complete_main_password_mutation(
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 async fn user_owned_permanent_password_is_writable() -> ResultType<bool> {
     let ms_timeout = 1_000;
@@ -5998,6 +6006,7 @@ async fn user_owned_permanent_password_is_writable() -> ResultType<bool> {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn set_voice_call_input_device_async(value: String) -> ResultType<()> {
     match main_ipc_request(MainIpcRequest::SetVoiceCallInput(value), 1_000).await? {
         MainIpcResponse::VoiceCallInputSet(IpcMutationResult::Applied) => Ok(()),
@@ -6011,11 +6020,13 @@ async fn set_voice_call_input_device_async(value: String) -> ResultType<()> {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_voice_call_input_device(value: String) -> ResultType<()> {
     set_voice_call_input_device_async(value).await
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn apply_permanent_password_storage_and_salt_payload(payload: Option<&str>) -> ResultType<()> {
     let Some(payload) = payload else {
         return Ok(());
@@ -6028,11 +6039,13 @@ fn apply_permanent_password_storage_and_salt_payload(payload: Option<&str>) -> R
     Ok(())
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn sync_permanent_password_storage_from_daemon() -> ResultType<()> {
     let v = get_config("permanent-password-storage-and-salt")?;
     apply_permanent_password_storage_and_salt_payload(v.as_deref())
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn sync_permanent_password_storage_from_daemon_async() -> ResultType<()> {
     let ms_timeout = 1_000;
     let v = get_config_async("permanent-password-storage-and-salt", ms_timeout).await?;
@@ -6061,6 +6074,7 @@ pub async fn refresh_macos_service_owned_permanent_password_snapshot(
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn is_permanent_password_set() -> bool {
     match get_config("permanent-password-set") {
         Ok(Some(v)) => {
@@ -6089,6 +6103,7 @@ pub fn get_direct_listener_bound() -> bool {
     matches!(get_config("direct-listener-bound"), Ok(Some(v)) if v.trim() == "true")
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn is_permanent_password_preset() -> bool {
     if let Ok(Some(v)) = get_config("permanent-password-is-preset") {
         let v = v.trim();
@@ -6097,20 +6112,14 @@ pub fn is_permanent_password_preset() -> bool {
     false
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn can_set_user_owned_permanent_password() -> bool {
     matches!(user_owned_permanent_password_is_writable(), Ok(true))
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_user_owned_permanent_password(v: String) -> ResultType<()> {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        return set_user_owned_permanent_password_sensitive(SensitivePassword::new(v));
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        let _ = v;
-        bail!("Changing a user-owned permanent password is unavailable on mobile")
-    }
+    set_user_owned_permanent_password_sensitive(SensitivePassword::new(v))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -6146,6 +6155,7 @@ pub fn can_request_service_owned_unattended_password_change() -> bool {
     false
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn can_set_permanent_password() -> bool {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     if can_request_service_owned_unattended_password_change() {
@@ -6154,16 +6164,9 @@ pub fn can_set_permanent_password() -> bool {
     can_set_user_owned_permanent_password()
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_permanent_password(v: String) -> ResultType<()> {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        return set_permanent_password_sensitive(SensitivePassword::new(v));
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        let _ = v;
-        bail!("Changing a permanent password is unavailable on mobile")
-    }
+    set_permanent_password_sensitive(SensitivePassword::new(v))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -6198,6 +6201,7 @@ async fn set_user_owned_permanent_password_with_ack_sensitive(
     set_user_owned_permanent_password_with_ack_async(v).await
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn set_user_owned_permanent_password_with_ack_async(
     v: MainPasswordMutationValue,
 ) -> ResultType<bool> {
@@ -6494,6 +6498,7 @@ pub(crate) async fn request_windows_service_owned_sas() -> ResultType<()> {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_id() -> String {
     if let Ok(Some(v)) = get_config("id") {
         v
@@ -6502,11 +6507,13 @@ pub fn get_id() -> String {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn get_options_(ms_timeout: u64) -> ResultType<HashMap<String, String>> {
     let snapshot = get_main_status_snapshot(ms_timeout).await?;
     snapshot.options.into_map()
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn get_main_status_snapshot(ms_timeout: u64) -> ResultType<MainStatusSnapshot> {
     match main_ipc_request(MainIpcRequest::StatusSnapshot, ms_timeout).await? {
         MainIpcResponse::StatusSnapshot(snapshot) => Ok(snapshot),
@@ -6530,15 +6537,18 @@ pub async fn get_controlled_session_count(ms_timeout: u64) -> ResultType<usize> 
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn get_options_async() -> HashMap<String, String> {
     get_options_(1000).await.unwrap_or(Config::get_options())
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 pub async fn get_options() -> HashMap<String, String> {
     get_options_async().await
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn get_option_async(key: &str) -> String {
     if let Some(v) = get_options_async().await.get(key) {
         v.clone()
@@ -6547,6 +6557,7 @@ pub async fn get_option_async(key: &str) -> String {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_option(key: &str, value: &str) {
     let mut options = get_options();
     if value.is_empty() {
@@ -6559,6 +6570,7 @@ pub fn set_option(key: &str, value: &str) {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
     let wire_options = MainStatusOptions::from_map(value.clone())?;

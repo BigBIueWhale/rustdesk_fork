@@ -1461,21 +1461,58 @@ pub fn session_add_port_forward(
     local_port: i32,
     remote_host: String,
     remote_port: i32,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.add_port_forward(local_port, remote_host, remote_port);
+) -> ResultType<()> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (session_id, local_port, remote_host, remote_port);
+        return Err(hbb_common::anyhow::anyhow!(
+            "Port forwarding is unavailable on mobile"
+        ));
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+            session.add_port_forward(local_port, remote_host, remote_port)
+        } else {
+            Err(hbb_common::anyhow::anyhow!("Unknown session"))
+        }
     }
 }
 
-pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.remove_port_forward(local_port);
+pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) -> ResultType<()> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (session_id, local_port);
+        return Err(hbb_common::anyhow::anyhow!(
+            "Port forwarding is unavailable on mobile"
+        ));
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+            session.remove_port_forward(local_port)
+        } else {
+            Err(hbb_common::anyhow::anyhow!("Unknown session"))
+        }
     }
 }
 
-pub fn session_new_rdp(session_id: SessionID) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.new_rdp();
+pub fn session_new_rdp(session_id: SessionID) -> ResultType<()> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = session_id;
+        return Err(hbb_common::anyhow::anyhow!(
+            "RDP forwarding is unavailable on mobile"
+        ));
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        if let Some(session) = sessions::get_session_by_session_id(&session_id) {
+            session.new_rdp();
+            Ok(())
+        } else {
+            Err(hbb_common::anyhow::anyhow!("Unknown session"))
+        }
     }
 }
 
@@ -1882,18 +1919,16 @@ pub fn cm_get_click_time() -> f64 {
     return 0 as _;
 }
 
-pub fn cm_get_config(name: String) -> String {
-    #[cfg(not(target_os = "ios"))]
+pub fn cm_should_hide() -> ResultType<bool> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        if let Ok(Some(v)) = crate::ipc::get_config(&name) {
-            v
-        } else {
-            "".to_string()
-        }
+        return Ok(crate::ipc::get_config("hide_cm")?
+            .as_deref()
+            .is_some_and(|value| value == "true"));
     }
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        "".to_string()
+        Ok(crate::common::is_custom_client() && hbb_common::password_security::hide_cm())
     }
 }
 

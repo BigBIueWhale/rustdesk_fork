@@ -1194,8 +1194,8 @@ class RustdeskImpl {
     throw UnimplementedError("cmGetClickTime");
   }
 
-  Future<String> cmGetConfig({required String name, dynamic hint}) {
-    throw UnimplementedError("cmGetConfig");
+  Future<bool> cmShouldHide({dynamic hint}) {
+    throw UnimplementedError("cmShouldHide");
   }
 
   Future<String> mainGetBuildDate({dynamic hint}) {

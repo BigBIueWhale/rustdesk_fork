@@ -2665,11 +2665,39 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     pre-pidfd runtime exercise, and SysV/OpenRC/runit/manual/non-systemd packaging proof. The parent item and upcoming
     release therefore remain **OPEN**.
 
+  - **R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior — SOURCE/FOCUSED BEHAVIOR
+    IMPLEMENTED 2026-07-16; PARENT ITEM REMAINS OPEN.** The pinned Linux test now crosses the previously separate
+    parent-death and durable-record paths without using `/run/rustdesk`, root, service IPC, or any pre-existing PID.
+    A mode-0700 private runtime uses the same close-on-exec, nonblocking exclusive `flock` helper as production. One
+    test supervisor launches a post-exec BusyBox `yes` fixture with exactly three kernel-visible argv elements
+    (`yes`, `--server`, `--service-owned-server`), the real generation environment, and the production
+    no-new-privileges/parent-death pre-exec hook; it then publishes the production record. A concurrent contender
+    must fail the live lease. The test kills that supervisor, observes the exact child exit on its retained pidfd,
+    then starts a fresh test process which must acquire the released lease, run the production recovery path, and
+    remove only the exited exact record. BusyBox is a dev-check-image fixture only and is not a runtime or release
+    dependency.
+
+    The same test then behavior-checks the recovery decision in both directions. A live process with exact service
+    argv and generation is left alive and its record preserved when the structurally valid evidence carries a
+    different start time (the PID-reuse shape), a different executable inode despite identical argv, or a different
+    generation; a malformed-role record is likewise preserved byte-for-byte and signals nothing. Finally, the
+    unmodified exact record authorizes pidfd-bound recovery of that one live fixture and exact record removal. The
+    behavior follows the Linux `PR_SET_PDEATHSIG`, `flock(2)`, `pidfd_open(2)`, `pidfd_send_signal(2)`,
+    `proc_pid_stat(5)`, and `proc_pid_exe(5)` contracts. `scripts/verify.sh` runs the test and source-gates its lease
+    conflict, post-exec crash, fresh-process recovery, hostile-evidence survival, and exact-match positive branch.
+    The production syscall shape is unchanged and the settled lexical unsafe inventory remains unchanged.
+
+    This is still not installed lifecycle or release evidence. The real RustDesk privilege-drop/exec chain, forced
+    PID reuse, executable replacement/deletion, cross-mount/container inode cases, non-root/portable coexistence,
+    pre-pidfd runtime fallback, non-systemd packaging, and concurrent Docker survival remain in the parent matrix.
+
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
-    harness evidence for graceful restart/stop, a TERM-wedged child and bounded escalation, real supervisor
-    crash/restart, malformed/stale/PID-reuse records, executable replacement/deletion, identical argv backed
-    by another executable/in-container inode, user-owned/non-root servers, and the actual installed
-    privilege-drop/exec chain. Packaging/service integration and lifecycle proof for the supported SysV init,
+    harness evidence for graceful restart/stop, a TERM-wedged child and bounded escalation, installed supervisor
+    crash/restart, malformed/stale records and forced PID reuse, executable replacement/deletion, identical argv
+    backed by another executable/in-container inode, user-owned/non-root servers, and the actual installed
+    privilege-drop/exec chain. R-S11c-27d supplies isolated focused proof for the crash, recorded-start-time,
+    executable-identity, generation, malformed-record, and exact-match decisions; it does not substitute for those
+    installed/package cases. Packaging/service integration and lifecycle proof for the supported SysV init,
     OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime
     pre-pidfd fallback exercise, and the concurrent Docker survival proof also remain mandatory before this
     parent item or the upcoming release can close.

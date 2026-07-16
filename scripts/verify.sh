@@ -3220,6 +3220,25 @@ grep -qF 'R-S11c-27c — bounded direct-child graceful/forced termination — SO
 if [ -n "$r_s11c27c" ]; then echo "  FAIL R-S11c-27c Linux bounded direct-child termination:$r_s11c27c"; rc=1; else
   echo "  ok  R-S11c-27c exact retained Child gets bounded TERM then bounded KILL/reap, and uncertain reap exits nonzero before replacement"; fi
 
+echo "== (3b-iii-h2e) Linux supervisor crash/restart recovery is exact and noninterfering (R-S11c-27d) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27d_linux_service_child_crash_restart_recovery_is_exact --color never
+r_s11c27d=
+service_child_crash_test=$(awk '/fn r_s11c27d_linux_service_child_crash_restart_recovery_is_exact/,/fn r_s11c27a_linux_service_child_parent_death/' src/platform/linux.rs)
+grep -qE 'nasm busybox( |\\)' scripts/Dockerfile.devcheck || r_s11c27d="$r_s11c27d exact-role-fixture-runtime-missing"
+grep -qF '.arg0("yes")' src/platform/linux.rs || r_s11c27d="$r_s11c27d exact-three-argv-fixture-missing"
+echo "$service_child_crash_test" | grep -qF 'Ok("contender")' || r_s11c27d="$r_s11c27d live-lease-conflict-not-tested"
+echo "$service_child_crash_test" | grep -qF 'Ok("recoverer")' || r_s11c27d="$r_s11c27d fresh-recovery-process-not-tested"
+echo "$service_child_crash_test" | grep -qF 'open_service_child_pidfd(crashed_record.pid)' || r_s11c27d="$r_s11c27d crashed-child-pidfd-not-retained"
+echo "$service_child_crash_test" | grep -qF 'service_child_pidfd_exited(&crashed_child_pidfd' || r_s11c27d="$r_s11c27d post-exec-parent-death-not-observed"
+echo "$service_child_crash_test" | grep -qF 'runtime.recover_previous_child()' || r_s11c27d="$r_s11c27d production-recovery-path-not-exercised"
+for hostile_case in 'reused pid' 'different executable with identical argv' 'wrong generation' 'record role marker is invalid'; do
+  echo "$service_child_crash_test" | grep -qF "$hostile_case" || r_s11c27d="$r_s11c27d hostile-evidence-case-missing:$hostile_case"
+done
+echo "$service_child_crash_test" | grep -qF 'exact_owner.0.try_wait().unwrap().is_none()' || r_s11c27d="$r_s11c27d unrelated-process-survival-not-observed"
+grep -qF 'R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior' HARDENING_STATUS.md || r_s11c27d="$r_s11c27d hardening-ledger-missing"
+if [ -n "$r_s11c27d" ]; then echo "  FAIL R-S11c-27d Linux supervisor crash/restart recovery behavior:$r_s11c27d"; rc=1; else
+  echo "  ok  R-S11c-27d private-runtime crash/restart releases the singleton lease, reaps only exact evidence, and preserves live mismatches without signaling"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

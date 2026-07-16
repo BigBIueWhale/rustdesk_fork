@@ -883,19 +883,7 @@ impl ServiceRuntime {
         )?;
         set_service_runtime_mode(&lease, 0o600, "service supervisor lease")?;
         validate_service_runtime_regular_file(&lease, owner_uid, "service supervisor lease")?;
-        if unsafe {
-            hbb_common::libc::flock(
-                lease.as_raw_fd(),
-                hbb_common::libc::LOCK_EX | hbb_common::libc::LOCK_NB,
-            )
-        } != 0
-        {
-            let err = std::io::Error::last_os_error();
-            if err.raw_os_error() == Some(hbb_common::libc::EWOULDBLOCK) {
-                bail!("Another Linux service supervisor owns the lifecycle lease");
-            }
-            return Err(anyhow!("Failed to acquire service supervisor lease: {err}"));
-        }
+        acquire_service_runtime_lease(&lease, "service supervisor lease")?;
 
         let runtime = Self {
             directory,
@@ -1105,15 +1093,38 @@ impl ServiceRuntime {
 
 #[cfg(test)]
 impl ServiceRuntime {
-    fn for_test(directory_path: &Path, generation: &str) -> Self {
-        let directory = File::open(directory_path).unwrap();
-        let lease = directory.try_clone().unwrap();
-        Self {
+    fn for_test(directory_path: &Path, generation: &str) -> ResultType<Self> {
+        validate_canonical_uuid(generation, "test service generation")?;
+        let owner_uid = unsafe { hbb_common::libc::geteuid() as u32 };
+        let directory = File::open(directory_path).map_err(|err| {
+            anyhow!(
+                "Failed to open test service runtime directory '{}': {err}",
+                directory_path.display()
+            )
+        })?;
+        validate_service_runtime_directory(&directory, owner_uid)?;
+        let lease = open_service_runtime_file(
+            &directory,
+            SERVICE_RUNTIME_LOCK,
+            hbb_common::libc::O_RDWR
+                | hbb_common::libc::O_CREAT
+                | hbb_common::libc::O_NOFOLLOW
+                | hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_NONBLOCK,
+            0o600,
+            "test service supervisor lease",
+        )?;
+        set_service_runtime_mode(&lease, 0o600, "test service supervisor lease")?;
+        validate_service_runtime_regular_file(&lease, owner_uid, "test service supervisor lease")?;
+        acquire_service_runtime_lease(&lease, "test service supervisor lease")?;
+        let runtime = Self {
             directory,
             _lease: lease,
             generation: generation.to_owned(),
-            owner_uid: unsafe { hbb_common::libc::geteuid() as u32 },
-        }
+            owner_uid,
+        };
+        runtime.remove_incomplete_record()?;
+        Ok(runtime)
     }
 }
 
@@ -1139,6 +1150,23 @@ fn open_service_runtime_file(
         ));
     }
     Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn acquire_service_runtime_lease(lease: &File, label: &str) -> ResultType<()> {
+    if unsafe {
+        hbb_common::libc::flock(
+            lease.as_raw_fd(),
+            hbb_common::libc::LOCK_EX | hbb_common::libc::LOCK_NB,
+        )
+    } != 0
+    {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(hbb_common::libc::EWOULDBLOCK) {
+            bail!("Another Linux service supervisor owns the lifecycle lease");
+        }
+        return Err(anyhow!("Failed to acquire {label}: {err}"));
+    }
+    Ok(())
 }
 
 fn validate_service_runtime_directory(directory: &File, owner_uid: u32) -> ResultType<()> {
@@ -3131,7 +3159,8 @@ mod process_cleanup_tests {
         ));
         fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
         let _guard = ServiceRuntimeTestDir(root.clone());
-        let runtime = ServiceRuntime::for_test(&root, "01234567-89ab-4cde-8fab-0123456789ab");
+        let runtime =
+            ServiceRuntime::for_test(&root, "01234567-89ab-4cde-8fab-0123456789ab").unwrap();
         let record = sample_service_child_record();
 
         runtime.publish_record(&record).unwrap();
@@ -3236,7 +3265,8 @@ mod process_cleanup_tests {
             ));
             fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
             let _runtime_guard = ServiceRuntimeTestDir(root.clone());
-            let runtime = ServiceRuntime::for_test(&root, "01234567-89ab-4cde-8fab-0123456789ab");
+            let runtime =
+                ServiceRuntime::for_test(&root, "01234567-89ab-4cde-8fab-0123456789ab").unwrap();
             let socket_path = root.join("ready.sock");
             let listener = UnixListener::bind(&socket_path).unwrap();
             listener.set_nonblocking(true).unwrap();
@@ -3317,6 +3347,226 @@ mod process_cleanup_tests {
 
         run_case("graceful", false, ServiceChildTermination::Graceful);
         run_case("forced", true, ServiceChildTermination::Forced);
+    }
+
+    fn spawn_exact_role_service_child_for_test(generation: &str, bind_to_parent: bool) -> Child {
+        use std::process::Stdio;
+
+        let executable = ["/usr/bin/busybox", "/bin/busybox"]
+            .into_iter()
+            .find(|path| Path::new(path).is_file())
+            .unwrap();
+        let parent_pid = hbb_common::libc::pid_t::try_from(std::process::id()).unwrap();
+        let mut command = Command::new(executable);
+        command
+            .arg0("yes")
+            .arg("--server")
+            .arg(crate::common::SERVICE_OWNED_SERVER_ARG)
+            .env_clear()
+            .env(
+                crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
+                parent_pid.to_string(),
+            )
+            .env(
+                crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+                generation,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if bind_to_parent {
+            configure_service_child_pre_exec(&mut command, parent_pid, None);
+        }
+        command.spawn().unwrap()
+    }
+
+    #[test]
+    fn r_s11c27d_linux_service_child_crash_restart_recovery_is_exact() {
+        use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+
+        const TEST_NAME: &str = "platform::linux::process_cleanup_tests::r_s11c27d_linux_service_child_crash_restart_recovery_is_exact";
+        const ROLE_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_RECOVERY_ROLE";
+        const RUNTIME_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_RECOVERY_RUNTIME";
+        const GENERATION: &str = "01234567-89ab-4cde-8fab-0123456789ab";
+
+        match std::env::var(ROLE_ENV).as_deref() {
+            Ok("supervisor") => {
+                let root = PathBuf::from(std::env::var_os(RUNTIME_ENV).unwrap());
+                let runtime = ServiceRuntime::for_test(&root, GENERATION).unwrap();
+                let process = spawn_exact_role_service_child_for_test(GENERATION, true);
+                let record = service_child_record_for_process(
+                    process.id(),
+                    runtime.owner_uid,
+                    GENERATION,
+                )
+                .unwrap();
+                runtime.publish_record(&record).unwrap();
+                let _owner = ServiceChildTerminationTestOwner {
+                    child: Some(OwnedServiceChild { process, record }),
+                };
+                loop {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok("contender") => {
+                let root = PathBuf::from(std::env::var_os(RUNTIME_ENV).unwrap());
+                assert!(
+                    ServiceRuntime::for_test(&root, GENERATION).is_err(),
+                    "a second supervisor acquired the live lifecycle lease"
+                );
+                return;
+            }
+            Ok("recoverer") => {
+                let root = PathBuf::from(std::env::var_os(RUNTIME_ENV).unwrap());
+                let runtime = ServiceRuntime::for_test(&root, GENERATION).unwrap();
+                runtime.recover_previous_child().unwrap();
+                assert!(runtime.read_record().unwrap().is_none());
+                return;
+            }
+            Ok(role) => panic!("unexpected service-child recovery test role: {role}"),
+            Err(_) => {}
+        }
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "rustdesk-service-recovery-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let _runtime_guard = ServiceRuntimeTestDir(root.clone());
+        let current_test = std::env::current_exe().unwrap();
+        let mut supervisor = ServiceChildTestSupervisor(
+            Command::new(&current_test)
+                .args(["--exact", TEST_NAME, "--nocapture"])
+                .env(ROLE_ENV, "supervisor")
+                .env(RUNTIME_ENV, &root)
+                .spawn()
+                .unwrap(),
+        );
+
+        let record_path = root.join("service-child.record");
+        let ready_deadline = Instant::now() + Duration::from_secs(5);
+        let crashed_record = loop {
+            match fs::read(&record_path) {
+                Ok(bytes) => break ServiceChildRecord::decode(&bytes).unwrap(),
+                Err(err)
+                    if err.kind() == std::io::ErrorKind::NotFound
+                        && Instant::now() < ready_deadline =>
+                {
+                    if let Some(status) = supervisor.0.try_wait().unwrap() {
+                        panic!("service-child recovery supervisor exited early: {status}");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(err) => panic!("service-child recovery record was not published: {err}"),
+            }
+        };
+
+        let contender = Command::new(&current_test)
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ROLE_ENV, "contender")
+            .env(RUNTIME_ENV, &root)
+            .status()
+            .unwrap();
+        assert!(contender.success(), "live-lease contender test failed");
+
+        let PidFdOpen::Available(crashed_child_pidfd) =
+            open_service_child_pidfd(crashed_record.pid).unwrap()
+        else {
+            panic!("pidfd_open is required for the service-child recovery test");
+        };
+        supervisor.0.kill().unwrap();
+        supervisor.0.wait().unwrap();
+        assert!(
+            service_child_pidfd_exited(&crashed_child_pidfd, Duration::from_secs(5)).unwrap(),
+            "post-exec service child survived its supervisor crash"
+        );
+
+        let recoverer = Command::new(&current_test)
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ROLE_ENV, "recoverer")
+            .env(RUNTIME_ENV, &root)
+            .status()
+            .unwrap();
+        assert!(recoverer.success(), "fresh-process crash recovery failed");
+        assert!(!record_path.exists());
+
+        let runtime = ServiceRuntime::for_test(&root, GENERATION).unwrap();
+        let exact_process = spawn_exact_role_service_child_for_test(GENERATION, false);
+        let exact_record = service_child_record_for_process(
+            exact_process.id(),
+            runtime.owner_uid,
+            GENERATION,
+        )
+        .unwrap();
+        let mut exact_owner = ServiceChildTestSupervisor(exact_process);
+
+        let mut reused_pid_record = exact_record.clone();
+        reused_pid_record.start_time += 1;
+        let mut different_executable_record = exact_record.clone();
+        different_executable_record.executable_inode = different_executable_record
+            .executable_inode
+            .checked_add(1)
+            .unwrap();
+        let mut wrong_generation_record = exact_record.clone();
+        wrong_generation_record.generation = "fedcba98-7654-4cba-8fed-fedcba987654".to_owned();
+
+        for (label, hostile_record, expected_error) in [
+            ("reused pid", reused_pid_record, "start time changed"),
+            (
+                "different executable with identical argv",
+                different_executable_record,
+                "executable identity changed",
+            ),
+            (
+                "wrong generation",
+                wrong_generation_record,
+                "service generation is absent or duplicated",
+            ),
+        ] {
+            runtime.publish_record(&hostile_record).unwrap();
+            let err = runtime.recover_previous_child().unwrap_err();
+            assert!(
+                err.to_string().contains(expected_error),
+                "{label} recovery failed for the wrong reason: {err}"
+            );
+            assert_eq!(
+                runtime.read_record().unwrap(),
+                Some(hostile_record.clone()),
+                "{label} record was not preserved"
+            );
+            assert!(
+                exact_owner.0.try_wait().unwrap().is_none(),
+                "{label} evidence signaled an unrelated live process"
+            );
+            runtime.remove_record(&hostile_record).unwrap();
+        }
+
+        let malformed = String::from_utf8(exact_record.encode())
+            .unwrap()
+            .replace("role=--server+--service-owned-server", "role=--server")
+            .into_bytes();
+        fs::write(&record_path, &malformed).unwrap();
+        fs::set_permissions(&record_path, fs::Permissions::from_mode(0o600)).unwrap();
+        let malformed_error = runtime.recover_previous_child().unwrap_err();
+        assert!(malformed_error
+            .to_string()
+            .contains("record role marker is invalid"));
+        assert_eq!(fs::read(&record_path).unwrap(), malformed);
+        assert!(exact_owner.0.try_wait().unwrap().is_none());
+        fs::remove_file(&record_path).unwrap();
+
+        runtime.publish_record(&exact_record).unwrap();
+        runtime.recover_previous_child().unwrap();
+        let status = exact_owner.0.wait().unwrap();
+        assert!(
+            !status.success(),
+            "recovered exact service child exited cleanly"
+        );
+        assert!(runtime.read_record().unwrap().is_none());
     }
 
     #[test]

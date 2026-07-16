@@ -3223,7 +3223,7 @@ if [ -n "$r_s11c27c" ]; then echo "  FAIL R-S11c-27c Linux bounded direct-child 
 echo "== (3b-iii-h2e) Linux supervisor crash/restart recovery is exact and noninterfering (R-S11c-27d) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27d_linux_service_child_crash_restart_recovery_is_exact --color never
 r_s11c27d=
-service_child_crash_test=$(awk '/fn r_s11c27d_linux_service_child_crash_restart_recovery_is_exact/,/fn r_s11c27a_linux_service_child_parent_death/' src/platform/linux.rs)
+service_child_crash_test=$(awk '/fn r_s11c27d_linux_service_child_crash_restart_recovery_is_exact/,/fn r_s11c27e_linux_service_child_executable_object_recovery_is_exact/' src/platform/linux.rs)
 grep -qE 'nasm busybox( |\\)' scripts/Dockerfile.devcheck || r_s11c27d="$r_s11c27d exact-role-fixture-runtime-missing"
 grep -qF '.arg0("yes")' src/platform/linux.rs || r_s11c27d="$r_s11c27d exact-three-argv-fixture-missing"
 echo "$service_child_crash_test" | grep -qF 'Ok("contender")' || r_s11c27d="$r_s11c27d live-lease-conflict-not-tested"
@@ -3238,6 +3238,24 @@ echo "$service_child_crash_test" | grep -qF 'exact_owner.0.try_wait().unwrap().i
 grep -qF 'R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior' HARDENING_STATUS.md || r_s11c27d="$r_s11c27d hardening-ledger-missing"
 if [ -n "$r_s11c27d" ]; then echo "  FAIL R-S11c-27d Linux supervisor crash/restart recovery behavior:$r_s11c27d"; rc=1; else
   echo "  ok  R-S11c-27d private-runtime crash/restart releases the singleton lease, reaps only exact evidence, and preserves live mismatches without signaling"; fi
+
+echo "== (3b-iii-h2f) Linux recovery binds executable objects across pathname replacement/deletion (R-S11c-27e) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27e_linux_service_child_executable_object_recovery_is_exact --color never
+r_s11c27e=
+service_child_executable_test=$(awk '/fn r_s11c27e_linux_service_child_executable_object_recovery_is_exact/,/fn r_s11c27a_linux_service_child_parent_death/' src/platform/linux.rs)
+echo "$service_child_executable_test" | grep -qF 'fs::rename(&replacement_path, &owned_path)' || r_s11c27e="$r_s11c27e atomic-path-replacement-not-tested"
+echo "$service_child_executable_test" | grep -qF 'fs::remove_file(&unlinked_path)' || r_s11c27e="$r_s11c27e direct-executable-unlink-not-tested"
+echo "$service_child_executable_test" | grep -qF 'mismatched_replacement_record.executable_inode = owned_record.executable_inode' || r_s11c27e="$r_s11c27e real-cross-object-record-not-tested"
+echo "$service_child_executable_test" | grep -qF '.contains("executable identity changed")' || r_s11c27e="$r_s11c27e cross-object-rejection-reason-not-checked"
+echo "$service_child_executable_test" | grep -qF 'Some(mismatched_replacement_record.clone())' || r_s11c27e="$r_s11c27e mismatched-record-preservation-not-checked"
+if [ "$(echo "$service_child_executable_test" | grep -cF 'replacement_owner.0.try_wait().unwrap().is_none()')" -lt 3 ]; then
+  r_s11c27e="$r_s11c27e replacement-process-survival-not-checked-at-each-decision"
+fi
+echo "$service_child_executable_test" | grep -qF 'runtime.publish_record(&owned_record)' || r_s11c27e="$r_s11c27e replaced-original-positive-recovery-not-tested"
+echo "$service_child_executable_test" | grep -qF 'runtime.publish_record(&unlinked_record)' || r_s11c27e="$r_s11c27e unlinked-object-positive-recovery-not-tested"
+grep -qF 'R-S11c-27e — executable-object replacement/deletion recovery behavior' HARDENING_STATUS.md || r_s11c27e="$r_s11c27e hardening-ledger-missing"
+if [ -n "$r_s11c27e" ]; then echo "  FAIL R-S11c-27e Linux executable-object recovery behavior:$r_s11c27e"; rc=1; else
+  echo "  ok  R-S11c-27e recovery follows the recorded executable object across replacement/unlink and never targets an identical-role different-inode process"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never

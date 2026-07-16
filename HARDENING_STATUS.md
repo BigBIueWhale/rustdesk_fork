@@ -2688,16 +2688,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     The production syscall shape is unchanged and the settled lexical unsafe inventory remains unchanged.
 
     This is still not installed lifecycle or release evidence. The real RustDesk privilege-drop/exec chain, forced
-    PID reuse, executable replacement/deletion, cross-mount/container inode cases, non-root/portable coexistence,
-    pre-pidfd runtime fallback, non-systemd packaging, and concurrent Docker survival remain in the parent matrix.
+    PID reuse, cross-mount/container inode cases, non-root/portable coexistence, pre-pidfd runtime fallback,
+    non-systemd packaging, and concurrent Docker survival remain in the parent matrix.
+
+  - **R-S11c-27e — executable-object replacement/deletion recovery behavior — SOURCE/FOCUSED BEHAVIOR
+    IMPLEMENTED 2026-07-16; PARENT ITEM REMAINS OPEN.** The pinned Linux test replaces the synthetic changed-inode
+    shape with live filesystem and process evidence in a mode-0700 private runtime. It copies the BusyBox fixture to
+    two distinct regular executable inodes, launches the first with exact service role argv and generation, and
+    records its production `/proc` identity. While that process remains live, the test atomically renames the second
+    inode over the first process's launch pathname. Dereferenced `/proc/<pid>/exe` must retain the original recorded
+    device/inode even though its diagnostic link text now ends in ` (deleted)`.
+
+    The replacement inode is then launched from the same pathname with byte-for-byte identical role argv and
+    generation. A structurally valid record carrying the replacement process's PID/start time/UID/generation but the
+    original process's real device/inode must fail production recovery for executable-identity mismatch, remain on
+    disk, and leave both processes alive. The exact original record must subsequently recover only the original
+    executable object while the replacement process survives. A third exact-role fixture is recorded and directly
+    unlinked; its procfs executable object must retain the recorded device/inode and exact recovery must terminate
+    only that object, again leaving the replacement process alive. This follows the Linux `rename(2)`, `unlink(2)`,
+    procfs magic-link, `proc_pid_exe(5)`, `pidfd_open(2)`, and `pidfd_send_signal(2)` contracts and proves that neither
+    the pathname text nor exact argv is signal authority. `scripts/verify.sh` runs the behavior and source-gates the
+    real replacement, real unlink, cross-object negative record, record preservation, sentinel survival at every
+    recovery decision, and both exact positive branches. No production API/syscall or unsafe inventory changed.
+
+    This is same-mount private-runtime behavior, not an installed package-update transaction, cross-mount or mount-
+    namespace proof, an identical in-container pathname case, or forced PID reuse. Those broader cases and the rest
+    of the installed lifecycle/release matrix remain **OPEN**.
 
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
     harness evidence for graceful restart/stop, a TERM-wedged child and bounded escalation, installed supervisor
-    crash/restart, malformed/stale records and forced PID reuse, executable replacement/deletion, identical argv
-    backed by another executable/in-container inode, user-owned/non-root servers, and the actual installed
-    privilege-drop/exec chain. R-S11c-27d supplies isolated focused proof for the crash, recorded-start-time,
-    executable-identity, generation, malformed-record, and exact-match decisions; it does not substitute for those
-    installed/package cases. Packaging/service integration and lifecycle proof for the supported SysV init,
+    crash/restart, malformed/stale records and forced PID reuse, user-owned/non-root servers, and the actual installed
+    privilege-drop/exec chain. R-S11c-27d supplies isolated focused proof for crash and record decisions;
+    R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof. Neither substitutes
+    for installed package-update, cross-mount, or container-namespace cases. Packaging/service integration and
+    lifecycle proof for the supported SysV init,
     OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime
     pre-pidfd fallback exercise, and the concurrent Docker survival proof also remain mandatory before this
     parent item or the upcoming release can close.

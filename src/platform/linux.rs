@@ -3349,13 +3349,21 @@ mod process_cleanup_tests {
         run_case("forced", true, ServiceChildTermination::Forced);
     }
 
-    fn spawn_exact_role_service_child_for_test(generation: &str, bind_to_parent: bool) -> Child {
+    fn busybox_executable_for_test() -> &'static Path {
+        ["/usr/bin/busybox", "/bin/busybox"]
+            .into_iter()
+            .map(Path::new)
+            .find(|path| path.is_file())
+            .unwrap()
+    }
+
+    fn spawn_exact_role_service_child_from_executable_for_test(
+        executable: &Path,
+        generation: &str,
+        bind_to_parent: bool,
+    ) -> Child {
         use std::process::Stdio;
 
-        let executable = ["/usr/bin/busybox", "/bin/busybox"]
-            .into_iter()
-            .find(|path| Path::new(path).is_file())
-            .unwrap();
         let parent_pid = hbb_common::libc::pid_t::try_from(std::process::id()).unwrap();
         let mut command = Command::new(executable);
         command
@@ -3378,6 +3386,14 @@ mod process_cleanup_tests {
             configure_service_child_pre_exec(&mut command, parent_pid, None);
         }
         command.spawn().unwrap()
+    }
+
+    fn spawn_exact_role_service_child_for_test(generation: &str, bind_to_parent: bool) -> Child {
+        spawn_exact_role_service_child_from_executable_for_test(
+            busybox_executable_for_test(),
+            generation,
+            bind_to_parent,
+        )
     }
 
     #[test]
@@ -3567,6 +3583,146 @@ mod process_cleanup_tests {
             "recovered exact service child exited cleanly"
         );
         assert!(runtime.read_record().unwrap().is_none());
+    }
+
+    #[test]
+    fn r_s11c27e_linux_service_child_executable_object_recovery_is_exact() {
+        use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _, PermissionsExt as _};
+
+        const GENERATION: &str = "01234567-89ab-4cde-8fab-0123456789ab";
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "rustdesk-service-executable-object-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let _runtime_guard = ServiceRuntimeTestDir(root.clone());
+        let runtime = ServiceRuntime::for_test(&root, GENERATION).unwrap();
+
+        let owned_path = root.join("owned-service-child");
+        let replacement_path = root.join("replacement-service-child");
+        fs::copy(busybox_executable_for_test(), &owned_path).unwrap();
+        fs::copy(busybox_executable_for_test(), &replacement_path).unwrap();
+        fs::set_permissions(&owned_path, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&replacement_path, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let mut owned_owner = ServiceChildTestSupervisor(
+            spawn_exact_role_service_child_from_executable_for_test(
+                &owned_path,
+                GENERATION,
+                false,
+            ),
+        );
+        let owned_record = service_child_record_for_process(
+            owned_owner.0.id(),
+            runtime.owner_uid,
+            GENERATION,
+        )
+        .unwrap();
+
+        let replacement_metadata = fs::metadata(&replacement_path).unwrap();
+        assert_ne!(
+            (owned_record.executable_device, owned_record.executable_inode),
+            (replacement_metadata.dev(), replacement_metadata.ino())
+        );
+        fs::rename(&replacement_path, &owned_path).unwrap();
+        let owned_proc_exe = PathBuf::from(format!("/proc/{}/exe", owned_record.pid));
+        let owned_proc_metadata = fs::metadata(&owned_proc_exe).unwrap();
+        assert_eq!(owned_proc_metadata.dev(), owned_record.executable_device);
+        assert_eq!(owned_proc_metadata.ino(), owned_record.executable_inode);
+        assert!(fs::read_link(&owned_proc_exe)
+            .unwrap()
+            .as_os_str()
+            .as_encoded_bytes()
+            .ends_with(b" (deleted)"));
+
+        let mut replacement_owner = ServiceChildTestSupervisor(
+            spawn_exact_role_service_child_from_executable_for_test(
+                &owned_path,
+                GENERATION,
+                false,
+            ),
+        );
+        let replacement_record = service_child_record_for_process(
+            replacement_owner.0.id(),
+            runtime.owner_uid,
+            GENERATION,
+        )
+        .unwrap();
+        assert_ne!(
+            (
+                replacement_record.executable_device,
+                replacement_record.executable_inode,
+            ),
+            (owned_record.executable_device, owned_record.executable_inode)
+        );
+
+        let mut mismatched_replacement_record = replacement_record.clone();
+        mismatched_replacement_record.executable_device = owned_record.executable_device;
+        mismatched_replacement_record.executable_inode = owned_record.executable_inode;
+        runtime
+            .publish_record(&mismatched_replacement_record)
+            .unwrap();
+        let mismatch_error = runtime.recover_previous_child().unwrap_err();
+        assert!(mismatch_error
+            .to_string()
+            .contains("executable identity changed"));
+        assert_eq!(
+            runtime.read_record().unwrap(),
+            Some(mismatched_replacement_record.clone())
+        );
+        assert!(owned_owner.0.try_wait().unwrap().is_none());
+        assert!(replacement_owner.0.try_wait().unwrap().is_none());
+        runtime
+            .remove_record(&mismatched_replacement_record)
+            .unwrap();
+
+        runtime.publish_record(&owned_record).unwrap();
+        runtime.recover_previous_child().unwrap();
+        assert!(!owned_owner.0.wait().unwrap().success());
+        assert!(runtime.read_record().unwrap().is_none());
+        assert!(replacement_owner.0.try_wait().unwrap().is_none());
+
+        let unlinked_path = root.join("unlinked-service-child");
+        fs::copy(busybox_executable_for_test(), &unlinked_path).unwrap();
+        fs::set_permissions(&unlinked_path, fs::Permissions::from_mode(0o700)).unwrap();
+        let mut unlinked_owner = ServiceChildTestSupervisor(
+            spawn_exact_role_service_child_from_executable_for_test(
+                &unlinked_path,
+                GENERATION,
+                false,
+            ),
+        );
+        let unlinked_record = service_child_record_for_process(
+            unlinked_owner.0.id(),
+            runtime.owner_uid,
+            GENERATION,
+        )
+        .unwrap();
+        fs::remove_file(&unlinked_path).unwrap();
+        assert!(!unlinked_path.exists());
+        let unlinked_proc_metadata =
+            fs::metadata(format!("/proc/{}/exe", unlinked_record.pid)).unwrap();
+        assert_eq!(
+            (
+                unlinked_proc_metadata.dev(),
+                unlinked_proc_metadata.ino(),
+            ),
+            (
+                unlinked_record.executable_device,
+                unlinked_record.executable_inode,
+            )
+        );
+
+        runtime.publish_record(&unlinked_record).unwrap();
+        runtime.recover_previous_child().unwrap();
+        assert!(!unlinked_owner.0.wait().unwrap().success());
+        assert!(runtime.read_record().unwrap().is_none());
+        assert!(replacement_owner.0.try_wait().unwrap().is_none());
     }
 
     #[test]

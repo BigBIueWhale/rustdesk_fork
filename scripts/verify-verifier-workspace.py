@@ -2944,7 +2944,8 @@ def smoke_readiness_mode_is_valid(mode):
 
 
 def validate_smoke_contract(
-    verify, smoke, stage, stage_mode, process_guard, process_guard_mode, launcher,
+    verify, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
+    loginctl_fixture, loginctl_fixture_mode, process_guard, process_guard_mode, launcher,
     readiness, readiness_mode, typed_probe, session_probe, ipc_source, core_main,
     common_source, linux_source,
 ):
@@ -2959,12 +2960,14 @@ def validate_smoke_contract(
         ("trap 'exit 130' INT", "host guard interrupt cleanup"),
         ("trap 'exit 143' TERM", "host guard termination cleanup"),
         ('BUILD_RUN=(docker run --rm', "writable build-only container"),
+        ('LIFECYCLE_RUN=(docker run --rm --network none', "network-isolated service lifecycle container"),
         ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual', "mounted service lifecycle stage"),
     ):
         require_text(smoke, text, label)
     for forbidden in (
@@ -2977,18 +2980,24 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 16:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 17:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
-    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 17:
+    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 18:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
     if "rustdesk --server" in smoke:
         raise VerificationError("host smoke orchestrator retains historical-selector launch text")
 
     if not smoke_readiness_mode_is_valid(stage_mode):
         raise VerificationError("mounted smoke stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(service_lifecycle_mode):
+        raise VerificationError("mounted service lifecycle stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(loginctl_fixture_mode):
+        raise VerificationError("mounted loginctl fixture is not a regular executable file")
     if not smoke_readiness_mode_is_valid(process_guard_mode):
         raise VerificationError("smoke process guard is not a regular executable file")
     for text, label in (
+        ('service-lifecycle-manual)', "service lifecycle dispatch"),
+        ('bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh', "mounted lifecycle script dispatch"),
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
         ('install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"', "protected fixture directories"),
         ('install -d -o rduser -g "$gid" -m 0700 "$fixture/home"', "private non-root home"),
@@ -3014,6 +3023,38 @@ def validate_smoke_contract(
         ('"$PROCESS_GUARD" wait-server "$SRV" "$SRV_START" "$executable"', "exact executable and argv proof"),
     ):
         require_text(stage, text, label)
+    if '[b"rd-smoke-server", b"--server", b"--service-owned-server", b""]' in service_lifecycle:
+        raise VerificationError("portable role isolation: portable server acquired service-owned argv")
+    for text, label in (
+        ('readonly RECORD=/run/rustdesk/service-child.record', "root lifecycle record"),
+        ('signal.pidfd_send_signal(pidfd_file.fileno()', "pidfd-only lifecycle signaling"),
+        ('"STOP": signal.SIGSTOP', "kernel-stopped child fixture"),
+        ('b"/proc/self/exe", b"--server", b"--service-owned-server", b""', "exact service-child role proof"),
+        ('[b"rd-smoke-server", b"--server", b""]', "exact portable role proof"),
+        ('setpriv --reuid=4000', "non-root portable launch"),
+        ('--inh-caps=-all --ambient-caps=-all --bounding-set=-all', "portable capability removal"),
+        ('"$READY" --stop "$SVC" "$SVC_START"', "exact supervisor stop"),
+        ('[ "$elapsed_ms" -ge 7500 ] && [ "$elapsed_ms" -le 20000 ]', "bounded forced-stop observation"),
+        ('SERVICE_LIFECYCLE_GRACEFUL=pass', "graceful lifecycle result"),
+        ('SERVICE_LIFECYCLE_RESTART=pass', "restart lifecycle result"),
+        ('SERVICE_LIFECYCLE_FORCED=pass', "forced lifecycle result"),
+        ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
+    ):
+        require_text(service_lifecycle, text, label)
+    for forbidden in ("pkill", "os.kill(", "kill -", "sudo ", "--pid=host", "--privileged"):
+        if forbidden in service_lifecycle:
+            raise VerificationError(
+                f"service lifecycle smoke retains broad or host authority: {forbidden}"
+            )
+    for text, label in (
+        ('"0:")', "loginctl session-list invocation"),
+        ("'1 0 root seat0'", "loginctl exact root seat"),
+        ('"4:show-session -p State 1")', "loginctl state query"),
+        ('"4:show-session -p Type 1")', "loginctl type query"),
+        ('"2:show-session 1")', "loginctl session query"),
+        ('exit 64', "loginctl unexpected-argv rejection"),
+    ):
+        require_text(loginctl_fixture, text, label)
     require_exact_count(stage, '    wait "$TCPD"\n', 1, "capture exit-status proof")
     if stage.count('install -o root -g "$gid"') != 8:
         raise VerificationError("non-root smoke fixture must stage exactly eight root-owned runtime files")
@@ -3165,6 +3206,10 @@ def validate_smoke_contract(
         raise VerificationError("smoke readiness self-test retains recursive cleanup authority")
     if re.search(r'(?m)^\s*kill\s', readiness):
         raise VerificationError("smoke readiness retains raw kill signal authority")
+    readiness_fail = extract_between(readiness, "fail() {", "\n}\n", "smoke readiness failure helper")
+    require_text(readiness_fail, "exit 1", "terminal smoke readiness failure")
+    if "return 1" in readiness_fail:
+        raise VerificationError("smoke readiness failure can continue in a conditional context")
     for text, label in (
         ("ipc::get_main_readiness_snapshot_for_process(", "typed process-bound main-IPC readiness transaction"),
         ('"parked" => (false, false, None)', "parked password/listener state proof"),
@@ -3874,6 +3919,10 @@ def validate_sources(sources):
         sources["smoke"],
         sources["smoke_stage"],
         sources["smoke_stage_mode"],
+        sources["service_lifecycle"],
+        sources["service_lifecycle_mode"],
+        sources["loginctl_fixture"],
+        sources["loginctl_fixture_mode"],
         sources["smoke_process_guard"],
         sources["smoke_process_guard_mode"],
         sources["smoke_launcher"],
@@ -8770,6 +8819,30 @@ def run_source_mutations(sources):
             "identity-monitored limiter-decay interval",
         ),
         (
+            "service_lifecycle",
+            'signal.pidfd_send_signal(pidfd_file.fileno(), signals[signal_name], None, 0)',
+            'os.kill(pid, signals[signal_name])',
+            "pidfd-only lifecycle signaling",
+        ),
+        (
+            "service_lifecycle",
+            '[b"rd-smoke-server", b"--server", b""]',
+            '[b"rd-smoke-server", b"--server", b"--service-owned-server", b""]',
+            "portable role isolation",
+        ),
+        (
+            "smoke_ready",
+            "  exit 1\n}\n\nmonotonic_millis",
+            "  return 1\n}\n\nmonotonic_millis",
+            "terminal smoke readiness failure",
+        ),
+        (
+            "loginctl_fixture",
+            'exit 64',
+            'exit 0',
+            "loginctl unexpected-argv rejection",
+        ),
+        (
             "smoke",
             "STAGE_STATUS=$?",
             "STAGE_STATUS=0",
@@ -9921,6 +9994,10 @@ def main():
             "smoke": (repo / "scripts/smoke-server.sh").read_text(encoding="utf-8"),
             "smoke_stage": (repo / "scripts/smoke-server-stage.sh").read_text(encoding="utf-8"),
             "smoke_stage_mode": os.lstat(repo / "scripts/smoke-server-stage.sh").st_mode,
+            "service_lifecycle": (repo / "scripts/smoke-service-lifecycle.sh").read_text(encoding="utf-8"),
+            "service_lifecycle_mode": os.lstat(repo / "scripts/smoke-service-lifecycle.sh").st_mode,
+            "loginctl_fixture": (repo / "scripts/smoke-service-loginctl.sh").read_text(encoding="utf-8"),
+            "loginctl_fixture_mode": os.lstat(repo / "scripts/smoke-service-loginctl.sh").st_mode,
             "smoke_process_guard": (repo / "scripts/smoke-process-guard.py").read_text(encoding="utf-8"),
             "smoke_process_guard_mode": os.lstat(repo / "scripts/smoke-process-guard.py").st_mode,
             "smoke_launcher": (repo / "scripts/smoke-server-launcher.c").read_text(encoding="utf-8"),

@@ -3257,6 +3257,58 @@ grep -qF 'R-S11c-27e — executable-object replacement/deletion recovery behavio
 if [ -n "$r_s11c27e" ]; then echo "  FAIL R-S11c-27e Linux executable-object recovery behavior:$r_s11c27e"; rc=1; else
   echo "  ok  R-S11c-27e recovery follows the recorded executable object across replacement/unlink and never targets an identical-role different-inode process"; fi
 
+echo "== (3b-iii-h2g) Linux manual supervisor stop/restart is graceful, bounded, and noninterfering (R-S11c-27f) =="
+r_s11c27f=
+service_shutdown_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/log::info!\("Exit"\)/' src/platform/linux.rs)
+grep -qF 'ctrlc = { version = "3.2", features = ["termination"] }' Cargo.toml || r_s11c27f="$r_s11c27f unix-termination-feature-missing"
+echo "$service_shutdown_entry_block" | grep -qF 'ctrlc::set_handler(move || {' || r_s11c27f="$r_s11c27f shutdown-handler-missing"
+echo "$service_shutdown_entry_block" | grep -qF 'signal_running.store(false, Ordering::SeqCst);' || r_s11c27f="$r_s11c27f shutdown-handler-not-atomic"
+echo "$service_shutdown_entry_block" | grep -qF 'Failed to install Linux service shutdown handlers' || r_s11c27f="$r_s11c27f handler-registration-not-fail-closed"
+echo "$service_shutdown_entry_block" | grep -qF 'while running.load(Ordering::SeqCst)' || r_s11c27f="$r_s11c27f service-loop-not-signal-driven"
+[ "$(grep -RhcF 'ctrlc::set_handler' src --include='*.rs' | awk '{n += $1} END {print n + 0}')" = 1 ] || r_s11c27f="$r_s11c27f competing-ctrlc-handler-present"
+if grep -qF 'fix_key_down_timeout_loop' src/server.rs src/server/input_service.rs; then
+  r_s11c27f="$r_s11c27f child-signal-handler-still-competes"
+fi
+server_shutdown_finalizer=$(awk '/pub async fn finish_graceful_shutdown\(\)/,/^}/' src/server.rs)
+echo "$server_shutdown_finalizer" | grep -qF 'crate::server::input_service::fix_key_down_timeout_at_exit();' || r_s11c27f="$r_s11c27f input-release-not-in-graceful-finalizer"
+if ! echo "$server_shutdown_finalizer" | awk '
+  /fix_key_down_timeout_at_exit/ { release = NR }
+  /graceful shutdown complete/ { complete = NR }
+  /process::exit\(0\)/ { process_exit = NR }
+  END { exit !(release && complete && process_exit && release < complete && complete < process_exit) }
+'; then
+  r_s11c27f="$r_s11c27f input-release-finalizer-order-regressed"
+fi
+if ! echo "$service_shutdown_entry_block" | awk '
+  /ctrlc::set_handler/ { install = NR }
+  /ServiceRuntime::acquire\(\)/ { acquire = NR }
+  /while running.load/ { loop = NR }
+  /terminate_child\(&mut user_server/ { user_stop = NR }
+  /terminate_child\(&mut server/ { server_stop = NR }
+  END { exit !(install && acquire && loop && user_stop && server_stop && install < acquire && acquire < loop && loop < user_stop && user_stop < server_stop) }
+'; then
+  r_s11c27f="$r_s11c27f handler-or-final-reap-order-regressed"
+fi
+bash -n scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh || r_s11c27f="$r_s11c27f lifecycle-shell-syntax-invalid"
+dash -n scripts/smoke-service-loginctl.sh || r_s11c27f="$r_s11c27f loginctl-fixture-syntax-invalid"
+[ "$(stat -c %a scripts/smoke-service-lifecycle.sh)" = 755 ] || r_s11c27f="$r_s11c27f lifecycle-stage-not-executable"
+[ "$(stat -c %a scripts/smoke-service-loginctl.sh)" = 755 ] || r_s11c27f="$r_s11c27f loginctl-fixture-not-executable"
+grep -qF 'signal.pidfd_send_signal(pidfd_file.fileno()' scripts/smoke-service-lifecycle.sh || r_s11c27f="$r_s11c27f pidfd-bound-test-signal-missing"
+grep -qF '"STOP": signal.SIGSTOP' scripts/smoke-service-lifecycle.sh || r_s11c27f="$r_s11c27f real-stopped-child-case-missing"
+grep -qF '[ "$elapsed_ms" -ge 7500 ] && [ "$elapsed_ms" -le 20000 ]' scripts/smoke-service-lifecycle.sh || r_s11c27f="$r_s11c27f bounded-escalation-observation-missing"
+grep -qF 'PORTABLE_NONINTERFERENCE=pass uid=4000' scripts/smoke-service-lifecycle.sh || r_s11c27f="$r_s11c27f portable-survival-proof-missing"
+smoke_ready_fail_block=$(awk '/^fail\(\) \{/,/^}/' scripts/smoke-ready.sh)
+echo "$smoke_ready_fail_block" | grep -qF 'exit 1' || r_s11c27f="$r_s11c27f readiness-failure-not-terminal"
+if echo "$smoke_ready_fail_block" | grep -qF 'return 1'; then
+  r_s11c27f="$r_s11c27f readiness-failure-can-continue"
+fi
+grep -qF 'service-lifecycle-manual)' scripts/smoke-server-stage.sh || r_s11c27f="$r_s11c27f mounted-stage-dispatch-missing"
+grep -qF 'LIFECYCLE_RUN=(docker run --rm --network none' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f network-isolated-runtime-missing"
+grep -qF 'record_stage_status R-S11c-27f' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f runtime-status-not-preserved"
+grep -qF 'R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior' HARDENING_STATUS.md || r_s11c27f="$r_s11c27f hardening-ledger-missing"
+if [ -n "$r_s11c27f" ]; then echo "  FAIL R-S11c-27f Linux manual supervisor lifecycle:$r_s11c27f"; rc=1; else
+  echo "  ok  R-S11c-27f actual --service SIGTERM reaps/removes its exact child, fresh generations restart, a stopped child takes bounded KILL/reap, and an unrelated non-root portable server survives"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

@@ -985,15 +985,6 @@ pub fn handle_pointer(evt: &PointerDeviceEvent, conn: i32) {
     }
 }
 
-pub fn fix_key_down_timeout_loop() {
-    if let Err(err) = ctrlc::set_handler(move || {
-        fix_key_down_timeout_at_exit();
-        std::process::exit(0); // will call atexit on posix, but not on Windows
-    }) {
-        log::error!("Failed to set Ctrl-C handler: {}", err);
-    }
-}
-
 pub fn fix_key_down_timeout_at_exit() {
     if EXITING.load(Ordering::SeqCst) {
         return;

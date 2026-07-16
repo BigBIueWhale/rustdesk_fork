@@ -2154,6 +2154,13 @@ fn should_start_server(
 }
 
 pub fn start_os_service() -> ResultType<()> {
+    let running = Arc::new(AtomicBool::new(true));
+    let signal_running = running.clone();
+    ctrlc::set_handler(move || {
+        signal_running.store(false, Ordering::SeqCst);
+    })
+    .map_err(|err| anyhow!("Failed to install Linux service shutdown handlers: {err}"))?;
+
     let runtime = ServiceRuntime::acquire()?;
     runtime.recover_previous_child()?;
     stop_subprocess();
@@ -2166,20 +2173,12 @@ pub fn start_os_service() -> ResultType<()> {
         allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE));
     });
 
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
     let (mut display, mut xauth): (String, String) = ("".to_owned(), "".to_owned());
     let mut desktop = Desktop::default();
     let mut sid = "".to_owned();
     let mut uid = "".to_owned();
     let mut server: Option<OwnedServiceChild> = None;
     let mut user_server: Option<OwnedServiceChild> = None;
-    if let Err(err) = ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    }) {
-        println!("Failed to set Ctrl-C handler: {}", err);
-    }
-
     let mut cm0 = false;
     let mut last_restart = Instant::now();
     while running.load(Ordering::SeqCst) {

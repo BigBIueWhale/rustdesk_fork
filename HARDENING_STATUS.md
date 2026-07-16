@@ -2660,7 +2660,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     and leaves the settled lexical unsafe inventory unchanged.
 
     This is source and focused behavior closure for the direct-child stop primitive, not the installed release
-    matrix. Real installed graceful restart/stop and TERM-wedge escalation remain mandatory alongside crash/restart,
+    matrix. Real installed/package-managed graceful restart/stop remain mandatory alongside crash/restart,
     hostile record/file/PID cases, non-root/portable and container noninterference, the actual privilege-drop chain,
     pre-pidfd runtime exercise, and SysV/OpenRC/runit/manual/non-systemd packaging proof. The parent item and upcoming
     release therefore remain **OPEN**.
@@ -2715,11 +2715,62 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     namespace proof, an identical in-container pathname case, or forced PID reuse. Those broader cases and the rest
     of the installed lifecycle/release matrix remain **OPEN**.
 
+  - **R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior — SOURCE/RUNTIME IMPLEMENTED
+    2026-07-16; PARENT ITEM REMAINS OPEN.** Baseline execution of the real debug `rustdesk --service` binary in a
+    fresh no-network, no-published-port container exposed a production lifecycle defect that the earlier synthetic
+    child tests could not: normal pidfd-bound `SIGTERM` killed the supervisor itself with status 143. Its
+    `ctrlc::set_handler` covered `SIGINT` only under the prior dependency feature set, so final exact-child
+    termination, reap, durable-record removal, and the service `Exit` record never ran. `PR_SET_PDEATHSIG(SIGKILL)`
+    still prevented an orphan, but that crash containment was not a graceful manual or systemd stop.
+
+    The pinned `ctrlc` dependency now enables its Unix `termination` feature, under which the one supervisor handler
+    receives `SIGINT`, `SIGTERM`, and `SIGHUP`. Handler-registration failure propagates from `start_os_service()`
+    before runtime-directory acquisition instead of being printed and ignored; the handler changes only the owned
+    loop's `AtomicBool`, after which the existing final `terminate_child()` calls remain the sole child authority.
+    The direct `--server` image no longer installs a second process-wide `ctrlc` handler that could preempt its Tokio
+    R-T9 drain. Its modifier/key-release cleanup instead runs inside `finish_graceful_shutdown()`, after the bounded
+    session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
+    introduces no new dependency package, production syscall, or lexical `unsafe {` block; the settled inventory
+    remains 796 across 243 tracked Rust files/66 nonzero files.
+
+    `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
+    source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active
+    root X11 seat and rejects every unknown argv, allowing the unmodified production desktop-discovery and service
+    launch path to run without a test-only production knob. For every generation the stage strictly parses the
+    root-owned mode-0600 record, verifies boot/start/executable/UID/generation fields against procfs, requires exact
+    `/proc/self/exe`, `--server`, `--service-owned-server` argv, launch-parent/generation environment bindings,
+    direct PPID, root UID, `NoNewPrivs: 1`, and a successful typed parked-IPC transaction. Supervisor stop is sent
+    only through its retained PID/start identity and a pidfd. Two complete launches must terminate the child at exit
+    status 0, reap it, remove the exact record, exit the supervisor at status 0, and produce distinct child and
+    generation identities. A third child is placed in the real kernel-stopped state through a pidfd; supervisor
+    `SIGTERM` must then take at least 7.5 seconds but no more than 20 seconds, log the eight-second graceful timeout,
+    send KILL only to its retained child, reap signal 9, remove the record, and exit 0. The clean rerun observed
+    8.156 seconds.
+
+    In the same namespace a copied, root-owned executable is descriptor-execed with neutral argv as UID 4000 after
+    supplementary groups and all inheritable/ambient/bounding capabilities are removed and `NoNewPrivs` is set.
+    Its exact `rd-smoke-server`, `--server` role has no service environment marker and its typed UID-scoped parked
+    IPC remains live through both normal generations and forced escalation, proving the service never selects an
+    unrelated portable server. Readiness failures are now terminal (`exit 1` rather than a return that Bash could
+    continue when the checker is used in a conditional); stable-log pinning and the readiness self-test close the
+    evidence race observed while developing this stage. The production fix follows the pinned crate's termination
+    contract plus Linux `kill(2)`, `wait(2)`, `signal(7)`, and pidfd contracts: signal delivery is not reap, exact
+    child resources are released only by wait, and stopped tasks cannot handle TERM while KILL cannot be caught,
+    blocked, or ignored.
+
+    This closes actual-binary manually supervised normal-stop/restart, real stopped-child escalation, and non-root
+    portable coexistence behavior. It is not an installed package transaction, installed systemd/SysV/OpenRC/runit
+    integration, Debian-without-systemd proof, supervisor crash/restart on the real binary, pre-pidfd runtime proof,
+    forced PID reuse, broader malformed/stale-record cases, the non-root active-desktop credential-drop branch,
+    cross-mount/namespace/container inode replacement, or concurrent separate-Docker survival. Those release gates
+    keep the parent item and upcoming release **OPEN**.
+
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
-    harness evidence for graceful restart/stop, a TERM-wedged child and bounded escalation, installed supervisor
+    harness evidence for installed/package-managed graceful restart/stop, installed supervisor
     crash/restart, malformed/stale records and forced PID reuse, user-owned/non-root servers, and the actual installed
     privilege-drop/exec chain. R-S11c-27d supplies isolated focused proof for crash and record decisions;
-    R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof. Neither substitutes
+    R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof; R-S11c-27f supplies
+    actual-binary manually supervised stop/restart, real stopped-child escalation, and portable coexistence. None substitutes
     for installed package-update, cross-mount, or container-namespace cases. Packaging/service integration and
     lifecycle proof for the supported SysV init,
     OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime

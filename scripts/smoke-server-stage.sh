@@ -32,6 +32,9 @@ case "$1" in
     ./target/debug/examples/mdwe_codec_probe
     echo "EXIT=0"
     ;;
+  service-lifecycle-manual)
+    bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh
+    ;;
   parked)
     export HOME=/tmp/rd1
     mkdir -p "$HOME"

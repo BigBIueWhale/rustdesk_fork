@@ -32,7 +32,7 @@ declare -A SELF_TEST_TMP_FILE_IDS=()
 
 fail() {
   printf 'smoke readiness: %s\n' "$*" >&2
-  return 1
+  exit 1
 }
 
 monotonic_millis() {

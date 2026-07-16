@@ -46,6 +46,9 @@ RUN=(docker run --rm
   -v "$PWD:/work:ro"
   -v rd-cargo-cache:/usr/local/cargo/registry
   -w /work "$IMG")
+LIFECYCLE_RUN=(docker run --rm --network none
+  -v "$PWD:/work:ro"
+  -w /work "$IMG")
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
 HOST_GUARD=$PWD/scripts/smoke-process-guard.py
@@ -190,6 +193,19 @@ run_stage build_out "${BUILD_RUN[@]}" bash --noprofile --norc /work/scripts/smok
 printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
+
+echo "== (0c) Linux manual supervisor lifecycle: exact child TERM/reap, restart generation, bounded forced stop, and portable noninterference (R-S11c-27f) =="
+run_stage lifecycle_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual
+printf '%s\n' "$lifecycle_out"
+record_stage_status R-S11c-27f
+grep -q '^SERVICE_LIFECYCLE_GRACEFUL=pass generation=' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11c-27f: actual --service SIGTERM did not gracefully reap its exact child"; rc=1; }
+grep -q '^SERVICE_LIFECYCLE_RESTART=pass generation=' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11c-27f: fresh manual supervisor generation was not observed"; rc=1; }
+grep -q '^SERVICE_LIFECYCLE_FORCED=pass elapsed_ms=' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11c-27f: stopped child did not take the bounded TERM-to-KILL/reap path"; rc=1; }
+grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11c-27f: unrelated non-root portable server did not survive every service transition"; rc=1; }
 
 echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
 # The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN

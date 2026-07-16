@@ -1927,20 +1927,21 @@ fn signal_child(child: &OwnedServiceChild, signal: c_int, label: &str) -> bool {
     false
 }
 
-fn wait_child_exit(child: &mut OwnedServiceChild, timeout: Duration, label: &str) -> bool {
+fn wait_child_exit(
+    child: &mut OwnedServiceChild,
+    timeout: Duration,
+    label: &str,
+) -> ResultType<bool> {
     let started = Instant::now();
     loop {
         match child.process.try_wait() {
             Ok(Some(status)) => {
                 log::info!("{label} child exited with {status}");
-                return true;
+                return Ok(true);
             }
             Ok(None) if started.elapsed() < timeout => sleep_millis(50),
-            Ok(None) => return false,
-            Err(err) => {
-                log::warn!("Failed waiting for {label} child: {err}");
-                return false;
-            }
+            Ok(None) => return Ok(false),
+            Err(err) => return Err(anyhow!("Failed waiting for {label} child: {err}")),
         }
     }
 }
@@ -1949,46 +1950,79 @@ fn remove_reaped_service_child_record(
     runtime: &ServiceRuntime,
     child: &OwnedServiceChild,
     label: &str,
-) {
-    if let Err(err) = runtime.remove_record(&child.record) {
-        log::error!(
+) -> ResultType<()> {
+    runtime.remove_record(&child.record).map_err(|err| {
+        anyhow!(
             "Failed to remove exact {label} child record for pid {}: {err}",
             child.record.pid
-        );
-    }
+        )
+    })
 }
 
-fn terminate_child(mut child: OwnedServiceChild, label: &str, runtime: &ServiceRuntime) {
-    if signal_child(&child, hbb_common::libc::SIGTERM, label)
-        && wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ServiceChildTermination {
+    Absent,
+    Graceful,
+    Forced,
+}
+
+fn terminate_child_with_timeouts(
+    child: &mut Option<OwnedServiceChild>,
+    label: &str,
+    runtime: &ServiceRuntime,
+    graceful_timeout: Duration,
+    forced_timeout: Duration,
+) -> ResultType<ServiceChildTermination> {
+    let Some(owned_child) = child.as_mut() else {
+        return Ok(ServiceChildTermination::Absent);
+    };
+    let pid = owned_child.record.pid;
+    if signal_child(owned_child, hbb_common::libc::SIGTERM, label)
+        && wait_child_exit(owned_child, graceful_timeout, label).map_err(|err| {
+            anyhow!("{err}; preserving exact {label} child pid {pid} ownership and recovery record")
+        })?
     {
-        remove_reaped_service_child_record(runtime, &child, label);
-        return;
+        remove_reaped_service_child_record(runtime, owned_child, label)?;
+        drop(child.take());
+        return Ok(ServiceChildTermination::Graceful);
     }
 
     log::warn!("{label} child did not exit after SIGTERM; forcing stop");
-    if let Err(err) = child.process.kill() {
-        log::warn!(
-            "Failed to force-stop exact {label} child pid {}: {err}",
-            child.record.pid
+    let forced_kill_error = owned_child.process.kill().err();
+    if wait_child_exit(owned_child, forced_timeout, label).map_err(|err| {
+        anyhow!("{err}; preserving exact {label} child pid {pid} ownership and recovery record")
+    })? {
+        remove_reaped_service_child_record(runtime, owned_child, label)?;
+        drop(child.take());
+        return Ok(ServiceChildTermination::Forced);
+    }
+
+    if let Some(err) = forced_kill_error {
+        bail!(
+            "Failed to SIGKILL exact {label} child pid {pid}: {err}; bounded forced wait also expired, preserving direct child ownership and recovery record"
         );
     }
-    match child.process.wait() {
-        Ok(status) => {
-            log::info!("{label} child exited with {status}");
-            remove_reaped_service_child_record(runtime, &child, label);
-        }
-        Err(err) => log::error!(
-            "Failed to reap exact {label} child pid {}; preserving its recovery record: {err}",
-            child.record.pid
-        ),
-    }
+    bail!(
+        "Exact {label} child pid {pid} remained unreaped after bounded SIGKILL wait; preserving direct child ownership and recovery record"
+    )
 }
 
-fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime) {
-    if let Some(ps) = server.take() {
-        terminate_child(ps, "--server", runtime);
-    }
+fn terminate_child(
+    child: &mut Option<OwnedServiceChild>,
+    label: &str,
+    runtime: &ServiceRuntime,
+) -> ResultType<ServiceChildTermination> {
+    terminate_child_with_timeouts(
+        child,
+        label,
+        runtime,
+        SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT,
+        SERVICE_CHILD_FORCED_STOP_TIMEOUT,
+    )
+}
+
+fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime) -> ResultType<()> {
+    terminate_child(server, "--server", runtime).map(|_| ())
 }
 
 fn set_x11_env(desktop: &Desktop) {
@@ -2018,7 +2052,7 @@ fn should_start_server(
     last_restart: &mut Instant,
     server: &mut Option<OwnedServiceChild>,
     runtime: &ServiceRuntime,
-) -> bool {
+) -> ResultType<bool> {
     let cm = get_cm();
     let mut start_new = false;
     let mut should_kill = false;
@@ -2046,7 +2080,7 @@ fn should_start_server(
         if terminal_session_count > 0 {
             // There are terminal sessions, so we don't restart the server.
             // We also need to keep `cm0` unchanged, so that we can reach this branch the next time.
-            return false;
+            return Ok(false);
         }
         // restart server if new connections all closed, or every one hour,
         // as a workaround to resolve "SpotUdp" (dns resolve)
@@ -2056,8 +2090,8 @@ fn should_start_server(
     }
 
     if should_kill {
-        if let Some(ps) = server.take() {
-            terminate_child(ps, "--server", runtime);
+        if server.is_some() {
+            terminate_child(server, "--server", runtime)?;
             *last_restart = Instant::now();
         }
     }
@@ -2083,12 +2117,12 @@ fn should_start_server(
     };
     if exited {
         if let Some(ps) = server.take() {
-            remove_reaped_service_child_record(runtime, &ps, "--server");
+            remove_reaped_service_child_record(runtime, &ps, "--server")?;
         }
         start_new = true;
     }
     *cm0 = cm;
-    start_new
+    Ok(start_new)
 }
 
 pub fn start_os_service() -> ResultType<()> {
@@ -2128,7 +2162,7 @@ pub fn start_os_service() -> ResultType<()> {
         // Login wayland will try to start a headless --server.
         if desktop.username == "root" || desktop.is_login_wayland() {
             // try kill subprocess "--server"
-            stop_server(&mut user_server, &runtime);
+            stop_server(&mut user_server, &runtime)?;
             // try start subprocess "--server"
             // No need to check is_display_changed here.
             if should_start_server(
@@ -2140,13 +2174,13 @@ pub fn start_os_service() -> ResultType<()> {
                 &mut last_restart,
                 &mut server,
                 &runtime,
-            ) {
+            )? {
                 stop_subprocess();
                 start_server(None, &mut server, &runtime);
             }
         } else if desktop.username != "" {
             // try kill subprocess "--server"
-            stop_server(&mut server, &runtime);
+            stop_server(&mut server, &runtime)?;
 
             let is_display_changed = desktop.display != display || desktop.xauth != xauth;
             display = desktop.display.clone();
@@ -2162,13 +2196,13 @@ pub fn start_os_service() -> ResultType<()> {
                 &mut last_restart,
                 &mut user_server,
                 &runtime,
-            ) {
+            )? {
                 stop_subprocess();
                 start_server(Some(&desktop), &mut user_server, &runtime);
             }
         } else {
-            stop_server(&mut user_server, &runtime);
-            stop_server(&mut server, &runtime);
+            stop_server(&mut user_server, &runtime)?;
+            stop_server(&mut server, &runtime)?;
         }
 
         let keeps_headless = sid.is_empty() && desktop.is_headless();
@@ -2184,12 +2218,8 @@ pub fn start_os_service() -> ResultType<()> {
         }
     }
 
-    if let Some(ps) = user_server.take() {
-        terminate_child(ps, "--server", &runtime);
-    }
-    if let Some(ps) = server.take() {
-        terminate_child(ps, "--server", &runtime);
-    }
+    terminate_child(&mut user_server, "--server", &runtime)?;
+    terminate_child(&mut server, "--server", &runtime)?;
     log::info!("Exit");
     Ok(())
 }
@@ -3032,6 +3062,19 @@ mod process_cleanup_tests {
         }
     }
 
+    struct ServiceChildTerminationTestOwner {
+        child: Option<OwnedServiceChild>,
+    }
+
+    impl Drop for ServiceChildTerminationTestOwner {
+        fn drop(&mut self) {
+            if let Some(child) = self.child.as_mut() {
+                let _ = child.process.kill();
+                let _ = child.process.wait();
+            }
+        }
+    }
+
     fn sample_service_child_record() -> ServiceChildRecord {
         ServiceChildRecord {
             pid: 4242,
@@ -3156,6 +3199,124 @@ mod process_cleanup_tests {
             exact_environment.as_bytes(),
             "fedcba98-7654-4cba-8fed-fedcba987654"
         ));
+    }
+
+    #[test]
+    fn r_s11c27c_linux_service_child_term_then_bounded_kill() {
+        use std::{
+            io::ErrorKind,
+            os::unix::{fs::DirBuilderExt as _, net::UnixListener},
+        };
+
+        const TEST_NAME: &str = "platform::linux::process_cleanup_tests::r_s11c27c_linux_service_child_term_then_bounded_kill";
+        const ROLE_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_TERMINATION_ROLE";
+        const SOCKET_ENV: &str = "RUSTDESK_TEST_SERVICE_CHILD_TERMINATION_SOCKET";
+
+        match std::env::var(ROLE_ENV).as_deref() {
+            Ok("worker") => {
+                let _ready =
+                    std::os::unix::net::UnixStream::connect(std::env::var_os(SOCKET_ENV).unwrap())
+                        .unwrap();
+                loop {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok(role) => panic!("unexpected service-child termination test role: {role}"),
+            Err(_) => {}
+        }
+
+        let run_case = |case: &str, stop_before_term: bool, expected| {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "rustdesk-service-termination-{}-{case}-{nonce}",
+                std::process::id()
+            ));
+            fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+            let _runtime_guard = ServiceRuntimeTestDir(root.clone());
+            let runtime = ServiceRuntime::for_test(&root, "01234567-89ab-4cde-8fab-0123456789ab");
+            let socket_path = root.join("ready.sock");
+            let listener = UnixListener::bind(&socket_path).unwrap();
+            listener.set_nonblocking(true).unwrap();
+
+            let process = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST_NAME, "--nocapture"])
+                .env(ROLE_ENV, "worker")
+                .env(SOCKET_ENV, &socket_path)
+                .spawn()
+                .unwrap();
+            let pid = process.id();
+            let mut record = sample_service_child_record();
+            record.pid = pid;
+            let mut owner = ServiceChildTerminationTestOwner {
+                child: Some(OwnedServiceChild {
+                    process,
+                    record: record.clone(),
+                }),
+            };
+            runtime.publish_record(&record).unwrap();
+
+            let ready_deadline = Instant::now() + Duration::from_secs(5);
+            let _worker_stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(err)
+                        if err.kind() == ErrorKind::WouldBlock
+                            && Instant::now() < ready_deadline =>
+                    {
+                        if let Some(status) =
+                            owner.child.as_mut().unwrap().process.try_wait().unwrap()
+                        {
+                            panic!("service-child termination worker exited early: {status}");
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(err) => panic!("service-child termination worker did not connect: {err}"),
+                }
+            };
+
+            if stop_before_term {
+                assert!(signal_child(
+                    owner.child.as_ref().unwrap(),
+                    hbb_common::libc::SIGSTOP,
+                    "test --server"
+                ));
+                let stop_deadline = Instant::now() + Duration::from_secs(2);
+                loop {
+                    let (_, state) = read_service_child_proc_stat(pid).unwrap();
+                    if matches!(state, 'T' | 't') {
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < stop_deadline,
+                        "service-child termination worker did not enter stopped state"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+
+            let started = Instant::now();
+            let outcome = terminate_child_with_timeouts(
+                &mut owner.child,
+                "test --server",
+                &runtime,
+                Duration::from_millis(150),
+                Duration::from_secs(2),
+            )
+            .unwrap();
+            assert_eq!(outcome, expected);
+            assert!(
+                started.elapsed() < Duration::from_secs(3),
+                "service-child termination exceeded its bounded waits"
+            );
+            assert!(owner.child.is_none());
+            assert!(runtime.read_record().unwrap().is_none());
+        };
+
+        run_case("graceful", false, ServiceChildTermination::Graceful);
+        run_case("forced", true, ServiceChildTermination::Forced);
     }
 
     #[test]

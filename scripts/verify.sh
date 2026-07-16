@@ -3113,9 +3113,10 @@ fi
 service_child_final_arm_block=$(awk '/pub fn require_service_owned_server_parent_liveness/,/^}/' src/platform/linux.rs)
 echo "$service_child_final_arm_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a parent-death-binding-not-rearmed-after-exec"
 grep -qF 'crate::platform::require_service_owned_server_parent_liveness()' src/core_main.rs || r_s11c27a="$r_s11c27a final-server-image-not-rearmed"
-grep -qF 'fn terminate_child(mut child: OwnedServiceChild, label: &str, runtime: &ServiceRuntime)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-termination-helper-missing"
-grep -qF 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-bounded-wait-missing"
-grep -qF 'child.process.kill()' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-forced-stop-missing"
+grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-termination-helper-missing"
+grep -qF 'child: &mut Option<OwnedServiceChild>' src/platform/linux.rs || r_s11c27a="$r_s11c27a retained-exact-child-ownership-missing"
+grep -qF 'SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT,' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-bounded-wait-missing"
+grep -qF 'owned_child.process.kill()' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-forced-stop-missing"
 if echo "$service_child_launch_block" | grep -Eq 'run_as_user\(|run_me|SUDO_PATHS'; then
   r_s11c27a="$r_s11c27a wrapper-child-launch-regressed"
 fi
@@ -3177,6 +3178,47 @@ grep -qE '^SystemCallFilter=.*pidfd_open.*pidfd_send_signal.*renameat2' res/rust
 grep -qF 'R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27b="$r_s11c27b hardening-ledger-missing"
 if [ -n "$r_s11c27b" ]; then echo "  FAIL R-S11c-27b Linux durable service-child crash recovery:$r_s11c27b"; rc=1; else
   echo "  ok  R-S11c-27b root-only atomic records + singleton lease + pidfd-first full identity revalidation + explicit pre-pidfd fallback"; fi
+
+echo "== (3b-iii-h2d) Linux direct-child stop is bounded and fail-closed (R-S11c-27c) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27c_linux_service_child_term_then_bounded_kill --color never
+r_s11c27c=
+grep -qF 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);' src/platform/linux.rs || r_s11c27c="$r_s11c27c graceful-timeout-missing"
+grep -qF 'const SERVICE_CHILD_FORCED_STOP_TIMEOUT: Duration = Duration::from_secs(8);' src/platform/linux.rs || r_s11c27c="$r_s11c27c forced-timeout-missing"
+service_child_termination_block=$(awk '/fn terminate_child_with_timeouts\(/,/fn stop_server\(/' src/platform/linux.rs)
+echo "$service_child_termination_block" | grep -qF 'child: &mut Option<OwnedServiceChild>' || r_s11c27c="$r_s11c27c exact-child-ownership-not-borrowed"
+echo "$service_child_termination_block" | grep -qF 'wait_child_exit(owned_child, graceful_timeout, label)' || r_s11c27c="$r_s11c27c graceful-wait-not-bounded"
+echo "$service_child_termination_block" | grep -qF 'let forced_kill_error = owned_child.process.kill().err();' || r_s11c27c="$r_s11c27c exact-child-kill-missing"
+echo "$service_child_termination_block" | grep -qF 'wait_child_exit(owned_child, forced_timeout, label)' || r_s11c27c="$r_s11c27c forced-wait-not-bounded"
+echo "$service_child_termination_block" | grep -qF 'remained unreaped after bounded SIGKILL wait; preserving direct child ownership and recovery record' || r_s11c27c="$r_s11c27c uncertain-reap-not-fail-closed"
+if echo "$service_child_termination_block" | grep -qF '.process.wait()'; then
+  r_s11c27c="$r_s11c27c unbounded-child-wait-present"
+fi
+if [ "$(echo "$service_child_termination_block" | grep -cF 'drop(child.take());')" -ne 2 ] ||
+   ! echo "$service_child_termination_block" | awk '
+     /remove_reaped_service_child_record/ { remove_count++; last_remove = NR }
+     /drop\(child.take\(\)\)/ {
+       take_count++
+       if (!last_remove || last_remove >= NR) bad = 1
+       last_remove = 0
+     }
+     END { exit !(remove_count == 2 && take_count == 2 && !bad) }
+   '; then
+  r_s11c27c="$r_s11c27c child-ownership-released-before-exact-record-removal"
+fi
+service_child_loop_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/log::info!\("Exit"\)/' src/platform/linux.rs)
+echo "$service_child_loop_block" | grep -qF 'stop_server(&mut user_server, &runtime)?;' || r_s11c27c="$r_s11c27c user-stop-error-not-propagated"
+echo "$service_child_loop_block" | grep -qF 'stop_server(&mut server, &runtime)?;' || r_s11c27c="$r_s11c27c root-stop-error-not-propagated"
+echo "$service_child_loop_block" | grep -qF 'terminate_child(&mut user_server, "--server", &runtime)?;' || r_s11c27c="$r_s11c27c final-user-stop-error-not-propagated"
+echo "$service_child_loop_block" | grep -qF 'terminate_child(&mut server, "--server", &runtime)?;' || r_s11c27c="$r_s11c27c final-root-stop-error-not-propagated"
+service_child_replacement_block=$(awk '/fn should_start_server\(/,/pub fn start_os_service\(/' src/platform/linux.rs)
+echo "$service_child_replacement_block" | grep -qF ') -> ResultType<bool> {' || r_s11c27c="$r_s11c27c replacement-decision-not-fallible"
+echo "$service_child_replacement_block" | grep -qF 'terminate_child(server, "--server", runtime)?;' || r_s11c27c="$r_s11c27c replacement-stop-error-not-propagated"
+if [ "$(echo "$service_child_loop_block" | grep -cF ')? {')" -lt 2 ]; then
+  r_s11c27c="$r_s11c27c replacement-decision-error-not-propagated-at-call-sites"
+fi
+grep -qF 'R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27c="$r_s11c27c hardening-ledger-missing"
+if [ -n "$r_s11c27c" ]; then echo "  FAIL R-S11c-27c Linux bounded direct-child termination:$r_s11c27c"; rc=1; else
+  echo "  ok  R-S11c-27c exact retained Child gets bounded TERM then bounded KILL/reap, and uncertain reap exits nonzero before replacement"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
@@ -3698,9 +3740,9 @@ if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIF
 fi
 grep -q "system2('/bin/rm -rf tmpdeb')" build.py || r_s11c10j="$r_s11c10j build.py:no-clean-staging-root"
 grep -q 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-drain-timeout"
-grep -qF 'fn terminate_child(mut child: OwnedServiceChild, label: &str, runtime: &ServiceRuntime)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
+grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-terminate-helper"
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
-grep -q 'wait_child_exit(&mut child, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT, label)' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
+grep -qF 'SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT,' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
 linux_child_stop_block=$(
   awk '/fn stop_server/,/fn set_x11_env/' src/platform/linux.rs
   awk '/if should_kill/,/if let Some\(ps\) = server.as_mut/' src/platform/linux.rs

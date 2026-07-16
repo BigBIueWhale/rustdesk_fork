@@ -2588,8 +2588,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     and immediately verifies `getppid()` against the expected supervisor, closing the set-after-parent-exit race.
     Because Linux may clear the setting while executing a privileged/capability-bearing file, the final
     service-owned `--server` image re-arms and revalidates it before starting server state. Normal replacement
-    and service shutdown send `SIGTERM` to the retained child, wait the existing bounded eight-second interval,
-    and force-stop/reap only that same `Child`; abnormal supervisor death uses the kernel binding to stop its
+    and service shutdown send `SIGTERM` to the retained child and act only on that same `Child`; R-S11c-27c below
+    now bounds both the graceful and forced reap phases. Abnormal supervisor death uses the kernel binding to stop its
     exact child independently of any init system. Ordinary portable/user-owned `--server` launches do not carry
     the service marker and do not enter this path. The old `stop_rustdesk_servers()`/`force_stop_server()` global sweep and every
     `kill_current_exe_processes_with_arg("--server", ...)` call are deleted, so another installation, smoke
@@ -2635,6 +2635,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
     blocks; the current machine inventory is 796 across the unchanged 243 tracked Rust files/66 nonzero files,
     with per-file-count digest `15ff4c67c568c59d588b8f2625a8c58d1b57a727c3a81d33392d3084621c3526`.
+
+  - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
+    2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
+    `OwnedServiceChild` before it has proof of reap and no longer follows `Child::kill()` with an unbounded
+    `Child::wait()`. It borrows the owning `Option`, sends `SIGTERM` to the retained exact child, polls
+    `try_wait()` for at most eight seconds, then sends `SIGKILL` through that same `Child` and polls for at most
+    a second eight-second interval. The durable record and direct `Child` ownership are released only after
+    successful reap and exact record removal. A wait error, failed KILL followed by an expired wait, or a target
+    still unreaped at the forced deadline preserves both authorities and returns an error. `stop_server()`, the
+    replacement decision, every loop transition, and final shutdown now propagate that error out of
+    `start_os_service()`, so an uncertain old child cannot be followed by a replacement launch or reported as a
+    clean service exit.
+
+    The focused pinned-container behavior test execs the real test image as the retained worker twice: the first
+    child takes the default graceful `SIGTERM` exit, while the second is first placed in a kernel-stopped state so
+    TERM cannot complete and the exact-child KILL/reap branch is required. Both paths must finish inside their
+    explicit test deadlines, release direct ownership, and remove only the matching durable record.
+    `scripts/verify.sh` additionally rejects an unbounded `process.wait()` in this helper, requires ownership to be
+    taken only after exact record removal, and binds error propagation before replacement. This decision follows
+    Rust's `std::process::Child` contract (there is no `Drop` cleanup; `try_wait` is the nonblocking exit/reap
+    observation) and Linux `kill(2)`, `wait(2)`, and `signal(7)` (signal delivery is not reap; `WNOHANG` reports a
+    still-running child without blocking; SIGKILL cannot be caught, blocked, or ignored). It adds no unsafe block
+    and leaves the settled lexical unsafe inventory unchanged.
+
+    This is source and focused behavior closure for the direct-child stop primitive, not the installed release
+    matrix. Real installed graceful restart/stop and TERM-wedge escalation remain mandatory alongside crash/restart,
+    hostile record/file/PID cases, non-root/portable and container noninterference, the actual privilege-drop chain,
+    pre-pidfd runtime exercise, and SysV/OpenRC/runit/manual/non-systemd packaging proof. The parent item and upcoming
+    release therefore remain **OPEN**.
 
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
     harness evidence for graceful restart/stop, a TERM-wedged child and bounded escalation, real supervisor

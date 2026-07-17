@@ -25,6 +25,8 @@
 #     graceful reap, and no interference with a separate UID-4000 portable server;
 #   - R-S11c-27i : the real --service supervisor rejects malformed and live-but-ambiguous durable
 #     child records without changing the record or either separately identity-bound UID-4000 process;
+#   - R-S11c-27j : the manual lifecycle stage cannot affect a concurrently running networkless
+#     sibling Docker container with its own PID namespace and neutral launched RustDesk server;
 #   - R-D8 / R-D2 (real password provisioning) : the production `--password-stdin` CLI run against a
 #     non-installed user-owned live --server (2b root-owned, 2c non-root same-uid) provisions over
 #     uid-scoped main IPC and CLEANLY set-and-exits (no hang); the new credential keys and the old one
@@ -61,6 +63,10 @@ HOST_GUARD_ROOT=
 HOST_GUARD_ROOT_ID=
 HOST_GUARD_PID=
 HOST_GUARD_START=
+SIBLING_ROOT=
+SIBLING_ROOT_ID=
+SIBLING_NAME=
+SIBLING_CID=
 
 host_guard_diagnostic() {
   [ -n "$HOST_GUARD_ROOT" ] || return 0
@@ -117,9 +123,137 @@ stop_host_guard() {
   sed -n '1,120p' "$HOST_GUARD_ROOT/monitor.log"
 }
 
+sibling_container_running() {
+  [ -n "$SIBLING_CID" ] || return 1
+  [ "$(docker inspect -f '{{.State.Running}}' "$SIBLING_CID" 2>/dev/null || true)" = true ]
+}
+
+cleanup_sibling_root() {
+  local cleanup_status=0 path
+  [ -n "$SIBLING_ROOT" ] || return 0
+  if [ "$(stat -c '%d:%i:%u:%g:%a' "$SIBLING_ROOT" 2>/dev/null || true)" != "$SIBLING_ROOT_ID" ]; then
+    echo "sibling docker: preserving changed private workspace" >&2
+    return 125
+  fi
+  for path in ready stop; do
+    [ ! -e "$SIBLING_ROOT/$path" ] && [ ! -L "$SIBLING_ROOT/$path" ] \
+      || rm -- "$SIBLING_ROOT/$path" || cleanup_status=125
+  done
+  rmdir -- "$SIBLING_ROOT" || cleanup_status=125
+  if [ "$cleanup_status" -eq 0 ]; then
+    SIBLING_ROOT=
+    SIBLING_ROOT_ID=
+  fi
+  return "$cleanup_status"
+}
+
+start_sibling_docker() {
+  local docker_out i suffix
+  SIBLING_ROOT=$(mktemp -d /tmp/rustdesk-smoke-sibling.XXXXXXXXXX) || return 1
+  SIBLING_ROOT_ID=$(stat -c '%d:%i:%u:%g:%a' "$SIBLING_ROOT") || return 1
+  if [ "${SIBLING_ROOT_ID##*:}" != 700 ]; then
+    echo "sibling docker workspace is not mode 0700" >&2
+    return 1
+  fi
+  suffix=${SIBLING_ROOT##*.}
+  SIBLING_NAME="rd-smoke-sibling-$suffix"
+  docker_out=$(docker run -d --name "$SIBLING_NAME" --network none \
+    -v "$PWD:/work:ro" \
+    -v "$SIBLING_ROOT:/sibling:rw" \
+    -w /work "$IMG" \
+    bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server 2>&1)
+  if [ "$?" -ne 0 ]; then
+    printf '%s\n' "$docker_out" >&2
+    cleanup_sibling_root || true
+    return 1
+  fi
+  SIBLING_CID=$docker_out
+  for ((i = 0; i < 400; i += 1)); do
+    if [ -f "$SIBLING_ROOT/ready" ] && [ ! -L "$SIBLING_ROOT/ready" ] \
+      && grep -Fxq ready "$SIBLING_ROOT/ready"; then
+      host_guard_checkpoint
+      return "$?"
+    fi
+    if ! sibling_container_running; then
+      echo "sibling docker container exited before ready" >&2
+      docker logs "$SIBLING_CID" >&2 || true
+      return 1
+    fi
+    sleep 0.05
+  done
+  echo "sibling docker container did not become ready" >&2
+  docker logs "$SIBLING_CID" >&2 || true
+  return 1
+}
+
+stop_sibling_docker() {
+  local cid logs wait_out wait_status
+  [ -n "$SIBLING_CID" ] || return 0
+  cid=$SIBLING_CID
+  if ! sibling_container_running; then
+    echo "sibling docker container exited before lifecycle completed" >&2
+    docker logs "$cid" >&2 || true
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  fi
+  if [ -z "$SIBLING_ROOT" ] || [ "$(stat -c '%d:%i:%u:%g:%a' "$SIBLING_ROOT" 2>/dev/null || true)" != "$SIBLING_ROOT_ID" ]; then
+    echo "sibling docker control workspace identity changed" >&2
+    return 1
+  fi
+  printf 'stop\n' >"$SIBLING_ROOT/stop" || return 1
+  wait_out=$(timeout --signal=TERM --kill-after=5s 30s docker wait "$cid" 2>&1)
+  if [ "$?" -ne 0 ]; then
+    printf '%s\n' "$wait_out" >&2
+    docker logs "$cid" >&2 || true
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  fi
+  wait_status=$(printf '%s\n' "$wait_out" | tail -n 1 | tr -d '\r')
+  logs=$(docker logs "$cid" 2>&1) || {
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  }
+  printf '%s\n' "$logs"
+  if [ "$wait_status" != 0 ]; then
+    echo "sibling docker container exited $wait_status" >&2
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  fi
+  grep -Eq '^SIBLING_DOCKER_READY pid=[0-9]+ start=[0-9]+$' <<<"$logs" || {
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  }
+  grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$logs" || {
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  }
+  docker rm "$cid" >/dev/null || return 1
+  SIBLING_CID=
+  cleanup_sibling_root || return "$?"
+  host_guard_checkpoint || return 1
+  printf 'SIBLING_DOCKER_NONINTERFERENCE=pass cid=%s\n' "${cid:0:12}"
+}
+
 cleanup_smoke_host_guard() {
   local status=$? cleanup_status=0 path
   trap - EXIT HUP INT TERM
+  if [ -n "$SIBLING_CID" ]; then
+    stop_sibling_docker >/dev/null 2>&1 || cleanup_status=$?
+  elif [ -n "$SIBLING_ROOT" ]; then
+    cleanup_sibling_root || cleanup_status=$?
+  fi
   if [ -n "$HOST_GUARD_PID" ]; then
     stop_host_guard || cleanup_status=$?
   fi
@@ -128,7 +262,7 @@ cleanup_smoke_host_guard() {
       echo "smoke host guard: preserving changed private workspace" >&2
       cleanup_status=125
     else
-      for path in baseline.json ready stop violation.json monitor.log; do
+      for path in baseline.json ready stop violation.json monitor.log sibling-docker.log; do
         [ ! -e "$HOST_GUARD_ROOT/$path" ] && [ ! -L "$HOST_GUARD_ROOT/$path" ] \
           || rm -- "$HOST_GUARD_ROOT/$path" || cleanup_status=125
       done
@@ -199,9 +333,29 @@ printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
 
-echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i) =="
-run_stage lifecycle_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual
+echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, sibling Docker survival, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j) =="
+lifecycle_out=
+sibling_out=
+sibling_out_file=$HOST_GUARD_ROOT/sibling-docker.log
+lifecycle_stage_status=1
+sibling_stage_status=1
+if start_sibling_docker; then
+  run_stage lifecycle_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual
+  lifecycle_stage_status=$STAGE_STATUS
+  if stop_sibling_docker >"$sibling_out_file" 2>&1; then
+    sibling_stage_status=0
+  else
+    sibling_stage_status=$?
+  fi
+  sibling_out=$(cat "$sibling_out_file")
+else
+  lifecycle_out='sibling Docker server failed to start'
+  stop_sibling_docker >/dev/null 2>&1 || true
+  cleanup_sibling_root >/dev/null 2>&1 || true
+fi
 printf '%s\n' "$lifecycle_out"
+printf '%s\n' "$sibling_out"
+STAGE_STATUS=$lifecycle_stage_status
 record_stage_status R-S11c-27f
 record_stage_status R-S11c-27g
 record_stage_status R-S11c-27h
@@ -220,6 +374,21 @@ grep -Eq '^SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=4001 groups=4001,4
   || { echo "  FAIL R-S11c-27h: actual active-seat child did not complete the exact non-root descriptor-exec path"; rc=1; }
 grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i: unrelated non-root portable server did not survive every service transition"; rc=1; }
+if [ "$lifecycle_stage_status" -eq 0 ] && [ "$sibling_stage_status" -eq 0 ] \
+  && grep -Eq '^SIBLING_DOCKER_READY pid=[0-9]+ start=[0-9]+$' <<<"$sibling_out" \
+  && grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$sibling_out" \
+  && grep -Eq '^SIBLING_DOCKER_NONINTERFERENCE=pass cid=[0-9a-f]{12}$' <<<"$sibling_out"; then
+  STAGE_STATUS=0
+else
+  STAGE_STATUS=1
+fi
+record_stage_status R-S11c-27j
+grep -Eq '^SIBLING_DOCKER_READY pid=[0-9]+ start=[0-9]+$' <<<"$sibling_out" \
+  || { echo "  FAIL R-S11c-27j: sibling Docker server did not publish an exact ready identity before lifecycle authority ran"; rc=1; }
+grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$sibling_out" \
+  || { echo "  FAIL R-S11c-27j: unrelated sibling Docker server did not survive the service lifecycle stage"; rc=1; }
+grep -Eq '^SIBLING_DOCKER_NONINTERFERENCE=pass cid=[0-9a-f]{12}$' <<<"$sibling_out" \
+  || { echo "  FAIL R-S11c-27j: sibling Docker container was not drained as an unrelated survivor after lifecycle completion"; rc=1; }
 
 echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
 # The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN

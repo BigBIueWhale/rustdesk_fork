@@ -3379,6 +3379,38 @@ grep -qF 'R-S11c-27i — actual-binary hostile service-child record rejection be
 if [ -n "$r_s11c27i" ]; then echo "  FAIL R-S11c-27i Linux hostile service-child records:$r_s11c27i"; rc=1; else
   echo "  ok  R-S11c-27i actual --service exits 1 and preserves malformed, untrusted, and live-ambiguous records while exact non-root decoy and portable identities survive"; fi
 
+echo "== (3b-iii-h2k) Linux service lifecycle leaves an unrelated sibling Docker namespace alive (R-S11c-27j) =="
+r_s11c27j=
+grep -qF 'sibling-docker-server)' scripts/smoke-server-stage.sh || r_s11c27j="$r_s11c27j sibling-stage-dispatch-missing"
+grep -qF 'SIBLING_DOCKER_READY pid=' scripts/smoke-server-stage.sh || r_s11c27j="$r_s11c27j sibling-ready-marker-missing"
+grep -qF 'SIBLING_DOCKER_SURVIVED=pass pid=' scripts/smoke-server-stage.sh || r_s11c27j="$r_s11c27j sibling-survival-marker-missing"
+grep -qF 'start_sibling_docker()' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-orchestrator-missing"
+grep -qF 'stop_sibling_docker()' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-stop-orchestrator-missing"
+grep -qF 'docker run -d --name "$SIBLING_NAME" --network none' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-network-isolation-missing"
+grep -qF -- '-v "$PWD:/work:ro"' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-source-bind-not-readonly"
+grep -qF -- '-v "$SIBLING_ROOT:/sibling:rw"' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-control-bind-missing"
+grep -qF 'bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-mounted-stage-missing"
+grep -qF 'sibling_container_running' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-running-check-missing"
+grep -qF 'SIBLING_DOCKER_NONINTERFERENCE=pass cid=' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-noninterference-marker-missing"
+grep -qF 'record_stage_status R-S11c-27j' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j runtime-status-not-preserved"
+sibling_docker_block=$(awk '/docker_out=\$\(docker run -d --name "\$SIBLING_NAME"/,/2>&1\)/' scripts/smoke-server.sh)
+echo "$sibling_docker_block" | grep -qF -- '--network none' || r_s11c27j="$r_s11c27j sibling-network-none-not-in-docker-run"
+if echo "$sibling_docker_block" | grep -q -- '--pid'; then
+  r_s11c27j="$r_s11c27j sibling-pid-namespace-shared"
+fi
+if ! awk '
+  /^if start_sibling_docker; then/ { start = NR }
+  /run_stage lifecycle_out/ { run = NR }
+  /if stop_sibling_docker >"\$sibling_out_file" 2>&1; then/ { stop = NR }
+  /record_stage_status R-S11c-27j/ { record = NR }
+  END { exit !(start && run && stop && record && start < run && run < stop && stop < record) }
+' scripts/smoke-server.sh; then
+  r_s11c27j="$r_s11c27j sibling-lifecycle-order-regressed"
+fi
+grep -qF 'R-S11c-27j — concurrent separate-Docker service noninterference behavior' HARDENING_STATUS.md || r_s11c27j="$r_s11c27j hardening-ledger-missing"
+if [ -n "$r_s11c27j" ]; then echo "  FAIL R-S11c-27j Linux sibling Docker noninterference:$r_s11c27j"; rc=1; else
+  echo "  ok  R-S11c-27j an unrelated networkless sibling Docker container with a neutral RustDesk server remains alive until explicitly drained after all manual lifecycle stop/crash/hostile-record operations"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

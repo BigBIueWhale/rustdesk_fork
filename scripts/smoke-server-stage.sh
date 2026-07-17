@@ -36,6 +36,43 @@ case "$1" in
   service-lifecycle-manual)
     bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh
     ;;
+  sibling-docker-server)
+    control=/sibling
+    [ -d "$control" ] && [ ! -L "$control" ] || {
+      echo "sibling docker control directory is absent" >&2
+      exit 1
+    }
+    export HOME=/tmp/rd-sibling
+    mkdir -p "$HOME"
+    sibling_cleanup() {
+      status=$?
+      trap - EXIT HUP INT TERM
+      if [ -n "$SRV" ] && [ -n "$SRV_START" ] && "$READY" --is-running "$SRV" "$SRV_START" 2>/dev/null; then
+        "$READY" --stop "$SRV" "$SRV_START" >/dev/null 2>&1 || true
+        wait "$SRV" 2>/dev/null || true
+      fi
+      exit "$status"
+    }
+    trap sibling_cleanup EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    start_server /work/target/debug/rustdesk /tmp/sibling-docker.log
+    "$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log /work/target/debug/examples/smoke_readiness 0
+    printf 'SIBLING_DOCKER_READY pid=%s start=%s\n' "$SRV" "$SRV_START"
+    (umask 022 && printf 'ready\n' >"$control/ready")
+    while [ ! -e "$control/stop" ] && [ ! -L "$control/stop" ]; do
+      "$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"
+    done
+    [ -f "$control/stop" ] && [ ! -L "$control/stop" ]
+    grep -Fxq stop "$control/stop"
+    "$READY" --stop "$SRV" "$SRV_START"
+    wait "$SRV"
+    printf 'SIBLING_DOCKER_SURVIVED=pass pid=%s start=%s\n' "$SRV" "$SRV_START"
+    SRV=
+    SRV_START=
+    trap - EXIT HUP INT TERM
+    ;;
   parked)
     export HOME=/tmp/rd1
     mkdir -p "$HOME"

@@ -2923,8 +2923,46 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     recycled a PID during the test. Actual forced PID reuse remains open, as do installed package/service-manager
     stop/restart and supervisor-crash behavior (including an installed non-root child), pre-pidfd fallback runtime,
     cross-mount/container namespace identity, SysV/OpenRC/runit/manual packaging integration including Debian
-    non-systemd, concurrent separate-Docker survival, exact-commit cold artifact evidence, and external expert R-V3
-    review. The parent item and upcoming release remain **OPEN**.
+    non-systemd, exact-commit cold artifact evidence, and external expert R-V3 review. The parent item and upcoming
+    release remain **OPEN**.
+
+  - **R-S11c-27j — concurrent separate-Docker service noninterference behavior — SOURCE/RUNTIME IMPLEMENTED AND
+    BEHAVIOR-TESTED 2026-07-17; PARENT ITEM REMAINS OPEN.** The default runtime smoke now starts a second Docker
+    container before the manual lifecycle stage runs. That sibling container is not started with a host or joined PID
+    namespace, has `--network none`, receives the repository as read-only, receives only a private `/sibling` control
+    bind as writable, and has no Docker socket or host service authority. Inside that sibling namespace, the mounted
+    `sibling-docker-server` stage runs the exact built RustDesk executable through the existing neutral
+    `smoke-server-launcher`, proves the process identity with `smoke-process-guard.py`, waits for the no-password
+    parked state, publishes `SIBLING_DOCKER_READY`, and then stays alive under repeated PID/start-time checks until
+    the parent smoke writes an exact `stop` control file.
+
+    The main smoke then runs the existing networkless `rustdesk --service` manual lifecycle matrix in a separate
+    container: hostile durable-record rejection, graceful stop/restart, bounded stopped-child escalation, supervisor
+    crash/recovery, non-root active-seat descriptor exec, and UID-4000 portable noninterference. Only after that
+    lifecycle stage finishes does the host smoke require the sibling container still to be running, drain it through
+    its private control file, require `SIBLING_DOCKER_SURVIVED=pass`, remove that exact container, and emit
+    `SIBLING_DOCKER_NONINTERFERENCE=pass`. The capture is written to a private host-guard log file rather than a
+    shell command substitution so the cleanup state mutates in the parent shell; the regression validator rejects the
+    earlier subshell shape, missing network isolation, any sibling `--pid` sharing, missing survivor markers, or loss
+    of the R-S11c-27j stage status.
+
+    The clean default runtime smoke passed with the new sibling integrated before all downstream stages. It observed
+    the seven-case hostile-record aggregate marker, stopped-child forced reap at 8.580 s, crash recovery from
+    `25dbf5c3-373a-46c7-a808-02697d527334` to `bad6ab5b-c604-434f-a3a4-3f5fa884dcdd` with exact-child exit after
+    2 ms, UID/GID-4001 active-seat descriptor exec generation `b2cc8018-8ab0-4ac2-b5de-cdb8a75f1cb2`, UID-4000
+    portable noninterference, sibling identity `pid=7 start=34393775`, sibling survivor container
+    `39be79d274a7`, and the unchanged three-entry host historical-selector baseline. It then completed all default
+    downstream build, socket, IPC/password, keying, session, port-forward, file-transfer, forged-frame, limiter,
+    shutdown, and wire-capture stages. Retained 286,092-byte mode-0664 log:
+    `/tmp/rustdesk-smoke-rs11c27j-pass2.log`, SHA-256
+    `6b117c61bdbc8b937ced2b4836a0388f8aadb328aa542897dec64fcf6bd38855`.
+
+    This slice deliberately proves only concurrent separate-Docker noninterference for the manual lifecycle harness.
+    It is not installed package/service-manager stop/restart evidence, not installed supervisor crash/restart
+    evidence over a non-root child, not actual forced numeric-PID reuse, not pre-pidfd fallback runtime evidence, and
+    not cross-mount/container namespace identity proof. Those items, SysV/OpenRC/runit/manual packaging integration
+    including Debian non-systemd, exact-commit cold artifact evidence, and external expert R-V3 review remain open.
+    The parent item and upcoming release remain **OPEN**.
 
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
     harness evidence for installed/package-managed graceful restart/stop, installed supervisor
@@ -2933,12 +2971,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof; R-S11c-27f supplies
     actual-binary manually supervised stop/restart, real stopped-child escalation, and portable coexistence; and
     R-S11c-27g supplies real-binary manual supervisor-crash, durable-evidence preservation, and fresh-generation
-    recovery; and R-S11c-27h supplies the real-binary non-root active-seat credential-drop/descriptor-exec path.
-    None substitutes for installed package-update, cross-mount, or container-namespace cases.
+    recovery; R-S11c-27h supplies the real-binary non-root active-seat credential-drop/descriptor-exec path; and
+    R-S11c-27j supplies concurrent separate-Docker survival. None substitutes for installed package-update,
+    actual forced PID reuse, pre-pidfd fallback, cross-mount, or broader container-namespace identity cases.
     Packaging/service integration and lifecycle proof for the supported SysV init,
     OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime
-    pre-pidfd fallback exercise, and the concurrent Docker survival proof also remain mandatory before this
-    parent item or the upcoming release can close.
+    pre-pidfd fallback exercise, exact-commit cold artifact evidence, and external expert R-V3 review also remain
+    mandatory before this parent item or the upcoming release can close.
 
   Required implementation and release closure:
 

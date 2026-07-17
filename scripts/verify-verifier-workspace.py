@@ -2966,10 +2966,19 @@ def validate_smoke_contract(
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
         ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
+        ('record_stage_status R-S11c-27j', "sibling Docker stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual', "mounted service lifecycle stage"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server', "mounted sibling Docker stage"),
+        ('start_sibling_docker()', "sibling Docker orchestrator"),
+        ('stop_sibling_docker()', "sibling Docker survivor drain"),
+        ('sibling_container_running', "sibling Docker running check"),
+        ('sibling_out_file=$HOST_GUARD_ROOT/sibling-docker.log', "sibling Docker parent-shell output capture"),
+        ('if stop_sibling_docker >"$sibling_out_file" 2>&1; then', "sibling Docker stop runs in parent shell"),
+        ('sibling-docker.log', "sibling Docker output cleanup"),
+        ('SIBLING_DOCKER_NONINTERFERENCE=pass cid=', "sibling Docker noninterference result"),
     ):
         require_text(smoke, text, label)
     for forbidden in (
@@ -2982,12 +2991,25 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 17:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 18:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
     if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 18:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
     if "rustdesk --server" in smoke:
         raise VerificationError("host smoke orchestrator retains historical-selector launch text")
+    sibling_match = re.search(
+        r'docker_out=\$\(docker run -d --name "\$SIBLING_NAME".*?sibling-docker-server 2>&1\)',
+        smoke,
+        re.S,
+    )
+    if not sibling_match:
+        raise VerificationError("sibling Docker run block is missing or no longer uses mounted dispatch")
+    sibling_block = sibling_match.group(0)
+    require_text(sibling_block, "--network none", "sibling Docker network isolation")
+    require_text(sibling_block, '-v "$PWD:/work:ro"', "sibling Docker read-only source bind")
+    require_text(sibling_block, '-v "$SIBLING_ROOT:/sibling:rw"', "sibling Docker private control bind")
+    if "--pid" in sibling_block:
+        raise VerificationError("sibling Docker must not share a host or container PID namespace")
 
     if not smoke_readiness_mode_is_valid(stage_mode):
         raise VerificationError("mounted smoke stage is not a regular executable file")
@@ -2999,6 +3021,12 @@ def validate_smoke_contract(
         raise VerificationError("smoke process guard is not a regular executable file")
     for text, label in (
         ('service-lifecycle-manual)', "service lifecycle dispatch"),
+        ('sibling-docker-server)', "sibling Docker dispatch"),
+        ('control=/sibling', "sibling Docker private control directory"),
+        ('"$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log', "sibling Docker parked readiness"),
+        ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
+        ('SIBLING_DOCKER_READY pid=', "sibling Docker ready marker"),
+        ('SIBLING_DOCKER_SURVIVED=pass pid=', "sibling Docker survival marker"),
         ('chmod 0755 target/debug/rustdesk', "installed-mode lifecycle executable"),
         ('bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh', "mounted lifecycle script dispatch"),
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
@@ -3092,7 +3120,7 @@ def validate_smoke_contract(
         raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
     if stage.count('$READY --terminate-server') < 10:
         raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
-    if stage.count('start_server /work/target/debug/rustdesk') != 12:
+    if stage.count('start_server /work/target/debug/rustdesk') != 13:
         raise VerificationError("runtime smoke does not route every ordinary server through the launcher")
     if stage.count('start_server /usr/share/rustdesk/rustdesk') != 1:
         raise VerificationError("installed-layout smoke does not route through the launcher")
@@ -8960,6 +8988,36 @@ def run_source_mutations(sources):
             "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE",
             "LIFECYCLE_RUN=(docker run --rm --network none",
             "network-isolated lifecycle procfs authority",
+        ),
+        (
+            "smoke",
+            'docker run -d --name "$SIBLING_NAME" --network none',
+            'docker run -d --name "$SIBLING_NAME"',
+            "sibling Docker network isolation",
+        ),
+        (
+            "smoke",
+            'docker run -d --name "$SIBLING_NAME" --network none',
+            'docker run -d --name "$SIBLING_NAME" --network none --pid=container:service',
+            "sibling Docker must not share a host or container PID namespace",
+        ),
+        (
+            "smoke",
+            'record_stage_status R-S11c-27j',
+            'true # sibling Docker survival status removed',
+            "sibling Docker stage status preservation",
+        ),
+        (
+            "smoke",
+            'if stop_sibling_docker >"$sibling_out_file" 2>&1; then',
+            'if sibling_out=$(stop_sibling_docker 2>&1); then',
+            "sibling Docker stop runs in parent shell",
+        ),
+        (
+            "smoke_stage",
+            'SIBLING_DOCKER_SURVIVED=pass pid=%s start=%s',
+            'SIBLING_DOCKER_SKIPPED=pass pid=%s start=%s',
+            "sibling Docker survival marker",
         ),
         (
             "smoke",

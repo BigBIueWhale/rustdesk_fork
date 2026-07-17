@@ -2,6 +2,7 @@
 """Prove the release smoke cannot be selected by the historical host cleanup."""
 
 import argparse
+import errno
 import json
 import os
 import re
@@ -37,14 +38,18 @@ def parse_positive_integer(raw, label):
     return value
 
 
+def process_entry_vanished(error):
+    return error.errno in (errno.ENOENT, errno.ESRCH)
+
+
 def read_process_identity(pid, proc_root="/proc"):
     path = os.path.join(proc_root, str(pid), "stat")
     try:
         with open(path, "rb") as stream:
             raw = stream.read(65537)
-    except FileNotFoundError:
-        return None
     except OSError as error:
+        if process_entry_vanished(error):
+            return None
         fail("cannot read process identity {}: {}".format(pid, error))
     if len(raw) > 65536 or b") " not in raw:
         fail("invalid process identity record: {}".format(pid))
@@ -66,9 +71,9 @@ def read_process_cmdline(pid, proc_root="/proc"):
     try:
         with open(path, "rb") as stream:
             raw = stream.read(MAX_CMDLINE_BYTES + 1)
-    except FileNotFoundError:
-        return None
     except OSError as error:
+        if process_entry_vanished(error):
+            return None
         fail("cannot read process command line {}: {}".format(pid, error))
     if len(raw) > MAX_CMDLINE_BYTES:
         fail("process command line exceeds guard bound: {}".format(pid))
@@ -345,9 +350,9 @@ def server_identity_matches(pid, expected_start, expected_metadata):
         return False
     try:
         executable = os.stat("/proc/{}/exe".format(pid))
-    except FileNotFoundError:
-        return False
     except OSError as error:
+        if process_entry_vanished(error):
+            return False
         fail("cannot inspect running server executable: {}".format(error))
     if (executable.st_dev, executable.st_ino) != (
         expected_metadata.st_dev,
@@ -396,6 +401,10 @@ def self_test():
         fail("selector fixture selected neutral smoke server argv")
     if selector_matches_cmdline(launcher):
         fail("selector fixture selected the smoke launcher argv")
+    if not process_entry_vanished(ProcessLookupError(errno.ESRCH, "vanished")):
+        fail("process-exit race is not classified as a vanished proc entry")
+    if process_entry_vanished(PermissionError(errno.EACCES, "denied")):
+        fail("proc permission failure was misclassified as a process-exit race")
     baseline = [process_record(101, 202, production)]
     all_processes = baseline + [process_record(303, 404, neutral)]
     current = [

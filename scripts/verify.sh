@@ -3077,7 +3077,10 @@ echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a
 r_s11c27a=
 service_child_launch_block=$(awk '/fn try_start_server_/,/pub fn require_service_owned_server_parent_liveness/' src/platform/linux.rs)
 grep -qF 'struct OwnedServiceChild {' src/platform/linux.rs || r_s11c27a="$r_s11c27a no-owned-child-type"
-echo "$service_child_launch_block" | grep -qF 'let mut command = Command::new("/proc/self/exe");' || r_s11c27a="$r_s11c27a launch-not-current-executable-object"
+echo "$service_child_launch_block" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)' || r_s11c27a="$r_s11c27a credential-drop-executable-not-opened-cloexec"
+echo "$service_child_launch_block" | grep -qF '.open("/proc/self/exe")' || r_s11c27a="$r_s11c27a credential-drop-executable-object-not-opened"
+echo "$service_child_launch_block" | grep -qF 'format!("/proc/self/fd/{}", executable.as_raw_fd())' || r_s11c27a="$r_s11c27a credential-drop-launch-not-descriptor-bound"
+echo "$service_child_launch_block" | grep -qF 'unwrap_or_else(|| "/proc/self/exe".to_owned())' || r_s11c27a="$r_s11c27a root-launch-not-current-executable-object"
 echo "$service_child_launch_block" | grep -qF '.arg("--server")' || r_s11c27a="$r_s11c27a server-role-argument-missing"
 echo "$service_child_launch_block" | grep -qF '.arg(crate::common::SERVICE_OWNED_SERVER_ARG)' || r_s11c27a="$r_s11c27a service-owned-role-marker-missing"
 echo "$service_child_launch_block" | grep -qF 'crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV' || r_s11c27a="$r_s11c27a launch-parent-binding-missing"
@@ -3087,6 +3090,7 @@ echo "$service_child_pre_exec_block" | grep -qF 'command.pre_exec(move || {' || 
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setgroups' || r_s11c27a="$r_s11c27a supplementary-groups-not-dropped"
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresgid' || r_s11c27a="$r_s11c27a gid-drop-not-native"
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresuid' || r_s11c27a="$r_s11c27a uid-drop-not-native"
+echo "$service_child_pre_exec_block" | grep -qF 'SYS_fcntl' || r_s11c27a="$r_s11c27a forked-child-executable-descriptor-not-enabled"
 echo "$service_child_pre_exec_block" | grep -qF 'PR_SET_NO_NEW_PRIVS' || r_s11c27a="$r_s11c27a exec-privilege-regain-not-blocked"
 echo "$service_child_pre_exec_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a pre-exec-parent-death-binding-missing"
 if ! echo "$service_child_pre_exec_block" | awk '
@@ -3326,6 +3330,31 @@ grep -qF 'record_stage_status R-S11c-27g' scripts/smoke-server.sh || r_s11c27g="
 grep -qF 'R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior' HARDENING_STATUS.md || r_s11c27g="$r_s11c27g hardening-ledger-missing"
 if [ -n "$r_s11c27g" ]; then echo "  FAIL R-S11c-27g Linux actual-binary crash/restart:$r_s11c27g"; rc=1; else
   echo "  ok  R-S11c-27g actual supervisor SIGKILL triggers exact child parent-death exit, preserves crash evidence, recovers a fresh generation, and leaves the portable server alive"; fi
+
+echo "== (3b-iii-h2i) Linux active-seat service child takes the real non-root descriptor-exec path (R-S11c-27h) =="
+r_s11c27h=
+grep -qF 'SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV' src/common.rs src/platform/linux.rs || r_s11c27h="$r_s11c27h executable-fd-binding-missing"
+grep -qF 'nix::unistd::close(executable_fd)' src/platform/linux.rs || r_s11c27h="$r_s11c27h final-image-executable-fd-close-missing"
+grep -qF 'chmod 0755 target/debug/rustdesk' scripts/smoke-server-stage.sh || r_s11c27h="$r_s11c27h installed-executable-mode-not-modeled"
+grep -qF 'stat -c '\''%u:%g:%a'\'' -- "$BINARY"' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h executable-owner-mode-not-asserted"
+grep -qF 'mode=$(sed -n' scripts/smoke-service-loginctl.sh || r_s11c27h="$r_s11c27h switchable-active-seat-fixture-missing"
+grep -qF 'uid=4001' scripts/smoke-service-loginctl.sh || r_s11c27h="$r_s11c27h non-root-seat-uid-missing"
+grep -qF 'useradd -m -u 4001 -g rdseat -G rdseat-extra rdseat' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h real-passwd-and-group-fixture-missing"
+grep -qF 'status.get("Gid", "").split() != [expected_gid] * 4' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h complete-gid-drop-not-asserted"
+grep -qF 'for capability_set in ("CapInh", "CapPrm", "CapEff", "CapAmb")' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h live-capability-sets-not-asserted-zero"
+grep -qF 'set(parsed_environment) != set(expected_environment) | {b"TERM"}' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h bounded-child-environment-not-asserted"
+grep -qF 'non-root service child leaked its executable descriptor' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h executable-descriptor-leak-not-rejected"
+grep -qF 'setpriv --reuid="$expected_uid" --regid="$expected_gid" --groups="$expected_groups"' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h typed-ipc-not-probed-as-active-user"
+grep -qF 'SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h runtime-result-marker-missing"
+grep -qF 'LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE' scripts/smoke-server.sh || r_s11c27h="$r_s11c27h procfs-authority-not-explicit-in-runtime"
+grep -qF 'record_stage_status R-S11c-27h' scripts/smoke-server.sh || r_s11c27h="$r_s11c27h runtime-status-not-preserved"
+grep -qF 'CAP_SYS_PTRACE is intentionally retained' res/rustdesk.service || r_s11c27h="$r_s11c27h installed-procfs-authority-undocumented"
+if grep '^CapabilityBoundingSet=' res/rustdesk.service | grep -qF 'CAP_SYS_PTRACE'; then
+  r_s11c27h="$r_s11c27h installed-procfs-authority-removed"
+fi
+grep -qF 'R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior' HARDENING_STATUS.md || r_s11c27h="$r_s11c27h hardening-ledger-missing"
+if [ -n "$r_s11c27h" ]; then echo "  FAIL R-S11c-27h Linux non-root service child:$r_s11c27h"; rc=1; else
+  echo "  ok  R-S11c-27h active-seat discovery descriptor-execs the exact image as UID/GID 4001 with exact groups, zero live capabilities, NNP, bounded environment, typed IPC, and graceful reap"; fi
 
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never

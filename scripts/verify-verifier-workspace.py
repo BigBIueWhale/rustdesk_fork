@@ -2961,7 +2961,7 @@ def validate_smoke_contract(
         ("trap 'exit 130' INT", "host guard interrupt cleanup"),
         ("trap 'exit 143' TERM", "host guard termination cleanup"),
         ('BUILD_RUN=(docker run --rm', "writable build-only container"),
-        ('LIFECYCLE_RUN=(docker run --rm --network none', "network-isolated service lifecycle container"),
+        ('LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE', "network-isolated lifecycle procfs authority"),
         ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
@@ -2998,6 +2998,7 @@ def validate_smoke_contract(
         raise VerificationError("smoke process guard is not a regular executable file")
     for text, label in (
         ('service-lifecycle-manual)', "service lifecycle dispatch"),
+        ('chmod 0755 target/debug/rustdesk', "installed-mode lifecycle executable"),
         ('bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh', "mounted lifecycle script dispatch"),
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
         ('install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"', "protected fixture directories"),
@@ -3030,7 +3031,12 @@ def validate_smoke_contract(
         ('readonly RECORD=/run/rustdesk/service-child.record', "root lifecycle record"),
         ('signal.pidfd_send_signal(pidfd_file.fileno()', "pidfd-only lifecycle signaling"),
         ('"STOP": signal.SIGSTOP', "kernel-stopped child fixture"),
-        ('b"/proc/self/exe", b"--server", b"--service-owned-server", b""', "exact service-child role proof"),
+        ('if expected_uid == "0" and argv[0] != b"/proc/self/exe":', "exact root service-child role proof"),
+        ('re.fullmatch(rb"/proc/self/fd/[0-9]+", argv[0])', "descriptor-bound non-root role proof"),
+        ('stat -c \'%u:%g:%a\' -- "$BINARY"', "installed executable owner-mode proof"),
+        ('RUSTDESK_SERVICE_OWNED_SERVER_EXECUTABLE_FD', "service-child executable descriptor binding"),
+        ('for capability_set in ("CapInh", "CapPrm", "CapEff", "CapAmb"):', "non-root capability clearing proof"),
+        ('setpriv --reuid="$expected_uid" --regid="$expected_gid" --groups="$expected_groups"', "same-identity typed IPC proof"),
         ('[b"rd-smoke-server", b"--server", b""]', "exact portable role proof"),
         ('setpriv --reuid=4000', "non-root portable launch"),
         ('--inh-caps=-all --ambient-caps=-all --bounding-set=-all', "portable capability removal"),
@@ -3039,6 +3045,7 @@ def validate_smoke_contract(
         ('SERVICE_LIFECYCLE_GRACEFUL=pass', "graceful lifecycle result"),
         ('SERVICE_LIFECYCLE_RESTART=pass', "restart lifecycle result"),
         ('SERVICE_LIFECYCLE_FORCED=pass', "forced lifecycle result"),
+        ('SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001', "non-root lifecycle result"),
         ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
     ):
         require_text(service_lifecycle, text, label)
@@ -3048,8 +3055,12 @@ def validate_smoke_contract(
                 f"service lifecycle smoke retains broad or host authority: {forbidden}"
             )
     for text, label in (
+        ('readonly STATE=/tmp/rd-service-loginctl-state', "loginctl switch state"),
         ('"0:")', "loginctl session-list invocation"),
-        ("'1 0 root seat0'", "loginctl exact root seat"),
+        ('uid=0', "loginctl root seat uid"),
+        ('uid=4001', "loginctl non-root seat uid"),
+        ('username=rdseat', "loginctl non-root seat identity"),
+        ('printf \'1 %s %s seat0\\n\' "$uid" "$username"', "loginctl exact selected seat"),
         ('"4:show-session -p State 1")', "loginctl state query"),
         ('"4:show-session -p Type 1")', "loginctl type query"),
         ('"2:show-session 1")', "loginctl session query"),
@@ -3150,7 +3161,15 @@ def validate_smoke_contract(
     require_text(args_collection, "args.push(arg);", "retained role argument collection")
     require_text(core_main, 'args[0] == "--server"', "server dispatch from argument one")
     require_text(common_source, 'std::env::args().nth(1) == Some("--server".to_owned())', "server role argument-one predicate")
+    require_text(common_source, "SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV", "service executable descriptor environment binding")
     require_text(linux_source, "std::env::current_exe().ok()", "Linux executable identity source")
+    for text, label in (
+        ('.custom_flags(hbb_common::libc::O_CLOEXEC)', "service executable parent close-on-exec"),
+        ('format!("/proc/self/fd/{}", executable.as_raw_fd())', "service executable descriptor path"),
+        ('hbb_common::libc::SYS_fcntl', "fork-only descriptor inheritance"),
+        ('nix::unistd::close(executable_fd)', "final-image descriptor close"),
+    ):
+        require_text(linux_source, text, label)
     for source in (core_main, common_source):
         if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
             raise VerificationError("Rust server role regressed to semantic argv0 use")
@@ -8803,6 +8822,12 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
+            "chmod 0755 target/debug/rustdesk",
+            "chmod 0700 target/debug/rustdesk",
+            "installed-mode lifecycle executable",
+        ),
+        (
+            "smoke_stage",
             '"$bin/smoke-ready.sh" --terminate-server "$SRV" "$SRV_START" "$HOME/srv2c.log"',
             'pkill -TERM -x rustdesk || true',
             "mounted smoke stage retains broad or raw signal authority",
@@ -8832,6 +8857,18 @@ def run_source_mutations(sources):
             "portable role isolation",
         ),
         (
+            "service_lifecycle",
+            're.fullmatch(rb"/proc/self/fd/[0-9]+", argv[0])',
+            're.fullmatch(rb"/proc/self/exe", argv[0])',
+            "descriptor-bound non-root role proof",
+        ),
+        (
+            "service_lifecycle",
+            'for capability_set in ("CapInh", "CapPrm", "CapEff", "CapAmb"):',
+            'for capability_set in ("CapInh", "CapPrm", "CapAmb"):',
+            "non-root capability clearing proof",
+        ),
+        (
             "smoke_ready",
             "  exit 1\n}\n\nmonotonic_millis",
             "  return 1\n}\n\nmonotonic_millis",
@@ -8842,6 +8879,18 @@ def run_source_mutations(sources):
             'exit 64',
             'exit 0',
             "loginctl unexpected-argv rejection",
+        ),
+        (
+            "loginctl_fixture",
+            "uid=4001",
+            "uid=0 # non-root seat removed",
+            "loginctl non-root seat uid",
+        ),
+        (
+            "smoke",
+            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE",
+            "LIFECYCLE_RUN=(docker run --rm --network none",
+            "network-isolated lifecycle procfs authority",
         ),
         (
             "smoke",
@@ -8872,6 +8921,12 @@ def run_source_mutations(sources):
             'bash --noprofile --norc /work/scripts/smoke-server-stage.sh parked',
             'bash -c "/work/target/debug/rustdesk --server"',
             "exact mounted stage dispatch",
+        ),
+        (
+            "linux_source",
+            'format!("/proc/self/fd/{}", executable.as_raw_fd())',
+            '"/proc/self/exe".to_owned()',
+            "service executable descriptor path",
         ),
         (
             "smoke_stage",

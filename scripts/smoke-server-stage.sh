@@ -25,6 +25,7 @@ start_server() {
 case "$1" in
   build)
     cargo build --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never
+    chmod 0755 target/debug/rustdesk
     cc -shared -fPIC -O2 -Wall -Wextra -Werror -o target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
     cc -O2 -Wall -Wextra -Werror -o target/smoke-server-launcher scripts/smoke-server-launcher.c
     ;;

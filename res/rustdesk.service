@@ -50,12 +50,14 @@ Environment="PULSE_LATENCY_MSEC=60" "PIPEWIRE_LATENCY=1024/48000"
 
 # ── R-D3a: systemd confinement the upstream unit lacked ───────────────────────
 # The service MUST run as root — input injection, virtual display, login-screen
-# capture, and the sudo -u drop to the --server child all need it (R-D3). So
+# capture, and the native credential drop to the --server child all need it (R-D3). So
 # NoNewPrivileges is DELIBERATELY NOT set (it would break that drop). The §8
 # excisions remove the reachable escalation paths; these directives shrink the
 # blast radius of anything missed, each compatible with the root + capture reality.
 #
 # Drop capabilities the service never uses (the spec's named set + obvious peers).
+# CAP_SYS_PTRACE is intentionally retained: the root supervisor revalidates the exact
+# executable object and launch environment of its non-root child through protected procfs.
 CapabilityBoundingSet=~CAP_SYS_MODULE CAP_SYS_BOOT CAP_SYS_RAWIO CAP_NET_ADMIN CAP_AUDIT_CONTROL CAP_AUDIT_READ CAP_AUDIT_WRITE CAP_MAC_ADMIN CAP_MAC_OVERRIDE
 # v4-only at the kernel-policy layer — the twin of R-D5's v4-only bind. Keep
 # AF_UNIX (local IPC) and AF_INET (the one direct port, 21118); drop AF_INET6 and

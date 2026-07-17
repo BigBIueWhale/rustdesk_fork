@@ -8,6 +8,12 @@ readonly PROBE=/work/target/debug/examples/smoke_readiness
 readonly LAUNCHER=/work/target/smoke-server-launcher
 readonly RECORD=/run/rustdesk/service-child.record
 readonly FIXTURE=/tmp/rd-service-lifecycle
+readonly LOGINCTL_STATE=/tmp/rd-service-loginctl-state
+
+if [ "$(stat -c '%u:%g:%a' -- "$BINARY")" != 0:0:755 ]; then
+  echo "service lifecycle binary must model a root-owned mode-0755 installed executable" >&2
+  exit 1
+fi
 
 SVC=
 SVC_START=
@@ -185,7 +191,9 @@ PY
 }
 
 wait_for_service_child() {
-  local log=$1 stale_record_hash=${2:-} current_record_hash service_log_size
+  local log=$1 expected_uid=${2:-0} expected_gid=${3:-} expected_user=${4:-}
+  local expected_home=${5:-} expected_groups=${6:-} stale_record_hash=${7:-}
+  local current_record_hash service_log_size
   for _ in $(seq 1 1200); do
     if [ -f "$RECORD" ]; then
       if [ -z "$stale_record_hash" ]; then
@@ -202,7 +210,8 @@ wait_for_service_child() {
   if [ -n "$stale_record_hash" ]; then
     [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" != "$stale_record_hash" ]
   fi
-  read -r CHILD CHILD_START GENERATION < <(python3 - "$SVC" "$RECORD" <<'PY'
+  read -r CHILD CHILD_START GENERATION < <(python3 - "$SVC" "$RECORD" \
+    "$expected_uid" "$expected_gid" "$expected_user" "$expected_home" "$expected_groups" <<'PY'
 import os
 import re
 import stat
@@ -211,6 +220,11 @@ import uuid
 
 supervisor = int(sys.argv[1])
 record_path = sys.argv[2]
+expected_uid = sys.argv[3]
+expected_gid = sys.argv[4]
+expected_user = sys.argv[5]
+expected_home = sys.argv[6]
+expected_groups = sys.argv[7]
 metadata = os.lstat(record_path)
 if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
     raise SystemExit("service child record is not a single-linked regular file")
@@ -247,22 +261,70 @@ status_lines = open(f"/proc/{pid_number}/status", "r", encoding="ascii").read().
 status = {line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in status_lines if ":" in line}
 if status.get("PPid") != str(supervisor) or status.get("Uid", "").split() != [uid] * 4:
     raise SystemExit("service child parent or uid differs")
-if uid != "0" or status.get("NoNewPrivs") != "1":
-    raise SystemExit("root service child privilege state differs")
+if uid != expected_uid or status.get("NoNewPrivs") != "1":
+    raise SystemExit("service child expected uid or no-new-privileges state differs")
 executable = os.stat(f"/proc/{pid_number}/exe")
 if executable.st_dev != int(exe_dev) or executable.st_ino != int(exe_ino):
     raise SystemExit("service child executable object differs")
-if open(f"/proc/{pid_number}/cmdline", "rb").read().split(b"\0") != [
-    b"/proc/self/exe", b"--server", b"--service-owned-server", b""
-]:
+argv = open(f"/proc/{pid_number}/cmdline", "rb").read().split(b"\0")
+if argv[1:] != [b"--server", b"--service-owned-server", b""]:
     raise SystemExit("service child role differs")
-environ = open(f"/proc/{pid_number}/environ", "rb").read().split(b"\0")
+if expected_uid == "0" and argv[0] != b"/proc/self/exe":
+    raise SystemExit("root service child executable argument differs")
+if expected_uid != "0" and re.fullmatch(rb"/proc/self/fd/[0-9]+", argv[0]) is None:
+    raise SystemExit("non-root service child is not descriptor-executed")
+environ = [entry for entry in open(f"/proc/{pid_number}/environ", "rb").read().split(b"\0") if entry]
 expected = {
     f"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT={supervisor}".encode("ascii"),
     f"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION={generation}".encode("ascii"),
 }
 if not expected.issubset(set(environ)):
     raise SystemExit("service child launch authority differs")
+if expected_uid != "0":
+    if not all((expected_gid, expected_user, expected_home, expected_groups)):
+        raise SystemExit("non-root service child expectation is incomplete")
+    if status.get("Gid", "").split() != [expected_gid] * 4:
+        raise SystemExit("non-root service child real/effective/saved/filesystem gid differs")
+    actual_groups = sorted(int(value) for value in status.get("Groups", "").split())
+    wanted_groups = sorted(int(value) for value in expected_groups.split(","))
+    if actual_groups != wanted_groups:
+        raise SystemExit("non-root service child supplementary groups differ")
+    for capability_set in ("CapInh", "CapPrm", "CapEff", "CapAmb"):
+        if int(status.get(capability_set, "1"), 16) != 0:
+            raise SystemExit(f"non-root service child retained {capability_set}")
+    parsed_environment = {}
+    for entry in environ:
+        if b"=" not in entry:
+            raise SystemExit("non-root service child environment is malformed")
+        key, value = entry.split(b"=", 1)
+        if key in parsed_environment:
+            raise SystemExit("non-root service child environment has a duplicate key")
+        parsed_environment[key] = value
+    expected_environment = {
+        b"PATH": b"/usr/bin:/bin",
+        b"HOME": expected_home.encode("ascii"),
+        b"USER": expected_user.encode("ascii"),
+        b"LOGNAME": expected_user.encode("ascii"),
+        b"XDG_RUNTIME_DIR": f"/run/user/{expected_uid}".encode("ascii"),
+        b"DISPLAY": b":0",
+        b"XAUTHORITY": f"{expected_home}/.Xauthority".encode("ascii"),
+        b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT": str(supervisor).encode("ascii"),
+        b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION": generation.encode("ascii"),
+        b"RUSTDESK_SERVICE_OWNED_SERVER_EXECUTABLE_FD": argv[0].rsplit(b"/", 1)[1],
+    }
+    if set(parsed_environment) != set(expected_environment) | {b"TERM"}:
+        raise SystemExit("non-root service child environment was not rebuilt from the bounded allowlist")
+    if any(parsed_environment[key] != value for key, value in expected_environment.items()):
+        raise SystemExit("non-root service child environment binding differs")
+    if parsed_environment[b"TERM"] not in {b"xterm", b"xterm-256color"}:
+        raise SystemExit("non-root service child TERM is outside the bounded fallback set")
+    descriptor_path = f"/proc/{pid_number}/fd/{parsed_environment[b'RUSTDESK_SERVICE_OWNED_SERVER_EXECUTABLE_FD'].decode('ascii')}"
+    try:
+        descriptor = os.stat(descriptor_path)
+    except FileNotFoundError:
+        descriptor = None
+    if descriptor is not None and descriptor.st_dev == executable.st_dev and descriptor.st_ino == executable.st_ino:
+        raise SystemExit("non-root service child leaked its executable descriptor")
 print(pid, start, generation)
 PY
 )
@@ -277,19 +339,31 @@ PY
     sleep 0.1
     [ "$(stat -c %s "$log")" = "$service_log_size" ] && break
   done
-  "$READY" --wait-parked "$CHILD" "$CHILD_START" "$log" "$PROBE" 0
+  if [ "$expected_uid" = 0 ]; then
+    "$READY" --wait-parked "$CHILD" "$CHILD_START" "$log" "$PROBE" "$expected_uid"
+  else
+    chown "$expected_user:$expected_gid" "$log"
+    setpriv --reuid="$expected_uid" --regid="$expected_gid" --groups="$expected_groups" \
+      --no-new-privs --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
+      env -i HOME="$expected_home" USER="$expected_user" LOGNAME="$expected_user" \
+      PATH=/usr/bin:/bin "$FIXTURE/bin/smoke-ready.sh" --wait-parked "$CHILD" \
+      "$CHILD_START" "$log" "$FIXTURE/bin/smoke_readiness" "$expected_uid"
+  fi
   assert_portable_alive
 }
 
 start_service() {
-  local log=$1
+  local log=$1 expected_uid=${2:-0} expected_gid=${3:-} expected_user=${4:-}
+  local expected_home=${5:-} expected_groups=${6:-}
   [ ! -e "$RECORD" ] && [ ! -L "$RECORD" ]
   : > "$log"
   chmod 0600 "$log"
-  RUST_LOG=info HOME=/tmp "$BINARY" --service >"$log" 2>&1 &
+  RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
+    "$BINARY" --service >"$log" 2>&1 &
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
-  wait_for_service_child "$log"
+  wait_for_service_child "$log" "$expected_uid" "$expected_gid" "$expected_user" \
+    "$expected_home" "$expected_groups"
 }
 
 start_service_recovering() {
@@ -299,10 +373,11 @@ start_service_recovering() {
   [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$stale_record_hash" ]
   : > "$log"
   chmod 0600 "$log"
-  RUST_LOG=info HOME=/tmp "$BINARY" --service >"$log" 2>&1 &
+  RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
+    "$BINARY" --service >"$log" 2>&1 &
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
-  wait_for_service_child "$log" "$stale_record_hash"
+  wait_for_service_child "$log" 0 "" "" "" "" "$stale_record_hash"
 }
 
 stop_service_gracefully() {
@@ -326,6 +401,8 @@ stop_service_gracefully() {
 }
 
 install -o root -g root -m 0755 /work/scripts/smoke-service-loginctl.sh /usr/bin/loginctl
+printf '%s\n' root > "$LOGINCTL_STATE"
+chmod 0600 "$LOGINCTL_STATE"
 id -u rduser >/dev/null 2>&1 || useradd -m -u 4000 rduser
 [ "$(id -u rduser)" = 4000 ]
 portable_gid=$(id -g rduser)
@@ -441,6 +518,22 @@ assert_portable_alive
 stop_service_gracefully "$FIXTURE/service-5-recovered.log"
 printf 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=%s recovered_generation=%s child_exit_ms=%s\n' \
   "$crashed_generation" "$recovered_generation" "$crashed_child_exit_ms"
+
+groupadd -g 4001 rdseat
+groupadd -g 4101 rdseat-extra
+useradd -m -u 4001 -g rdseat -G rdseat-extra rdseat
+[ "$(id -u rdseat)" = 4001 ]
+seat_gid=$(id -g rdseat)
+[ "$seat_gid" = 4001 ]
+seat_groups=$(id -G rdseat | tr ' ' ',')
+[ "$seat_groups" = 4001,4101 ]
+install -d -o rdseat -g "$seat_gid" -m 0700 /run/user/4001
+printf '%s\n' user > "$LOGINCTL_STATE"
+start_service "$FIXTURE/service-6-nonroot.log" 4001 "$seat_gid" rdseat /home/rdseat "$seat_groups"
+nonroot_generation=$GENERATION
+stop_service_gracefully "$FIXTURE/service-6-nonroot.log"
+printf 'SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=%s groups=%s generation=%s\n' \
+  "$seat_gid" "$seat_groups" "$nonroot_generation"
 
 "$READY" --stop "$PORTABLE" "$PORTABLE_START"
 wait "$PORTABLE"

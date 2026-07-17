@@ -21,7 +21,7 @@ use std::{
     os::{
         fd::{AsRawFd as _, FromRawFd as _},
         unix::{
-            fs::{FileTypeExt, MetadataExt},
+            fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
             process::CommandExt,
         },
     },
@@ -1738,6 +1738,7 @@ fn configure_service_child_pre_exec(
     command: &mut Command,
     expected_parent: hbb_common::libc::pid_t,
     credentials: Option<ServiceChildCredentials>,
+    executable_fd: Option<c_int>,
 ) {
     // The closure performs only raw Linux syscalls and reads already-owned memory. It does
     // not allocate, lock, inspect the environment, or call NSS after fork. The parent
@@ -1761,6 +1762,17 @@ fn configure_service_child_pre_exec(
                     credentials.uid,
                     credentials.uid,
                     credentials.uid,
+                ))?;
+            }
+            if let Some(executable_fd) = executable_fd {
+                // Keep the descriptor close-on-exec in the multithreaded parent, then clear
+                // the flag only in this forked child. /proc/self/fd/N cannot be executed
+                // while N is close-on-exec; the final image closes N immediately at entry.
+                syscall_succeeded(hbb_common::libc::syscall(
+                    hbb_common::libc::SYS_fcntl,
+                    executable_fd,
+                    hbb_common::libc::F_SETFD,
+                    0,
                 ))?;
             }
             syscall_succeeded(hbb_common::libc::syscall(
@@ -1800,11 +1812,29 @@ fn try_start_server_(
         .map(|credentials| credentials.uid as u32)
         .unwrap_or_else(|| unsafe { hbb_common::libc::geteuid() as u32 });
 
-    // `/proc/self/exe` is resolved in the forked child and therefore names the same
-    // executable object as this supervisor even if a package replacement concurrently
-    // changes the installed pathname. There is no sudo/env wrapper: the returned Child is
-    // the exact RustDesk process that the supervisor later signals and reaps.
-    let mut command = Command::new("/proc/self/exe");
+    // A credential-changing pre_exec hook makes /proc/self/exe inaccessible before Command
+    // performs execve: procfs guards that symlink with a ptrace credential check and the UID
+    // transition resets dumpability. Open the exact executable object while still privileged
+    // and let the post-drop child execute its own inherited descriptor instead. Keep FD_CLOEXEC
+    // set in the multithreaded supervisor, clear it only inside the forked child, and require the
+    // final image to close that one descriptor immediately. The root path can retain
+    // /proc/self/exe directly. Both forms remain bound to the supervisor's executable object
+    // across concurrent package replacement, with no sudo/env wrapper.
+    let child_executable = if credentials.is_some() {
+        let executable = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(hbb_common::libc::O_CLOEXEC)
+            .open("/proc/self/exe")
+            .map_err(|err| anyhow!("Failed to open the service executable object: {err}"))?;
+        Some(executable)
+    } else {
+        None
+    };
+    let executable_path = child_executable
+        .as_ref()
+        .map(|executable| format!("/proc/self/fd/{}", executable.as_raw_fd()))
+        .unwrap_or_else(|| "/proc/self/exe".to_owned());
+    let mut command = Command::new(executable_path);
     command
         .arg("--server")
         .arg(crate::common::SERVICE_OWNED_SERVER_ARG)
@@ -1818,6 +1848,12 @@ fn try_start_server_(
             crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
             &runtime.generation,
         );
+    if let Some(executable) = child_executable.as_ref() {
+        command.env(
+            crate::common::SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV,
+            executable.as_raw_fd().to_string(),
+        );
+    }
 
     match (&credentials, desktop) {
         (Some(credentials), Some(desktop)) => {
@@ -1854,8 +1890,13 @@ fn try_start_server_(
         _ => bail!("Inconsistent service child desktop credential state"),
     }
 
-    configure_service_child_pre_exec(&mut command, parent_pid, credentials);
-    let mut process = command.spawn()?;
+    let executable_fd = child_executable
+        .as_ref()
+        .map(|executable| executable.as_raw_fd());
+    configure_service_child_pre_exec(&mut command, parent_pid, credentials, executable_fd);
+    let spawn_result = command.spawn();
+    drop(child_executable);
+    let mut process = spawn_result?;
     let pid = process.id();
     let record =
         match service_child_record_for_process(pid, expected_child_uid, &runtime.generation) {
@@ -1908,6 +1949,30 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
     let generation = std::env::var(crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV)
         .map_err(|_| anyhow!("Service-owned server generation is unavailable"))?;
     validate_canonical_uuid(&generation, "service generation")?;
+    let executable_fd = match std::env::var(crate::common::SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV) {
+        Ok(value) => Some(
+            value
+                .parse::<c_int>()
+                .map_err(|err| anyhow!("Service executable descriptor is invalid: {err}"))?,
+        ),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            bail!("Service executable descriptor is not valid Unicode")
+        }
+    };
+    if hbb_common::users::get_current_uid() == 0 {
+        if executable_fd.is_some() {
+            bail!("Root service child unexpectedly inherited an executable descriptor");
+        }
+    } else {
+        let executable_fd = executable_fd
+            .filter(|fd| *fd > hbb_common::libc::STDERR_FILENO)
+            .ok_or_else(|| {
+                anyhow!("Non-root service child executable descriptor is unavailable")
+            })?;
+        nix::unistd::close(executable_fd)
+            .map_err(|err| anyhow!("Failed to close the service executable descriptor: {err}"))?;
+    }
     arm_service_child_parent_death(expected_parent)?;
     Ok(())
 }
@@ -3382,7 +3447,7 @@ mod process_cleanup_tests {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         if bind_to_parent {
-            configure_service_child_pre_exec(&mut command, parent_pid, None);
+            configure_service_child_pre_exec(&mut command, parent_pid, None, None);
         }
         let mut child = command.spawn().unwrap();
         let proc_dir = PathBuf::from(format!("/proc/{}/", child.id()));

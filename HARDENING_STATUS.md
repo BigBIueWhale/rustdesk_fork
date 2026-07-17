@@ -2587,9 +2587,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   - **R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** This coherent first slice replaces server process-table authority
-    on the live supervisor path. `try_start_server_()` now launches `/proc/self/exe` directly and retains an
-    `OwnedServiceChild` containing the final RustDesk `Child`; there is no `sudo`, `env`, or `run_me` wrapper
-    between the supervisor and server. For an active desktop, the parent resolves the exact passwd identity
+    on the live supervisor path. `try_start_server_()` retains an `OwnedServiceChild` containing the final
+    RustDesk `Child`; there is no `sudo`, `env`, or `run_me` wrapper between the supervisor and server. Root
+    children launch `/proc/self/exe` directly, while active-desktop children use the same descriptor-bound
+    executable object across the credential transition as completed and behavior-tested by R-S11c-27h below.
+    For an active desktop, the parent resolves the exact passwd identity
     and supplementary groups before `fork`, clears the inherited root environment, supplies only the bounded
     session environment, and performs raw `setgroups` → `setresgid` → `setresuid` syscalls in the pre-exec
     hook. It then sets irreversible `PR_SET_NO_NEW_PRIVS`, preventing the final `exec` (and later descendants)
@@ -2811,6 +2813,71 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     privilege-drop chain, pre-pidfd fallback, cross-mount/container namespace identity, Debian non-systemd init
     integration, or concurrent separate-Docker survival. The parent item and upcoming release remain **OPEN**.
 
+  - **R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior — SOURCE/RUNTIME IMPLEMENTED
+    2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory no-network lifecycle stage now changes its trusted fixed
+    `loginctl` fixture from root X11 seat0 to a real passwd-backed `rdseat` X11 seat with UID/GID 4001 and a distinct
+    supplementary group 4101, while the unrelated capability-free UID-4000 portable server remains live. This drives
+    the production `Desktop::refresh()` and `ServiceChildCredentials::resolve()` branch in the actual debug
+    `rustdesk --service` binary rather than substituting a unit helper or a test-only Rust entry point.
+
+    The first baseline execution found a production defect: `Command` runs `pre_exec` before `execve`, and after
+    `setresuid(4001, 4001, 4001)` resets process dumpability, the child could no longer dereference its configured
+    `/proc/self/exe` through procfs's ptrace credential check; every launch failed with `EACCES`. Production now opens
+    the supervisor's exact executable object while still privileged, keeps that descriptor `FD_CLOEXEC` in the
+    multithreaded parent, and names `/proc/self/fd/<N>` only for the credential-dropping child. The fork-only raw
+    pre-exec sequence performs `setgroups` → `setresgid` → `setresuid`, clears `FD_CLOEXEC` on that one descriptor,
+    sets `PR_SET_NO_NEW_PRIVS`, and arms the parent-death signal. The final image validates a dedicated descriptor
+    environment binding and immediately closes the descriptor before re-arming parent liveness. Root children retain
+    the prior `/proc/self/exe` path. This preserves executable device/inode identity across concurrent package-path
+    replacement without a globally inheritable descriptor window or a descriptor leak.
+
+    The root supervisor's existing registration checks intentionally require procfs authority to revalidate the
+    non-root child's executable object and bounded launch environment. Docker root lacks `CAP_SYS_PTRACE` by default,
+    so the isolated stage now adds exactly that capability; the deployed inverse `CapabilityBoundingSet` intentionally
+    retains and documents it. The harness strictly parses the mode-0600 record and procfs state, requires all four UID
+    and GID slots to equal 4001, exact supplementary groups `4001 4101`, `NoNewPrivs: 1`, and zero `CapInh`, `CapPrm`,
+    `CapEff`, and `CapAmb` (the kernel bounding set is not falsely treated as cleared by the UID transition). It
+    requires descriptor-shaped argv bound to the same recorded executable, proves the executable descriptor is no
+    longer open, and accepts only the exact rebuilt environment: fixed `PATH`, passwd `HOME`/`USER`/`LOGNAME`,
+    UID-scoped runtime directory, discovered `DISPLAY`/`XAUTHORITY`, bounded `TERM`, and exact parent/generation/fd
+    bindings. A capability-free probe running as the same UID/GID/groups must complete typed parked IPC. The observed
+    generation `8cb29b16-4a32-431c-91bb-5ed710abb6e3` then shut down gracefully and was reaped with its record removed;
+    the UID-4000 portable server survived and stopped only through its separately retained identity.
+
+    Two subsequent complete-smoke attempts built the corrected binary but stopped before runtime when the host
+    historical-selector monitor enumerated a short-lived unrelated PID and procfs returned `ESRCH` while opening its
+    command line. The guard now treats only `ENOENT`/`ESRCH` as the normal process-exit race and continues to fail on
+    permission or malformed-record errors; its self-test fixes both classifications. This changes no process
+    selection rule and does not admit a new historical `rustdesk --server` match.
+
+    A third complete-smoke attempt reached the corrected non-root branch and exposed a separate fixture mismatch:
+    the build stage's `umask 077` had recreated the root-owned debug binary as mode `0700`. Holding an open descriptor
+    preserves executable-object identity but correctly does not bypass the inode's execute permission, so Linux
+    rejected the UID-4001 exec. The build stage now changes only the completed smoke binary to the root-owned mode
+    `0755` expected of an installed `/usr/bin/rustdesk`, and the lifecycle refuses to run unless that exact owner/mode
+    precondition holds. Source inputs and all other private fixture outputs remain under the restrictive umask.
+
+    The corrected complete default smoke then passed. Its integrated lifecycle observed root graceful generation
+    `0cbc0ad2-3ec7-4e61-929d-3c1b372cc244`, restart generation `64097d5d-1e74-4913-87bb-a26914213bb2`, an
+    8.136-second stopped-child escalation, crash generations `eafe5eab-5398-490b-94c2-43e74f218225` →
+    `1e9d4403-08ca-47b4-a41c-f0c16c5ff77d` with exact-child exit observed after 3 ms, and non-root generation
+    `8fec6741-eb22-4cfb-8e7a-c14b8bd0bc6a`. The UID-4000 portable server and the host historical-selector baseline
+    both remained unchanged, and every downstream default socket, IPC, keying, session, transfer, limiter,
+    forged-frame, shutdown, and wire-capture stage passed. Retained log:
+    `/tmp/rustdesk-smoke-rs11c27h-pass.log`, SHA-256
+    `cbc010da4894e98ffd0b12b8e425dccbc6f26c711bf94bf4b7582757df5e4938`.
+
+    The verifier's sealed workspace/source-ordering self-contract now recognizes the split root `/proc/self/exe` and
+    non-root descriptor role, the installed-mode build output, the switchable active seat, the exact dropped
+    capability and typed-IPC assertions, and the lifecycle's explicit `CAP_SYS_PTRACE` procfs authority. Its mutation
+    suite independently makes each of those critical contracts invalid and requires the validator to reject it.
+
+    This closes the actual-binary manually supervised non-root active-seat credential-drop/exec case and fixes the
+    launch defect it exposed. It is not installed-package/systemd lifecycle evidence and does not cover installed
+    supervisor crash while owning a non-root child, hostile malformed records, forced PID reuse, pre-pidfd fallback,
+    cross-mount/container namespace identity, Debian non-systemd init integration, or concurrent separate-Docker
+    survival. The parent item and upcoming release remain **OPEN**.
+
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
     harness evidence for installed/package-managed graceful restart/stop, installed supervisor
     crash/restart, malformed/stale records and forced PID reuse, user-owned/non-root servers, and the actual installed
@@ -2818,7 +2885,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof; R-S11c-27f supplies
     actual-binary manually supervised stop/restart, real stopped-child escalation, and portable coexistence; and
     R-S11c-27g supplies real-binary manual supervisor-crash, durable-evidence preservation, and fresh-generation
-    recovery. None substitutes for installed package-update, cross-mount, or container-namespace cases.
+    recovery; and R-S11c-27h supplies the real-binary non-root active-seat credential-drop/descriptor-exec path.
+    None substitutes for installed package-update, cross-mount, or container-namespace cases.
     Packaging/service integration and lifecycle proof for the supported SysV init,
     OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime
     pre-pidfd fallback exercise, and the concurrent Docker survival proof also remain mandatory before this

@@ -23,6 +23,8 @@
 #   - R-S11c-27h : the real --service active-seat path descriptor-execs as UID/GID 4001 with
 #     exact supplementary groups, zero live capability sets, NNP, bounded environment, typed IPC,
 #     graceful reap, and no interference with a separate UID-4000 portable server;
+#   - R-S11c-27i : the real --service supervisor rejects malformed and live-but-ambiguous durable
+#     child records without changing the record or either separately identity-bound UID-4000 process;
 #   - R-D8 / R-D2 (real password provisioning) : the production `--password-stdin` CLI run against a
 #     non-installed user-owned live --server (2b root-owned, 2c non-root same-uid) provisions over
 #     uid-scoped main IPC and CLEANLY set-and-exits (no hang); the new credential keys and the old one
@@ -197,12 +199,15 @@ printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
 
-echo "== (0c) Linux manual supervisor lifecycle: exact stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h) =="
+echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i) =="
 run_stage lifecycle_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual
 printf '%s\n' "$lifecycle_out"
 record_stage_status R-S11c-27f
 record_stage_status R-S11c-27g
 record_stage_status R-S11c-27h
+record_stage_status R-S11c-27i
+grep -q '^SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role$' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11c-27i: actual --service did not preserve every hostile or ambiguous child record while signaling nothing"; rc=1; }
 grep -q '^SERVICE_LIFECYCLE_GRACEFUL=pass generation=' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27f: actual --service SIGTERM did not gracefully reap its exact child"; rc=1; }
 grep -q '^SERVICE_LIFECYCLE_RESTART=pass generation=' <<<"$lifecycle_out" \
@@ -214,7 +219,7 @@ grep -Eq '^SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=[0-9a-f-]{36} r
 grep -Eq '^SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=4001 groups=4001,4101 generation=[0-9a-f-]{36}$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27h: actual active-seat child did not complete the exact non-root descriptor-exec path"; rc=1; }
 grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \
-  || { echo "  FAIL R-S11c-27f/R-S11c-27g/R-S11c-27h: unrelated non-root portable server did not survive every service transition"; rc=1; }
+  || { echo "  FAIL R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i: unrelated non-root portable server did not survive every service transition"; rc=1; }
 
 echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
 # The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN

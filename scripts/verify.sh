@@ -3356,6 +3356,29 @@ grep -qF 'R-S11c-27h — actual-binary non-root active-desktop privilege-drop/ex
 if [ -n "$r_s11c27h" ]; then echo "  FAIL R-S11c-27h Linux non-root service child:$r_s11c27h"; rc=1; else
   echo "  ok  R-S11c-27h active-seat discovery descriptor-execs the exact image as UID/GID 4001 with exact groups, zero live capabilities, NNP, bounded environment, typed IPC, and graceful reap"; fi
 
+echo "== (3b-iii-h2j) Linux actual binary rejects hostile service-child records without signal authority (R-S11c-27i) =="
+r_s11c27i=
+grep -qF 'runtime.recover_previous_child()?;' src/platform/linux.rs || r_s11c27i="$r_s11c27i production-recovery-entry-missing"
+grep -qF 'Linux service lifecycle authority failed closed: {err}' src/core_main.rs || r_s11c27i="$r_s11c27i actual-service-fail-closed-exit-missing"
+grep -qF 'os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i exclusive-nofollow-record-fixture-missing"
+grep -qF "before_identity=\$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z'" scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i record-metadata-snapshot-missing"
+grep -qF '[ "$after_identity" = "$before_identity" ]' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i record-metadata-preservation-missing"
+grep -qF '[ "$(sha256sum -- "$RECORD" | awk' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i record-byte-preservation-missing"
+grep -qF '[ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i unpublished-temporary-record-not-rejected"
+grep -qF 'if [ "$service_status" -ne 1 ]' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i exact-actual-binary-failure-status-missing"
+grep -qF "grep -Fq -- 'Linux service lifecycle authority failed closed:'" scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i fail-closed-diagnostic-not-required"
+grep -qF 'remove_exact_hostile_service_record "$before_identity" "$before_sha256"' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i exact-fixture-removal-not-bound"
+grep -qF 'SERVICE_LIFECYCLE_HOSTILE_RECORD=pass case=%s record_sha256=%s' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i per-case-hash-result-missing"
+grep -qF 'assert_decoy_alive' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i exact-role-decoy-survival-not-asserted"
+grep -qF 'pidfd_signal_only "$DECOY" "$DECOY_START" STOP' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i exact-role-decoy-not-stopped-with-pidfd"
+grep -qF 'assert_portable_alive' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i rustdesk-portable-survival-not-asserted"
+[ "$(grep -c '^run_rejected_record_case ' scripts/smoke-service-lifecycle.sh)" = 7 ] || r_s11c27i="$r_s11c27i exact-hostile-record-matrix-incomplete"
+grep -qF 'SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i runtime-result-marker-missing"
+grep -qF 'record_stage_status R-S11c-27i' scripts/smoke-server.sh || r_s11c27i="$r_s11c27i runtime-status-not-preserved"
+grep -qF 'R-S11c-27i — actual-binary hostile service-child record rejection behavior' HARDENING_STATUS.md || r_s11c27i="$r_s11c27i hardening-ledger-missing"
+if [ -n "$r_s11c27i" ]; then echo "  FAIL R-S11c-27i Linux hostile service-child records:$r_s11c27i"; rc=1; else
+  echo "  ok  R-S11c-27i actual --service exits 1 and preserves malformed, untrusted, and live-ambiguous records while exact non-root decoy and portable identities survive"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

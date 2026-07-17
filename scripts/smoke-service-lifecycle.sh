@@ -22,6 +22,10 @@ CHILD_START=
 GENERATION=
 PORTABLE=
 PORTABLE_START=
+DECOY=
+DECOY_START=
+DECOY_EXECUTABLE=
+DECOY_GENERATION=
 
 pidfd_signal_only() {
   local pid=$1 expected_start=$2 signal_name=$3
@@ -148,6 +152,11 @@ cleanup() {
   if [ -n "$CHILD" ] && [ -n "$CHILD_START" ]; then
     force_kill_exact "$CHILD" "$CHILD_START" || cleanup_status=1
   fi
+  if [ -n "$DECOY" ] && [ -n "$DECOY_START" ] \
+    && "$READY" --is-running "$DECOY" "$DECOY_START" 2>/dev/null; then
+    force_kill_exact "$DECOY" "$DECOY_START" || cleanup_status=1
+  fi
+  [ -z "$DECOY" ] || wait "$DECOY" 2>/dev/null || true
   if [ -n "$PORTABLE" ] && [ -n "$PORTABLE_START" ] \
     && "$READY" --is-running "$PORTABLE" "$PORTABLE_START" 2>/dev/null; then
     "$READY" --stop "$PORTABLE" "$PORTABLE_START" >/dev/null 2>&1 \
@@ -188,6 +197,237 @@ environ = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
 if any(entry.startswith(b"RUSTDESK_SERVICE_OWNED_SERVER_") for entry in environ):
     raise SystemExit("portable server acquired a service-owned marker")
 PY
+}
+
+assert_decoy_alive() {
+  "$READY" --is-running "$DECOY" "$DECOY_START"
+  setpriv --reuid=4000 --regid="$portable_gid" --clear-groups --no-new-privs \
+    --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
+    python3 - "$DECOY" "$DECOY_START" "$DECOY_EXECUTABLE" "$DECOY_GENERATION" <<'PY'
+import os
+import sys
+
+pid = int(sys.argv[1])
+expected_start = int(sys.argv[2])
+expected_executable = os.stat(sys.argv[3])
+expected_generation = sys.argv[4].encode("ascii")
+raw = open(f"/proc/{pid}/stat", "rb").read()
+fields = raw.rsplit(b") ", 1)[1].split()
+if len(fields) < 20 or fields[0] in {b"Z", b"X"} or int(fields[19]) != expected_start:
+    raise SystemExit("hostile-record decoy identity changed")
+if open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0") != [
+    b"yes", b"--server", b"--service-owned-server", b""
+]:
+    raise SystemExit("hostile-record decoy role changed")
+executable = os.stat(f"/proc/{pid}/exe")
+if (executable.st_dev, executable.st_ino) != (
+    expected_executable.st_dev, expected_executable.st_ino
+):
+    raise SystemExit("hostile-record decoy executable identity changed")
+status = open(f"/proc/{pid}/status", "r", encoding="ascii").read().splitlines()
+values = {line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in status if ":" in line}
+if values.get("Uid", "").split() != ["4000"] * 4:
+    raise SystemExit("hostile-record decoy uid changed")
+if values.get("NoNewPrivs") != "1":
+    raise SystemExit("hostile-record decoy lost no-new-privileges")
+for capability_set in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"):
+    if int(values.get(capability_set, "1"), 16) != 0:
+        raise SystemExit(f"hostile-record decoy retained {capability_set}")
+generation_entries = [
+    entry
+    for entry in open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+    if entry.startswith(b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION=")
+]
+if generation_entries != [b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION=" + expected_generation]:
+    raise SystemExit("hostile-record decoy generation changed")
+PY
+}
+
+service_record_process_identity() {
+  local pid=$1 expected_start=$2
+  python3 - "$pid" "$expected_start" <<'PY'
+import os
+import sys
+
+pid = int(sys.argv[1])
+expected_start = int(sys.argv[2])
+raw = open(f"/proc/{pid}/stat", "rb").read()
+fields = raw.rsplit(b") ", 1)[1].split()
+if len(fields) < 20 or fields[0] in {b"Z", b"X"} or int(fields[19]) != expected_start:
+    raise SystemExit("hostile-record target identity changed")
+status = open(f"/proc/{pid}/status", "r", encoding="ascii").read().splitlines()
+values = {line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in status if ":" in line}
+uids = values.get("Uid", "").split()
+if len(uids) != 4 or len(set(uids)) != 1:
+    raise SystemExit("hostile-record target uid is not stable")
+executable = os.stat(f"/proc/{pid}/exe")
+print(executable.st_dev, executable.st_ino, uids[0])
+PY
+}
+
+write_hostile_service_record() {
+  local shape=$1 pid=$2 start_time=$3 executable_device=$4 executable_inode=$5
+  local uid=$6 generation=$7 mode=$8
+  python3 - "$shape" "$pid" "$start_time" "$executable_device" "$executable_inode" \
+    "$uid" "$generation" "$mode" <<'PY'
+import os
+import stat
+import sys
+import uuid
+
+shape = sys.argv[1]
+pid, start_time, executable_device, executable_inode, uid = map(int, sys.argv[2:7])
+generation = sys.argv[7]
+mode = int(sys.argv[8], 8)
+if shape not in {"canonical", "malformed"}:
+    raise SystemExit("unknown hostile-record shape")
+if min(pid, start_time, executable_inode) <= 0 or min(executable_device, uid) < 0:
+    raise SystemExit("invalid hostile-record numeric field")
+if str(uuid.UUID(generation)) != generation:
+    raise SystemExit("hostile-record generation is not canonical")
+
+directory = os.open(
+    "/run/rustdesk",
+    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+)
+try:
+    metadata = os.fstat(directory)
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0o700:
+        raise SystemExit("hostile-record runtime directory is untrusted")
+    if shape == "malformed":
+        payload = b"version=1\n"
+    else:
+        boot_id = open("/proc/sys/kernel/random/boot_id", "r", encoding="ascii").read().strip()
+        if str(uuid.UUID(boot_id)) != boot_id:
+            raise SystemExit("kernel boot identity is not canonical")
+        payload = (
+            "version=1\n"
+            f"pid={pid}\n"
+            f"start_time={start_time}\n"
+            f"boot_id={boot_id}\n"
+            f"exe_dev={executable_device}\n"
+            f"exe_ino={executable_inode}\n"
+            f"uid={uid}\n"
+            f"generation={generation}\n"
+            "role=--server+--service-owned-server\n"
+        ).encode("ascii")
+    descriptor = os.open(
+        "service-child.record",
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600,
+        dir_fd=directory,
+    )
+    try:
+        offset = 0
+        while offset < len(payload):
+            written = os.write(descriptor, payload[offset:])
+            if written <= 0:
+                raise SystemExit("short hostile-record write")
+            offset += written
+        os.fchmod(descriptor, mode)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.fsync(directory)
+finally:
+    os.close(directory)
+PY
+}
+
+remove_exact_hostile_service_record() {
+  local expected_identity=$1 expected_sha256=$2
+  python3 - "$expected_identity" "$expected_sha256" <<'PY'
+import hashlib
+import os
+import stat
+import sys
+
+expected_identity = sys.argv[1]
+expected_sha256 = sys.argv[2]
+
+def identity(metadata):
+    return ":".join(
+        str(value)
+        for value in (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_uid,
+            metadata.st_gid,
+            format(stat.S_IMODE(metadata.st_mode), "o"),
+            metadata.st_nlink,
+            metadata.st_size,
+            int(metadata.st_mtime),
+            int(metadata.st_ctime),
+        )
+    )
+
+directory = os.open(
+    "/run/rustdesk",
+    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+)
+try:
+    descriptor = os.open(
+        "service-child.record",
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        dir_fd=directory,
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_nlink != 1:
+            raise SystemExit("refusing to remove an untrusted hostile-record fixture")
+        if identity(metadata) != expected_identity:
+            raise SystemExit("refusing to remove a changed hostile-record fixture")
+        digest = hashlib.sha256()
+        while True:
+            block = os.read(descriptor, 4096)
+            if not block:
+                break
+            digest.update(block)
+        if digest.hexdigest() != expected_sha256:
+            raise SystemExit("refusing to remove hostile-record bytes with a changed hash")
+        path_metadata = os.stat(
+            "service-child.record", dir_fd=directory, follow_symlinks=False
+        )
+        if identity(path_metadata) != expected_identity:
+            raise SystemExit("hostile-record path changed before removal")
+        os.unlink("service-child.record", dir_fd=directory)
+        os.fsync(directory)
+    finally:
+        os.close(descriptor)
+finally:
+    os.close(directory)
+PY
+}
+
+run_rejected_record_case() {
+  local label=$1 expected_error=$2
+  local before_identity before_sha256 after_identity service_status log
+  log="$FIXTURE/hostile-$label.log"
+  [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
+  before_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")
+  before_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
+  if RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
+    "$BINARY" --service >"$log" 2>&1; then
+    service_status=0
+  else
+    service_status=$?
+  fi
+  if [ "$service_status" -ne 1 ]; then
+    echo "service lifecycle: hostile record '$label' returned status $service_status, expected 1" >&2
+    return 1
+  fi
+  after_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")
+  [ "$after_identity" = "$before_identity" ]
+  [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$before_sha256" ]
+  [ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]
+  grep -Fq -- 'Linux service lifecycle authority failed closed:' "$log"
+  grep -Fq -- "$expected_error" "$log"
+  assert_decoy_alive
+  assert_portable_alive
+  remove_exact_hostile_service_record "$before_identity" "$before_sha256"
+  [ ! -e "$RECORD" ] && [ ! -L "$RECORD" ]
+  printf 'SERVICE_LIFECYCLE_HOSTILE_RECORD=pass case=%s record_sha256=%s\n' \
+    "$label" "$before_sha256"
 }
 
 wait_for_service_child() {
@@ -439,6 +679,92 @@ setpriv --reuid=4000 --regid="$portable_gid" --clear-groups --no-new-privs \
   "$FIXTURE/bin/smoke-ready.sh" --wait-parked "$PORTABLE" "$PORTABLE_START" \
   "$FIXTURE/portable.log" "$FIXTURE/bin/smoke_readiness" 4000
 assert_portable_alive
+
+for busybox_candidate in /usr/bin/busybox /bin/busybox; do
+  if [ -x "$busybox_candidate" ]; then
+    DECOY_EXECUTABLE=$busybox_candidate
+    break
+  fi
+done
+if [ -z "$DECOY_EXECUTABLE" ]; then
+  echo 'service lifecycle: BusyBox is required for the hostile-record executable decoy' >&2
+  exit 1
+fi
+DECOY_GENERATION=$(tr -d '\n' </proc/sys/kernel/random/uuid)
+: > "$FIXTURE/hostile-decoy.log"
+chmod 0600 "$FIXTURE/hostile-decoy.log"
+chown rduser:"$portable_gid" "$FIXTURE/hostile-decoy.log"
+setpriv --reuid=4000 --regid="$portable_gid" --clear-groups --no-new-privs \
+  --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
+  env -i PATH=/usr/bin:/bin \
+  RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$DECOY_GENERATION" \
+  bash --noprofile --norc -c 'exec -a yes "$1" --server --service-owned-server' \
+  bash "$DECOY_EXECUTABLE" > /dev/null 2>"$FIXTURE/hostile-decoy.log" &
+DECOY=$!
+DECOY_START=$(
+  for _ in $(seq 1 500); do
+    if decoy_start=$("$READY" --identity "$DECOY" 2>/dev/null) \
+      && [ "$(tr '\0' '\n' <"/proc/$DECOY/cmdline" 2>/dev/null | paste -sd ' ' -)" \
+        = 'yes --server --service-owned-server' ]; then
+      printf '%s\n' "$decoy_start"
+      break
+    fi
+    sleep 0.01
+  done
+)
+[ -n "$DECOY_START" ]
+pidfd_signal_only "$DECOY" "$DECOY_START" STOP
+assert_decoy_alive
+read -r decoy_device decoy_inode decoy_uid \
+  < <(service_record_process_identity "$DECOY" "$DECOY_START")
+[ "$decoy_uid" = 4000 ]
+read -r portable_device portable_inode portable_uid \
+  < <(service_record_process_identity "$PORTABLE" "$PORTABLE_START")
+[ "$portable_uid" = 4000 ]
+binary_device=$(stat -Lc %d -- "$BINARY")
+binary_inode=$(stat -Lc %i -- "$BINARY")
+if [ "$binary_device:$binary_inode" = "$decoy_device:$decoy_inode" ]; then
+  echo 'service lifecycle: RustDesk and hostile-record decoy executable identities unexpectedly match' >&2
+  exit 1
+fi
+alternate_generation=$(tr -d '\n' </proc/sys/kernel/random/uuid)
+[ "$alternate_generation" != "$DECOY_GENERATION" ]
+install -d -o root -g root -m 0700 /run/rustdesk
+
+write_hostile_service_record malformed "$DECOY" "$DECOY_START" \
+  "$decoy_device" "$decoy_inode" 4000 "$DECOY_GENERATION" 0600
+run_rejected_record_case malformed "Service child record is missing 'pid'"
+
+write_hostile_service_record canonical "$DECOY" "$DECOY_START" \
+  "$decoy_device" "$decoy_inode" 4000 "$DECOY_GENERATION" 0644
+run_rejected_record_case metadata \
+  'Refusing untrusted service child record ownership, type, mode, or link count'
+
+write_hostile_service_record canonical "$DECOY" "$((DECOY_START + 1))" \
+  "$decoy_device" "$decoy_inode" 4000 "$DECOY_GENERATION" 0600
+run_rejected_record_case reused-start 'start time changed from'
+
+write_hostile_service_record canonical "$DECOY" "$DECOY_START" \
+  "$binary_device" "$binary_inode" 4000 "$DECOY_GENERATION" 0600
+run_rejected_record_case executable 'executable identity changed from'
+
+write_hostile_service_record canonical "$DECOY" "$DECOY_START" \
+  "$decoy_device" "$decoy_inode" 4001 "$DECOY_GENERATION" 0600
+run_rejected_record_case uid 'uid changed from 4001 to 4000'
+
+write_hostile_service_record canonical "$DECOY" "$DECOY_START" \
+  "$decoy_device" "$decoy_inode" 4000 "$alternate_generation" 0600
+run_rejected_record_case generation 'service generation is absent or duplicated'
+
+write_hostile_service_record canonical "$PORTABLE" "$PORTABLE_START" \
+  "$portable_device" "$portable_inode" 4000 "$alternate_generation" 0600
+run_rejected_record_case portable-role 'exact service-owned role marker is absent'
+
+force_kill_exact "$DECOY" "$DECOY_START"
+wait "$DECOY" 2>/dev/null || true
+DECOY=
+DECOY_START=
+printf 'SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role\n'
 
 start_service "$FIXTURE/service-1.log"
 generation_one=$GENERATION

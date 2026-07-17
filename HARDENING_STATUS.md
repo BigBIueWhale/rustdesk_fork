@@ -2878,6 +2878,54 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     cross-mount/container namespace identity, Debian non-systemd init integration, or concurrent separate-Docker
     survival. The parent item and upcoming release remain **OPEN**.
 
+  - **R-S11c-27i — actual-binary hostile service-child record rejection behavior — SOURCE/RUNTIME IMPLEMENTED AND
+    BEHAVIOR-TESTED 2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory network-isolated manual lifecycle stage
+    now drives the real root-owned `rustdesk --service` binary over seven durable-record cases before granting it any
+    child-launch or IPC-listener authority. A capability-free UID-4000 BusyBox sentinel deliberately has the exact
+    three-argument service-owned role and one controlled generation while differing from the RustDesk executable;
+    the independently launched real RustDesk portable server remains live under the same UID with its exact portable
+    two-argument role. The decoy is then frozen with a pidfd-bound `SIGSTOP` so it remains inspectable without a
+    BusyBox `yes` CPU loop. Both processes are retained by PID/start-time identity and revalidated after every case.
+
+    The matrix injects: a truncated canonical-schema record; a canonical record with untrusted mode `0644`; the
+    exact-role decoy with a changed recorded start time (a logical reused-PID ambiguity only); that decoy with a
+    changed executable device/inode; a changed UID; a changed generation; and the actual RustDesk portable process
+    with its exact executable identity but no service-owned role marker. Each fixture is created relative to the
+    root-owned mode-0700 runtime-directory descriptor with `O_EXCL|O_NOFOLLOW`, persisted before invocation, and
+    captured by device/inode/owner/mode/link-count/size/time metadata plus SHA-256. The real supervisor must exit
+    exactly status 1 with the common core fail-closed diagnostic and the case-specific parser or identity reason,
+    leave the record metadata and bytes unchanged, publish no temporary record, and leave both exact sentinels live.
+    Only then does the harness reopen the fixed record without following links, recheck its regular/root/single-link
+    identity and full hash, unlink that exact fixture relative to the retained directory descriptor, and fsync the
+    directory before proceeding.
+
+    The focused actual-binary lifecycle passed after the stopped-decoy hardening. The retained final run emitted an individual success marker and
+    SHA-256 for all seven distinct fixture records, then the exact aggregate matrix marker. It subsequently kept all
+    pre-existing lifecycle checks green: root graceful stop/restart, an 8.560-second stopped-child escalation,
+    supervisor-crash recovery from generation `b54c8546-f838-4a11-8c84-3f691cf2420e` to
+    `d4c9d92d-6b4b-41de-b748-3f23d7412494` with exact-child exit observed after 2 ms, real UID/GID-4001 active-seat
+    descriptor exec, and final UID-4000 portable noninterference. Retained 2,204-byte mode-0664 log:
+    `/tmp/rustdesk-lifecycle-rs11c27i-pass2.log`, SHA-256
+    `725a1ec0df92f82de4952fced22414599ba5f804a582eb724f65386744282d4a`. This slice needed no production Rust,
+    dependency, syscall, or unsafe-inventory change because the audited parser/recovery path already enforced the
+    required fail-closed decision; it adds real-image behavior evidence and sealed regression contracts for it.
+
+    The complete default runtime smoke also passed with the new lifecycle matrix integrated before all downstream
+    runtime stages. It observed the same hostile-record aggregate marker, active-seat generation
+    `47bb87ec-e78d-4f42-a28b-5bef38fc07b3`, UID-4000 portable noninterference, and an unchanged three-entry host
+    historical-selector baseline, then completed the default build, socket, IPC/password, keying, session,
+    port-forward, file-transfer, forged-frame, limiter, shutdown, and wire-capture stages. Retained 262,167-byte
+    mode-0664 log: `/tmp/rustdesk-smoke-rs11c27i.log`, SHA-256
+    `9874d87b00cfd1512f4f41a886b6d94802e58e483e57b2141604b31c6cf80019`.
+
+    This slice deliberately does **not** claim actual forced kernel numeric-PID reuse: changing the recorded
+    `/proc/<pid>/stat` start-time field demonstrates fail-closed treatment of ambiguous evidence, not that Linux
+    recycled a PID during the test. Actual forced PID reuse remains open, as do installed package/service-manager
+    stop/restart and supervisor-crash behavior (including an installed non-root child), pre-pidfd fallback runtime,
+    cross-mount/container namespace identity, SysV/OpenRC/runit/manual packaging integration including Debian
+    non-systemd, concurrent separate-Docker survival, exact-commit cold artifact evidence, and external expert R-V3
+    review. The parent item and upcoming release remain **OPEN**.
+
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
     harness evidence for installed/package-managed graceful restart/stop, installed supervisor
     crash/restart, malformed/stale records and forced PID reuse, user-owned/non-root servers, and the actual installed

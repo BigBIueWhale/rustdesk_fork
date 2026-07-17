@@ -2965,6 +2965,7 @@ def validate_smoke_contract(
         ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
+        ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
@@ -3046,9 +3047,26 @@ def validate_smoke_contract(
         ('SERVICE_LIFECYCLE_RESTART=pass', "restart lifecycle result"),
         ('SERVICE_LIFECYCLE_FORCED=pass', "forced lifecycle result"),
         ('SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001', "non-root lifecycle result"),
+        ('SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role', "hostile-record lifecycle result"),
         ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
     ):
         require_text(service_lifecycle, text, label)
+    for text, label in (
+        ('os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC', "exclusive no-follow hostile-record fixture"),
+        ('before_identity=$(stat -c \'%d:%i:%u:%g:%a:%h:%s:%Y:%Z\'', "hostile-record metadata snapshot"),
+        ('[ "$after_identity" = "$before_identity" ]', "hostile-record metadata preservation"),
+        ('[ "$(sha256sum -- "$RECORD" | awk', "hostile-record byte preservation"),
+        ('[ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]', "hostile-record temporary-file absence"),
+        ('if [ "$service_status" -ne 1 ]; then', "hostile-record exact failure status"),
+        ("grep -Fq -- 'Linux service lifecycle authority failed closed:'", "hostile-record fail-closed diagnostic"),
+        ('remove_exact_hostile_service_record "$before_identity" "$before_sha256"', "exact hostile-record fixture removal"),
+        ('SERVICE_LIFECYCLE_HOSTILE_RECORD=pass case=%s record_sha256=%s', "hostile-record per-case hash result"),
+        ('pidfd_signal_only "$DECOY" "$DECOY_START" STOP', "hostile-record decoy pidfd stop"),
+        ('  assert_decoy_alive\n  assert_portable_alive', "hostile-record sentinel survival"),
+    ):
+        require_text(service_lifecycle, text, label)
+    if service_lifecycle.count("run_rejected_record_case ") != 7:
+        raise VerificationError("hostile-record lifecycle does not preserve the exact seven-case matrix")
     for forbidden in ("pkill", "os.kill(", "kill -", "sudo ", "--pid=host", "--privileged"):
         if forbidden in service_lifecycle:
             raise VerificationError(
@@ -3163,6 +3181,21 @@ def validate_smoke_contract(
     require_text(common_source, 'std::env::args().nth(1) == Some("--server".to_owned())', "server role argument-one predicate")
     require_text(common_source, "SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV", "service executable descriptor environment binding")
     require_text(linux_source, "std::env::current_exe().ok()", "Linux executable identity source")
+    require_text(
+        core_main,
+        'log::error!("Linux service lifecycle authority failed closed: {err}");',
+        "actual service fail-closed diagnostic",
+    )
+    require_order(
+        linux_source,
+        (
+            "let runtime = ServiceRuntime::acquire()?;",
+            "runtime.recover_previous_child()?;",
+            "stop_subprocess();",
+            "ipc::start(crate::POSTFIX_SERVICE)",
+        ),
+        "hostile-record recovery precedes signal and listener authority",
+    )
     for text, label in (
         ('.custom_flags(hbb_common::libc::O_CLOEXEC)', "service executable parent close-on-exec"),
         ('format!("/proc/self/fd/{}", executable.as_raw_fd())', "service executable descriptor path"),
@@ -8867,6 +8900,42 @@ def run_source_mutations(sources):
             'for capability_set in ("CapInh", "CapPrm", "CapEff", "CapAmb"):',
             'for capability_set in ("CapInh", "CapPrm", "CapAmb"):',
             "non-root capability clearing proof",
+        ),
+        (
+            "service_lifecycle",
+            'os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC',
+            'os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC',
+            "exclusive no-follow hostile-record fixture",
+        ),
+        (
+            "service_lifecycle",
+            'if [ "$service_status" -ne 1 ]; then',
+            'if [ "$service_status" -ne 0 ]; then',
+            "hostile-record exact failure status",
+        ),
+        (
+            "service_lifecycle",
+            '[ "$after_identity" = "$before_identity" ]',
+            'true # hostile-record metadata preservation removed',
+            "hostile-record metadata preservation",
+        ),
+        (
+            "service_lifecycle",
+            '  assert_decoy_alive\n  assert_portable_alive',
+            '  true # hostile-record sentinel survival removed',
+            "hostile-record sentinel survival",
+        ),
+        (
+            "service_lifecycle",
+            'SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role',
+            'SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata',
+            "hostile-record lifecycle result",
+        ),
+        (
+            "linux_source",
+            'runtime.recover_previous_child()?;',
+            'true; // hostile-record recovery removed',
+            "hostile-record recovery precedes signal and listener authority",
         ),
         (
             "smoke_ready",

@@ -70,6 +70,63 @@ fetch_verify_sha512() {
     mv "$dest.part" "$dest"
 }
 
+# The installed-systemd behavior gate needs a real PID-1/cgroup environment but
+# must never borrow the host manager or host cgroup tree. Keep its immutable,
+# publisher-hashed Debian base in the private harness state used for VM images.
+# This explicit mode remains the sole network acquisition path; the smoke itself
+# runs QEMU with `-nic none` and a throwaway CoW overlay.
+fetch_debian_systemd_smoke_image() {
+    local harness_state="$REPO_ROOT/.harness-state"
+    local state_dir="$harness_state/debian-systemd-smoke"
+    local name="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
+    local dest="$state_dir/$name"
+    local url="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$name"
+    local current_uid
+    current_uid=$(id -u)
+    if [ -e "$harness_state" ] || [ -L "$harness_state" ]; then
+        [ -d "$harness_state" ] && [ ! -L "$harness_state" ] \
+            || die "harness state root is not one real directory"
+    else
+        mkdir -m 0700 -- "$harness_state"
+    fi
+    [ "$(stat -c '%u:%a' "$harness_state")" = "$current_uid:700" ] \
+        || die "harness state root is not current-user-owned mode 0700"
+    if [ -e "$state_dir" ] || [ -L "$state_dir" ]; then
+        [ -d "$state_dir" ] && [ ! -L "$state_dir" ] \
+            || die "systemd smoke state directory is not one real directory"
+    else
+        mkdir -m 0700 -- "$state_dir"
+    fi
+    [ "$(stat -c '%u:%a' "$state_dir")" = "$current_uid:700" ] \
+        || die "systemd smoke state directory is not current-user-owned mode 0700"
+    if [ -f "$dest" ] && [ ! -L "$dest" ] \
+       && [ "$(sha512sum "$dest" | awk '{print $1}')" = "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE" ]; then
+        [ "$(stat -c '%u:%h' "$dest")" = "$current_uid:1" ] \
+            || die "cached systemd smoke image has unsafe ownership or links"
+        chmod 0444 "$dest"
+        [ "$(stat -c '%u:%a:%h' "$dest")" = "$current_uid:444:1" ] \
+            || die "cached systemd smoke image has unsafe ownership, mode, or links"
+        log "cached + SHA512-verified, skipping: $name"
+        return 0
+    fi
+    [ ! -e "$dest.part" ] && [ ! -L "$dest.part" ] \
+        || die "stale systemd smoke image download temporary exists: $dest.part"
+    log "fetching pinned Debian systemd smoke image: $url"
+    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"; then
+        rm -f "$dest.part"
+        die "failed to fetch pinned Debian systemd smoke image"
+    fi
+    [ "$(sha512sum "$dest.part" | awk '{print $1}')" = "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE" ] || {
+        rm -f "$dest.part"
+        die "SHA512 mismatch for pinned Debian systemd smoke image"
+    }
+    chmod 0444 "$dest.part"
+    mv "$dest.part" "$dest"
+    [ "$(stat -c '%u:%a:%h' "$dest")" = "$current_uid:444:1" ] \
+        || die "fetched systemd smoke image has unsafe ownership, mode, or links"
+    log "Debian systemd smoke image cached + SHA512-verified: $dest"
+}
+
 libvpx_native_key() {
     (
         printf 'VCPKG_BASELINE=%s\n' "$VCPKG_BASELINE"
@@ -848,8 +905,13 @@ main() {
             require_online_complete
             return 0
             ;;
+        --debian-systemd-smoke-image)
+            [ "$#" -eq 1 ] || die "--debian-systemd-smoke-image takes no arguments"
+            fetch_debian_systemd_smoke_image
+            return 0
+            ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs]" ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images

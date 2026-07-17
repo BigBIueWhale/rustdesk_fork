@@ -31,6 +31,7 @@ GATES=(
   "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics"
   "android-rust-check.sh|pinned offline aarch64 Android Rust check"
   "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"
+  "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference"
   "dart-verify.sh|flutter analyze lib/ (zero errors)"
   "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"
   "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"

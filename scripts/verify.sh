@@ -3473,6 +3473,105 @@ grep -qF 'R-S11c-27l — installed Debian SysV lifecycle' HARDENING_STATUS.md ||
 if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
   echo "  ok  R-S11c-27l Debian SysV package lifecycle selects one init backend, stops one PID/executable/name/UID-bound supervisor, and behavior-tests portable noninterference"; fi
 
+echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="
+r_s11c27m=
+systemd_host=scripts/smoke-debian-systemd-lifecycle.sh
+systemd_guest=scripts/smoke-debian-systemd-lifecycle-guest.sh
+systemd_loginctl=scripts/smoke-debian-systemd-loginctl.sh
+bash -n "$systemd_host" "$systemd_guest" "$systemd_loginctl" scripts/online-fetch.sh \
+  || r_s11c27m="$r_s11c27m smoke-shell-syntax-invalid"
+dash -n "$systemd_loginctl" || r_s11c27m="$r_s11c27m loginctl-shell-syntax-invalid"
+for executable in "$systemd_host" "$systemd_guest" "$systemd_loginctl"; do
+  [ "$(stat -c %a "$executable")" = 755 ] \
+    || r_s11c27m="$r_s11c27m ${executable##*/}:not-executable"
+done
+grep -qF 'DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD="20260712-2537"' scripts/pins.env \
+  || r_s11c27m="$r_s11c27m dated-image-build-pin-missing"
+grep -qF 'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"' scripts/pins.env \
+  || r_s11c27m="$r_s11c27m publisher-image-hash-pin-missing"
+for token in \
+  'fetch_debian_systemd_smoke_image()' \
+  'cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$name' \
+  '[ -d "$harness_state" ] && [ ! -L "$harness_state" ]' \
+  '"$(stat -c '\''%u:%a'\'' "$harness_state")" = "$current_uid:700"' \
+  'curl -fsSL --proto '\''=https'\'' --tlsv1.2 -o "$dest.part" "$url"' \
+  'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE' \
+  '"$(stat -c '\''%u:%a:%h'\'' "$dest")" = "$current_uid:444:1"' \
+  '--debian-systemd-smoke-image)'; do
+  grep -qF -- "$token" scripts/online-fetch.sh \
+    || r_s11c27m="$r_s11c27m online-fetch:${token%% *}"
+done
+for token in \
+  '[ "$(id -u)" -ne 0 ]' \
+  '[ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]' \
+  '"$(stat -c '\''%u:%a:%h'\'' "$IMAGE")" = "$(id -u):444:1"' \
+  'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"' \
+  'qemu-img check -q "$IMAGE"' \
+  'docker run --rm --network none --read-only --pids-limit 64' \
+  '--cap-drop ALL --security-opt no-new-privileges' \
+  '--user "$host_uid:$host_gid"' \
+  '-v "$PWD:/work:ro"' \
+  '-nic none' \
+  'media=cdrom,readonly=on' \
+  'SOURCE_HASH_AFTER=$(sha256sum' \
+  'DEBIAN_SYSTEMD_VM_ISOLATION=pass network=none accel=kvm source=ro base=sha512'; do
+  grep -qF -- "$token" "$systemd_host" \
+    || r_s11c27m="$r_s11c27m host:${token%% *}"
+done
+if grep -Eq -- '--privileged|--pid[= ]host|--network[= ]host|--publish|--cap-add|/var/run/docker.sock|-nic[[:space:]]+(user|tap|bridge)|hostfwd|guestfwd|-virtfs|-fsdev|sudo[[:space:]]' "$systemd_host"; then
+  r_s11c27m="$r_s11c27m host-authority-or-connectivity-regressed"
+fi
+[ "$(grep -cF -- '-nic none' "$systemd_host")" = 1 ] \
+  || r_s11c27m="$r_s11c27m qemu-network-disable-not-singular"
+for token in \
+  '[ "$(id -u)" = 0 ]' \
+  '[ "$(cat /proc/1/comm)" = systemd ]' \
+  '[ -d /run/systemd/system ]' \
+  '[ "${VERSION_CODENAME:-}" = bookworm ]' \
+  '*,ro,*)' \
+  'install -o root -g root -m 0755 "$LOGINCTL_SOURCE" /usr/bin/loginctl' \
+  'cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service' \
+  'systemd-analyze verify /usr/lib/systemd/system/rustdesk.service' \
+  'not main_cgroup.endswith("/system.slice/rustdesk.service")' \
+  'status.get("PPid") != str(main_pid)' \
+  'status.get("Uid", "").split() != [str(seat_uid)] * 4' \
+  'status.get("Gid", "").split() != [str(seat_gid)] * 4' \
+  'if int(status.get(capability_set, "1"), 16) != 0' \
+  'status.get("NoNewPrivs") != "1"' \
+  'argv[1:] != [b"--server", b"--service-owned-server", b""]' \
+  'systemd-run --unit="$PORTABLE_UNIT"' \
+  'systemctl restart "$UNIT"' \
+  'systemctl stop "$UNIT"' \
+  'systemctl start "$UNIT"' \
+  'systemctl kill --kill-whom=main --signal=KILL "$UNIT"' \
+  'systemctl show "$UNIT" -p NRestarts --value' \
+  'assert_process_gone "$precrash_child" "$precrash_child_start"' \
+  'assert_portable_alive' \
+  'dpkg -r "$PACKAGE"' \
+  'dpkg --purge "$PACKAGE"' \
+  'DEBIAN_SYSTEMD_INSTALLED_LIFECYCLE=pass os=debian-%s systemd=%s seat_uid=%s portable_uid=%s crash_generation=%s'; do
+  grep -qF -- "$token" "$systemd_guest" \
+    || r_s11c27m="$r_s11c27m guest:${token%% *}"
+done
+for token in \
+  '"0:")' \
+  '"4:show-session -p State 1")' \
+  '"4:show-session -p Type 1")' \
+  '"2:show-session 1")' \
+  'User=4001' \
+  'State=active' \
+  'Type=x11' \
+  'exit 64'; do
+  grep -qF -- "$token" "$systemd_loginctl" \
+    || r_s11c27m="$r_s11c27m loginctl:${token%% *}"
+done
+grep -qF 'smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference' scripts/verify-release.sh \
+  || r_s11c27m="$r_s11c27m release-gate-missing"
+grep -qF 'R-S11c-27m — installed Debian systemd lifecycle' HARDENING_STATUS.md \
+  || r_s11c27m="$r_s11c27m hardening-ledger-missing"
+if [ -n "$r_s11c27m" ]; then echo "  FAIL R-S11c-27m installed Debian systemd lifecycle:$r_s11c27m"; rc=1; else
+  echo "  ok  R-S11c-27m pinned networkless KVM runs exact installed package/unit lifecycle, proves non-root child/cgroup identity across normal stop/restart and supervisor crash recovery, and preserves a separate portable unit"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=
@@ -7052,6 +7151,7 @@ grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"
 grep -qF '"verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"' "$release_gate" || release_gate_bad="$release_gate_bad missing-windows-harness"
 grep -qF '"android-rust-check.sh|pinned offline aarch64 Android Rust check"' "$release_gate" || release_gate_bad="$release_gate_bad missing-android-rust-check"
 grep -qF '"smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
+grep -qF '"smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference"' "$release_gate" || release_gate_bad="$release_gate_bad missing-installed-systemd-smoke"
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"
 grep -qF '"apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks"' "$release_gate" || release_gate_bad="$release_gate_bad missing-apple-conform"
@@ -7070,6 +7170,7 @@ expected = [
     "test-android-gradle-cache.sh|non-root immutable Gradle projection + pinned offline semantics",
     "android-rust-check.sh|pinned offline aarch64 Android Rust check",
     "smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session",
+    "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference",
     "dart-verify.sh|flutter analyze lib/ (zero errors)",
     "native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin",
     "apple-conform-check.sh|R-R2 macOS/iOS source conformance + cross-checks",
@@ -7090,10 +7191,10 @@ for line in lines[start + 1:end]:
         raise SystemExit("malformed release GATES entry: {!r}".format(line))
     observed.append(match.group(1))
 if observed != expected:
-    raise SystemExit("release GATES array is not the exact ordered twelve-gate contract")
+    raise SystemExit("release GATES array is not the exact ordered thirteen-gate contract")
 PY
 then
-  release_gate_bad="$release_gate_bad non-exact-twelve-gate-bundle"
+  release_gate_bad="$release_gate_bad non-exact-thirteen-gate-bundle"
 fi
 grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
 grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"

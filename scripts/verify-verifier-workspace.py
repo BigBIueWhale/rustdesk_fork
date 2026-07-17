@@ -2940,6 +2940,129 @@ def validate_scan_contract(scan, verify, apple, release):
     )
 
 
+def validate_systemd_smoke_contract(
+    host,
+    host_mode,
+    guest,
+    guest_mode,
+    loginctl,
+    loginctl_mode,
+    online_fetch,
+    pins,
+    release,
+    hardening,
+):
+    for mode, label in (
+        (host_mode, "systemd VM host orchestrator mode"),
+        (guest_mode, "systemd VM guest lifecycle mode"),
+        (loginctl_mode, "systemd VM loginctl fixture mode"),
+    ):
+        if not smoke_readiness_mode_is_valid(mode):
+            raise VerificationError(f"{label}: executable mode is absent")
+
+    for text, label in (
+        ('[ "$(id -u)" -ne 0 ]', "systemd VM unprivileged host boundary"),
+        ('verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"', "systemd VM base hash proof"),
+        ('qemu-img check -q "$IMAGE"', "systemd VM base structural proof"),
+        ('docker run --rm --network none --read-only --pids-limit 64', "systemd VM dependency staging confinement"),
+        ('--cap-drop ALL --security-opt no-new-privileges', "systemd VM dependency staging confinement"),
+        ('--user "$host_uid:$host_gid"', "systemd VM dependency staging unprivileged user"),
+        ('-v "$PWD:/work:ro"', "systemd VM dependency staging source boundary"),
+        ('-nic none', "systemd VM host network isolation"),
+        ('media=cdrom,readonly=on', "systemd VM immutable payload"),
+        ('SOURCE_HASH_AFTER=$(sha256sum', "systemd VM source postcondition"),
+        ('DEBIAN_SYSTEMD_VM_ISOLATION=pass network=none accel=kvm source=ro base=sha512', "systemd VM isolation result"),
+    ):
+        require_text(host, text, label)
+    require_exact_count(host, "-nic none", 1, "systemd VM host network isolation")
+    forbidden_host = re.compile(
+        r"--privileged|--pid[= ]host|--network[= ]host|--publish|--cap-add|"
+        r"/var/run/docker\.sock|-nic\s+(?:user|tap|bridge)|hostfwd|guestfwd|"
+        r"-virtfs|-fsdev|sudo\s"
+    )
+    if forbidden_host.search(host):
+        raise VerificationError("systemd VM host authority boundary: forbidden authority or connectivity is present")
+
+    for text, label in (
+        ('[ "$(id -u)" = 0 ]', "installed systemd guest root boundary"),
+        ('[ "$(cat /proc/1/comm)" = systemd ]', "installed systemd real PID 1"),
+        ('[ "${VERSION_CODENAME:-}" = bookworm ]', "installed systemd Debian fixture"),
+        ('*,ro,*)', "installed systemd read-only payload proof"),
+        ('cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service', "installed systemd exact production unit"),
+        ('systemd-analyze verify /usr/lib/systemd/system/rustdesk.service', "installed systemd unit verification"),
+        ('not main_cgroup.endswith("/system.slice/rustdesk.service")', "installed systemd service cgroup identity"),
+        ('status.get("PPid") != str(main_pid)', "installed systemd direct child identity"),
+        ('status.get("Uid", "").split() != [str(seat_uid)] * 4', "installed systemd non-root child UID"),
+        ('status.get("NoNewPrivs") != "1"', "installed systemd child no-new-privileges"),
+        ('argv[1:] != [b"--server", b"--service-owned-server", b""]', "installed systemd exact child role"),
+        ('systemd-run --unit="$PORTABLE_UNIT"', "installed systemd portable sibling fixture"),
+        ('systemctl restart "$UNIT"', "installed systemd normal restart"),
+        ('systemctl stop "$UNIT"', "installed systemd clean stop"),
+        ('systemctl start "$UNIT"', "installed systemd clean start"),
+        ('systemctl kill --kill-whom=main --signal=KILL "$UNIT"', "installed systemd unit-scoped crash"),
+        ('systemctl show "$UNIT" -p NRestarts --value', "installed systemd automatic restart proof"),
+        ('assert_process_gone "$precrash_child" "$precrash_child_start"', "installed systemd crashed-child exit proof"),
+        ("journalctl -b -u \"$UNIT\" --no-pager", "installed systemd recovery diagnostic proof"),
+        ('dpkg -r "$PACKAGE"', "installed systemd package removal"),
+        ('dpkg --purge "$PACKAGE"', "installed systemd package purge"),
+        ('DEBIAN_SYSTEMD_INSTALLED_LIFECYCLE=pass os=debian-%s systemd=%s seat_uid=%s portable_uid=%s crash_generation=%s', "installed systemd result marker"),
+    ):
+        require_text(guest, text, label)
+    require_order(
+        guest,
+        (
+            'systemctl kill --kill-whom=main --signal=KILL "$UNIT"',
+            'wait_for_active_unit "$precrash_main"',
+            'assert_process_gone "$precrash_child" "$precrash_child_start"',
+            "assert_portable_alive\ncrash_generation=",
+            'SYSTEMD_CRASH_RESTART=pass prior_generation=',
+        ),
+        "installed systemd crash/restart transaction",
+    )
+
+    for text, label in (
+        ('"0:")', "systemd VM loginctl session listing"),
+        ('"4:show-session -p State 1")', "systemd VM loginctl state query"),
+        ('"4:show-session -p Type 1")', "systemd VM loginctl type query"),
+        ('User=4001', "systemd VM loginctl non-root seat"),
+        ('State=active', "systemd VM loginctl active seat"),
+        ('Type=x11', "systemd VM loginctl X11 seat"),
+        ('exit 64', "systemd VM loginctl unexpected-argv rejection"),
+    ):
+        require_text(loginctl, text, label)
+
+    require_text(
+        pins,
+        'DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD="20260712-2537"',
+        "systemd VM dated image pin",
+    )
+    require_text(
+        pins,
+        'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"',
+        "systemd VM publisher hash pin",
+    )
+    for text, label in (
+        ("fetch_debian_systemd_smoke_image()", "systemd VM sole fetch mode"),
+        ('[ -d "$harness_state" ] && [ ! -L "$harness_state" ]', "systemd VM private state root"),
+        ('"$(stat -c \'%u:%a\' "$harness_state")" = "$current_uid:700"', "systemd VM private state authority"),
+        ('curl -fsSL --proto \'=https\' --tlsv1.2 -o "$dest.part" "$url"', "systemd VM HTTPS fetch"),
+        ('SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE', "systemd VM fetched-image hash proof"),
+        ('"$(stat -c \'%u:%a:%h\' "$dest")" = "$current_uid:444:1"', "systemd VM fetched-image authority"),
+        ("--debian-systemd-smoke-image)", "systemd VM explicit fetch dispatch"),
+    ):
+        require_text(online_fetch, text, label)
+    require_text(
+        release,
+        "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference",
+        "installed systemd release gate",
+    )
+    require_text(
+        hardening,
+        "R-S11c-27m — installed Debian systemd lifecycle",
+        "installed systemd hardening ledger",
+    )
+
+
 def smoke_readiness_mode_is_valid(mode):
     return stat.S_ISREG(mode) and stat.S_IMODE(mode) in (0o700, 0o755)
 
@@ -4069,6 +4192,18 @@ def validate_sources(sources):
     validate_r_b2_version_metadata(sources)
     validate_docs(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
+    validate_systemd_smoke_contract(
+        sources["systemd_smoke_host"],
+        sources["systemd_smoke_host_mode"],
+        sources["systemd_smoke_guest"],
+        sources["systemd_smoke_guest_mode"],
+        sources["systemd_smoke_loginctl"],
+        sources["systemd_smoke_loginctl_mode"],
+        sources["online_fetch"],
+        sources["pins"],
+        sources["release"],
+        sources["hardening"],
+    )
     validate_smoke_contract(
         sources["verify"],
         sources["smoke"],
@@ -9174,6 +9309,72 @@ def run_source_mutations(sources):
             "Debian SysV installed lifecycle result",
         ),
         (
+            "systemd_smoke_host",
+            "-nic none",
+            "-nic user",
+            "systemd VM host network isolation",
+        ),
+        (
+            "systemd_smoke_host",
+            "--cap-drop ALL --security-opt no-new-privileges",
+            "--security-opt no-new-privileges",
+            "systemd VM dependency staging confinement",
+        ),
+        (
+            "systemd_smoke_guest",
+            'cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service',
+            'true # installed unit identity proof removed',
+            "installed systemd exact production unit",
+        ),
+        (
+            "systemd_smoke_guest",
+            'not main_cgroup.endswith("/system.slice/rustdesk.service")',
+            "False",
+            "installed systemd service cgroup identity",
+        ),
+        (
+            "systemd_smoke_guest",
+            'systemctl kill --kill-whom=main --signal=KILL "$UNIT"',
+            'kill -KILL "$precrash_main"',
+            "installed systemd unit-scoped crash",
+        ),
+        (
+            "systemd_smoke_guest",
+            "assert_portable_alive\ncrash_generation=$LAST_GENERATION",
+            "true # crash-time portable survival removed\ncrash_generation=$LAST_GENERATION",
+            "installed systemd crash/restart transaction",
+        ),
+        (
+            "systemd_smoke_loginctl",
+            "exit 64",
+            "exit 0",
+            "systemd VM loginctl unexpected-argv rejection",
+        ),
+        (
+            "release",
+            "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference",
+            "smoke-debian-systemd-lifecycle.sh|systemd smoke skipped",
+            "installed systemd release gate",
+        ),
+        (
+            "pins",
+            'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"',
+            'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="unverified"',
+            "systemd VM publisher hash pin",
+        ),
+        (
+            "online_fetch",
+            "fetch_debian_systemd_smoke_image()",
+            "fetch_debian_systemd_smoke_image_disabled()",
+            "systemd VM sole fetch mode",
+        ),
+        (
+            "online_fetch",
+            '[ -d "$harness_state" ] && [ ! -L "$harness_state" ]',
+            '[ -d "$harness_state" ]',
+            "systemd VM private state root",
+        ),
+        (
             "smoke",
             'if stop_sibling_docker >"$sibling_out_file" 2>&1; then',
             'if sibling_out=$(stop_sibling_docker 2>&1); then',
@@ -10347,6 +10548,13 @@ def main():
             "service_lifecycle_mode": os.lstat(repo / "scripts/smoke-service-lifecycle.sh").st_mode,
             "debian_sysv_lifecycle": (repo / "scripts/smoke-debian-sysv-lifecycle.sh").read_text(encoding="utf-8"),
             "debian_sysv_lifecycle_mode": os.lstat(repo / "scripts/smoke-debian-sysv-lifecycle.sh").st_mode,
+            "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
+            "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
+            "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
+            "systemd_smoke_guest_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").st_mode,
+            "systemd_smoke_loginctl": (repo / "scripts/smoke-debian-systemd-loginctl.sh").read_text(encoding="utf-8"),
+            "systemd_smoke_loginctl_mode": os.lstat(repo / "scripts/smoke-debian-systemd-loginctl.sh").st_mode,
+            "online_fetch": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
             "loginctl_fixture": (repo / "scripts/smoke-service-loginctl.sh").read_text(encoding="utf-8"),
             "loginctl_fixture_mode": os.lstat(repo / "scripts/smoke-service-loginctl.sh").st_mode,
             "smoke_process_guard": (repo / "scripts/smoke-process-guard.py").read_text(encoding="utf-8"),

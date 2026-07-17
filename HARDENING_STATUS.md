@@ -3094,6 +3094,83 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     cross-mount/container namespace identity; exact-commit cold artifact evidence; and external expert R-V3 review
     remain open. The parent item and upcoming release remain **OPEN**.
 
+  - **R-S11c-27m — installed Debian systemd lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
+    PARENT ITEM REMAINS OPEN.** The release gate now installs the exact production service unit, Debian maintainer
+    scripts, and actual debug RustDesk executable into a disposable Debian 12 guest whose real PID 1 is systemd
+    252. This closes the separately tracked installed-systemd normal stop/restart and installed supervisor
+    crash/restart evidence, including the real active-seat non-root service child. It does not change production
+    service code or the deployed host service: the evidence showed that the R-S11c-27a–l ownership behavior already
+    composes correctly with the packaged systemd unit.
+
+    The host orchestrator runs only as the unprivileged build user and requires user-readable/writable `/dev/kvm`.
+    It verifies a dated Debian genericcloud qcow2 against the publisher-derived SHA-512 pin, rejects links, unexpected
+    ownership/mode/link count, a backing file, a wrong format, or a structurally invalid image, and creates a
+    throwaway qcow2 overlay. QEMU receives `-nic none`: there is no virtual NIC, tap, bridge, host forward, or
+    published port. The source executable, exact service/package fixtures, guest driver, fixed `loginctl` fixture,
+    and runtime libraries are placed on an immutable ISO9660 payload attached read-only; source hashes are compared
+    again after guest shutdown. The guest has no shared-directory write protocol back to the repository. The pinned
+    base is cached only by the explicit `online-fetch.sh --debian-systemd-smoke-image` network acquisition mode under
+    current-user-owned mode-0700 `.harness-state`; it is test infrastructure, not a release build input or artifact.
+
+    Runtime libraries are staged from the already-required `rd-devcheck` image by a separate Docker invocation as
+    the host UID/GID with no network, a read-only image root, a read-only repository bind, all capabilities dropped,
+    no-new-privileges, and a 64-process limit. Docker supplies no PID/cgroup sharing, Docker socket, published port,
+    or host service-manager authority. The guest alone runs as root because it must exercise real `dpkg` maintainer
+    scripts and its own systemd manager. All package, `/usr`, `/run`, cgroup, user, loader-cache, and service changes
+    land only in the disposable overlay, which is removed at the end. No host root, `sudo`, host PID/cgroup namespace,
+    host package manager, host systemd command, or host RustDesk lifecycle operation is used.
+
+    Inside the guest, the fixture first proves Debian bookworm, PID-1 systemd, the running-systemd marker, read-only
+    source mounts, absence of a pre-existing RustDesk install and `policy-rc.d` suppression, and exact source
+    metadata/hashes. A fixed fail-closed `loginctl` admits only one active X11 seat, UID/GID 4001 with supplementary
+    group 4101; unexpected argv exits 64. `dpkg -i` executes the unmodified production maintainer scripts and starts
+    `rustdesk.service`. The installed fragment must byte-match `res/rustdesk.service`, have no drop-in, and pass
+    `systemd-analyze verify`. Its root `MainPID` must execute the installed RustDesk inode with exact
+    `/usr/bin/rustdesk --service` argv in `system.slice/rustdesk.service`; its runtime directory must be root-owned
+    mode 0700.
+
+    Each generation's strict root-owned mode-0600 durable record is parsed and matched to live procfs evidence. The
+    service child must be the direct child of the unit `MainPID`, execute the installed inode through
+    `/proc/self/fd/<n>` with exact `--server --service-owned-server` role, have all four UIDs/GIDs set to 4001, retain
+    exactly groups 4001/4101, carry zero inheritable/permitted/effective/ambient capabilities, set no-new-privileges,
+    expose only the bounded production environment, and share the exact RustDesk service cgroup. A second copy of
+    the actual binary runs concurrently as UID 4000 under a distinct transient
+    `rustdesk-portable-smoke.service` cgroup with neutral `--server` argv; its PID/start-time, four UIDs, argv, and
+    cgroup are revalidated after every installed-service event.
+
+    The behavior transaction proves four distinct installed generations. A normal `systemctl restart` reaps the
+    prior supervisor and child and creates a fresh generation without disturbing the portable unit. A deliberate
+    `systemctl stop` reaps both, suppresses automatic restart, and removes the runtime directory; `systemctl start`
+    creates another fresh generation. Supervisor crash is injected through systemd's exact unit authority with
+    `systemctl kill --kill-whom=main --signal=KILL`, not a process-name scan or unvalidated numeric-PID signal.
+    The prior direct child must disappear, `Restart=on-failure` must produce a new `MainPID` and generation,
+    `NRestarts` must increment, and the fresh supervisor must report exact exited/stale durable-record recovery. The
+    UID-4000 portable unit must remain live throughout. Finally, `dpkg -r` must stop/reap the installed supervisor
+    and non-root child and remove the executable link/unit/runtime directory; purge must remove the SysV conffile;
+    only the fixture's explicit final portable-unit stop may terminate the unrelated process.
+
+    `scripts/smoke-debian-systemd-lifecycle.sh`, its guest driver, and its strict `loginctl` fixture implement this
+    test. `scripts/verify.sh` binds their executable modes, immutable image pins/fetch authority, network/privilege
+    isolation, exact package/unit/child/cgroup identities, lifecycle events, portable survival, and result markers.
+    `scripts/verify-verifier-workspace.py` treats all three scripts and the fetch path as sealed inputs and rejects
+    mutations that restore a VM network, weaken Docker staging, omit the exact unit/cgroup/portable proofs, replace
+    unit-scoped crash injection with a raw PID signal, remove unexpected-argv rejection, alter the image pin, or
+    unwire the release gate. `scripts/verify-release.sh` runs the installed-systemd test immediately after the normal
+    runtime smoke, whose build stage supplies the exact debug executable.
+
+    The final focused networkless KVM run passed. It reported normal restart generation
+    `e646bd7a-0c86-4f98-b993-27d480217b7e` → `a7239aee-d69b-4c92-a773-562f2f09f4a5`, deliberate stop/start generation
+    `f8db9dc7-bc5e-4aae-97e0-d240c429f684`, and supervisor-crash recovery to
+    `d512d040-d567-460f-a11d-f5550c929110` with `NRestarts=1`. The exact Debian-12/systemd-252/seat-UID-4001/
+    portable-UID-4000 marker, cloud-init completion marker, and networkless/read-only/pinned-base isolation marker
+    all passed; the dependency bundle contained 100 files. Retained log `/tmp/rustdesk-systemd-rs11c27m.log` is
+    840 bytes, mode 0664, SHA-256 `72e5da081d821a9fa367b8d28205174a9e3755731246fc44dd6239b60968a7a2`.
+
+    This closes installed systemd stop/restart and installed supervisor crash/restart with the real non-root child.
+    It is not a final-release `.deb` artifact test, actual forced numeric-PID reuse, cross-mount/container namespace
+    identity, or OpenRC/runit/manually supervised packaging integration. Exact-commit cold artifact evidence and
+    external expert R-V3 review also remain open. The parent item and upcoming release remain **OPEN**.
+
   Required implementation and release closure:
 
   - The `--service` supervisor must retain direct ownership of every server child

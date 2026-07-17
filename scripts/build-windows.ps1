@@ -18,6 +18,9 @@ Set-StrictMode -Version Latest
 $RUST_VERSION    = '1.75'
 $FLUTTER_VERSION = '3.24.5'
 $LLVM_VERSION    = '15.0.6'
+$LLVM_RC_EXE     = 'C:\Program Files\LLVM\bin\llvm-rc.exe'
+$LLVM_READOBJ_EXE = 'C:\Program Files\LLVM\bin\llvm-readobj.exe'
+$LLVM_RC_SHA256  = 'f1c4e01ae6214be7e1326e6290ee96b3cd7d36e690f400a16b5e33ad3aa36f29'
 $PYTHON_VERSION  = '3.11.9'
 $PYTHON_EXE      = 'C:\Program Files\Python311\python.exe'
 $OLEFILE_SHA256  = '543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f'
@@ -157,7 +160,7 @@ function Read-MsiRows($Database, [string]$Sql, [string[]]$Kinds) {
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)
         }
     }
-    return @($rows)
+    return $rows.ToArray()
 }
 
 function Get-MsiStreamSha256($Database, [string]$Name, [Int64]$ExpectedSize) {
@@ -222,8 +225,10 @@ function Get-MsiStreamSha256($Database, [string]$Name, [Int64]$ExpectedSize) {
             $record,
             @(1, 1, 1)
         )
-        if ($extra -isnot [string]) { throw 'MSI embedded cabinet stream returned a non-string EOF result' }
-        if ($extra.Length -ne 0) { Die 'MSI embedded cabinet stream exceeds its declared size' }
+        if ($null -ne $extra) {
+            if ($extra -isnot [string]) { throw 'MSI embedded cabinet stream returned an invalid EOF result' }
+            if ($extra.Length -ne 0) { Die 'MSI embedded cabinet stream exceeds its declared size' }
+        }
         $second = $view.GetType().InvokeMember('Fetch', [System.Reflection.BindingFlags]::InvokeMethod, $null, $view, @())
         if ($null -ne $second) {
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($second)
@@ -420,6 +425,159 @@ function Assert-BuildIdentity {
     Write-Host "[harness] source identity OK: commit=$($env:RUSTDESK_SOURCE_COMMIT) tree=$($env:RUSTDESK_SOURCE_TREE)"
 }
 
+function Assert-DeterministicWindowsResource {
+    $cargo = Get-Content -LiteralPath (Join-Path $SRC 'Cargo.toml') -Raw
+    $buildRs = Get-Content -LiteralPath (Join-Path $SRC 'build.rs') -Raw
+    $portableCargo = Get-Content -LiteralPath (Join-Path $SRC 'libs\portable\Cargo.toml') -Raw
+    $portableBuild = Get-Content -LiteralPath (Join-Path $SRC 'libs\portable\build.rs') -Raw
+    $producer = Get-Content -LiteralPath (Join-Path $SRC 'res\windows_resource.rs') -Raw
+    foreach ($manifest in @($cargo, $portableCargo)) {
+        if ($manifest -match '(?m)^\[package[.]metadata[.]winres\]$' -or
+            $manifest -match '(?m)^winres\s*=') {
+            Die 'Windows resource metadata would be emitted through nondeterministic winres HashMap iteration'
+        }
+    }
+    foreach ($source in @($buildRs, $portableBuild, $producer)) {
+        if ($source.Contains('winres::WindowsResource') -or
+            $source.Contains('.set_icon(') -or
+            $source.Contains('.set_manifest_file(') -or
+            $source.Contains('.set_resource_file(')) {
+            Die 'Windows resource build returned to a winres-generated or Microsoft-RC path'
+        }
+    }
+    if (-not $buildRs.Contains('windows_resource::compile(version, &resource_root)') -or
+        -not $portableBuild.Contains('windows_resource::compile(env!("CARGO_PKG_VERSION"), resource_root)')) {
+        Die 'root and portable crates do not share the ordered Windows resource producer'
+    }
+    if ([regex]::Matches($producer, [regex]::Escape('.parse::<u16>()?;')).Count -ne 3) {
+        Die 'Windows resource version must have exactly three bounded numeric components'
+    }
+    foreach ($required in @(
+        'env::var_os("RUSTDESK_LLVM_RC")',
+        'Command::new(&llvm_rc)',
+        '.arg("-no-preprocess")',
+        '.arg("-C65001")',
+        'println!("cargo:rustc-link-lib=dylib=resource")',
+        'LLVM resource compiler changed its ordered RC input'
+    )) {
+        if (-not $producer.Contains($required)) { Die "Windows resource producer lacks: $required" }
+    }
+    $ordered = @(
+        'VALUE "FileDescription", "RustDesk Remote Desktop"',
+        'VALUE "FileVersion", "{version}"',
+        'VALUE "LegalCopyright", "Copyright © 2025 Purslane Ltd. All rights reserved."',
+        'VALUE "OriginalFilename", "rustdesk.exe"',
+        'VALUE "ProductName", "RustDesk"',
+        'VALUE "ProductVersion", "{version}"',
+        'VALUE "Translation", 0x0409, 0x04b0',
+        '1 ICON "res/icon.ico"',
+        '1 24 "res/manifest.xml"'
+    )
+    $position = -1
+    foreach ($required in $ordered) {
+        $position = $producer.IndexOf($required, $position + 1, [StringComparison]::Ordinal)
+        if ($position -lt 0) {
+            Die "Windows resource entry is absent or out of canonical order: $required"
+        }
+    }
+}
+
+function Find-ByteSequence([byte[]]$Bytes, [byte[]]$Needle, [int]$Start) {
+    if ($Needle.Length -eq 0 -or $Start -lt 0) { return -1 }
+    for ($offset = $Start; $offset -le $Bytes.Length - $Needle.Length; $offset++) {
+        $matches = $true
+        for ($index = 0; $index -lt $Needle.Length; $index++) {
+            if ($Bytes[$offset + $index] -ne $Needle[$index]) {
+                $matches = $false
+                break
+            }
+        }
+        if ($matches) { return $offset }
+    }
+    return -1
+}
+
+function Get-SingleCompiledWindowsResource([string]$PackageName) {
+    $buildRoot = Join-Path $SRC 'target\release\build'
+    $candidates = @(
+        Get-ChildItem -LiteralPath $buildRoot -Directory | Where-Object { $_.Name -clike "${PackageName}-*" } |
+            ForEach-Object { Join-Path $_.FullName 'out\resource.lib' } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    )
+    if ($candidates.Count -ne 1) {
+        Die "compiled Windows resource count for $PackageName is $($candidates.Count), expected exactly one"
+    }
+    [void](Get-OrdinaryPathItem $candidates[0] $true)
+    return $candidates[0]
+}
+
+function Assert-CompiledWindowsResource([string]$Path, [string]$Description) {
+    $item = Get-OrdinaryPathItem $Path $true
+    if ($item.Length -le 32 -or $item.Length -gt 1048576) {
+        Die "$Description compiled resource size is outside the bounded contract: $($item.Length)"
+    }
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $previous = -1
+    foreach ($key in @('FileDescription', 'FileVersion', 'LegalCopyright', 'OriginalFilename', 'ProductName', 'ProductVersion')) {
+        $needle = [Text.Encoding]::Unicode.GetBytes($key + [char]0)
+        $position = Find-ByteSequence $bytes $needle 0
+        if ($position -le $previous) { Die "$Description compiled VERSIONINFO key is absent or out of order: $key" }
+        if ((Find-ByteSequence $bytes $needle ($position + 2)) -ne -1) {
+            Die "$Description compiled VERSIONINFO key is duplicated: $key"
+        }
+        $previous = $position
+    }
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $readobj = (& $LLVM_READOBJ_EXE $Path 2>&1 | Out-String)
+        $readobjExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedPreference
+    }
+    if ($readobjExit -ne 0) { Die "$Description compiled resource is rejected by llvm-readobj (exit $readobjExit)" }
+    foreach ($marker in @(
+        'Resource type (int): VERSIONINFO (ID 16)',
+        'Resource type (int): ICON (ID 3)',
+        'Resource type (int): GROUP_ICON (ID 14)',
+        'Resource type (int): MANIFEST (ID 24)'
+    )) {
+        if (-not $readobj.Contains($marker)) { Die "$Description compiled resource lacks: $marker" }
+    }
+    if ([regex]::Matches($readobj, 'Resource type \(int\): VERSIONINFO \(ID 16\)').Count -ne 1 -or
+        [regex]::Matches($readobj, 'Resource type \(int\): GROUP_ICON \(ID 14\)').Count -ne 1 -or
+        [regex]::Matches($readobj, 'Resource type \(int\): MANIFEST \(ID 24\)').Count -ne 1) {
+        Die "$Description compiled resource has a non-canonical singleton resource count"
+    }
+    $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Host "[harness] $Description compiled resource OK: sha256=$hash"
+}
+
+function Get-CargoPackageVersion([string]$ManifestPath) {
+    $contents = Get-Content -LiteralPath $ManifestPath -Raw
+    $matches = [regex]::Matches($contents, '(?m)^version = "([0-9]+[.][0-9]+[.][0-9]+)"$')
+    if ($matches.Count -ne 1) { Die "Cargo package version count is $($matches.Count), expected one: $ManifestPath" }
+    return $matches[0].Groups[1].Value
+}
+
+function Assert-WindowsExecutableVersionInfo([string]$Path, [string]$Version, [string]$Description) {
+    $versionInfo = (Get-OrdinaryPathItem $Path $true).VersionInfo
+    $expected = [ordered]@{
+        FileDescription = 'RustDesk Remote Desktop'
+        FileVersion = $Version
+        LegalCopyright = "Copyright $([char]0x00A9) 2025 Purslane Ltd. All rights reserved."
+        OriginalFilename = 'rustdesk.exe'
+        ProductName = 'RustDesk'
+        ProductVersion = $Version
+    }
+    foreach ($entry in $expected.GetEnumerator()) {
+        $actual = [string]$versionInfo.PSObject.Properties[$entry.Key].Value
+        if ($actual -cne [string]$entry.Value) {
+            Die "$Description VERSIONINFO mismatch for $($entry.Key): $actual"
+        }
+    }
+}
+
 function Assert-MachineCredentialDesign {
     $config = Get-Content -LiteralPath (Join-Path $SRC 'libs\hbb_common\src\config.rs') -Raw
     $platform = Get-Content -LiteralPath (Join-Path $SRC 'src\platform\windows.rs') -Raw
@@ -439,7 +597,7 @@ function Assert-MachineCredentialDesign {
     foreach ($required in @('FOLDERID_ProgramData', 'SERVICE_OWNED_SERVER_ARG', 'initialize_windows_service_owned_root')) {
         if (-not $platform.Contains($required)) { Die "machine credential root gate missing Windows role/root binding: $required" }
     }
-    foreach ($required in @('SensitivePassword', 'begin_password_mutation', 'windows_credential_client_decision', 'windows_credential_queue_uncertainty_status', 'windows_credential_restart_non_applied_results_wait_for_reapplication')) {
+    foreach ($required in @('SensitivePassword', 'begin_password_mutation', 'windows_credential_client_decision', 'windows_credential_queue_uncertainty_status', 'windows_credential_lost_reply_stop_and_apply_remain_consistent', 'windows_credential_operation_bound_failures_remain_terminal_during_recovery')) {
         if (-not $ipc.Contains($required)) { Die "machine credential secret-lifetime gate missing: $required" }
     }
     foreach ($required in @('REQUEST_HEADER_BYTES: usize = 36', 'STATUS_FRAME_BYTES: usize = 32', 'ACK_FRAME_BYTES: usize = 28', 'FixedSensitiveBody', 'try_reserve_exact', 'zeroize_sensitive_bytes', 'SensitiveStackBytes', 'encode_ack', 'decode_ack')) {
@@ -533,11 +691,26 @@ function Get-LibvpxNativeKey($root) {
 function Preflight {
     Assert-BuildIdentity
     Assert-PowerShellSourceParsing
+    Assert-DeterministicWindowsResource
     if (Test-Path (Join-Path $SRC '.gitmodules')) { Die "hbb_common must be absorbed in-tree, not a submodule (R-R1)" }
     Assert-Version $RUST_VERSION    (rustc --version)              'rustc'
     Assert-Version $RUST_VERSION    (cargo --version)              'cargo'
     Assert-Version $FLUTTER_VERSION (flutter --version)            'flutter'
     Assert-Version $LLVM_VERSION    (clang --version)              'clang/LLVM'
+    if (Test-Path Env:RUSTDESK_LLVM_RC) {
+        if ($env:RUSTDESK_LLVM_RC -cne $LLVM_RC_EXE) { Die 'inherited RUSTDESK_LLVM_RC is not the pinned path' }
+    }
+    $llvmRc = Get-OrdinaryPathItem $LLVM_RC_EXE $true
+    $llvmReadobj = Get-OrdinaryPathItem $LLVM_READOBJ_EXE $true
+    if ($llvmRc.VersionInfo.ProductVersion -cne $LLVM_VERSION -or
+        $llvmRc.VersionInfo.FileVersion -cne $LLVM_VERSION -or
+        $llvmReadobj.VersionInfo.ProductVersion -cne $LLVM_VERSION -or
+        $llvmReadobj.VersionInfo.FileVersion -cne $LLVM_VERSION) {
+        Die 'LLVM resource tools do not carry the pinned 15.0.6 file/product version'
+    }
+    $llvmRcHash = (Get-FileHash -LiteralPath $LLVM_RC_EXE -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($llvmRcHash -cne $LLVM_RC_SHA256) { Die "llvm-rc digest mismatch: $llvmRcHash" }
+    $env:RUSTDESK_LLVM_RC = $LLVM_RC_EXE
     Assert-PythonToolchain
     Assert-MachineCredentialDesign
     # WiX, MSVC and vcpkg are provisioned by provision-windows-vm.sh to the pins.
@@ -549,8 +722,10 @@ function Build {
     $msiDist = Join-Path $SRC 'flutter\build\windows\x64\runner\Release'
     $msiBuiltOut = Join-Path $SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'
     $canonicalMsiDir = Join-Path $SRC 'target\canonical-msi'
+    $msiCanonicalizerInput = Join-Path $canonicalMsiDir 'canonicalizer-input.msi'
     $msiOut = Join-Path $canonicalMsiDir 'rustdesk.msi'
     $msiContract = Join-Path $canonicalMsiDir 'cabinet-contract.json'
+    $rustLibrary = Join-Path $SRC 'target\release\librustdesk.dll'
     $setupOut = Join-Path $SRC 'target\release\rustdesk-portable-packer.exe'
     $setupPayloadDir = Join-Path $SRC 'target\rustdesk-setup-payload'
     $setupPayloadMsi = Join-Path $setupPayloadDir 'rustdesk-installer.msi'
@@ -698,11 +873,11 @@ sys.path.insert(0, wheel)
 import olefile
 loader = olefile.__loader__
 if not isinstance(loader, zipimport.zipimporter):
-    raise SystemExit("olefile did not load through the verified wheel")
+    raise SystemExit('olefile did not load through the verified wheel')
 if os.path.normcase(os.path.abspath(loader.archive)) != wheel:
-    raise SystemExit("olefile loader archive is not the verified wheel")
-if olefile.__version__ != "0.47":
-    raise SystemExit("olefile version is not 0.47")
+    raise SystemExit('olefile loader archive is not the verified wheel')
+if olefile.__version__ != '0.47':
+    raise SystemExit('olefile version is not 0.47')
 '@
     & $PYTHON_EXE -I -S -c $olefileProbe $olefileWheel
     if ($LASTEXITCODE -ne 0) { Die "verified olefile wheel import failed ($LASTEXITCODE)" }
@@ -711,20 +886,20 @@ import os, runpy, sys, zipimport
 wheel = os.path.normcase(os.path.abspath(sys.argv[1]))
 script = sys.argv[2]
 arguments = sys.argv[3:]
-expected_options = ["--output", "--contract-out", "--fork-version", "--source-commit", "--source-tree", "--target"]
-if os.path.normcase(os.path.normpath(script)) != os.path.normcase(os.path.normpath(r"scripts\canonicalize-msi.py")):
-    raise SystemExit("MSI canonicalizer script argument is not exact")
+expected_options = ['--output', '--contract-out', '--fork-version', '--source-commit', '--source-tree', '--target']
+if os.path.normcase(os.path.normpath(script)) != os.path.normcase(os.path.normpath(r'scripts\canonicalize-msi.py')):
+    raise SystemExit('MSI canonicalizer script argument is not exact')
 if len(arguments) != 13 or arguments[1::2] != expected_options or any(not argument for argument in arguments):
-    raise SystemExit("MSI canonicalizer argument vector is not exact")
+    raise SystemExit('MSI canonicalizer argument vector is not exact')
 sys.path.insert(0, wheel)
 import olefile
 loader = olefile.__loader__
 if not isinstance(loader, zipimport.zipimporter) or os.path.normcase(os.path.abspath(loader.archive)) != wheel:
-    raise SystemExit("olefile authority escaped the verified wheel")
-if olefile.__version__ != "0.47":
-    raise SystemExit("olefile version is not 0.47")
+    raise SystemExit('olefile authority escaped the verified wheel')
+if olefile.__version__ != '0.47':
+    raise SystemExit('olefile version is not 0.47')
 sys.argv = [script] + arguments
-runpy.run_path(script, run_name="__main__")
+runpy.run_path(script, run_name='__main__')
 '@
 
     # --- cargo: a build-time CARGO_HOME wired to the vendored crate set (R-B10). DON'T touch the
@@ -831,6 +1006,10 @@ if /I "%~1"=="build" (
     # through and Emit-Artifacts reports "complete" with no .exe.
     & $PYTHON_EXE build.py --flutter
     if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed (exit $LASTEXITCODE) -- Python missing/not on PATH, or the cargo/flutter build errored (see above)" }
+    $applicationResource = Get-SingleCompiledWindowsResource 'rustdesk'
+    Assert-CompiledWindowsResource $applicationResource 'RustDesk library'
+    $applicationVersion = Get-CargoPackageVersion (Join-Path $SRC 'Cargo.toml')
+    Assert-WindowsExecutableVersionInfo $rustLibrary $applicationVersion 'RustDesk library'
 
     # --- the WiX v4 .msi (R-B7/B9) -- build it before the portable packer so the exact Package.msi
     # can be embedded in rustdesk-setup.exe. This mirrors upstream's flutter-build.yml "Build msi"
@@ -887,15 +1066,24 @@ if /I "%~1"=="build" (
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild msi.sln (WiX .msi build) failed ($LASTEXITCODE)" }
     Pop-Location
     if (-not (Test-Path -LiteralPath $msiBuiltOut -PathType Leaf)) { Die ".msi: expected output not produced at $msiBuiltOut" }
-    if ((Get-Item -LiteralPath $msiBuiltOut).Length -le 0) { Die ".msi: output is empty at $msiBuiltOut" }
+    $msiBuiltItem = Get-OrdinaryPathItem $msiBuiltOut $true
+    if ($msiBuiltItem.Length -le 0) { Die ".msi: output is empty at $msiBuiltOut" }
     New-Item -ItemType Directory -Path $canonicalMsiDir | Out-Null
     $canonicalDirectoryItem = Get-OrdinaryPathItem $canonicalMsiDir $false
     if (@(Get-ChildItem -LiteralPath $canonicalMsiDir -Force).Count -ne 0) {
         Die 'canonical MSI output directory is not a fresh ordinary directory'
     }
+    $msiBuiltHash = (Get-FileHash -LiteralPath $msiBuiltOut -Algorithm SHA256).Hash
+    [IO.File]::Copy($msiBuiltOut, $msiCanonicalizerInput, $false)
+    $msiCanonicalizerInputItem = Get-OrdinaryPathItem $msiCanonicalizerInput $true
+    $msiCanonicalizerInputHash = (Get-FileHash -LiteralPath $msiCanonicalizerInput -Algorithm SHA256).Hash
+    if ($msiCanonicalizerInputItem.Length -ne $msiBuiltItem.Length -or
+        $msiCanonicalizerInputHash -cne $msiBuiltHash) {
+        Die '.msi: distinct canonicalizer input copy does not match the WiX output'
+    }
     $msiCanonicalizerArguments = @(
         'scripts\canonicalize-msi.py',
-        $msiBuiltOut,
+        $msiCanonicalizerInput,
         '--output',
         $msiOut,
         '--contract-out',
@@ -911,6 +1099,14 @@ if /I "%~1"=="build" (
     )
     & $PYTHON_EXE -I -S -c $isolatedOlefileRunner $olefileWheel @msiCanonicalizerArguments
     if ($LASTEXITCODE -ne 0) { Die ".msi: pre-embed canonicalization failed ($LASTEXITCODE)" }
+    if ((Get-FileHash -LiteralPath $msiBuiltOut -Algorithm SHA256).Hash -cne $msiBuiltHash -or
+        (Get-FileHash -LiteralPath $msiCanonicalizerInput -Algorithm SHA256).Hash -cne $msiBuiltHash) {
+        Die '.msi: WiX output or canonicalizer input changed during canonicalization'
+    }
+    Remove-Item -LiteralPath $msiCanonicalizerInput -Force
+    if (Test-Path -LiteralPath $msiCanonicalizerInput) {
+        Die '.msi: canonicalizer input was not removed after verification'
+    }
     foreach ($canonicalOutput in @($msiOut, $msiContract)) {
         if (-not (Test-Path -LiteralPath $canonicalOutput -PathType Leaf) -or
             (Get-OrdinaryPathItem $canonicalOutput $true).Length -le 0) {
@@ -921,13 +1117,7 @@ if /I "%~1"=="build" (
     $database = $null
     try {
         $installer = New-Object -ComObject WindowsInstaller.Installer
-        $database = $installer.GetType().InvokeMember(
-            'OpenDatabase',
-            [System.Reflection.BindingFlags]::InvokeMethod,
-            $null,
-            $installer,
-            @($msiOut, 0)
-        )
+        $database = $installer.OpenDatabase([string]$msiOut, [int]0)
         if ($null -eq $database) { Die ".msi: Windows Installer could not open $msiOut as an MSI database" }
         $cabinetContract = Get-Content -LiteralPath $msiContract -Raw | ConvertFrom-Json
         $contractFields = @($cabinetContract.PSObject.Properties.Name | Sort-Object)
@@ -1036,6 +1226,15 @@ if /I "%~1"=="build" (
     if ($packExit -ne 0) { Die "libs/portable/generate.py failed (exit $packExit)" }
     if (-not (Test-Path -LiteralPath $setupOut -PathType Leaf)) { Die "portable packer did not produce $setupOut" }
     if ((Get-Item -LiteralPath $setupOut).Length -le 0) { Die "portable packer produced an empty file at $setupOut" }
+    $portableResource = Get-SingleCompiledWindowsResource 'rustdesk-portable-packer'
+    Assert-CompiledWindowsResource $portableResource 'RustDesk portable packer'
+    $portableVersion = Get-CargoPackageVersion (Join-Path $SRC 'libs\portable\Cargo.toml')
+    Assert-WindowsExecutableVersionInfo $setupOut $portableVersion 'RustDesk portable packer'
+    $applicationResourceHash = (Get-FileHash -LiteralPath $applicationResource -Algorithm SHA256).Hash
+    $portableResourceHash = (Get-FileHash -LiteralPath $portableResource -Algorithm SHA256).Hash
+    if ($applicationVersion -cne $portableVersion -or $applicationResourceHash -cne $portableResourceHash) {
+        Die 'root and portable crates did not emit one exact compiled Windows resource'
+    }
     Write-Host "[harness] setup bootstrapper built with embedded MSI: $setupOut"
 }
 
@@ -1043,7 +1242,7 @@ function Emit-Artifacts {
     $out = Join-Path $SRC 'dist'
     New-Item -ItemType Directory -Force -Path $out | Out-Null
     $setup = Join-Path $SRC 'target\release\rustdesk-portable-packer.exe'
-    $msi = Join-Path $SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'
+    $msi = Join-Path $SRC 'target\canonical-msi\rustdesk.msi'
     $setupPayloadDir = Join-Path $SRC 'target\rustdesk-setup-payload'
     if (Test-Path -LiteralPath $setupPayloadDir) { Die "temporary setup payload was not removed: $setupPayloadDir" }
     if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { Die "setup bootstrapper missing at exact output path $setup" }

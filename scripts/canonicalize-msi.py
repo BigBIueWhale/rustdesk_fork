@@ -28,7 +28,10 @@ CFB_SIGNATURE = bytes.fromhex("d0cf11e0a1b11ae1")
 FORK_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-hardened\.[0-9]+$")
 GIT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 BRACED_GUID_RE = re.compile(rb"^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}\0$")
-STABLE_FIELDS = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+CROSS_HANDLE_STABLE_FIELDS = ("st_dev", "st_ino", "st_nlink", "st_size", "st_mtime_ns")
+STABLE_FIELDS = CROSS_HANDLE_STABLE_FIELDS + (
+    () if os.name == "nt" else ("st_mode", "st_ctime_ns")
+)
 
 
 class MSIFormatError(ValueError):
@@ -69,6 +72,24 @@ def _open_regular(path: str) -> tuple[int, os.stat_result]:
         os.close(descriptor)
         raise MSIFormatError("input path changed while being opened")
     return descriptor, state
+
+
+def _open_sync_regular(path: str, expected_identity: tuple[int, int]) -> int:
+    flags = os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    state = os.fstat(descriptor)
+    current = os.lstat(path)
+    if (
+        not stat.S_ISREG(state.st_mode)
+        or state.st_nlink != 1
+        or (state.st_dev, state.st_ino) != expected_identity
+        or not _same_file_state(state, current)
+    ):
+        os.close(descriptor)
+        raise MSIFormatError("published MSI sync path identity is invalid")
+    return descriptor
 
 
 def _read_file(path: str) -> bytes:
@@ -581,16 +602,20 @@ def canonicalize(
                     os.fsync(directory_fd)
                 finally:
                     os.close(directory_fd)
-        output_sync = os.open(output, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
-        contract_sync = os.open(contract_output, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+        output_sync = -1
+        contract_sync = -1
         try:
+            output_sync = _open_sync_regular(output, output_identity)
+            contract_sync = _open_sync_regular(contract_output, contract_identity)
             os.chmod(output, source_mode)
             os.chmod(contract_output, 0o400)
             os.fsync(output_sync)
             os.fsync(contract_sync)
         finally:
-            os.close(output_sync)
-            os.close(contract_sync)
+            if output_sync >= 0:
+                os.close(output_sync)
+            if contract_sync >= 0:
+                os.close(contract_sync)
     except BaseException as original:
         cleanup_errors = []
         if contract_published and contract_identity is not None:

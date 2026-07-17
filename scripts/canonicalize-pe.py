@@ -17,7 +17,13 @@ class PEFormatError(ValueError):
     pass
 
 
-STABLE_FIELDS = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+CROSS_HANDLE_STABLE_FIELDS = ("st_dev", "st_ino", "st_nlink", "st_size", "st_mtime_ns")
+STABLE_FIELDS = CROSS_HANDLE_STABLE_FIELDS + (
+    () if os.name == "nt" else ("st_mode", "st_ctime_ns")
+)
+PUBLISHED_STABLE_FIELDS = CROSS_HANDLE_STABLE_FIELDS + (
+    () if os.name == "nt" else ("st_mode",)
+)
 
 
 def _same_file_state(left: os.stat_result, right: os.stat_result) -> bool:
@@ -46,8 +52,53 @@ def _read_regular_file(path: str) -> tuple[bytes, os.stat_result]:
         os.close(descriptor)
     current = os.lstat(path)
     if not _same_file_state(after, current):
-        raise PEFormatError("input path changed while being read")
+        changed = [
+            field
+            for field in STABLE_FIELDS
+            if getattr(after, field) != getattr(current, field)
+        ]
+        raise PEFormatError(f"input path changed while being read: {','.join(changed)}")
     return b"".join(chunks), after
+
+
+def _verify_published_file(
+    path: str, expected_identity: tuple[int, int], expected_content: bytes
+) -> os.stat_result:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or (before.st_dev, before.st_ino) != expected_identity
+        ):
+            raise PEFormatError("published PE identity postcondition failed")
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        if not all(
+            getattr(before, field) == getattr(after, field)
+            for field in PUBLISHED_STABLE_FIELDS
+        ):
+            raise PEFormatError("published PE changed while being read")
+    finally:
+        os.close(descriptor)
+    current = os.lstat(path)
+    if not all(
+        getattr(after, field) == getattr(current, field)
+        for field in PUBLISHED_STABLE_FIELDS
+    ):
+        raise PEFormatError("published PE path changed while being read")
+    if b"".join(chunks) != expected_content:
+        raise PEFormatError("published PE content postcondition failed")
+    return current
 
 
 def _require(data: bytes | bytearray, offset: int, size: int, what: str) -> None:
@@ -299,16 +350,6 @@ def _make_deletable(path: str) -> None:
         os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
 
 
-def _read_descriptor(descriptor: int) -> bytes:
-    os.lseek(descriptor, 0, os.SEEK_SET)
-    chunks = []
-    while True:
-        chunk = os.read(descriptor, 1024 * 1024)
-        if not chunk:
-            return b"".join(chunks)
-        chunks.append(chunk)
-
-
 def _publish_absent(output_path: str, content: bytes, mode: int) -> None:
     output_path = os.path.abspath(output_path)
     directory = os.path.dirname(output_path)
@@ -326,6 +367,8 @@ def _publish_absent(output_path: str, content: bytes, mode: int) -> None:
             handle.write(content)
             handle.flush()
         os.fsync(descriptor)
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, mode)
         temporary_state = os.fstat(descriptor)
         if not _same_file_identity(temporary_state, os.lstat(temporary)):
             raise PEFormatError("canonical PE temporary path changed before publication")
@@ -342,20 +385,18 @@ def _publish_absent(output_path: str, content: bytes, mode: int) -> None:
             raise PEFormatError("published PE does not identify the prepared file")
         if not _same_file_identity(temporary_state, os.lstat(temporary)):
             raise PEFormatError("canonical PE temporary path changed during publication")
+        os.close(descriptor)
+        descriptor = -1
+        if not _same_file_identity(temporary_state, os.lstat(temporary)):
+            raise PEFormatError("canonical PE temporary path changed before removal")
         os.unlink(temporary)
         temporary = ""
 
-        final_state = os.lstat(output_path)
-        descriptor_state = os.fstat(descriptor)
-        if not _same_file_identity(final_state, descriptor_state) or final_state.st_nlink != 1:
+        final_state = _verify_published_file(output_path, output_identity, content)
+        if (final_state.st_dev, final_state.st_ino) != output_identity:
             raise PEFormatError("published PE identity postcondition failed")
-        if _read_descriptor(descriptor) != content:
-            raise PEFormatError("published PE content postcondition failed")
-        if hasattr(os, "fchmod"):
-            os.fchmod(descriptor, mode)
-        else:
+        if not hasattr(os, "fchmod"):
             os.chmod(output_path, mode)
-        os.fsync(descriptor)
         if not _same_file_identity(parent_before, os.lstat(directory)):
             raise PEFormatError("output parent changed during publication")
         if os.name != "nt":
@@ -364,10 +405,14 @@ def _publish_absent(output_path: str, content: bytes, mode: int) -> None:
                 os.fsync(directory_fd)
             finally:
                 os.close(directory_fd)
-        os.close(descriptor)
-        descriptor = -1
     except BaseException as original:
         cleanup_errors = []
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+                descriptor = -1
+            except OSError as error:
+                cleanup_errors.append(f"PE descriptor cleanup failed: {error}")
         if output_published and output_identity is not None:
             try:
                 current = os.lstat(output_path)
@@ -390,11 +435,6 @@ def _publish_absent(output_path: str, content: bytes, mode: int) -> None:
                         os.unlink(temporary)
                     except OSError as error:
                         cleanup_errors.append(f"PE temporary cleanup failed: {error}")
-        if descriptor >= 0:
-            try:
-                os.close(descriptor)
-            except OSError as error:
-                cleanup_errors.append(f"PE descriptor cleanup failed: {error}")
         if cleanup_errors and hasattr(original, "add_note"):
             original.add_note("; ".join(cleanup_errors))
         raise

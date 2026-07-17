@@ -39,6 +39,7 @@ SOURCE_MODE=""
 FORK_VERSION_VALUE=""
 BASE_MANIFEST_SHA256=""
 OFFLINE_MANIFEST_SHA256=""
+WIX_NUGET_ROOT=""
 WIN_HELPER_IMAGE=""
 DEB_BUILDER_IMAGE=""
 PRIVATE_GOLDEN=""
@@ -703,100 +704,47 @@ libvpx_native_key_for_tree() {
 
 write_offline_manifest() {
     local output="$1"
-    python3 - "$ONLINE_DIR" "$output" "$OLEFILE_VERSION" "$LIBVPX_SOURCE_REF" "$LIBVPX_FIX_COMMIT" <<'PY'
-import hashlib
-import json
-import os
-import re
-import stat
-import sys
+    [ -n "$WIX_NUGET_ROOT" ] || die "extracted WiX root is not initialized"
+    python3 "$SOURCE_SNAPSHOT/scripts/windows-offline-manifest.py" \
+        --online-root "$ONLINE_DIR" \
+        --wix-root "$WIX_NUGET_ROOT" \
+        --olefile-version "$OLEFILE_VERSION" \
+        --libvpx-source-ref "$LIBVPX_SOURCE_REF" \
+        --libvpx-fix-commit "$LIBVPX_FIX_COMMIT" \
+        --output "$output"
+}
 
-root, output, ole_version, source_ref, fix_commit = sys.argv[1:]
-selected = [
-    "cargo-vendor",
-    "cargo-vendor-config.toml",
-    "pub-cache",
-    "wix-nuget.tar.gz",
-    f"olefile-{ole_version}-py2.py3-none-any.whl",
-    f"vcpkg-distfiles/libvpx-{source_ref}.tar.gz",
-    f"vcpkg-distfiles/libvpx-{fix_commit}.patch",
-    "vcpkg-distfiles/libvpx-native-key.txt",
-    "vcpkg-distfiles/windows-tools",
-]
-files = []
-case_paths = {}
-dos_device = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$", re.IGNORECASE)
-for selected_path in selected:
-    absolute = os.path.join(root, selected_path)
-    candidates = []
-    if os.path.isdir(absolute) and not os.path.islink(absolute):
-        for directory, names, filenames in os.walk(absolute, topdown=True, followlinks=False):
-            names.sort()
-            filenames.sort()
-            if any(os.path.islink(os.path.join(directory, name)) for name in names):
-                raise SystemExit(f"offline input contains a directory symlink: {directory}")
-            candidates.extend(os.path.join(directory, name) for name in filenames)
-    else:
-        candidates.append(absolute)
-    for path in candidates:
-        info = os.lstat(path)
-        if not stat.S_ISREG(info.st_mode):
-            raise SystemExit(f"offline input is not regular: {path}")
-        relative = os.path.relpath(path, root).replace(os.sep, "/")
-        try:
-            encoded = relative.encode("ascii")
-        except UnicodeEncodeError:
-            raise SystemExit(f"offline path is not ASCII: {relative!r}")
-        components = relative.split("/")
-        if (any(component in ("", ".", "..") for component in components)
-                or any(byte < 0x20 or byte == 0x7f for byte in encoded)
-                or any(c in relative for c in '\\,:<>"|?*')
-                or any(component.endswith((" ", ".")) for component in components)
-                or any(dos_device.fullmatch(component) for component in components)):
-            raise SystemExit(f"offline path is unsafe: {relative!r}")
-        digest = hashlib.sha256()
-        with open(path, "rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        file_digest = digest.hexdigest()
-        folded = relative.casefold()
-        previous = case_paths.get(folded)
-        if previous is not None and previous != (file_digest, info.st_size):
-            raise SystemExit(f"offline paths collide on Windows with different bytes: {relative!r}")
-        case_paths[folded] = (file_digest, info.st_size)
-        files.append({"path": relative, "sha256": file_digest, "size": info.st_size})
-files.sort(key=lambda item: item["path"])
-manifest = {"files": files, "format": "rustdesk-windows-offline-manifest-v1"}
-temporary = output + ".tmp"
-if os.path.lexists(output) or os.path.lexists(temporary):
-    raise SystemExit("source identity output or temporary path already exists")
-with open(temporary, "x", encoding="ascii", newline="\n") as handle:
-    json.dump(manifest, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-    handle.write("\n")
-    handle.flush()
-    os.fsync(handle.fileno())
-os.link(temporary, output, follow_symlinks=False)
-os.unlink(temporary)
-PY
+extract_wix_nuget() {
+    WIX_NUGET_ROOT="$RUN_ROOT/wix-nuget"
+    [ ! -e "$WIX_NUGET_ROOT" ] && [ ! -L "$WIX_NUGET_ROOT" ] \
+        || die "extracted WiX root path is already occupied"
+    mkdir -m 0700 "$WIX_NUGET_ROOT"
+    docker run --rm --network=none --user "$(id -u):$(id -g)" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+        --mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget" \
+        "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
+            umask 077
+            tar --extract --gzip --file=/online/wix-nuget.tar.gz \
+                --directory=/wix-nuget --no-same-owner --no-same-permissions
+        '
 }
 
 build_offline_media() {
     local manifest="$RUN_ROOT/offline-input-manifest.json"
     local after="$RUN_ROOT/offline-input-manifest.after.json"
+    extract_wix_nuget
     write_offline_manifest "$manifest"
     OFFLINE_MANIFEST_SHA256="$(sha256sum "$manifest" | awk '{print $1}')"
     local offline_iso="$RUN_ROOT/offline.iso"
     docker run --rm --network=none \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+        --mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget,readonly" \
         --mount "type=bind,source=$RUN_ROOT,target=/run" \
         -e OLEFILE_VERSION="$OLEFILE_VERSION" \
         -e LIBVPX_SOURCE_REF="$LIBVPX_SOURCE_REF" \
         -e LIBVPX_FIX_COMMIT="$LIBVPX_FIX_COMMIT" \
         "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
-            rm -rf /tmp/wix-nuget
-            mkdir /tmp/wix-nuget
-            tar --no-same-owner -xzf /online/wix-nuget.tar.gz -C /tmp/wix-nuget
-            genisoimage -udf -D -r -quiet -V OFFLINE -o /run/offline.iso -graft-points \
+            genisoimage -udf -D -r -f -quiet -V OFFLINE -o /run/offline.iso -graft-points \
                 /cargo-vendor=/online/cargo-vendor \
                 /cargo-vendor-config.toml=/online/cargo-vendor-config.toml \
                 /pub-cache=/online/pub-cache \
@@ -805,7 +753,7 @@ build_offline_media() {
                 /vcpkg-distfiles/libvpx-native-key.txt=/online/vcpkg-distfiles/libvpx-native-key.txt \
                 /vcpkg-distfiles/windows-tools=/online/vcpkg-distfiles/windows-tools \
                 /python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl \
-                /wix-nuget=/tmp/wix-nuget \
+                /wix-nuget=/wix-nuget \
                 /.offline-input-manifest.json=/run/offline-input-manifest.json
         '
     [ -s "$offline_iso" ] || die "offline UDF media was not produced"
@@ -1039,16 +987,56 @@ wait_for_domain() {
 }
 
 validate_guest_progress() {
-    local progress="$1" expected_source_marker="$2"
+    local progress="$1" expected_source_marker="$2" expected_offline_marker="$3"
     [ -f "$progress" ] && [ ! -L "$progress" ] || die "guest completion marker is absent"
-    local -a exit_markers source_markers
-    mapfile -t exit_markers < <(awk '/ build-windows[.]ps1 exit=/{print $NF}' "$progress")
-    [ "${#exit_markers[@]}" = 1 ] || die "guest completion marker count is not exactly one"
-    [ "${exit_markers[0]}" = "exit=0" ] || die "guest build failed: ${exit_markers[0]}"
-    mapfile -t source_markers < <(sed -n 's/^[^ ]* source-verified /source-verified /p' "$progress")
-    [ "${#source_markers[@]}" = 1 ] || die "guest source-verification marker count is not exactly one"
-    [ "${source_markers[0]}" = "$expected_source_marker" ] \
-        || die "guest source-verification marker is incorrect"
+    python3 - "$progress" "$expected_source_marker" "$expected_offline_marker" <<'PY' \
+        || die "guest progress validation failed"
+import pathlib
+import re
+import sys
+
+progress_path, expected_source, expected_offline = sys.argv[1:]
+data = pathlib.Path(progress_path).read_bytes()
+if not data or len(data) > 65536:
+    raise SystemExit("guest completion marker is empty or oversized")
+if not data.endswith(b"\r\n"):
+    raise SystemExit("guest progress does not end with canonical CRLF")
+raw_lines = data.split(b"\r\n")
+if raw_lines[-1] != b"":
+    raise SystemExit("guest progress CRLF split is not terminal")
+lines = []
+for raw in raw_lines[:-1]:
+    if not raw or b"\r" in raw or b"\n" in raw:
+        raise SystemExit("guest progress contains an empty line or a bare newline byte")
+    try:
+        lines.append(raw.decode("ascii"))
+    except UnicodeDecodeError as exc:
+        raise SystemExit("guest progress is not strict ASCII") from exc
+
+timestamp = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}[+-]\d{2}:\d{2}")
+payloads = []
+for line in lines:
+    stamp, separator, payload = line.partition(" ")
+    if not separator or not timestamp.fullmatch(stamp) or not payload:
+        raise SystemExit("guest progress line is not canonical timestamp plus payload")
+    payloads.append(payload)
+
+exit_markers = [payload for payload in payloads if payload.startswith("build-windows.ps1 exit=")]
+if len(exit_markers) != 1:
+    raise SystemExit("guest completion marker count is not exactly one")
+if exit_markers[0] != "build-windows.ps1 exit=0":
+    raise SystemExit(f"guest build failed: {exit_markers[0].removeprefix('build-windows.ps1 ')}")
+source_markers = [payload for payload in payloads if payload.startswith("source-verified ")]
+if len(source_markers) != 1:
+    raise SystemExit("guest source-verification marker count is not exactly one")
+if source_markers[0] != expected_source:
+    raise SystemExit("guest source-verification marker is incorrect")
+offline_markers = [payload for payload in payloads if payload.startswith("offline-verified ")]
+if len(offline_markers) != 1:
+    raise SystemExit("guest OFFLINE-verification marker count is not exactly one")
+if offline_markers[0] != expected_offline:
+    raise SystemExit("guest OFFLINE-verification marker is incorrect")
+PY
 }
 
 extract_and_validate() {
@@ -1075,9 +1063,10 @@ extract_and_validate() {
         fi
     done
     local progress="$extracted/run-build-progress.txt"
-    local expected_source_marker
+    local expected_source_marker expected_offline_marker
     expected_source_marker="source-verified commit=$SOURCE_COMMIT tree=$SOURCE_TREE manifest=$(sha256sum "$CURRENT_PASS_ROOT/source-media/.source-manifest.json" | awk '{print $1}')"
-    validate_guest_progress "$progress" "$expected_source_marker"
+    expected_offline_marker="offline-verified manifest=$OFFLINE_MANIFEST_SHA256"
+    validate_guest_progress "$progress" "$expected_source_marker" "$expected_offline_marker"
 
     for artifact in rustdesk-setup.exe rustdesk.msi; do
         [ -f "$extracted/$artifact" ] && [ ! -L "$extracted/$artifact" ] && [ -s "$extracted/$artifact" ] \
@@ -1087,19 +1076,44 @@ extract_and_validate() {
     [ ! -e "$setup_input" ] && [ ! -L "$setup_input" ] \
         || die "private PE canonicalizer input path is occupied"
     ln -- "$extracted/rustdesk-setup.exe" "$setup_input"
-    rm -- "$extracted/rustdesk-setup.exe"
+    rm -f -- "$extracted/rustdesk-setup.exe"
     python3 "$SOURCE_SNAPSHOT/scripts/canonicalize-pe.py" \
         --output "$extracted/rustdesk-setup.exe" "$setup_input"
-    rm -- "$setup_input"
+    rm -f -- "$setup_input"
+    local msi_input="$extracted/.canonicalize-input-rustdesk.msi"
+    local msi_contract="$extracted/.canonicalize-rustdesk-msi-contract.json"
+    for path in "$msi_input" "$msi_contract"; do
+        [ ! -e "$path" ] && [ ! -L "$path" ] \
+            || die "private MSI canonicalizer path is occupied: $path"
+    done
+    local msi_input_sha256
+    msi_input_sha256="$(sha256sum "$extracted/rustdesk.msi" | awk '{print $1}')"
+    mv -- "$extracted/rustdesk.msi" "$msi_input"
     docker run --rm --network=none \
+        --user "$(id -u):$(id -g)" \
         --mount "type=bind,source=$extracted,target=/out" \
         --mount "type=bind,source=$SOURCE_SNAPSHOT/scripts,target=/scripts,readonly" \
         "$WIN_HELPER_IMAGE" \
-        python3 /scripts/canonicalize-msi.py /out/rustdesk.msi \
+        python3 /scripts/canonicalize-msi.py /out/.canonicalize-input-rustdesk.msi \
+            --output /out/rustdesk.msi \
+            --contract-out /out/.canonicalize-rustdesk-msi-contract.json \
             --fork-version "$FORK_VERSION_VALUE" \
             --source-commit "$SOURCE_COMMIT" \
             --source-tree "$SOURCE_TREE" \
             --target "$TARGET_ID"
+    [ -f "$msi_input" ] && [ ! -L "$msi_input" ] \
+        && [ "$(stat -c %h "$msi_input")" = 1 ] \
+        || die "private MSI canonicalizer input is no longer one ordinary file"
+    [ -f "$msi_contract" ] && [ ! -L "$msi_contract" ] \
+        && [ "$(stat -c %h "$msi_contract")" = 1 ] && [ -s "$msi_contract" ] \
+        || die "host MSI cabinet contract is missing or invalid"
+    local msi_output_sha256
+    msi_output_sha256="$(sha256sum "$extracted/rustdesk.msi" | awk '{print $1}')"
+    [ "$msi_input_sha256" = "$(sha256sum "$msi_input" | awk '{print $1}')" ] \
+        || die "guest MSI changed during host canonical validation"
+    [ "$msi_output_sha256" = "$msi_input_sha256" ] \
+        || die "guest MSI was not already in exact canonical form"
+    rm -f -- "$msi_input" "$msi_contract"
     mkdir "$result"
     install -m 0644 "$extracted/rustdesk-setup.exe" "$result/rustdesk-setup.exe"
     install -m 0644 "$extracted/rustdesk.msi" "$result/rustdesk.msi"
@@ -1217,12 +1231,19 @@ harness_self_test() {
     fi
 
     local expected_marker='source-verified commit=1111111111111111111111111111111111111111 tree=2222222222222222222222222222222222222222 manifest=3333333333333333333333333333333333333333333333333333333333333333'
+    local expected_offline_marker='offline-verified manifest=4444444444444444444444444444444444444444444444444444444444444444'
     local progress="$RUN_ROOT/progress.txt"
-    printf 'time %s\ntime build-windows.ps1 exit=0\n' "$expected_marker" >"$progress"
-    validate_guest_progress "$progress" "$expected_marker"
-    printf 'time build-windows.ps1 exit=0\n' >>"$progress"
-    if (validate_guest_progress "$progress" "$expected_marker") >/dev/null 2>&1; then
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n' \
+        "$expected_marker" "$expected_offline_marker" >"$progress"
+    validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker"
+    printf '2026-07-16T12:00:03.0000000+00:00 build-windows.ps1 exit=0\r\n' >>"$progress"
+    if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
         die "duplicate guest completion self-test was accepted"
+    fi
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\n2026-07-16T12:00:01.0000000+00:00 %s\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\n' \
+        "$expected_marker" "$expected_offline_marker" >"$progress"
+    if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
+        die "non-CRLF guest progress self-test was accepted"
     fi
 
     local fake_bin="$RUN_ROOT/fake-bin"

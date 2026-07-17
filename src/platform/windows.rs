@@ -102,9 +102,11 @@ use windows::{
             SECURITY_ATTRIBUTES, TOKEN_QUERY as WIN_TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
-            CreateFileW as WinCreateFileW, ReadFile as WinReadFile, WriteFile as WinWriteFile,
+            CreateFileW as WinCreateFileW, ReadFile as WinReadFile,
+            ReplaceFileW as WinReplaceFileW, WriteFile as WinWriteFile,
             FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, FILE_SHARE_MODE,
             FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA, OPEN_EXISTING as WIN_OPEN_EXISTING,
+            PIPE_ACCESS_DUPLEX, REPLACEFILE_WRITE_THROUGH as WIN_REPLACEFILE_WRITE_THROUGH,
             SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
         },
         System::Com::{
@@ -117,7 +119,7 @@ use windows::{
         },
         System::Pipes::{
             ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PeekNamedPipe,
-            SetNamedPipeHandleState, WaitNamedPipeW, PIPE_ACCESS_DUPLEX, PIPE_READMODE_MESSAGE,
+            SetNamedPipeHandleState, WaitNamedPipeW, PIPE_READMODE_MESSAGE,
             PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_MESSAGE, PIPE_WAIT,
         },
         System::SystemInformation::GetSystemDirectoryW,
@@ -676,7 +678,7 @@ impl Drop for WindowsSensitiveLocalString {
     fn drop(&mut self) {
         if !self.0.is_null() {
             unsafe {
-                let _ = WinLocalFree(Some(WinHLOCAL(self.0 .0 as *mut c_void)));
+                let _ = WinLocalFree(Some(WinHLOCAL(self.0 .0 as *mut std::ffi::c_void)));
             }
         }
     }
@@ -1502,17 +1504,25 @@ fn authorize_service_scoped_ipc_connection(
 }
 
 async fn refresh_service_ipc_listener(
-    incoming: parity_tokio_ipc::Incoming,
-) -> ResultType<parity_tokio_ipc::Incoming> {
-    drop(incoming);
-    ipc::new_listener(crate::POSTFIX_SERVICE).await
+    incoming: &mut Option<parity_tokio_ipc::Incoming>,
+) -> ResultType<()> {
+    let previous = incoming
+        .take()
+        .ok_or_else(|| anyhow!("Windows _service IPC listener was absent during refresh"))?;
+    drop(previous);
+    *incoming = Some(ipc::new_listener(crate::POSTFIX_SERVICE).await?);
+    Ok(())
 }
 
 async fn refresh_service_sas_ipc_listener(
-    incoming: parity_tokio_ipc::Incoming,
-) -> ResultType<parity_tokio_ipc::Incoming> {
-    drop(incoming);
-    ipc::new_listener(ipc::WINDOWS_SERVICE_SAS_IPC_POSTFIX).await
+    incoming: &mut Option<parity_tokio_ipc::Incoming>,
+) -> ResultType<()> {
+    let previous = incoming
+        .take()
+        .ok_or_else(|| anyhow!("Windows service SAS IPC listener was absent during refresh"))?;
+    drop(previous);
+    *incoming = Some(ipc::new_listener(ipc::WINDOWS_SERVICE_SAS_IPC_POSTFIX).await?);
+    Ok(())
 }
 
 const WINDOWS_SERVICE_IPC_TRANSACTION_BUDGET: usize = 4;
@@ -2727,7 +2737,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     let (stop_tx, mut stop_rx) = mpsc::unbounded_channel();
     let stop_latched = Arc::new(AtomicBool::new(false));
     let stop_apply = Arc::new(Mutex::new(ipc::WindowsCredentialStopApplyModel::new()));
-    let status_slot = Arc::new(OnceLock::new());
+    let status_slot = Arc::new(OnceLock::<ServiceStatusHandle>::new());
     let status_transition = Arc::new(Mutex::new(()));
     let handler_stop_latched = Arc::clone(&stop_latched);
     let handler_stop_apply = Arc::clone(&stop_apply);
@@ -2786,7 +2796,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
 
     let (credential_request_tx, mut credential_request_rx) =
         mpsc::channel(WINDOWS_SERVICE_CREDENTIAL_REQUEST_CAPACITY);
-    let mut incoming = match ipc::new_listener(crate::POSTFIX_SERVICE).await {
+    let mut incoming = Some(match ipc::new_listener(crate::POSTFIX_SERVICE).await {
         Ok(incoming) => incoming,
         Err(err) => {
             status_handle.set_service_status(windows_service_status(
@@ -2798,20 +2808,22 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
             ))?;
             return Err(err);
         }
-    };
-    let mut sas_incoming = match ipc::new_listener(ipc::WINDOWS_SERVICE_SAS_IPC_POSTFIX).await {
-        Ok(incoming) => incoming,
-        Err(err) => {
-            status_handle.set_service_status(windows_service_status(
-                ServiceState::Stopped,
-                ServiceControlAccept::empty(),
-                ServiceExitCode::ServiceSpecific(1),
-                0,
-                Duration::default(),
-            ))?;
-            return Err(err);
-        }
-    };
+    });
+    let mut sas_incoming = Some(
+        match ipc::new_listener(ipc::WINDOWS_SERVICE_SAS_IPC_POSTFIX).await {
+            Ok(incoming) => incoming,
+            Err(err) => {
+                status_handle.set_service_status(windows_service_status(
+                    ServiceState::Stopped,
+                    ServiceControlAccept::empty(),
+                    ServiceExitCode::ServiceSpecific(1),
+                    0,
+                    Duration::default(),
+                ))?;
+                return Err(err);
+            }
+        },
+    );
     let password_listener = match start_windows_sensitive_password_listener(
         ipc::password::SERVICE_PASSWORD_IPC_POSTFIX,
         credential_request_tx,
@@ -2868,7 +2880,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
     };
 
     let mut transaction_tasks = JoinSet::new();
-    let (sas_request_tx, mut sas_request_rx) = mpsc::channel(1);
+    let (sas_request_tx, mut sas_request_rx) = mpsc::channel::<WindowsServiceSasRequest>(1);
     let mut credential_tasks = JoinSet::new();
     let mut credential_operation_id: Option<String> = None;
     let mut credential_ledger =
@@ -2985,7 +2997,12 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                     log::warn!("Service-owned SAS requester closed before authorization");
                 }
             }
-            accepted = sas_incoming.next() => {
+            accepted = async {
+                match sas_incoming.as_mut() {
+                    Some(incoming) => incoming.next().await,
+                    None => None,
+                }
+            } => {
                 match accepted {
                     Some(Ok(stream)) => {
                         if stop_latched.load(Ordering::Acquire) {
@@ -3068,14 +3085,12 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                         desired_session_id,
                         current_session_id
                     );
-                    incoming = match refresh_service_ipc_listener(incoming).await {
-                        Ok(incoming) => incoming,
-                        Err(err) => break Err(err),
-                    };
-                    sas_incoming = match refresh_service_sas_ipc_listener(sas_incoming).await {
-                        Ok(incoming) => incoming,
-                        Err(err) => break Err(err),
-                    };
+                    if let Err(err) = refresh_service_ipc_listener(&mut incoming).await {
+                        break Err(err);
+                    }
+                    if let Err(err) = refresh_service_sas_ipc_listener(&mut sas_incoming).await {
+                        break Err(err);
+                    }
                     desired_session_id = current_session_id;
                 }
                 if credential_tasks.is_empty() {
@@ -3101,7 +3116,12 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
                     }
                 }
             }
-            accepted = incoming.next() => {
+            accepted = async {
+                match incoming.as_mut() {
+                    Some(incoming) => incoming.next().await,
+                    None => None,
+                }
+            } => {
                 match accepted {
                     Some(Ok(stream)) => {
                         if stop_latched.load(Ordering::Acquire) {
@@ -3302,7 +3322,7 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct WindowsPathIdentity {
+pub(crate) struct WindowsPathIdentity {
     volume_serial_number: u32,
     file_index_high: u32,
     file_index_low: u32,
@@ -4364,18 +4384,17 @@ pub fn check_update_broker_process() -> ResultType<PathBuf> {
         require_existing_file_no_reparse(&destination, "installed privacy broker")?;
         let destination_wide = null_terminated_wide(destination.as_os_str(), "broker destination")?;
         let pending_wide = null_terminated_wide(pending.as_os_str(), "pending broker")?;
-        let replaced = unsafe {
-            ReplaceFileW(
-                destination_wide.as_ptr(),
-                pending_wide.as_ptr(),
-                std::ptr::null(),
-                REPLACEFILE_WRITE_THROUGH,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
+        let replace_result = unsafe {
+            WinReplaceFileW(
+                PCWSTR(destination_wide.as_ptr()),
+                PCWSTR(pending_wide.as_ptr()),
+                PCWSTR::null(),
+                WIN_REPLACEFILE_WRITE_THROUGH,
+                None,
+                None,
             )
         };
-        if replaced == 0 {
-            let err = io::Error::last_os_error();
+        if let Err(err) = replace_result {
             let _ = fs::remove_file(&pending);
             return Err(err.into());
         }

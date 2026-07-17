@@ -341,7 +341,7 @@ test covers fully provisioned, PRS-empty half-state, and undecryptable current-f
 gates the typed enum, the undecryptable branch, the server status helper, the direct-listener diagnostic, the
 requirements/status disposition, and absence of a silent `unwrap_or_default()` collapse in the PRS string accessor.
 
-**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS WORKTREE VALIDATION AND FINAL CLEAN COLD RELEASE BUILD PENDING.**
+**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS WORKTREE VALIDATED; FINAL CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
 `_service_password` protocols. Ordinary main and `_service` IPC contain no password-bearing request, generic
@@ -384,7 +384,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   main IPC carries no password fallback. A nonsecret status query is used only for admitted uncertainty. The
   packaged polkit policy remains administrator-authenticated.
 - **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; CURRENT
-  NATIVE WINDOWS WORKTREE VALIDATION PENDING.** The stable LocalSystem SCM service is the sole durable credential
+  NATIVE WINDOWS WORKTREE VALIDATED.** The stable LocalSystem SCM service is the sole durable credential
   writer and replay/finality owner. Mutation enters through raw `_service_password`, not `_service` or an old
   service-main credential endpoint. One `FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_REJECT_REMOTE_CLIENTS`,
   max-instances-one message pipe is held for process life and serially reused. The service DACL admits Interactive
@@ -401,7 +401,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and joins the blocking worker across async cancellation. The exact service-owned child receives only a
   generation-bound read-only replica over `_service_credential`; `_service_main_control` remains independent.
   An authorized active-principal exact RustDesk role may consume bounded local work; arbitrary Interactive Users
-  are rejected before header wait, and no password or administrator authority is exposed by either case.
+  are rejected before header wait, and no password or administrator authority is exposed by either case. Retry 15
+  authenticated staged executable-affecting tree `ad2dd37c3698945d1071e091c68d26d64bc32b54` in two fresh
+  networkless Windows guests. Both passed the native service/credential/SAS/password-finality/input suites and the
+  release build, proved the root and portable compiled resources byte-equal with linked VERSIONINFO, and produced
+  byte-equal host-revalidated setup/MSI artifacts with package code
+  `{6C338D23-A4FA-5F24-B182-47F4526233A8}`. The host equality gate published setup SHA-256
+  `66326a7aac84de392268e5cd743adcaa0c1b0c6d880435c80145593c0d7ad2f9` and MSI SHA-256
+  `8220ef94cc59bb01fb8c23754d801aaee58648c7ac15d3a864af515addd583ec`; both PTY-driven passes completed with
+  no cleanup prompt. This is current-worktree native evidence, not the clean committed R-B2 cold-release transaction;
+  the evidence-only ledger wording added afterward does not alter the validated executable inputs.
 - **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — SOURCE IMPLEMENTED; APPLE
   SOURCE-CONFORMANCE GATE AVAILABLE.** Generic `_service` proof and password `_service_password` proof use separate
   fixed capacities. The accepted socket's uid, effective-pid metadata, and `LOCAL_PEERTOKEN` audit token are
@@ -1417,8 +1426,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   socket-bound polkit authorization and exact root-parent/service-replica proof. macOS adds a dedicated
   nonshared timeout-zero Authorization Services capability, root helper/installed-app audit-token proof, and exact
   LaunchAgent runtime-snapshot proof. Windows terminates mutation in the stable LocalSystem SCM authority and gives
-  the retained child only a generation-bound read-only replica. The final clean committed cold release build and
-  current native Windows worktree validation are still required.
+  the retained child only a generation-bound read-only replica. The final clean committed cold release build is
+  still required.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
   Platform: Linux `.deb` installed-service mode. Endpoint/action: the single local admin-authorized
   service-owned unattended-password change. Boundary: user-session process and distro-local polkit policy
@@ -2633,8 +2642,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; the current machine inventory is 796 across the unchanged 243 tracked Rust files/66 nonzero files,
-    with per-file-count digest `15ff4c67c568c59d588b8f2625a8c58d1b57a727c3a81d33392d3084621c3526`.
+    blocks; the current machine inventory is 796 across 244 tracked Rust files/66 nonzero files, with the added
+    deterministic Windows resource producer containing no lexical unsafe block and per-file-count digest
+    `f8cdc3616c8aeb27b30f3b273d37ce4b5617ac537e79372ecdad5fde5015e31d`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -2730,8 +2740,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     The direct `--server` image no longer installs a second process-wide `ctrlc` handler that could preempt its Tokio
     R-T9 drain. Its modifier/key-release cleanup instead runs inside `finish_graceful_shutdown()`, after the bounded
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
-    introduces no new dependency package, production syscall, or lexical `unsafe {` block; the settled inventory
-    remains 796 across 243 tracked Rust files/66 nonzero files.
+    introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
+    deterministic Windows resource-producer addition, the settled inventory remains 796 across 244 tracked Rust
+    files/66 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
     source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active

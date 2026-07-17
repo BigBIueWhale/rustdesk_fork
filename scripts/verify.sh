@@ -670,7 +670,7 @@ grep -q 'open_windows_named_pipe_client' src/ipc.rs                             
 grep -q 'CreateFileW' src/ipc.rs                                                   || r_s11c6="$r_s11c6 direct-client-open-missing"
 grep -q 'ensure_windows_ipc_server_matches_current(&client, postfix)' src/ipc.rs   || r_s11c6="$r_s11c6 server-verification-not-wired"
 grep -q 'GetNamedPipeServerProcessId' src/ipc/auth.rs                              || r_s11c6="$r_s11c6 server-pid-check-missing"
-grep -q 'refresh_service_ipc_listener(incoming).await' src/platform/windows.rs     || r_s11c6="$r_s11c6 service-listener-session-refresh-missing"
+grep -q 'refresh_service_ipc_listener(&mut incoming).await' src/platform/windows.rs || r_s11c6="$r_s11c6 service-listener-session-refresh-missing"
 if grep -q 'should_allow_everyone_create_on_windows' src/ipc.rs src/ipc/auth.rs; then
   r_s11c6="$r_s11c6 legacy-world-create-policy-present"
 fi
@@ -1527,7 +1527,7 @@ grep -Fq 'command = ["cargo", "build", "--offline", "--locked", "--release"]' li
 grep -Fq 'subprocess.run(command, check=True)' libs/portable/generate.py || r_s11e20="$r_s11e20 packer-cargo-failure-not-propagated"
 grep -Fq 'Remove-Item -LiteralPath $setupPayloadDir -Recurse -Force' "$windows_build" || r_s11e20="$r_s11e20 payload-finally-cleanup-missing"
 grep -Fq "\$setup = Join-Path \$SRC 'target\release\rustdesk-portable-packer.exe'" "$windows_build" || r_s11e20="$r_s11e20 exact-setup-output-missing"
-grep -Fq "\$msi = Join-Path \$SRC 'res\msi\Package\bin\x64\Release\en-us\Package.msi'" "$windows_build" || r_s11e20="$r_s11e20 exact-msi-output-missing"
+grep -Fq "\$msi = Join-Path \$SRC 'target\canonical-msi\rustdesk.msi'" "$windows_build" || r_s11e20="$r_s11e20 exact-msi-output-missing"
 if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_discovery" -nE 'Get-ChildItem -Path \$SRC -Filter' "$windows_build"; then
   r_s11e20="$r_s11e20 recursive-artifact-discovery-leftover"
 fi
@@ -4307,13 +4307,13 @@ if grep -qE 'hbb_common::gen_version|pub fn gen_version' build.rs libs/hbb_commo
 fi
 version_ref_count=0
 while IFS= read -r -d '' cargo_build_script; do
-  refs="$(grep -cF 'version.rs' "$cargo_build_script" || true)"
+  refs="$( (grep -oF '"version.rs"' "$cargo_build_script" || true) | wc -l)"
   if [ "$refs" -ne 0 ]; then
     version_ref_count=$((version_ref_count + refs))
-    [ "$cargo_build_script" = ./build.rs ] && [ "$refs" -eq 1 ] \
+    [ "$cargo_build_script" = build.rs ] && [ "$refs" -eq 1 ] \
       || version_output_bad="$version_output_bad foreign-build-script-version-output"
   fi
-done < <(find . -path ./target -prune -o -path ./online -prune -o -name build.rs -type f -print0)
+done < <(git ls-files -z --cached -- ':(glob)build.rs' ':(glob)**/build.rs')
 [ "$version_ref_count" -eq 1 ] \
   || version_output_bad="$version_output_bad non-unique-version-output-reference"
 set +e

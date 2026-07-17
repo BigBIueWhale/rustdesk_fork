@@ -3384,7 +3384,30 @@ mod process_cleanup_tests {
         if bind_to_parent {
             configure_service_child_pre_exec(&mut command, parent_pid, None);
         }
-        command.spawn().unwrap()
+        let mut child = command.spawn().unwrap();
+        let proc_dir = PathBuf::from(format!("/proc/{}/", child.id()));
+        let readiness_deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let role_is_ready =
+                read_bounded_service_proc_file(&proc_dir.join("cmdline"), 64 * 1024)
+                    .map(|cmdline| service_child_cmdline_has_exact_role(&cmdline))
+                    .unwrap_or(false);
+            let generation_is_ready =
+                read_bounded_service_proc_file(&proc_dir.join("environ"), 64 * 1024)
+                    .map(|environ| service_child_environment_has_generation(&environ, generation))
+                    .unwrap_or(false);
+            if role_is_ready && generation_is_ready {
+                return child;
+            }
+            if let Some(status) = child.try_wait().unwrap() {
+                panic!("service-child test fixture exited before identity readiness: {status}");
+            }
+            assert!(
+                Instant::now() < readiness_deadline,
+                "service-child test fixture did not publish its exact role and generation"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 
     fn spawn_exact_role_service_child_for_test(generation: &str, bind_to_parent: bool) -> Child {

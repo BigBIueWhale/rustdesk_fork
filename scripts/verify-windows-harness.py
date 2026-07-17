@@ -19,7 +19,13 @@ class VerificationError(RuntimeError):
 
 
 FILES = {
+    "buildrs": "build.rs",
+    "cargo": "Cargo.toml",
+    "portable_build": "libs/portable/build.rs",
+    "portable_cargo": "libs/portable/Cargo.toml",
+    "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
+    "offline": "scripts/windows-offline-manifest.py",
     "frb": "scripts/frb-codegen.sh",
     "guest": "scripts/run-build.ps1",
     "build": "scripts/build-windows.ps1",
@@ -29,6 +35,8 @@ FILES = {
     "watch": "scripts/native-codec-watch.sh",
     "port": "res/vcpkg/libvpx/portfile.cmake",
     "metadata": "res/vcpkg/libvpx/vcpkg.json",
+    "verify": "scripts/verify.sh",
+    "windows": "src/platform/windows.rs",
 }
 
 
@@ -270,7 +278,13 @@ def validate_port(source: str, metadata_source: str) -> None:
 
 
 def validate_sources(sources: dict[str, str]) -> None:
+    buildrs = sources["buildrs"]
+    cargo = sources["cargo"]
+    portable_build = sources["portable_build"]
+    portable_cargo = sources["portable_cargo"]
+    resource = sources["resource"]
     host = sources["host"]
+    offline = sources["offline"]
     frb = sources["frb"]
     guest = sources["guest"]
     build = sources["build"]
@@ -278,10 +292,161 @@ def validate_sources(sources: dict[str, str]) -> None:
     pe = sources["pe"]
     msi = sources["msi"]
     watch = sources["watch"]
+    verify = sources["verify"]
+    windows = sources["windows"]
 
     orchestrator_tree = parse_python(orchestrator, "build.py")
+    offline_tree = parse_python(offline, "scripts/windows-offline-manifest.py")
     pe_tree = parse_python(pe, "scripts/canonicalize-pe.py")
     msi_tree = parse_python(msi, "scripts/canonicalize-msi.py")
+
+    for manifest in (cargo, portable_cargo):
+        reject(manifest, r"(?m)^\[package[.]metadata[.]winres\]$", "HashMap-generated Windows version metadata")
+        reject(manifest, r"(?m)^winres\s*=", "winres build dependency")
+    for source in (buildrs, portable_build, resource):
+        reject(source, r"winres::WindowsResource|[.]set_(?:icon|manifest_file|resource_file)\(", "winres resource path")
+    require(
+        buildrs,
+        "windows_resource::compile(version, &resource_root)",
+        "shared root Windows resource producer",
+    )
+    reject(
+        buildrs,
+        r'#\[cfg\(all\(windows,\s*feature\s*=\s*"inline"\)\)\]\s*(?:fn build_manifest|build_manifest\(&version\)\?;)',
+        "feature-gated root Windows resource producer",
+    )
+    require(
+        buildrs,
+        '#[cfg(windows)]\nfn build_manifest(version: &str) -> Result<(), Box<dyn Error>>',
+        "all-Windows root resource producer definition",
+    )
+    require(
+        buildrs,
+        '#[cfg(windows)]\n    build_manifest(&version)?;',
+        "all-Windows root resource producer invocation",
+    )
+    require(
+        portable_build,
+        'windows_resource::compile(env!("CARGO_PKG_VERSION"), resource_root)',
+        "shared portable Windows resource producer",
+    )
+    require_count(resource, ".parse::<u16>()?;", 3, "bounded Windows numeric version fields")
+    for literal, description in (
+        ('env::var_os("RUSTDESK_LLVM_RC")', "explicit LLVM resource producer environment"),
+        ("Command::new(&llvm_rc)", "direct LLVM resource compiler invocation"),
+        ('.arg("-no-preprocess")', "resource preprocessing prohibition"),
+        ('.arg("-C65001")', "explicit resource UTF-8 code page"),
+        ('println!("cargo:rustc-link-lib=dylib=resource")', "compiled resource link directive"),
+        ("LLVM resource compiler changed its ordered RC input", "ordered RC input stability check"),
+    ):
+        require(resource, literal, description)
+    require_order(
+        resource,
+        (
+            'VALUE "FileDescription", "RustDesk Remote Desktop"',
+            'VALUE "FileVersion", "{version}"',
+            'VALUE "LegalCopyright", "Copyright © 2025 Purslane Ltd. All rights reserved."',
+            'VALUE "OriginalFilename", "rustdesk.exe"',
+            'VALUE "ProductName", "RustDesk"',
+            'VALUE "ProductVersion", "{version}"',
+            'VALUE "Translation", 0x0409, 0x04b0',
+            '1 ICON "res/icon.ico"',
+            '1 24 "res/manifest.xml"',
+        ),
+        "canonical Windows VERSIONINFO/icon/manifest resource order",
+    )
+    require(buildrs, "build_manifest(&version)?;", "fallible ordered Windows resource build")
+    require(build, "function Assert-DeterministicWindowsResource", "native ordered Windows resource gate")
+    require(
+        build,
+        "Windows resource entry is absent or out of canonical order",
+        "native ordered Windows resource rejection",
+    )
+    require(
+        build,
+        "    Assert-PowerShellSourceParsing\n    Assert-DeterministicWindowsResource",
+        "native ordered Windows resource preflight",
+    )
+    for literal, description in (
+        ("$LLVM_RC_EXE     = 'C:\\Program Files\\LLVM\\bin\\llvm-rc.exe'", "pinned llvm-rc path"),
+        ("$LLVM_READOBJ_EXE = 'C:\\Program Files\\LLVM\\bin\\llvm-readobj.exe'", "pinned llvm-readobj path"),
+        ("$LLVM_RC_SHA256  = 'f1c4e01ae6214be7e1326e6290ee96b3cd7d36e690f400a16b5e33ad3aa36f29'", "pinned llvm-rc digest"),
+        ("function Assert-CompiledWindowsResource", "compiled Windows resource validator"),
+        ("Find-ByteSequence $bytes $needle", "compiled VERSIONINFO order check"),
+        ("Resource type (int): MANIFEST (ID 24)", "compiled manifest resource gate"),
+        ("Assert-CompiledWindowsResource $applicationResource 'RustDesk library'", "library compiled-resource gate"),
+        ("Assert-CompiledWindowsResource $portableResource 'RustDesk portable packer'", "portable compiled-resource gate"),
+        ("Assert-WindowsExecutableVersionInfo $rustLibrary $applicationVersion 'RustDesk library'", "library linked VERSIONINFO gate"),
+        ("Assert-WindowsExecutableVersionInfo $setupOut $portableVersion 'RustDesk portable packer'", "portable linked VERSIONINFO gate"),
+        ("$applicationResourceHash -cne $portableResourceHash", "cross-crate compiled resource digest comparison"),
+        ("root and portable crates did not emit one exact compiled Windows resource", "cross-crate compiled resource equality"),
+    ):
+        require(build, literal, description)
+
+    require(cargo, '"Win32_System_SystemServices",', "Windows SystemServices feature")
+    require(
+        windows,
+        "System::SystemServices::SECURITY_DESCRIPTOR_REVISION",
+        "Windows SystemServices security-descriptor import",
+    )
+    require(
+        windows,
+        "ReplaceFileW as WinReplaceFileW",
+        "unambiguous windows-rs ReplaceFileW import",
+    )
+    require(
+        windows,
+        "REPLACEFILE_WRITE_THROUGH as WIN_REPLACEFILE_WRITE_THROUGH",
+        "unambiguous windows-rs ReplaceFileW flag import",
+    )
+    require(
+        windows,
+        "PIPE_ACCESS_DUPLEX, REPLACEFILE_WRITE_THROUGH as WIN_REPLACEFILE_WRITE_THROUGH",
+        "FileSystem-owned named-pipe access import",
+    )
+    require(
+        windows,
+        "WinHLOCAL(self.0 .0 as *mut std::ffi::c_void)",
+        "windows-rs HLOCAL pointer type",
+    )
+    require(
+        windows,
+        "OnceLock::<ServiceStatusHandle>::new()",
+        "explicit Windows service status slot type",
+    )
+    require(
+        windows,
+        "mpsc::channel::<WindowsServiceSasRequest>(1)",
+        "explicit Windows service SAS channel type",
+    )
+    require_count(
+        windows,
+        "incoming: &mut Option<parity_tokio_ipc::Incoming>",
+        2,
+        "refreshable Windows service listener ownership",
+    )
+    require_count(
+        windows,
+        "let previous = incoming\n        .take()",
+        2,
+        "Windows service listener close-before-rebind",
+    )
+    require_count(
+        windows,
+        "*incoming = Some(ipc::new_listener(",
+        2,
+        "Windows service listener restoration",
+    )
+    require(
+        windows,
+        "pub(crate) struct WindowsPathIdentity",
+        "cross-module Windows path identity visibility",
+    )
+    require(
+        verify,
+        "refresh_service_ipc_listener(&mut incoming).await",
+        "current Windows service listener source gate",
+    )
 
     for source, name in ((host, "build-windows-vm.sh"), (frb, "frb-codegen.sh")):
         reject(source, r"\|\|\s*true", f"masked status in {name}")
@@ -298,7 +463,12 @@ def validate_sources(sources: dict[str, str]) -> None:
     snapshot_golden = shell_function(host, "snapshot_golden")
     verify_private_golden = shell_function(host, "verify_private_golden")
     write_manifest = shell_function(host, "write_manifest")
+    write_offline_manifest = shell_function(host, "write_offline_manifest")
+    extract_wix_nuget = shell_function(host, "extract_wix_nuget")
+    build_offline_media = shell_function(host, "build_offline_media")
+    build_pass_media = shell_function(host, "build_pass_media")
     prepare_overlay = shell_function(host, "prepare_overlay")
+    extract_and_validate = shell_function(host, "extract_and_validate")
     host_main = shell_function(host, "main")
 
     require(host, "CREATE_TIMEOUT_SECONDS=300", "five-minute VM creation bound")
@@ -468,9 +638,99 @@ def validate_sources(sources: dict[str, str]) -> None:
     for manifest in (
         "rustdesk-windows-source-manifest-v1",
         "rustdesk-windows-source-identity-v1",
-        "rustdesk-windows-offline-manifest-v1",
     ):
         require(host, manifest, manifest)
+    require(
+        write_offline_manifest,
+        'python3 "$SOURCE_SNAPSHOT/scripts/windows-offline-manifest.py"',
+        "isolated offline-media manifest generator",
+    )
+    require(
+        extract_wix_nuget,
+        'docker run --rm --network=none --user "$(id -u):$(id -g)"',
+        "networkless invoking-UID WiX extraction",
+    )
+    require(
+        build_offline_media,
+        "genisoimage -udf -D -r -f -quiet",
+        "approved internal file-link materialization",
+    )
+    require(
+        build_offline_media,
+        '--mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget,readonly"',
+        "read-only extracted WiX media input",
+    )
+    require(
+        build_offline_media,
+        'cmp -s "$manifest" "$after"',
+        "offline input/media manifest stability postcondition",
+    )
+    require_order(
+        build_offline_media,
+        (
+            "extract_wix_nuget",
+            'write_offline_manifest "$manifest"',
+            "genisoimage -udf -D -r -f -quiet",
+            'write_offline_manifest "$after"',
+            'cmp -s "$manifest" "$after"',
+        ),
+        "offline extraction, identity, materialization, and stability ordering",
+    )
+
+    offline_hash = python_function(offline_tree, "hash_regular")
+    offline_link = python_function(offline_tree, "hash_internal_file_link")
+    offline_calculate = python_function(offline_tree, "calculate_manifest")
+    offline_write = python_function(offline_tree, "write_manifest")
+    offline_self_test = python_function(offline_tree, "self_test")
+    require(offline, 'FORMAT = "rustdesk-windows-offline-manifest-v2"', "exact offline manifest format")
+    require(
+        ast.get_source_segment(offline, offline_hash) or "",
+        'flags |= os.O_NOFOLLOW',
+        "no-follow offline file opening",
+    )
+    require(
+        ast.get_source_segment(offline, offline_link) or "",
+        "if not stat.S_ISREG(target_info.st_mode):",
+        "single-hop regular-file alias type check",
+    )
+    require(
+        ast.get_source_segment(offline, offline_link) or "",
+        "offline symlink target is not a single-hop regular file",
+        "single-hop regular-file alias policy",
+    )
+    require_python_call(
+        offline_tree,
+        "hash_internal_file_link",
+        "hash_regular",
+        "internal file-link target byte hashing",
+    )
+    require(
+        ast.get_source_segment(offline, offline_calculate) or "",
+        "if relative in exact_paths:",
+        "exact offline path duplication rejection",
+    )
+    require(
+        ast.get_source_segment(offline, offline_calculate) or "",
+        "previous_identity != identity",
+        "byte-identity-only Windows case collision policy",
+    )
+    require(
+        ast.get_source_segment(offline, offline_calculate) or "",
+        "offline input contains a directory symlink or non-directory",
+        "offline directory symlink rejection",
+    )
+    require(
+        ast.get_source_segment(offline, offline_write) or "",
+        "os.link(temporary, output, follow_symlinks=False)",
+        "no-clobber offline manifest publication",
+    )
+    require(
+        ast.get_source_segment(offline, offline_self_test) or "",
+        'expect_failure("link chain", link_chain)',
+        "offline link-chain behavioral fixture",
+    )
+    for fixture in ("absolute link", "escaping link", "directory link", "directory target", "case collision", "special file"):
+        require(offline, f'"{fixture}"', f"offline behavioral fixture {fixture}")
     require(host, 'require_pinned_builder_image win-helper "$WIN_HELPER_TAG"', "pinned Windows helper image")
     require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_TAG"', "pinned FRB builder image")
     require(
@@ -489,7 +749,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         "active online snapshot postcondition",
     )
     require(host, 'FRB_IMAGE_ID="$DEB_BUILDER_IMAGE"', "immutable FRB image handoff")
-    require(host, '--online-root "$ONLINE_DIR"', "private FRB online handoff")
+    require(build_pass_media, '--online-root "$ONLINE_DIR"', "private FRB online handoff")
     require(host, "FRB reproducibility mismatch between Windows passes", "FRB A-equals-B gate")
     require(host, "FRB manifest does not describe exactly the four canonical outputs", "exact FRB manifest")
     require(host, "FRB manifest is not a regular file", "regular FRB manifest")
@@ -504,8 +764,49 @@ def validate_sources(sources: dict[str, str]) -> None:
         ),
         "shutdown/extract/validate/publish ordering",
     )
+    require_order(
+        extract_and_validate,
+        (
+            'msi_input_sha256="$(sha256sum "$extracted/rustdesk.msi"',
+            'mv -- "$extracted/rustdesk.msi" "$msi_input"',
+            'docker run --rm --network=none',
+            '--user "$(id -u):$(id -g)"',
+            'python3 /scripts/canonicalize-msi.py /out/.canonicalize-input-rustdesk.msi',
+            '--output /out/rustdesk.msi',
+            '--contract-out /out/.canonicalize-rustdesk-msi-contract.json',
+            '[ "$msi_input_sha256" = "$(sha256sum "$msi_input"',
+            '[ "$msi_output_sha256" = "$msi_input_sha256" ]',
+            'rm -f -- "$msi_input" "$msi_contract"',
+        ),
+        "networkless invoking-UID host MSI canonical-form validation",
+    )
+    for temporary_cleanup in (
+        'rm -f -- "$extracted/rustdesk-setup.exe"',
+        'rm -f -- "$setup_input"',
+        'rm -f -- "$msi_input" "$msi_contract"',
+    ):
+        require(
+            extract_and_validate,
+            temporary_cleanup,
+            "noninteractive write-protected artifact-validation cleanup",
+        )
+    require(
+        extract_and_validate,
+        "guest MSI was not already in exact canonical form",
+        "host MSI idempotence rejection",
+    )
     require(host, "guest completion marker count is not exactly one", "explicit guest marker count")
     require(host, "guest source-verification marker", "guest source proof")
+    require(host, 'if not data.endswith(b"\\r\\n"):', "canonical Windows progress CRLF")
+    require(host, 'raw_lines = data.split(b"\\r\\n")', "strict progress line splitting")
+    require(host, 'raw.decode("ascii")', "strict progress ASCII decoding")
+    require(host, "non-CRLF guest progress self-test was accepted", "non-CRLF progress behavioral fixture")
+    require(
+        host,
+        'exit_markers[0] != "build-windows.ps1 exit=0"',
+        "CRLF-normalized exact guest success marker",
+    )
+    reject(host, r"mapfile\s+-t\s+exit_markers", "CR-bearing shell progress parsing")
     require(host, "assert_safe_path", "mount path delimiter gate")
     require(
         write_manifest,
@@ -579,6 +880,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     validate_powershell_lexically(build, "scripts/build-windows.ps1")
     guest_safe_path = powershell_function(guest, "Assert-SafeRelativePath")
     guest_manifest = powershell_function(guest, "Assert-SourceManifest")
+    guest_offline_manifest = powershell_function(guest, "Assert-OfflineManifest")
     require(guest, "$ErrorActionPreference = 'Stop'", "fail-loud guest policy")
     reject(guest, r"SilentlyContinue", "guest masked error")
     require(
@@ -609,6 +911,49 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(guest_safe_path, f"'{generated_name}'", f"guest generated namespace {generated_name}")
     require(guest, "Assert-SourceManifest $sourceMedia", "media manifest proof")
     require(guest, "Assert-SourceManifest $source", "copied manifest proof")
+    require(guest, "Assert-OfflineManifest $offlineMedia", "OFFLINE media manifest proof")
+    require(
+        guest_offline_manifest,
+        "$manifest.format -cne 'rustdesk-windows-offline-manifest-v2'",
+        "exact OFFLINE manifest format",
+    )
+    require(
+        guest_offline_manifest,
+        "$manifest.directories -isnot [Array]",
+        "OFFLINE directory array type proof",
+    )
+    require(
+        guest_offline_manifest,
+        "$caseFileIdentity.ContainsKey($relative)",
+        "byte-identical-only OFFLINE case collision proof",
+    )
+    require(
+        guest_offline_manifest,
+        "Get-FileHash -LiteralPath $path -Algorithm SHA256",
+        "OFFLINE file byte verification",
+    )
+    require(
+        guest_offline_manifest,
+        "$actualFiles.Count -ne $declaredFiles.Count",
+        "exact OFFLINE file count",
+    )
+    require(
+        guest_offline_manifest,
+        "$actualDirectories.Count -ne $declaredDirectories.Count",
+        "exact OFFLINE directory count",
+    )
+    require(
+        guest_offline_manifest,
+        "if (-not $declaredFiles.Contains($relative))",
+        "undeclared OFFLINE file rejection",
+    )
+    require(
+        guest_offline_manifest,
+        "if (-not $declaredDirectories.Contains($relative))",
+        "undeclared OFFLINE directory rejection",
+    )
+    require(guest, 'Mark "offline-verified manifest=$($identity.offline_manifest_sha256)"', "OFFLINE guest proof marker")
+    require(host, "guest OFFLINE-verification marker count is not exactly one", "authoritative OFFLINE guest marker")
     require(
         guest_manifest,
         "($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
@@ -635,8 +980,14 @@ def validate_sources(sources: dict[str, str]) -> None:
         "if (Test-Path -LiteralPath $legacySource) {\n        Fail 'legacy C:\\src was not fully removed'",
         "legacy source removal postcondition",
     )
-    require(guest, "$buildParent = 'C:\\rustdesk-build'", "unique source parent")
-    require(guest, "unique source directory already exists", "unique source absence proof")
+    require(guest, "$buildParent = 'C:\\rustdesk-build'", "stable source parent")
+    require(guest, "$source = Join-Path $buildParent 'source'", "stable Windows build root")
+    require(guest, "stable source directory already exists", "stable source absence proof")
+    reject(
+        guest,
+        r"Join-Path\s+\$buildParent\s+\(\[string\]\$identity[.]build_run_id\)",
+        "pass-specific Windows build root",
+    )
     require_order(
         guest,
         (
@@ -657,6 +1008,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         guest,
         (
             "$identity = Get-Content",
+            "Assert-OfflineManifest $offlineMedia",
             "Assert-SourceManifest $sourceMedia",
             "$legacySource = 'C:\\src'",
             "& powershell.exe",
@@ -682,6 +1034,16 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(build, "    Assert-BuildIdentity\n    Assert-PowerShellSourceParsing", "preflight identity invocation")
     require(build, "source identity schema is not exact", "build source schema proof")
     require(build, "source manifest hash changed after guest verification", "build manifest recheck")
+    require(
+        build,
+        "windows_credential_lost_reply_stop_and_apply_remain_consistent",
+        "lost-reply stop/apply recovery source gate",
+    )
+    require(
+        build,
+        "windows_credential_operation_bound_failures_remain_terminal_during_recovery",
+        "operation-bound terminal recovery source gate",
+    )
     reject(build, r"\$installedVpxKey", "sidecar-authorized libvpx reuse")
     require_order(
         build,
@@ -740,7 +1102,17 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(build, "Get-FileHash -LiteralPath $olefileWheel -Algorithm SHA256", "guest olefile digest proof")
     require(build, "isinstance(loader, zipimport.zipimporter)", "olefile zip-wheel loader proof")
     require_count(build, "os.path.normcase(os.path.abspath(loader.archive)) != wheel", 2, "olefile wheel authority proofs")
-    require_count(build, 'if olefile.__version__ != "0.47":', 2, "exact olefile version proofs")
+    require_count(build, "if olefile.__version__ != '0.47':", 2, "exact olefile version proofs")
+    require(
+        build,
+        "raise SystemExit('olefile did not load through the verified wheel')",
+        "PowerShell-safe olefile probe quoting",
+    )
+    require(
+        build,
+        "expected_options = ['--output', '--contract-out', '--fork-version', '--source-commit', '--source-tree', '--target']",
+        "PowerShell-safe MSI runner quoting",
+    )
     require(build, "if len(arguments) != 13 or arguments[1::2] != expected_options", "isolated MSI argument-vector proof")
     require(
         build,
@@ -778,8 +1150,24 @@ def validate_sources(sources: dict[str, str]) -> None:
     canonicalize_bytes = ast.get_source_segment(pe, python_function(pe_tree, "canonicalize_bytes")) or ""
     pe_canonicalize = ast.get_source_segment(pe, python_function(pe_tree, "canonicalize")) or ""
     pe_publish = ast.get_source_segment(pe, python_function(pe_tree, "_publish_absent")) or ""
+    pe_verify_published = ast.get_source_segment(
+        pe, python_function(pe_tree, "_verify_published_file")
+    ) or ""
+    pe_publish_success, pe_publish_cleanup = pe_publish.split(
+        "except BaseException as original:", 1
+    )
     pe_self_test = ast.get_source_segment(pe, python_function(pe_tree, "self_test")) or ""
     require(pe, "IMAGE_DEBUG_TYPE_REPRO = 16", "bounded repro debug type")
+    require(
+        pe,
+        '() if os.name == "nt" else ("st_mode", "st_ctime_ns")',
+        "platform-correct PE source stability fields",
+    )
+    require(
+        pe,
+        '() if os.name == "nt" else ("st_mode",)',
+        "published PE stability fields",
+    )
     require(pe, "debug_type == IMAGE_DEBUG_TYPE_REPRO", "repro-only payload clearing")
     require(canonicalize_bytes, "authorized = pe_fields + debug_ranges", "complete PE mutation authorization union")
     require(canonicalize_bytes, "image.data[start:end] = b\"\\0\" * (end - start)", "bounded PE mutation application")
@@ -792,7 +1180,38 @@ def validate_sources(sources: dict[str, str]) -> None:
     require_direct_python_call(pe_tree, "canonicalize", "_publish_absent", "absent PE publication")
     require(pe_publish, "if os.path.lexists(output_path):", "occupied PE output rejection")
     require(pe_publish, "os.link(temporary, output_path, follow_symlinks=False)", "no-clobber PE publication")
-    require(pe_publish, "if _read_descriptor(descriptor) != content:", "published PE byte postcondition")
+    require_order(
+        pe_publish_success,
+        (
+            "os.link(temporary, output_path, follow_symlinks=False)",
+            "os.close(descriptor)",
+            "descriptor = -1",
+            "os.unlink(temporary)",
+            "final_state = _verify_published_file(output_path, output_identity, content)",
+        ),
+        "Windows-closeable PE publication",
+    )
+    require(
+        pe_publish,
+        "final_state = _verify_published_file(output_path, output_identity, content)",
+        "reopened published PE postcondition",
+    )
+    require(
+        pe_verify_published,
+        'if b"".join(chunks) != expected_content:',
+        "reopened published PE byte postcondition",
+    )
+    require_order(
+        pe_publish_cleanup,
+        (
+            "os.close(descriptor)",
+            "_make_deletable(output_path)",
+            "os.unlink(output_path)",
+            "_make_deletable(temporary)",
+            "os.unlink(temporary)",
+        ),
+        "Windows PE rollback handle release",
+    )
     require(pe_publish, "_make_deletable(output_path)", "Windows PE rollback deletion authority")
     require(pe_canonicalize, "_require_real_directory_path", "PE ancestor reparse rejection")
     require(pe_canonicalize, "canonicalization is not idempotent", "PE idempotence postcondition")
@@ -807,6 +1226,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     msi_stream = ast.get_source_segment(msi, python_function(msi_tree, "_cabinet_stream")) or ""
     msi_canonicalize = ast.get_source_segment(msi, python_function(msi_tree, "canonicalize")) or ""
     msi_verify = ast.get_source_segment(msi, python_function(msi_tree, "_verify_file")) or ""
+    msi_sync = ast.get_source_segment(msi, python_function(msi_tree, "_open_sync_regular")) or ""
     msi_self_test = ast.get_source_segment(msi, python_function(msi_tree, "self_test")) or ""
     require(msi, "FMTID_SUMMARY_INFORMATION", "exact SummaryInformation FMTID")
     require(msi_stream, "if len(candidates) != 1:", "unique embedded cabinet count")
@@ -864,24 +1284,71 @@ def validate_sources(sources: dict[str, str]) -> None:
         'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
         "portable MSI open flags",
     )
+    require(
+        msi,
+        '() if os.name == "nt" else ("st_mode", "st_ctime_ns")',
+        "platform-correct MSI stability fields",
+    )
     require(msi, 'if os.name != "nt":', "portable MSI directory durability")
+    require(
+        msi_sync,
+        'flags = os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
+        "Windows-writable MSI sync handle",
+    )
+    require(msi_sync, "state.st_nlink != 1", "one-link MSI sync handle")
+    require(
+        msi_sync,
+        "(state.st_dev, state.st_ino) != expected_identity",
+        "exact MSI sync handle identity",
+    )
+    require(
+        msi_canonicalize,
+        "output_sync = _open_sync_regular(output, output_identity)",
+        "canonical MSI writable sync handle",
+    )
+    require(
+        msi_canonicalize,
+        "contract_sync = _open_sync_regular(contract_output, contract_identity)",
+        "MSI contract writable sync handle",
+    )
+    require(msi_canonicalize, "if output_sync >= 0:", "partial MSI sync handle cleanup")
+    require(msi_canonicalize, "if contract_sync >= 0:", "partial contract sync handle cleanup")
     require(msi, "source_descriptor = -1", "closed MSI source descriptor")
     require(msi, "canonicalize-msi self-test: ok", "MSI synthetic tests")
 
     require(build, "$canonicalMsiDir = Join-Path $SRC 'target\\canonical-msi'", "private MSI output directory")
+    require(
+        build,
+        "$msiCanonicalizerInput = Join-Path $canonicalMsiDir 'canonicalizer-input.msi'",
+        "distinct one-link MSI canonicalizer input",
+    )
     require(build, "canonical MSI output directory is not a fresh ordinary directory", "fresh MSI output directory proof")
     require_order(
         build,
         (
+            "[IO.File]::Copy($msiBuiltOut, $msiCanonicalizerInput, $false)",
+            "$msiCanonicalizerInputItem = Get-OrdinaryPathItem $msiCanonicalizerInput $true",
+            "$msiCanonicalizerInputHash = (Get-FileHash -LiteralPath $msiCanonicalizerInput -Algorithm SHA256).Hash",
             "'scripts\\canonicalize-msi.py'",
-            "$msiBuiltOut",
+            "$msiCanonicalizerInput",
             "'--output'",
             "$msiOut",
             "'--contract-out'",
             "$msiContract",
             "& $PYTHON_EXE -I -S -c $isolatedOlefileRunner $olefileWheel @msiCanonicalizerArguments",
+            "Remove-Item -LiteralPath $msiCanonicalizerInput -Force",
         ),
-        "isolated MSI absent-output canonicalization",
+        "isolated one-link MSI absent-output canonicalization",
+    )
+    require(
+        build,
+        "WiX output or canonicalizer input changed during canonicalization",
+        "MSI source/input stability proof",
+    )
+    require(
+        build,
+        "$msi = Join-Path $SRC 'target\\canonical-msi\\rustdesk.msi'",
+        "canonical MSI artifact emission",
     )
     require(build, "canonical MSI cabinet contract schema is not exact", "exact cabinet contract schema")
     require(build, "$cabinetContract.files -isnot [Array]", "cabinet contract array type proof")
@@ -908,6 +1375,18 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(build, "[Int64]$row[2] -ne (Get-JsonInt64 $entry.sequence", "File sequence comparison")
     require(build, "$value -is [int] -or $value -is [long]", "COM integer variant type proof")
     require(build, "$value -isnot [string]", "COM string variant type proof")
+    require(
+        build,
+        "$database = $installer.OpenDatabase([string]$msiOut, [int]0)",
+        "direct typed Windows Installer database open",
+    )
+    reject(
+        build,
+        r"\.GetType\(\)\.InvokeMember\(\s*'OpenDatabase'",
+        "reflection-bound Windows Installer database open",
+    )
+    require(build, "return $rows.ToArray()", "PowerShell-safe COM row array materialization")
+    reject(build, r"return\s+@\(\$rows\)", "PowerShell generic-list dynamic enumeration")
     require(build, 'SELECT ``Data`` FROM ``_Streams`` WHERE ``Name`` = \'$Name\'', "Windows Installer _Streams byte query")
     require(build, "'DataSize'", "_Streams declared byte size")
     require(build, "'ReadStream'", "_Streams byte reader")
@@ -915,6 +1394,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(build, "$chunk -isnot [string]", "_Streams chunk variant type proof")
     require(build, "$bytes = $encoding.GetBytes($chunk)", "_Streams string-to-byte conversion")
     require(build, "$sha.TransformBlock($bytes, 0, $bytes.Length, $bytes, 0)", "incremental _Streams byte hashing")
+    require(build, "if ($null -ne $extra)", "_Streams native null EOF acceptance")
     require(build, "$extra.Length -ne 0", "_Streams exact byte extent")
     require(build, "$second = $view.GetType().InvokeMember('Fetch'", "duplicate _Streams row check")
     require(build, "$cabinetDigest -cne $cabinetContract.cabinet_sha256", "_Streams/cabinet digest comparison")
@@ -995,6 +1475,12 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
             45,
         ),
         (
+            [sys.executable, "scripts/windows-offline-manifest.py", "--self-test"],
+            "windows-offline-manifest self-test: ok",
+            "Windows offline-media manifest behavioral self-test",
+            20,
+        ),
+        (
             [sys.executable, "scripts/canonicalize-pe.py", "--self-test"],
             "canonicalize-pe self-test: ok",
             "PE canonicalizer behavioral self-test",
@@ -1013,6 +1499,120 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
 
 def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     mutations = [
+        (
+            "pinned LLVM Windows resource input",
+            "resource",
+            "Command::new(&llvm_rc)",
+            'Command::new("rc.exe")',
+        ),
+        (
+            "ordered Windows resource fields",
+            "resource",
+            'VALUE "FileDescription", "RustDesk Remote Desktop"\nVALUE "FileVersion", "{version}"',
+            'VALUE "FileVersion", "{version}"\nVALUE "FileDescription", "RustDesk Remote Desktop"',
+        ),
+        (
+            "obsolete root winres metadata",
+            "cargo",
+            "[build-dependencies]",
+            '[package.metadata.winres]\n[build-dependencies]',
+        ),
+        (
+            "obsolete portable winres metadata",
+            "portable_cargo",
+            '[target.\'cfg(target_os = "windows")\'.dependencies]',
+            '[package.metadata.winres]\n[target.\'cfg(target_os = "windows")\'.dependencies]',
+        ),
+        (
+            "portable shared Windows resource producer",
+            "portable_build",
+            'windows_resource::compile(env!("CARGO_PKG_VERSION"), resource_root)',
+            "Ok(())",
+        ),
+        (
+            "all-Windows root resource producer",
+            "buildrs",
+            '#[cfg(windows)]\nfn build_manifest(version: &str) -> Result<(), Box<dyn Error>>',
+            '#[cfg(all(windows, feature = "inline"))]\nfn build_manifest(version: &str) -> Result<(), Box<dyn Error>>',
+        ),
+        (
+            "native ordered Windows resource gate",
+            "build",
+            "    Assert-PowerShellSourceParsing\n    Assert-DeterministicWindowsResource",
+            "    Assert-PowerShellSourceParsing\n    Write-Host 'resource gate skipped'",
+        ),
+        (
+            "native portable compiled-resource gate",
+            "build",
+            "    Assert-CompiledWindowsResource $portableResource 'RustDesk portable packer'",
+            "    Write-Host 'portable compiled resource skipped'",
+        ),
+        (
+            "native linked library VERSIONINFO gate",
+            "build",
+            "    Assert-WindowsExecutableVersionInfo $rustLibrary $applicationVersion 'RustDesk library'",
+            "    Write-Host 'linked library VERSIONINFO skipped'",
+        ),
+        (
+            "cross-crate compiled resource equality",
+            "build",
+            "$applicationResourceHash -cne $portableResourceHash",
+            "$applicationResourceHash -cne $applicationResourceHash",
+        ),
+        (
+            "Windows SystemServices feature",
+            "cargo",
+            '    "Win32_System_SystemServices",',
+            '    # "Win32_System_SystemServices" removed',
+        ),
+        (
+            "Windows ReplaceFileW API identity",
+            "windows",
+            "ReplaceFileW as WinReplaceFileW",
+            "ReplaceFileW",
+        ),
+        (
+            "Windows HLOCAL pointer identity",
+            "windows",
+            "WinHLOCAL(self.0 .0 as *mut std::ffi::c_void)",
+            "WinHLOCAL(self.0 .0 as *mut c_void)",
+        ),
+        (
+            "Windows service status slot type",
+            "windows",
+            "OnceLock::<ServiceStatusHandle>::new()",
+            "OnceLock::new()",
+        ),
+        (
+            "Windows service SAS channel type",
+            "windows",
+            "mpsc::channel::<WindowsServiceSasRequest>(1)",
+            "mpsc::channel(1)",
+        ),
+        (
+            "Windows service listener close-before-rebind",
+            "windows",
+            "let previous = incoming\n        .take()",
+            "let previous = incoming\n        .as_mut()",
+        ),
+        (
+            "Windows progress CRLF parser",
+            "host",
+            'if not data.endswith(b"\\r\\n"):',
+            'if not data.endswith(b"\\n"):',
+        ),
+        (
+            "Windows path identity visibility",
+            "windows",
+            "pub(crate) struct WindowsPathIdentity",
+            "struct WindowsPathIdentity",
+        ),
+        (
+            "Windows listener source gate",
+            "verify",
+            "refresh_service_ipc_listener(&mut incoming).await",
+            "refresh_service_ipc_listener(incoming).await",
+        ),
         (
             "Windows state/output filesystem root",
             "host",
@@ -1151,6 +1751,36 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
             "require_online_complete",
         ),
+        (
+            "offline link materialization",
+            "host",
+            "genisoimage -udf -D -r -f -quiet",
+            "genisoimage -udf -D -r -quiet",
+        ),
+        (
+            "offline no-follow file open",
+            "offline",
+            'flags |= os.O_NOFOLLOW',
+            'flags |= os.O_APPEND',
+        ),
+        (
+            "offline single-hop link target",
+            "offline",
+            "if not stat.S_ISREG(target_info.st_mode):",
+            "if False:",
+        ),
+        (
+            "offline case-collision byte identity",
+            "offline",
+            "previous_path == relative or previous_identity != identity",
+            "previous_path == relative",
+        ),
+        (
+            "offline exact path identity",
+            "offline",
+            "if relative in exact_paths:",
+            "if False:",
+        ),
         ("source media", "host", 'chmod -R a-w "$media_root"', ""),
         (
             "source case collision",
@@ -1159,7 +1789,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "previous = None",
         ),
         ("atomic result", "host", 'mv -T --no-clobber -- "$staging" "$OUT_DIR"', 'mv -- "$staging" "$OUT_DIR"'),
-        ("FRB online root", "host", '--online-root "$ONLINE_DIR"', '--cache-root "$ONLINE_DIR"'),
+        (
+            "FRB online root",
+            "host",
+            '--source-root "$SOURCE_SNAPSHOT" --online-root "$ONLINE_DIR" --output-root "$frb_root"',
+            '--source-root "$SOURCE_SNAPSHOT" --cache-root "$ONLINE_DIR" --output-root "$frb_root"',
+        ),
         ("FRB image provenance", "frb", 'require_pinned_builder_image deb-builder "$IMAGE_ID"', 'docker image inspect "$IMAGE_ID"'),
         ("FRB exact manifest", "host", "FRB manifest does not describe exactly the four canonical outputs", "FRB manifest accepted"),
         ("FRB read-only source", "frb", "FRB source snapshot has a writable entry", "FRB source snapshot accepted"),
@@ -1179,6 +1814,18 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ),
         ("guest generated root", "guest", "$rootComponent = $components[0]", "$rootComponent = $Path"),
         ("guest outer shutdown", "guest", "$out = $null", "$out = 'C:\\missing'"),
+        (
+            "guest OFFLINE media proof",
+            "guest",
+            "    Assert-OfflineManifest $offlineMedia ([string]$identity.offline_manifest_sha256)",
+            "    Write-Output $offlineMedia",
+        ),
+        (
+            "guest exact OFFLINE file count",
+            "guest",
+            "$actualFiles.Count -ne $declaredFiles.Count",
+            "$actualFiles.Count -lt 0",
+        ),
         ("guest JSON integer", "guest", "Get-JsonInt64 $entry.size", "[Int64]$entry.size"),
         (
             "legacy source",
@@ -1205,10 +1852,22 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "if ($false)",
         ),
         (
+            "stable Windows build root",
+            "guest",
+            "$source = Join-Path $buildParent 'source'",
+            "$source = Join-Path $buildParent ([string]$identity.build_run_id)",
+        ),
+        (
             "source identity",
             "build",
             "    Assert-BuildIdentity\n    Assert-PowerShellSourceParsing",
             "    Assert-EnvironmentOnly\n    Assert-PowerShellSourceParsing",
+        ),
+        (
+            "Windows credential recovery source gate",
+            "build",
+            "windows_credential_operation_bound_failures_remain_terminal_during_recovery",
+            "windows_credential_restart_non_applied_results_wait_for_reapplication",
         ),
         ("libvpx rebuild", "build", "stale compiled libvpx bytes remain after mandatory removal", ""),
         (
@@ -1245,8 +1904,14 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "olefile version",
             "build",
-            'if olefile.__version__ != "0.47":',
+            "if olefile.__version__ != '0.47':",
             'if not olefile.__version__:',
+        ),
+        (
+            "PowerShell-safe Python command literal",
+            "build",
+            "raise SystemExit('olefile did not load through the verified wheel')",
+            'raise SystemExit("olefile did not load through the verified wheel")',
         ),
         (
             "olefile guest digest",
@@ -1286,6 +1951,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ),
         ("PE repro type", "pe", "IMAGE_DEBUG_TYPE_REPRO = 16", "IMAGE_DEBUG_TYPE_REPRO = 2"),
         (
+            "PE Windows source stability fields",
+            "pe",
+            '() if os.name == "nt" else ("st_mode", "st_ctime_ns")',
+            '("st_mode", "st_ctime_ns")',
+        ),
+        (
             "PE authorization union",
             "pe",
             "authorized = pe_fields + debug_ranges",
@@ -1308,6 +1979,18 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "pe",
             "if os.path.lexists(output_path):",
             "if False:",
+        ),
+        (
+            "PE Windows descriptor release",
+            "pe",
+            "        os.close(descriptor)\n        descriptor = -1\n        if not _same_file_identity(temporary_state, os.lstat(temporary)):",
+            "        os.fsync(descriptor)\n        if not _same_file_identity(temporary_state, os.lstat(temporary)):",
+        ),
+        (
+            "PE reopened output postcondition",
+            "pe",
+            "final_state = _verify_published_file(output_path, output_identity, content)",
+            "final_state = os.lstat(output_path)",
         ),
         ("PE rollback", "pe", "_make_deletable(output_path)", "os.unlink(output_path)"),
         (
@@ -1354,6 +2037,48 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "'--contract-out',\n        $msiOut",
         ),
         (
+            "MSI distinct canonicalizer input copy",
+            "build",
+            "[IO.File]::Copy($msiBuiltOut, $msiCanonicalizerInput, $false)",
+            "[IO.File]::Copy($msiBuiltOut, $msiBuiltOut, $true)",
+        ),
+        (
+            "MSI canonicalizer input argument",
+            "build",
+            "'scripts\\canonicalize-msi.py',\n        $msiCanonicalizerInput,",
+            "'scripts\\canonicalize-msi.py',\n        $msiBuiltOut,",
+        ),
+        (
+            "host MSI absent-output invocation",
+            "host",
+            "--output /out/rustdesk.msi \\\n            --contract-out /out/.canonicalize-rustdesk-msi-contract.json",
+            "--output /out/.canonicalize-input-rustdesk.msi \\\n            --contract-out /out/.canonicalize-rustdesk-msi-contract.json",
+        ),
+        (
+            "host MSI invoking-UID ownership",
+            "host",
+            'docker run --rm --network=none \\\n        --user "$(id -u):$(id -g)" \\\n        --mount "type=bind,source=$extracted,target=/out"',
+            'docker run --rm --network=none \\\n        --mount "type=bind,source=$extracted,target=/out"',
+        ),
+        (
+            "host MSI noninteractive cleanup",
+            "host",
+            'rm -f -- "$msi_input" "$msi_contract"',
+            'rm -- "$msi_input" "$msi_contract"',
+        ),
+        (
+            "host MSI canonical idempotence",
+            "host",
+            '[ "$msi_output_sha256" = "$msi_input_sha256" ]',
+            '[ "$msi_output_sha256" = "$msi_output_sha256" ]',
+        ),
+        (
+            "canonical MSI artifact emission",
+            "build",
+            "$msi = Join-Path $SRC 'target\\canonical-msi\\rustdesk.msi'",
+            "$msi = Join-Path $SRC 'res\\msi\\Package\\bin\\x64\\Release\\en-us\\Package.msi'",
+        ),
+        (
             "MSI contract read-only finalization",
             "msi",
             "os.chmod(contract_output, 0o400)",
@@ -1368,6 +2093,24 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ),
         ("MSI Media comparison", "build", "$mediaRows.Count -ne 1", "$mediaRows.Count -lt 1"),
         ("MSI zero-row comparison", "build", "$zeroRows.Count -ne 0", "$zeroRows.Count -lt 0"),
+        (
+            "MSI COM row array materialization",
+            "build",
+            "return $rows.ToArray()",
+            "return @($rows)",
+        ),
+        (
+            "MSI direct typed database open",
+            "build",
+            "$database = $installer.OpenDatabase([string]$msiOut, [int]0)",
+            "$database = $installer.OpenDatabase($msiOut, 0)",
+        ),
+        (
+            "MSI native null stream EOF",
+            "build",
+            "if ($null -ne $extra)",
+            "if ($extra -isnot [string])",
+        ),
         (
             "MSI File size comparison",
             "build",
@@ -1398,6 +2141,24 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
             "flags = os.O_RDONLY | os.O_CLOEXEC",
         ),
+        (
+            "MSI Windows writable sync handle",
+            "msi",
+            'flags = os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
+            'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)',
+        ),
+        (
+            "MSI exact output sync identity",
+            "msi",
+            "output_sync = _open_sync_regular(output, output_identity)",
+            "output_sync = _open_sync_regular(output, contract_identity)",
+        ),
+        (
+            "MSI Windows stability fields",
+            "msi",
+            '() if os.name == "nt" else ("st_mode", "st_ctime_ns")',
+            '("st_mode", "st_ctime_ns")',
+        ),
         ("watch patch reorder", "watch", "patch-block-reorder", "patch-order-ignored"),
         (
             "port patch order",
@@ -1420,7 +2181,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     run_behavioral_self_tests(repo)
     print(
         "verify-windows-harness self-test: ok "
-        f"({len(mutations)} mutations, 3 bounded behavioral suites)"
+        f"({len(mutations)} mutations, 4 bounded behavioral suites)"
     )
 
 

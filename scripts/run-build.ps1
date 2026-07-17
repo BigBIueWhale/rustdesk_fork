@@ -179,6 +179,157 @@ function Assert-SourceManifest([string]$Root, [string]$ExpectedHash) {
     }
 }
 
+function Assert-OfflineManifest([string]$Root, [string]$ExpectedHash) {
+    $rootItem = Get-Item -LiteralPath $Root -Force
+    if (-not $rootItem.PSIsContainer -or
+        ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Fail "OFFLINE root is not a regular directory: $Root"
+    }
+    $manifestPath = Join-Path $Root '.offline-input-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        Fail "OFFLINE manifest is missing at $manifestPath"
+    }
+    $manifestItem = Get-Item -LiteralPath $manifestPath -Force
+    if (($manifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Fail 'OFFLINE manifest is a reparse point'
+    }
+    $actualHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -cne $ExpectedHash) {
+        Fail "OFFLINE manifest hash mismatch: $actualHash != $ExpectedHash"
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $topLevel = @($manifest.PSObject.Properties.Name | Sort-Object)
+    if (($topLevel -join ',') -cne 'directories,files,format' -or
+        $manifest.format -isnot [string] -or
+        $manifest.format -cne 'rustdesk-windows-offline-manifest-v2' -or
+        $manifest.directories -isnot [Array] -or
+        $manifest.files -isnot [Array]) {
+        Fail 'OFFLINE manifest schema is not exact'
+    }
+
+    $declaredDirectories = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $declaredDirectoriesInsensitive = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($relative in @($manifest.directories)) {
+        if ($relative -isnot [string]) {
+            Fail 'OFFLINE manifest directory is not a JSON string'
+        }
+        Assert-SafeRelativePath $relative
+        if (-not $declaredDirectories.Add($relative) -or
+            -not $declaredDirectoriesInsensitive.Add($relative)) {
+            Fail "OFFLINE manifest has a duplicate or Windows case-colliding directory: $relative"
+        }
+        $components = @($relative.Split('/'))
+        if ($components.Count -gt 1) {
+            $parent = $components[0..($components.Count - 2)] -join '/'
+            if (-not $declaredDirectories.Contains($parent)) {
+                Fail "OFFLINE manifest directory has an undeclared parent: $relative"
+            }
+        }
+        $path = Join-Path $Root $relative.Replace('/', '\')
+        if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+            Fail "OFFLINE manifest directory is missing: $relative"
+        }
+        $item = Get-Item -LiteralPath $path -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "OFFLINE manifest directory is a reparse point: $relative"
+        }
+    }
+
+    $declaredFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $caseFileIdentity = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in @($manifest.files)) {
+        $properties = @($entry.PSObject.Properties.Name | Sort-Object)
+        if (($properties -join ',') -cne 'path,sha256,size') {
+            Fail 'OFFLINE manifest file entry schema is not exact'
+        }
+        if ($entry.path -isnot [string] -or $entry.sha256 -isnot [string]) {
+            Fail 'OFFLINE manifest path or digest is not a JSON string'
+        }
+        $relative = $entry.path
+        Assert-SafeRelativePath $relative
+        if ([StringComparer]::OrdinalIgnoreCase.Equals($relative, '.offline-input-manifest.json')) {
+            Fail 'OFFLINE manifest declares its generated manifest path as an input'
+        }
+        Assert-Hex $entry.sha256 @(64) "OFFLINE hash for $relative"
+        $declaredSize = Get-JsonInt64 $entry.size "OFFLINE size for $relative"
+        if ($declaredSize -lt 0) {
+            Fail "OFFLINE manifest has a negative size: $relative"
+        }
+        if (-not $declaredFiles.Add($relative) -or $declaredDirectoriesInsensitive.Contains($relative)) {
+            Fail "OFFLINE manifest has a duplicate or file/directory-colliding path: $relative"
+        }
+        $fingerprint = "$($entry.sha256):$declaredSize"
+        if ($caseFileIdentity.ContainsKey($relative)) {
+            if ($caseFileIdentity[$relative] -cne $fingerprint) {
+                Fail "OFFLINE manifest has a Windows case collision with different bytes: $relative"
+            }
+        } else {
+            $caseFileIdentity.Add($relative, $fingerprint)
+        }
+        $components = @($relative.Split('/'))
+        if ($components.Count -gt 1) {
+            $parent = $components[0..($components.Count - 2)] -join '/'
+            if (-not $declaredDirectories.Contains($parent)) {
+                Fail "OFFLINE manifest file has an undeclared parent: $relative"
+            }
+        }
+        $path = Join-Path $Root $relative.Replace('/', '\')
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Fail "OFFLINE manifest file is missing: $relative"
+        }
+        $item = Get-Item -LiteralPath $path -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "OFFLINE manifest file is a reparse point: $relative"
+        }
+        if ($item.Length -ne $declaredSize) {
+            Fail "OFFLINE manifest size mismatch: $relative"
+        }
+        $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($hash -cne $entry.sha256) {
+            Fail "OFFLINE manifest hash mismatch: $relative"
+        }
+    }
+    if ($declaredDirectories.Count -eq 0 -or $declaredFiles.Count -eq 0) {
+        Fail 'OFFLINE manifest contains no directories or files'
+    }
+
+    $actualDirectories = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($directory in Get-ChildItem -LiteralPath $Root -Recurse -Directory -Force) {
+        if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "OFFLINE media contains a directory reparse point: $($directory.FullName)"
+        }
+        $relative = $directory.FullName.Substring($Root.TrimEnd('\').Length + 1).Replace('\', '/')
+        if (-not $actualDirectories.Add($relative)) {
+            Fail "OFFLINE media enumerated a duplicate directory: $relative"
+        }
+    }
+    $actualFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    foreach ($file in Get-ChildItem -LiteralPath $Root -Recurse -File -Force) {
+        if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Fail "OFFLINE media contains a file reparse point: $($file.FullName)"
+        }
+        $relative = $file.FullName.Substring($Root.TrimEnd('\').Length + 1).Replace('\', '/')
+        if (-not [StringComparer]::Ordinal.Equals($relative, '.offline-input-manifest.json') -and
+            -not $actualFiles.Add($relative)) {
+            Fail "OFFLINE media enumerated a duplicate file: $relative"
+        }
+    }
+    if ($actualDirectories.Count -ne $declaredDirectories.Count -or
+        $actualFiles.Count -ne $declaredFiles.Count) {
+        Fail 'OFFLINE media path counts do not match its manifest'
+    }
+    foreach ($relative in $actualDirectories) {
+        if (-not $declaredDirectories.Contains($relative)) {
+            Fail "OFFLINE media has an undeclared directory: $relative"
+        }
+    }
+    foreach ($relative in $actualFiles) {
+        if (-not $declaredFiles.Contains($relative)) {
+            Fail "OFFLINE media has an undeclared file: $relative"
+        }
+    }
+}
+
 $out = $null
 $transcriptStarted = $false
 
@@ -260,11 +411,8 @@ try {
     if ($runIdRaw -cne "$($identity.build_run_id)$([char]10)") {
         Fail 'build-run-id stamp does not exactly match source identity'
     }
-    $offlineManifest = Join-Path $offlineMedia '.offline-input-manifest.json'
-    $offlineHash = (Get-FileHash -LiteralPath $offlineManifest -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($offlineHash -cne [string]$identity.offline_manifest_sha256) {
-        Fail 'OFFLINE media manifest hash does not match source identity'
-    }
+    Assert-OfflineManifest $offlineMedia ([string]$identity.offline_manifest_sha256)
+    Mark "offline-verified manifest=$($identity.offline_manifest_sha256)"
     Assert-SourceManifest $sourceMedia ([string]$identity.source_manifest_sha256)
 
     $legacySource = 'C:\src'
@@ -294,9 +442,12 @@ try {
         ($parentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         Fail 'C:\rustdesk-build is not a regular directory'
     }
-    $source = Join-Path $buildParent ([string]$identity.build_run_id)
+    # Both reproducibility passes run on fresh golden-image overlays. Keep the authenticated
+    # per-pass build_run_id in the source identity, but compile from one absent-checked path so
+    # MSVC/Rust/PDB source paths cannot make otherwise identical artifacts pass-specific.
+    $source = Join-Path $buildParent 'source'
     if (Test-Path -LiteralPath $source) {
-        Fail "unique source directory already exists: $source"
+        Fail "stable source directory already exists: $source"
     }
     New-Item -ItemType Directory -Path $source | Out-Null
     Get-ChildItem -LiteralPath $sourceMedia -Force |

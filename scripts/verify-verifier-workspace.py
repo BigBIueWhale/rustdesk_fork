@@ -2691,8 +2691,9 @@ def validate_r_b2_version_metadata(sources):
         "Git ignore matcher operational failure",
     )
     for text, label in (
-        ("find . -path ./target -prune -o -path ./online -prune -o -name build.rs -type f -print0", "complete Cargo build-script scan"),
-        ('[ "$cargo_build_script" = ./build.rs ] && [ "$refs" -eq 1 ]', "sole root version-output reference"),
+        ("git ls-files -z --cached -- ':(glob)build.rs' ':(glob)**/build.rs'", "indexed Cargo build-script scan"),
+        ("grep -oF '\"version.rs\"' \"$cargo_build_script\"", "exact Cargo version-output filename scan"),
+        ('[ "$cargo_build_script" = build.rs ] && [ "$refs" -eq 1 ]', "sole root version-output reference"),
         ('[ "$version_ref_count" -eq 1 ]', "unique Cargo version-output reference"),
     ):
         require_text(sources["verify"], text, label)
@@ -9494,9 +9495,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "find . -path ./target -prune -o -path ./online -prune -o -name build.rs -type f -print0",
-            "find ./build.rs -type f -print0",
-            "complete Cargo build-script scan",
+            "done < <(git ls-files -z --cached -- ':(glob)build.rs' ':(glob)**/build.rs')",
+            "done < <(git ls-files -z --cached -- ':(glob)build.rs')",
+            "indexed Cargo build-script scan",
         ),
         (
             "verify",

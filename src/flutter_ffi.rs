@@ -2309,7 +2309,7 @@ pub mod server_side {
     use jni::{
         errors::{Error as JniError, Result as JniResult},
         objects::{JClass, JObject, JString},
-        sys::{jboolean, jstring},
+        sys::{jboolean, jint, jstring},
         JNIEnv,
     };
 
@@ -2354,6 +2354,25 @@ pub mod server_side {
         // foreground-service lifecycle, not an option (the listener reads no `stop-service`, R-D4).
         log::debug!("stopServer from jvm");
         crate::direct_service::android_request_stop();
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_closeClientSessions(
+        _env: JNIEnv,
+        _class: JClass,
+    ) -> jint {
+        // The foreground MainService can keep this process and librustdesk's static state alive
+        // after Android removes the Flutter Activity/task. Outgoing sessions belong to that UI
+        // owner, not to the controlled-side service, so close only the client session table here.
+        // Taking the table before signalling the I/O loops makes repeated Activity/service callbacks
+        // idempotent and lets a replacement Flutter engine start cleanly at once.
+        let (peer_count, ui_count) = crate::flutter::close_all_sessions();
+        if peer_count != 0 {
+            log::info!(
+                "Closed {peer_count} Android client peer session(s) ({ui_count} UI handler(s)) at UI/task teardown"
+            );
+        }
+        i32::try_from(peer_count).unwrap_or(i32::MAX)
     }
 
     #[no_mangle]

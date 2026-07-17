@@ -23,6 +23,7 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
     private var audioRecorder: AudioRecord? = null
     private var audioReader: AudioReader? = null
     private var minBufferSize = 0
+    @Volatile
     private var audioRecordStat = false
     private var audioThread: Thread? = null
 
@@ -95,29 +96,92 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
     @RequiresApi(Build.VERSION_CODES.M)
     fun startAudioRecorder() {
         checkAudioReader()
-        if (audioReader != null && audioRecorder != null && minBufferSize != 0) {
+        val reader = audioReader
+        val recorder = audioRecorder
+        if (reader != null && recorder != null && minBufferSize != 0) {
             try {
                 FFI.setFrameRawEnable("audio", true)
-                audioRecorder!!.startRecording()
+                recorder.startRecording()
                 audioRecordStat = true
                 audioThread = thread {
-                    while (audioRecordStat) {
-                        audioReader!!.readSync(audioRecorder!!)?.let {
-                            FFI.onAudioFrameUpdate(it)
+                    try {
+                        while (audioRecordStat) {
+                            reader.readSync(recorder)?.let {
+                                FFI.onAudioFrameUpdate(it)
+                            }
                         }
+                    } catch (e: Exception) {
+                        if (audioRecordStat) {
+                            Log.e(logTag, "audio recorder thread failed", e)
+                        }
+                    } finally {
+                        try {
+                            recorder.release()
+                        } catch (e: Exception) {
+                            Log.w(logTag, "release audio recorder failed", e)
+                        }
+                        if (audioRecorder === recorder) {
+                            audioRecordStat = false
+                            audioRecorder = null
+                            audioReader = null
+                            minBufferSize = 0
+                            FFI.setFrameRawEnable("audio", false)
+                        }
+                        Log.d(logTag, "Exit audio thread")
                     }
-                    // let's release here rather than onDestroy to avoid threading issue
-                    audioRecorder?.release()
-                    audioRecorder = null
-                    minBufferSize = 0
-                    FFI.setFrameRawEnable("audio", false)
-                    Log.d(logTag, "Exit audio thread")
                 }
             } catch (e: Exception) {
-                Log.d(logTag, "startAudioRecorder fail:$e")
+                Log.e(logTag, "startAudioRecorder fail", e)
+                stopAudioRecorder()
             }
         } else {
             Log.d(logTag, "startAudioRecorder fail")
+        }
+    }
+
+    private fun stopAudioRecorder() {
+        audioRecordStat = false
+        val recorder = audioRecorder
+        if (recorder != null) {
+            try {
+                if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    // Unblock AudioReader.readSync(..., READ_BLOCKING) before waiting for its thread.
+                    recorder.stop()
+                }
+            } catch (e: IllegalStateException) {
+                Log.w(logTag, "stop audio recorder failed", e)
+            }
+        }
+
+        val worker = audioThread
+        if (worker != null && worker !== Thread.currentThread()) {
+            var interrupted = false
+            while (worker.isAlive) {
+                try {
+                    worker.join()
+                } catch (e: InterruptedException) {
+                    interrupted = true
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt()
+            }
+        }
+        if (audioThread === worker) {
+            audioThread = null
+        }
+
+        // startRecording() can fail before the worker exists, so that path must release here.
+        if (worker == null && recorder != null && audioRecorder === recorder) {
+            try {
+                recorder.release()
+            } catch (e: Exception) {
+                Log.w(logTag, "release audio recorder failed", e)
+            }
+            audioRecorder = null
+            audioReader = null
+            minBufferSize = 0
+            FFI.setFrameRawEnable("audio", false)
         }
     }
 
@@ -151,9 +215,7 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
                 return true
             }
         }
-        audioRecordStat = false
-        audioThread?.join()
-        audioThread = null
+        stopAudioRecorder()
 
         if (!createAudioRecorder(true, mediaProjection)) {
             Log.e(logTag, "createAudioRecorder fail")
@@ -170,8 +232,7 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
                 return true
             }
         }
-        audioRecordStat = false
-        audioThread?.join()
+        stopAudioRecorder()
 
         if (!createAudioRecorder(false, mediaProjection)) {
             Log.e(logTag, "createAudioRecorder fail")
@@ -185,15 +246,12 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
         if (isAudioStart() || isVideoStart()) {
             return
         }
-        audioRecordStat = false
-        audioThread?.join()
-        audioThread = null
+        stopAudioRecorder()
     }
 
     fun destroy() {
         Log.d(logTag, "destroy audio record handle")
 
-        audioRecordStat = false
-        audioThread?.join()
+        stopAudioRecorder()
     }
 }

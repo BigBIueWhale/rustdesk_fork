@@ -573,6 +573,7 @@ pub async fn finish_graceful_shutdown() {
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     crate::ipc::wait_for_local_ipc_shutdown().await;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     crate::server::input_service::fix_key_down_timeout_at_exit();
     log::info!("R-T9: graceful shutdown complete — exiting 0");
     std::process::exit(0);

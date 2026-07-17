@@ -321,6 +321,9 @@ class MainService : Service() {
 
     override fun onDestroy() {
         releaseCaptureResources()
+        serviceLooper?.quitSafely()
+        serviceHandler = null
+        serviceLooper = null
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
@@ -332,6 +335,17 @@ class MainService : Service() {
         // (START_NOT_STICKY means no zombie auto-restart rebinds it).
         FFI.stopServer()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Removing the Android task does not stop this foreground service, and therefore does not
+        // kill the process that owns librustdesk's static outgoing-session table. Release only those
+        // UI-owned client sessions; keep the controlled-side listener and its foreground service up.
+        val closedSessions = FFI.closeClientSessions()
+        if (closedSessions > 0) {
+            Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) on task removal")
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     private var isHalfScale: Boolean? = null;

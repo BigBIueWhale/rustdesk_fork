@@ -483,16 +483,39 @@ impl<T: InvokeUiSession> Remote<T> {
             ConnType::default()
         };
 
-        match Client::start(
-            &self.handler.get_id(),
-            key,
-            token,
-            conn_type,
-            self.handler.clone(),
-        )
-        .await
-        {
-            Ok(((mut peer, direct, stream_type), _)) => {
+        // A UI owner can disappear before Client::start finishes (or even before this task first
+        // runs). Data::Close alone cannot cancel that phase because the command receiver is polled
+        // only after a connection is established. Register the notification before checking the
+        // atomic flag so no teardown notification can be lost between the check and select.
+        let close_notify = self.handler.close_notify.clone();
+        let close_notified = close_notify.notified();
+        let peer_id = self.handler.get_id();
+        tokio::pin!(close_notified);
+        close_notified.as_mut().enable();
+        let start_result = if self.handler.close_requested.load(Ordering::Acquire) {
+            None
+        } else {
+            tokio::select! {
+                biased;
+                _ = &mut close_notified => None,
+                result = Client::start(
+                    &peer_id,
+                    key,
+                    token,
+                    conn_type,
+                    self.handler.clone(),
+                ) => Some(result),
+            }
+        };
+
+        match start_result {
+            None => {
+                log::debug!(
+                    "Canceled connection start for id={} after its UI owner closed",
+                    peer_id
+                );
+            }
+            Some(Ok(((mut peer, direct, stream_type), _))) => {
                 self.handler
                     .connection_round_state
                     .lock()
@@ -635,7 +658,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     s.send(()).ok();
                 }
             }
-            Err(err) => {
+            Some(Err(err)) => {
                 self.handler.on_establish_connection_error(err.to_string());
             }
         }

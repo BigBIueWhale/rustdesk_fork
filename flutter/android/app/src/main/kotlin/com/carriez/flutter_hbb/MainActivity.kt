@@ -37,6 +37,8 @@ class MainActivity : FlutterActivity() {
     private val channelTag = "mChannel"
     private val logTag = "mMainActivity"
     private var mainService: MainService? = null
+    private var isServiceBound = false
+    private var activityFlutterMethodChannel: MethodChannel? = null
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
@@ -44,15 +46,15 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         if (MainService.isReady) {
-            Intent(activity, MainService::class.java).also {
-                bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
-            }
+            bindMainService()
         }
-        flutterMethodChannel = MethodChannel(
+        val channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelTag
         )
-        initFlutterChannel(flutterMethodChannel!!)
+        activityFlutterMethodChannel = channel
+        flutterMethodChannel = channel
+        initFlutterChannel(channel)
     }
 
     override fun onResume() {
@@ -90,10 +92,56 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
-        mainService?.let {
-            unbindService(serviceConnection)
+        isAudioStart = false
+        audioRecordHandle.destroy()
+
+        // Outgoing client sessions are owned by this Flutter UI, while MainService owns only the
+        // controlled-side listener/capture service. MainService can deliberately keep the process
+        // alive after this Activity is destroyed, so synchronously release the native client table
+        // before Flutter tears down its engine and can no longer deliver an async sessionClose call.
+        val closedSessions = FFI.closeClientSessions()
+        if (closedSessions > 0) {
+            Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) on Activity destroy")
+        }
+
+        activityFlutterMethodChannel?.setMethodCallHandler(null)
+        if (flutterMethodChannel === activityFlutterMethodChannel) {
+            flutterMethodChannel = null
+        }
+        activityFlutterMethodChannel = null
+
+        if (isServiceBound) {
+            try {
+                unbindService(serviceConnection)
+            } catch (e: IllegalArgumentException) {
+                Log.w(logTag, "MainService binding was already gone during Activity destroy", e)
+            } finally {
+                isServiceBound = false
+                mainService = null
+            }
         }
         super.onDestroy()
+    }
+
+    private fun bindMainService(): Boolean {
+        if (isServiceBound) {
+            return true
+        }
+        return try {
+            bindService(
+                Intent(this, MainService::class.java),
+                serviceConnection,
+                Context.BIND_AUTO_CREATE
+            ).also { bound ->
+                isServiceBound = bound
+                if (!bound) {
+                    Log.w(logTag, "Failed to bind MainService")
+                }
+            }
+        } catch (e: SecurityException) {
+            Log.e(logTag, "MainService binding was rejected", e)
+            false
+        }
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -101,6 +149,7 @@ class MainActivity : FlutterActivity() {
             Log.d(logTag, "onServiceConnected")
             val binder = service as MainService.LocalBinder
             mainService = binder.getService()
+            isServiceBound = true
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -114,9 +163,7 @@ class MainActivity : FlutterActivity() {
             // make sure result will be invoked, otherwise flutter will await forever
             when (call.method) {
                 "init_service" -> {
-                    Intent(activity, MainService::class.java).also {
-                        bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
-                    }
+                    bindMainService()
                     if (MainService.isReady) {
                         result.success(false)
                         return@setMethodCallHandler

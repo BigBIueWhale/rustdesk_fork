@@ -1343,6 +1343,21 @@ pub fn session_add(
         ConnType::DEFAULT_CONN
     };
 
+    // Mobile has one isolate-wide session UUID. Android's foreground service deliberately keeps
+    // the Rust process alive when the Flutter Activity/task goes away, so an incomplete Dart
+    // dispose can leave sessions from the previous isolate in this static map. A different UUID
+    // proves those sessions have no live mobile UI owner. Remove them before the new isolate can
+    // attach to a stale per-peer entry and make session_start_() incorrectly skip its I/O loop.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let (peer_count, ui_count) = close_sessions_from_previous_mobile_isolate(session_id);
+        if peer_count != 0 {
+            log::warn!(
+                "Closed {peer_count} stale mobile client peer session(s) ({ui_count} UI handler(s)) before starting a new Flutter isolate session"
+            );
+        }
+    }
+
     // to-do: check the same id session.
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         if session.lc.read().unwrap().conn_type != conn_type {
@@ -2293,11 +2308,165 @@ pub mod sessions {
     }
 
     #[inline]
+    pub(super) fn take_all_sessions() -> Vec<FlutterSession> {
+        std::mem::take(&mut *SESSIONS.write().unwrap())
+            .into_values()
+            .collect()
+    }
+
+    #[inline]
+    pub(super) fn take_sessions_not_owned_by(session_id: &SessionID) -> Vec<FlutterSession> {
+        let mut sessions = SESSIONS.write().unwrap();
+        let stale_keys = sessions
+            .iter()
+            .filter_map(|(key, session)| {
+                (!session
+                    .session_handlers
+                    .read()
+                    .unwrap()
+                    .contains_key(session_id))
+                .then(|| key.clone())
+            })
+            .collect::<Vec<_>>();
+        stale_keys
+            .into_iter()
+            .filter_map(|key| sessions.remove(&key))
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(super) fn contains_peer(peer_id: &str, conn_type: ConnType) -> bool {
+        SESSIONS
+            .read()
+            .unwrap()
+            .contains_key(&(peer_id.to_owned(), conn_type))
+    }
+
+    #[cfg(test)]
+    pub(super) fn insert_test_session(
+        session_id: SessionID,
+        peer_id: &str,
+        conn_type: ConnType,
+    ) -> FlutterSession {
+        let session: FlutterSession = Arc::new(Session::default());
+        session
+            .session_handlers
+            .write()
+            .unwrap()
+            .insert(session_id, SessionHandler::default());
+        SESSIONS
+            .write()
+            .unwrap()
+            .insert((peer_id.to_owned(), conn_type), session.clone());
+        session
+    }
+
+    #[cfg(test)]
+    pub(super) fn clear_for_test() {
+        for session in std::mem::take(&mut *SESSIONS.write().unwrap()).into_values() {
+            session.close();
+        }
+    }
+
+    #[inline]
     #[cfg(not(target_os = "ios"))]
     pub fn has_sessions_running(conn_type: ConnType) -> bool {
         SESSIONS.read().unwrap().iter().any(|((_, r#type), s)| {
             *r#type == conn_type && s.session_handlers.read().unwrap().len() != 0
         })
+    }
+}
+
+fn close_session_set(drained: Vec<FlutterSession>) -> (usize, usize) {
+    let peer_count = drained.len();
+    let mut ui_count = 0;
+
+    for session in drained {
+        let session_ids = session
+            .session_handlers
+            .read()
+            .unwrap()
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        ui_count += session_ids.len();
+
+        for session_id in session_ids {
+            session.close_event_stream(session_id);
+        }
+        session.session_handlers.write().unwrap().clear();
+        session.close();
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    if ui_count != 0 {
+        crate::keyboard::release_remote_keys("map");
+    }
+
+    (peer_count, ui_count)
+}
+
+/// Close every outgoing Flutter client session without touching the controlled-side server.
+///
+/// Android calls this synchronously when the UI Activity/task loses ownership. Removing the native
+/// map first makes cleanup idempotent and ensures a newly created Flutter engine cannot attach to a
+/// stale per-peer entry while the old I/O loop is winding down.
+pub fn close_all_sessions() -> (usize, usize) {
+    close_session_set(sessions::take_all_sessions())
+}
+
+fn close_sessions_from_previous_mobile_isolate(session_id: &SessionID) -> (usize, usize) {
+    close_session_set(sessions::take_sessions_not_owned_by(session_id))
+}
+
+#[cfg(test)]
+mod mobile_session_lifecycle_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn new_mobile_isolate_closes_stale_peer_before_reusing_it() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let stale =
+            sessions::insert_test_session(SessionID::new_v4(), "host-a", ConnType::DEFAULT_CONN);
+        assert_eq!(
+            close_sessions_from_previous_mobile_isolate(&SessionID::new_v4()),
+            (1, 1)
+        );
+        assert!(!sessions::contains_peer("host-a", ConnType::DEFAULT_CONN));
+        assert!(stale.close_requested.load(Ordering::Acquire));
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn mobile_cleanup_preserves_current_owner_and_closes_every_previous_owner() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let current_session = SessionID::new_v4();
+        let current =
+            sessions::insert_test_session(current_session, "host-a", ConnType::DEFAULT_CONN);
+        let stale_files =
+            sessions::insert_test_session(SessionID::new_v4(), "host-b", ConnType::FILE_TRANSFER);
+        let stale_control =
+            sessions::insert_test_session(SessionID::new_v4(), "host-c", ConnType::DEFAULT_CONN);
+
+        assert_eq!(
+            close_sessions_from_previous_mobile_isolate(&current_session),
+            (2, 2)
+        );
+        assert!(sessions::contains_peer("host-a", ConnType::DEFAULT_CONN));
+        assert!(!sessions::contains_peer("host-b", ConnType::FILE_TRANSFER));
+        assert!(!sessions::contains_peer("host-c", ConnType::DEFAULT_CONN));
+        assert!(!current.close_requested.load(Ordering::Acquire));
+        assert!(stale_files.close_requested.load(Ordering::Acquire));
+        assert!(stale_control.close_requested.load(Ordering::Acquire));
+        assert_eq!(close_all_sessions(), (1, 1));
+        sessions::clear_for_test();
     }
 }
 

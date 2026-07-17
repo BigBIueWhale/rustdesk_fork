@@ -33,7 +33,7 @@ use std::{
     ops::{Deref, DerefMut},
     str::FromStr,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
     },
     time::SystemTime,
@@ -77,6 +77,11 @@ pub struct Session<T: InvokeUiSession> {
     pub server_clipboard_enabled: Arc<RwLock<bool>>,
     pub last_change_display: Arc<Mutex<ChangeDisplayRecord>>,
     pub connection_round_state: Arc<Mutex<ConnectionRoundState>>,
+    // Final session teardown must also cancel a connection that has not installed its command
+    // sender yet. This flag + notifier close that gap and let Client::start be interrupted instead
+    // of leaving an orphan connection attempt after its UI owner has gone away.
+    pub close_requested: Arc<AtomicBool>,
+    pub close_notify: Arc<tokio::sync::Notify>,
     // Indicate whether the session is reconnected.
     // Used to auto start file transfer after reconnection.
     pub reconnect_count: Arc<AtomicUsize>,
@@ -1379,6 +1384,8 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn close(&self) {
+        self.close_requested.store(true, Ordering::Release);
+        self.close_notify.notify_waiters();
         self.send(Data::Close);
     }
 

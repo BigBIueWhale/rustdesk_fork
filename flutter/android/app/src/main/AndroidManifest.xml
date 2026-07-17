@@ -103,7 +103,8 @@
             android:name=".MainService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
+            android:foregroundServiceType="mediaProjection"
+            android:stopWithTask="false" />
 
         <receiver
             android:name="androidx.profileinstaller.ProfileInstallReceiver"

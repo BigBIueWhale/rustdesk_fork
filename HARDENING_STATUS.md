@@ -2699,9 +2699,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     conflict, post-exec crash, fresh-process recovery, hostile-evidence survival, and exact-match positive branch.
     The production syscall shape is unchanged and the settled lexical unsafe inventory remains unchanged.
 
-    This is still not installed lifecycle or release evidence. The real RustDesk privilege-drop/exec chain, forced
-    PID reuse, cross-mount/container inode cases, non-root/portable coexistence, pre-pidfd runtime fallback,
-    non-systemd packaging, and concurrent Docker survival remain in the parent matrix.
+    This slice by itself is not installed lifecycle or release evidence. At this point in the sequence, the real
+    RustDesk privilege-drop/exec chain, forced PID reuse, cross-mount/container inode cases, non-root/portable
+    coexistence, pre-pidfd runtime fallback, non-systemd packaging, and concurrent Docker survival remained in the
+    parent matrix. Later slices below supply all of those cases except actual forced numeric-PID reuse and the still
+    open packaging/release variants; R-S11c-27n specifically supplies the cross-mount/container case.
 
   - **R-S11c-27e — executable-object replacement/deletion recovery behavior — SOURCE/FOCUSED BEHAVIOR
     IMPLEMENTED 2026-07-16; PARENT ITEM REMAINS OPEN.** The pinned Linux test replaces the synthetic changed-inode
@@ -2723,9 +2725,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     real replacement, real unlink, cross-object negative record, record preservation, sentinel survival at every
     recovery decision, and both exact positive branches. No production API/syscall or unsafe inventory changed.
 
-    This is same-mount private-runtime behavior, not an installed package-update transaction, cross-mount or mount-
-    namespace proof, an identical in-container pathname case, or forced PID reuse. Those broader cases and the rest
-    of the installed lifecycle/release matrix remain **OPEN**.
+    This slice is same-mount private-runtime behavior, not an installed package-update transaction, cross-mount or
+    mount-namespace proof, an identical in-container pathname case, or forced PID reuse. R-S11c-27n below supplies
+    the cross-mount/mount-namespace and identical-path cases; actual forced numeric-PID reuse and the remaining
+    packaging/release matrix remain **OPEN**.
 
   - **R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior — SOURCE/RUNTIME IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** Baseline execution of the real debug `rustdesk --service` binary in a
@@ -2772,11 +2775,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     blocked, or ignored.
 
     This closes actual-binary manually supervised normal-stop/restart, real stopped-child escalation, and non-root
-    portable coexistence behavior. It is not an installed package transaction, installed systemd/SysV/OpenRC/runit
-    integration, Debian-without-systemd proof, pre-pidfd runtime proof, forced PID reuse, broader malformed/stale-
-    record cases, the non-root active-desktop credential-drop branch, cross-mount/namespace/container inode
-    replacement, or concurrent separate-Docker survival. Those release gates keep the parent item and upcoming
-    release **OPEN**.
+    portable coexistence behavior. This slice is not an installed package transaction, installed
+    systemd/SysV/OpenRC/runit integration, Debian-without-systemd proof, pre-pidfd runtime proof, forced PID reuse,
+    broader malformed/stale-record proof, the non-root active-desktop credential-drop branch,
+    cross-mount/namespace/container inode replacement, or concurrent separate-Docker survival. Later slices below
+    supply all of those cases except actual forced numeric-PID reuse and the still-open OpenRC/runit/manual and
+    release variants; R-S11c-27n specifically supplies the cross-container case.
 
   - **R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior — SOURCE/RUNTIME IMPLEMENTED
     2026-07-17; PARENT ITEM REMAINS OPEN.** The same mandatory no-network, read-only-source lifecycle stage now
@@ -2808,10 +2812,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     before recovery, followed by a different strict record hash and generation after recovery. This slice changes no
     production Rust code, dependency, syscall, or lexical unsafe inventory.
 
-    This closes the real-binary manually supervised crash/restart case only. It is not installed service-manager or
-    package-update evidence, and it does not cover hostile malformed records, forced PID reuse, the installed
-    privilege-drop chain, pre-pidfd fallback, cross-mount/container namespace identity, Debian non-systemd init
-    integration, or concurrent separate-Docker survival. The parent item and upcoming release remain **OPEN**.
+    This closes the real-binary manually supervised crash/restart case only. This slice is not installed
+    service-manager or package-update evidence, and it does not cover hostile malformed records, forced PID reuse,
+    the installed privilege-drop chain, pre-pidfd fallback, cross-mount/container namespace identity, Debian
+    non-systemd init integration, or concurrent separate-Docker survival. Later slices below supply those cases
+    other than actual forced numeric-PID reuse and the still-open packaging/release variants; R-S11c-27n supplies the
+    cross-container case. The parent item and upcoming release remain **OPEN**.
 
   - **R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior — SOURCE/RUNTIME IMPLEMENTED
     2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory no-network lifecycle stage now changes its trusted fixed
@@ -2873,10 +2879,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     suite independently makes each of those critical contracts invalid and requires the validator to reject it.
 
     This closes the actual-binary manually supervised non-root active-seat credential-drop/exec case and fixes the
-    launch defect it exposed. It is not installed-package/systemd lifecycle evidence and does not cover installed
-    supervisor crash while owning a non-root child, hostile malformed records, forced PID reuse, pre-pidfd fallback,
-    cross-mount/container namespace identity, Debian non-systemd init integration, or concurrent separate-Docker
-    survival. The parent item and upcoming release remain **OPEN**.
+    launch defect it exposed. This slice is not installed-package/systemd lifecycle evidence and does not cover
+    installed supervisor crash while owning a non-root child, hostile malformed records, forced PID reuse,
+    pre-pidfd fallback, cross-mount/container namespace identity, Debian non-systemd init integration, or concurrent
+    separate-Docker survival. Later slices below supply those cases other than actual forced numeric-PID reuse and
+    the still-open packaging/release variants; R-S11c-27n supplies the cross-container case. The parent item and
+    upcoming release remain **OPEN**.
 
   - **R-S11c-27i — actual-binary hostile service-child record rejection behavior — SOURCE/RUNTIME IMPLEMENTED AND
     BEHAVIOR-TESTED 2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory network-isolated manual lifecycle stage
@@ -2920,12 +2928,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
     This slice deliberately does **not** claim actual forced kernel numeric-PID reuse: changing the recorded
     `/proc/<pid>/stat` start-time field demonstrates fail-closed treatment of ambiguous evidence, not that Linux
-    recycled a PID during the test. Actual forced PID reuse remains open, as do installed package/service-manager
-    stop/restart and supervisor-crash behavior (including an installed non-root child), cross-mount/container
-    namespace identity, SysV/OpenRC/runit/manual packaging integration including Debian non-systemd, exact-commit
-    cold artifact evidence, and external expert R-V3 review. The later R-S11c-27k slice supplies the separately
-    tracked forced pre-pidfd compatibility-branch runtime exercise. The parent item and upcoming release remain
-    **OPEN**.
+    recycled a PID during the test. Actual forced PID reuse remains open. Later R-S11c-27k supplies the separately
+    tracked forced pre-pidfd compatibility branch, R-S11c-27l/m supply installed SysV/systemd behavior, and
+    R-S11c-27n supplies cross-mount/container-namespace identity. OpenRC/runit/manual packaging integration,
+    exact-commit cold artifact evidence, and external expert R-V3 review also remain open. The parent item and
+    upcoming release remain **OPEN**.
 
   - **R-S11c-27j — concurrent separate-Docker service noninterference behavior — SOURCE/RUNTIME IMPLEMENTED AND
     BEHAVIOR-TESTED 2026-07-17; PARENT ITEM REMAINS OPEN.** The default runtime smoke now starts a second Docker
@@ -2959,28 +2966,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     `6b117c61bdbc8b937ced2b4836a0388f8aadb328aa542897dec64fcf6bd38855`.
 
     This slice deliberately proves only concurrent separate-Docker noninterference for the manual lifecycle harness.
-    It is not installed package/service-manager stop/restart evidence, not installed supervisor crash/restart
-    evidence over a non-root child, not actual forced numeric-PID reuse, and not cross-mount/container namespace
-    identity proof. The later R-S11c-27k slice supplies the separately tracked forced pre-pidfd compatibility-branch
-    runtime exercise. The remaining items, SysV/OpenRC/runit/manual packaging integration including Debian
-    non-systemd, exact-commit cold artifact evidence, and external expert R-V3 review remain open. The parent item
-    and upcoming release remain **OPEN**.
+    It is not installed package/service-manager stop/restart evidence, installed supervisor crash/restart evidence
+    over a non-root child, actual forced numeric-PID reuse, or cross-mount/container-namespace identity proof. The
+    later R-S11c-27k slice supplies the forced pre-pidfd compatibility branch, R-S11c-27l/m supply installed
+    SysV/systemd behavior, and R-S11c-27n supplies the cross-container identity case. Actual forced numeric-PID
+    reuse, OpenRC/runit/manual packaging integration, exact-commit cold artifact evidence, and external expert R-V3
+    review remain open. The parent item and upcoming release remain **OPEN**.
 
-    This remains deliberately **partial closure only**. The complete behavior matrix still needs release
-    harness evidence for installed/package-managed graceful restart/stop, installed supervisor
-    crash/restart, malformed/stale records and forced PID reuse, user-owned/non-root servers, and the actual installed
-    privilege-drop/exec chain. R-S11c-27d supplies isolated focused proof for crash and record decisions;
-    R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof; R-S11c-27f supplies
-    actual-binary manually supervised stop/restart, real stopped-child escalation, and portable coexistence; and
-    R-S11c-27g supplies real-binary manual supervisor-crash, durable-evidence preservation, and fresh-generation
-    recovery; R-S11c-27h supplies the real-binary non-root active-seat credential-drop/descriptor-exec path; and
-    R-S11c-27j supplies concurrent separate-Docker survival; and R-S11c-27k supplies the forced current-kernel
-    pre-pidfd compatibility-branch exercise. None substitutes for installed package-update, actual forced PID reuse,
-    cross-mount, or broader container-namespace identity cases.
-    Packaging/service integration and lifecycle proof for the supported SysV init,
-    OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), exact-commit cold
-    artifact evidence, and external expert R-V3 review also remain mandatory before this parent item or the upcoming
-    release can close.
+    This remains deliberately **partial closure only**. R-S11c-27d–k collectively supply focused hostile-record,
+    real manually supervised lifecycle, non-root privilege-drop, concurrent separate-Docker, and forced pre-pidfd
+    branch behavior. R-S11c-27l/m add installed SysV and systemd transactions, and R-S11c-27n adds the
+    cross-mount/container-namespace identical-path case. Actual forced numeric-PID reuse is still distinct from the
+    logical start-time mismatch and forced compatibility-branch tests. Packaging/service integration for OpenRC,
+    runit, and the packaged manually supervised path, exact-commit cold artifact evidence, and external expert R-V3
+    review also remain mandatory before this parent item or the upcoming release can close.
 
   - **R-S11c-27k — pre-pidfd fallback recovery behavior — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
     2026-07-17; PARENT ITEM REMAINS OPEN.** Linux service recovery already selected a pidfd when available and fell
@@ -3034,11 +3033,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     those contracts, and the dirty-tree validator passed. This is a current-kernel forced compatibility-branch test;
     it does **not** claim execution on an actually old kernel and does not remove the documented residual race.
 
-    This slice closes only the pre-pidfd fallback runtime checklist item. Installed/package-managed stop/restart,
-    installed supervisor crash/restart including a non-root child, actual forced numeric-PID reuse,
-    cross-mount/container namespace identity, SysV/OpenRC/runit/manual packaging integration including Debian
-    non-systemd, exact-commit cold artifact evidence, and external expert R-V3 review remain open. The parent item
-    and upcoming release remain **OPEN**.
+    This slice closes only the pre-pidfd fallback runtime checklist item. Later R-S11c-27l/m supply installed
+    SysV/systemd stop/restart and supervisor-crash behavior, and R-S11c-27n supplies cross-mount/container-namespace
+    identity. Actual forced numeric-PID reuse, OpenRC/runit/manual packaging integration, exact-commit cold artifact
+    evidence, and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
 
   - **R-S11c-27l — installed Debian SysV lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
     PARENT ITEM REMAINS OPEN.** The sole Linux `.deb` now carries a package-owned mode-0755
@@ -3090,9 +3088,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     This closes the package-owned SysV adapter and the mandatory Debian-without-systemd lifecycle run. It is not a
     final-release `.deb` artifact test, not installed systemd stop/restart evidence, not installed supervisor
     crash/restart evidence over a non-root service child, and not actual forced numeric-PID reuse into another
-    root-owned instance of the same executable. OpenRC, runit, and manually supervised packaging integration;
-    cross-mount/container namespace identity; exact-commit cold artifact evidence; and external expert R-V3 review
-    remain open. The parent item and upcoming release remain **OPEN**.
+    root-owned instance of the same executable. R-S11c-27n below supplies the cross-mount/container-namespace
+    identity case. OpenRC, runit, and manually supervised packaging integration; exact-commit cold artifact evidence;
+    and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
 
   - **R-S11c-27m — installed Debian systemd lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
     PARENT ITEM REMAINS OPEN.** The release gate now installs the exact production service unit, Debian maintainer
@@ -3167,9 +3165,68 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     840 bytes, mode 0664, SHA-256 `72e5da081d821a9fa367b8d28205174a9e3755731246fc44dd6239b60968a7a2`.
 
     This closes installed systemd stop/restart and installed supervisor crash/restart with the real non-root child.
-    It is not a final-release `.deb` artifact test, actual forced numeric-PID reuse, cross-mount/container namespace
-    identity, or OpenRC/runit/manually supervised packaging integration. Exact-commit cold artifact evidence and
-    external expert R-V3 review also remain open. The parent item and upcoming release remain **OPEN**.
+    This slice is not a final-release `.deb` artifact test, actual forced numeric-PID reuse,
+    cross-mount/container-namespace identity, or OpenRC/runit/manually supervised packaging integration; R-S11c-27n
+    below supplies the cross-container identity case. Exact-commit cold artifact evidence and external expert R-V3
+    review also remain open. The parent item and upcoming release remain **OPEN**.
+
+  - **R-S11c-27n — cross-container executable identity — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
+    2026-07-17; PARENT ITEM REMAINS OPEN.** The mandatory runtime smoke now proves the previously separate
+    cross-mount/container-namespace case with the actual RustDesk image, rather than inferring it from same-mount
+    executable replacement or a neutral sibling role. Two concurrent, networkless Docker containers independently
+    copy the same read-only built source object to the identical `/usr/bin/rustdesk` pathname in their private
+    writable layers. Each copy must byte-match the same SHA-256 source while having a device/inode identity distinct
+    from that source and from the other container's installed copy. The orchestrator also requires different mount-
+    namespace and PID-namespace inode identities. Neither container joins a host or peer PID namespace, receives a
+    Docker socket, publishes a port, or receives host service authority.
+
+    The sibling executes its private `/usr/bin/rustdesk` through the descriptor-bound smoke launcher with neutral
+    `argv[0]=rd-smoke-server` and the exact `--server --service-owned-server` role. It supplies a fresh canonical
+    generation and its real launch parent, enters no-new-privileges with every inheritable/permitted/effective/
+    bounding/ambient capability set empty, and parks without a listener. The process guard binds readiness to its
+    retained PID/start time, dereferenced `/proc/<pid>/exe` device/inode, exact three-element argv, parent, unique
+    generation entry, root UID tuple, and capability state. The neutral argv keeps the fixture invisible to the
+    operational older host service's historical `rustdesk +--server` text selector; it does not weaken the RustDesk
+    service-owned role, which is independently checked in the exact argument vector and environment.
+
+    Concurrently, the main lifecycle namespace installs the same bytes at its own `/usr/bin/rustdesk`. Every actual
+    `--service` generation must publish the device/inode of that installed object, and the harness now compares the
+    live service child's `/proc/<pid>/exe` object both to the strict durable record and to the expected installed
+    object. The complete hostile-record, graceful stop/restart, stopped-child TERM-to-KILL escalation, supervisor
+    crash/recovery, forced pre-pidfd fallback, active-seat non-root descriptor-exec, and portable-server
+    noninterference matrix then runs while the sibling remains alive under repeated PID/start-time checks. Only
+    after all main-namespace authority has drained may the outer harness stop the sibling through its private
+    control file and exact container ID.
+
+    This evidence follows the Linux contracts that mount namespaces present distinct mount hierarchies,
+    `/proc/<pid>/exe` is a dereferenceable reference to the executed object (including after unlink), PID namespaces
+    isolate PID-number visibility and signal targets, and `pidfd_open(2)`/`pidfd_send_signal(2)` bind recovery signals
+    to one opened process. Production code is unchanged: normal lifecycle still owns the direct `Child`; crash
+    recovery still requires boot ID, start time, UID, executable device/inode, exact role, and generation before its
+    pidfd-bound signal. Identical path text, bytes, role text, or a plausible generation never becomes authority.
+
+    `scripts/smoke-server-launcher.c` now accepts only the optional literal service-owned role and keeps the final
+    exec descriptor-bound. `scripts/smoke-process-guard.py` has a separate exact service-owned proof. The release
+    smoke cross-compares source hashes and object/namespace identities before accepting
+    `CROSS_CONTAINER_EXECUTABLE_IDENTITY=pass`. `scripts/verify.sh` binds the production identity predicate, both
+    fixtures, the exact-role launcher/guard, cross-container comparisons, isolation, result markers, and this ledger
+    row. `scripts/verify-verifier-workspace.py` seals those inputs and its mutation suite rejects loss of the exact
+    role, installed path, executable-object, mount-namespace or PID-namespace separation, stage status, and ledger
+    gate.
+
+    The complete runtime smoke passed with common source identity `66306:103678568` and SHA-256
+    `67927cd9ae12c2fa2f5352ea2a366436eaab64751727c7c4ac6d9c8b2f77d0c0`; main and sibling installed objects were
+    respectively `180:92288192` and `177:92288157`, mount namespaces `4026533569` and `4026533119`, and PID
+    namespaces `4026533574` and `4026533529`. Sibling generation
+    `f1f28d9f-2d00-4186-88fe-9d91afc85044` survived the full main lifecycle and was then explicitly drained. The
+    whole-host historical-selector monitor retained its three-entry baseline with zero new match, and every
+    downstream socket/password/PAKE/session/tunnel/file-transfer/forged-frame/limiter/wire-capture stage reached
+    `SMOKE OK`.
+
+    This closes the cross-mount/container-namespace executable-identity and identical-in-container-path checklist
+    items. It is not actual forced kernel numeric-PID reuse, final-release `.deb` artifact proof, OpenRC/runit/manual
+    packaging integration, exact-commit cold artifact evidence, or external expert R-V3 review. The parent item and
+    upcoming release remain **OPEN**.
 
   Required implementation and release closure:
 

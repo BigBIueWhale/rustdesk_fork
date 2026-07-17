@@ -29,6 +29,8 @@
 #     sibling Docker container with its own PID namespace and neutral launched RustDesk server;
 #   - R-S11c-27k : the real --service recovery path exercises the pre-pidfd revalidated kill(2)
 #     fallback under a smoke-only forced pidfd-unavailable runtime;
+#   - R-S11c-27n : separate PID/mount namespaces install the same bytes at /usr/bin/rustdesk as
+#     different executable objects; the exact-role sibling survives every main-namespace action;
 #   - R-D8 / R-D2 (real password provisioning) : the production `--password-stdin` CLI run against a
 #     non-installed user-owned live --server (2b root-owned, 2c non-root same-uid) provisions over
 #     uid-scoped main IPC and CLEANLY set-and-exits (no hang); the new credential keys and the old one
@@ -150,7 +152,7 @@ cleanup_sibling_root() {
 }
 
 start_sibling_docker() {
-  local docker_out i suffix
+  local docker_out i ready_logs suffix
   SIBLING_ROOT=$(mktemp -d /tmp/rustdesk-smoke-sibling.XXXXXXXXXX) || return 1
   SIBLING_ROOT_ID=$(stat -c '%d:%i:%u:%g:%a' "$SIBLING_ROOT") || return 1
   if [ "${SIBLING_ROOT_ID##*:}" != 700 ]; then
@@ -173,6 +175,9 @@ start_sibling_docker() {
   for ((i = 0; i < 400; i += 1)); do
     if [ -f "$SIBLING_ROOT/ready" ] && [ ! -L "$SIBLING_ROOT/ready" ] \
       && grep -Fxq ready "$SIBLING_ROOT/ready"; then
+      ready_logs=$(docker logs "$SIBLING_CID" 2>&1) || return 1
+      grep -Eq '^SIBLING_DOCKER_READY pid=[0-9]+ start=[0-9]+$' <<<"$ready_logs" || return 1
+      grep -Eq '^SIBLING_CONTAINER_IDENTITY_READY pid=[0-9]+ start=[0-9]+ path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ source=[0-9]+:[0-9]+ sha256=[0-9a-f]{64} mnt=[0-9]+ pidns=[0-9]+ generation=[0-9a-f-]{36}$' <<<"$ready_logs" || return 1
       host_guard_checkpoint
       return "$?"
     fi
@@ -236,6 +241,12 @@ stop_sibling_docker() {
     return 1
   }
   grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$logs" || {
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    SIBLING_CID=
+    cleanup_sibling_root || true
+    return 1
+  }
+  grep -Eq '^SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid=[0-9]+ start=[0-9]+ path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ generation=[0-9a-f-]{36}$' <<<"$logs" || {
     docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
@@ -335,7 +346,7 @@ printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
 
-echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, sibling Docker survival, pre-pidfd fallback, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27k) =="
+echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, cross-container identity, pre-pidfd fallback, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27k/R-S11c-27n) =="
 lifecycle_out=
 sibling_out=
 sibling_out_file=$HOST_GUARD_ROOT/sibling-docker.log
@@ -394,6 +405,55 @@ grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$sibling_o
   || { echo "  FAIL R-S11c-27j: unrelated sibling Docker server did not survive the service lifecycle stage"; rc=1; }
 grep -Eq '^SIBLING_DOCKER_NONINTERFERENCE=pass cid=[0-9a-f]{12}$' <<<"$sibling_out" \
   || { echo "  FAIL R-S11c-27j: sibling Docker container was not drained as an unrelated survivor after lifecycle completion"; rc=1; }
+
+main_container_identity=$(grep -E '^SERVICE_LIFECYCLE_CONTAINER_IDENTITY=pass path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ source=[0-9]+:[0-9]+ sha256=[0-9a-f]{64} mnt=[0-9]+ pidns=[0-9]+$' <<<"$lifecycle_out" || true)
+sibling_container_identity=$(grep -E '^SIBLING_CONTAINER_IDENTITY_READY pid=[0-9]+ start=[0-9]+ path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ source=[0-9]+:[0-9]+ sha256=[0-9a-f]{64} mnt=[0-9]+ pidns=[0-9]+ generation=[0-9a-f-]{36}$' <<<"$sibling_out" || true)
+sibling_container_survived=$(grep -E '^SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid=[0-9]+ start=[0-9]+ path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ generation=[0-9a-f-]{36}$' <<<"$sibling_out" || true)
+container_identity_parse_ok=1
+if [[ "$main_container_identity" =~ exe=([0-9]+:[0-9]+)[[:space:]]source=([0-9]+:[0-9]+)[[:space:]]sha256=([0-9a-f]{64})[[:space:]]mnt=([0-9]+)[[:space:]]pidns=([0-9]+)$ ]]; then
+  main_executable=${BASH_REMATCH[1]}
+  main_source=${BASH_REMATCH[2]}
+  main_sha256=${BASH_REMATCH[3]}
+  main_mount_namespace=${BASH_REMATCH[4]}
+  main_pid_namespace=${BASH_REMATCH[5]}
+else
+  container_identity_parse_ok=0
+fi
+if [[ "$sibling_container_identity" =~ exe=([0-9]+:[0-9]+)[[:space:]]source=([0-9]+:[0-9]+)[[:space:]]sha256=([0-9a-f]{64})[[:space:]]mnt=([0-9]+)[[:space:]]pidns=([0-9]+)[[:space:]]generation=([0-9a-f-]{36})$ ]]; then
+  sibling_executable=${BASH_REMATCH[1]}
+  sibling_source=${BASH_REMATCH[2]}
+  sibling_sha256=${BASH_REMATCH[3]}
+  sibling_mount_namespace=${BASH_REMATCH[4]}
+  sibling_pid_namespace=${BASH_REMATCH[5]}
+  sibling_generation=${BASH_REMATCH[6]}
+else
+  container_identity_parse_ok=0
+fi
+if [ "$container_identity_parse_ok" -eq 1 ]; then
+  if [ "$main_source" = "$sibling_source" ] \
+    && [ "$main_sha256" = "$sibling_sha256" ] \
+    && [ "$main_executable" != "$main_source" ] \
+    && [ "$sibling_executable" != "$sibling_source" ] \
+    && [ "$main_executable" != "$sibling_executable" ] \
+    && [ "$main_mount_namespace" != "$sibling_mount_namespace" ] \
+    && [ "$main_pid_namespace" != "$sibling_pid_namespace" ] \
+    && [[ "$sibling_container_survived" == *" exe=$sibling_executable generation=$sibling_generation" ]]; then
+    STAGE_STATUS=0
+  else
+    STAGE_STATUS=1
+  fi
+else
+  STAGE_STATUS=1
+fi
+record_stage_status R-S11c-27n
+if [ "$STAGE_STATUS" -eq 0 ]; then
+  printf 'CROSS_CONTAINER_EXECUTABLE_IDENTITY=pass path=/usr/bin/rustdesk main=%s sibling=%s source=%s mnt=%s/%s pidns=%s/%s\n' \
+    "$main_executable" "$sibling_executable" "$main_source" \
+    "$main_mount_namespace" "$sibling_mount_namespace" "$main_pid_namespace" "$sibling_pid_namespace"
+else
+  echo "  FAIL R-S11c-27n: identical installed path/bytes/role did not remain bound to distinct executable and PID/mount namespace identities"
+  rc=1
+fi
 
 echo "== (0d) Debian bookworm without systemd: installed SysV package start/restart/upgrade/remove and portable noninterference (R-S11c-27l) =="
 run_stage sysv_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle

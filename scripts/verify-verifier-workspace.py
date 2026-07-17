@@ -3075,6 +3075,11 @@ def validate_smoke_contract(
     linux_source,
 ):
     for text, label in (
+        ('cross-container service identity ignores identical path/bytes/role text (R-S11c-27n)', "cross-container source gate"),
+        ("grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.md", "cross-container hardening ledger gate"),
+    ):
+        require_text(verify, text, label)
+    for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
         ('mktemp -d /tmp/rustdesk-smoke-host.XXXXXXXXXX', "private host guard workspace"),
         ('"$HOST_GUARD" record "$HOST_GUARD_ROOT/baseline.json"', "pre-smoke host selector baseline"),
@@ -3093,6 +3098,7 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27j', "sibling Docker stage status preservation"),
         ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
         ('record_stage_status R-S11c-27l', "Debian SysV stage status preservation"),
+        ('record_stage_status R-S11c-27n', "cross-container identity stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
@@ -3106,6 +3112,15 @@ def validate_smoke_contract(
         ('if stop_sibling_docker >"$sibling_out_file" 2>&1; then', "sibling Docker stop runs in parent shell"),
         ('sibling-docker.log', "sibling Docker output cleanup"),
         ('SIBLING_DOCKER_NONINTERFERENCE=pass cid=', "sibling Docker noninterference result"),
+        ('CROSS_CONTAINER_EXECUTABLE_IDENTITY=pass path=/usr/bin/rustdesk', "cross-container executable identity result"),
+        ('if [ "$main_source" = "$sibling_source" ]', "cross-container shared source-object proof"),
+        ('&& [ "$main_sha256" = "$sibling_sha256" ]', "cross-container identical-byte proof"),
+        ('&& [ "$main_executable" != "$main_source" ]', "main installed executable-object separation"),
+        ('&& [ "$sibling_executable" != "$sibling_source" ]', "sibling installed executable-object separation"),
+        ('&& [ "$main_executable" != "$sibling_executable" ]', "cross-container executable-object separation"),
+        ('&& [ "$main_mount_namespace" != "$sibling_mount_namespace" ]', "cross-container mount-namespace separation"),
+        ('&& [ "$main_pid_namespace" != "$sibling_pid_namespace" ]', "cross-container PID-namespace separation"),
+        ('sibling_container_survived" == *" exe=$sibling_executable generation=$sibling_generation"', "cross-container survivor identity binding"),
     ):
         require_text(smoke, text, label)
     for forbidden in (
@@ -3158,6 +3173,11 @@ def validate_smoke_contract(
         ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
         ('SIBLING_DOCKER_READY pid=', "sibling Docker ready marker"),
         ('SIBLING_DOCKER_SURVIVED=pass pid=', "sibling Docker survival marker"),
+        ('install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk', "identical installed-path fixture"),
+        ('"$SERVER_LAUNCHER" "$installed_server" --service-owned-server', "sibling exact service-owned role"),
+        ('"$PROCESS_GUARD" wait-service-server', "exact-role sibling identity proof"),
+        ('SIBLING_CONTAINER_IDENTITY_READY pid=', "cross-container ready identity"),
+        ('SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid=', "cross-container survivor identity"),
         ('chmod 0755 target/debug/rustdesk', "installed-mode lifecycle executable"),
         ('bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh', "mounted lifecycle script dispatch"),
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
@@ -3236,6 +3256,12 @@ def validate_smoke_contract(
         ('RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1', "forced pre-pidfd runtime exercise"),
         ('SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=', "pre-pidfd runtime result"),
         ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
+        ('readonly SOURCE_BINARY=/work/target/debug/rustdesk', "manual lifecycle source binary"),
+        ('readonly BINARY=/usr/bin/rustdesk', "manual lifecycle identical installed path"),
+        ('[ "$INSTALLED_BINARY_IDENTITY" != "$SOURCE_BINARY_IDENTITY" ]', "installed executable object separation"),
+        ('expected_executable = os.stat(sys.argv[8])', "expected installed executable proof"),
+        ('service child did not execute the installed binary object', "live child installed-object check"),
+        ('SERVICE_LIFECYCLE_CONTAINER_IDENTITY=pass path=/usr/bin/rustdesk', "main container identity result"),
     ):
         require_text(service_lifecycle, text, label)
     for text, label in (
@@ -3279,7 +3305,7 @@ def validate_smoke_contract(
         raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
     if stage.count('$READY --terminate-server') < 10:
         raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
-    if stage.count('start_server /work/target/debug/rustdesk') != 13:
+    if stage.count('start_server /work/target/debug/rustdesk') != 12:
         raise VerificationError("runtime smoke does not route every ordinary server through the launcher")
     if stage.count('start_server /usr/share/rustdesk/rustdesk') != 1:
         raise VerificationError("installed-layout smoke does not route through the launcher")
@@ -3329,6 +3355,7 @@ def validate_smoke_contract(
     for text, label in (
         ('SELECTOR = re.compile(br"rustdesk +--server")', "historical selector implementation"),
         ('NEUTRAL_ARGV0 = b"rd-smoke-server"', "neutral argv constant"),
+        ('SERVICE_OWNED_ROLE = b"--service-owned-server"', "service-owned role constant"),
         ('cmdline.rstrip(b"\\0").replace(b"\\0", b" ")', "NUL argv reconstruction"),
         ('before = read_process_identity(pid, proc_root)', "pre-cmdline start identity"),
         ('after = read_process_identity(pid, proc_root)', "post-cmdline start identity"),
@@ -3336,7 +3363,12 @@ def validate_smoke_contract(
         ('violations = new_matches(baseline, current)', "new-match rejection"),
         ('time.sleep(MONITOR_INTERVAL_SECONDS)', "bounded host monitor polling"),
         ('os.stat("/proc/{}/exe".format(pid))', "running executable object proof"),
-        ('argv == [NEUTRAL_ARGV0, SERVER_ROLE]', "exact neutral argv and role proof"),
+        ('return argv == expected_argv', "generic exact argv proof"),
+        ('[NEUTRAL_ARGV0, SERVER_ROLE]', "exact neutral argv and role proof"),
+        ('[NEUTRAL_ARGV0, SERVER_ROLE, SERVICE_OWNED_ROLE]', "exact service-owned sibling argv"),
+        ('status.get("PPid") != str(expected_parent)', "service-owned launch-parent proof"),
+        ('for capability_set in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")', "service-owned capability proof"),
+        ('commands.add_parser("wait-service-server")', "service-owned identity command"),
         ('baseline fixture did not reject a new production-shaped match', "selector baseline regression fixture"),
     ):
         require_text(process_guard, text, label)
@@ -3349,6 +3381,10 @@ def validate_smoke_contract(
     for text, label in (
         ('static const char *const SMOKE_ARGV0 = "rd-smoke-server";', "launcher neutral argv"),
         ('static const char *const SERVER_ROLE = "--server";', "launcher exact role"),
+        ('static const char *const SERVICE_OWNED_ROLE = "--service-owned-server";', "launcher exact service-owned role"),
+        ('argc != 2 && argc != 3', "launcher bounded optional role"),
+        ('strcmp(argv[2], SERVICE_OWNED_ROLE) != 0', "launcher optional role allowlist"),
+        ('server_argv[2] = (char *)SERVICE_OWNED_ROLE;', "launcher service-owned role forwarding"),
         ('O_RDONLY | O_CLOEXEC | O_NOFOLLOW', "launcher no-follow executable pin"),
         ('fstat(executable_fd, &metadata)', "launcher opened-object validation"),
         ('fexecve(executable_fd, server_argv, environ);', "descriptor-bound exact executable launch"),
@@ -9279,6 +9315,60 @@ def run_source_mutations(sources):
             "Debian SysV stage status preservation",
         ),
         (
+            "smoke",
+            'record_stage_status R-S11c-27n',
+            'true # cross-container identity status removed',
+            "cross-container identity stage status preservation",
+        ),
+        (
+            "smoke",
+            '&& [ "$main_executable" != "$sibling_executable" ]',
+            '&& [ "$main_executable" = "$sibling_executable" ]',
+            "cross-container executable-object separation",
+        ),
+        (
+            "smoke",
+            '&& [ "$main_pid_namespace" != "$sibling_pid_namespace" ]',
+            '&& [ "$main_pid_namespace" = "$sibling_pid_namespace" ]',
+            "cross-container PID-namespace separation",
+        ),
+        (
+            "smoke",
+            '&& [ "$main_mount_namespace" != "$sibling_mount_namespace" ]',
+            '&& [ "$main_mount_namespace" = "$sibling_mount_namespace" ]',
+            "cross-container mount-namespace separation",
+        ),
+        (
+            "smoke_stage",
+            '"$SERVER_LAUNCHER" "$installed_server" --service-owned-server',
+            '"$SERVER_LAUNCHER" "$installed_server"',
+            "sibling exact service-owned role",
+        ),
+        (
+            "service_lifecycle",
+            'readonly BINARY=/usr/bin/rustdesk',
+            'readonly BINARY=/work/target/debug/rustdesk',
+            "manual lifecycle identical installed path",
+        ),
+        (
+            "smoke_process_guard",
+            '[NEUTRAL_ARGV0, SERVER_ROLE, SERVICE_OWNED_ROLE]',
+            '[NEUTRAL_ARGV0, SERVER_ROLE]',
+            "exact service-owned sibling argv",
+        ),
+        (
+            "smoke_launcher",
+            'server_argv[2] = (char *)SERVICE_OWNED_ROLE;',
+            'server_argv[2] = NULL;',
+            "launcher service-owned role forwarding",
+        ),
+        (
+            "verify",
+            "grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.md",
+            "true # cross-container hardening ledger gate removed",
+            "cross-container hardening ledger gate",
+        ),
+        (
             "smoke_stage",
             'debian-sysv-installed-lifecycle)',
             'debian-sysv-installed-lifecycle-disabled)',
@@ -9430,9 +9520,9 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_process_guard",
-            'argv == [NEUTRAL_ARGV0, SERVER_ROLE]',
-            'argv[-1:] == [SERVER_ROLE]',
-            "exact neutral argv and role proof",
+            'return argv == expected_argv',
+            'return argv[-1:] == expected_argv[-1:]',
+            "generic exact argv proof",
         ),
         (
             "smoke_process_guard",

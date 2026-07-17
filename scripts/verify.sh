@@ -3572,6 +3572,90 @@ grep -qF 'R-S11c-27m — installed Debian systemd lifecycle' HARDENING_STATUS.md
 if [ -n "$r_s11c27m" ]; then echo "  FAIL R-S11c-27m installed Debian systemd lifecycle:$r_s11c27m"; rc=1; else
   echo "  ok  R-S11c-27m pinned networkless KVM runs exact installed package/unit lifecycle, proves non-root child/cgroup identity across normal stop/restart and supervisor crash recovery, and preserves a separate portable unit"; fi
 
+echo "== (3b-iii-h2o) cross-container service identity ignores identical path/bytes/role text (R-S11c-27n) =="
+r_s11c27n=
+bash -n scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
+  || r_s11c27n="$r_s11c27n smoke-shell-syntax-invalid"
+python3 -c 'import ast; ast.parse(open("scripts/smoke-process-guard.py", encoding="utf-8").read())' \
+  || r_s11c27n="$r_s11c27n process-guard-syntax-invalid"
+cc -fsyntax-only -Wall -Wextra -Werror scripts/smoke-server-launcher.c \
+  || r_s11c27n="$r_s11c27n launcher-syntax-invalid"
+for token in \
+  'let executable = match fs::metadata(proc_dir.join("exe"))' \
+  'executable.dev() != record.executable_device' \
+  'executable.ino() != record.executable_inode' \
+  'require_service_child_identity_match(record, "pidfd recovery before SIGTERM")' \
+  'send_service_child_pidfd_signal(pidfd, hbb_common::libc::SIGTERM)'; do
+  grep -qF -- "$token" src/platform/linux.rs \
+    || r_s11c27n="$r_s11c27n production:${token%% *}"
+done
+for token in \
+  'readonly SOURCE_BINARY=/work/target/debug/rustdesk' \
+  'readonly BINARY=/usr/bin/rustdesk' \
+  'INSTALLED_BINARY_IDENTITY=$(stat -Lc' \
+  '[ "$INSTALLED_BINARY_IDENTITY" != "$SOURCE_BINARY_IDENTITY" ]' \
+  '[ "$(sha256sum -- "$BINARY"' \
+  'expected_executable = os.stat(sys.argv[8])' \
+  'service child did not execute the installed binary object' \
+  'SERVICE_LIFECYCLE_CONTAINER_IDENTITY=pass path=/usr/bin/rustdesk'; do
+  grep -qF -- "$token" scripts/smoke-service-lifecycle.sh \
+    || r_s11c27n="$r_s11c27n main-fixture:${token%% *}"
+done
+for token in \
+  'install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk' \
+  'installed_server=/usr/bin/rustdesk' \
+  'RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$"' \
+  'RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$service_generation"' \
+  'setpriv --no-new-privs --inh-caps=-all --ambient-caps=-all --bounding-set=-all' \
+  '"$SERVER_LAUNCHER" "$installed_server" --service-owned-server' \
+  '"$PROCESS_GUARD" wait-service-server' \
+  'SIBLING_CONTAINER_IDENTITY_READY pid=' \
+  'SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid='; do
+  grep -qF -- "$token" scripts/smoke-server-stage.sh \
+    || r_s11c27n="$r_s11c27n sibling-fixture:${token%% *}"
+done
+for token in \
+  'SERVICE_OWNED_ROLE = b"--service-owned-server"' \
+  '[NEUTRAL_ARGV0, SERVER_ROLE, SERVICE_OWNED_ROLE]' \
+  'status.get("PPid") != str(expected_parent)' \
+  'status.get("Uid", "").split() != ["0"] * 4' \
+  'for capability_set in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")' \
+  'matching_generations != [' \
+  'commands.add_parser("wait-service-server")'; do
+  grep -qF -- "$token" scripts/smoke-process-guard.py \
+    || r_s11c27n="$r_s11c27n process-proof:${token%% *}"
+done
+for token in \
+  'static const char *const SERVICE_OWNED_ROLE = "--service-owned-server";' \
+  'argc != 2 && argc != 3' \
+  'strcmp(argv[2], SERVICE_OWNED_ROLE) != 0' \
+  'server_argv[2] = (char *)SERVICE_OWNED_ROLE;' \
+  'fexecve(executable_fd, server_argv, environ);'; do
+  grep -qF -- "$token" scripts/smoke-server-launcher.c \
+    || r_s11c27n="$r_s11c27n launcher:${token%% *}"
+done
+for token in \
+  'record_stage_status R-S11c-27n' \
+  'main_source" = "$sibling_source' \
+  'main_sha256" = "$sibling_sha256' \
+  'main_executable" != "$sibling_executable' \
+  'main_mount_namespace" != "$sibling_mount_namespace' \
+  'main_pid_namespace" != "$sibling_pid_namespace' \
+  'CROSS_CONTAINER_EXECUTABLE_IDENTITY=pass path=/usr/bin/rustdesk'; do
+  grep -qF -- "$token" scripts/smoke-server.sh \
+    || r_s11c27n="$r_s11c27n orchestration:${token%% *}"
+done
+sibling_docker_block=$(awk '/docker_out=\$\(docker run -d --name "\$SIBLING_NAME"/,/2>&1\)/' scripts/smoke-server.sh)
+echo "$sibling_docker_block" | grep -qF -- '--network none' \
+  || r_s11c27n="$r_s11c27n sibling-network-isolation-missing"
+if echo "$sibling_docker_block" | grep -q -- '--pid'; then
+  r_s11c27n="$r_s11c27n sibling-pid-namespace-shared"
+fi
+grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.md \
+  || r_s11c27n="$r_s11c27n hardening-ledger-missing"
+if [ -n "$r_s11c27n" ]; then echo "  FAIL R-S11c-27n cross-container executable identity:$r_s11c27n"; rc=1; else
+  echo "  ok  R-S11c-27n separate networkless PID/mount namespaces execute the same bytes from identical /usr/bin/rustdesk paths and exact service roles, while distinct file objects and generation-bound identities keep the sibling untargetable"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

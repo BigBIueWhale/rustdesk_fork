@@ -3,17 +3,35 @@ set -euo pipefail
 umask 077
 
 readonly READY=/work/scripts/smoke-ready.sh
-readonly BINARY=/work/target/debug/rustdesk
+readonly SOURCE_BINARY=/work/target/debug/rustdesk
+readonly BINARY=/usr/bin/rustdesk
 readonly PROBE=/work/target/debug/examples/smoke_readiness
 readonly LAUNCHER=/work/target/smoke-server-launcher
 readonly RECORD=/run/rustdesk/service-child.record
 readonly FIXTURE=/tmp/rd-service-lifecycle
 readonly LOGINCTL_STATE=/tmp/rd-service-loginctl-state
 
+if [ "$(stat -c '%u:%g:%a' -- "$SOURCE_BINARY")" != 0:0:755 ]; then
+  echo "service lifecycle source binary must be root-owned mode 0755" >&2
+  exit 1
+fi
 if [ "$(stat -c '%u:%g:%a' -- "$BINARY")" != 0:0:755 ]; then
   echo "service lifecycle binary must model a root-owned mode-0755 installed executable" >&2
   exit 1
 fi
+SOURCE_BINARY_IDENTITY=$(stat -Lc '%d:%i' -- "$SOURCE_BINARY")
+INSTALLED_BINARY_IDENTITY=$(stat -Lc '%d:%i' -- "$BINARY")
+[ "$INSTALLED_BINARY_IDENTITY" != "$SOURCE_BINARY_IDENTITY" ] || {
+  echo "service lifecycle installed binary did not acquire a distinct file identity" >&2
+  exit 1
+}
+BINARY_SHA256=$(sha256sum -- "$SOURCE_BINARY" | awk '{print $1}')
+[ "$(sha256sum -- "$BINARY" | awk '{print $1}')" = "$BINARY_SHA256" ] || {
+  echo "service lifecycle installed binary bytes differ from the built source" >&2
+  exit 1
+}
+MOUNT_NAMESPACE=$(stat -Lc %i /proc/self/ns/mnt)
+PID_NAMESPACE=$(stat -Lc %i /proc/self/ns/pid)
 
 SVC=
 SVC_START=
@@ -497,7 +515,8 @@ wait_for_service_child() {
     [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" != "$stale_record_hash" ]
   fi
   read -r CHILD CHILD_START GENERATION < <(python3 - "$SVC" "$RECORD" \
-    "$expected_uid" "$expected_gid" "$expected_user" "$expected_home" "$expected_groups" <<'PY'
+    "$expected_uid" "$expected_gid" "$expected_user" "$expected_home" "$expected_groups" \
+    "$BINARY" <<'PY'
 import os
 import re
 import stat
@@ -511,6 +530,7 @@ expected_gid = sys.argv[4]
 expected_user = sys.argv[5]
 expected_home = sys.argv[6]
 expected_groups = sys.argv[7]
+expected_executable = os.stat(sys.argv[8])
 metadata = os.lstat(record_path)
 if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
     raise SystemExit("service child record is not a single-linked regular file")
@@ -552,6 +572,10 @@ if uid != expected_uid or status.get("NoNewPrivs") != "1":
 executable = os.stat(f"/proc/{pid_number}/exe")
 if executable.st_dev != int(exe_dev) or executable.st_ino != int(exe_ino):
     raise SystemExit("service child executable object differs")
+if (executable.st_dev, executable.st_ino) != (
+    expected_executable.st_dev, expected_executable.st_ino
+):
+    raise SystemExit("service child did not execute the installed binary object")
 argv = open(f"/proc/{pid_number}/cmdline", "rb").read().split(b"\0")
 if argv[1:] != [b"--server", b"--service-owned-server", b""]:
     raise SystemExit("service child role differs")
@@ -969,5 +993,8 @@ grep -Fq -- 'R-T9: graceful shutdown complete — exiting 0' "$FIXTURE/portable.
 PORTABLE=
 PORTABLE_START=
 printf 'PORTABLE_NONINTERFERENCE=pass uid=4000\n'
+printf 'SERVICE_LIFECYCLE_CONTAINER_IDENTITY=pass path=/usr/bin/rustdesk exe=%s source=%s sha256=%s mnt=%s pidns=%s\n' \
+  "$INSTALLED_BINARY_IDENTITY" "$SOURCE_BINARY_IDENTITY" "$BINARY_SHA256" \
+  "$MOUNT_NAMESPACE" "$PID_NAMESPACE"
 
 trap - EXIT HUP INT TERM

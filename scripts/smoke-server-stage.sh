@@ -34,6 +34,11 @@ case "$1" in
     echo "EXIT=0"
     ;;
   service-lifecycle-manual)
+    [ ! -e /usr/bin/rustdesk ] && [ ! -L /usr/bin/rustdesk ] || {
+      echo "manual lifecycle installed path already exists" >&2
+      exit 1
+    }
+    install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk
     bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh
     ;;
   debian-sysv-installed-lifecycle)
@@ -41,12 +46,29 @@ case "$1" in
     ;;
   sibling-docker-server)
     control=/sibling
+    installed_server=/usr/bin/rustdesk
     [ -d "$control" ] && [ ! -L "$control" ] || {
       echo "sibling docker control directory is absent" >&2
       exit 1
     }
     export HOME=/tmp/rd-sibling
     mkdir -p "$HOME"
+    [ ! -e "$installed_server" ] && [ ! -L "$installed_server" ] || {
+      echo "sibling docker installed path already exists" >&2
+      exit 1
+    }
+    install -o root -g root -m 0755 /work/target/debug/rustdesk "$installed_server"
+    source_identity=$(stat -Lc '%d:%i' /work/target/debug/rustdesk)
+    installed_identity=$(stat -Lc '%d:%i' "$installed_server")
+    [ "$installed_identity" != "$source_identity" ] || {
+      echo "sibling docker installed executable did not acquire a distinct file identity" >&2
+      exit 1
+    }
+    source_sha256=$(sha256sum /work/target/debug/rustdesk | awk '{print $1}')
+    [ "$(sha256sum "$installed_server" | awk '{print $1}')" = "$source_sha256" ]
+    mount_namespace=$(stat -Lc %i /proc/self/ns/mnt)
+    pid_namespace=$(stat -Lc %i /proc/self/ns/pid)
+    service_generation=$(tr -d '\n' </proc/sys/kernel/random/uuid)
     sibling_cleanup() {
       status=$?
       trap - EXIT HUP INT TERM
@@ -60,9 +82,21 @@ case "$1" in
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    start_server /work/target/debug/rustdesk /tmp/sibling-docker.log
+    env -i HOME="$HOME" PATH=/usr/bin:/bin RUST_LOG=info \
+      RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
+      RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$service_generation" \
+      setpriv --no-new-privs --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
+      "$SERVER_LAUNCHER" "$installed_server" --service-owned-server \
+      >/tmp/sibling-docker.log 2>&1 &
+    SRV=$!
+    SRV_START=$($READY --identity "$SRV")
+    "$PROCESS_GUARD" wait-service-server "$SRV" "$SRV_START" "$installed_server" \
+      "$$" "$service_generation"
     "$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log /work/target/debug/examples/smoke_readiness 0
     printf 'SIBLING_DOCKER_READY pid=%s start=%s\n' "$SRV" "$SRV_START"
+    printf 'SIBLING_CONTAINER_IDENTITY_READY pid=%s start=%s path=/usr/bin/rustdesk exe=%s source=%s sha256=%s mnt=%s pidns=%s generation=%s\n' \
+      "$SRV" "$SRV_START" "$installed_identity" "$source_identity" "$source_sha256" \
+      "$mount_namespace" "$pid_namespace" "$service_generation"
     (umask 022 && printf 'ready\n' >"$control/ready")
     while [ ! -e "$control/stop" ] && [ ! -L "$control/stop" ]; do
       "$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"
@@ -72,6 +106,8 @@ case "$1" in
     "$READY" --stop "$SRV" "$SRV_START"
     wait "$SRV"
     printf 'SIBLING_DOCKER_SURVIVED=pass pid=%s start=%s\n' "$SRV" "$SRV_START"
+    printf 'SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid=%s start=%s path=/usr/bin/rustdesk exe=%s generation=%s\n' \
+      "$SRV" "$SRV_START" "$installed_identity" "$service_generation"
     SRV=
     SRV_START=
     trap - EXIT HUP INT TERM

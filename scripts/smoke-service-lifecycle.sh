@@ -26,6 +26,9 @@ DECOY=
 DECOY_START=
 DECOY_EXECUTABLE=
 DECOY_GENERATION=
+PRE_PIDFD=
+PRE_PIDFD_START=
+PRE_PIDFD_GENERATION=
 
 pidfd_signal_only() {
   local pid=$1 expected_start=$2 signal_name=$3
@@ -157,6 +160,11 @@ cleanup() {
     force_kill_exact "$DECOY" "$DECOY_START" || cleanup_status=1
   fi
   [ -z "$DECOY" ] || wait "$DECOY" 2>/dev/null || true
+  if [ -n "$PRE_PIDFD" ] && [ -n "$PRE_PIDFD_START" ] \
+    && "$READY" --is-running "$PRE_PIDFD" "$PRE_PIDFD_START" 2>/dev/null; then
+    force_kill_exact "$PRE_PIDFD" "$PRE_PIDFD_START" || cleanup_status=1
+  fi
+  [ -z "$PRE_PIDFD" ] || wait "$PRE_PIDFD" 2>/dev/null || true
   if [ -n "$PORTABLE" ] && [ -n "$PORTABLE_START" ] \
     && "$READY" --is-running "$PORTABLE" "$PORTABLE_START" 2>/dev/null; then
     "$READY" --stop "$PORTABLE" "$PORTABLE_START" >/dev/null 2>&1 \
@@ -240,6 +248,44 @@ generation_entries = [
 ]
 if generation_entries != [b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION=" + expected_generation]:
     raise SystemExit("hostile-record decoy generation changed")
+PY
+}
+
+assert_pre_pidfd_child_alive() {
+  "$READY" --is-running "$PRE_PIDFD" "$PRE_PIDFD_START"
+  python3 - "$PRE_PIDFD" "$PRE_PIDFD_START" "$BINARY" "$PRE_PIDFD_GENERATION" "$$" <<'PY'
+import os
+import sys
+
+pid = int(sys.argv[1])
+expected_start = int(sys.argv[2])
+expected_executable = os.stat(sys.argv[3])
+expected_generation = sys.argv[4].encode("ascii")
+expected_parent = sys.argv[5].encode("ascii")
+raw = open(f"/proc/{pid}/stat", "rb").read()
+fields = raw.rsplit(b") ", 1)[1].split()
+if len(fields) < 20 or fields[0] in {b"Z", b"X"} or int(fields[19]) != expected_start:
+    raise SystemExit("pre-pidfd service child identity changed")
+if open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0") != [
+    b"rd-smoke-server", b"--server", b"--service-owned-server", b""
+]:
+    raise SystemExit("pre-pidfd service child role changed")
+executable = os.stat(f"/proc/{pid}/exe")
+if (executable.st_dev, executable.st_ino) != (
+    expected_executable.st_dev, expected_executable.st_ino
+):
+    raise SystemExit("pre-pidfd service child executable identity changed")
+status = open(f"/proc/{pid}/status", "r", encoding="ascii").read().splitlines()
+values = {line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in status if ":" in line}
+if values.get("Uid", "").split() != ["0"] * 4:
+    raise SystemExit("pre-pidfd service child uid changed")
+environ = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+expected_entries = {
+    b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION=" + expected_generation,
+    b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT=" + expected_parent,
+}
+if not expected_entries.issubset(set(environ)):
+    raise SystemExit("pre-pidfd service child launch authority changed")
 PY
 }
 
@@ -607,17 +653,44 @@ start_service() {
 }
 
 start_service_recovering() {
-  local log=$1 stale_record_identity=$2 stale_record_hash=$3
+  local log=$1 stale_record_identity=$2 stale_record_hash=$3 force_pre_pidfd=${4:-}
   [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
   [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")" = "$stale_record_identity" ]
   [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$stale_record_hash" ]
   : > "$log"
   chmod 0600 "$log"
-  RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
-    "$BINARY" --service >"$log" 2>&1 &
+  if [ "$force_pre_pidfd" = force-pre-pidfd ]; then
+    RUST_LOG=info RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
+      RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
+      "$BINARY" --service >"$log" 2>&1 &
+  else
+    RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
+      "$BINARY" --service >"$log" 2>&1 &
+  fi
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
   wait_for_service_child "$log" 0 "" "" "" "" "$stale_record_hash"
+}
+
+start_pre_pidfd_recorded_child() {
+  local log=$1 device inode uid
+  PRE_PIDFD_GENERATION=$(tr -d '\n' </proc/sys/kernel/random/uuid)
+  : > "$log"
+  chmod 0600 "$log"
+  RUST_LOG=info HOME=/tmp \
+    RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
+    RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PRE_PIDFD_GENERATION" \
+    bash --noprofile --norc -c 'exec -a rd-smoke-server "$1" --server --service-owned-server' \
+    bash "$BINARY" >"$log" 2>&1 &
+  PRE_PIDFD=$!
+  PRE_PIDFD_START=$("$READY" --identity "$PRE_PIDFD")
+  "$READY" --wait-parked "$PRE_PIDFD" "$PRE_PIDFD_START" "$log" "$PROBE" 0
+  assert_pre_pidfd_child_alive
+  read -r device inode uid < <(service_record_process_identity "$PRE_PIDFD" "$PRE_PIDFD_START")
+  [ "$uid" = 0 ]
+  write_hostile_service_record canonical "$PRE_PIDFD" "$PRE_PIDFD_START" \
+    "$device" "$inode" 0 "$PRE_PIDFD_GENERATION" 0600
+  assert_portable_alive
 }
 
 stop_service_gracefully() {
@@ -844,6 +917,35 @@ assert_portable_alive
 stop_service_gracefully "$FIXTURE/service-5-recovered.log"
 printf 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=%s recovered_generation=%s child_exit_ms=%s\n' \
   "$crashed_generation" "$recovered_generation" "$crashed_child_exit_ms"
+
+start_pre_pidfd_recorded_child "$FIXTURE/service-5b-pre-pidfd-child.log"
+pre_pidfd_child=$PRE_PIDFD
+pre_pidfd_child_start=$PRE_PIDFD_START
+pre_pidfd_generation=$PRE_PIDFD_GENERATION
+pre_pidfd_record_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")
+pre_pidfd_record_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
+start_service_recovering "$FIXTURE/service-5b-pre-pidfd-recovered.log" \
+  "$pre_pidfd_record_identity" "$pre_pidfd_record_sha256" force-pre-pidfd
+if "$READY" --is-running "$pre_pidfd_child" "$pre_pidfd_child_start" 2>/dev/null; then
+  echo 'service lifecycle: pre-pidfd fallback left its exact prior child alive' >&2
+  exit 1
+fi
+wait "$PRE_PIDFD"
+PRE_PIDFD=
+PRE_PIDFD_START=
+[ "$GENERATION" != "$pre_pidfd_generation" ]
+[ "$CHILD:$CHILD_START" != "$pre_pidfd_child:$pre_pidfd_child_start" ]
+grep -Fq -- "Smoke forced pidfd_open unavailable for service child pid $pre_pidfd_child" \
+  "$FIXTURE/service-5b-pre-pidfd-recovered.log"
+grep -Fq -- "Kernel lacks pidfd_open; recovery revalidates pid $pre_pidfd_child immediately before each kill(2)" \
+  "$FIXTURE/service-5b-pre-pidfd-recovered.log"
+grep -Fq -- 'R-T9: graceful shutdown complete — exiting 0' \
+  "$FIXTURE/service-5b-pre-pidfd-child.log"
+pre_pidfd_recovered_generation=$GENERATION
+assert_portable_alive
+stop_service_gracefully "$FIXTURE/service-5b-pre-pidfd-recovered.log"
+printf 'SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=%s recovered_generation=%s\n' \
+  "$pre_pidfd_generation" "$pre_pidfd_recovered_generation"
 
 groupadd -g 4001 rdseat
 groupadd -g 4101 rdseat-extra

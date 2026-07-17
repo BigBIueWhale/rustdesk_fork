@@ -2967,6 +2967,7 @@ def validate_smoke_contract(
         ('record_stage_status R-B4-build', "build status preservation"),
         ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
         ('record_stage_status R-S11c-27j', "sibling Docker stage status preservation"),
+        ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
@@ -3076,6 +3077,10 @@ def validate_smoke_contract(
         ('SERVICE_LIFECYCLE_FORCED=pass', "forced lifecycle result"),
         ('SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001', "non-root lifecycle result"),
         ('SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role', "hostile-record lifecycle result"),
+        ('start_pre_pidfd_recorded_child', "pre-pidfd runtime recovery fixture"),
+        ('assert_pre_pidfd_child_alive', "pre-pidfd runtime identity proof"),
+        ('RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1', "forced pre-pidfd runtime exercise"),
+        ('SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=', "pre-pidfd runtime result"),
         ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
     ):
         require_text(service_lifecycle, text, label)
@@ -3209,6 +3214,44 @@ def validate_smoke_contract(
     require_text(common_source, 'std::env::args().nth(1) == Some("--server".to_owned())', "server role argument-one predicate")
     require_text(common_source, "SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV", "service executable descriptor environment binding")
     require_text(linux_source, "std::env::current_exe().ok()", "Linux executable identity source")
+    require_text(
+        linux_source,
+        'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";',
+        "debug-only pre-pidfd smoke force constant",
+    )
+    pre_pidfd_force = extract_between(
+        linux_source,
+        "fn service_child_pidfd_open_is_forced_unsupported_for_smoke() -> bool {",
+        "\nfn open_service_child_pidfd",
+        "pre-pidfd smoke force helper",
+    )
+    for text, label in (
+        ('#[cfg(debug_assertions)]', "pre-pidfd smoke force debug gate"),
+        ('std::env::var_os(SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV)', "pre-pidfd smoke force environment lookup"),
+        ('#[cfg(not(debug_assertions))]', "pre-pidfd smoke force release closure"),
+        ('false', "pre-pidfd smoke force release-disabled result"),
+    ):
+        require_text(pre_pidfd_force, text, label)
+    pidfd_open = extract_between(
+        linux_source,
+        "fn open_service_child_pidfd(pid: u32) -> ResultType<PidFdOpen> {",
+        "\nfn service_child_pidfd_exited",
+        "service child pidfd open helper",
+    )
+    for text, label in (
+        ('if service_child_pidfd_open_is_forced_unsupported_for_smoke()', "pre-pidfd smoke force dispatch"),
+        ('Smoke forced pidfd_open unavailable for service child pid', "pre-pidfd smoke force diagnostic"),
+        ('return Ok(PidFdOpen::Unsupported);', "forced pre-pidfd unsupported branch"),
+    ):
+        require_text(pidfd_open, text, label)
+    for text, label in (
+        ('recover_previous_child_without_pidfd(&self, record: &ServiceChildRecord)', "pre-pidfd recovery branch"),
+        ('require_service_child_identity_match(record, "pre-pidfd kill fallback")', "pre-pidfd signal revalidation"),
+        ('wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)', "pre-pidfd graceful wait revalidation"),
+        ('wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)', "pre-pidfd forced wait revalidation"),
+        ('final identity-check-to-kill race cannot be eliminated', "pre-pidfd residual race diagnostic"),
+    ):
+        require_text(linux_source, text, label)
     require_text(
         core_main,
         'log::error!("Linux service lifecycle authority failed closed: {err}");',
@@ -8960,6 +9003,54 @@ def run_source_mutations(sources):
             "hostile-record lifecycle result",
         ),
         (
+            "service_lifecycle",
+            'RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1',
+            'true # pre-pidfd runtime exercise removed',
+            "forced pre-pidfd runtime exercise",
+        ),
+        (
+            "service_lifecycle",
+            'SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=',
+            'SERVICE_LIFECYCLE_PRE_PIDFD_SKIPPED=pass prior_generation=',
+            "pre-pidfd runtime result",
+        ),
+        (
+            "linux_source",
+            'require_service_child_identity_match(record, "pre-pidfd kill fallback")',
+            'true; // pre-pidfd signal revalidation removed',
+            "pre-pidfd signal revalidation",
+        ),
+        (
+            "linux_source",
+            'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)',
+            'service_child_pid_exists(record.pid)',
+            "pre-pidfd graceful wait revalidation",
+        ),
+        (
+            "linux_source",
+            'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)',
+            'service_child_pid_exists(record.pid)',
+            "pre-pidfd forced wait revalidation",
+        ),
+        (
+            "linux_source",
+            'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";',
+            'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD_DISABLED";',
+            "debug-only pre-pidfd smoke force constant",
+        ),
+        (
+            "linux_source",
+            '#[cfg(not(debug_assertions))]\n    {\n        false\n    }\n}\n\nfn open_service_child_pidfd',
+            '#[cfg(not(debug_assertions))]\n    {\n        true\n    }\n}\n\nfn open_service_child_pidfd',
+            "pre-pidfd smoke force release-disabled result",
+        ),
+        (
+            "linux_source",
+            'if service_child_pidfd_open_is_forced_unsupported_for_smoke() {',
+            'if false { // pre-pidfd smoke force dispatch removed',
+            "pre-pidfd smoke force dispatch",
+        ),
+        (
             "linux_source",
             'runtime.recover_previous_child()?;',
             'true; // hostile-record recovery removed',
@@ -9006,6 +9097,12 @@ def run_source_mutations(sources):
             'record_stage_status R-S11c-27j',
             'true # sibling Docker survival status removed',
             "sibling Docker stage status preservation",
+        ),
+        (
+            "smoke",
+            'record_stage_status R-S11c-27k',
+            'true # pre-pidfd fallback status removed',
+            "pre-pidfd fallback stage status preservation",
         ),
         (
             "smoke",

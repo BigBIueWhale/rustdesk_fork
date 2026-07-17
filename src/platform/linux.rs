@@ -692,6 +692,9 @@ impl ServiceChildCredentials {
 // or ambiguous record is preserved and stops service startup; it is never replaced by a new child.
 // Linux before pidfd_open(2) gets the same full checks around kill(2), with the irreducible final
 // check-to-kill race reported explicitly instead of being presented as equivalent assurance.
+#[cfg(debug_assertions)]
+const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ServiceChildRecord {
     pid: u32,
@@ -1585,9 +1588,27 @@ fn service_child_pid_exists(pid: u32) -> bool {
     std::io::Error::last_os_error().raw_os_error() != Some(hbb_common::libc::ESRCH)
 }
 
+fn service_child_pidfd_open_is_forced_unsupported_for_smoke() -> bool {
+    #[cfg(debug_assertions)]
+    {
+        std::env::var_os(SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV).as_deref()
+            == Some(std::ffi::OsStr::new("1"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+}
+
 fn open_service_child_pidfd(pid: u32) -> ResultType<PidFdOpen> {
     let pid = hbb_common::libc::pid_t::try_from(pid)
         .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
+    if service_child_pidfd_open_is_forced_unsupported_for_smoke() {
+        log::warn!(
+            "Smoke forced pidfd_open unavailable for service child pid {pid}; exercising pre-pidfd recovery"
+        );
+        return Ok(PidFdOpen::Unsupported);
+    }
     let fd = unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_pidfd_open, pid, 0) };
     if fd >= 0 {
         let fd = c_int::try_from(fd).map_err(|_| anyhow!("pidfd does not fit c_int"))?;

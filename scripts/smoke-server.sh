@@ -27,6 +27,8 @@
 #     child records without changing the record or either separately identity-bound UID-4000 process;
 #   - R-S11c-27j : the manual lifecycle stage cannot affect a concurrently running networkless
 #     sibling Docker container with its own PID namespace and neutral launched RustDesk server;
+#   - R-S11c-27k : the real --service recovery path exercises the pre-pidfd revalidated kill(2)
+#     fallback under a smoke-only forced pidfd-unavailable runtime;
 #   - R-D8 / R-D2 (real password provisioning) : the production `--password-stdin` CLI run against a
 #     non-installed user-owned live --server (2b root-owned, 2c non-root same-uid) provisions over
 #     uid-scoped main IPC and CLEANLY set-and-exits (no hang); the new credential keys and the old one
@@ -333,7 +335,7 @@ printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
 
-echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, sibling Docker survival, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j) =="
+echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, sibling Docker survival, pre-pidfd fallback, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27k) =="
 lifecycle_out=
 sibling_out=
 sibling_out_file=$HOST_GUARD_ROOT/sibling-docker.log
@@ -360,6 +362,7 @@ record_stage_status R-S11c-27f
 record_stage_status R-S11c-27g
 record_stage_status R-S11c-27h
 record_stage_status R-S11c-27i
+record_stage_status R-S11c-27k
 grep -q '^SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27i: actual --service did not preserve every hostile or ambiguous child record while signaling nothing"; rc=1; }
 grep -q '^SERVICE_LIFECYCLE_GRACEFUL=pass generation=' <<<"$lifecycle_out" \
@@ -370,6 +373,8 @@ grep -q '^SERVICE_LIFECYCLE_FORCED=pass elapsed_ms=' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27f: stopped child did not take the bounded TERM-to-KILL/reap path"; rc=1; }
 grep -Eq '^SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=[0-9a-f-]{36} recovered_generation=[0-9a-f-]{36} child_exit_ms=[0-9]+$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27g: actual supervisor crash did not stop its exact child and recover to a fresh generation"; rc=1; }
+grep -Eq '^SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=[0-9a-f-]{36} recovered_generation=[0-9a-f-]{36}$' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11c-27k: forced pre-pidfd recovery did not terminate the exact prior child and recover to a fresh generation"; rc=1; }
 grep -Eq '^SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=4001 groups=4001,4101 generation=[0-9a-f-]{36}$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27h: actual active-seat child did not complete the exact non-root descriptor-exec path"; rc=1; }
 grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \

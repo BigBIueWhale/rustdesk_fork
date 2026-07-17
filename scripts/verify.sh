@@ -3411,6 +3411,40 @@ grep -qF 'R-S11c-27j — concurrent separate-Docker service noninterference beha
 if [ -n "$r_s11c27j" ]; then echo "  FAIL R-S11c-27j Linux sibling Docker noninterference:$r_s11c27j"; rc=1; else
   echo "  ok  R-S11c-27j an unrelated networkless sibling Docker container with a neutral RustDesk server remains alive until explicitly drained after all manual lifecycle stop/crash/hostile-record operations"; fi
 
+echo "== (3b-iii-h2l) Linux pre-pidfd recovery fallback is exact and behavior-tested (R-S11c-27k) =="
+r_s11c27k=
+grep -qF 'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";' src/platform/linux.rs || r_s11c27k="$r_s11c27k smoke-force-env-constant-missing"
+pre_pidfd_force_block=$(awk '/^fn service_child_pidfd_open_is_forced_unsupported_for_smoke\(\)/,/^fn open_service_child_pidfd/' src/platform/linux.rs)
+echo "$pre_pidfd_force_block" | grep -qF '#[cfg(debug_assertions)]' || r_s11c27k="$r_s11c27k smoke-force-not-debug-gated"
+echo "$pre_pidfd_force_block" | grep -qF 'std::env::var_os(SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV)' || r_s11c27k="$r_s11c27k smoke-force-env-not-read"
+echo "$pre_pidfd_force_block" | grep -qF '#[cfg(not(debug_assertions))]' || r_s11c27k="$r_s11c27k smoke-force-release-gate-missing"
+echo "$pre_pidfd_force_block" | grep -qF 'false' || r_s11c27k="$r_s11c27k smoke-force-release-not-disabled"
+pre_pidfd_open_block=$(awk '/^fn open_service_child_pidfd\(pid: u32\)/,/^fn service_child_pidfd_exited/' src/platform/linux.rs)
+echo "$pre_pidfd_open_block" | grep -qF 'if service_child_pidfd_open_is_forced_unsupported_for_smoke()' || r_s11c27k="$r_s11c27k smoke-force-dispatch-missing"
+echo "$pre_pidfd_open_block" | grep -qF 'Smoke forced pidfd_open unavailable for service child pid' || r_s11c27k="$r_s11c27k smoke-force-diagnostic-missing"
+echo "$pre_pidfd_open_block" | grep -qF 'return Ok(PidFdOpen::Unsupported);' || r_s11c27k="$r_s11c27k forced-unsupported-branch-missing"
+grep -qF 'recover_previous_child_without_pidfd(&self, record: &ServiceChildRecord)' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-recovery-entry-missing"
+grep -qF 'require_service_child_identity_match(record, "pre-pidfd kill fallback")' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-signal-not-revalidated"
+grep -qF 'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-graceful-wait-not-revalidated"
+grep -qF 'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-forced-wait-not-revalidated"
+grep -qF 'final identity-check-to-kill race cannot be eliminated' src/platform/linux.rs scripts/smoke-service-lifecycle.sh HARDENING_STATUS.md || r_s11c27k="$r_s11c27k residual-race-diagnostic-missing"
+grep -qF 'start_pre_pidfd_recorded_child' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-fixture-missing"
+grep -qF 'assert_pre_pidfd_child_alive' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-fixture-identity-proof-missing"
+grep -qF 'RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-force-not-used"
+grep -qF 'SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-result-marker-missing"
+grep -qF 'record_stage_status R-S11c-27k' scripts/smoke-server.sh || r_s11c27k="$r_s11c27k runtime-status-not-preserved"
+grep -qF 'R-S11c-27k — pre-pidfd fallback recovery behavior' HARDENING_STATUS.md || r_s11c27k="$r_s11c27k hardening-ledger-missing"
+if ! awk '
+  /start_pre_pidfd_recorded_child/ { start = NR }
+  /force-pre-pidfd/ { recover = NR }
+  /SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass/ { marker = NR }
+  END { exit !(start && recover && marker && start < recover && recover < marker) }
+' scripts/smoke-service-lifecycle.sh; then
+  r_s11c27k="$r_s11c27k pre-pidfd-runtime-order-regressed"
+fi
+if [ -n "$r_s11c27k" ]; then echo "  FAIL R-S11c-27k Linux pre-pidfd fallback:$r_s11c27k"; rc=1; else
+  echo "  ok  R-S11c-27k forced pre-pidfd recovery uses only full identity revalidation around kill(2), reports the residual race, terminates the exact prior child, and recovers a fresh generation"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

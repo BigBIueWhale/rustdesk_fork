@@ -36,6 +36,9 @@ case "$1" in
   service-lifecycle-manual)
     bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh
     ;;
+  debian-sysv-installed-lifecycle)
+    bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh
+    ;;
   sibling-docker-server)
     control=/sibling
     [ -d "$control" ] && [ ! -L "$control" ] || {

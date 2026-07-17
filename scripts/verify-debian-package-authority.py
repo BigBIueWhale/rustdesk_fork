@@ -20,10 +20,15 @@ from pathlib import Path
 
 
 CONFFILE_PATHS = (
+    "./etc/init.d/rustdesk",
     "./etc/rustdesk/startwm.sh",
     "./etc/rustdesk/xorg.conf",
 )
-DATA_EXECUTABLES = {"./etc/rustdesk/startwm.sh", "./usr/share/rustdesk/rustdesk"}
+DATA_EXECUTABLES = {
+    "./etc/init.d/rustdesk",
+    "./etc/rustdesk/startwm.sh",
+    "./usr/share/rustdesk/rustdesk",
+}
 FLUTTER_LIBRARIES = {
     "./usr/share/rustdesk/lib/libapp.so",
     "./usr/share/rustdesk/lib/libdesktop_drop_plugin.so",
@@ -40,6 +45,7 @@ FLUTTER_LIBRARIES = {
 DATA_REQUIRED_DIRECTORIES = {
     ".",
     "./etc",
+    "./etc/init.d",
     "./etc/rustdesk",
     "./usr",
     "./usr/share",
@@ -60,6 +66,7 @@ DATA_REQUIRED_DIRECTORIES = {
     "./usr/share/rustdesk/lib",
 }
 DATA_REQUIRED_FILES = {
+    "./etc/init.d/rustdesk",
     "./etc/rustdesk/startwm.sh",
     "./etc/rustdesk/xorg.conf",
     "./usr/share/applications/rustdesk-link.desktop",
@@ -1222,7 +1229,7 @@ def validate_build_py(repo):
         )
     package_start = direct_call_positions[stage_calls[0]]
     package_prefix = flutter_body[:package_start]
-    if len(package_prefix) != 21:
+    if len(package_prefix) != 23:
         raise ValidationError("build.py Flutter Debian constructor pre-package inventory differs")
     cargo_block = package_prefix[0]
     if (not isinstance(cargo_block, ast.If)
@@ -1256,6 +1263,7 @@ def validate_build_py(repo):
         "flutter build linux --release",
         "/bin/rm -rf tmpdeb",
         "mkdir -p tmpdeb/usr/share/rustdesk",
+        "mkdir -p tmpdeb/etc/init.d/",
         "mkdir -p tmpdeb/etc/rustdesk/",
         "mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/",
         "mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/",
@@ -1263,10 +1271,10 @@ def validate_build_py(repo):
         "mkdir -p tmpdeb/usr/share/applications/",
         "mkdir -p tmpdeb/usr/share/polkit-1/actions",
     )
-    for statement, command in zip(package_prefix[2:12], static_package_commands):
+    for statement, command in zip(package_prefix[2:13], static_package_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian constructor setup operations are not exact")
-    bundle_copy = package_prefix[12]
+    bundle_copy = package_prefix[13]
     if (not isinstance(bundle_copy, ast.Expr)
             or not isinstance(bundle_copy.value, ast.Call)
             or ast_call_name(bundle_copy.value) != "system2"
@@ -1281,6 +1289,7 @@ def validate_build_py(repo):
         raise ValidationError("build.py Flutter Debian bundle copy is not exact")
     resource_copy_commands = (
         "cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/",
+        "cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk",
         "cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png",
         "cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg",
         "cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop",
@@ -1289,7 +1298,7 @@ def validate_build_py(repo):
         "cp ../res/startwm.sh tmpdeb/etc/rustdesk/",
         "cp ../res/xorg.conf tmpdeb/etc/rustdesk/",
     )
-    for statement, command in zip(package_prefix[13:21], resource_copy_commands):
+    for statement, command in zip(package_prefix[14:23], resource_copy_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian resource copies are not exact")
     if [
@@ -1351,7 +1360,7 @@ def validate_build_py(repo):
         system2_owners[owner_name] = system2_owners.get(owner_name, 0) + 1
     if system2_owners != {
         "ffi_bindgen_function_refactor": 1,
-        "build_flutter_deb": 21,
+        "build_flutter_deb": 23,
         "build_flutter_dmg": 4,
         "build_flutter_windows": 2,
     }:
@@ -1389,6 +1398,7 @@ def validate_build_py(repo):
             raise ValidationError(f"build.py retains an unsupported Debian package operation: {token}")
 
     scripts = [f"res/DEBIAN/{name}" for name in ("preinst", "postinst", "prerm", "postrm")]
+    scripts.append("res/rustdesk.init")
     try:
         index = subprocess.check_output(
             ["git", "-C", str(repo), "ls-files", "-s", "--", *scripts],
@@ -1397,7 +1407,9 @@ def validate_build_py(repo):
     except (OSError, subprocess.CalledProcessError) as err:
         raise ValidationError(f"cannot inspect Debian maintainer-script Git modes: {err}") from err
     if len(index) != len(scripts) or any(not line.startswith("100755 ") for line in index):
-        raise ValidationError("all four Debian maintainer scripts must be tracked as executable regular files")
+        raise ValidationError(
+            "all four Debian maintainer scripts and the SysV init script must be tracked as executable regular files"
+        )
 
 
 def write_file(path, contents, mode):
@@ -1792,6 +1804,7 @@ def run_source_gate_mutations(repo, tmp):
         "res/DEBIAN/postinst",
         "res/DEBIAN/prerm",
         "res/DEBIAN/postrm",
+        "res/rustdesk.init",
     )
     for name in paths:
         destination = fixture / name
@@ -1808,6 +1821,7 @@ def run_source_gate_mutations(repo, tmp):
                 "git", "-C", str(fixture), "add", "--",
                 "res/DEBIAN/preinst", "res/DEBIAN/postinst",
                 "res/DEBIAN/prerm", "res/DEBIAN/postrm",
+                "res/rustdesk.init",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -29,7 +29,11 @@ flutter_build_dir_2 = f'flutter/{flutter_build_dir}'
 skip_cargo = False
 
 DEBIAN_MAINTAINER_SCRIPTS = ("preinst", "postinst", "prerm", "postrm")
-DEBIAN_CONFFILES = ("etc/rustdesk/startwm.sh", "etc/rustdesk/xorg.conf")
+DEBIAN_CONFFILES = (
+    "etc/init.d/rustdesk",
+    "etc/rustdesk/startwm.sh",
+    "etc/rustdesk/xorg.conf",
+)
 DEBIAN_CONTROL_MODES = {
     "control": 0o644,
     "conffiles": 0o644,
@@ -37,6 +41,7 @@ DEBIAN_CONTROL_MODES = {
     **{name: 0o755 for name in DEBIAN_MAINTAINER_SCRIPTS},
 }
 DEBIAN_DATA_EXECUTABLES = {
+    "etc/init.d/rustdesk",
     "etc/rustdesk/startwm.sh",
     "usr/share/rustdesk/rustdesk",
 }
@@ -55,6 +60,7 @@ DEBIAN_FLUTTER_LIBRARIES = {
 }
 DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "etc",
+    "etc/init.d",
     "etc/rustdesk",
     "usr",
     "usr/share",
@@ -75,6 +81,7 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "usr/share/rustdesk/lib",
 }
 DEBIAN_DATA_REQUIRED_FILES = {
+    "etc/init.d/rustdesk",
     "etc/rustdesk/startwm.sh",
     "etc/rustdesk/xorg.conf",
     "usr/share/applications/rustdesk-link.desktop",
@@ -483,6 +490,7 @@ def build_flutter_deb(version, features):
     system2('flutter build linux --release')
     system2('/bin/rm -rf tmpdeb')
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
+    system2('mkdir -p tmpdeb/etc/init.d/')
     system2('mkdir -p tmpdeb/etc/rustdesk/')
     system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
@@ -493,6 +501,7 @@ def build_flutter_deb(version, features):
         f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
     system2(
         'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
+    system2('cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk')
     system2(
         'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
     system2(

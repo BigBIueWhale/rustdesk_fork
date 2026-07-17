@@ -3,18 +3,28 @@
 set -e
 
 unit=rustdesk.service
+service=rustdesk
 
 case "$1" in
     remove|upgrade|deconfigure)
-        deb-systemd-invoke stop "$unit" >/dev/null
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-invoke stop "$unit" >/dev/null
+        elif [ -x /etc/init.d/rustdesk ]; then
+            invoke-rc.d "$service" stop >/dev/null
+        fi
         if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
-            deb-systemd-helper disable "$unit" >/dev/null
+            if [ -d /run/systemd/system ]; then
+                deb-systemd-helper disable "$unit" >/dev/null
+            fi
+            update-rc.d "$service" remove >/dev/null
         fi
         rm -f /usr/bin/rustdesk
         rm -f /etc/systemd/system/rustdesk.service
         rm -f /usr/lib/systemd/system/rustdesk.service
         rm -f /usr/lib/systemd/user/rustdesk.service
-        /bin/systemctl --system daemon-reload >/dev/null
+        if [ -d /run/systemd/system ]; then
+            /bin/systemctl --system daemon-reload >/dev/null
+        fi
         ;;
 esac
 

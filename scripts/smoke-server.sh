@@ -395,6 +395,13 @@ grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$sibling_o
 grep -Eq '^SIBLING_DOCKER_NONINTERFERENCE=pass cid=[0-9a-f]{12}$' <<<"$sibling_out" \
   || { echo "  FAIL R-S11c-27j: sibling Docker container was not drained as an unrelated survivor after lifecycle completion"; rc=1; }
 
+echo "== (0d) Debian bookworm without systemd: installed SysV package start/restart/upgrade/remove and portable noninterference (R-S11c-27l) =="
+run_stage sysv_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle
+printf '%s\n' "$sysv_out"
+record_stage_status R-S11c-27l
+grep -Eq '^DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-12 portable_uid=4000 stale_wrong_exec=survived$' <<<"$sysv_out" \
+  || { echo "  FAIL R-S11c-27l: installed Debian SysV lifecycle or unrelated portable survival was not proven"; rc=1; }
+
 echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
 # The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN
 # BEFORE vpx_codec_enc_init then drives 5 encodes. A runtime W+X mmap/mprotect (a JIT) would SIGSEGV

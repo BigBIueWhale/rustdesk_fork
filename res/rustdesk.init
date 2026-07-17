@@ -1,0 +1,133 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          rustdesk
+# Required-Start:    $remote_fs $network
+# Required-Stop:     $remote_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: RustDesk controlled-host service
+# Description:       Run the RustDesk service supervisor for unattended access.
+### END INIT INFO
+
+set -e
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+. /lib/lsb/init-functions
+
+DAEMON=/usr/bin/rustdesk
+DAEMON_ARGS=--service
+NAME=rustdesk
+DESC="RustDesk service supervisor"
+PIDFILE=/run/rustdesk.pid
+
+service_status() {
+    start-stop-daemon --status --quiet \
+        --pidfile "$PIDFILE" \
+        --exec "$DAEMON" \
+        --name "$NAME" \
+        --user root
+}
+
+wait_for_start() {
+    attempts=0
+    stable=0
+    while [ "$attempts" -lt 100 ]; do
+        if service_status; then
+            stable=$((stable + 1))
+            if [ "$stable" -ge 10 ]; then
+                return 0
+            fi
+        else
+            stable=0
+        fi
+        attempts=$((attempts + 1))
+        sleep 0.1
+    done
+    return 1
+}
+
+do_start() {
+    log_daemon_msg "Starting $DESC" "$NAME"
+    if start-stop-daemon --start --quiet --oknodo \
+        --background --make-pidfile \
+        --pidfile "$PIDFILE" \
+        --startas "$DAEMON" \
+        --exec "$DAEMON" \
+        --name "$NAME" \
+        --user root \
+        --chuid root:root \
+        --chdir / \
+        --umask 027 \
+        -- "$DAEMON_ARGS" \
+        && wait_for_start; then
+        log_end_msg 0
+        return 0
+    else
+        status=$?
+        log_end_msg 1
+        return "$status"
+    fi
+}
+
+do_stop() {
+    log_daemon_msg "Stopping $DESC" "$NAME"
+    if [ ! -e "$PIDFILE" ] && [ ! -L "$PIDFILE" ]; then
+        log_end_msg 0
+        return 0
+    fi
+    if start-stop-daemon --stop --quiet --oknodo \
+        --retry=TERM/30/KILL/5 \
+        --remove-pidfile \
+        --pidfile "$PIDFILE" \
+        --exec "$DAEMON" \
+        --name "$NAME" \
+        --user root; then
+        log_end_msg 0
+        return 0
+    else
+        status=$?
+        log_end_msg 1
+        return "$status"
+    fi
+}
+
+case "$1" in
+    start)
+        do_start
+        ;;
+    stop)
+        do_stop
+        ;;
+    restart|force-reload)
+        do_stop
+        do_start
+        ;;
+    try-restart)
+        if service_status; then
+            do_stop
+            do_start
+        fi
+        ;;
+    status)
+        if service_status; then
+            log_success_msg "$DESC is running"
+            exit 0
+        else
+            status=$?
+            log_failure_msg "$DESC is not running"
+            exit "$status"
+        fi
+        ;;
+    reload)
+        log_failure_msg "$DESC does not support reload"
+        exit 3
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|try-restart|force-reload|status}" >&2
+        exit 3
+        ;;
+esac
+
+exit 0

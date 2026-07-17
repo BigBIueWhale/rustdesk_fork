@@ -6,6 +6,7 @@ import sys
 
 
 EXPECTED = ("preinst", "postinst", "prerm", "postrm")
+SYSTEMD_ACTIVE = "if [ -d /run/systemd/system ]; then"
 RELOAD = "/bin/systemctl --system daemon-reload >/dev/null"
 
 
@@ -55,35 +56,46 @@ def check_common(errors, script, path, lines):
         errors.append(f"{script}: masks maintainer-script failure with `|| true`")
     if "deb-systemd-invoke daemon-reload" in text:
         errors.append(f"{script}: daemon-reload must not use deb-systemd-invoke")
+    if re.search(r"(?m)^\s*/etc/init\.d/", text):
+        errors.append(f"{script}: must use invoke-rc.d instead of executing an init script directly")
+    if re.search(r"\b(start-stop-daemon|pidof|pgrep|pkill|killall|ps)\b", text):
+        errors.append(f"{script}: must delegate exact process ownership to the selected init backend")
 
     for number, line in enumerate(lines, start=1):
         if "systemctl" in line and line != RELOAD:
             errors.append(f"{script}:{number}: only `{RELOAD}` may call systemctl")
         if line.startswith("deb-systemd-invoke "):
-            if not re.fullmatch(r'deb-systemd-invoke (start|stop|restart) "\$unit" >/dev/null', line):
+            if not re.fullmatch(r'deb-systemd-invoke (start|stop) "\$unit" >/dev/null', line):
                 errors.append(f"{script}:{number}: invalid deb-systemd-invoke action")
         if line.startswith("deb-systemd-helper "):
             if not re.fullmatch(r'deb-systemd-helper (enable|disable|purge) "\$unit" >/dev/null', line):
                 errors.append(f"{script}:{number}: invalid deb-systemd-helper action")
+        if line.startswith("invoke-rc.d "):
+            if not re.fullmatch(r'invoke-rc\.d "\$service" (start|stop) >/dev/null', line):
+                errors.append(f"{script}:{number}: invalid invoke-rc.d action")
+        if line.startswith("update-rc.d "):
+            if not re.fullmatch(r'update-rc\.d "\$service" (defaults|remove) >/dev/null', line):
+                errors.append(f"{script}:{number}: invalid update-rc.d action")
 
 
 def check_preinst(errors, lines):
     script = "preinst"
     require_contains(errors, script, lines, "unit=rustdesk.service")
+    require_contains(errors, script, lines, "service=rustdesk")
     require_contains(errors, script, lines, "upgrade)")
-    require_contains(
-        errors,
-        script,
-        lines,
-        'if [ -e "/etc/systemd/system/$unit" ] || [ -e "/usr/lib/systemd/system/$unit" ] || [ -e "/lib/systemd/system/$unit" ]; then',
-    )
-    require(errors, script, count_contains(lines, 'deb-systemd-invoke stop "$unit" >/dev/null') == 1, "must stop old unit exactly once")
+    require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 1, "must select systemd exactly once")
+    require(errors, script, count_contains(lines, 'deb-systemd-invoke stop "$unit" >/dev/null') == 1, "must stop the old systemd unit exactly once")
+    require(errors, script, count_contains(lines, 'invoke-rc.d "$service" stop >/dev/null') == 1, "must stop the old SysV service exactly once")
     require_order(
         errors,
         script,
         lines,
+        "upgrade)",
+        SYSTEMD_ACTIVE,
         'if [ -e "/etc/systemd/system/$unit" ] || [ -e "/usr/lib/systemd/system/$unit" ] || [ -e "/lib/systemd/system/$unit" ]; then',
         'deb-systemd-invoke stop "$unit" >/dev/null',
+        "elif [ -x /etc/init.d/rustdesk ]; then",
+        'invoke-rc.d "$service" stop >/dev/null',
         "sleep 1",
         "rm -f /usr/bin/libsciter-gtk.so",
     )
@@ -92,30 +104,45 @@ def check_preinst(errors, lines):
 def check_postinst(errors, lines):
     script = "postinst"
     require_contains(errors, script, lines, "unit=rustdesk.service")
+    require_contains(errors, script, lines, "service=rustdesk")
     require_contains(errors, script, lines, "unit_path=/usr/lib/systemd/system/rustdesk.service")
     require_contains(errors, script, lines, 'if [ "$1" = configure ]; then')
+    require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 1, "must select systemd exactly once")
+    require(errors, script, count_contains(lines, 'invoke-rc.d "$service" start >/dev/null') == 1, "must start the SysV service exactly once")
     require_order(
         errors,
         script,
         lines,
         'cp /usr/share/rustdesk/files/systemd/rustdesk.service "$unit_path"',
+        'update-rc.d "$service" defaults >/dev/null',
+        SYSTEMD_ACTIVE,
         'deb-systemd-helper enable "$unit" >/dev/null',
         RELOAD,
         'deb-systemd-invoke start "$unit" >/dev/null',
+        "else",
+        'invoke-rc.d "$service" start >/dev/null',
     )
 
 
 def check_prerm(errors, lines):
     script = "prerm"
     require_contains(errors, script, lines, "unit=rustdesk.service")
+    require_contains(errors, script, lines, "service=rustdesk")
     require_contains(errors, script, lines, "remove|upgrade|deconfigure)")
+    require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 3, "must gate stop, disable, and reload on the active systemd backend")
+    require(errors, script, count_contains(lines, 'invoke-rc.d "$service" stop >/dev/null') == 1, "must stop the SysV service exactly once")
     require_order(
         errors,
         script,
         lines,
+        "remove|upgrade|deconfigure)",
+        SYSTEMD_ACTIVE,
         'deb-systemd-invoke stop "$unit" >/dev/null',
+        "elif [ -x /etc/init.d/rustdesk ]; then",
+        'invoke-rc.d "$service" stop >/dev/null',
         'if [ "$1" = remove ] || [ "$1" = deconfigure ]; then',
         'deb-systemd-helper disable "$unit" >/dev/null',
+        'update-rc.d "$service" remove >/dev/null',
         "rm -f /usr/bin/rustdesk",
         "rm -f /usr/lib/systemd/system/rustdesk.service",
         RELOAD,
@@ -125,19 +152,74 @@ def check_prerm(errors, lines):
 def check_postrm(errors, lines):
     script = "postrm"
     require_contains(errors, script, lines, "unit=rustdesk.service")
+    require_contains(errors, script, lines, "service=rustdesk")
     require_contains(errors, script, lines, "purge)")
     require_order(
         errors,
         script,
         lines,
         'deb-systemd-helper purge "$unit" >/dev/null',
+        'update-rc.d "$service" remove >/dev/null',
         "rm -rf -- /root/.config/RustDesk /root/.config/rustdesk",
     )
+
+
+def check_init_script(errors, path):
+    script = "rustdesk.init"
+    require(errors, script, path.exists(), "missing SysV init script")
+    if not path.exists():
+        return
+    lines = stripped_lines(path)
+    text = path.read_text(encoding="utf-8")
+    require(errors, script, lines[:1] == ["#!/bin/sh"], "must use #!/bin/sh")
+    for needle in (
+        "### BEGIN INIT INFO",
+        "# Provides:          rustdesk",
+        "# Default-Start:     2 3 4 5",
+        "# Default-Stop:      0 1 6",
+        "set -e",
+        ". /lib/lsb/init-functions",
+        "DAEMON=/usr/bin/rustdesk",
+        "DAEMON_ARGS=--service",
+        "NAME=rustdesk",
+        "PIDFILE=/run/rustdesk.pid",
+        "start-stop-daemon --status --quiet \\",
+        "if start-stop-daemon --start --quiet --oknodo \\",
+        "--background --make-pidfile \\",
+        "--startas \"$DAEMON\" \\",
+        "--chuid root:root \\",
+        "--chdir / \\",
+        "--umask 027 \\",
+        "if start-stop-daemon --stop --quiet --oknodo \\",
+        "--retry=TERM/30/KILL/5 \\",
+        "--remove-pidfile \\",
+        "restart|force-reload)",
+        "try-restart)",
+        "status)",
+    ):
+        require_contains(errors, script, lines, needle)
+
+    require(errors, script, count_contains(lines, '--pidfile "$PIDFILE" \\') == 3, "status, start, and stop must each bind the same PID file")
+    require(errors, script, count_contains(lines, '--exec "$DAEMON" \\') == 3, "status, start, and stop must each bind the exact executable")
+    require(errors, script, count_contains(lines, '--name "$NAME" \\') == 3, "status, start, and stop must each bind the exact process name")
+    require(errors, script, text.count("--user root") == 3, "status, start, and stop must each bind the exact root UID")
+    require(errors, script, count_contains(lines, "--user root \\") == 1, "start must match the exact root-owned process")
+    require(errors, script, text.count("start-stop-daemon --stop") == 1, "must have one stop authority with no second executable-only sweep")
+
+    forbidden = re.search(
+        r"\b(pidof|pgrep|pkill|killall|kill|ps)\b|/proc/|rm\s+-f\s+\"?\$PIDFILE|/lib/init/init-d-script",
+        text,
+    )
+    if forbidden:
+        errors.append(f"{script}: contains forbidden process rediscovery or PID-file deletion: {forbidden.group(0)!r}")
+    if "--pidfile \"$PIDFILE\"" not in text or "--exec \"$DAEMON\"" not in text:
+        errors.append(f"{script}: lifecycle authority is not bound to PID file plus executable")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--scripts-dir", required=True)
+    parser.add_argument("--init-script", required=True)
     args = parser.parse_args()
 
     scripts_dir = pathlib.Path(args.scripts_dir)
@@ -155,6 +237,7 @@ def main():
         check_postinst(errors, loaded["postinst"])
         check_prerm(errors, loaded["prerm"])
         check_postrm(errors, loaded["postrm"])
+    check_init_script(errors, pathlib.Path(args.init_script))
 
     if errors:
         for error in errors:

@@ -3445,6 +3445,34 @@ fi
 if [ -n "$r_s11c27k" ]; then echo "  FAIL R-S11c-27k Linux pre-pidfd fallback:$r_s11c27k"; rc=1; else
   echo "  ok  R-S11c-27k forced pre-pidfd recovery uses only full identity revalidation around kill(2), reports the residual race, terminates the exact prior child, and recovers a fresh generation"; fi
 
+echo "== (3b-iii-h2m) installed Debian non-systemd lifecycle has exact SysV authority (R-S11c-27l) =="
+r_s11c27l=
+bash -n scripts/smoke-debian-sysv-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh || r_s11c27l="$r_s11c27l smoke-shell-syntax-invalid"
+dash -n res/rustdesk.init res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm || r_s11c27l="$r_s11c27l package-shell-syntax-invalid"
+[ "$(stat -c %a res/rustdesk.init)" = 755 ] || r_s11c27l="$r_s11c27l init-script-not-executable"
+[ "$(stat -c %a scripts/smoke-debian-sysv-lifecycle.sh)" = 755 ] || r_s11c27l="$r_s11c27l smoke-script-not-executable"
+grep -qF 'PIDFILE=/run/rustdesk.pid' res/rustdesk.init || r_s11c27l="$r_s11c27l init-pidfile-missing"
+grep -qF -- '--background --make-pidfile' res/rustdesk.init || r_s11c27l="$r_s11c27l init-owned-pid-missing"
+grep -qF -- '--retry=TERM/30/KILL/5' res/rustdesk.init || r_s11c27l="$r_s11c27l bounded-graceful-stop-missing"
+grep -qF -- '--remove-pidfile' res/rustdesk.init || r_s11c27l="$r_s11c27l exact-pidfile-removal-missing"
+[ "$(grep -c 'start-stop-daemon --stop' res/rustdesk.init)" = 1 ] || r_s11c27l="$r_s11c27l init-stop-authority-not-singular"
+if grep -Eq '\b(pidof|pgrep|pkill|killall|kill|ps)\b|/proc/|/lib/init/init-d-script' res/rustdesk.init; then
+  r_s11c27l="$r_s11c27l init-process-rediscovery-regressed"
+fi
+for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm; do
+  grep -qF 'if [ -d /run/systemd/system ]; then' "$maintscript" || r_s11c27l="$r_s11c27l ${maintscript##*/}:backend-selection-missing"
+done
+grep -qF 'invoke-rc.d "$service" start >/dev/null' res/DEBIAN/postinst || r_s11c27l="$r_s11c27l postinst:sysv-start-missing"
+grep -qF 'invoke-rc.d "$service" stop >/dev/null' res/DEBIAN/preinst res/DEBIAN/prerm || r_s11c27l="$r_s11c27l maintscript:sysv-stop-missing"
+grep -qF 'update-rc.d "$service" defaults >/dev/null' res/DEBIAN/postinst || r_s11c27l="$r_s11c27l postinst:sysv-enable-missing"
+grep -qF '"etc/init.d/rustdesk"' build.py || r_s11c27l="$r_s11c27l package-init-payload-missing"
+grep -qF 'debian-sysv-installed-lifecycle)' scripts/smoke-server-stage.sh || r_s11c27l="$r_s11c27l runtime-stage-dispatch-missing"
+grep -qF 'DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stale_wrong_exec=survived' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c27l="$r_s11c27l runtime-result-marker-missing"
+grep -qF 'record_stage_status R-S11c-27l' scripts/smoke-server.sh || r_s11c27l="$r_s11c27l runtime-status-not-preserved"
+grep -qF 'R-S11c-27l — installed Debian SysV lifecycle' HARDENING_STATUS.md || r_s11c27l="$r_s11c27l hardening-ledger-missing"
+if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
+  echo "  ok  R-S11c-27l Debian SysV package lifecycle selects one init backend, stops one PID/executable/name/UID-bound supervisor, and behavior-tests portable noninterference"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=
@@ -3932,7 +3960,9 @@ if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|sy
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_pkg"
   r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
 fi
-python3 scripts/verify-debian-maintainer-scripts.py --scripts-dir res/DEBIAN || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
+python3 scripts/verify-debian-maintainer-scripts.py \
+  --scripts-dir res/DEBIAN \
+  --init-script res/rustdesk.init || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
 if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >"$VERIFY_TMP/rd_verify_r_s11c10j_mask"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_mask"
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
@@ -6931,7 +6961,9 @@ if [ -n "$r_fuse_response_queue" ]; then
 else
   echo "  ok  R-T0/R-S7/R-S19 Linux FUSE file-content responses use bounded active routes keyed by connection and stream"
 fi
-# R-R2a (§12 / sovereignty): the .deb + systemd is the SOLE Linux package model. The AppImage
+# R-R2a (§12 / sovereignty): the .deb is the SOLE Linux package/update artifact. Systemd is the
+# primary hardened deployment; package-owned non-systemd init integration does not create another
+# artifact or update authority. The AppImage
 # recipe (whose `update-information` self-updater collides with R-X1 "the fork ships its own
 # releases") and the Flatpak manifest (a portal-sandbox, no-systemd posture colliding with
 # R-D1/R-D3a "the systemd confinement IS the model") are DELETED from the tree — not merely
@@ -6955,9 +6987,9 @@ if grep -rqIE 'build-appimage:|build-flatpak:|appimage-builder|flatpak-builder|r
   rr2a_bad="$rr2a_bad CI-ref"
 fi
 if [ -n "$rr2a_bad" ]; then
-  echo "  FAIL R-R2a: non-.deb Linux packaging must be ABSENT (.deb+systemd is the sole model):$rr2a_bad"; rc=1
+  echo "  FAIL R-R2a: non-.deb Linux packaging must be ABSENT (the .deb is the sole package/update artifact):$rr2a_bad"; rc=1
 else
-  echo "  ok  R-R2a non-.deb Linux packaging/runtime launch paths excised — AppImage/Flatpak + PKGBUILD/rpm (.deb+systemd is the sole Linux model)"
+  echo "  ok  R-R2a non-.deb Linux packaging/runtime launch paths excised — AppImage/Flatpak + PKGBUILD/rpm (the .deb is the sole Linux package/update artifact)"
 fi
 # R-SV8 (§18 sovereignty, MUST): no Firebase / FCM / Google-services on ANY artifact (iOS source +
 # Android). The iOS GoogleService-Info.plist shipped LIVE Google creds (API_KEY / GCM_SENDER_ID /

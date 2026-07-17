@@ -3,6 +3,7 @@
 set -e
 
 unit=rustdesk.service
+service=rustdesk
 unit_path=/usr/lib/systemd/system/rustdesk.service
 
 if [ "$1" = configure ]; then
@@ -14,9 +15,14 @@ if [ "$1" = configure ]; then
 	rm -f /usr/lib/systemd/user/rustdesk.service
 	mkdir -p /usr/lib/systemd/system
 	cp /usr/share/rustdesk/files/systemd/rustdesk.service "$unit_path"
-	deb-systemd-helper enable "$unit" >/dev/null
-	/bin/systemctl --system daemon-reload >/dev/null
-	deb-systemd-invoke start "$unit" >/dev/null
+	update-rc.d "$service" defaults >/dev/null
+	if [ -d /run/systemd/system ]; then
+		deb-systemd-helper enable "$unit" >/dev/null
+		/bin/systemctl --system daemon-reload >/dev/null
+		deb-systemd-invoke start "$unit" >/dev/null
+	else
+		invoke-rc.d "$service" start >/dev/null
+	fi
 fi
 
 exit 0

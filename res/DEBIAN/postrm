@@ -3,10 +3,12 @@
 set -e
 
 unit=rustdesk.service
+service=rustdesk
 
 case "$1" in
     purge)
         deb-systemd-helper purge "$unit" >/dev/null
+        update-rc.d "$service" remove >/dev/null
         rm -rf -- /root/.config/RustDesk /root/.config/rustdesk
         ;;
 esac

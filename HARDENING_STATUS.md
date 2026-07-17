@@ -3040,6 +3040,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     non-systemd, exact-commit cold artifact evidence, and external expert R-V3 review remain open. The parent item
     and upcoming release remain **OPEN**.
 
+  - **R-S11c-27l — installed Debian SysV lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
+    PARENT ITEM REMAINS OPEN.** The sole Linux `.deb` now carries a package-owned mode-0755
+    `/etc/init.d/rustdesk` conffile in addition to the primary hardened systemd unit. Both backends start the same
+    foreground `/usr/bin/rustdesk --service` supervisor. The SysV path uses `start-stop-daemon --background
+    --make-pidfile` to own `/run/rustdesk.pid`, waits for a stable live process before reporting start success, and
+    binds every status/start/stop decision to that PID file plus the exact installed executable, `rustdesk` process
+    name, and root UID. Stop has exactly one authority call with the bounded `TERM/30/KILL/5` schedule and
+    `--remove-pidfile`; it has no executable-only second pass, `pidof`, process-table/name/argv scan, or direct signal
+    fallback. A missing PID file makes repeated stop idempotent, while a symlink or mismatched live PID still reaches
+    the fail-closed `start-stop-daemon` identity check. The misleading systemd `PIDFile=/run/rustdesk.pid` declaration
+    is removed because a `Type=simple` unit owns its main process directly and never created that SysV-owned file.
+
+    Debian maintainer scripts now test the standard running-systemd marker `/run/systemd/system` before any lifecycle
+    action. The systemd branch retains `deb-systemd-helper`, `deb-systemd-invoke`, and the fixed manager reload. The
+    non-systemd branch registers the packaged LSB init script with `update-rc.d` and calls it only through
+    `invoke-rc.d`, including pre-upgrade and prerm stop; no maintainer script executes `/etc/init.d` directly. This
+    follows Debian Policy's init-script maintainer-script contract and `invoke-rc.d` policy layer, while the exact
+    PID+executable+name+UID stop predicate follows `start-stop-daemon`'s warning that a stale PID file alone is not
+    safe. `requirements.html` R-R2a now states the non-contradictory model: `.deb` is the sole Linux package/update
+    authority, systemd is the primary confined deployment, and package-owned init adapters are persistence backends
+    for that same artifact and supervisor rather than alternate package, update, or sandbox models.
+
+    `build.py` stages the init conffile through the same exact, link-free, root-normalized package finalizer. The
+    artifact verifier binds its path, mode, conffile exclusion from `md5sums`, build-constructor copy, Git executable
+    mode, and negative mutation suite; the maintainer-script verifier separately seals backend selection, legal
+    helper syntax, lifecycle ordering, the singular exact SysV stop, and the absence of rediscovery fallbacks. The
+    release runtime smoke has a mounted `debian-sysv-installed-lifecycle` stage and preserves an explicit
+    R-S11c-27l status.
+
+    The focused runtime test ran the real root-owned mode-0755 debug RustDesk executable in a networkless Debian 12
+    container with a read-only source mount, a private PID namespace, no Docker socket, and no published port. It
+    built two minimal dpkg transactions containing the exact production maintainer scripts, init script, unit, and
+    executable; installed version 1.0 through `dpkg`; proved the package-started root supervisor; started an actual
+    neutral-argv UID-4000 portable RustDesk server; restarted the installed service; upgraded to 2.0; stopped it;
+    substituted a root-owned PID file pointing at an unrelated root `sleep` executable; proved the mismatched process
+    survived the stop; started over that stale record; removed and purged the package; and revalidated the portable
+    RustDesk and wrong-executable sentinels after every lifecycle event. The source mount metadata and hashes remained
+    unchanged. Retained 195-byte mode-0664 log `/tmp/rustdesk-sysv-rs11c27l.log`, SHA-256
+    `678192e21c3598236bad7dba681d0b643df109fc6f4702de805921e97b415982`. The complete default runtime smoke then
+    passed with this installed lifecycle stage in its normal orchestration path. Its host historical-selector monitor
+    retained the three-entry baseline with zero new matches; the build ran inside its build container; runtime stages
+    used networkless containers with read-only source mounts and no published port; the new stage reported the exact
+    Debian-12/UID-4000/wrong-executable-survival marker; and every downstream socket, password, PAKE, authorization,
+    tunnel, file-transfer, limiter, forged-frame, and wire-capture check ended at `SMOKE OK`. Retained 263,015-byte
+    mode-0664 log `/tmp/rustdesk-smoke-rs11c27l.log`, SHA-256
+    `b8f0222db93f3e7648e5a75f05bd4fbab127fd454f97be7e97c19bf07c93d04d`.
+
+    This closes the package-owned SysV adapter and the mandatory Debian-without-systemd lifecycle run. It is not a
+    final-release `.deb` artifact test, not installed systemd stop/restart evidence, not installed supervisor
+    crash/restart evidence over a non-root service child, and not actual forced numeric-PID reuse into another
+    root-owned instance of the same executable. OpenRC, runit, and manually supervised packaging integration;
+    cross-mount/container namespace identity; exact-commit cold artifact evidence; and external expert R-V3 review
+    remain open. The parent item and upcoming release remain **OPEN**.
+
   Required implementation and release closure:
 
   - The `--service` supervisor must retain direct ownership of every server child
@@ -3651,7 +3705,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-91d9ec5358f705cc9648053bc93838be0ecfbe7f87ac08e5245cfc4b095138ea  requirements.html
+e884025c14f7755d865229dbb83c792ff76c02c358138eb740d5a57a47c0cca0  requirements.html
 ```
 
 This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #130. It is a

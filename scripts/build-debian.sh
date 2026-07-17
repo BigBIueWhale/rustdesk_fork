@@ -180,33 +180,49 @@ preflight() {
 
 verify_deb_control_scripts() {
     local deb="$1"
-    local tmp_control
-    tmp_control="$(mktemp -d)"
+    local tmp_package tmp_control tmp_data
+    tmp_package="$(mktemp -d)"
+    tmp_control="$tmp_package/control"
+    tmp_data="$tmp_package/data"
+    mkdir "$tmp_control" "$tmp_data"
     dpkg-deb -e "$deb" "$tmp_control"
+    dpkg-deb -x "$deb" "$tmp_data"
     for script in preinst postinst prerm postrm; do
         [ -f "$tmp_control/$script" ] \
           && [ ! -L "$tmp_control/$script" ] \
           && [ "$(stat -c '%a:%h' "$tmp_control/$script" 2>/dev/null)" = "755:1" ] || {
-            rm -rf "$tmp_control"
+            rm -rf "$tmp_package"
             die "built .deb control script $script is not a mode-0755 non-hardlinked regular file"
         }
         cmp -s "$REPO_ROOT/res/DEBIAN/$script" "$tmp_control/$script" || {
-            rm -rf "$tmp_control"
+            rm -rf "$tmp_package"
             die "built .deb control script $script differs from res/DEBIAN/$script"
         }
     done
+    [ -f "$tmp_data/etc/init.d/rustdesk" ] \
+      && [ ! -L "$tmp_data/etc/init.d/rustdesk" ] \
+      && [ "$(stat -c '%a:%h' "$tmp_data/etc/init.d/rustdesk" 2>/dev/null)" = "755:1" ] || {
+        rm -rf "$tmp_package"
+        die "built .deb SysV init script is not a mode-0755 non-hardlinked regular file"
+    }
+    cmp -s "$REPO_ROOT/res/rustdesk.init" "$tmp_data/etc/init.d/rustdesk" || {
+        rm -rf "$tmp_package"
+        die "built .deb SysV init script differs from res/rustdesk.init"
+    }
     local masked
     masked="$(grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' "$tmp_control" || true)"
     if [ -n "$masked" ]; then
         printf '%s\n' "$masked" >&2
-        rm -rf "$tmp_control"
+        rm -rf "$tmp_package"
         die "built .deb maintainer scripts mask lifecycle failure"
     fi
-    python3 "$SCRIPT_DIR/verify-debian-maintainer-scripts.py" --scripts-dir "$tmp_control" || {
-        rm -rf "$tmp_control"
+    python3 "$SCRIPT_DIR/verify-debian-maintainer-scripts.py" \
+        --scripts-dir "$tmp_control" \
+        --init-script "$tmp_data/etc/init.d/rustdesk" || {
+        rm -rf "$tmp_package"
         die "built .deb maintainer scripts fail lifecycle semantics"
     }
-    rm -rf "$tmp_control"
+    rm -rf "$tmp_package"
 }
 
 # build_one PROFILE FEATURES: run upstream's build.py in the pinned container,

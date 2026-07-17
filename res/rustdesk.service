@@ -18,7 +18,6 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 ExecStart=/usr/bin/rustdesk --service
-PIDFile=/run/rustdesk.pid
 KillMode=control-group
 TimeoutStopSec=30
 User=root

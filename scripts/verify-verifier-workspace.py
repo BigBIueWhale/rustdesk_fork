@@ -2946,9 +2946,10 @@ def smoke_readiness_mode_is_valid(mode):
 
 def validate_smoke_contract(
     verify, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
-    loginctl_fixture, loginctl_fixture_mode, process_guard, process_guard_mode, launcher,
-    readiness, readiness_mode, typed_probe, session_probe, ipc_source, core_main,
-    common_source, linux_source,
+    debian_sysv_lifecycle, debian_sysv_lifecycle_mode, loginctl_fixture,
+    loginctl_fixture_mode, process_guard, process_guard_mode, launcher, readiness,
+    readiness_mode, typed_probe, session_probe, ipc_source, core_main, common_source,
+    linux_source,
 ):
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -2968,11 +2969,13 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
         ('record_stage_status R-S11c-27j', "sibling Docker stage status preservation"),
         ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
+        ('record_stage_status R-S11c-27l', "Debian SysV stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual', "mounted service lifecycle stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server', "mounted sibling Docker stage"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle', "mounted Debian SysV stage"),
         ('start_sibling_docker()', "sibling Docker orchestrator"),
         ('stop_sibling_docker()', "sibling Docker survivor drain"),
         ('sibling_container_running', "sibling Docker running check"),
@@ -2992,9 +2995,9 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 18:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 19:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
-    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 18:
+    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 19:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
     if "rustdesk --server" in smoke:
         raise VerificationError("host smoke orchestrator retains historical-selector launch text")
@@ -3016,6 +3019,8 @@ def validate_smoke_contract(
         raise VerificationError("mounted smoke stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(service_lifecycle_mode):
         raise VerificationError("mounted service lifecycle stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(debian_sysv_lifecycle_mode):
+        raise VerificationError("mounted Debian SysV lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(loginctl_fixture_mode):
         raise VerificationError("mounted loginctl fixture is not a regular executable file")
     if not smoke_readiness_mode_is_valid(process_guard_mode):
@@ -3023,6 +3028,8 @@ def validate_smoke_contract(
     for text, label in (
         ('service-lifecycle-manual)', "service lifecycle dispatch"),
         ('sibling-docker-server)', "sibling Docker dispatch"),
+        ('debian-sysv-installed-lifecycle)', "Debian SysV dispatch"),
+        ('bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh', "Debian SysV mounted script dispatch"),
         ('control=/sibling', "sibling Docker private control directory"),
         ('"$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log', "sibling Docker parked readiness"),
         ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
@@ -3055,6 +3062,30 @@ def validate_smoke_contract(
         ('"$PROCESS_GUARD" wait-server "$SRV" "$SRV_START" "$executable"', "exact executable and argv proof"),
     ):
         require_text(stage, text, label)
+    for text, label in (
+        ('[ "${ID:-}" = debian ]', "Debian SysV operating-system proof"),
+        ('[ "${VERSION_CODENAME:-}" = bookworm ]', "Debian SysV release proof"),
+        ('[ ! -e /run/systemd/system ]', "Debian SysV backend proof"),
+        ('source_hash=$(sha256sum', "Debian SysV read-only source baseline"),
+        ('dpkg -i "$FIXTURE/rustdesk-sysv-smoke-1.0.deb"', "Debian SysV initial installation"),
+        ('/etc/init.d/rustdesk restart', "Debian SysV installed restart"),
+        ('dpkg -i "$FIXTURE/rustdesk-sysv-smoke-2.0.deb"', "Debian SysV package upgrade"),
+        ("assert_wrong_executable_alive() {", "Debian SysV wrong-executable survival proof"),
+        ('printf \'%s\\n\' "$WRONG_PID" >/run/rustdesk.pid', "Debian SysV stale PID record fixture"),
+        ('dpkg -r "$PACKAGE"', "Debian SysV package removal"),
+        ('dpkg --purge "$PACKAGE"', "Debian SysV package purge"),
+        ('DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stale_wrong_exec=survived', "Debian SysV installed lifecycle result"),
+        ("read-only source fixtures changed", "Debian SysV read-only source postcondition"),
+    ):
+        require_text(debian_sysv_lifecycle, text, label)
+    for forbidden in (
+        "docker ", "sudo ", "--network=host", "--pid=host", "--privileged",
+        "--publish", "pkill", "killall", "pidof", "pgrep",
+    ):
+        if forbidden in debian_sysv_lifecycle:
+            raise VerificationError(
+                f"Debian SysV lifecycle retains forbidden host or broad process authority: {forbidden}"
+            )
     if '[b"rd-smoke-server", b"--server", b"--service-owned-server", b""]' in service_lifecycle:
         raise VerificationError("portable role isolation: portable server acquired service-owned argv")
     for text, label in (
@@ -4045,6 +4076,8 @@ def validate_sources(sources):
         sources["smoke_stage_mode"],
         sources["service_lifecycle"],
         sources["service_lifecycle_mode"],
+        sources["debian_sysv_lifecycle"],
+        sources["debian_sysv_lifecycle_mode"],
         sources["loginctl_fixture"],
         sources["loginctl_fixture_mode"],
         sources["smoke_process_guard"],
@@ -9106,6 +9139,42 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
+            'record_stage_status R-S11c-27l',
+            'true # Debian SysV lifecycle status removed',
+            "Debian SysV stage status preservation",
+        ),
+        (
+            "smoke_stage",
+            'debian-sysv-installed-lifecycle)',
+            'debian-sysv-installed-lifecycle-disabled)',
+            "Debian SysV dispatch",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            "assert_wrong_executable_alive() {",
+            "assert_wrong_executable_alive_removed() {",
+            "Debian SysV wrong-executable survival proof",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            'printf \'%s\\n\' "$WRONG_PID" >/run/rustdesk.pid',
+            'true # stale PID record fixture removed',
+            "Debian SysV stale PID record fixture",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            'dpkg -r "$PACKAGE"',
+            'true # package removal removed',
+            "Debian SysV package removal",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            'DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stale_wrong_exec=survived',
+            'DEBIAN_SYSV_INSTALLED_LIFECYCLE=skipped',
+            "Debian SysV installed lifecycle result",
+        ),
+        (
+            "smoke",
             'if stop_sibling_docker >"$sibling_out_file" 2>&1; then',
             'if sibling_out=$(stop_sibling_docker 2>&1); then',
             "sibling Docker stop runs in parent shell",
@@ -10276,6 +10345,8 @@ def main():
             "smoke_stage_mode": os.lstat(repo / "scripts/smoke-server-stage.sh").st_mode,
             "service_lifecycle": (repo / "scripts/smoke-service-lifecycle.sh").read_text(encoding="utf-8"),
             "service_lifecycle_mode": os.lstat(repo / "scripts/smoke-service-lifecycle.sh").st_mode,
+            "debian_sysv_lifecycle": (repo / "scripts/smoke-debian-sysv-lifecycle.sh").read_text(encoding="utf-8"),
+            "debian_sysv_lifecycle_mode": os.lstat(repo / "scripts/smoke-debian-sysv-lifecycle.sh").st_mode,
             "loginctl_fixture": (repo / "scripts/smoke-service-loginctl.sh").read_text(encoding="utf-8"),
             "loginctl_fixture_mode": os.lstat(repo / "scripts/smoke-service-loginctl.sh").st_mode,
             "smoke_process_guard": (repo / "scripts/smoke-process-guard.py").read_text(encoding="utf-8"),

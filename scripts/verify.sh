@@ -3309,6 +3309,24 @@ grep -qF 'R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle b
 if [ -n "$r_s11c27f" ]; then echo "  FAIL R-S11c-27f Linux manual supervisor lifecycle:$r_s11c27f"; rc=1; else
   echo "  ok  R-S11c-27f actual --service SIGTERM reaps/removes its exact child, fresh generations restart, a stopped child takes bounded KILL/reap, and an unrelated non-root portable server survives"; fi
 
+echo "== (3b-iii-h2h) Linux actual-binary supervisor crash/restart is kernel-bound, exact, and noninterfering (R-S11c-27g) =="
+r_s11c27g=
+crash_wait_block=$(awk '/^crash_supervisor_and_wait_child\(\)/,/^}/' scripts/smoke-service-lifecycle.sh)
+echo "$crash_wait_block" | grep -qF 'supervisor_pidfd = open_exact_pidfd(supervisor, supervisor_start, "supervisor")' || r_s11c27g="$r_s11c27g exact-supervisor-pidfd-not-opened"
+echo "$crash_wait_block" | grep -qF 'child_pidfd = open_exact_pidfd(child, child_start, "service child")' || r_s11c27g="$r_s11c27g exact-child-pidfd-not-opened-before-crash"
+echo "$crash_wait_block" | grep -qF 'signal.pidfd_send_signal(supervisor_pidfd, signal.SIGKILL, None, 0)' || r_s11c27g="$r_s11c27g supervisor-crash-not-pidfd-bound"
+echo "$crash_wait_block" | grep -qF 'poller.register(child_pidfd, select.POLLIN | select.POLLHUP)' || r_s11c27g="$r_s11c27g child-exit-not-pidfd-observed"
+grep -qF 'crashed_record_identity=$(stat -c' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g durable-record-identity-not-captured"
+grep -qF '[ "$(sha256sum -- "$RECORD" | awk' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g durable-record-bytes-not-rechecked"
+grep -qF 'start_service_recovering "$FIXTURE/service-5-recovered.log"' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g fresh-supervisor-not-started-over-stale-record"
+grep -qF 'Discarding (exited Linux service child record' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g production-recovery-result-not-required"
+grep -qF '[ "$GENERATION" != "$crashed_generation" ]' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g recovered-generation-not-distinct"
+grep -qF 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g runtime-result-marker-missing"
+grep -qF 'record_stage_status R-S11c-27g' scripts/smoke-server.sh || r_s11c27g="$r_s11c27g runtime-status-not-preserved"
+grep -qF 'R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior' HARDENING_STATUS.md || r_s11c27g="$r_s11c27g hardening-ledger-missing"
+if [ -n "$r_s11c27g" ]; then echo "  FAIL R-S11c-27g Linux actual-binary crash/restart:$r_s11c27g"; rc=1; else
+  echo "  ok  R-S11c-27g actual supervisor SIGKILL triggers exact child parent-death exit, preserves crash evidence, recovers a fresh generation, and leaves the portable server alive"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

@@ -2771,19 +2771,55 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
     This closes actual-binary manually supervised normal-stop/restart, real stopped-child escalation, and non-root
     portable coexistence behavior. It is not an installed package transaction, installed systemd/SysV/OpenRC/runit
-    integration, Debian-without-systemd proof, supervisor crash/restart on the real binary, pre-pidfd runtime proof,
-    forced PID reuse, broader malformed/stale-record cases, the non-root active-desktop credential-drop branch,
-    cross-mount/namespace/container inode replacement, or concurrent separate-Docker survival. Those release gates
-    keep the parent item and upcoming release **OPEN**.
+    integration, Debian-without-systemd proof, pre-pidfd runtime proof, forced PID reuse, broader malformed/stale-
+    record cases, the non-root active-desktop credential-drop branch, cross-mount/namespace/container inode
+    replacement, or concurrent separate-Docker survival. Those release gates keep the parent item and upcoming
+    release **OPEN**.
+
+  - **R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior — SOURCE/RUNTIME IMPLEMENTED
+    2026-07-17; PARENT ITEM REMAINS OPEN.** The same mandatory no-network, read-only-source lifecycle stage now
+    crosses abrupt supervisor death and production recovery with the real debug `rustdesk --service` image. Before
+    the crash it opens pidfds for both the supervisor and its strictly validated service child, rechecks each retained
+    `/proc/<pid>/stat` start identity, then sends `SIGKILL` only through the supervisor pidfd. The child pidfd must
+    become readable within ten seconds and the same PID/start identity must no longer be running; the observed
+    development run completed that kernel parent-death transition in 3 ms. The supervisor must reap from the harness
+    with status 137 rather than reporting a graceful exit.
+
+    The stage captures the root-owned mode-0600 record's device/inode/owner/mode/link-count/size tuple and SHA-256
+    before the crash. After both exact processes exit, that same record identity and byte hash must still exist,
+    proving the abrupt path preserved its durable crash evidence rather than silently cleaning or replacing it. The
+    unrelated capability-free UID-4000 portable server is strictly revalidated before and after the crash. A fresh
+    real supervisor is then launched while the stale bytes still exist. It must acquire the released close-on-exec
+    lease, log production classification of the old child as exited or absent without signaling, remove only the
+    exact stale record, publish a different record hash for a distinct child/start identity tuple and generation, and
+    reach a successful typed parked-IPC transaction. That new generation must subsequently take the normal exact-child graceful
+    shutdown path, while the portable server remains live through recovery and stops cleanly only when the harness
+    explicitly targets its retained identity.
+
+    The behavior matches Linux `PR_SET_PDEATHSIG` (parent-thread death delivers the configured process-directed
+    signal; credential changes or privileged exec can clear it, which is why production arms after the drop and
+    re-arms in the final image), `flock(2)` (the lease is released when all references to its open file description
+    close; `O_CLOEXEC` prevents the service child retaining it), and pidfd polling/signaling (a stable task reference
+    becomes readable on exit and avoids numeric-PID reuse). An initially over-specific harness assertion expected a
+    new durable record to have a different inode number; runtime correctly demonstrated immediate filesystem inode
+    reuse. That invalid assertion was removed. The valid transition proof is unchanged old metadata plus old hash
+    before recovery, followed by a different strict record hash and generation after recovery. This slice changes no
+    production Rust code, dependency, syscall, or lexical unsafe inventory.
+
+    This closes the real-binary manually supervised crash/restart case only. It is not installed service-manager or
+    package-update evidence, and it does not cover hostile malformed records, forced PID reuse, the installed
+    privilege-drop chain, pre-pidfd fallback, cross-mount/container namespace identity, Debian non-systemd init
+    integration, or concurrent separate-Docker survival. The parent item and upcoming release remain **OPEN**.
 
     This remains deliberately **partial closure only**. The complete behavior matrix still needs release
     harness evidence for installed/package-managed graceful restart/stop, installed supervisor
     crash/restart, malformed/stale records and forced PID reuse, user-owned/non-root servers, and the actual installed
     privilege-drop/exec chain. R-S11c-27d supplies isolated focused proof for crash and record decisions;
     R-S11c-27e supplies same-mount real replacement/unlink and same-path different-inode proof; R-S11c-27f supplies
-    actual-binary manually supervised stop/restart, real stopped-child escalation, and portable coexistence. None substitutes
-    for installed package-update, cross-mount, or container-namespace cases. Packaging/service integration and
-    lifecycle proof for the supported SysV init,
+    actual-binary manually supervised stop/restart, real stopped-child escalation, and portable coexistence; and
+    R-S11c-27g supplies real-binary manual supervisor-crash, durable-evidence preservation, and fresh-generation
+    recovery. None substitutes for installed package-update, cross-mount, or container-namespace cases.
+    Packaging/service integration and lifecycle proof for the supported SysV init,
     OpenRC, runit, and manually supervised paths (including at least one Debian non-systemd run), the runtime
     pre-pidfd fallback exercise, and the concurrent Docker survival proof also remain mandatory before this
     parent item or the upcoming release can close.

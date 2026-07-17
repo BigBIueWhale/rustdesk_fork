@@ -70,6 +70,60 @@ with os.fdopen(pidfd) as pidfd_file:
 PY
 }
 
+crash_supervisor_and_wait_child() {
+  local supervisor=$1 supervisor_start=$2 child=$3 child_start=$4
+  python3 - "$supervisor" "$supervisor_start" "$child" "$child_start" <<'PY'
+import os
+import select
+import signal
+import sys
+import time
+
+supervisor = int(sys.argv[1])
+supervisor_start = int(sys.argv[2])
+child = int(sys.argv[3])
+child_start = int(sys.argv[4])
+
+def open_exact_pidfd(pid, expected_start, label):
+    if pid <= 0 or expected_start <= 0:
+        raise SystemExit(f"service lifecycle: invalid {label} identity")
+    try:
+        pidfd = os.pidfd_open(pid, 0)
+        raw = open(f"/proc/{pid}/stat", "rb").read()
+        fields = raw.rsplit(b") ", 1)[1].split()
+    except (OSError, IndexError) as error:
+        if 'pidfd' in locals():
+            os.close(pidfd)
+        raise SystemExit(f"service lifecycle: {label} identity read failed: {error}")
+    if len(fields) < 20 or fields[0] in {b"Z", b"X", b"x"} or int(fields[19]) != expected_start:
+        os.close(pidfd)
+        raise SystemExit(f"service lifecycle: retained {label} identity changed before crash")
+    return pidfd
+
+supervisor_pidfd = open_exact_pidfd(supervisor, supervisor_start, "supervisor")
+child_pidfd = open_exact_pidfd(child, child_start, "service child")
+started_ns = time.monotonic_ns()
+try:
+    signal.pidfd_send_signal(supervisor_pidfd, signal.SIGKILL, None, 0)
+    poller = select.poll()
+    poller.register(child_pidfd, select.POLLIN | select.POLLHUP)
+    events = poller.poll(10000)
+    if not events or not any(event & (select.POLLIN | select.POLLHUP) for _, event in events):
+        raise SystemExit("service lifecycle: exact service child did not exit after supervisor crash")
+    try:
+        raw = open(f"/proc/{child}/stat", "rb").read()
+        fields = raw.rsplit(b") ", 1)[1].split()
+    except (OSError, IndexError):
+        fields = []
+    if len(fields) >= 20 and int(fields[19]) == child_start and fields[0] not in {b"Z", b"X", b"x"}:
+        raise SystemExit("service lifecycle: exact service child remained running after pidfd exit event")
+    print((time.monotonic_ns() - started_ns) // 1_000_000)
+finally:
+    os.close(child_pidfd)
+    os.close(supervisor_pidfd)
+PY
+}
+
 force_kill_exact() {
   local pid=$1 expected_start=$2
   if "$READY" --is-running "$pid" "$expected_start" 2>/dev/null; then
@@ -131,13 +185,23 @@ PY
 }
 
 wait_for_service_child() {
-  local log=$1 service_log_size
+  local log=$1 stale_record_hash=${2:-} current_record_hash service_log_size
   for _ in $(seq 1 1200); do
-    [ -f "$RECORD" ] && break
+    if [ -f "$RECORD" ]; then
+      if [ -z "$stale_record_hash" ]; then
+        break
+      fi
+      if current_record_hash=$(sha256sum -- "$RECORD" 2>/dev/null | awk '{print $1}'); then
+        [ "$current_record_hash" = "$stale_record_hash" ] || break
+      fi
+    fi
     "$READY" --is-running "$SVC" "$SVC_START"
     sleep 0.05
   done
   [ -f "$RECORD" ]
+  if [ -n "$stale_record_hash" ]; then
+    [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" != "$stale_record_hash" ]
+  fi
   read -r CHILD CHILD_START GENERATION < <(python3 - "$SVC" "$RECORD" <<'PY'
 import os
 import re
@@ -226,6 +290,19 @@ start_service() {
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
   wait_for_service_child "$log"
+}
+
+start_service_recovering() {
+  local log=$1 stale_record_identity=$2 stale_record_hash=$3
+  [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")" = "$stale_record_identity" ]
+  [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$stale_record_hash" ]
+  : > "$log"
+  chmod 0600 "$log"
+  RUST_LOG=info HOME=/tmp "$BINARY" --service >"$log" 2>&1 &
+  SVC=$!
+  SVC_START=$("$READY" --identity "$SVC")
+  wait_for_service_child "$log" "$stale_record_hash"
 }
 
 stop_service_gracefully() {
@@ -322,6 +399,48 @@ CHILD=
 CHILD_START=
 assert_portable_alive
 printf 'SERVICE_LIFECYCLE_FORCED=pass elapsed_ms=%s\n' "$elapsed_ms"
+
+start_service "$FIXTURE/service-4-crashed.log"
+crashed_generation=$GENERATION
+crashed_child=$CHILD
+crashed_child_start=$CHILD_START
+crashed_record_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")
+crashed_record_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
+assert_portable_alive
+crashed_child_exit_ms=$(crash_supervisor_and_wait_child \
+  "$SVC" "$SVC_START" "$crashed_child" "$crashed_child_start")
+if wait "$SVC"; then
+  echo 'service lifecycle: crashed supervisor unexpectedly exited successfully' >&2
+  exit 1
+else
+  crashed_supervisor_status=$?
+fi
+[ "$crashed_supervisor_status" -eq 137 ]
+SVC=
+SVC_START=
+if "$READY" --is-running "$crashed_child" "$crashed_child_start" 2>/dev/null; then
+  echo 'service lifecycle: parent-death-bound child survived supervisor crash' >&2
+  exit 1
+fi
+[ -f "$RECORD" ] && [ ! -L "$RECORD" ]
+[ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")" = "$crashed_record_identity" ]
+[ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$crashed_record_sha256" ]
+assert_portable_alive
+
+start_service_recovering "$FIXTURE/service-5-recovered.log" \
+  "$crashed_record_identity" "$crashed_record_sha256"
+[ "$GENERATION" != "$crashed_generation" ]
+[ "$CHILD:$CHILD_START" != "$crashed_child:$crashed_child_start" ]
+if ! grep -Eq -- "Discarding (exited Linux service child record for pid $crashed_child|stale Linux service child record for absent pid $crashed_child) without signaling" \
+  "$FIXTURE/service-5-recovered.log"; then
+  echo 'service lifecycle: fresh supervisor did not report exact stale-record recovery' >&2
+  exit 1
+fi
+recovered_generation=$GENERATION
+assert_portable_alive
+stop_service_gracefully "$FIXTURE/service-5-recovered.log"
+printf 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=%s recovered_generation=%s child_exit_ms=%s\n' \
+  "$crashed_generation" "$recovered_generation" "$crashed_child_exit_ms"
 
 "$READY" --stop "$PORTABLE" "$PORTABLE_START"
 wait "$PORTABLE"

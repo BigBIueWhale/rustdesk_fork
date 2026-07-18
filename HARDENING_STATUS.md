@@ -2843,14 +2843,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 ## Open residuals (tracked, not regressions)
 
 - **UPCOMING RELEASES — Linux service-child lifecycle ownership — USER-REQUESTED
-  2026-07-16; OPEN.** Replace process-name/text-based server cleanup with an
-  init-system-independent ownership protocol. This is required to support Debian
-  installations using SysV init, OpenRC, runit, or a manually supervised daemon;
-  systemd cgroups may be defense-in-depth on systemd hosts, but MUST NOT be the
-  foundation of correctness. This item is future-release work and is explicitly
-  **not authorization to stop, restart, upgrade, reconfigure, or otherwise disturb
-  the currently deployed host service**, which is operationally running an older
-  release.
+  2026-07-16; SOURCE/RUNTIME/RELEASE-GATE IMPLEMENTED THROUGH R-S11c-27s; EXACT COLD
+  ARTIFACT EXECUTION PENDING.** The process-name/text-based server cleanup replacement is
+  implemented in source, runtime, package, and release-gate form by R-S11c-27a–s below:
+  the service-child authority is the init-system-independent ownership protocol, not
+  process-name discovery. The parent release item remains open only because the exact
+  clean committed cold transaction has not yet emitted the bound final `.deb` lifecycle
+  marker and full R-B2 manifest. This item remains explicitly **not authorization to stop,
+  restart, upgrade, reconfigure, or otherwise disturb the currently deployed host service**,
+  which is operationally running an older release.
 
   - **R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** This coherent first slice replaces server process-table authority

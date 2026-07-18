@@ -3626,6 +3626,11 @@ if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle pro
 echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27a_linux_service_child_parent_death --color never
 r_s11c27a=
+grep -qF 'SOURCE/RUNTIME/RELEASE-GATE IMPLEMENTED THROUGH R-S11c-27s; EXACT COLD' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a parent-status-not-implemented-through-27s"
+grep -qF 'ARTIFACT EXECUTION PENDING' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a parent-artifact-pending-scope-missing"
+if grep -Fq 'OPEN.** Replace process-name/text-based server cleanup with an' HARDENING_STATUS.md; then
+  r_s11c27a="$r_s11c27a stale-parent-source-open-wording"
+fi
 service_child_launch_block=$(awk '/fn try_start_server_/,/pub fn require_service_owned_server_parent_liveness/' src/platform/linux.rs)
 grep -qF 'struct OwnedServiceChild {' src/platform/linux.rs || r_s11c27a="$r_s11c27a no-owned-child-type"
 echo "$service_child_launch_block" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)' || r_s11c27a="$r_s11c27a credential-drop-executable-not-opened-cloexec"

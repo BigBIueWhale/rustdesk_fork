@@ -3849,8 +3849,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
-  SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT GATE IMPLEMENTED; ANDROID GATE EXECUTION
-  AND ON-DEVICE/iOS ARTIFACT VALIDATION PENDING.** This is the mobile face of
+  SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
+  ARTIFACT VALIDATION PENDING.** This is the mobile face of
   Appendix C #14. The old path on BOTH iOS and Android keyed `password_prs` at rest with the config
   keypair PK (`get_uuid()` / `Config::get_key_pair().1` — the off-file `machine_uid` block is
   cfg-compiled out on both mobile platforms), which is itself stored in plaintext in the same TOML, so the
@@ -3878,8 +3878,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   functions instead of trying to expose its raw pointer through the Dart bridge. Existing mobile ciphertext encrypted under
   the legacy config keypair is still accepted only as a read-only decrypt fallback through
   `Config::get_existing_key_pair()`; when that fallback succeeds, `decrypt_str_or_original` /
-  `decrypt_vec_or_original` mark the value for re-store so the next write rewraps under the OS key. This
-  is still not artifact-closed. The Android release path now keeps `MainApplication` and
+  `decrypt_vec_or_original` mark the value for re-store so the next write rewraps under the OS key. The Android packaging/native-linkage
+  half is artifact-validated; the overall mobile item remains open. The Android release path keeps `MainApplication` and
   `MobileAtRestStorageKey` structurally auditable through R8 and runs
   `scripts/verify-android-mobile-key-artifact.py` against the final certificate-verified APK. The bounded
   verifier rejects duplicate/noncontiguous DEX entries, proves the ordered
@@ -3887,9 +3887,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   KeyStore/AES-GCM/durable-commit/reread method references, and requires the AArch64
   `Java_ffi_FFI_setMobileAtRestStorageKey` dynamic export from the packaged `librustdesk.so`. It is wired
   into both normal signing and `build-android.sh --verify-apk`; source gates keep that wiring and its
-  negative self-test mandatory. Execution against a newly built APK is not yet recorded here. Even after
-  that gate runs, it proves packaging and native linkage, not live Keystore/Keychain behavior: the round
-  trips have not run on an Android emulator/device or iOS build host in this loop. The Documents directory this wrapper
+  negative self-test mandatory. At exact clean commit `6efe41f45a01da1d8b4d39dee3cbb208d6a05308`, the default
+  target-local two-pass Android build used pinned image
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`, private immutable online closure
+  `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac`, and signing certificate SHA-256
+  `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`. Both clean target-local
+  passes produced the same v2/v3-signed APK SHA-256
+  `b506c67080ee86e6171ce3fed436bf8dd7e31dfa7d48f418158aaca2b10e46b3`; the manifest and mobile-key artifact
+  verifiers passed during each signing pass and in the final direct artifact verification. This same-workspace
+  target-local A/B check is not the full top-level R-B2 transaction with independent source snapshots, so R-B2 and
+  R-B10 release closure remain open. The artifact gate proves packaging and native linkage, not live
+  Keystore/Keychain behavior: the round trips have not run on an Android emulator/device or iOS build host in this
+  loop. The Documents directory this wrapper
   sits in had **two** local-exfiltration channels, now closed by two separate fixes: (a) the **Files-app /
   iTunes file-sharing BROWSE** channel was closed by the APPLE-6 plist fix (dropping
   `UIFileSharingEnabled`/`UISupportsDocumentBrowser`, so the directory is no longer user-browsable); and

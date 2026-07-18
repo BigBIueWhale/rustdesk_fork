@@ -24,10 +24,6 @@ lazy_static::lazy_static! {
 }
 
 const LOGINCTL_PATHS: [&str; 2] = ["/usr/bin/loginctl", "/bin/loginctl"];
-const NOTIFY_SEND_PATHS: [&str; 2] = ["/usr/bin/notify-send", "/bin/notify-send"];
-const ZENITY_PATHS: [&str; 2] = ["/usr/bin/zenity", "/bin/zenity"];
-const KDIALOG_PATHS: [&str; 2] = ["/usr/bin/kdialog", "/bin/kdialog"];
-const XMESSAGE_PATHS: [&str; 2] = ["/usr/bin/xmessage", "/bin/xmessage"];
 
 pub const DISPLAY_SERVER_WAYLAND: &str = "wayland";
 pub const DISPLAY_SERVER_X11: &str = "x11";
@@ -522,46 +518,6 @@ fn run_loginctl(args: Option<Vec<&str>>) -> std::io::Result<std::process::Output
     cmd.output()
 }
 
-fn spawn_message_command(paths: &'static [&'static str], args: &[&str]) -> bool {
-    let Some(command) = trusted_command_path(paths) else {
-        return false;
-    };
-    let mut command = Command::new(command);
-    command.args(args);
-    if configure_command_close_nonstdio_on_exec(&mut command).is_err() {
-        return false;
-    }
-    command.spawn().is_ok()
-}
-
-/// forever: may not work
-#[cfg(target_os = "linux")]
-pub fn system_message(title: &str, msg: &str, forever: bool) -> ResultType<()> {
-    let timeout = if forever { "0" } else { "3" };
-    if spawn_message_command(&NOTIFY_SEND_PATHS, &[title, msg])
-        || spawn_message_command(
-            &ZENITY_PATHS,
-            &[
-                "--info",
-                "--timeout",
-                timeout,
-                "--title",
-                title,
-                "--text",
-                msg,
-            ],
-        )
-        || spawn_message_command(&KDIALOG_PATHS, &["--title", title, "--msgbox", msg])
-        || spawn_message_command(
-            &XMESSAGE_PATHS,
-            &["-center", "-timeout", timeout, title, msg],
-        )
-    {
-        return Ok(());
-    }
-    crate::bail!("failed to post system message");
-}
-
 #[derive(Debug, Clone)]
 pub struct WaylandDisplayInfo {
     pub name: String,
@@ -698,13 +654,7 @@ mod tests {
 
     #[test]
     fn r_s11c10m_command_candidates_are_fixed_absolute_paths() {
-        for path in LOGINCTL_PATHS
-            .iter()
-            .chain(NOTIFY_SEND_PATHS.iter())
-            .chain(ZENITY_PATHS.iter())
-            .chain(KDIALOG_PATHS.iter())
-            .chain(XMESSAGE_PATHS.iter())
-        {
+        for path in LOGINCTL_PATHS.iter() {
             assert!(Path::new(path).is_absolute(), "{} is not absolute", path);
             assert!(!path.contains(".."), "{} contains parent traversal", path);
         }

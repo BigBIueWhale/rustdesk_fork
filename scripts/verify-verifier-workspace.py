@@ -4223,18 +4223,10 @@ def validate_smoke_contract(
         (
             hbb_common_linux,
             "fn run_loginctl(",
-            "\nfn spawn_message_command",
+            "\n#[derive(Debug, Clone)]",
             "loginctl descriptor policy",
             "configure_command_close_nonstdio_on_exec(&mut cmd)?;",
             "cmd.output()",
-        ),
-        (
-            hbb_common_linux,
-            "fn spawn_message_command(",
-            "\n/// forever:",
-            "desktop notification descriptor policy",
-            "configure_command_close_nonstdio_on_exec(&mut command).is_err()",
-            "command.spawn().is_ok()",
         ),
         (
             linux_source,
@@ -5107,6 +5099,76 @@ def validate_private_tree_closure(source):
             raise VerificationError("private-tree closure descriptor stat can follow a filesystem alias")
 
 
+def validate_fatal_signal_contract(sources):
+    forbidden = (
+        "register_breakdown_handler",
+        "breakdown_signal_handler",
+        "GLOBAL_CALLBACK",
+        "breakdown_callback",
+        "libc::SIGSEGV",
+        "system_message",
+        "NOTIFY_SEND_PATHS",
+        "ZENITY_PATHS",
+        "KDIALOG_PATHS",
+        "XMESSAGE_PATHS",
+        "Got signal {} and exit",
+    )
+    for key in ("core_main", "platform_source", "hbb_common_platform", "hbb_common_linux"):
+        for token in forbidden:
+            if token in sources[key]:
+                raise VerificationError(
+                    f"fatal-signal callback surface remains in {key}: {token}"
+                )
+
+    if re.search(r"(?m)^\s*backtrace\s*=", sources["hbb_common_cargo"]):
+        raise VerificationError("obsolete direct backtrace dependency remains")
+    hbb_common_lock = re.search(
+        r'(?ms)^\[\[package\]\]\nname = "hbb_common"\n.*?(?=^\[\[package\]\]|\Z)',
+        sources["cargo_lock"],
+    )
+    if hbb_common_lock is None:
+        raise VerificationError("hbb_common Cargo.lock record is missing")
+    if '"backtrace"' in hbb_common_lock.group(0):
+        raise VerificationError("obsolete hbb_common backtrace lock edge remains")
+    if sources["system_message_example_state"] != "system-message-example-absent":
+        raise VerificationError("obsolete system message example remains")
+
+    for text, label in (
+        (
+            "fatal-signal default-disposition authority (R-S11s/R-S11e-33)",
+            "fatal-signal source gate",
+        ),
+        (
+            "fatal-signal-callback-or-notification-path-present",
+            "fatal-signal forbidden-source rejection",
+        ),
+        (
+            "obsolete-direct-backtrace-dependency-present",
+            "fatal-signal obsolete dependency rejection",
+        ),
+        (
+            "obsolete-system-message-example-present",
+            "fatal-signal obsolete example rejection",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11s</span>',
+        "fatal-signal normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>141</td>",
+        "fatal-signal Appendix C disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-33 — desktop fatal-signal default disposition",
+        "fatal-signal hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -5116,6 +5178,7 @@ def validate_sources(sources):
     validate_fork_version(sources["version"])
     validate_r_b2_version_metadata(sources)
     validate_docs(sources)
+    validate_fatal_signal_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -10173,12 +10236,6 @@ def run_source_mutations(sources):
             "loginctl descriptor policy",
         ),
         (
-            "hbb_common_linux",
-            "configure_command_close_nonstdio_on_exec(&mut command).is_err()",
-            "configure_command_close_nonstdio_on_exec_disabled(&mut command).is_err()",
-            "desktop notification descriptor policy",
-        ),
-        (
             "clipboard_fuse",
             "configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])",
             "configure_command_close_nonstdio_on_exec(&mut command)",
@@ -10213,6 +10270,72 @@ def run_source_mutations(sources):
             "&[9, 9]",
             "&[9]",
             "duplicate allowlist rejection",
+        ),
+        (
+            "core_main",
+            "use hbb_common::{config, log};",
+            "use hbb_common::{config, log};\nfn register_breakdown_handler() {}",
+            "fatal-signal callback surface",
+        ),
+        (
+            "hbb_common_platform",
+            "pub mod windows;",
+            'pub mod windows;\nextern "C" fn breakdown_signal_handler(_: i32) {}',
+            "fatal-signal callback surface",
+        ),
+        (
+            "platform_source",
+            "pub fn installing_service() -> bool {",
+            "pub fn breakdown_callback() {}\npub fn installing_service() -> bool {",
+            "fatal-signal callback surface",
+        ),
+        (
+            "hbb_common_linux",
+            'const LOGINCTL_PATHS: [&str; 2] = ["/usr/bin/loginctl", "/bin/loginctl"];',
+            'const LOGINCTL_PATHS: [&str; 2] = ["/usr/bin/loginctl", "/bin/loginctl"];\nconst NOTIFY_SEND_PATHS: [&str; 1] = ["/usr/bin/notify-send"];',
+            "fatal-signal callback surface",
+        ),
+        (
+            "hbb_common_cargo",
+            'chrono = "0.4"',
+            'chrono = "0.4"\nbacktrace = "0.3"',
+            "obsolete direct backtrace dependency",
+        ),
+        (
+            "cargo_lock",
+            'name = "hbb_common"\nversion = "0.1.0"\ndependencies = [\n "anyhow",\n "async-recursion",\n "base64 0.22.1",',
+            'name = "hbb_common"\nversion = "0.1.0"\ndependencies = [\n "anyhow",\n "async-recursion",\n "backtrace",\n "base64 0.22.1",',
+            "obsolete hbb_common backtrace lock edge",
+        ),
+        (
+            "system_message_example_state",
+            "system-message-example-absent",
+            "system-message-example-present",
+            "obsolete system message example",
+        ),
+        (
+            "verify",
+            "fatal-signal default-disposition authority (R-S11s/R-S11e-33)",
+            "fatal-signal callback compatibility (R-S11s/R-S11e-33)",
+            "fatal-signal source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11s</span>',
+            '<span class="id">R-S11z</span>',
+            "fatal-signal normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>141</td>",
+            "<tr><td>9141</td>",
+            "fatal-signal Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-33 — desktop fatal-signal default disposition",
+            "R-S11e-33 — desktop fatal-signal callback deferred",
+            "fatal-signal hardening ledger",
         ),
         (
             "core_main",
@@ -11929,12 +12052,21 @@ def main():
             "version": (repo / "scripts/fork-version.sh").read_text(encoding="utf-8"),
             "build_rs": (repo / "build.rs").read_text(encoding="utf-8"),
             "root_cargo": (repo / "Cargo.toml").read_text(encoding="utf-8"),
+            "cargo_lock": (repo / "Cargo.lock").read_text(encoding="utf-8"),
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
             "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
+            "hbb_common_cargo": (repo / "libs/hbb_common/Cargo.toml").read_text(encoding="utf-8"),
+            "hbb_common_platform": (repo / "libs/hbb_common/src/platform/mod.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
+            "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "hbb_common_linux": (repo / "libs/hbb_common/src/platform/linux.rs").read_text(encoding="utf-8"),
+            "system_message_example_state": (
+                "system-message-example-present"
+                if (repo / "libs/hbb_common/examples/system_message.rs").exists()
+                else "system-message-example-absent"
+            ),
             "clipboard_fuse": (repo / "libs/clipboard/src/platform/unix/fuse/mod.rs").read_text(encoding="utf-8"),
             "scrap_hwcodec": (repo / "libs/scrap/src/common/hwcodec.rs").read_text(encoding="utf-8"),
             "gitignore": (repo / ".gitignore").read_text(encoding="utf-8"),

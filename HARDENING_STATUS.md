@@ -18,8 +18,8 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 801 lexical `unsafe {`
-blocks across 244 tracked Rust files, 67 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 799 lexical `unsafe {`
+blocks across 243 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -2042,8 +2042,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
   debug-binary runtime evidence only; final exact release `.deb` execution remains open under R-B2/R-S11c-27.
   The helper adds one reviewed lexical
-  `unsafe {` block; after R-S11e-32 the current inventory is 801 blocks across 244 tracked Rust files/67 nonzero
-  files with digest `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
+  `unsafe {` block; after R-S11e-33 the current inventory is 799 blocks across 243 tracked Rust files/66 nonzero
+  files with digest `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
 - **R-S11e-29 — Linux service-originated helper inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux root/service-originated helper launches. Endpoint/action: the `sudo -E env` probe,
@@ -2074,8 +2074,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   helper launches, R-S11o, Appendix C #137, and this ledger entry. The verifier mutation suite renames the helper,
   deletes/renames probe and reopen helper calls, and removes `run_as_user` branch calls; each mutation must be
   rejected. This slice adds one reviewed lexical `unsafe {` block for the new helper-launch `pre_exec` registration;
-  after the shared R-S11e-32 policy the current inventory is 801 blocks across 244 tracked Rust files/67 nonzero
-  files with digest `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
+  after R-S11e-33 the current inventory is 799 blocks across 243 tracked Rust files/66 nonzero
+  files with digest `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
 - **R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux service-owned unattended-password authorization. Endpoint/action: root service invocation of
@@ -2182,8 +2182,45 @@ unreachable and a source/test/AST gate prevents reintroduction.
   parent commit in this isolated Docker environment before mutation dispatch; the focused mutation dispatch was
   therefore run and passed separately. The shared low-level implementation has four reviewed lexical `unsafe {`
   blocks while the superseded root helper contributed one removed block: the net inventory change is three, for a
-  current total of 801 blocks across 244 tracked Rust files/67 nonzero files with digest
-  `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
+  then-current total of 801 blocks across 244 tracked Rust files/67 nonzero files. R-S11e-33 later removes two
+  additional blocks from the still-tracked platform module and deletes one zero-unsafe example; the current
+  inventory is 799 blocks across 243 tracked Rust files/66 nonzero files with digest
+  `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
+- **R-S11e-33 — desktop fatal-signal default disposition — SOURCE, COMPILE, TARGETED-TEST, AND MUTATION VERIFIED
+  2026-07-18; FINAL EXACT RELEASE ARTIFACTS REMAIN WITH R-B2.** Platforms: Linux, macOS, and Windows non-mobile release desktop images, including
+  viewer, server, and installed-service roles that share `core_main`. Endpoint/action: the process-wide
+  `SIGSEGV` registration and callback. Boundary: a synchronous memory-integrity failure interrupting arbitrary
+  process state ↔ Rust crash-reporting, configuration, input-cleanup, and child-process authority. Attack surface
+  closed: every non-mobile release process installed `breakdown_signal_handler` with `libc::signal`. That handler
+  allocated and symbolized a backtrace, formatted strings, read and wrote configuration, logged, launched a Linux
+  desktop-notification helper, called a callback stored in mutable global state, entered native input-cleanup
+  backends, and then reported success through `process::exit(0)`. A fault can interrupt any of those allocators,
+  locks, loggers, configuration paths, or native backends while their state is inconsistent. Re-entering them from
+  the signal handler is therefore undefined or deadlock-prone, while normal success exit suppresses truthful
+  abnormal-signal status, supervisor `Restart=on-failure` recovery, and ordinary platform crash diagnostics. This
+  is a crash-path privilege/availability amplifier and forensic-integrity defect, not a demonstrated standalone
+  local privilege escalation: an attacker still needs a genuine fault or authority to signal the process, and the
+  deleted Linux notification launcher used fixed executable paths and constant text.
+
+  Closure: R-S11s leaves fatal memory-integrity signals at the operating system's default disposition. The
+  registration call and API, handler, mutable-global callback, input-cleanup consumer, Linux crash-notification
+  helper/example, and `hbb_common`'s direct `backtrace` dependency are deleted. No Rust allocator, lock, logger,
+  configuration writer, graphics/codec option mutator, native input backend, callback, subprocess launcher, or
+  normal exit handler now runs in `SIGSEGV` context. Default abnormal termination preserves truthful process
+  status, systemd `Restart=on-failure` behavior, and platform crash/core policy. This does not change the separately
+  owned graceful `SIGTERM`/`SIGINT` service/direct-server shutdown paths. `scripts/verify.sh` and
+  `scripts/verify-verifier-workspace.py` bind complete symbol/dependency/example absence, the Cargo.lock edge,
+  R-S11s, Appendix C #141, and this ledger entry. The extracted source gate and normal semantic source validator
+  passed; a focused fixture rejected all 11 independent callback/helper/dependency/example/gate/ledger mutations.
+  Rust 1.75 passed `cargo check --locked -p hbb_common`, the full Linux library check with
+  `linux-pkg-config,unix-file-copy-paste`, and all three affected `r_s11c10m_command` tests. Locked offline Cargo
+  metadata, the dependency inventory and its behavioral self-test, Python/shell syntax, native-codec watch,
+  requirements-hash equality, and diff hygiene passed. Rust source edits are deletion-only; the local development
+  image does not contain the Rust 1.75 rustfmt component, so no formatter result is claimed. This slice removes two
+  lexical `unsafe {` blocks from the still-tracked platform module and deletes one zero-unsafe example: the current
+  inventory is 799 blocks across 243 tracked Rust files/66 nonzero files with digest
+  `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`. Exact Linux/macOS/Windows release-artifact
+  compilation/execution remains part of the final R-B2 transaction and is not claimed here.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3024,10 +3061,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; after the later R-S11e-32 shared helper-launch descriptor policy, the current machine inventory is 801 across
-    244 tracked Rust files/67 nonzero files, with the added deterministic Windows resource producer containing no
+    blocks; after the later R-S11e-33 fatal-signal closure, the current machine inventory is 799 across
+    243 tracked Rust files/66 nonzero files, with the added deterministic Windows resource producer containing no
     lexical unsafe block and per-file-count digest
-    `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
+    `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -3128,7 +3165,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
     introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
     deterministic Windows resource-producer addition, R-S11e-28 descriptor closure, and R-S11e-29 helper-launch
-    descriptor hook, the current inventory is 801 across 244 tracked Rust files/67 nonzero files.
+    descriptor hook, and the later R-S11e-33 fatal-signal closure, the current inventory is 799 across 243 tracked
+    Rust files/66 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
     source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active
@@ -4492,8 +4530,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-47ac1c117ad103df288091495c4e56b718ae2a6e91ae9720b96ed133fed67450  requirements.html
+e75f0ecc28cbdc84dbbae838404154b8f134a3a8957b17b450ea120dbbebebd1  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11r, and Appendix C #140. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11s, and Appendix C #141. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

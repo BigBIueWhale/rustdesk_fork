@@ -46,7 +46,6 @@ regex = "1.11"
 idna = "1.0"
 tokio-socks = { git = "https://github.com/rustdesk-org/tokio-socks" }
 chrono = "0.4"
-backtrace = "0.3"
 libc = "0.2"
 dlopen = "0.1"
 toml = "0.7"

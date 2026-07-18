@@ -2956,8 +2956,7 @@ if [ -n "$r_s11e31" ]; then echo "  FAIL R-S11e-31 Linux same-executable child i
 echo "== (3b-iii-d11) Linux external-helper descriptor allowlist authority (R-S11r/R-S11e-32) =="
 r_s11e32=
 shared_descriptor_policy=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
-loginctl_helper=$(awk '/fn run_loginctl/,/fn spawn_message_command/' libs/hbb_common/src/platform/linux.rs)
-message_helper=$(awk '/fn spawn_message_command/,/pub fn system_message/' libs/hbb_common/src/platform/linux.rs)
+loginctl_helper=$(awk '/fn run_loginctl/,/#\[derive\(Debug, Clone\)\]/' libs/hbb_common/src/platform/linux.rs)
 lock_screen_helper=$(awk '/pub fn lock_screen\(\)/,/pub fn toggle_blank_screen/' src/platform/linux.rs)
 xrandr_query_helper=$(awk '/fn xrandr_query\(\)/,/pub fn resolutions/' src/platform/linux.rs)
 xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/pub fn is_xwayland_running/' src/platform/linux.rs)
@@ -2999,7 +2998,6 @@ check_r_s11e32_helper_contract() {
   fi
 }
 check_r_s11e32_helper_contract "$loginctl_helper" 'configure_command_close_nonstdio_on_exec(&mut cmd)?;' 'cmd.output()'
-check_r_s11e32_helper_contract "$message_helper" 'configure_command_close_nonstdio_on_exec(&mut command).is_err()' 'command.spawn().is_ok()'
 check_r_s11e32_helper_contract "$lock_screen_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.spawn()'
 check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.output()?'
 check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
@@ -3043,6 +3041,42 @@ grep -qF '<tr><td>140</td>' requirements.html                                   
 grep -qF 'R-S11e-32 — Linux external-helper descriptor allowlist authority' HARDENING_STATUS.md || r_s11e32="$r_s11e32 hardening-ledger-missing"
 if [ -n "$r_s11e32" ]; then echo "  FAIL R-S11e-32 Linux external-helper descriptor allowlist authority:$r_s11e32"; rc=1; else
   echo "  ok  R-S11e-32 every production Linux helper has an application-owned descriptor contract; only fusermount receives its exact communication socket"; fi
+
+# (3b-iii-d12) R-S11s/R-S11e-33: a synchronous fatal memory-integrity
+# signal keeps the operating system's default disposition. RustDesk must not
+# allocate, lock, write config, invoke input backends, spawn helpers, or report
+# success from an asynchronous SIGSEGV callback.
+echo "== (3b-iii-d12) fatal-signal default-disposition authority (R-S11s/R-S11e-33) =="
+r_s11e33=
+if verify_scan_capture "$VERIFY_TMP/r_s11e33_fatal_signal_hits.txt" -rInE \
+  'register_breakdown_handler|breakdown_signal_handler|GLOBAL_CALLBACK|breakdown_callback|libc::SIGSEGV|system_message|NOTIFY_SEND_PATHS|ZENITY_PATHS|KDIALOG_PATHS|XMESSAGE_PATHS|Got signal .*exit' \
+  src libs --include='*.rs'; then
+  cat "$VERIFY_TMP/r_s11e33_fatal_signal_hits.txt"
+  r_s11e33="$r_s11e33 fatal-signal-callback-or-notification-path-present"
+fi
+if grep -qE '^[[:space:]]*backtrace[[:space:]]*=' libs/hbb_common/Cargo.toml; then
+  r_s11e33="$r_s11e33 obsolete-direct-backtrace-dependency-present"
+fi
+hbb_common_lock_record=$(awk '
+  /^\[\[package\]\]$/ { if (capture) exit; in_package=1; next }
+  in_package && /^name = "hbb_common"$/ { capture=1 }
+  capture { print }
+' Cargo.lock)
+if grep -qF '"backtrace"' <<<"$hbb_common_lock_record"; then
+  r_s11e33="$r_s11e33 obsolete-hbb-common-lock-edge-present"
+fi
+[ ! -e libs/hbb_common/examples/system_message.rs ] \
+  || r_s11e33="$r_s11e33 obsolete-system-message-example-present"
+grep -qF '<span class="id">R-S11s</span>' requirements.html \
+  || r_s11e33="$r_s11e33 normative-requirement-missing"
+grep -qF '<tr><td>141</td>' requirements.html \
+  || r_s11e33="$r_s11e33 appendix-row-missing"
+grep -qF 'Desktop fatal-signal callback authority' requirements.html \
+  || r_s11e33="$r_s11e33 appendix-disposition-missing"
+grep -qF 'R-S11e-33 — desktop fatal-signal default disposition' HARDENING_STATUS.md \
+  || r_s11e33="$r_s11e33 hardening-ledger-missing"
+if [ -n "$r_s11e33" ]; then echo "  FAIL R-S11e-33 desktop fatal-signal default-disposition authority:$r_s11e33"; rc=1; else
+  echo "  ok  R-S11e-33 SIGSEGV retains the OS default disposition; crash-time Rust callbacks, config writes, input cleanup, and helper launches are absent"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
@@ -4893,7 +4927,6 @@ echo "== (3b-iii-h9c) Linux shared helper command provenance has no shell/path f
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11c10m --color never
 r_s11c10m=
 grep -q 'const LOGINCTL_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-loginctl-paths"
-grep -q 'const NOTIFY_SEND_PATHS' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-fixed-notify-send-paths"
 grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m no-shared-canonical-trusted-exec-check"
 grep -q 'fn linux_helper_path_is_clean_absolute(path: &Path) -> bool' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-no-clean-absolute-policy"
 grep -q 'path.is_absolute()' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-allows-relative"
@@ -4906,7 +4939,6 @@ grep -q 'mode & 0o022 == 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="
 grep -q 'mode & 0o111 != 0' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-command-resolver-executable-bit-not-required"
 grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m shared-resolver-not-returning-canonical-path"
 grep -q 'Command::new(loginctl)' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m loginctl-not-fixed-path-argv"
-grep -q 'fn spawn_message_command' libs/hbb_common/src/platform/linux.rs || r_s11c10m="$r_s11c10m system-message-not-fixed-path-helper"
 grep -q 'pub const REOPEN_AFTER_SERVICE_STOP_ARG' src/platform/linux.rs || r_s11c10m="$r_s11c10m no-delayed-reopen-argv-mode"
 grep -q 'schedule_reopen_after_service_stop(2)' src/platform/linux.rs || r_s11c10m="$r_s11c10m uninstall-reopen-not-argv-mode"
 grep -q 'reopen_after_service_stop(secs)' src/core_main.rs || r_s11c10m="$r_s11c10m delayed-reopen-arg-not-handled"

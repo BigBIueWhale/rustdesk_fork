@@ -4253,7 +4253,8 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         );
         return false;
     };
-    let child = std::process::Command::new(pkcheck)
+    let mut command = std::process::Command::new(pkcheck);
+    command
         .arg("--action-id")
         .arg(SET_UNATTENDED_PASSWORD_POLKIT_ACTION)
         .arg("--process")
@@ -4261,8 +4262,19 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         .arg("--allow-user-interaction")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+        .stderr(std::process::Stdio::null());
+    if let Err(err) =
+        crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)
+    {
+        log::warn!(
+            "Rejected service-owned unattended password change: failed to constrain pkcheck descriptors for action={}, subject={}, err={}",
+            SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+            subject,
+            err
+        );
+        return false;
+    }
+    let child = command.spawn();
     let mut child = match child {
         Ok(child) => child,
         Err(err) => {
@@ -8441,6 +8453,9 @@ mod test {
         let authorization = &source[start..end];
         for required in [
             "PKCHECK_AUTHORIZATION_TIMEOUT",
+            "let mut command = std::process::Command::new(pkcheck);",
+            "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "let child = command.spawn();",
             "child.try_wait()",
             "shutdown.is_cancelled()",
             "child.kill()",

@@ -2043,6 +2043,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   rejected. This slice adds one reviewed lexical `unsafe {` block for the new helper-launch `pre_exec` registration;
   the current inventory is 798 blocks across 244 tracked Rust files/66 nonzero files with digest
   `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
+- **R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority — SOURCE AND
+  MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
+  Platform: Linux service-owned unattended-password authorization. Endpoint/action: root service invocation of
+  the fixed trusted `/usr/bin/pkcheck` helper for `com.carriez.RustDesk.set-unattended-password`.
+  Boundary: root/service-owned runtime descriptors ↔ the external polkit authorization checker, which should
+  receive only the deliberate action/process/interaction argv and null stdio. Attack surface closed: after
+  R-S11e/R-S11e-1/R-S11e-15 the service already resolved and authenticated the trusted pkcheck executable and
+  bound the polkit subject to the socket-derived caller identity, but `src/ipc.rs` still built a direct
+  `std::process::Command::new(pkcheck).spawn()` shape. Linux would preserve any root-service descriptor that lacked
+  `FD_CLOEXEC` into that helper image. This is a root-service-to-helper descriptor-capability leak and
+  source-authority defect, not a demonstrated promptless ordinary-user-to-root escalation.
+
+  Closure: `src/platform/linux.rs::configure_linux_helper_close_nonstdio_on_exec` is now crate-visible and the
+  pkcheck authorization path uses it before `command.spawn()`. `src/ipc.rs` now builds a mutable command, supplies
+  only the fixed pkcheck argv, null-routes stdio, registers the parent-bound close-on-exec pre-exec hook, rejects
+  the service-owned password operation if the hook cannot be configured, and only then executes the helper. The
+  direct service-child executable-fd exception remains unavailable here.
+
+  `scripts/verify.sh` and `scripts/verify-verifier-workspace.py` bind the pkcheck command shape, descriptor-policy
+  call, fail-closed diagnostic, ordering before spawn, direct-spawn absence, R-S11p, Appendix C #138, and this
+  ledger entry. Focused Docker verification passed for the extracted source gate, verifier workspace validation,
+  targeted pkcheck source mutations, dependency inventory, native-codec requirements hash, Linux `cargo check`, and
+  the targeted Linux password-authorization source-contract unit test. This slice adds no new production
+  `unsafe {` block; the existing helper pre-exec registration from R-S11e-29 is reused.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4320,8 +4344,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e9f3eaafc06dd05ff02f2a06935c0a97a2abdeaa1c07af1974627baff88dfc7d  requirements.html
+51744b6f044bd5bfc1dff186a6e244c0924fb6fd434673ccfb8bd6b693338019  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, R-S11o, and Appendix C #137. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, R-S11o, R-S11p, and Appendix C #138. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

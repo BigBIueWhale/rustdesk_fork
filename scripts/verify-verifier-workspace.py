@@ -3299,6 +3299,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-28 — Linux service-owned inherited descriptor authority' HARDENING_STATUS.md", "service inherited descriptor hardening ledger gate"),
         ('Linux service helper inherited descriptor authority (R-S11o/R-S11e-29)', "service helper descriptor source gate"),
         ("grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md", "service helper descriptor hardening ledger gate"),
+        ('Linux pkcheck helper inherited descriptor authority (R-S11p/R-S11e-30)', "pkcheck helper descriptor source gate"),
+        ("grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority' HARDENING_STATUS.md", "pkcheck helper descriptor hardening ledger gate"),
     ):
         require_text(verify, text, label)
     require_text(
@@ -3320,6 +3322,11 @@ def validate_smoke_contract(
         hardening,
         "R-S11e-29 — Linux service-originated helper inherited descriptor authority",
         "service helper descriptor hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority",
+        "pkcheck helper descriptor hardening ledger",
     )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -3982,7 +3989,7 @@ def validate_smoke_contract(
     )
     linux_helper_pre_exec = extract_between(
         linux_source,
-        "fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {",
+        "pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(",
         "\nfn arm_service_child_parent_death",
         "Linux service helper descriptor pre-exec",
     )
@@ -4063,6 +4070,33 @@ def validate_smoke_contract(
     for forbidden in ("Command::new(&exe).arg(", "Command::new(exe).spawn()"):
         if forbidden in reopen_helpers:
             raise VerificationError(f"reopen helper retains direct spawn without descriptor policy: {forbidden}")
+    pkcheck_authorization = extract_between(
+        ipc_source,
+        "fn linux_pkcheck_authorizes_service_owned_password_change",
+        "\nasync fn linux_peer_is_authorized_for_service_owned_password_change",
+        "Linux pkcheck helper launch",
+    )
+    for text, label in (
+        ("let mut command = std::process::Command::new(pkcheck);", "pkcheck mutable command"),
+        (
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "pkcheck descriptor policy",
+        ),
+        ("failed to constrain pkcheck descriptors", "pkcheck descriptor failure diagnostic"),
+        ("let child = command.spawn();", "pkcheck execution after descriptor policy"),
+    ):
+        require_text(pkcheck_authorization, text, label)
+    require_order(
+        pkcheck_authorization,
+        (
+            "let mut command = std::process::Command::new(pkcheck);",
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "let child = command.spawn();",
+        ),
+        "pkcheck descriptor policy before execution",
+    )
+    if re.search(r"std::process::Command::new\(pkcheck\)\s*\.", pkcheck_authorization):
+        raise VerificationError("pkcheck retains direct spawn without descriptor policy")
     for source in (core_main, common_source):
         if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
             raise VerificationError("Rust server role regressed to semantic argv0 use")
@@ -9815,8 +9849,8 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {",
-            "fn configure_linux_helper_close_nonstdio_on_exec_disabled(command: &mut Command) -> ResultType<()> {",
+            "pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(",
+            "pub(crate) fn configure_linux_helper_close_nonstdio_on_exec_disabled(",
             "Linux service helper descriptor pre-exec",
         ),
         (
@@ -9830,6 +9864,18 @@ def run_source_mutations(sources):
             "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
             "configure_linux_helper_close_nonstdio_on_exec_disabled(&mut sudo)?;",
             "run_as_user descriptor policy on both sudo branches",
+        ),
+        (
+            "ipc_source",
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec_disabled(&mut command)",
+            "pkcheck descriptor policy",
+        ),
+        (
+            "ipc_source",
+            "let child = command.spawn();",
+            "let child = std::process::Command::new(pkcheck).spawn();",
+            "pkcheck execution after descriptor policy",
         ),
         (
             "core_main",

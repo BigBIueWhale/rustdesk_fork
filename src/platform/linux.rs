@@ -1820,7 +1820,9 @@ pub fn close_service_owned_nonstdio_descriptors() -> ResultType<()> {
         .map_err(|err| anyhow!("Failed to close inherited non-stdio descriptors: {err}"))
 }
 
-fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {
+pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(
+    command: &mut Command,
+) -> ResultType<()> {
     let descriptor_upper_bound = linux_service_descriptor_upper_bound()?;
     // The closure performs only raw Linux syscalls over the parent-resolved
     // descriptor bound. It preserves stdio and makes every other inherited

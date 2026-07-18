@@ -2677,7 +2677,7 @@ sudo_env_probe=$(awk '/static ref SUDO_E_PRESERVES_ENV: bool = {/,/^    };/' src
 run_as_user_block=$(awk '/pub fn run_as_user</,/^}/' src/platform/linux.rs)
 reopen_helper_block=$(awk '/pub fn schedule_reopen_after_service_stop/,/fn linux_helper_path_is_clean_absolute/' src/platform/linux.rs)
 for helper_binding in \
-  'fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {' \
+  'pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(' \
   'let descriptor_upper_bound = linux_service_descriptor_upper_bound()?' \
   'command.pre_exec(move || {' \
   'constrain_service_owned_nonstdio_descriptors(' \
@@ -2720,6 +2720,37 @@ grep -qF '<tr><td>137</td>' requirements.html                                   
 grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md || r_s11e29="$r_s11e29 hardening-ledger-missing"
 if [ -n "$r_s11e29" ]; then echo "  FAIL R-S11e-29 Linux service helper inherited descriptor authority:$r_s11e29"; rc=1; else
   echo "  ok  R-S11e-29 Linux sudo/env, run-as-user, and reopen helpers mark non-stdio descriptors close-on-exec before helper exec"; fi
+
+# (3b-iii-d9) R-S11p/R-S11e-30: Linux service-owned polkit
+# authorization helpers do not inherit root-service non-stdio
+# descriptors. pkcheck is the admin authorization checker for the
+# service-owned unattended-password operation, so the root service must
+# apply the same descriptor policy before its helper image executes.
+echo "== (3b-iii-d9) Linux pkcheck helper inherited descriptor authority (R-S11p/R-S11e-30) =="
+r_s11e30=
+pkcheck_authorization_block=$(awk '/fn linux_pkcheck_authorizes_service_owned_password_change/,/async fn linux_peer_is_authorized_for_service_owned_password_change/' src/ipc.rs)
+for pkcheck_binding in \
+  'let mut command = std::process::Command::new(pkcheck);' \
+  'crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)' \
+  'failed to constrain pkcheck descriptors' \
+  'let child = command.spawn();'; do
+  grep -qF "$pkcheck_binding" <<<"$pkcheck_authorization_block" || r_s11e30="$r_s11e30 pkcheck-descriptor-policy-missing"
+done
+pkcheck_policy_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut command)' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
+pkcheck_spawn_line=$(grep -nF 'let child = command.spawn();' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
+if [ -z "$pkcheck_policy_line" ] || [ -z "$pkcheck_spawn_line" ] \
+  || [ "$pkcheck_policy_line" -ge "$pkcheck_spawn_line" ]; then
+  r_s11e30="$r_s11e30 pkcheck-descriptor-policy-after-spawn"
+fi
+if grep -Eq 'std::process::Command::new\(pkcheck\)[[:space:]]*\.' <<<"$pkcheck_authorization_block"; then
+  r_s11e30="$r_s11e30 pkcheck-direct-spawn-without-descriptor-policy"
+fi
+grep -qF '<span class="id">R-S11p</span>' requirements.html                        || r_s11e30="$r_s11e30 normative-requirement-missing"
+grep -qF 'Linux service-owned pkcheck launch inherited descriptor authority' requirements.html || r_s11e30="$r_s11e30 appendix-disposition-missing"
+grep -qF '<tr><td>138</td>' requirements.html                                       || r_s11e30="$r_s11e30 appendix-row-missing"
+grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority' HARDENING_STATUS.md || r_s11e30="$r_s11e30 hardening-ledger-missing"
+if [ -n "$r_s11e30" ]; then echo "  FAIL R-S11e-30 Linux pkcheck helper inherited descriptor authority:$r_s11e30"; rc=1; else
+  echo "  ok  R-S11e-30 Linux service-owned pkcheck authorization marks non-stdio descriptors close-on-exec before helper exec"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and

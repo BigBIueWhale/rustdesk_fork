@@ -47,6 +47,24 @@ DECOY_GENERATION=
 PRE_PIDFD=
 PRE_PIDFD_START=
 PRE_PIDFD_GENERATION=
+ROOT_ENVIRONMENT_PROVEN=0
+
+readonly -a HOSTILE_SERVICE_ENV=(
+  env
+  RUST_LOG=info
+  RD_SERVICE_SMOKE_POISON=must-not-reach-child
+  HOME=/tmp/rustdesk-attacker-home
+  XDG_CONFIG_HOME=/tmp/rustdesk-attacker-xdg
+  DISPLAY=attacker.invalid:99
+  XAUTHORITY=/tmp/rustdesk-attacker.Xauthority
+  WAYLAND_DISPLAY=rustdesk-attacker-wayland
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/rustdesk-attacker-dbus
+  TERM=screen-256color
+  TMUX=/tmp/rustdesk-attacker-tmux
+  STY=rustdesk-attacker-screen
+  PULSE_LATENCY_MSEC=31337
+  PIPEWIRE_LATENCY=31337/31337
+)
 
 pidfd_signal_only() {
   local pid=$1 expected_start=$2 signal_name=$3
@@ -470,8 +488,7 @@ run_rejected_record_case() {
   [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
   before_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")
   before_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
-  if RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
-    "$BINARY" --service >"$log" 2>&1; then
+  if "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service >"$log" 2>&1; then
     service_status=0
   else
     service_status=$?
@@ -590,7 +607,46 @@ expected = {
 }
 if not expected.issubset(set(environ)):
     raise SystemExit("service child launch authority differs")
-if expected_uid != "0":
+parsed_environment = {}
+for entry in environ:
+    if b"=" not in entry:
+        raise SystemExit("service child environment is malformed")
+    key, value = entry.split(b"=", 1)
+    if key in parsed_environment:
+        raise SystemExit("service child environment has a duplicate key")
+    parsed_environment[key] = value
+if expected_uid == "0":
+    import pwd
+
+    root_home = pwd.getpwuid(0).pw_dir.encode()
+    required_environment = {
+        b"PATH": b"/usr/bin:/bin",
+        b"HOME": root_home,
+        b"DISPLAY": b":0",
+        b"XAUTHORITY": root_home.rstrip(b"/") + b"/.Xauthority",
+        b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT": str(supervisor).encode("ascii"),
+        b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION": generation.encode("ascii"),
+    }
+    if set(parsed_environment) != set(required_environment) | {b"TERM"}:
+        raise SystemExit("root service child environment escaped its bounded allowlist")
+    if any(parsed_environment[key] != value for key, value in required_environment.items()):
+        raise SystemExit("root service child environment binding differs")
+    if parsed_environment.get(b"TERM") not in {b"xterm", b"xterm-256color"}:
+        raise SystemExit("root service child TERM is outside the bounded fallback set")
+    hostile_values = {
+        b"attacker.invalid:99",
+        b"/tmp/rustdesk-attacker.Xauthority",
+        b"rustdesk-attacker-wayland",
+        b"unix:path=/tmp/rustdesk-attacker-dbus",
+        b"screen-256color",
+        b"/tmp/rustdesk-attacker-home",
+        b"/tmp/rustdesk-attacker-xdg",
+        b"31337",
+        b"31337/31337",
+    }
+    if hostile_values.intersection(parsed_environment.values()):
+        raise SystemExit("root service child adopted a hostile ambient environment value")
+else:
     if not all((expected_gid, expected_user, expected_home, expected_groups)):
         raise SystemExit("non-root service child expectation is incomplete")
     if status.get("Gid", "").split() != [expected_gid] * 4:
@@ -602,14 +658,6 @@ if expected_uid != "0":
     for capability_set in ("CapInh", "CapPrm", "CapEff", "CapAmb"):
         if int(status.get(capability_set, "1"), 16) != 0:
             raise SystemExit(f"non-root service child retained {capability_set}")
-    parsed_environment = {}
-    for entry in environ:
-        if b"=" not in entry:
-            raise SystemExit("non-root service child environment is malformed")
-        key, value = entry.split(b"=", 1)
-        if key in parsed_environment:
-            raise SystemExit("non-root service child environment has a duplicate key")
-        parsed_environment[key] = value
     expected_environment = {
         b"PATH": b"/usr/bin:/bin",
         b"HOME": expected_home.encode("ascii"),
@@ -650,6 +698,7 @@ PY
     [ "$(stat -c %s "$log")" = "$service_log_size" ] && break
   done
   if [ "$expected_uid" = 0 ]; then
+    ROOT_ENVIRONMENT_PROVEN=1
     "$READY" --wait-parked "$CHILD" "$CHILD_START" "$log" "$PROBE" "$expected_uid"
   else
     chown "$expected_user:$expected_gid" "$log"
@@ -668,8 +717,7 @@ start_service() {
   [ ! -e "$RECORD" ] && [ ! -L "$RECORD" ]
   : > "$log"
   chmod 0600 "$log"
-  RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
-    "$BINARY" --service >"$log" 2>&1 &
+  "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service >"$log" 2>&1 &
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
   wait_for_service_child "$log" "$expected_uid" "$expected_gid" "$expected_user" \
@@ -684,12 +732,10 @@ start_service_recovering() {
   : > "$log"
   chmod 0600 "$log"
   if [ "$force_pre_pidfd" = force-pre-pidfd ]; then
-    RUST_LOG=info RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
-      RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
+    "${HOSTILE_SERVICE_ENV[@]}" RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
       "$BINARY" --service >"$log" 2>&1 &
   else
-    RUST_LOG=info RD_SERVICE_SMOKE_POISON=must-not-reach-child HOME=/tmp \
-      "$BINARY" --service >"$log" 2>&1 &
+    "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service >"$log" 2>&1 &
   fi
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
@@ -986,6 +1032,8 @@ nonroot_generation=$GENERATION
 stop_service_gracefully "$FIXTURE/service-6-nonroot.log"
 printf 'SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=%s groups=%s generation=%s\n' \
   "$seat_gid" "$seat_groups" "$nonroot_generation"
+[ "$ROOT_ENVIRONMENT_PROVEN" = 1 ]
+printf 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded\n'
 
 "$READY" --stop "$PORTABLE" "$PORTABLE_START"
 wait "$PORTABLE"

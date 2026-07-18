@@ -1894,6 +1894,37 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root-child environment, R-S11k, and Appendix C #133. The focused tests passed in a non-root, network-disabled Docker
   container. This source proof does not close the existing R-S11c-27 requirement for final execution of the exact cold
   Debian artifact, and it does not claim overall R-B2 completion.
+- **R-S11e-26 — Linux service-child environment authority — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
+  2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux root service
+  supervisor and both its root/login-screen and active-user server
+  children. Endpoint/action: construct the environment passed across the exact service-owned child exec. Boundary:
+  init/manual/sudo launcher environment and discovered desktop-session metadata ↔ root or privilege-dropped server
+  process. Attack surface closed: the old root branch called `start_server(None, ...)`, overloading absence of a
+  desktop to mean “retain root,” then copied ambient `DISPLAY`, `XAUTHORITY`, `WAYLAND_DISPLAY`,
+  `DBUS_SESSION_BUS_ADDRESS`, `TERM`, `PULSE_LATENCY_MSEC`, and `PIPEWIRE_LATENCY` back into the child after
+  `env_clear`. A privileged launcher that preserved caller-selected variables could therefore select local display,
+  IPC, or audio endpoints consumed by the root child. The same ambient `TERM`/`TMUX`/`STY` state also influenced the
+  supposedly bounded terminal fallback. This is a privileged-launch confused-deputy and parser/endpoint-exposure
+  defect, not a demonstrated promptless standard-user-to-root primitive: practical exploitation also requires a
+  privileged launcher that admits hostile environment input.
+
+  Closure: `ServiceChildPrincipal::{RootService, ActiveDesktopUser}` now represents privilege selection independently
+  of the mandatory selected `Desktop` argument. Both service-loop branches pass that snapshot. The launcher clears
+  inheritance once, derives root `HOME` from the effective uid's passwd record, derives non-root identity/home/runtime
+  variables from the validated credential drop, and copies only nonempty X11/Wayland/D-Bus selectors from the desktop
+  snapshot. The ambient root-variable loop, Pulse/PipeWire forwarding, `set_x11_env` process-global handoff, and
+  supervisor `TERM`/`TMUX`/`STY` reads are deleted. Terminal choice is a bounded desktop-uid observation or fixed
+  terminal-capability fallback. The actual-binary, network-disabled manual lifecycle fixture launches the root service
+  with hostile HOME/XDG, X11, Wayland, D-Bus, terminal, Pulse, and PipeWire values; it exact-checks the root allowlist,
+  passwd home, and the fixture desktop's `DISPLAY=:0` plus passwd-home `.Xauthority`, rejects every hostile value, and
+  retains the exact non-root environment/UID/GID/group/capability proof. The current binary passed that lifecycle in
+  a disposable networkless container, including
+  `SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded`, active-user UID/GID and exact
+  supplementary groups, zero live capability sets, graceful/forced/crash/pre-pidfd recovery, and unrelated portable
+  process noninterference. `scripts/verify.sh` binds the typed principal/desktop API, explicit selectors, absence of
+  ambient reads and process-global mutation, hostile fixture, mandatory runtime result, R-S11l, and Appendix C #134.
+  This source/runtime slice does not claim final execution of the exact cold Debian artifact or overall R-B2
+  completion.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4170,7 +4201,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-1f526983e93e797575e34752cc4d38437d92a9c23dc755273733791faabaf74d  requirements.html
+179cd6a732140385c4463b10a044fe7b8958e7635206741bbe3cb26d44d2da90  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11k, and Appendix C #133. It is a

@@ -2430,8 +2430,8 @@ config_get_home=$(awk '/pub fn get_home\(\) -> PathBuf {/,/pub fn initialize_win
 config_service_root=$(awk '/fn initialize_linux_service_owned_root_from_home/,/pub fn path<P: AsRef<Path>>/' libs/hbb_common/src/config.rs)
 config_path=$(awk '/pub fn path<P: AsRef<Path>>/,/pub fn log_path\(\)/' libs/hbb_common/src/config.rs)
 core_service_bootstrap=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/let mut args = Vec::new\(\);/' src/core_main.rs)
-service_child_launch=$(awk '/fn try_start_server_\(/,/    match \(&credentials, desktop\) {/' src/platform/linux.rs)
-root_child_env=$(awk '/        \(None, None\) => {/,/        _ => bail!/' src/platform/linux.rs)
+service_child_launch=$(awk '/fn try_start_server_\(/,/    let executable_fd = child_executable/' src/platform/linux.rs)
+root_child_env=$(awk '/^        None => \{/,/^        \}/' <<<"$service_child_launch")
 grep -qF 'static LINUX_SERVICE_OWNED_CONFIG_ROOT: OnceLock<LinuxServiceOwnedConfigRoot>' libs/hbb_common/src/config.rs || r_s11e25="$r_s11e25 process-root-once-cell-missing"
 grep -qF 'linux_service_owned_config_root()' <<<"$config_get_home"                || r_s11e25="$r_s11e25 get-home-does-not-consume-service-root"
 grep -qF 'return root.home.clone();' <<<"$config_get_home"                         || r_s11e25="$r_s11e25 get-home-does-not-return-trusted-home"
@@ -2468,6 +2468,65 @@ grep -qF '<tr><td>133</td>' requirements.html                                   
 grep -qF 'R-S11e-25 — Linux service-owned config-root authority' HARDENING_STATUS.md || r_s11e25="$r_s11e25 hardening-ledger-missing"
 if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-root authority:$r_s11e25"; rc=1; else
   echo "  ok  R-S11e-25 Linux service-owned roles bind Config home/path to the effective uid's passwd home before first config access; ambient HOME/XDG_CONFIG_HOME remains user-mode-only authority"; fi
+
+# (3b-iii-d5) R-S11l/R-S11e-26: the root service child uses the selected desktop
+# snapshot as its session environment authority. Ambient supervisor variables never
+# re-enter the child after env_clear, and privilege selection is independent of the
+# desktop snapshot passed to the launcher.
+echo "== (3b-iii-d5) Linux service-child environment authority (R-S11l/R-S11e-26) =="
+r_s11e26=
+service_launch=$(awk '/fn try_start_server_\(/,/fn stop_unregistered_service_child/' src/platform/linux.rs)
+service_loop=$(awk '/pub fn start_os_service\(\)/,/^}/' src/platform/linux.rs)
+term_fallback=$(awk '/fn suggest_best_term\(\)/,/^}/' src/platform/linux.rs)
+grep -qF 'enum ServiceChildPrincipal {' src/platform/linux.rs                         || r_s11e26="$r_s11e26 typed-principal-selection-missing"
+grep -qF 'ServiceChildPrincipal::RootService' <<<"$service_loop"                     || r_s11e26="$r_s11e26 root-principal-call-missing"
+grep -qF 'ServiceChildPrincipal::ActiveDesktopUser' <<<"$service_loop"               || r_s11e26="$r_s11e26 active-user-principal-call-missing"
+if [ "$(grep -oF '&desktop,' <<<"$service_loop" | wc -l)" -lt 2 ]; then
+  r_s11e26="$r_s11e26 selected-desktop-not-passed-to-both-principals"
+fi
+if grep -qF 'start_server(None' src/platform/linux.rs; then
+  r_s11e26="$r_s11e26 root-launch-discards-desktop"
+fi
+for binding in \
+  'insert_nonempty_env(&mut command, "DISPLAY", &desktop.display);' \
+  'insert_nonempty_env(&mut command, "XAUTHORITY", &desktop.xauth);' \
+  'insert_nonempty_env(&mut command, "WAYLAND_DISPLAY", &desktop.wl_display);' \
+  'insert_nonempty_env(&mut command, "DBUS_SESSION_BUS_ADDRESS", &desktop.dbus);'; do
+  grep -qF "$binding" <<<"$service_launch" || r_s11e26="$r_s11e26 selected-desktop-binding-missing"
+done
+if grep -Eq 'std::env::(var|var_os|set_var)\(' <<<"$service_launch"; then
+  r_s11e26="$r_s11e26 ambient-service-environment-read-present"
+fi
+if grep -Eq 'PULSE_LATENCY_MSEC|PIPEWIRE_LATENCY' <<<"$service_launch"; then
+  r_s11e26="$r_s11e26 ambient-audio-environment-copy-present"
+fi
+if grep -Eq 'std::env::|TMUX|STY|screen-256color' <<<"$term_fallback"; then
+  r_s11e26="$r_s11e26 terminal-fallback-uses-ambient-supervisor-state"
+fi
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e26_ambient_mutation" \
+  -nE 'fn set_x11_env|std::env::set_var\("(DISPLAY|XAUTHORITY)"' src/platform/linux.rs; then
+  cat "$VERIFY_TMP/rd_verify_r_s11e26_ambient_mutation"
+  r_s11e26="$r_s11e26 process-global-session-environment-mutation-present"
+fi
+for hostile in \
+  'DISPLAY=attacker.invalid:99' \
+  'XAUTHORITY=/tmp/rustdesk-attacker.Xauthority' \
+  'WAYLAND_DISPLAY=rustdesk-attacker-wayland' \
+  'DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/rustdesk-attacker-dbus' \
+  'PULSE_LATENCY_MSEC=31337' \
+  'PIPEWIRE_LATENCY=31337/31337'; do
+  grep -qF "$hostile" scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 hostile-runtime-fixture-incomplete"
+done
+grep -qF 'root service child environment escaped its bounded allowlist' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 root-runtime-allowlist-not-enforced"
+grep -qF 'root service child adopted a hostile ambient environment value' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 hostile-runtime-value-not-rejected"
+grep -qF 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 runtime-result-marker-missing"
+grep -qF 'FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment' scripts/smoke-server.sh || r_s11e26="$r_s11e26 mandatory-smoke-consumer-missing"
+grep -qF '<span class="id">R-S11l</span>' requirements.html                        || r_s11e26="$r_s11e26 normative-requirement-missing"
+grep -qF 'Linux root service child re-imported ambient session/audio environment' requirements.html || r_s11e26="$r_s11e26 appendix-disposition-missing"
+grep -qF '<tr><td>134</td>' requirements.html                                       || r_s11e26="$r_s11e26 appendix-row-missing"
+grep -qF 'R-S11e-26 — Linux service-child environment authority' HARDENING_STATUS.md || r_s11e26="$r_s11e26 hardening-ledger-missing"
+if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
+  echo "  ok  R-S11e-26 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio variables cannot re-enter after env_clear"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
@@ -4660,7 +4719,7 @@ grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c10j="$r_s11c10j li
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
 grep -qF 'SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT,' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
 linux_child_stop_block=$(
-  awk '/fn stop_server/,/fn set_x11_env/' src/platform/linux.rs
+  awk '/fn stop_server/,/fn stop_subprocess/' src/platform/linux.rs
   awk '/if should_kill/,/if let Some\(ps\) = server.as_mut/' src/platform/linux.rs
   awk '/if let Some\(ps\) = user_server.take/,/log::info!\("Exit"\)/' src/platform/linux.rs
 )

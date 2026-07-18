@@ -63,7 +63,6 @@ pub const REOPEN_AFTER_SERVICE_STOP_ARG: &str = "--reopen-after-service-stop";
 
 // Terminal type constants
 const TERM_XTERM_256COLOR: &str = "xterm-256color";
-const TERM_SCREEN_256COLOR: &str = "screen-256color";
 const TERM_XTERM: &str = "xterm";
 
 lazy_static::lazy_static! {
@@ -461,33 +460,13 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     }
 }
 
-/// Suggests the best terminal type based on the environment.
-///
-/// The function prioritizes terminal types in the following order:
-/// 1. `screen-256color`: Preferred when running inside `tmux` or `screen` sessions,
-///    as these multiplexers often support advanced terminal features.
-/// 2. `xterm-256color`: Selected if the terminal supports 256 colors, which is
-///    suitable for modern terminal applications.
-/// 3. `xterm`: Used as a fallback for basic terminal compatibility.
-///
-/// Terminals like `linux` and `vt100` are excluded because they lack support for
-/// modern features required by many applications.
+/// Suggests a bounded terminal type without consulting the service supervisor's
+/// ambient environment.
 fn suggest_best_term() -> String {
-    if is_running_in_tmux() || is_running_in_screen() {
-        return TERM_SCREEN_256COLOR.to_string();
-    }
     if term_supports_256_colors(TERM_XTERM_256COLOR) {
         return TERM_XTERM_256COLOR.to_string();
     }
     TERM_XTERM.to_string()
-}
-
-fn is_running_in_tmux() -> bool {
-    std::env::var("TMUX").is_ok()
-}
-
-fn is_running_in_screen() -> bool {
-    std::env::var("STY").is_ok()
 }
 
 fn supports_256_colors(db: &Database) -> bool {
@@ -515,16 +494,6 @@ fn get_cur_term(uid: &str) -> Option<String> {
 
     if uid.is_empty() {
         return None;
-    }
-
-    // Check current process environment
-    if let Ok(term) = std::env::var("TERM") {
-        if term == TERM_XTERM_256COLOR {
-            if let Ok(mut cache) = CACHED_TERM.lock() {
-                *cache = Some(term.clone());
-            }
-            return Some(term);
-        }
     }
 
     // Collect all TERM values from shell processes, looking for TERM_XTERM_256COLOR
@@ -648,6 +617,12 @@ struct ServiceChildCredentials {
     supplementary_groups: Vec<hbb_common::libc::gid_t>,
     username: String,
     home: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ServiceChildPrincipal {
+    RootService,
+    ActiveDesktopUser,
 }
 
 impl ServiceChildCredentials {
@@ -1816,17 +1791,18 @@ fn insert_nonempty_env(command: &mut Command, key: &str, value: &str) {
 }
 
 fn try_start_server_(
-    desktop: Option<&Desktop>,
+    desktop: &Desktop,
+    principal: ServiceChildPrincipal,
     runtime: &ServiceRuntime,
 ) -> ResultType<OwnedServiceChild> {
     let parent_pid = hbb_common::libc::pid_t::try_from(std::process::id())
         .map_err(|_| anyhow!("Service supervisor pid does not fit pid_t"))?;
-    let credentials = match desktop {
-        Some(desktop) => Some(ServiceChildCredentials::resolve(
+    let credentials = match principal {
+        ServiceChildPrincipal::RootService => None,
+        ServiceChildPrincipal::ActiveDesktopUser => Some(ServiceChildCredentials::resolve(
             &desktop.uid,
             &desktop.username,
         )?),
-        None => None,
     };
     let expected_child_uid = credentials
         .as_ref()
@@ -1876,42 +1852,28 @@ fn try_start_server_(
         );
     }
 
-    match (&credentials, desktop) {
-        (Some(credentials), Some(desktop)) => {
+    match &credentials {
+        Some(credentials) => {
             command
                 .env("HOME", &credentials.home)
                 .env("USER", &credentials.username)
                 .env("LOGNAME", &credentials.username)
                 .env("XDG_RUNTIME_DIR", format!("/run/user/{}", credentials.uid));
-            insert_nonempty_env(&mut command, "DISPLAY", &desktop.display);
-            insert_nonempty_env(&mut command, "XAUTHORITY", &desktop.xauth);
-            insert_nonempty_env(&mut command, "WAYLAND_DISPLAY", &desktop.wl_display);
-            insert_nonempty_env(&mut command, "DBUS_SESSION_BUS_ADDRESS", &desktop.dbus);
-            command.env(
-                "TERM",
-                get_cur_term(&desktop.uid).unwrap_or_else(|| suggest_best_term()),
-            );
         }
-        (None, None) => {
+        None => {
             let trusted_home = hbb_common::platform::linux::get_effective_home_dir_trusted()
                 .ok_or_else(|| anyhow!("Root service child home is unavailable"))?;
             command.env("HOME", trusted_home);
-            for key in [
-                "DISPLAY",
-                "XAUTHORITY",
-                "WAYLAND_DISPLAY",
-                "DBUS_SESSION_BUS_ADDRESS",
-                "TERM",
-                "PULSE_LATENCY_MSEC",
-                "PIPEWIRE_LATENCY",
-            ] {
-                if let Some(value) = std::env::var_os(key) {
-                    command.env(key, value);
-                }
-            }
         }
-        _ => bail!("Inconsistent service child desktop credential state"),
     }
+    insert_nonempty_env(&mut command, "DISPLAY", &desktop.display);
+    insert_nonempty_env(&mut command, "XAUTHORITY", &desktop.xauth);
+    insert_nonempty_env(&mut command, "WAYLAND_DISPLAY", &desktop.wl_display);
+    insert_nonempty_env(&mut command, "DBUS_SESSION_BUS_ADDRESS", &desktop.dbus);
+    command.env(
+        "TERM",
+        get_cur_term(&desktop.uid).unwrap_or_else(suggest_best_term),
+    );
 
     let executable_fd = child_executable
         .as_ref()
@@ -2002,11 +1964,12 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
 
 #[inline]
 fn start_server(
-    desktop: Option<&Desktop>,
+    desktop: &Desktop,
+    principal: ServiceChildPrincipal,
     server: &mut Option<OwnedServiceChild>,
     runtime: &ServiceRuntime,
 ) {
-    match try_start_server_(desktop, runtime) {
+    match try_start_server_(desktop, principal, runtime) {
         Ok(ps) => *server = Some(ps),
         Err(err) => {
             log::error!("Failed to start server: {}", err);
@@ -2141,18 +2104,6 @@ fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime)
     terminate_child(server, "--server", runtime).map(|_| ())
 }
 
-fn set_x11_env(desktop: &Desktop) {
-    log::info!("DISPLAY: {}", desktop.display);
-    log::info!("XAUTHORITY: {}", desktop.xauth);
-    if !desktop.display.is_empty() {
-        std::env::set_var("DISPLAY", &desktop.display);
-    }
-    if !desktop.xauth.is_empty() {
-        std::env::set_var("XAUTHORITY", &desktop.xauth);
-    }
-}
-
-#[inline]
 fn stop_subprocess() {
     let xorg_config = format!("/etc/{}/xorg.conf", crate::get_app_name().to_lowercase());
     kill_xorg_processes_with_config(&xorg_config);
@@ -2160,7 +2111,6 @@ fn stop_subprocess() {
 }
 
 fn should_start_server(
-    try_x11: bool,
     is_display_changed: bool,
     uid: &mut String,
     desktop: &Desktop,
@@ -2181,9 +2131,6 @@ fn should_start_server(
         }
     } else if is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty() {
         *uid = desktop.uid.clone();
-        if try_x11 {
-            set_x11_env(&desktop);
-        }
         should_kill = true;
     }
 
@@ -2281,7 +2228,6 @@ pub fn start_os_service() -> ResultType<()> {
             // try start subprocess "--server"
             // No need to check is_display_changed here.
             if should_start_server(
-                true,
                 false,
                 &mut uid,
                 &desktop,
@@ -2291,7 +2237,12 @@ pub fn start_os_service() -> ResultType<()> {
                 &runtime,
             )? {
                 stop_subprocess();
-                start_server(None, &mut server, &runtime);
+                start_server(
+                    &desktop,
+                    ServiceChildPrincipal::RootService,
+                    &mut server,
+                    &runtime,
+                );
             }
         } else if desktop.username != "" {
             // try kill subprocess "--server"
@@ -2303,7 +2254,6 @@ pub fn start_os_service() -> ResultType<()> {
 
             // try start subprocess "--server"
             if should_start_server(
-                !desktop.is_wayland(),
                 is_display_changed,
                 &mut uid,
                 &desktop,
@@ -2313,7 +2263,12 @@ pub fn start_os_service() -> ResultType<()> {
                 &runtime,
             )? {
                 stop_subprocess();
-                start_server(Some(&desktop), &mut user_server, &runtime);
+                start_server(
+                    &desktop,
+                    ServiceChildPrincipal::ActiveDesktopUser,
+                    &mut user_server,
+                    &runtime,
+                );
             }
         } else {
             stop_server(&mut user_server, &runtime)?;

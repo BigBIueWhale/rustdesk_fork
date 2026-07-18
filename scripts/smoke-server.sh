@@ -20,9 +20,10 @@
 #     listener on the pinned port (21118) and ZERO UDP — the §17 direct-IP/no-UDP thesis, empirical;
 #   - R-A4 (runtime socket self-check) : `assert_socket_surface` confirms the same from inside;
 #   - R-T9 : SIGTERM -> "graceful shutdown initiated" -> "complete — exiting 0";
-#   - R-S11c-27h : the real --service active-seat path descriptor-execs as UID/GID 4001 with
-#     exact supplementary groups, zero live capability sets, NNP, bounded environment, typed IPC,
-#     graceful reap, and no interference with a separate UID-4000 portable server;
+#   - R-S11c-27h/R-S11e-26 : the real --service active-seat path descriptor-execs as UID/GID 4001
+#     with exact supplementary groups, zero live capability sets, NNP, bounded environment, typed
+#     IPC, and graceful reap; the root child rejects a hostile ambient launch environment and uses
+#     only its passwd home plus the selected desktop snapshot;
 #   - R-S11c-27i : the real --service supervisor rejects malformed and live-but-ambiguous durable
 #     child records without changing the record or either separately identity-bound UID-4000 process;
 #   - R-S11c-27j : the manual lifecycle stage cannot affect a concurrently running networkless
@@ -395,6 +396,8 @@ grep -Eq '^SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=[0-9a-f-]{
   || { echo "  FAIL R-S11c-27k: forced pre-pidfd recovery did not terminate the exact prior child and recover to a fresh generation"; rc=1; }
 grep -Eq '^SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=4001 groups=4001,4101 generation=[0-9a-f-]{36}$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27h: actual active-seat child did not complete the exact non-root descriptor-exec path"; rc=1; }
+grep -q '^SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded$' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment"; rc=1; }
 grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i: unrelated non-root portable server did not survive every service transition"; rc=1; }
 if [ "$lifecycle_stage_status" -eq 0 ] && [ "$sibling_stage_status" -eq 0 ] \

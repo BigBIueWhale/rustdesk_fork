@@ -1560,13 +1560,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   user-activity helper, remote-user activity type, server wiring, absence of `caffeinate`, absence of the
   `/usr/bin/env` bridge, the environment-key allowlist, and this requirements/ledger disposition.
 - **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS
-  WORKTREE VALIDATION PENDING.** Mutation terminates directly in the stable LocalSystem SCM service on raw
-  `_service_password`. The client authenticates the fixed service image, LocalSystem token, exact service role,
+  WORKTREE VALIDATED VIA R-S11b-2d; EXACT-COMMIT R-B2 EVIDENCE PENDING.** Mutation terminates directly in the
+  stable LocalSystem SCM service on raw `_service_password`. The client authenticates the fixed service image, LocalSystem token, exact service role,
   and process generation before sending. The process-lifetime first-instance listener preauthorizes the exact
   active-principal RustDesk role before header wait, proves the header message by impersonation before body read,
   and revalidates the body message plus fresh process/token/session identity immediately before nonblocking
   admission. The retained child is never a durable commit receiver; `_service_credential` supplies only its
-  generation-bound read-only replica.
+  generation-bound read-only replica. This row is the receiver-proof slice of the same current-worktree native
+  Windows evidence recorded in R-S11b-2d/R-S11c-1e above: retry 15 of staged tree
+  `ad2dd37c3698945d1071e091c68d26d64bc32b54` passed the native service/credential/SAS/password-finality/input
+  suites in two fresh networkless Windows guests. That remains current-worktree native evidence only; exact
+  committed cold-release artifact evidence still belongs to R-B2.
 - **R-S11e-12 — macOS clipboard-file paste no-follow finalize — CLOSED 2026-07-11.**
   Platform: macOS desktop with `unix-file-copy-paste`. Endpoint/action: CLIPRDR file paste after a local
   Finder/pasteboard paste operation asks the authenticated peer for `FILEDESCRIPTOR` metadata and file contents.

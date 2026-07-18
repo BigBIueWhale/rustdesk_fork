@@ -2175,6 +2175,17 @@ for ledger_id in R-S11e-4 R-S11e-5 R-S11e-6 R-S11e-9 R-S11e-11 R-S11e-21; do
   grep -Fq "$ledger_id" HARDENING_STATUS.md ||
     r_s11b2="$r_s11b2 ledger-$ledger_id-missing"
 done
+if grep -Fq 'WORKTREE VALIDATION PENDING' HARDENING_STATUS.md; then
+  r_s11b2="$r_s11b2 stale-windows-native-validation-pending-ledger"
+fi
+grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 r-s11e-11-status-prefix-missing"
+grep -Fq 'WORKTREE VALIDATED VIA R-S11b-2d; EXACT-COMMIT R-B2 EVIDENCE PENDING' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 r-s11e-11-validation-scope-missing"
+grep -Fq 'ad2dd37c3698945d1071e091c68d26d64bc32b54' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-native-evidence-commit-missing"
+grep -Fq 'native service/credential/SAS/password-finality/input suites' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-native-suite-evidence-missing"
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs || r_s11b2="$r_s11b2 service-owned-role-marker-missing"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-service-owned-role-marker-missing"
 if grep -Eq 'BeginUserOwnedPermanentPassword|BeginServiceOwnedUnattendedPasswordChange|RequestServiceOwnedUnattendedPasswordChange|RequestMacosServiceOwnedUnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult' src/ipc.rs src/platform/windows.rs; then

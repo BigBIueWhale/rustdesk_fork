@@ -7272,6 +7272,10 @@ fi
 #      (Remote/ViewCamera voice owner only), cursor/window capture (Remote-only).
 rs19=
 conn=src/server/connection.rs
+if grep -RInE 'non-issue by design|conn-type an intentional capability|capabilities gated by the pinned[[:space:]]+`Permission` flags, not conn-type|single-PAKE-credential model dissolves' HARDENING_STATUS.md requirements.html docs; then
+  rs19="$rs19 stale-cve-58056-authority-ledger"
+fi
+grep -qF 'R-S19 AuthConnType confinement, not by broad PAKE authorization alone' HARDENING_STATUS.md || rs19="$rs19 cve-58056-ledger-not-authconntype-bound"
 grep -q 'fn confine_capabilities_to_conn_type' "$conn"                   || rs19="$rs19 no-derivation-fn"
 grep -q 'self.confine_capabilities_to_conn_type(auth_conn_type)' "$conn" || rs19="$rs19 derivation-not-called"
 # (a) ordering: the derivation MUST run before the peer login-option apply (R-S19(b))

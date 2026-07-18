@@ -2715,14 +2715,19 @@ researchers later found:
 - **client AiTM (cert-validation on retry)** (`30794`) → insecure-TLS-fallback
   excised, pinned `N`.
 - **`CVE-2026-58056` session-type-confusion** (a FileTransfer-authorized peer
-  injecting keyboard/mouse + reaching screenshot/display handlers) → **non-issue
-  by design**: all those handlers sit behind the lone post-PAKE `self.authorized`
-  edge (connection.rs, set only on the CPace `KEYED` success, R-S2/R-A2), so
-  reaching them requires the PAKE password = the §2-trusted owner; and R-S2/R-S18
-  make conn-type an intentional capability *tag* (capabilities gated by the pinned
-  `Permission` flags, not conn-type). The single-PAKE-credential model dissolves
-  the upstream confusion — a "FileTransfer peer" here is a password-knower
-  exercising access it already has, no escalation.
+  injecting keyboard/mouse + reaching screenshot/display handlers) → **covered by
+  R-S19 AuthConnType confinement, not by broad PAKE authorization alone**. PAKE
+  keeps the class out of the unauthenticated-network/password-bypass bucket: a
+  peer still needs the CPace password and remains the §2 trusted owner. That does
+  not make session type an inert tag. R-S19 now treats session-type confinement as
+  normative least-privilege: input is Remote-only; desktop capture is
+  Remote-or-ViewCamera; capability booleans are derived from `AuthConnType`
+  before peer login options; clipboard text, voice/audio, block-input, privacy,
+  restart, screenshot-source, viewer-clipboard, CLIPRDR-to-CM, and Android
+  MediaProjection edge cases are independently gated. The live evidence is the
+  R-S19 status block above, the `connection.rs`/`video_service.rs`/viewer/mobile
+  source gates, and the generalized `scripts/verify.sh` R-S19/CVE-2026-58056
+  checks.
 - The **server / Server Pro** CVEs (`30784`/`3598`/`30796`-Pro) are N/A — the
   rendezvous/relay server is excised entirely.
 

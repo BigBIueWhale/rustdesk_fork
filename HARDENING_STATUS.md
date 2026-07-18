@@ -3849,7 +3849,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
-  SOURCE IMPLEMENTED 2026-07-18; ON-DEVICE/ARTIFACT VALIDATION PENDING.** This is the mobile face of
+  SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT GATE IMPLEMENTED; ANDROID GATE EXECUTION
+  AND ON-DEVICE/iOS ARTIFACT VALIDATION PENDING.** This is the mobile face of
   Appendix C #14. The old path on BOTH iOS and Android keyed `password_prs` at rest with the config
   keypair PK (`get_uuid()` / `Config::get_key_pair().1` — the off-file `machine_uid` block is
   cfg-compiled out on both mobile platforms), which is itself stored in plaintext in the same TOML, so the
@@ -3861,7 +3862,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   through `main_get_uuid`. Android process startup
   (`flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt`) obtains a private
   random storage key from `MobileAtRestStorageKey.kt`, where it is wrapped by `AndroidKeyStore` AES-256-GCM
-  with StrongBox attempted first and TEE fallback, non-auth-bound, and `setUnlockedDeviceRequired(false)`;
+  with StrongBox requested first and an ordinary AndroidKeyStore fallback, non-auth-bound, and
+  `setUnlockedDeviceRequired(false)`. The fallback is not described as TEE: AndroidKeyStore may report
+  software, trusted-environment, or StrongBox security depending on the device, and the actual
+  `KeyInfo` security level remains part of on-device validation;
   partial/corrupt stored envelopes fail closed, first creation requires a durable `SharedPreferences.commit()`,
   and the committed envelope is re-read as a round-trip self-test before Rust injection through
   `FFI.setMobileAtRestStorageKey`. iOS startup
@@ -3873,8 +3877,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the legacy config keypair is still accepted only as a read-only decrypt fallback through
   `Config::get_existing_key_pair()`; when that fallback succeeds, `decrypt_str_or_original` /
   `decrypt_vec_or_original` mark the value for re-store so the next write rewraps under the OS key. This
-  is still not artifact-closed: the Keystore/Keychain/JNI/Swift round trips were source-gated here, but not
-  run on an Android emulator/device or iOS build host in this loop. The Documents directory this wrapper
+  is still not artifact-closed. The Android release path now keeps `MainApplication` and
+  `MobileAtRestStorageKey` structurally auditable through R8 and runs
+  `scripts/verify-android-mobile-key-artifact.py` against the final certificate-verified APK. The bounded
+  verifier rejects duplicate/noncontiguous DEX entries, proves the ordered
+  `Application.onCreate` → `getOrCreate` → JNI setter → `FFI.onAppStart` bootstrap, asserts the packaged
+  KeyStore/AES-GCM/durable-commit/reread method references, and requires the AArch64
+  `Java_ffi_FFI_setMobileAtRestStorageKey` dynamic export from the packaged `librustdesk.so`. It is wired
+  into both normal signing and `build-android.sh --verify-apk`; source gates keep that wiring and its
+  negative self-test mandatory. Execution against a newly built APK is not yet recorded here. Even after
+  that gate runs, it proves packaging and native linkage, not live Keystore/Keychain behavior: the round
+  trips have not run on an Android emulator/device or iOS build host in this loop. The Documents directory this wrapper
   sits in had **two** local-exfiltration channels, now closed by two separate fixes: (a) the **Files-app /
   iTunes file-sharing BROWSE** channel was closed by the APPLE-6 plist fix (dropping
   `UIFileSharingEnabled`/`UISupportsDocumentBrowser`, so the directory is no longer user-browsable); and

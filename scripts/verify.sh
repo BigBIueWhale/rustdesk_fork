@@ -560,6 +560,29 @@ grep -qF 'rereadCiphertext = prefs.getString(PREF_CIPHERTEXT, null)' flutter/and
 awk '/FFI.setMobileAtRestStorageKey/{seen=1} /FFI.onAppStart/{if (!seen) exit 1; found=1} END{exit found ? 0 : 1}' \
   flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-key-not-installed-before-app-start"
+python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("scripts/verify-android-mobile-key-artifact.py").read_text(encoding="utf-8"))' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-helper-syntax"
+python3 scripts/verify-android-mobile-key-artifact.py --self-test \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-helper-self-test"
+grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' flutter/android/app/proguard-rules \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-bootstrap-not-kept-for-artifact-audit"
+grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' flutter/android/app/proguard-rules \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-key-wrapper-not-kept-for-artifact-audit"
+[ "$(grep -cF 'verify-android-mobile-key-artifact.py' scripts/build-android.sh)" -eq 2 ] \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-helper-not-wired-at-both-gates"
+grep -qF -- '--dexdump /online/android-sdk/build-tools/' scripts/build-android.sh \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-dexdump-not-pinned"
+grep -qF -- '--readelf /usr/bin/readelf' scripts/build-android.sh \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-readelf-not-pinned"
+grep -qF 'verify_apk_artifact "$VERIFY_APK"' scripts/build-android.sh \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-verify-only-path-skips-content-gate"
+grep -qF 'MAIN_APPLICATION = "Lcom/carriez/flutter_hbb/MainApplication;"' scripts/verify-android-mobile-key-artifact.py \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-main-class-unbound"
+grep -qF 'JNI_SETTER = "Java_ffi_FFI_setMobileAtRestStorageKey"' scripts/verify-android-mobile-key-artifact.py \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-jni-export-unbound"
+if grep -qF 'falling back to TEE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt HARDENING_STATUS.md; then
+  mobile_at_rest_bad="$mobile_at_rest_bad android-keystore-fallback-overclaims-tee"
+fi
 grep -qF 'bool rustdesk_set_mobile_at_rest_storage_key(const uint8_t *key, uintptr_t len);' flutter/ios/Runner/Runner-Bridging-Header.h \
   || mobile_at_rest_bad="$mobile_at_rest_bad ios-c-setter-declaration-missing"
 grep -qF 'kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly' flutter/ios/Runner/AppDelegate.swift \

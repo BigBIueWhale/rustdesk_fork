@@ -263,7 +263,7 @@ assert_keystore_properties() {
     log "android keystore OK: pinned certificate $fingerprint"
 }
 
-verify_apk_certificate() {
+verify_apk_artifact() {
     local apk="$1" resolved
     resolved="$(readlink -f -- "$apk" 2>/dev/null)" \
         || die "cannot resolve APK path: $apk"
@@ -275,6 +275,7 @@ verify_apk_certificate() {
         -e ANDROID_MIN_SDK="$ANDROID_MIN_SDK" \
         -e ANDROID_SIGNING_CERT_SHA256="$ANDROID_SIGNING_CERT_SHA256" \
         -v "$resolved:/verify/app.apk:ro" \
+        -v "$REPO_ROOT:/src:ro" \
         -v "$ONLINE_DIR:/online:ro" \
         "$IMAGE_ID" bash -euo pipefail -c '
             export PATH="/online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/:$PATH"
@@ -289,9 +290,16 @@ verify_apk_certificate() {
                 END { if (count != 1) exit 1 }
             '\'')"
             [ "$observed" = "$ANDROID_SIGNING_CERT_SHA256" ]
+            python3 /src/scripts/verify-android-apk-manifest.py \
+                --apk /verify/app.apk \
+                --aapt2 /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/aapt2
+            python3 /src/scripts/verify-android-mobile-key-artifact.py \
+                --apk /verify/app.apk \
+                --dexdump /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/dexdump \
+                --readelf /usr/bin/readelf
         '; then
         verify_active_online_snapshot
-        die "APK signing certificate does not match ANDROID_SIGNING_CERT_SHA256"
+        die "APK certificate or signed-artifact authority verification failed"
     fi
     verify_active_online_snapshot
 }
@@ -370,6 +378,10 @@ sign_apk() {
             python3 /src/scripts/verify-android-apk-manifest.py \
                 --apk /out/rustdesk-arm64.apk \
                 --aapt2 /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/aapt2
+            python3 /src/scripts/verify-android-mobile-key-artifact.py \
+                --apk /out/rustdesk-arm64.apk \
+                --dexdump /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/dexdump \
+                --readelf /usr/bin/readelf
         '; then
         verify_active_online_snapshot
         die "Android signing container failed"
@@ -385,8 +397,8 @@ main() {
         prepare_execution_contract
         resolve_image
         activate_online_snapshot
-        verify_apk_certificate "$VERIFY_APK"
-        log "APK certificate OK: $ANDROID_SIGNING_CERT_SHA256"
+        verify_apk_artifact "$VERIFY_APK"
+        log "APK certificate and authority contents OK: $ANDROID_SIGNING_CERT_SHA256"
         return 0
     fi
     preflight
@@ -410,7 +422,7 @@ main() {
         [ "$first" = "$second" ] || die "R-B2 double-build APK SHA mismatch ($first vs $second) — the APK is NOT reproducible; fix SOURCE_DATE_EPOCH / apksigner determinism before release"
         log "R-B2 double-build determinism OK (A==B): $first"
     fi
-    verify_apk_certificate "$OUT_DIR/rustdesk-arm64.apk"
+    verify_apk_artifact "$OUT_DIR/rustdesk-arm64.apk"
     log "build-android.sh complete: $OUT_DIR/rustdesk-arm64.apk"
     log "NOTE: integrity to the device is the pinned SHA-256 over the trusted channel"
     log "      (R-B2); the signature is Android's install gate, not the trust anchor."

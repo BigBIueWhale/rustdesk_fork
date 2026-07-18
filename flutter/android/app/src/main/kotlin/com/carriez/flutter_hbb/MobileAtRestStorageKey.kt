@@ -84,7 +84,7 @@ object MobileAtRestStorageKey {
             try {
                 return generateWrappingKey(strongBox = true)
             } catch (e: Exception) {
-                Log.i(TAG, "StrongBox AndroidKeyStore key unavailable; falling back to TEE", e)
+                Log.i(TAG, "StrongBox AndroidKeyStore key unavailable; using ordinary AndroidKeyStore", e)
                 runCatching { keyStore.deleteEntry(WRAPPING_KEY_ALIAS) }
             }
         }

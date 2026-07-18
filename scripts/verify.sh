@@ -2903,6 +2903,49 @@ grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authori
 if [ -n "$r_s11e30" ]; then echo "  FAIL R-S11e-30 Linux pkcheck helper inherited descriptor authority:$r_s11e30"; rc=1; else
   echo "  ok  R-S11e-30 Linux service-owned pkcheck authorization marks non-stdio descriptors close-on-exec before helper exec"; fi
 
+# (3b-iii-d10) R-S11q/R-S11e-31: every Linux same-executable
+# helper launch owns its descriptor contract. This includes the root
+# service-owned headless CM route, so run_me_with_env must apply the
+# shared pre-exec policy rather than relying on ambient FD_CLOEXEC.
+echo "== (3b-iii-d10) Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31) =="
+r_s11e31=
+run_me_with_env_block=$(awk '/pub fn run_me_with_env</,/pub fn username\(\)/' src/common.rs)
+run_me_descriptor_test=$(awk '/fn linux_run_me_child_excludes_inherited_nonstdio_descriptors\(\)/,/R-SV6\(d\)/' src/common.rs)
+headless_cm_launch=$(awk '/A root `--server` normally launches the CM/,/for _ in 0\.\.20/' src/server/connection.rs)
+for run_me_binding in \
+  '#[cfg(target_os = "linux")]' \
+  'crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)' \
+  'failed to constrain RustDesk child descriptors' \
+  'let result = cmd.args(&args).spawn();'; do
+  grep -qF "$run_me_binding" <<<"$run_me_with_env_block" || r_s11e31="$r_s11e31 run-me-descriptor-policy-missing"
+done
+run_me_policy_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut cmd)' <<<"$run_me_with_env_block" | head -n1 | cut -d: -f1)
+run_me_spawn_line=$(grep -nF 'let result = cmd.args(&args).spawn();' <<<"$run_me_with_env_block" | head -n1 | cut -d: -f1)
+if [ -z "$run_me_policy_line" ] || [ -z "$run_me_spawn_line" ] \
+  || [ "$run_me_policy_line" -ge "$run_me_spawn_line" ]; then
+  r_s11e31="$r_s11e31 run-me-descriptor-policy-after-spawn"
+fi
+[ "$(grep -cF '.spawn();' <<<"$run_me_with_env_block")" = 1 ] \
+  || r_s11e31="$r_s11e31 run-me-spawn-shape-unexpected"
+for runtime_binding in \
+  'Command::new("/bin/sh")' \
+  'exec 9<>\"$1\"; exec \"$2\" --exact \"$3\" --nocapture' \
+  'Some(std::ffi::OsStr::new("9"))' \
+  'run_me_with_env(vec!["--exact", TEST_NAME, "--nocapture"], envs)' \
+  'fs::read_dir("/proc/self/fd")' \
+  'metadata.dev() == target.dev() && metadata.ino() == target.ino()' \
+  'inherited.is_none()'; do
+  grep -qF "$runtime_binding" <<<"$run_me_descriptor_test" || r_s11e31="$r_s11e31 actual-child-proof-missing"
+done
+grep -qF '.push(crate::run_me_with_env(args, cm_launch_env())?);' <<<"$headless_cm_launch" \
+  || r_s11e31="$r_s11e31 service-owned-headless-cm-consumer-missing"
+grep -qF '<span class="id">R-S11q</span>' requirements.html                         || r_s11e31="$r_s11e31 normative-requirement-missing"
+grep -qF 'Linux same-executable child inherited descriptor authority' requirements.html || r_s11e31="$r_s11e31 appendix-disposition-missing"
+grep -qF '<tr><td>139</td>' requirements.html                                        || r_s11e31="$r_s11e31 appendix-row-missing"
+grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md || r_s11e31="$r_s11e31 hardening-ledger-missing"
+if [ -n "$r_s11e31" ]; then echo "  FAIL R-S11e-31 Linux same-executable child inherited descriptor authority:$r_s11e31"; rc=1; else
+  echo "  ok  R-S11e-31 Linux same-executable launches apply the non-stdio close-on-exec policy before exec and carry an actual-child regression"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

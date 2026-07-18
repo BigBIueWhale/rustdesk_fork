@@ -3301,6 +3301,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md", "service helper descriptor hardening ledger gate"),
         ('Linux pkcheck helper inherited descriptor authority (R-S11p/R-S11e-30)', "pkcheck helper descriptor source gate"),
         ("grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority' HARDENING_STATUS.md", "pkcheck helper descriptor hardening ledger gate"),
+        ('Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31)', "same-executable child descriptor source gate"),
+        ("grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md", "same-executable child descriptor hardening ledger gate"),
     ):
         require_text(verify, text, label)
     require_text(
@@ -3327,6 +3329,11 @@ def validate_smoke_contract(
         hardening,
         "R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority",
         "pkcheck helper descriptor hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-31 — Linux same-executable child inherited descriptor authority",
+        "same-executable child descriptor hardening ledger",
     )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -4097,6 +4104,64 @@ def validate_smoke_contract(
     )
     if re.search(r"std::process::Command::new\(pkcheck\)\s*\.", pkcheck_authorization):
         raise VerificationError("pkcheck retains direct spawn without descriptor policy")
+    run_me_with_env = extract_between(
+        common_source,
+        "pub fn run_me_with_env<",
+        "\n#[inline]\npub fn username()",
+        "Linux same-executable child launch",
+    )
+    for text, label in (
+        ('#[cfg(target_os = "linux")]', "same-executable descriptor policy Linux scope"),
+        (
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)",
+            "same-executable child descriptor policy",
+        ),
+        (
+            "failed to constrain RustDesk child descriptors",
+            "same-executable descriptor failure conversion",
+        ),
+        ("let result = cmd.args(&args).spawn();", "same-executable controlled spawn"),
+    ):
+        require_text(run_me_with_env, text, label)
+    require_order(
+        run_me_with_env,
+        (
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)",
+            "let result = cmd.args(&args).spawn();",
+        ),
+        "same-executable descriptor policy before spawn",
+    )
+    require_exact_count(
+        run_me_with_env,
+        ".spawn();",
+        1,
+        "same-executable controlled spawn count",
+    )
+    run_me_descriptor_test = extract_between(
+        common_source,
+        "fn linux_run_me_child_excludes_inherited_nonstdio_descriptors()",
+        "\n    // R-SV6(d)",
+        "Linux same-executable actual-child descriptor regression",
+    )
+    for text, label in (
+        ('Command::new("/bin/sh")', "descriptor-injecting exec launcher"),
+        (
+            'exec 9<>\\"$1\\"; exec \\"$2\\" --exact \\"$3\\" --nocapture',
+            "inheritable descriptor launcher",
+        ),
+        ('Some(std::ffi::OsStr::new("9"))', "intermediate inherited descriptor proof"),
+        (
+            'run_me_with_env(vec!["--exact", TEST_NAME, "--nocapture"], envs)',
+            "actual same-executable helper launch",
+        ),
+        ('fs::read_dir("/proc/self/fd")', "final live descriptor enumeration"),
+        (
+            "metadata.dev() == target.dev() && metadata.ino() == target.ino()",
+            "descriptor object identity comparison",
+        ),
+        ("inherited.is_none()", "final descriptor exclusion assertion"),
+    ):
+        require_text(run_me_descriptor_test, text, label)
     for source in (core_main, common_source):
         if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
             raise VerificationError("Rust server role regressed to semantic argv0 use")
@@ -9873,9 +9938,21 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "let child = command.spawn();",
-            "let child = std::process::Command::new(pkcheck).spawn();",
+            "    }\n    let child = command.spawn();\n    let mut child = match child {",
+            "    }\n    let child = std::process::Command::new(pkcheck).spawn();\n    let mut child = match child {",
             "pkcheck execution after descriptor policy",
+        ),
+        (
+            "common_source",
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)",
+            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec_disabled(&mut cmd)",
+            "same-executable child descriptor policy",
+        ),
+        (
+            "common_source",
+            "inherited.is_none()",
+            "inherited.is_some()",
+            "final descriptor exclusion assertion",
         ),
         (
             "core_main",

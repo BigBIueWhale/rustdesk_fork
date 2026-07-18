@@ -2099,6 +2099,43 @@ unreachable and a source/test/AST gate prevents reintroduction.
   targeted pkcheck source mutations, dependency inventory, native-codec requirements hash, Linux `cargo check`, and
   the targeted Linux password-authorization source-contract unit test. This slice adds no new production
   `unsafe {` block; the existing helper pre-exec registration from R-S11e-29 is reused.
+- **R-S11e-31 — Linux same-executable child inherited descriptor authority — SOURCE, ACTUAL-CHILD, AND MUTATION
+  VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS
+  WITH R-B2/R-S11c-27.** Platform: Linux same-executable desktop helper launches. Endpoint/action:
+  `src/common.rs::run_me`/`run_me_with_env`, including the root service-owned server's same-user headless
+  connection-manager route as well as user-owned URL, tray, and whiteboard consumers. Boundary: descriptors held
+  by the current RustDesk image ↔ a fresh RustDesk child whose deliberate contract is only argv, explicit
+  environment additions, and stdio. Attack surface closed: the exact service image, sudo/reopen helpers, and
+  pkcheck were constrained by R-S11e-28 through R-S11e-30, but the generic current-executable launcher still used
+  a direct `Command::spawn` with no descriptor policy. On a headless installed-service server this is not merely a
+  user convenience: `src/server/connection.rs` deliberately takes the same-user branch and starts CM through
+  `run_me_with_env`. A sensitive non-stdio descriptor without `FD_CLOEXEC` could therefore cross into the root CM
+  image. The same unsound ambient inheritance applied to ordinary user-owned consumers. This is a
+  root-service-to-child capability leak on that CM route and descriptor-authority hygiene defect elsewhere, not a
+  demonstrated promptless ordinary-user-to-root escalation; it depends on a sensitive live descriptor lacking
+  close-on-exec at the launch point.
+
+  Closure: on Linux, `run_me_with_env` now applies
+  `configure_linux_helper_close_nonstdio_on_exec` before its only spawn. That reuses the parent-resolved
+  `/proc/sys/fs/nr_open` bound, raw `close_range(CLOSE_RANGE_CLOEXEC)` fast path, and raw
+  `fcntl(F_GETFD/F_SETFD)` fallback from R-S11n/R-S11o. A configuration error becomes an `io::Error` and no child
+  is started. No executable-fd exception exists at this API. Non-Linux launch behavior and the child argv,
+  environment, and stdio contract are unchanged.
+
+  The Linux unit regression is an actual three-image descriptor proof without root or test-only `unsafe`: a
+  `/bin/sh` launcher opens descriptor 9 across `exec`; the intermediate exact RustDesk test image compares the
+  live `/proc/self/fd` target's device/inode and refuses to proceed unless descriptor 9 is present; it then calls
+  `run_me_with_env`; and the final exact test image proves no live descriptor matches that same object.
+  `scripts/verify.sh` and `scripts/verify-verifier-workspace.py` bind the descriptor-policy-before-spawn ordering,
+  fail-closed error conversion, single spawn shape, actual-child proof, service-owned CM consumer, R-S11q,
+  Appendix C #139, and this entry. The focused Rust 1.75 test passed in a non-root, networkless, capability-free,
+  source-read-only Docker run (all three outer/launcher/final test images passed), and the full library test target
+  compiled. The extracted source gate, semantic source validator, full in-memory source-mutation suite, Rust 1.75
+  formatting check, dependency inventory and its self-test, native-codec watch, requirements-hash equality, shell
+  syntax, and diff hygiene passed. The mutation review also narrowed the adjacent pkcheck spawn mutation to its
+  unique production context after the old fragment was found in both production and a Rust source-contract test;
+  all runtime mutation targets are now effective. This slice adds no dependency and no lexical `unsafe {` block;
+  it reuses the production hook added by R-S11e-29.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4407,8 +4444,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-59c7f473aa5370ee357ba138d332fdc5bcffdc4f2bcd35b04e368d8319c333cb  requirements.html
+582b186bcba3802cf173364248c513ad0708d8d7aba9329838448f9237adc872  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, R-S11o, R-S11p, and Appendix C #138. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11q, and Appendix C #139. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -617,6 +617,15 @@ where
     let cmd = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(cmd);
     cmd.envs(envs.iter().map(|(k, v)| (k, v)));
+    #[cfg(target_os = "linux")]
+    crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd).map_err(
+        |err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("failed to constrain RustDesk child descriptors: {err}"),
+            )
+        },
+    )?;
     let result = cmd.args(&args).spawn();
     match result.as_ref() {
         Ok(_) => {}
@@ -1394,6 +1403,117 @@ mod tests {
         time::{interval, interval_at, sleep, Duration, Instant, Interval},
     };
     use std::collections::HashSet;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_run_me_child_excludes_inherited_nonstdio_descriptors() {
+        use std::{
+            fs::{self, OpenOptions},
+            os::unix::fs::MetadataExt,
+            process::Command,
+        };
+
+        const ROLE_ENV: &str = "RUSTDESK_RUN_ME_DESCRIPTOR_TEST_ROLE";
+        const TARGET_ENV: &str = "RUSTDESK_RUN_ME_DESCRIPTOR_TEST_TARGET";
+        const TEST_NAME: &str =
+            "common::tests::linux_run_me_child_excludes_inherited_nonstdio_descriptors";
+
+        let descriptor_for_target = || {
+            let target_path = std::env::var_os(TARGET_ENV)
+                .map(std::path::PathBuf::from)
+                .expect("target path must be supplied by the parent test");
+            let target = fs::metadata(&target_path).expect("target metadata must be readable");
+            for entry in fs::read_dir("/proc/self/fd").expect("child proc fd directory must exist")
+            {
+                let entry = entry.expect("child proc fd entry must be readable");
+                let Ok(metadata) = fs::metadata(entry.path()) else {
+                    continue;
+                };
+                if metadata.dev() == target.dev() && metadata.ino() == target.ino() {
+                    return Some(entry.file_name());
+                }
+            }
+            None
+        };
+
+        match std::env::var(ROLE_ENV).as_deref() {
+            Ok("child") => {
+                let inherited = descriptor_for_target();
+                assert!(
+                    inherited.is_none(),
+                    "run_me child retained the launcher's non-stdio descriptor as {inherited:?}"
+                );
+                return;
+            }
+            Ok("launcher") => {
+                assert_eq!(
+                    descriptor_for_target().as_deref(),
+                    Some(std::ffi::OsStr::new("9")),
+                    "shell launcher must inject the hostile descriptor before run_me is tested"
+                );
+                let envs = [
+                    (
+                        std::ffi::OsString::from(ROLE_ENV),
+                        std::ffi::OsString::from("child"),
+                    ),
+                    (
+                        std::ffi::OsString::from(TARGET_ENV),
+                        std::env::var_os(TARGET_ENV).expect("launcher target path must be present"),
+                    ),
+                ];
+                let mut child = run_me_with_env(vec!["--exact", TEST_NAME, "--nocapture"], envs)
+                    .expect("same-executable child must spawn");
+                let status = child
+                    .wait()
+                    .expect("same-executable child must be waitable");
+                assert!(status.success(), "descriptor-check child failed: {status}");
+                return;
+            }
+            Ok(role) => panic!("unexpected descriptor-test role: {role}"),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                panic!("descriptor-test role must be Unicode")
+            }
+            Err(std::env::VarError::NotPresent) => {}
+        }
+
+        let test_root = std::env::temp_dir().join(format!(
+            "rustdesk-run-me-descriptor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .expect("test clock must follow the Unix epoch")
+                .as_nanos()
+        ));
+        fs::create_dir(&test_root).expect("descriptor test directory must be creatable");
+        let target_path = test_root.join("parent-authority");
+        OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target_path)
+            .expect("descriptor test target must be creatable");
+
+        let current_exe = std::env::current_exe().expect("test executable path must be available");
+        let status = Command::new("/bin/sh")
+            .args([
+                std::ffi::OsStr::new("-c"),
+                std::ffi::OsStr::new("exec 9<>\"$1\"; exec \"$2\" --exact \"$3\" --nocapture"),
+                std::ffi::OsStr::new("rustdesk-run-me-descriptor-test"),
+                target_path.as_os_str(),
+                current_exe.as_os_str(),
+                std::ffi::OsStr::new(TEST_NAME),
+            ])
+            .env(ROLE_ENV, "launcher")
+            .env(TARGET_ENV, &target_path)
+            .status()
+            .expect("descriptor-injecting shell must execute");
+
+        fs::remove_file(&target_path).expect("descriptor test target must be removable");
+        fs::remove_dir(&test_root).expect("descriptor test directory must be removable");
+        assert!(
+            status.success(),
+            "descriptor-test launcher failed: {status}"
+        );
+    }
 
     // R-SV6(d) / R-D6 / §18: the api-server resolution MUST default to a sovereign empty string —
     // no hardwired global host. Upstream returned "https://admin.rustdesk.com" as the fallback and

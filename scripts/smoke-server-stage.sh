@@ -47,6 +47,9 @@ case "$1" in
   debian-sysv-installed-lifecycle)
     bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh
     ;;
+  debian-openrc-native-lifecycle)
+    bash --noprofile --norc /work/scripts/smoke-openrc-lifecycle.sh
+    ;;
   sibling-docker-server)
     control=/sibling
     installed_server=/usr/bin/rustdesk

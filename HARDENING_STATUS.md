@@ -3281,7 +3281,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     evidence, or external expert R-V3 review. The parent item and upcoming release remain **OPEN**.
 
   - **R-S11c-27p — packaged OpenRC/runit/manual supervisor templates — SOURCE/PACKAGE INTEGRATED
-    2026-07-18; NATIVE OPENRC/RUNIT RUNTIME EVIDENCE REMAINS OPEN; PARENT ITEM REMAINS OPEN.** The Debian
+    2026-07-18; NATIVE OPENRC EVIDENCE IS PROVIDED BY R-S11c-27q; NATIVE RUNIT AND PARENT ITEMS REMAIN OPEN.** The Debian
     package source now carries explicit service-manager templates under
     `res/service-managers/{openrc,runit,manual}` and stages them as exact mode-0755 regular files under
     `/usr/share/rustdesk/files/{openrc,runit,manual}`. They are downstream/administrator integration inputs,
@@ -3310,9 +3310,48 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     `docs/DEPLOYMENT.md` documents the three package paths, single-manager rule, and exact foreground stop model.
 
     This slice closes the missing source/package templates and the already-runtime-tested manual-supervisor wrapper
-    integration; it does **not** claim a built final-release `.deb` or native OpenRC/runit manager transaction.
-    Final-release `.deb` artifact proof, native OpenRC/runit lifecycle evidence, exact-commit cold artifact evidence,
-    and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
+    integration. R-S11c-27q subsequently supplies native OpenRC evidence; this row does **not** claim a built
+    final-release `.deb` or native runit manager transaction. Final-release `.deb` artifact proof, native runit
+    lifecycle evidence, exact-commit cold artifact evidence, and external expert R-V3 review remain open. The parent
+    item and upcoming release remain **OPEN**.
+
+  - **R-S11c-27q — native OpenRC lifecycle authority — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
+    2026-07-18; NATIVE RUNIT AND PARENT ITEMS REMAIN OPEN.** A dedicated mounted lifecycle stage now runs the
+    real built RustDesk binary under Debian bookworm's exact `openrc=0.45.2-2+deb12u1` package in the existing
+    disposable, network-disabled lifecycle container. The fixture initializes an empty private OpenRC softlevel,
+    installs byte-identical copies of the production OpenRC template and RustDesk executable, and installs only
+    the bounded `loginctl` test fixture needed to select the root smoke seat. It does not start a host runlevel,
+    modify a host service, publish a container port, or share the host PID namespace.
+
+    The native transaction proves that OpenRC's fixed root-owned mode-0644 single-link pidfile names a live
+    root-UID `/usr/bin/rustdesk --service` supervisor executing the exact installed file object. The RustDesk
+    supervisor, rather than OpenRC or the harness, publishes the strict mode-0600 child record and directly owns
+    the exact `/proc/self/exe --server --service-owned-server` child: parent PID, start time, boot UUID, executable
+    device/inode, UID, generation UUID, NNP state, environment authority, typed parked IPC, and zero TCP-listen/UDP
+    surface are checked at runtime. A separate UID-4000, no-new-privileges, capability-free RustDesk server with
+    neutral argv and a distinct executable object survives native start, restart, stop, start-over-stale-pidfile,
+    failed crash restart, explicit recovery, and final stop.
+
+    The test preserves an OpenRC 0.45.2 behavior that must not be papered over: normal `stop` terminates the exact
+    tracked supervisor and its child but leaves `/run/rustdesk.pid`. A subsequent native `start` safely overwrites
+    that root-owned pidfile with a fresh PID/start identity and generation. If the backgrounded supervisor is
+    instead killed without OpenRC observing the exit, OpenRC still reports manager state `started`; direct
+    `restart` fails at its exact stop boundary because no matching `/usr/bin/rustdesk` is alive. The harness proves
+    that this failure changes neither the durable child record nor the unrelated process, then uses OpenRC's
+    explicit `rc-service rustdesk zap` state reset followed by `start`. Fresh RustDesk recovery discards the exited
+    exact child record without signaling it, publishes a different supervisor/child/generation, and again leaves
+    the portable process untouched. Supervisor crash and child parent-death exit are observed through retained
+    pidfds; no process-name, command-line, or numeric-PID sweep is available to the fixture.
+
+    `scripts/verify.sh` seals the exact Debian OpenRC pin, mounted networkless dispatch, lifecycle result, native
+    command sequence, strict supervisor/child/portable identities, explicit stale-state behavior, pidfd-only crash,
+    source-mount postcondition, forbidden broad-authority strings, and this row. The workspace verifier loads the
+    OpenRC fixture as a first-class source and mutation-tests the package pin, native dispatch/status, portable
+    survivor proof, and explicit crash recovery result.
+
+    This closes native OpenRC runtime evidence for the shipped template; it does **not** claim native runit runtime
+    evidence, a built final-release `.deb`, exact-commit cold artifact evidence, or external expert R-V3 review.
+    Those items and the upcoming release remain **OPEN**.
 
   Required implementation and release closure:
 

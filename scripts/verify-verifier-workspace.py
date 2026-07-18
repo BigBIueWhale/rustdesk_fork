@@ -3160,7 +3160,8 @@ def smoke_readiness_mode_is_valid(mode):
 def validate_smoke_contract(
     verify, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
     pid_reuse_lifecycle, pid_reuse_lifecycle_mode,
-    debian_sysv_lifecycle, debian_sysv_lifecycle_mode, loginctl_fixture,
+    debian_sysv_lifecycle, debian_sysv_lifecycle_mode, openrc_lifecycle,
+    openrc_lifecycle_mode, devcheck_dockerfile, loginctl_fixture,
     loginctl_fixture_mode, process_guard, process_guard_mode, launcher, readiness,
     readiness_mode, typed_probe, session_probe, ipc_source, core_main, common_source,
     linux_source,
@@ -3170,6 +3171,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.md", "cross-container hardening ledger gate"),
         ('actual kernel numeric-PID reuse (R-S11c-27o)', "actual PID reuse source gate"),
         ("grep -qF 'R-S11c-27o — actual kernel numeric-PID reuse' HARDENING_STATUS.md", "actual PID reuse hardening ledger gate"),
+        ('native OpenRC owns one exact supervisor and preserves unrelated RustDesk (R-S11c-27q)', "native OpenRC source gate"),
+        ("grep -qF 'R-S11c-27q — native OpenRC lifecycle authority' HARDENING_STATUS.md", "native OpenRC hardening ledger gate"),
     ):
         require_text(verify, text, label)
     for text, label in (
@@ -3196,6 +3199,7 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27j', "sibling Docker stage status preservation"),
         ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
         ('record_stage_status R-S11c-27l', "Debian SysV stage status preservation"),
+        ('record_stage_status R-S11c-27q', "native OpenRC stage status preservation"),
         ('record_stage_status R-S11c-27n', "cross-container identity stage status preservation"),
         ('record_stage_status R-S11c-27o', "actual PID reuse stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
@@ -3205,6 +3209,7 @@ def validate_smoke_contract(
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-pid-reuse', "mounted PID reuse stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server', "mounted sibling Docker stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle', "mounted Debian SysV stage"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-openrc-native-lifecycle', "mounted native OpenRC stage"),
         ('start_sibling_docker()', "sibling Docker orchestrator"),
         ('stop_sibling_docker()', "sibling Docker survivor drain"),
         ('sibling_container_running', "sibling Docker running check"),
@@ -3236,7 +3241,7 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 20:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 21:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
     if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 20:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
@@ -3264,6 +3269,8 @@ def validate_smoke_contract(
         raise VerificationError("mounted PID reuse lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(debian_sysv_lifecycle_mode):
         raise VerificationError("mounted Debian SysV lifecycle stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(openrc_lifecycle_mode):
+        raise VerificationError("mounted native OpenRC lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(loginctl_fixture_mode):
         raise VerificationError("mounted loginctl fixture is not a regular executable file")
     if not smoke_readiness_mode_is_valid(process_guard_mode):
@@ -3273,8 +3280,10 @@ def validate_smoke_contract(
         ('service-pid-reuse)', "PID reuse lifecycle dispatch"),
         ('sibling-docker-server)', "sibling Docker dispatch"),
         ('debian-sysv-installed-lifecycle)', "Debian SysV dispatch"),
+        ('debian-openrc-native-lifecycle)', "native OpenRC dispatch"),
         ('bash --noprofile --norc /work/scripts/smoke-service-pid-reuse.sh', "PID reuse mounted script dispatch"),
         ('bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh', "Debian SysV mounted script dispatch"),
+        ('bash --noprofile --norc /work/scripts/smoke-openrc-lifecycle.sh', "native OpenRC mounted script dispatch"),
         ('control=/sibling', "sibling Docker private control directory"),
         ('"$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log', "sibling Docker parked readiness"),
         ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
@@ -3335,6 +3344,42 @@ def validate_smoke_contract(
         if forbidden in debian_sysv_lifecycle:
             raise VerificationError(
                 f"Debian SysV lifecycle retains forbidden host or broad process authority: {forbidden}"
+            )
+    require_text(
+        devcheck_dockerfile,
+        "openrc=0.45.2-2+deb12u1",
+        "audited Debian OpenRC package pin",
+    )
+    for text, label in (
+        ('readonly OPENRC_VERSION=0.45.2-2+deb12u1', "native OpenRC exact version"),
+        ('[ "$(dpkg-query -W -f=\'${Version}\' openrc)" = "$OPENRC_VERSION" ]', "native OpenRC installed-version proof"),
+        ('[ "${VERSION_CODENAME:-}" = bookworm ]', "native OpenRC Debian release proof"),
+        ('[ ! -e /run/systemd/system ]', "native OpenRC backend proof"),
+        ('openrc --no-stop "$RUNLEVEL"', "empty native OpenRC runlevel bootstrap"),
+        ('run_openrc restart "$FIXTURE/restart.log"', "native OpenRC restart"),
+        ('run_openrc stop "$FIXTURE/stop.log"', "native OpenRC stop"),
+        ('stale_pidfile=overwritten', "native OpenRC stale-pidfile result"),
+        ('signal.pidfd_send_signal(supervisor_pidfd, signal.SIGKILL, None, 0)', "exact pidfd supervisor crash"),
+        ('crash_supervisor_and_wait_child', "parent-death-bound child observation"),
+        ('run_openrc zap "$FIXTURE/crashed-zap.log"', "explicit OpenRC crash-state reset"),
+        ('crash_recovery=zap-start', "explicit OpenRC crash recovery result"),
+        ('status.get("PPid") != str(supervisor)', "exact child parent proof"),
+        ('b"/proc/self/exe", b"--server", b"--service-owned-server", b""', "exact service-owned child role"),
+        ('b"rd-smoke-server", b"--server", b""', "exact portable role"),
+        ('assert_portable_alive', "portable noninterference proof"),
+        ('SMOKE_TYPED_IPC_READY state=parked', "typed parked IPC proof"),
+        ('networkless lifecycle has $tcp_count TCP listeners', "networkless listener proof"),
+        ('read-only source fixtures changed', "read-only source postcondition"),
+        ('OPENRC_NATIVE_LIFECYCLE=pass os=debian-%s openrc=%s portable_uid=%s normal_restart=pass stale_pidfile=overwritten crash_recovery=zap-start', "native OpenRC lifecycle result"),
+    ):
+        require_text(openrc_lifecycle, text, label)
+    for forbidden in (
+        "docker ", "sudo ", "--network=host", "--pid=host", "--privileged",
+        "--publish", "pkill", "killall", "pidof", "pgrep", "os.kill(", "kill -",
+    ):
+        if forbidden in openrc_lifecycle:
+            raise VerificationError(
+                f"native OpenRC lifecycle retains forbidden host or broad process authority: {forbidden}"
             )
     if '[b"rd-smoke-server", b"--server", b"--service-owned-server", b""]' in service_lifecycle:
         raise VerificationError("portable role isolation: portable server acquired service-owned argv")
@@ -4393,6 +4438,9 @@ def validate_sources(sources):
         sources["pid_reuse_lifecycle_mode"],
         sources["debian_sysv_lifecycle"],
         sources["debian_sysv_lifecycle_mode"],
+        sources["openrc_lifecycle"],
+        sources["openrc_lifecycle_mode"],
+        sources["devcheck_dockerfile"],
         sources["loginctl_fixture"],
         sources["loginctl_fixture_mode"],
         sources["smoke_process_guard"],
@@ -9484,6 +9532,12 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
+            'record_stage_status R-S11c-27q',
+            'true # native OpenRC lifecycle status removed',
+            "native OpenRC stage status preservation",
+        ),
+        (
+            "smoke",
             'record_stage_status R-S11c-27n',
             'true # cross-container identity status removed',
             "cross-container identity stage status preservation",
@@ -9607,6 +9661,36 @@ def run_source_mutations(sources):
             'DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stale_wrong_exec=survived',
             'DEBIAN_SYSV_INSTALLED_LIFECYCLE=skipped',
             "Debian SysV installed lifecycle result",
+        ),
+        (
+            "smoke_stage",
+            'debian-openrc-native-lifecycle)',
+            'debian-openrc-native-lifecycle-disabled)',
+            "native OpenRC dispatch",
+        ),
+        (
+            "devcheck_dockerfile",
+            'openrc=0.45.2-2+deb12u1',
+            'openrc',
+            "audited Debian OpenRC package pin",
+        ),
+        (
+            "openrc_lifecycle",
+            'run_openrc zap "$FIXTURE/crashed-zap.log"',
+            'true # explicit OpenRC crash-state reset removed',
+            "explicit OpenRC crash-state reset",
+        ),
+        (
+            "openrc_lifecycle",
+            'b"rd-smoke-server", b"--server", b""',
+            'b"rd-smoke-server", b"--server", b"--service-owned-server", b""',
+            "exact portable role",
+        ),
+        (
+            "openrc_lifecycle",
+            'OPENRC_NATIVE_LIFECYCLE=pass os=debian-%s',
+            'OPENRC_NATIVE_LIFECYCLE=skipped os=debian-%s',
+            "native OpenRC lifecycle result",
         ),
         (
             "systemd_smoke_host",
@@ -10850,6 +10934,9 @@ def main():
             "pid_reuse_lifecycle_mode": os.lstat(repo / "scripts/smoke-service-pid-reuse.sh").st_mode,
             "debian_sysv_lifecycle": (repo / "scripts/smoke-debian-sysv-lifecycle.sh").read_text(encoding="utf-8"),
             "debian_sysv_lifecycle_mode": os.lstat(repo / "scripts/smoke-debian-sysv-lifecycle.sh").st_mode,
+            "openrc_lifecycle": (repo / "scripts/smoke-openrc-lifecycle.sh").read_text(encoding="utf-8"),
+            "openrc_lifecycle_mode": os.lstat(repo / "scripts/smoke-openrc-lifecycle.sh").st_mode,
+            "devcheck_dockerfile": (repo / "scripts/Dockerfile.devcheck").read_text(encoding="utf-8"),
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),

@@ -3794,6 +3794,62 @@ grep -qF 'R-S11c-27p — packaged OpenRC/runit/manual supervisor templates' HARD
 if [ -n "$r_s11c27p" ]; then echo "  FAIL R-S11c-27p service-manager templates:$r_s11c27p"; rc=1; else
   echo "  ok  R-S11c-27p Debian payload ships exact OpenRC, runit, and manual templates that start/stop only the foreground --service supervisor and contain no server-child process rediscovery"; fi
 
+echo "== (3b-iii-h2r) native OpenRC owns one exact supervisor and preserves unrelated RustDesk (R-S11c-27q) =="
+r_s11c27q=
+bash -n scripts/smoke-openrc-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
+  || r_s11c27q="$r_s11c27q smoke-shell-syntax-invalid"
+[ "$(stat -c %a scripts/smoke-openrc-lifecycle.sh)" = 755 ] \
+  || r_s11c27q="$r_s11c27q smoke-script-not-executable"
+grep -qF 'openrc=0.45.2-2+deb12u1' scripts/Dockerfile.devcheck \
+  || r_s11c27q="$r_s11c27q audited-openrc-package-not-pinned"
+for token in \
+  'debian-openrc-native-lifecycle)' \
+  'bash --noprofile --norc /work/scripts/smoke-openrc-lifecycle.sh'; do
+  grep -qF -- "$token" scripts/smoke-server-stage.sh \
+    || r_s11c27q="$r_s11c27q stage:${token%% *}"
+done
+for token in \
+  'LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE' \
+  'bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-openrc-native-lifecycle' \
+  'record_stage_status R-S11c-27q' \
+  'OPENRC_NATIVE_LIFECYCLE=pass os=debian-12 openrc=0\.45\.2-2\+deb12u1'; do
+  grep -qF -- "$token" scripts/smoke-server.sh \
+    || r_s11c27q="$r_s11c27q orchestration:${token%% *}"
+done
+for token in \
+  'readonly OPENRC_VERSION=0.45.2-2+deb12u1' \
+  '[ "$(dpkg-query -W -f='"'"'${Version}'"'"' openrc)" = "$OPENRC_VERSION" ]' \
+  'openrc --no-stop "$RUNLEVEL"' \
+  'rc-service rustdesk "$action"' \
+  'run_openrc restart "$FIXTURE/restart.log"' \
+  'run_openrc stop "$FIXTURE/stop.log"' \
+  'stale_pidfile=overwritten' \
+  'signal.pidfd_send_signal(supervisor_pidfd, signal.SIGKILL, None, 0)' \
+  'crash_supervisor_and_wait_child' \
+  'run_openrc zap "$FIXTURE/crashed-zap.log"' \
+  'crash_recovery=zap-start' \
+  'status.get("PPid") != str(supervisor)' \
+  'b"/proc/self/exe", b"--server", b"--service-owned-server", b""' \
+  'assert_portable_alive' \
+  'b"rd-smoke-server", b"--server", b""' \
+  'SMOKE_TYPED_IPC_READY state=parked' \
+  'networkless lifecycle has $tcp_count TCP listeners' \
+  'read-only source fixtures changed' \
+  'OPENRC_NATIVE_LIFECYCLE=pass os=debian-%s openrc=%s portable_uid=%s normal_restart=pass stale_pidfile=overwritten crash_recovery=zap-start'; do
+  grep -qF -- "$token" scripts/smoke-openrc-lifecycle.sh \
+    || r_s11c27q="$r_s11c27q fixture:${token%% *}"
+done
+for forbidden in 'docker ' 'sudo ' '--network=host' '--pid=host' '--privileged' '--publish' \
+  'pkill' 'killall' 'pidof' 'pgrep' 'os.kill(' 'kill -'; do
+  if grep -qF -- "$forbidden" scripts/smoke-openrc-lifecycle.sh; then
+    r_s11c27q="$r_s11c27q forbidden-fixture-authority:$forbidden"
+  fi
+done
+grep -qF 'R-S11c-27q — native OpenRC lifecycle authority' HARDENING_STATUS.md \
+  || r_s11c27q="$r_s11c27q hardening-ledger-missing"
+if [ -n "$r_s11c27q" ]; then echo "  FAIL R-S11c-27q native OpenRC lifecycle:$r_s11c27q"; rc=1; else
+  echo "  ok  R-S11c-27q pinned Debian OpenRC starts/restarts/stops one pidfile-bound --service supervisor, replaces stale state through explicit native recovery, and leaves an unrelated no-privilege RustDesk process untouched"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

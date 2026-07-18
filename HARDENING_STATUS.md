@@ -3280,6 +3280,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     final-release `.deb` artifact proof, OpenRC/runit/manual packaging integration, exact-commit cold artifact
     evidence, or external expert R-V3 review. The parent item and upcoming release remain **OPEN**.
 
+  - **R-S11c-27p — packaged OpenRC/runit/manual supervisor templates — SOURCE/PACKAGE INTEGRATED
+    2026-07-18; NATIVE OPENRC/RUNIT RUNTIME EVIDENCE REMAINS OPEN; PARENT ITEM REMAINS OPEN.** The Debian
+    package source now carries explicit service-manager templates under
+    `res/service-managers/{openrc,runit,manual}` and stages them as exact mode-0755 regular files under
+    `/usr/share/rustdesk/files/{openrc,runit,manual}`. They are downstream/administrator integration inputs,
+    not an excuse for maintainer scripts to infer or rewrite the host's selected service topology. The existing
+    systemd-versus-SysV package lifecycle remains the only automatically selected package path; no OpenRC runlevel,
+    runit service link, or manual supervisor state is created behind the administrator's back.
+
+    The OpenRC template uses its documented foreground-daemon pattern: fixed
+    `command=/usr/bin/rustdesk`, exact `command_args=--service`, `command_background=true`, fixed root-owned
+    `/run/rustdesk.pid`, root identity, fixed working directory/umask, and bounded `TERM/30/KILL/5` retry. It has
+    no custom start/stop function and no `procname` fallback. The runit and manual templates contain only a strict
+    shell setup followed by `exec /usr/bin/rustdesk --service`, so the service manager owns the actual RustDesk
+    supervisor PID rather than a shell wrapper. None names `--server`, the service-owned child role, `/proc`, or a
+    process-discovery/sweep tool. Normal manager stop therefore reaches only the foreground `--service` process;
+    direct child/pidfd ownership, bounded child drain, and crash recovery remain inside the init-independent
+    R-S11c-27a–o supervisor protocol.
+
+    `build.py`'s closed Debian directory/file/executable inventories now require all three templates and its sole
+    package constructor copies their fixed source tree before canonical finalization. The independent artifact
+    verifier mirrors that exact inventory, mode policy, source Git-mode proof, constructor call shape, synthetic
+    package tests, and mutation fixtures. `scripts/build-debian.sh` extracts every completed `.deb`, requires each
+    template to be a non-linked mode-0755 regular file, byte-compares it with source, and runs the shared semantic
+    checker on the extracted payload. `scripts/verify-debian-maintainer-scripts.py` pins the OpenRC authority fields,
+    rejects process rediscovery/custom lifecycle functions, and exact-matches both foreground exec wrappers.
+    `scripts/verify.sh` and `scripts/verify-verifier-workspace.py` gate the source/package/documentation contract.
+    `docs/DEPLOYMENT.md` documents the three package paths, single-manager rule, and exact foreground stop model.
+
+    This slice closes the missing source/package templates and the already-runtime-tested manual-supervisor wrapper
+    integration; it does **not** claim a built final-release `.deb` or native OpenRC/runit manager transaction.
+    Final-release `.deb` artifact proof, native OpenRC/runit lifecycle evidence, exact-commit cold artifact evidence,
+    and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
+
   Required implementation and release closure:
 
   - The `--service` supervisor must retain direct ownership of every server child

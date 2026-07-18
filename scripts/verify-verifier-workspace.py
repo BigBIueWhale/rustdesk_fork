@@ -3063,6 +3063,96 @@ def validate_systemd_smoke_contract(
     )
 
 
+def validate_service_manager_template_contract(
+    verify, openrc, openrc_mode, runit, runit_mode, manual, manual_mode,
+    debian, deployment, hardening,
+):
+    for label, mode in (
+        ("OpenRC", openrc_mode),
+        ("runit", runit_mode),
+        ("manual", manual_mode),
+    ):
+        if not stat.S_ISREG(mode) or stat.S_IMODE(mode) != 0o755:
+            raise VerificationError(f"{label} service-manager template is not a mode-0755 regular file")
+
+    if openrc.splitlines()[:1] != ["#!/sbin/openrc-run"]:
+        raise VerificationError("OpenRC service-manager template interpreter differs")
+    for token, label in (
+        ('command="/usr/bin/rustdesk"', "OpenRC fixed supervisor executable"),
+        ('command_args="--service"', "OpenRC exact supervisor role"),
+        ("command_background=true", "OpenRC foreground-daemon tracking"),
+        ('command_user="root:root"', "OpenRC root supervisor identity"),
+        ('directory="/"', "OpenRC fixed working directory"),
+        ('pidfile="/run/rustdesk.pid"', "OpenRC fixed root-owned pidfile"),
+        ('retry="TERM/30/KILL/5"', "OpenRC bounded stop schedule"),
+        ("umask=027", "OpenRC supervisor umask"),
+    ):
+        require_text(openrc, token, label)
+    if re.search(
+        r"\b(procname|pidof|pgrep|pkill|killall|kill|ps|sudo|su)\b|/proc/|--server|service-owned-server|(^|\n)\s*(start|stop)\s*\(\)",
+        openrc,
+    ):
+        raise VerificationError("OpenRC template retains process rediscovery or child lifecycle authority")
+
+    foreground = (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        "umask 027\n"
+        "cd /\n"
+        "exec /usr/bin/rustdesk --service\n"
+    )
+    if runit != foreground:
+        raise VerificationError("runit foreground supervisor wrapper differs")
+    if manual != foreground:
+        raise VerificationError("manual foreground supervisor wrapper differs")
+
+    for token, label in (
+        (
+            "packaged OpenRC/runit/manual templates own only the foreground supervisor (R-S11c-27p)",
+            "service-manager template source gate",
+        ),
+        ('--openrc-script "$openrc_template"', "source OpenRC semantic gate"),
+        ('--runit-run "$runit_template"', "source runit semantic gate"),
+        ('--manual-run "$manual_template"', "source manual semantic gate"),
+        (
+            "grep -qF 'R-S11c-27p — packaged OpenRC/runit/manual supervisor templates' HARDENING_STATUS.md",
+            "service-manager template ledger gate",
+        ),
+    ):
+        require_text(verify, token, label)
+    for token, label in (
+        (
+            "for template in openrc/rustdesk runit/run manual/rustdesk-service; do",
+            "post-build service-manager template inventory",
+        ),
+        (
+            '--openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk"',
+            "post-build OpenRC template verification",
+        ),
+        (
+            '--runit-run "$tmp_data/usr/share/rustdesk/files/runit/run"',
+            "post-build runit template verification",
+        ),
+        (
+            '--manual-run "$tmp_data/usr/share/rustdesk/files/manual/rustdesk-service"',
+            "post-build manual template verification",
+        ),
+    ):
+        require_text(debian, token, label)
+    for token, label in (
+        ("/usr/share/rustdesk/files/openrc/rustdesk", "OpenRC deployment path"),
+        ("/usr/share/rustdesk/files/runit/run", "runit deployment path"),
+        ("/usr/share/rustdesk/files/manual/rustdesk-service", "manual deployment path"),
+        ("Only one service manager may own `rustdesk --service`", "single-manager deployment rule"),
+    ):
+        require_text(deployment, token, label)
+    require_text(
+        hardening,
+        "R-S11c-27p — packaged OpenRC/runit/manual supervisor templates",
+        "service-manager template hardening ledger",
+    )
+
+
 def smoke_readiness_mode_is_valid(mode):
     return stat.S_ISREG(mode) and stat.S_IMODE(mode) in (0o700, 0o755)
 
@@ -4278,6 +4368,18 @@ def validate_sources(sources):
         sources["online_fetch"],
         sources["pins"],
         sources["release"],
+        sources["hardening"],
+    )
+    validate_service_manager_template_contract(
+        sources["verify"],
+        sources["service_openrc"],
+        sources["service_openrc_mode"],
+        sources["service_runit"],
+        sources["service_runit_mode"],
+        sources["service_manual"],
+        sources["service_manual_mode"],
+        sources["debian"],
+        sources["deployment"],
         sources["hardening"],
     )
     validate_smoke_contract(
@@ -9435,6 +9537,48 @@ def run_source_mutations(sources):
             "cross-container hardening ledger gate",
         ),
         (
+            "service_openrc",
+            'pidfile="/run/rustdesk.pid"',
+            'procname="rustdesk"',
+            "OpenRC fixed root-owned pidfile",
+        ),
+        (
+            "service_runit",
+            "exec /usr/bin/rustdesk --service",
+            "exec /usr/bin/rustdesk --server",
+            "runit foreground supervisor wrapper differs",
+        ),
+        (
+            "service_manual",
+            "exec /usr/bin/rustdesk --service",
+            "exec /usr/bin/rustdesk --server",
+            "manual foreground supervisor wrapper differs",
+        ),
+        (
+            "verify",
+            "packaged OpenRC/runit/manual templates own only the foreground supervisor (R-S11c-27p)",
+            "service-manager templates disabled (R-S11c-27p)",
+            "service-manager template source gate",
+        ),
+        (
+            "debian",
+            '--openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk"',
+            '--openrc-script /dev/null',
+            "post-build OpenRC template verification",
+        ),
+        (
+            "deployment",
+            "Only one service manager may own `rustdesk --service`",
+            "Multiple service managers may own `rustdesk --service`",
+            "single-manager deployment rule",
+        ),
+        (
+            "hardening",
+            "R-S11c-27p — packaged OpenRC/runit/manual supervisor templates",
+            "R-S11c-27p — service-manager templates deferred",
+            "service-manager template hardening ledger",
+        ),
+        (
             "smoke_stage",
             'debian-sysv-installed-lifecycle)',
             'debian-sysv-installed-lifecycle-disabled)',
@@ -10740,9 +10884,16 @@ def main():
             "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),
             "version_metadata_checker_mode": os.lstat(repo / "scripts/version-metadata-check.sh").st_mode,
             "debian": (repo / "scripts/build-debian.sh").read_text(encoding="utf-8"),
+            "service_openrc": (repo / "res/service-managers/openrc/rustdesk").read_text(encoding="utf-8"),
+            "service_openrc_mode": os.lstat(repo / "res/service-managers/openrc/rustdesk").st_mode,
+            "service_runit": (repo / "res/service-managers/runit/run").read_text(encoding="utf-8"),
+            "service_runit_mode": os.lstat(repo / "res/service-managers/runit/run").st_mode,
+            "service_manual": (repo / "res/service-managers/manual/rustdesk-service").read_text(encoding="utf-8"),
+            "service_manual_mode": os.lstat(repo / "res/service-managers/manual/rustdesk-service").st_mode,
             "android": (repo / "scripts/build-android.sh").read_text(encoding="utf-8"),
             "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
             "docs": (repo / "docs/VERSIONING.md").read_text(encoding="utf-8"),
+            "deployment": (repo / "docs/DEPLOYMENT.md").read_text(encoding="utf-8"),
             "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
             "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
             "changelog": (repo / "CHANGELOG.md").read_text(encoding="utf-8"),

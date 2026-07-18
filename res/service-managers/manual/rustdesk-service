@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+umask 027
+cd /
+exec /usr/bin/rustdesk --service

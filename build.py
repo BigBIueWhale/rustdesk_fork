@@ -43,6 +43,9 @@ DEBIAN_CONTROL_MODES = {
 DEBIAN_DATA_EXECUTABLES = {
     "etc/init.d/rustdesk",
     "etc/rustdesk/startwm.sh",
+    "usr/share/rustdesk/files/manual/rustdesk-service",
+    "usr/share/rustdesk/files/openrc/rustdesk",
+    "usr/share/rustdesk/files/runit/run",
     "usr/share/rustdesk/rustdesk",
 }
 DEBIAN_FLUTTER_LIBRARIES = {
@@ -77,6 +80,9 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "usr/share/rustdesk/data",
     "usr/share/rustdesk/data/flutter_assets",
     "usr/share/rustdesk/files",
+    "usr/share/rustdesk/files/manual",
+    "usr/share/rustdesk/files/openrc",
+    "usr/share/rustdesk/files/runit",
     "usr/share/rustdesk/files/systemd",
     "usr/share/rustdesk/lib",
 }
@@ -93,6 +99,9 @@ DEBIAN_DATA_REQUIRED_FILES = {
     "usr/share/rustdesk/data/flutter_assets/FontManifest.json",
     "usr/share/rustdesk/data/flutter_assets/NOTICES.Z",
     "usr/share/rustdesk/data/icudtl.dat",
+    "usr/share/rustdesk/files/manual/rustdesk-service",
+    "usr/share/rustdesk/files/openrc/rustdesk",
+    "usr/share/rustdesk/files/runit/run",
     "usr/share/rustdesk/files/systemd/rustdesk.service",
     "usr/share/rustdesk/rustdesk",
 }
@@ -501,6 +510,8 @@ def build_flutter_deb(version, features):
         f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
     system2(
         'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
+    system2(
+        'cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/')
     system2('cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk')
     system2(
         'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')

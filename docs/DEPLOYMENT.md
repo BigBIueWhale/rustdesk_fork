@@ -55,6 +55,31 @@ not listen until you complete step 2.
 > [`RELEASE-VERIFICATION.md`](./RELEASE-VERIFICATION.md). A checksum downloaded beside the package
 > from the same host is not independent authentication.
 
+### Native non-systemd service templates
+
+The Debian payload also ships exact downstream-integration templates at:
+
+- `/usr/share/rustdesk/files/openrc/rustdesk`
+- `/usr/share/rustdesk/files/runit/run`
+- `/usr/share/rustdesk/files/manual/rustdesk-service`
+
+The OpenRC template uses a fixed root-owned `/run/rustdesk.pid` and OpenRC's bounded
+`TERM/30/KILL/5` retry schedule. The runit and manual templates are exact foreground
+`exec /usr/bin/rustdesk --service` wrappers. All three select only the top-level service
+supervisor; RustDesk itself owns, revalidates, drains, and reaps its service-owned server child.
+None of the templates searches for a child by name, argv, or process-table text.
+
+These files are packaged inputs for an administrator or downstream package that has already
+selected its native service manager. They are deliberately not auto-installed into OpenRC
+runlevels, runit service directories, or an administrator's manual supervisor topology by the
+Debian maintainer scripts. Only one service manager may own `rustdesk --service`; stop the
+currently selected systemd/SysV service before installing or enabling a native replacement.
+For OpenRC, install the template as `/etc/init.d/rustdesk`. For runit, install `run` as the
+mode-0755 `/etc/sv/rustdesk/run` file and expose that service directory through the host's
+administrator-owned runsvdir layout. For another process supervisor, use
+`rustdesk-service` as its exact foreground command and have the supervisor send `TERM` to that
+owned process for normal stop. Do not add a separate `rustdesk --server` cleanup command.
+
 ---
 
 ## 2. Configure (mandatory — the host stays fail-closed until the password is set)

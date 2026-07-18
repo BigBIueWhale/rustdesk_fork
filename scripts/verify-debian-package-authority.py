@@ -27,6 +27,9 @@ CONFFILE_PATHS = (
 DATA_EXECUTABLES = {
     "./etc/init.d/rustdesk",
     "./etc/rustdesk/startwm.sh",
+    "./usr/share/rustdesk/files/manual/rustdesk-service",
+    "./usr/share/rustdesk/files/openrc/rustdesk",
+    "./usr/share/rustdesk/files/runit/run",
     "./usr/share/rustdesk/rustdesk",
 }
 FLUTTER_LIBRARIES = {
@@ -62,6 +65,9 @@ DATA_REQUIRED_DIRECTORIES = {
     "./usr/share/rustdesk/data",
     "./usr/share/rustdesk/data/flutter_assets",
     "./usr/share/rustdesk/files",
+    "./usr/share/rustdesk/files/manual",
+    "./usr/share/rustdesk/files/openrc",
+    "./usr/share/rustdesk/files/runit",
     "./usr/share/rustdesk/files/systemd",
     "./usr/share/rustdesk/lib",
 }
@@ -78,6 +84,9 @@ DATA_REQUIRED_FILES = {
     "./usr/share/rustdesk/data/flutter_assets/FontManifest.json",
     "./usr/share/rustdesk/data/flutter_assets/NOTICES.Z",
     "./usr/share/rustdesk/data/icudtl.dat",
+    "./usr/share/rustdesk/files/manual/rustdesk-service",
+    "./usr/share/rustdesk/files/openrc/rustdesk",
+    "./usr/share/rustdesk/files/runit/run",
     "./usr/share/rustdesk/files/systemd/rustdesk.service",
     "./usr/share/rustdesk/rustdesk",
 }
@@ -1229,7 +1238,7 @@ def validate_build_py(repo):
         )
     package_start = direct_call_positions[stage_calls[0]]
     package_prefix = flutter_body[:package_start]
-    if len(package_prefix) != 23:
+    if len(package_prefix) != 24:
         raise ValidationError("build.py Flutter Debian constructor pre-package inventory differs")
     cargo_block = package_prefix[0]
     if (not isinstance(cargo_block, ast.If)
@@ -1289,6 +1298,7 @@ def validate_build_py(repo):
         raise ValidationError("build.py Flutter Debian bundle copy is not exact")
     resource_copy_commands = (
         "cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/",
+        "cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/",
         "cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk",
         "cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png",
         "cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg",
@@ -1298,7 +1308,7 @@ def validate_build_py(repo):
         "cp ../res/startwm.sh tmpdeb/etc/rustdesk/",
         "cp ../res/xorg.conf tmpdeb/etc/rustdesk/",
     )
-    for statement, command in zip(package_prefix[14:23], resource_copy_commands):
+    for statement, command in zip(package_prefix[14:24], resource_copy_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian resource copies are not exact")
     if [
@@ -1360,7 +1370,7 @@ def validate_build_py(repo):
         system2_owners[owner_name] = system2_owners.get(owner_name, 0) + 1
     if system2_owners != {
         "ffi_bindgen_function_refactor": 1,
-        "build_flutter_deb": 23,
+        "build_flutter_deb": 24,
         "build_flutter_dmg": 4,
         "build_flutter_windows": 2,
     }:
@@ -1398,7 +1408,12 @@ def validate_build_py(repo):
             raise ValidationError(f"build.py retains an unsupported Debian package operation: {token}")
 
     scripts = [f"res/DEBIAN/{name}" for name in ("preinst", "postinst", "prerm", "postrm")]
-    scripts.append("res/rustdesk.init")
+    scripts.extend((
+        "res/rustdesk.init",
+        "res/service-managers/openrc/rustdesk",
+        "res/service-managers/runit/run",
+        "res/service-managers/manual/rustdesk-service",
+    ))
     try:
         index = subprocess.check_output(
             ["git", "-C", str(repo), "ls-files", "-s", "--", *scripts],
@@ -1408,7 +1423,7 @@ def validate_build_py(repo):
         raise ValidationError(f"cannot inspect Debian maintainer-script Git modes: {err}") from err
     if len(index) != len(scripts) or any(not line.startswith("100755 ") for line in index):
         raise ValidationError(
-            "all four Debian maintainer scripts and the SysV init script must be tracked as executable regular files"
+            "all Debian lifecycle scripts and service-manager templates must be tracked as executable regular files"
         )
 
 
@@ -1805,6 +1820,9 @@ def run_source_gate_mutations(repo, tmp):
         "res/DEBIAN/prerm",
         "res/DEBIAN/postrm",
         "res/rustdesk.init",
+        "res/service-managers/openrc/rustdesk",
+        "res/service-managers/runit/run",
+        "res/service-managers/manual/rustdesk-service",
     )
     for name in paths:
         destination = fixture / name
@@ -1822,6 +1840,9 @@ def run_source_gate_mutations(repo, tmp):
                 "res/DEBIAN/preinst", "res/DEBIAN/postinst",
                 "res/DEBIAN/prerm", "res/DEBIAN/postrm",
                 "res/rustdesk.init",
+                "res/service-managers/openrc/rustdesk",
+                "res/service-managers/runit/run",
+                "res/service-managers/manual/rustdesk-service",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

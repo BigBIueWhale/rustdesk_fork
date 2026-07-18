@@ -216,10 +216,74 @@ def check_init_script(errors, path):
         errors.append(f"{script}: lifecycle authority is not bound to PID file plus executable")
 
 
+def check_openrc_script(errors, path):
+    script = "rustdesk.openrc"
+    require(errors, script, path.is_file() and not path.is_symlink(), "missing regular OpenRC service script")
+    if not path.is_file() or path.is_symlink():
+        return
+    lines = stripped_lines(path)
+    text = path.read_text(encoding="utf-8")
+    require(errors, script, lines[:1] == ["#!/sbin/openrc-run"], "must use #!/sbin/openrc-run")
+    for needle in (
+        'description="RustDesk service supervisor"',
+        'command="/usr/bin/rustdesk"',
+        'command_args="--service"',
+        "command_background=true",
+        'command_user="root:root"',
+        'directory="/"',
+        'pidfile="/run/rustdesk.pid"',
+        'retry="TERM/30/KILL/5"',
+        "umask=027",
+        "depend() {",
+        "use net",
+        "after bootmisc",
+    ):
+        require_contains(errors, script, lines, needle)
+    for prefix in (
+        "command=", "command_args=", "command_background=", "command_user=",
+        "directory=", "pidfile=", "retry=", "umask=",
+    ):
+        require(
+            errors,
+            script,
+            sum(1 for line in lines if line.startswith(prefix)) == 1,
+            f"must define `{prefix}` exactly once",
+        )
+    forbidden = re.search(
+        r"\b(procname|pidof|pgrep|pkill|killall|kill|ps|sudo|su)\b|/proc/|--server|service-owned-server|(^|\n)\s*(start|stop)\s*\(\)",
+        text,
+    )
+    if forbidden:
+        errors.append(f"{script}: contains process rediscovery, child authority, or a custom lifecycle function: {forbidden.group(0)!r}")
+
+
+def check_foreground_template(errors, script, path):
+    require(errors, script, path.is_file() and not path.is_symlink(), "missing regular foreground service script")
+    if not path.is_file() or path.is_symlink():
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()
+    expected = [
+        "#!/bin/sh",
+        "set -eu",
+        "umask 027",
+        "cd /",
+        "exec /usr/bin/rustdesk --service",
+    ]
+    require(
+        errors,
+        script,
+        lines == expected,
+        "must be the exact foreground exec wrapper for /usr/bin/rustdesk --service",
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--scripts-dir", required=True)
     parser.add_argument("--init-script", required=True)
+    parser.add_argument("--openrc-script", required=True)
+    parser.add_argument("--runit-run", required=True)
+    parser.add_argument("--manual-run", required=True)
     args = parser.parse_args()
 
     scripts_dir = pathlib.Path(args.scripts_dir)
@@ -238,6 +302,9 @@ def main():
         check_prerm(errors, loaded["prerm"])
         check_postrm(errors, loaded["postrm"])
     check_init_script(errors, pathlib.Path(args.init_script))
+    check_openrc_script(errors, pathlib.Path(args.openrc_script))
+    check_foreground_template(errors, "rustdesk.runit.run", pathlib.Path(args.runit_run))
+    check_foreground_template(errors, "rustdesk.manual", pathlib.Path(args.manual_run))
 
     if errors:
         for error in errors:

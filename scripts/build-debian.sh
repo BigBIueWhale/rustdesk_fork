@@ -209,6 +209,21 @@ verify_deb_control_scripts() {
         rm -rf "$tmp_package"
         die "built .deb SysV init script differs from res/rustdesk.init"
     }
+    local template
+    for template in openrc/rustdesk runit/run manual/rustdesk-service; do
+        [ -f "$tmp_data/usr/share/rustdesk/files/$template" ] \
+          && [ ! -L "$tmp_data/usr/share/rustdesk/files/$template" ] \
+          && [ "$(stat -c '%a:%h' "$tmp_data/usr/share/rustdesk/files/$template" 2>/dev/null)" = "755:1" ] || {
+            rm -rf "$tmp_package"
+            die "built .deb service-manager template $template is not a mode-0755 non-hardlinked regular file"
+        }
+        cmp -s \
+            "$REPO_ROOT/res/service-managers/$template" \
+            "$tmp_data/usr/share/rustdesk/files/$template" || {
+            rm -rf "$tmp_package"
+            die "built .deb service-manager template $template differs from its source"
+        }
+    done
     local masked
     masked="$(grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' "$tmp_control" || true)"
     if [ -n "$masked" ]; then
@@ -218,7 +233,10 @@ verify_deb_control_scripts() {
     fi
     python3 "$SCRIPT_DIR/verify-debian-maintainer-scripts.py" \
         --scripts-dir "$tmp_control" \
-        --init-script "$tmp_data/etc/init.d/rustdesk" || {
+        --init-script "$tmp_data/etc/init.d/rustdesk" \
+        --openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk" \
+        --runit-run "$tmp_data/usr/share/rustdesk/files/runit/run" \
+        --manual-run "$tmp_data/usr/share/rustdesk/files/manual/rustdesk-service" || {
         rm -rf "$tmp_package"
         die "built .deb maintainer scripts fail lifecycle semantics"
     }

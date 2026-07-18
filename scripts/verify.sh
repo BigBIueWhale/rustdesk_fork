@@ -3728,6 +3728,72 @@ grep -qF 'R-S11c-27o — actual kernel numeric-PID reuse' HARDENING_STATUS.md \
 if [ -n "$r_s11c27o" ]; then echo "  FAIL R-S11c-27o actual PID reuse recovery:$r_s11c27o"; rc=1; else
   echo "  ok  R-S11c-27o forces Linux ns_last_pid in a private PID namespace, reuses the same numeric PID for an exact-role RustDesk child with a new start time/generation, and proves recovery preserves the record while signaling nothing"; fi
 
+echo "== (3b-iii-h2q) packaged OpenRC/runit/manual templates own only the foreground supervisor (R-S11c-27p) =="
+r_s11c27p=
+openrc_template=res/service-managers/openrc/rustdesk
+runit_template=res/service-managers/runit/run
+manual_template=res/service-managers/manual/rustdesk-service
+dash -n "$openrc_template" "$runit_template" "$manual_template" \
+  || r_s11c27p="$r_s11c27p template-shell-syntax-invalid"
+for template in "$openrc_template" "$runit_template" "$manual_template"; do
+  [ "$(stat -c %a "$template")" = 755 ] \
+    || r_s11c27p="$r_s11c27p ${template#res/service-managers/}:not-executable"
+done
+python3 scripts/verify-debian-maintainer-scripts.py \
+  --scripts-dir res/DEBIAN \
+  --init-script res/rustdesk.init \
+  --openrc-script "$openrc_template" \
+  --runit-run "$runit_template" \
+  --manual-run "$manual_template" \
+  || r_s11c27p="$r_s11c27p service-template-semantics"
+for token in \
+  'command="/usr/bin/rustdesk"' \
+  'command_args="--service"' \
+  'command_background=true' \
+  'command_user="root:root"' \
+  'pidfile="/run/rustdesk.pid"' \
+  'retry="TERM/30/KILL/5"'; do
+  grep -qF -- "$token" "$openrc_template" \
+    || r_s11c27p="$r_s11c27p openrc:${token%%=*}"
+done
+[ "$(grep -Fxc 'exec /usr/bin/rustdesk --service' "$runit_template")" = 1 ] \
+  || r_s11c27p="$r_s11c27p runit:foreground-exec"
+[ "$(grep -Fxc 'exec /usr/bin/rustdesk --service' "$manual_template")" = 1 ] \
+  || r_s11c27p="$r_s11c27p manual:foreground-exec"
+if grep -RInE '\b(procname|pidof|pgrep|pkill|killall|kill|ps|sudo|su)\b|/proc/|--server|service-owned-server' \
+    res/service-managers >"$VERIFY_TMP/rd_verify_r_s11c27p_authority"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11c27p_authority"
+  r_s11c27p="$r_s11c27p process-rediscovery-or-child-authority"
+fi
+for token in \
+  '"usr/share/rustdesk/files/openrc/rustdesk"' \
+  '"usr/share/rustdesk/files/runit/run"' \
+  '"usr/share/rustdesk/files/manual/rustdesk-service"' \
+  'cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/'; do
+  grep -qF -- "$token" build.py \
+    || r_s11c27p="$r_s11c27p package:${token##*/}"
+done
+for token in \
+  'for template in openrc/rustdesk runit/run manual/rustdesk-service; do' \
+  '--openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk"' \
+  '--runit-run "$tmp_data/usr/share/rustdesk/files/runit/run"' \
+  '--manual-run "$tmp_data/usr/share/rustdesk/files/manual/rustdesk-service"'; do
+  grep -qF -- "$token" scripts/build-debian.sh \
+    || r_s11c27p="$r_s11c27p artifact:${token%% *}"
+done
+for token in \
+  '/usr/share/rustdesk/files/openrc/rustdesk' \
+  '/usr/share/rustdesk/files/runit/run' \
+  '/usr/share/rustdesk/files/manual/rustdesk-service' \
+  'Only one service manager may own `rustdesk --service`'; do
+  grep -qF -- "$token" docs/DEPLOYMENT.md \
+    || r_s11c27p="$r_s11c27p deployment:${token##*/}"
+done
+grep -qF 'R-S11c-27p — packaged OpenRC/runit/manual supervisor templates' HARDENING_STATUS.md \
+  || r_s11c27p="$r_s11c27p hardening-ledger-missing"
+if [ -n "$r_s11c27p" ]; then echo "  FAIL R-S11c-27p service-manager templates:$r_s11c27p"; rc=1; else
+  echo "  ok  R-S11c-27p Debian payload ships exact OpenRC, runit, and manual templates that start/stop only the foreground --service supervisor and contain no server-child process rediscovery"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=
@@ -4217,7 +4283,11 @@ if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|sy
 fi
 python3 scripts/verify-debian-maintainer-scripts.py \
   --scripts-dir res/DEBIAN \
-  --init-script res/rustdesk.init || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
+  --init-script res/rustdesk.init \
+  --openrc-script res/service-managers/openrc/rustdesk \
+  --runit-run res/service-managers/runit/run \
+  --manual-run res/service-managers/manual/rustdesk-service \
+  || r_s11c10j="$r_s11c10j maintscript:lifecycle-semantics"
 if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIAN >"$VERIFY_TMP/rd_verify_r_s11c10j_mask"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_mask"
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"

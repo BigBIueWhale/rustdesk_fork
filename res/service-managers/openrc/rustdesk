@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+
+description="RustDesk service supervisor"
+command="/usr/bin/rustdesk"
+command_args="--service"
+command_background=true
+command_user="root:root"
+directory="/"
+pidfile="/run/rustdesk.pid"
+retry="TERM/30/KILL/5"
+umask=027
+
+depend() {
+    use net
+    after bootmisc
+}

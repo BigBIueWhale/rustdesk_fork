@@ -5,7 +5,7 @@ use std::{
     path::{Component, Path, PathBuf},
     process::Command,
 };
-use users::{get_current_uid, get_user_by_uid, os::unix::UserExt};
+use users::{get_current_uid, get_effective_uid, get_user_by_uid, os::unix::UserExt};
 
 use sctk::{
     output::OutputData,
@@ -522,8 +522,7 @@ pub fn get_wayland_displays() -> ResultType<Vec<WaylandDisplayInfo>> {
 /// This function is designed to be safe against confused-deputy attacks where
 /// an attacker might manipulate environment variables to influence privileged
 /// operations.
-pub fn get_home_dir_trusted() -> Option<PathBuf> {
-    let uid = get_current_uid();
+fn get_home_dir_for_uid_trusted(uid: libc::uid_t) -> Option<PathBuf> {
     match get_user_by_uid(uid) {
         Some(user) => {
             let home = user.home_dir();
@@ -543,6 +542,18 @@ pub fn get_home_dir_trusted() -> Option<PathBuf> {
             None
         }
     }
+}
+
+pub fn get_home_dir_trusted() -> Option<PathBuf> {
+    get_home_dir_for_uid_trusted(get_current_uid())
+}
+
+/// Get the effective user's existing home directory from the password database.
+///
+/// Service-owned roles use effective authority, so their configuration namespace
+/// must follow `geteuid` rather than the invoking process's real uid.
+pub fn get_effective_home_dir_trusted() -> Option<PathBuf> {
+    get_home_dir_for_uid_trusted(get_effective_uid())
 }
 
 #[cfg(test)]
@@ -677,5 +688,15 @@ ESCAPED="quote \" dollar \$ slash \\ tick \`"
                 "Should not use HOME env var"
             );
         }
+    }
+
+    #[test]
+    fn linux_service_owned_config_root_effective_home_uses_euid() {
+        let expected = get_user_by_uid(get_effective_uid()).and_then(|user| {
+            let home = PathBuf::from(user.home_dir());
+            home.is_dir().then_some(home)
+        });
+
+        assert_eq!(get_effective_home_dir_trusted(), expected);
     }
 }

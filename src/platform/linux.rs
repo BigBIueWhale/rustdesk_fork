@@ -1893,11 +1893,13 @@ fn try_start_server_(
             );
         }
         (None, None) => {
+            let trusted_home = hbb_common::platform::linux::get_effective_home_dir_trusted()
+                .ok_or_else(|| anyhow!("Root service child home is unavailable"))?;
+            command.env("HOME", trusted_home);
             for key in [
                 "DISPLAY",
                 "XAUTHORITY",
                 "WAYLAND_DISPLAY",
-                "HOME",
                 "DBUS_SESSION_BUS_ADDRESS",
                 "TERM",
                 "PULSE_LATENCY_MSEC",

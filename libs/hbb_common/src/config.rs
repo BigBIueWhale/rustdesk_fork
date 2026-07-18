@@ -9,6 +9,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(target_os = "linux")]
+use std::sync::OnceLock;
+
 use anyhow::{anyhow, Result};
 use rand::Rng;
 use regex::Regex;
@@ -57,6 +60,55 @@ const SERIAL: i32 = 3;
 #[cfg(target_os = "macos")]
 lazy_static::lazy_static! {
     pub static ref ORG: RwLock<String> = RwLock::new("com.carriez".to_owned());
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LinuxServiceOwnedConfigRoot {
+    home: PathBuf,
+    path: PathBuf,
+}
+
+#[cfg(target_os = "linux")]
+static LINUX_SERVICE_OWNED_CONFIG_ROOT: OnceLock<LinuxServiceOwnedConfigRoot> = OnceLock::new();
+
+#[cfg(target_os = "linux")]
+fn linux_service_owned_config_root_from(home: &Path, app_name: &str) -> Result<PathBuf> {
+    if !home.is_absolute()
+        || !home.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+    {
+        return Err(anyhow!("invalid Linux service-owned home directory"));
+    }
+    if app_name.is_empty()
+        || app_name
+            .chars()
+            .any(|value| value.is_control() || matches!(value, '/' | '\\'))
+    {
+        return Err(anyhow!("invalid Linux service-owned config app name"));
+    }
+    // Match directories-next 2.0's Linux project-name mapping while replacing
+    // its ambient HOME/XDG_CONFIG_HOME base with the passwd-owned home.
+    let project_name = app_name
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<String>();
+    let mut components = Path::new(&project_name).components();
+    if !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+    {
+        return Err(anyhow!("invalid Linux service-owned config project name"));
+    }
+    Ok(home.join(".config").join(project_name))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_service_owned_config_root() -> Option<&'static LinuxServiceOwnedConfigRoot> {
+    LINUX_SERVICE_OWNED_CONFIG_ROOT.get()
 }
 
 #[cfg(any(windows, test))]
@@ -2704,10 +2756,10 @@ impl Config {
     /// directory.
     ///
     /// **DO NOT use this function in privileged contexts** (e.g., code executed via
-    /// `gtk_sudo` or system services running as root). For privileged operations on
-    /// Linux, use `crate::platform::linux::get_home_dir_trusted()` which bypasses
-    /// the `$HOME` environment variable and queries the system password database
-    /// directly via `getpwuid`.
+    /// `gtk_sudo` or system services running as root). On Linux, use
+    /// `crate::platform::linux::get_home_dir_trusted()` for the real invoking user or
+    /// `get_effective_home_dir_trusted()` for service-owned effective authority. Both
+    /// bypass `$HOME` and query the system password database directly via `getpwuid`.
     ///
     /// Using `$HOME` in privileged contexts creates a confused-deputy vulnerability
     /// where an attacker can manipulate the environment variable to inject malicious
@@ -2717,6 +2769,10 @@ impl Config {
         return PathBuf::from(APP_HOME_DIR.read().unwrap().as_str());
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
+            #[cfg(target_os = "linux")]
+            if let Some(root) = linux_service_owned_config_root() {
+                return root.home.clone();
+            }
             if let Some(path) = dirs_next::home_dir() {
                 patch(path)
             } else if let Ok(path) = std::env::current_dir() {
@@ -2742,6 +2798,37 @@ impl Config {
         windows_machine_config::initialize(root, write_authority)
     }
 
+    #[cfg(target_os = "linux")]
+    fn initialize_linux_service_owned_root_from_home(home: PathBuf) -> Result<PathBuf> {
+        let app_name = APP_NAME.read().unwrap().clone();
+        let candidate = LinuxServiceOwnedConfigRoot {
+            path: linux_service_owned_config_root_from(&home, &app_name)?,
+            home,
+        };
+        match LINUX_SERVICE_OWNED_CONFIG_ROOT.set(candidate.clone()) {
+            Ok(()) => Ok(candidate.path),
+            Err(_) => {
+                let existing = LINUX_SERVICE_OWNED_CONFIG_ROOT.get().ok_or_else(|| {
+                    anyhow!("Linux service-owned config root initialization was lost")
+                })?;
+                if existing == &candidate {
+                    Ok(existing.path.clone())
+                } else {
+                    Err(anyhow!(
+                        "Linux service-owned config root was initialized inconsistently"
+                    ))
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn initialize_linux_service_owned_root() -> Result<PathBuf> {
+        let home = crate::platform::linux::get_effective_home_dir_trusted()
+            .ok_or_else(|| anyhow!("Linux service-owned config home is unavailable"))?;
+        Self::initialize_linux_service_owned_root_from_home(home)
+    }
+
     pub fn path<P: AsRef<Path>>(p: P) -> PathBuf {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
@@ -2751,6 +2838,12 @@ impl Config {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
+            #[cfg(target_os = "linux")]
+            if let Some(root) = linux_service_owned_config_root() {
+                let mut path = root.path.clone();
+                path.push(p);
+                return path;
+            }
             #[cfg(windows)]
             if let Some(root) = windows_machine_config::root_path() {
                 let mut path = root.to_path_buf();
@@ -5251,6 +5344,83 @@ mod tests {
         let patched = patch(PathBuf::from("/root"));
 
         assert_eq!(patched, expected);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_service_owned_config_root_derivation_is_explicit() {
+        let home = Path::new("/srv/service-home");
+        assert_eq!(
+            linux_service_owned_config_root_from(home, "RustDesk").unwrap(),
+            home.join(".config/rustdesk")
+        );
+        assert!(linux_service_owned_config_root_from(Path::new("relative"), "RustDesk").is_err());
+        assert!(linux_service_owned_config_root_from(home, "../bad").is_err());
+        assert!(linux_service_owned_config_root_from(home, "bad\\name").is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_service_owned_config_root_ignores_ambient_home_and_xdg() {
+        const TEST_NAME: &str =
+            "config::tests::linux_service_owned_config_root_ignores_ambient_home_and_xdg";
+        const ROLE_ENV: &str = "RUSTDESK_TEST_SERVICE_CONFIG_ROOT_ROLE";
+        const AMBIENT_HOME: &str = "/tmp/rustdesk-attacker-selected-home";
+        const AMBIENT_XDG: &str = "/tmp/rustdesk-attacker-selected-xdg";
+
+        if std::env::var_os(ROLE_ENV).as_deref() == Some(std::ffi::OsStr::new("worker")) {
+            let trusted_home = PathBuf::from("/srv/service-home");
+            let expected_root =
+                linux_service_owned_config_root_from(&trusted_home, &APP_NAME.read().unwrap())
+                    .unwrap();
+            assert_eq!(
+                std::env::var_os("HOME").as_deref(),
+                Some(std::ffi::OsStr::new(AMBIENT_HOME))
+            );
+            assert_eq!(
+                std::env::var_os("XDG_CONFIG_HOME").as_deref(),
+                Some(std::ffi::OsStr::new(AMBIENT_XDG))
+            );
+
+            assert_eq!(
+                Config::initialize_linux_service_owned_root_from_home(trusted_home.clone())
+                    .unwrap(),
+                expected_root
+            );
+            assert_eq!(
+                Config::initialize_linux_service_owned_root_from_home(trusted_home.clone())
+                    .unwrap(),
+                expected_root
+            );
+            assert!(
+                Config::initialize_linux_service_owned_root_from_home(PathBuf::from(
+                    "/srv/different-service-home"
+                ))
+                .is_err()
+            );
+            assert_eq!(Config::get_home(), trusted_home);
+            assert_eq!(
+                Config::path("authority-probe"),
+                expected_root.join("authority-probe")
+            );
+            assert!(!Config::path("authority-probe").starts_with(AMBIENT_HOME));
+            assert!(!Config::path("authority-probe").starts_with(AMBIENT_XDG));
+            return;
+        }
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ROLE_ENV, "worker")
+            .env("HOME", AMBIENT_HOME)
+            .env("XDG_CONFIG_HOME", AMBIENT_XDG)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "service-owned config-root worker failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     static CONFIG_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());

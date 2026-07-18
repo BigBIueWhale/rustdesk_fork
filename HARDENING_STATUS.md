@@ -1868,6 +1868,32 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` asserts process-local ownership, the fixed-target writer, the requirements/ledger/Appendix C #132
   disposition, and
   absence of serialized/config/startup recovery. Exact native/artifact proof remains with R-B2.
+- **R-S11e-25 — Linux service-owned config-root authority — SOURCE IMPLEMENTED AND FOCUSED LINUX TESTED;
+  FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux service supervisor and its
+  service-owned server child. Endpoint/action: choose the home and project directory from which the service reads
+  unattended credentials, salts, identity compatibility data, and machine policy. Boundary: inherited launcher
+  environment ↔ root/service-owned configuration authority. Attack surface closed: the ordinary
+  `directories-next` path uses `XDG_CONFIG_HOME` or `HOME/.config`, `Config::get_home` accepted ambient `HOME`, and
+  the root/headless child explicitly copied the supervisor's `HOME` after `env_clear`. That made service policy depend
+  on systemd/OpenRC/runit/sudo/manual-launch environment behavior instead of one application-owned rule. This is not
+  promoted to a demonstrated promptless standard-user-to-root primitive: the practical impact also depends on which
+  environment a privileged launcher preserves and who owns the selected filesystem target. It is nevertheless the
+  wrong authority model for the process that enforces unattended access.
+
+  Closure: only exact Linux `--service` and service-owned child roles initialize an immutable process-local root. The
+  initialization occurs after signed `custom.txt` may set the constrained application name and before the first
+  `Config` access; it resolves the current effective uid through `getpwuid`, validates an absolute clean passwd home
+  and one constrained project component, and binds both `Config::get_home` and `Config::path` to
+  `<passwd home>/.config/<directories-next project name>`. Missing account data and inconsistent reinitialization fail
+  closed. The root/headless child derives `HOME` independently from the same password database and never copies
+  supervisor `HOME`; its cleared environment does not carry `XDG_CONFIG_HOME`. Ordinary user-owned `--server`,
+  viewer, and UI roles retain intentional XDG redirection. Verification closure: three `hbb_common` Linux tests cover
+  effective-uid lookup, exact derivation/rejection, and a subprocess with hostile ambient `HOME`/`XDG_CONFIG_HOME`;
+  `scripts/verify.sh` runs those tests and source-gates the process root, passwd lookup, role set, initialization
+  ordering, fail-closed path,
+  root-child environment, R-S11k, and Appendix C #133. The focused tests passed in a non-root, network-disabled Docker
+  container. This source proof does not close the existing R-S11c-27 requirement for final execution of the exact cold
+  Debian artifact, and it does not claim overall R-B2 completion.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4144,8 +4170,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b31bbce20ee0c6b427e768bdfc9ae90b57d67a2d9d1bd9817d3ef0a0751bd58c  requirements.html
+1f526983e93e797575e34752cc4d38437d92a9c23dc755273733791faabaf74d  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11j, and Appendix C #132. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11k, and Appendix C #133. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

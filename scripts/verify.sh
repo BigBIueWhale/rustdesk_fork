@@ -2420,6 +2420,55 @@ grep -qF 'R-S11e-24 — Windows privacy-display registry recovery authority' HAR
 if [ -n "$r_s11e24" ]; then echo "  FAIL R-S11e-24 Windows privacy-display recovery authority:$r_s11e24"; rc=1; else
   echo "  ok  R-S11e-24 privacy display recovery is a process-local fixed-target snapshot collection; serialized/config/startup arbitrary HKLM replay is absent"; fi
 
+# (3b-iii-d4) R-S11k/R-S11e-25: Linux service-owned roles choose their credential/config
+# namespace from the effective uid's passwd record, not ambient HOME/XDG_CONFIG_HOME inherited
+# from a particular init manager, sudo policy, or manual launcher.
+echo "== (3b-iii-d4) Linux service-owned config-root authority (R-S11k/R-S11e-25) =="
+"${RUN[@]}" cargo test --offline --locked -p hbb_common --lib linux_service_owned_config_root --color never
+r_s11e25=
+config_get_home=$(awk '/pub fn get_home\(\) -> PathBuf {/,/pub fn initialize_windows_service_owned_root/' libs/hbb_common/src/config.rs)
+config_service_root=$(awk '/fn initialize_linux_service_owned_root_from_home/,/pub fn path<P: AsRef<Path>>/' libs/hbb_common/src/config.rs)
+config_path=$(awk '/pub fn path<P: AsRef<Path>>/,/pub fn log_path\(\)/' libs/hbb_common/src/config.rs)
+core_service_bootstrap=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/let mut args = Vec::new\(\);/' src/core_main.rs)
+service_child_launch=$(awk '/fn try_start_server_\(/,/    match \(&credentials, desktop\) {/' src/platform/linux.rs)
+root_child_env=$(awk '/        \(None, None\) => {/,/        _ => bail!/' src/platform/linux.rs)
+grep -qF 'static LINUX_SERVICE_OWNED_CONFIG_ROOT: OnceLock<LinuxServiceOwnedConfigRoot>' libs/hbb_common/src/config.rs || r_s11e25="$r_s11e25 process-root-once-cell-missing"
+grep -qF 'linux_service_owned_config_root()' <<<"$config_get_home"                || r_s11e25="$r_s11e25 get-home-does-not-consume-service-root"
+grep -qF 'return root.home.clone();' <<<"$config_get_home"                         || r_s11e25="$r_s11e25 get-home-does-not-return-trusted-home"
+grep -qF 'linux_service_owned_config_root()' <<<"$config_path"                    || r_s11e25="$r_s11e25 config-path-does-not-consume-service-root"
+grep -qF 'let mut path = root.path.clone();' <<<"$config_path"                     || r_s11e25="$r_s11e25 config-path-does-not-return-service-root"
+grep -qF 'crate::platform::linux::get_effective_home_dir_trusted()' <<<"$config_service_root" || r_s11e25="$r_s11e25 effective-passwd-home-lookup-missing"
+grep -qF 'get_home_dir_for_uid_trusted(get_effective_uid())' libs/hbb_common/src/platform/linux.rs || r_s11e25="$r_s11e25 effective-uid-home-helper-missing"
+grep -qF 'Linux service-owned config home is unavailable' <<<"$config_service_root" || r_s11e25="$r_s11e25 missing-passwd-home-not-fail-closed"
+grep -qF 'Linux service-owned config root was initialized inconsistently' <<<"$config_service_root" || r_s11e25="$r_s11e25 inconsistent-reinitialization-not-rejected"
+grep -qF 'args_os().nth(1).as_deref()' <<<"$core_service_bootstrap"                || r_s11e25="$r_s11e25 service-role-not-exact-argv-one"
+grep -qF 'Some(std::ffi::OsStr::new("--service"))' <<<"$core_service_bootstrap"   || r_s11e25="$r_s11e25 service-supervisor-role-missing"
+grep -qF 'is_service_owned_server_process()' <<<"$core_service_bootstrap"          || r_s11e25="$r_s11e25 service-child-role-missing"
+bootstrap_load_line=$(grep -nF 'crate::load_custom_client();' <<<"$core_service_bootstrap" | cut -d: -f1)
+bootstrap_root_line=$(grep -nF 'Config::initialize_linux_service_owned_root()' <<<"$core_service_bootstrap" | cut -d: -f1)
+if [ -z "$bootstrap_load_line" ] || [ -z "$bootstrap_root_line" ] || [ "$bootstrap_load_line" -ge "$bootstrap_root_line" ]; then
+  r_s11e25="$r_s11e25 service-root-not-after-signed-app-identity"
+fi
+grep -qF 'Linux service-owned config authority failed closed' <<<"$core_service_bootstrap" || r_s11e25="$r_s11e25 service-root-init-not-fail-closed"
+grep -qF '.env_clear()' <<<"$service_child_launch"                                  || r_s11e25="$r_s11e25 service-child-environment-not-cleared"
+grep -qF 'hbb_common::platform::linux::get_effective_home_dir_trusted()' <<<"$root_child_env" || r_s11e25="$r_s11e25 root-child-effective-passwd-home-missing"
+grep -qF 'command.env("HOME", trusted_home);' <<<"$root_child_env"                || r_s11e25="$r_s11e25 root-child-trusted-home-not-exported"
+if [ "$(grep -oF '"HOME"' <<<"$root_child_env" | wc -l)" -ne 1 ]; then
+  r_s11e25="$r_s11e25 root-child-ambient-home-copy-present"
+fi
+if grep -qF 'XDG_CONFIG_HOME' <<<"$root_child_env"; then
+  r_s11e25="$r_s11e25 root-child-xdg-config-home-present"
+fi
+grep -qF 'linux_service_owned_config_root_ignores_ambient_home_and_xdg' libs/hbb_common/src/config.rs || r_s11e25="$r_s11e25 ambient-root-regression-test-missing"
+grep -qF '/tmp/rustdesk-attacker-selected-home' libs/hbb_common/src/config.rs         || r_s11e25="$r_s11e25 hostile-home-fixture-missing"
+grep -qF '/tmp/rustdesk-attacker-selected-xdg' libs/hbb_common/src/config.rs          || r_s11e25="$r_s11e25 hostile-xdg-fixture-missing"
+grep -qF '<span class="id">R-S11k</span>' requirements.html                        || r_s11e25="$r_s11e25 normative-requirement-missing"
+grep -qF 'Linux service-owned configuration followed ambient HOME/XDG_CONFIG_HOME' requirements.html || r_s11e25="$r_s11e25 appendix-disposition-missing"
+grep -qF '<tr><td>133</td>' requirements.html                                        || r_s11e25="$r_s11e25 appendix-row-missing"
+grep -qF 'R-S11e-25 — Linux service-owned config-root authority' HARDENING_STATUS.md || r_s11e25="$r_s11e25 hardening-ledger-missing"
+if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-root authority:$r_s11e25"; rc=1; else
+  echo "  ok  R-S11e-25 Linux service-owned roles bind Config home/path to the effective uid's passwd home before first config access; ambient HOME/XDG_CONFIG_HOME remains user-mode-only authority"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

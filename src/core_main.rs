@@ -131,6 +131,10 @@ fn set_cli_permanent_password(
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<Vec<String>> {
     #[cfg(target_os = "linux")]
+    let linux_service_owned_config_role = std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("--service"))
+        || crate::common::is_service_owned_server_process();
+    #[cfg(target_os = "linux")]
     if crate::common::is_service_owned_server_process() {
         if let Err(err) = crate::platform::require_service_owned_server_parent_liveness() {
             log::error!(
@@ -144,6 +148,17 @@ pub fn core_main() -> Option<Vec<String>> {
         return None;
     }
     crate::load_custom_client();
+    #[cfg(target_os = "linux")]
+    if linux_service_owned_config_role {
+        // custom.txt may set the signed app name, but it does not touch Config storage.
+        // Bind the service role to its passwd-derived config root before the first
+        // Config read, so HOME/XDG_CONFIG_HOME from an init system or sudo policy
+        // cannot select the credential namespace.
+        if let Err(err) = config::Config::initialize_linux_service_owned_root() {
+            log::error!("Linux service-owned config authority failed closed: {err}");
+            std::process::exit(1);
+        }
+    }
     #[cfg(windows)]
     if !crate::platform::windows::bootstrap() {
         // return None to terminate the process

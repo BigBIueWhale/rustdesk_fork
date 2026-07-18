@@ -1035,8 +1035,6 @@ pub async fn start_server(is_server: bool) {
                 std::process::exit(-1);
             }
         });
-        #[cfg(target_os = "windows")]
-        crate::platform::try_kill_broker();
         // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
         // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
         // R-D7a (N1/F1): desktop/`--service` has no Android service generation — its listener

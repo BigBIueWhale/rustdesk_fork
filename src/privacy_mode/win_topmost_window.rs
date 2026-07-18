@@ -7,39 +7,49 @@ use hbb_common::{allow_err, bail, log, ResultType};
 use std::{
     ffi::CString,
     io::Error,
+    mem,
     os::windows::ffi::OsStrExt,
+    ptr::null_mut,
     time::{Duration, Instant},
 };
 use winapi::{
+    ctypes::c_void,
     shared::{
         minwindef::FALSE,
         ntdef::{HANDLE, NULL},
+        winerror::WAIT_TIMEOUT,
         windef::HWND,
     },
     um::{
         handleapi::CloseHandle,
+        jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject},
         libloaderapi::{GetModuleHandleA, GetProcAddress},
         memoryapi::{VirtualAllocEx, WriteProcessMemory},
         processthreadsapi::{
             CreateProcessAsUserW, QueueUserAPC, ResumeThread, TerminateProcess,
             PROCESS_INFORMATION, STARTUPINFOW,
         },
-        winbase::{CREATE_SUSPENDED, DETACHED_PROCESS},
-        winnt::{MEM_COMMIT, PAGE_READWRITE},
+        synchapi::WaitForSingleObject,
+        winbase::{CREATE_SUSPENDED, DETACHED_PROCESS, WAIT_OBJECT_0},
+        winnt::{
+            JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, MEM_COMMIT, PAGE_READWRITE,
+        },
         winuser::*,
     },
 };
 
 pub(super) const PRIVACY_MODE_IMPL: &str = "privacy_mode_impl_mag";
 
-pub const ORIGIN_PROCESS_EXE: &'static str = "C:\\Windows\\System32\\RuntimeBroker.exe";
-pub const WIN_TOPMOST_INJECTED_PROCESS_EXE: &'static str = "RuntimeBroker_rustdesk.exe";
-pub const INJECTED_PROCESS_EXE: &'static str = WIN_TOPMOST_INJECTED_PROCESS_EXE;
+pub const INJECTED_PROCESS_EXE: &'static str = "RuntimeBroker_rustdesk.exe";
 pub(super) const PRIVACY_WINDOW_NAME: &'static str = "RustDeskPrivacyWindow";
 
 struct WindowHandlers {
+    hjob: u64,
     hthread: u64,
     hprocess: u64,
+    process_id: u32,
+    job_assigned: bool,
 }
 
 impl Drop for WindowHandlers {
@@ -51,28 +61,103 @@ impl Drop for WindowHandlers {
 impl WindowHandlers {
     fn reset(&mut self) {
         unsafe {
-            if self.hprocess != 0 {
-                let _res = TerminateProcess(self.hprocess as _, 0);
-                CloseHandle(self.hprocess as _);
+            let mut job_closed = false;
+            if self.hjob != 0 {
+                if CloseHandle(self.hjob as _) == 0 {
+                    log::error!(
+                        "Failed to close privacy broker job: {}",
+                        Error::last_os_error()
+                    );
+                } else {
+                    job_closed = true;
+                }
             }
-            self.hprocess = 0;
+            if self.hprocess != 0 && (!self.job_assigned || !job_closed) {
+                if TerminateProcess(self.hprocess as _, 0) == FALSE {
+                    log::warn!(
+                        "Failed to terminate exact privacy broker process: {}",
+                        Error::last_os_error()
+                    );
+                }
+            }
+            self.hjob = 0;
+            self.job_assigned = false;
             if self.hthread != 0 {
-                CloseHandle(self.hthread as _);
+                if CloseHandle(self.hthread as _) == FALSE {
+                    log::warn!(
+                        "Failed to close privacy broker thread handle: {}",
+                        Error::last_os_error()
+                    );
+                }
             }
             self.hthread = 0;
+            if self.hprocess != 0 {
+                if CloseHandle(self.hprocess as _) == FALSE {
+                    log::warn!(
+                        "Failed to close privacy broker process handle: {}",
+                        Error::last_os_error()
+                    );
+                }
+            }
+            self.hprocess = 0;
+            self.process_id = 0;
         }
     }
 
     fn is_default(&self) -> bool {
-        self.hthread == 0 && self.hprocess == 0
+        self.hjob == 0 && self.hthread == 0 && self.hprocess == 0
     }
+
+    fn owned_live_process_id(&self) -> ResultType<u32> {
+        if self.hjob == 0
+            || self.hthread == 0
+            || self.hprocess == 0
+            || self.process_id == 0
+            || !self.job_assigned
+        {
+            bail!("Privacy broker process is not fully owned");
+        }
+        match unsafe { WaitForSingleObject(self.hprocess as _, 0) } {
+            WAIT_TIMEOUT => Ok(self.process_id),
+            WAIT_OBJECT_0 => bail!("Owned privacy broker process has exited"),
+            _ => bail!(
+                "Failed to query owned privacy broker liveness: {}",
+                Error::last_os_error()
+            ),
+        }
+    }
+}
+
+unsafe fn create_privacy_broker_job() -> ResultType<HANDLE> {
+    let job = CreateJobObjectW(null_mut(), null_mut());
+    if job.is_null() {
+        bail!("Failed to create privacy broker job: {}", Error::last_os_error());
+    }
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = mem::zeroed();
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if SetInformationJobObject(
+        job,
+        JobObjectExtendedLimitInformation,
+        &mut limits as *mut _ as *mut c_void,
+        mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+    ) == FALSE
+    {
+        let err = Error::last_os_error();
+        if CloseHandle(job) == FALSE {
+            log::warn!(
+                "Failed to close unconfigured privacy broker job: {}",
+                Error::last_os_error()
+            );
+        }
+        bail!("Failed to configure privacy broker job: {err}");
+    }
+    Ok(job)
 }
 
 pub struct PrivacyModeImpl {
     impl_key: String,
     conn_id: i32,
     handlers: WindowHandlers,
-    hwnd: u64,
 }
 
 impl PrivacyMode for PrivacyModeImpl {
@@ -106,13 +191,9 @@ impl PrivacyMode for PrivacyModeImpl {
             );
         }
 
-        if self.handlers.is_default() {
-            log::info!("turn_on_privacy, dll not found when started, try start");
-            self.start()?;
-            std::thread::sleep(std::time::Duration::from_millis(1_000));
-        }
+        self.start()?;
 
-        let hwnd = wait_find_privacy_hwnd(0)?;
+        let hwnd = wait_find_privacy_hwnd(&self.handlers, 0)?;
         if hwnd.is_null() {
             bail!("No privacy window created");
         }
@@ -121,7 +202,6 @@ impl PrivacyMode for PrivacyModeImpl {
             ShowWindow(hwnd as _, SW_SHOW);
         }
         self.conn_id = conn_id;
-        self.hwnd = hwnd as _;
         Ok(true)
     }
 
@@ -133,10 +213,15 @@ impl PrivacyMode for PrivacyModeImpl {
         self.check_off_conn_id(conn_id)?;
         super::win_input::unhook()?;
 
-        unsafe {
-            let hwnd = wait_find_privacy_hwnd(0)?;
-            if !hwnd.is_null() {
-                ShowWindow(hwnd, SW_HIDE);
+        match wait_find_privacy_hwnd(&self.handlers, 0) {
+            Ok(hwnd) => unsafe {
+                if !hwnd.is_null() {
+                    ShowWindow(hwnd, SW_HIDE);
+                }
+            },
+            Err(err) => {
+                log::warn!("Privacy broker was not live during privacy teardown: {err}");
+                self.handlers.reset();
             }
         }
 
@@ -172,21 +257,24 @@ impl PrivacyModeImpl {
             impl_key: impl_key.to_owned(),
             conn_id: INVALID_PRIVACY_MODE_CONN_ID,
             handlers: WindowHandlers {
+                hjob: 0,
                 hthread: 0,
                 hprocess: 0,
+                process_id: 0,
+                job_assigned: false,
             },
-            hwnd: 0,
         }
     }
 
-    #[inline]
-    pub fn get_hwnd(&self) -> u64 {
-        self.hwnd
-    }
-
     pub fn start(&mut self) -> ResultType<()> {
-        if self.handlers.hprocess != 0 {
-            return Ok(());
+        if !self.handlers.is_default() {
+            match self.handlers.owned_live_process_id() {
+                Ok(_) => return Ok(()),
+                Err(err) => {
+                    log::warn!("Replacing exited or incomplete privacy broker: {err}");
+                    self.handlers.reset();
+                }
+            }
         }
 
         let broker_file = crate::platform::windows::check_update_broker_process()?;
@@ -199,12 +287,6 @@ impl PrivacyModeImpl {
             &dll_file,
             "privacy injection DLL",
         )?;
-
-        let hwnd = wait_find_privacy_hwnd(1_000)?;
-        if !hwnd.is_null() {
-            log::info!("Privacy window is ready");
-            return Ok(());
-        }
 
         unsafe {
             let broker_path_utf16: Vec<u16> = broker_file
@@ -219,7 +301,7 @@ impl PrivacyModeImpl {
                 .collect();
 
             let mut start_info = STARTUPINFOW {
-                cb: 0,
+                cb: mem::size_of::<STARTUPINFOW>() as u32,
                 lpReserved: NULL as _,
                 lpDesktop: NULL as _,
                 lpTitle: NULL as _,
@@ -245,6 +327,14 @@ impl PrivacyModeImpl {
                 dwThreadId: 0,
             };
 
+            let mut pending = WindowHandlers {
+                hjob: create_privacy_broker_job()? as _,
+                hthread: 0,
+                hprocess: 0,
+                process_id: 0,
+                job_assigned: false,
+            };
+
             let session_id = privacy_broker_session_id()?;
             let token = get_user_token(session_id, true);
             if token.is_null() {
@@ -264,14 +354,34 @@ impl PrivacyModeImpl {
                 &mut start_info,
                 &mut proc_info,
             );
-            CloseHandle(token);
-            if 0 == create_res {
+            let create_error = (create_res == FALSE).then(Error::last_os_error);
+            if CloseHandle(token) == FALSE {
+                log::warn!(
+                    "Failed to close privacy broker launch token: {}",
+                    Error::last_os_error()
+                );
+            }
+            if let Some(err) = create_error {
                 bail!(
                     "Failed to create privacy window process {}, error {}",
                     broker_file.to_string_lossy().as_ref(),
-                    Error::last_os_error()
+                    err
                 );
             };
+
+            pending.hthread = proc_info.hThread as _;
+            pending.hprocess = proc_info.hProcess as _;
+            pending.process_id = proc_info.dwProcessId;
+            if pending.hthread == 0 || pending.hprocess == 0 || pending.process_id == 0 {
+                bail!("Privacy broker launch returned incomplete process identity");
+            }
+            if AssignProcessToJobObject(pending.hjob as _, proc_info.hProcess) == FALSE {
+                bail!(
+                    "Failed to assign privacy broker to its owned job: {}",
+                    Error::last_os_error()
+                );
+            }
+            pending.job_assigned = true;
 
             inject_dll(
                 proc_info.hProcess,
@@ -279,24 +389,24 @@ impl PrivacyModeImpl {
                 dll_file.to_string_lossy().as_ref(),
             )?;
 
-            if 0xffffffff == ResumeThread(proc_info.hThread) {
-                // CloseHandle
-                CloseHandle(proc_info.hThread);
-                CloseHandle(proc_info.hProcess);
-
+            let previous_suspend_count = ResumeThread(proc_info.hThread);
+            if previous_suspend_count == u32::MAX {
                 bail!(
                     "Failed to create privacy window process, error {}",
                     Error::last_os_error()
                 );
             }
+            if previous_suspend_count != 1 {
+                bail!(
+                    "Privacy broker primary thread had unexpected suspend count {previous_suspend_count}"
+                );
+            }
 
-            self.handlers.hthread = proc_info.hThread as _;
-            self.handlers.hprocess = proc_info.hProcess as _;
-
-            let hwnd = wait_find_privacy_hwnd(1_000)?;
+            let hwnd = wait_find_privacy_hwnd(&pending, 1_000)?;
             if hwnd.is_null() {
                 bail!("Failed to get hwnd after started");
             }
+            self.handlers = pending;
         }
 
         Ok(())
@@ -370,15 +480,40 @@ unsafe fn inject_dll<'a>(hproc: HANDLE, hthread: HANDLE, dll_file: &'a str) -> R
     Ok(())
 }
 
-pub(super) fn wait_find_privacy_hwnd(msecs: u128) -> ResultType<HWND> {
+fn privacy_hwnd_for_process(window_name: &CString, process_id: u32) -> HWND {
+    let mut after = NULL as HWND;
+    loop {
+        let hwnd = unsafe {
+            FindWindowExA(
+                NULL as _,
+                after,
+                NULL as _,
+                window_name.as_ptr() as _,
+            )
+        };
+        if hwnd.is_null() {
+            return NULL as _;
+        }
+        let mut owner_process_id = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &mut owner_process_id);
+        }
+        if owner_process_id == process_id {
+            return hwnd;
+        }
+        after = hwnd;
+    }
+}
+
+fn wait_find_privacy_hwnd(handlers: &WindowHandlers, msecs: u128) -> ResultType<HWND> {
+    let process_id = handlers.owned_live_process_id()?;
     let tm_begin = Instant::now();
     let wndname = CString::new(PRIVACY_WINDOW_NAME)?;
     loop {
-        unsafe {
-            let hwnd = FindWindowA(NULL as _, wndname.as_ptr() as _);
-            if !hwnd.is_null() {
-                return Ok(hwnd);
-            }
+        let hwnd = privacy_hwnd_for_process(&wndname, process_id);
+        if !hwnd.is_null() {
+            handlers.owned_live_process_id()?;
+            return Ok(hwnd);
         }
 
         if msecs == 0 || tm_begin.elapsed().as_millis() > msecs {

@@ -1401,6 +1401,42 @@ grep -Fq 'R-S11e-35 — Windows dormant generic process-launch authority' HARDEN
 if [ -n "$r_s11e35" ]; then echo "  FAIL R-S11e-35 Windows helper launch authority:$r_s11e35"; rc=1; else
   echo "  ok  R-S11e-35 Windows user helpers launch only the current RustDesk image in the receiver-selected session under exact CM/tray/whiteboard role and environment shapes; generic executable/session/ShellExecute surfaces are absent"; fi
 
+echo "== (3b-iii-a5d2c) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="
+r_s11e36=
+privacy_broker_source=src/privacy_mode/win_topmost_window.rs
+privacy_broker_launch=$(awk '/let create_res = CreateProcessAsUserW\(/,/let create_error =/' "$privacy_broker_source")
+grep -Fq 'unsafe fn create_privacy_broker_job() -> ResultType<HANDLE>' "$privacy_broker_source" || r_s11e36="$r_s11e36 broker-job-constructor-missing"
+grep -Fq 'CreateJobObjectW(null_mut(), null_mut())' "$privacy_broker_source" || r_s11e36="$r_s11e36 unnamed-broker-job-missing"
+grep -Fq 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' "$privacy_broker_source" || r_s11e36="$r_s11e36 kill-on-close-policy-missing"
+grep -Fq 'SetInformationJobObject(' "$privacy_broker_source" || r_s11e36="$r_s11e36 job-policy-application-missing"
+grep -Fq 'cb: mem::size_of::<STARTUPINFOW>() as u32' "$privacy_broker_source" || r_s11e36="$r_s11e36 startup-info-size-missing"
+grep -Fq 'let mut pending = WindowHandlers {' "$privacy_broker_source" || r_s11e36="$r_s11e36 pending-owner-missing"
+echo "$privacy_broker_launch" | grep -Fq 'FALSE,' || r_s11e36="$r_s11e36 process-handle-inheritance-not-disabled"
+grep -Fq 'CREATE_SUSPENDED | DETACHED_PROCESS' "$privacy_broker_source" || r_s11e36="$r_s11e36 suspended-process-creation-missing"
+grep -Fq 'pending.process_id = proc_info.dwProcessId;' "$privacy_broker_source" || r_s11e36="$r_s11e36 immutable-process-id-capture-missing"
+grep -Fq 'if pending.hthread == 0 || pending.hprocess == 0 || pending.process_id == 0' "$privacy_broker_source" || r_s11e36="$r_s11e36 complete-process-identity-check-missing"
+grep -Fq 'AssignProcessToJobObject(pending.hjob as _, proc_info.hProcess)' "$privacy_broker_source" || r_s11e36="$r_s11e36 exact-process-job-assignment-missing"
+grep -Fq 'pending.job_assigned = true;' "$privacy_broker_source" || r_s11e36="$r_s11e36 committed-job-assignment-state-missing"
+grep -Fq 'let previous_suspend_count = ResumeThread(proc_info.hThread);' "$privacy_broker_source" || r_s11e36="$r_s11e36 suspended-resume-check-missing"
+grep -Fq 'let hwnd = wait_find_privacy_hwnd(&pending, 1_000)?;' "$privacy_broker_source" || r_s11e36="$r_s11e36 exact-process-window-readiness-missing"
+grep -Fq 'self.handlers = pending;' "$privacy_broker_source" || r_s11e36="$r_s11e36 post-readiness-owner-commit-missing"
+grep -Fq 'WaitForSingleObject(self.hprocess as _, 0)' "$privacy_broker_source" || r_s11e36="$r_s11e36 retained-process-liveness-missing"
+grep -Fq 'FindWindowExA(' "$privacy_broker_source" || r_s11e36="$r_s11e36 window-enumeration-missing"
+grep -Fq 'GetWindowThreadProcessId(hwnd, &mut owner_process_id);' "$privacy_broker_source" || r_s11e36="$r_s11e36 window-process-binding-missing"
+grep -Fq 'if owner_process_id == process_id' "$privacy_broker_source" || r_s11e36="$r_s11e36 window-process-comparison-missing"
+grep -Fq 'handlers.owned_live_process_id()?;' "$privacy_broker_source" || r_s11e36="$r_s11e36 post-selection-liveness-recheck-missing"
+grep -Fq 'CloseHandle(self.hjob as _)' "$privacy_broker_source" || r_s11e36="$r_s11e36 owned-job-close-missing"
+for obsolete in try_kill_broker terminate_processes_by_exact_process_name copy_runtime_broker taskkill.exe 'FindWindowA('; do
+  if grep -Fq "$obsolete" src/server.rs src/platform/windows.rs "$privacy_broker_source" libs/portable/src/main.rs; then
+    r_s11e36="$r_s11e36 ambient-broker-authority-leftover:$obsolete"
+  fi
+done
+grep -Fq '<span class="id">R-S11v</span>' requirements.html || r_s11e36="$r_s11e36 normative-requirement-missing"
+grep -Fq '<tr><td>144</td>' requirements.html || r_s11e36="$r_s11e36 appendix-disposition-missing"
+grep -Fq 'R-S11e-36 — Windows privacy-broker process and window authority' HARDENING_STATUS.md || r_s11e36="$r_s11e36 hardening-ledger-missing"
+if [ -n "$r_s11e36" ]; then echo "  FAIL R-S11e-36 Windows privacy-broker authority:$r_s11e36"; rc=1; else
+  echo "  ok  R-S11e-36 Windows privacy mode owns one suspended exact broker in a retained kill-on-close job, admits only its live PID's window, and retains no basename/title cleanup authority"; fi
+
 echo "== (3b-iii-a5d3) Windows service/session token source is provenance-checked (R-S11d-14) =="
 r_s11d14=
 grep -Fq 'static const DWORD kCreateProcessTokenAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;' src/platform/windows.cc || r_s11d14="$r_s11d14 token-access-not-minimum"

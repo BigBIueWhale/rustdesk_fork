@@ -181,11 +181,6 @@ fn setup(
         eprintln!("{err}");
         return None;
     }
-    #[cfg(windows)]
-    if let Err(err) = win::copy_runtime_broker(&dir) {
-        eprintln!("{err}");
-        return None;
-    }
     #[cfg(linux)]
     reader.configure_permission(&dir);
     Some(payload.exe)
@@ -364,10 +359,6 @@ mod win {
 
     const APP_INSTALL_DIR_NAME: &str = "RustDesk";
     const INSTALL_STAGING_PREFIX: &str = "RustDesk-staging";
-
-    // Used for privacy mode(magnifier impl).
-    pub const RUNTIME_BROKER_EXE: &'static str = "C:\\Windows\\System32\\RuntimeBroker.exe";
-    pub const WIN_TOPMOST_INJECTED_PROCESS_EXE: &'static str = "RuntimeBroker_rustdesk.exe";
 
     fn trusted_system_dir() -> Result<PathBuf, String> {
         let mut buffer = vec![0u16; 32768];
@@ -851,43 +842,6 @@ mod win {
             .and_then(|msi| validate_staged_installer_msi(&staging.path, &msi).map(|_| msi))
             .and_then(|msi| run_staged_msi(&msi, silent));
         finish_with_manifest_cleanup(&staging, &files, result)
-    }
-
-    pub(super) fn copy_runtime_broker(dir: &Path) -> Result<(), String> {
-        let src = RUNTIME_BROKER_EXE;
-        let tgt = WIN_TOPMOST_INJECTED_PROCESS_EXE;
-        let target_file = dir.join(tgt);
-        if target_file.exists() {
-            if let (Ok(src_file), Ok(tgt_file)) = (fs::read(src), fs::read(&target_file)) {
-                let src_md5 = format!("{:x}", md5::compute(&src_file));
-                let tgt_md5 = format!("{:x}", md5::compute(&tgt_file));
-                if src_md5 == tgt_md5 {
-                    return Ok(());
-                }
-            }
-        }
-        match trusted_system_tool_path("taskkill.exe") {
-            Ok(taskkill) => {
-                if let Err(err) = Command::new(taskkill)
-                    .args(&["/F", "/IM", "RuntimeBroker_rustdesk.exe"])
-                    .creation_flags(winapi::um::winbase::CREATE_NO_WINDOW)
-                    .output()
-                {
-                    eprintln!("RuntimeBroker cleanup failed: {}", err);
-                }
-            }
-            Err(err) => {
-                eprintln!("Skipping RuntimeBroker cleanup: {}", err);
-            }
-        }
-        fs::copy(src, &target_file).map_err(|err| {
-            format!(
-                "failed to copy {} into {}: {err}",
-                src,
-                target_file.display()
-            )
-        })?;
-        Ok(())
     }
 
     /// Check if the executable is a Quick Support version.

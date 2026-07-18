@@ -5367,7 +5367,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -5654,6 +5654,171 @@ def validate_windows_helper_launch_contract(sources):
         require_text(sources[source_key], text, label)
 
 
+def validate_windows_privacy_broker_contract(sources):
+    privacy = sources["privacy_broker_source"]
+    for source_key, token in (
+        ("server_source", "try_kill_broker"),
+        ("windows_source", "terminate_processes_by_exact_process_name"),
+        ("portable_source", "copy_runtime_broker"),
+        ("portable_source", "taskkill.exe"),
+        ("privacy_broker_source", "FindWindowA("),
+    ):
+        if token in sources[source_key]:
+            raise VerificationError(
+                f"Windows ambient privacy-broker authority remains in {source_key}: {token}"
+            )
+
+    job = extract_between(
+        privacy,
+        "unsafe fn create_privacy_broker_job() -> ResultType<HANDLE>",
+        "\npub struct PrivacyModeImpl",
+        "Windows privacy-broker job constructor",
+    )
+    require_order(
+        job,
+        (
+            "CreateJobObjectW(null_mut(), null_mut())",
+            "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE",
+            "SetInformationJobObject(",
+        ),
+        "Windows privacy-broker kill-on-close job configuration",
+    )
+
+    handlers = extract_between(
+        privacy,
+        "struct WindowHandlers {",
+        "\nunsafe fn create_privacy_broker_job",
+        "Windows privacy-broker retained ownership",
+    )
+    for text, label in (
+        ("hjob: u64", "privacy-broker job handle"),
+        ("hprocess: u64", "privacy-broker process handle"),
+        ("process_id: u32", "privacy-broker immutable process id"),
+        ("job_assigned: bool", "privacy-broker assignment state"),
+        ("CloseHandle(self.hjob as _)", "privacy-broker last-job-handle close"),
+        ("TerminateProcess(self.hprocess as _, 0)", "uncommitted exact-process cleanup"),
+    ):
+        require_text(handlers, text, label)
+    require_order(
+        handlers,
+        (
+            "CloseHandle(self.hjob as _)",
+            "if self.hprocess != 0 && (!self.job_assigned || !job_closed)",
+            "TerminateProcess(self.hprocess as _, 0)",
+            "CloseHandle(self.hthread as _)",
+            "CloseHandle(self.hprocess as _)",
+        ),
+        "Windows privacy-broker last-job-handle close and exact pending-process fallback",
+    )
+    liveness = extract_between(
+        privacy,
+        "    fn owned_live_process_id(&self) -> ResultType<u32> {",
+        "\n    }\n}\n\nunsafe fn create_privacy_broker_job",
+        "Windows privacy-broker retained-process liveness",
+    )
+    for text, label in (
+        ("self.hjob == 0", "retained-job liveness prerequisite"),
+        ("self.hthread == 0", "retained-thread liveness prerequisite"),
+        ("self.hprocess == 0", "retained-process-handle liveness prerequisite"),
+        ("self.process_id == 0", "retained-process-id liveness prerequisite"),
+        ("!self.job_assigned", "retained-job-assignment liveness prerequisite"),
+        ("WaitForSingleObject(self.hprocess as _, 0)", "retained-process liveness proof"),
+    ):
+        require_text(liveness, text, label)
+
+    start = extract_between(
+        privacy,
+        "    pub fn start(&mut self) -> ResultType<()> {",
+        "\n    #[inline]\n    pub fn stop",
+        "Windows privacy-broker launch transaction",
+    )
+    require_order(
+        start,
+        (
+            "let mut pending = WindowHandlers {",
+            "CreateProcessAsUserW(",
+            "pending.hprocess = proc_info.hProcess as _;",
+            "pending.process_id = proc_info.dwProcessId;",
+            "if pending.hthread == 0 || pending.hprocess == 0 || pending.process_id == 0",
+            "AssignProcessToJobObject(pending.hjob as _, proc_info.hProcess)",
+            "pending.job_assigned = true;",
+            "inject_dll(",
+            "ResumeThread(proc_info.hThread)",
+            "wait_find_privacy_hwnd(&pending, 1_000)?",
+            "self.handlers = pending;",
+        ),
+        "Windows privacy-broker pending ownership before injection/resume and final commit",
+    )
+    require_text(
+        start,
+        "cb: mem::size_of::<STARTUPINFOW>() as u32",
+        "privacy broker initializes STARTUPINFO size",
+    )
+    require_text(start, "CREATE_SUSPENDED | DETACHED_PROCESS", "privacy broker starts suspended")
+    launch = extract_between(
+        start,
+        "let create_res = CreateProcessAsUserW(",
+        "\n            let create_error",
+        "Windows privacy-broker suspended process creation",
+    )
+    require_order(
+        launch,
+        (
+            "NULL as _,\n                FALSE,\n                CREATE_SUSPENDED | DETACHED_PROCESS",
+            "&mut start_info",
+            "&mut proc_info",
+        ),
+        "Windows privacy-broker launch disables inheritance and captures exact handles",
+    )
+
+    window = extract_between(
+        privacy,
+        "fn privacy_hwnd_for_process(",
+        "\n}",
+        "Windows privacy-window PID selector",
+    )
+    require_order(
+        window,
+        (
+            "FindWindowExA(",
+            "GetWindowThreadProcessId(hwnd, &mut owner_process_id);",
+            "if owner_process_id == process_id",
+        ),
+        "Windows privacy-window candidate title plus exact process binding",
+    )
+    wait = extract_between(
+        privacy,
+        "fn wait_find_privacy_hwnd(",
+        "\n}",
+        "Windows privacy-window live-owner wait",
+    )
+    require_order(
+        wait,
+        (
+            "handlers.owned_live_process_id()?",
+            "privacy_hwnd_for_process(&wndname, process_id)",
+            "handlers.owned_live_process_id()?;",
+            "return Ok(hwnd)",
+        ),
+        "Windows privacy-window retained-process liveness around selection",
+    )
+    for source_key, text, label in (
+        (
+            "verify",
+            'echo "== (3b-iii-a5d2c) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="',
+            "Windows privacy-broker source gate",
+        ),
+        ("requirements", '<span class="id">R-S11v</span>', "Windows privacy-broker requirement"),
+        ("requirements", "<tr><td>144</td>", "Windows privacy-broker Appendix C disposition"),
+        (
+            "hardening",
+            "R-S11e-36 — Windows privacy-broker process and window authority",
+            "Windows privacy-broker hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -5666,6 +5831,7 @@ def validate_sources(sources):
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
     validate_windows_helper_launch_contract(sources)
+    validate_windows_privacy_broker_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -11150,7 +11316,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -11303,6 +11469,90 @@ def run_source_mutations(sources):
             "R-S11e-35 — Windows dormant generic process-launch authority",
             "R-S11e-35 — Windows generic process-launch compatibility",
             "Windows helper launch hardening ledger",
+        ),
+        (
+            "server_source",
+            "if is_server {\n        crate::common::set_server_running(true);",
+            "if is_server {\n        crate::platform::try_kill_broker();\n        crate::common::set_server_running(true);",
+            "Windows ambient privacy-broker authority remains in server_source: try_kill_broker",
+        ),
+        (
+            "privacy_broker_source",
+            "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
+            "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_BREAKAWAY_OK;",
+            "Windows privacy-broker kill-on-close job configuration",
+        ),
+        (
+            "privacy_broker_source",
+            "cb: mem::size_of::<STARTUPINFOW>() as u32",
+            "cb: 0",
+            "privacy broker initializes STARTUPINFO size",
+        ),
+        (
+            "privacy_broker_source",
+            "NULL as _,\n                FALSE,\n                CREATE_SUSPENDED | DETACHED_PROCESS",
+            "NULL as _,\n                TRUE,\n                CREATE_SUSPENDED | DETACHED_PROCESS",
+            "Windows privacy-broker launch disables inheritance and captures exact handles",
+        ),
+        (
+            "privacy_broker_source",
+            "AssignProcessToJobObject(pending.hjob as _, proc_info.hProcess)",
+            "AssignProcessToAmbientJobObject(pending.hjob as _, proc_info.hProcess)",
+            "Windows privacy-broker pending ownership before injection/resume and final commit",
+        ),
+        (
+            "privacy_broker_source",
+            "pending.process_id = proc_info.dwProcessId;",
+            "pending.process_id = 0;",
+            "Windows privacy-broker pending ownership before injection/resume and final commit",
+        ),
+        (
+            "privacy_broker_source",
+            "if pending.hthread == 0 || pending.hprocess == 0 || pending.process_id == 0 {",
+            "if pending.process_id == 0 {",
+            "Windows privacy-broker pending ownership before injection/resume and final commit",
+        ),
+        (
+            "privacy_broker_source",
+            "if self.hjob == 0\n            || self.hthread == 0",
+            "if self.hthread == 0",
+            "retained-job liveness prerequisite",
+        ),
+        (
+            "privacy_broker_source",
+            "GetWindowThreadProcessId(hwnd, &mut owner_process_id);",
+            "GetWindowThreadProcessId(hwnd, &mut unrelated_process_id);",
+            "Windows privacy-window candidate title plus exact process binding",
+        ),
+        (
+            "privacy_broker_source",
+            "handlers.owned_live_process_id()?;\n            return Ok(hwnd)",
+            "return Ok(hwnd)",
+            "Windows privacy-window retained-process liveness around selection",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-a5d2c) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="',
+            'echo "== (3b-iii-a5d2c) Windows privacy broker is title-owned (R-S11v/R-S11e-36) =="',
+            "Windows privacy-broker source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11v</span>',
+            '<span class="id">R-S11z</span>',
+            "Windows privacy-broker requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>144</td>",
+            "<tr><td>9144</td>",
+            "Windows privacy-broker Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-36 — Windows privacy-broker process and window authority",
+            "R-S11e-36 — Windows privacy-broker title compatibility",
+            "Windows privacy-broker hardening ledger",
         ),
         (
             "core_main",
@@ -13045,6 +13295,11 @@ def main():
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
+            "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
+            "portable_source": (repo / "libs/portable/src/main.rs").read_text(encoding="utf-8"),
+            "privacy_broker_source": (
+                repo / "src/privacy_mode/win_topmost_window.rs"
+            ).read_text(encoding="utf-8"),
             "windows_native": (repo / "src/platform/windows.cc").read_text(encoding="utf-8"),
             "hbb_common_linux": (repo / "libs/hbb_common/src/platform/linux.rs").read_text(encoding="utf-8"),
             "macos_source": (repo / "src/platform/macos.rs").read_text(encoding="utf-8"),

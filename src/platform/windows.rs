@@ -1,8 +1,5 @@
 use super::{CursorData, ResultType};
-use crate::{
-    ipc,
-    privacy_mode::win_topmost_window::{self, WIN_TOPMOST_INJECTED_PROCESS_EXE},
-};
+use crate::{ipc, privacy_mode::win_topmost_window};
 use hbb_common::{
     allow_err,
     anyhow::anyhow,
@@ -126,9 +123,8 @@ use windows::{
         System::Threading::{
             CreateEventW, OpenProcess as WinOpenProcess, OpenProcessToken as WinOpenProcessToken,
             QueryFullProcessImageNameW as WinQueryFullProcessImageNameW,
-            TerminateProcess as WinTerminateProcess, INFINITE as WINDOWS_INFINITE,
+            INFINITE as WINDOWS_INFINITE,
             PROCESS_QUERY_LIMITED_INFORMATION as WIN_PROCESS_QUERY_LIMITED_INFORMATION,
-            PROCESS_TERMINATE as WIN_PROCESS_TERMINATE,
         },
         System::IO::{CancelIoEx, GetOverlappedResultEx, OVERLAPPED},
         UI::Shell::{
@@ -5258,28 +5254,6 @@ fn pids_by_exact_process_name(name: &str) -> ResultType<Vec<u32>> {
     Ok(pids)
 }
 
-fn terminate_processes_by_exact_process_name(name: &str) -> ResultType<usize> {
-    let pids = pids_by_exact_process_name(name)?;
-    let mut terminated = 0usize;
-
-    for pid in pids {
-        let result = unsafe {
-            let process = WinOpenProcess(WIN_PROCESS_TERMINATE, false, pid)
-                .map_err(|e| anyhow!("Failed to open process {} for termination: {}", pid, e))
-                .and_then(|handle| WinHandleGuard::new(handle))?;
-            WinTerminateProcess(process.get(), 0)
-                .map_err(|e| anyhow!("Failed to terminate process {}: {}", pid, e))
-        };
-
-        match result {
-            Ok(()) => terminated += 1,
-            Err(err) => log::warn!("Failed to terminate {} pid {}: {}", name, pid, err),
-        }
-    }
-
-    Ok(terminated)
-}
-
 pub fn is_process_consent_running() -> ResultType<bool> {
     Ok(!pids_by_exact_process_name("consent.exe")?.is_empty())
 }
@@ -5319,22 +5293,6 @@ impl WakeLock {
 impl Drop for WakeLock {
     fn drop(&mut self) {
         unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
-    }
-}
-
-pub fn try_kill_broker() {
-    match terminate_processes_by_exact_process_name(WIN_TOPMOST_INJECTED_PROCESS_EXE) {
-        Ok(0) => {}
-        Ok(count) => log::info!(
-            "Terminated {} stale {} process(es)",
-            count,
-            WIN_TOPMOST_INJECTED_PROCESS_EXE
-        ),
-        Err(err) => log::warn!(
-            "Failed to enumerate stale {} processes: {}",
-            WIN_TOPMOST_INJECTED_PROCESS_EXE,
-            err
-        ),
     }
 }
 

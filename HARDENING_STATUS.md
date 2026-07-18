@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 850 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 851 lexical `unsafe {`
 blocks across 251 tracked Rust files, 73 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -368,7 +368,7 @@ test covers fully provisioned, PRS-empty half-state, and undecryptable current-f
 gates the typed enum, the undecryptable branch, the server status helper, the direct-listener diagnostic, the
 requirements/status disposition, and absence of a silent `unwrap_or_default()` collapse in the PRS string accessor.
 
-**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS WORKTREE VALIDATED; FINAL CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
+**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
 `_service_password` protocols. Ordinary main and `_service` IPC contain no password-bearing request, generic
@@ -410,8 +410,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   same UUID/value on raw `_password`; the child independently proves the root parent before reading it. Ordinary
   main IPC carries no password fallback. A nonsecret status query is used only for admitted uncertainty. The
   packaged polkit policy remains administrator-authenticated.
-- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; CURRENT
-  NATIVE WINDOWS WORKTREE VALIDATED.** The stable LocalSystem SCM service is the sole durable credential
+- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; NATIVE
+  CREDENTIAL-PATH EVIDENCE RECORDED AT THE NAMED TREE.** The stable LocalSystem SCM service is the sole durable credential
   writer and replay/finality owner. Mutation enters through raw `_service_password`, not `_service` or an old
   service-main credential endpoint. One `FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_REJECT_REMOTE_CLIENTS`,
   max-instances-one message pipe is held for process life and serially reused. The service DACL admits Interactive
@@ -2042,8 +2042,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
   debug-binary runtime evidence only; final exact release `.deb` execution remains open under R-B2/R-S11c-27.
   The helper adds one reviewed lexical
-  `unsafe {` block; after R-S11e-35 the current inventory is 850 blocks across 251 tracked Rust files/73 nonzero
-  files with digest `f0c6bc04d921ed43e90425cce27aaec28b5d43e0ae3b5aa2b9bae25400abb5b4`.
+  `unsafe {` block; after R-S11e-36 the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero
+  files with digest `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
 - **R-S11e-29 — Linux service-originated helper inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux root/service-originated helper launches. Endpoint/action: the `sudo -E env` probe,
@@ -2074,8 +2074,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   helper launches, R-S11o, Appendix C #137, and this ledger entry. The verifier mutation suite renames the helper,
   deletes/renames probe and reopen helper calls, and removes `run_as_user` branch calls; each mutation must be
   rejected. This slice adds one reviewed lexical `unsafe {` block for the new helper-launch `pre_exec` registration;
-  after R-S11e-35 the current inventory is 850 blocks across 251 tracked Rust files/73 nonzero
-  files with digest `f0c6bc04d921ed43e90425cce27aaec28b5d43e0ae3b5aa2b9bae25400abb5b4`.
+  after R-S11e-36 the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero
+  files with digest `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
 - **R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux service-owned unattended-password authorization. Endpoint/action: root service invocation of
@@ -2183,9 +2183,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   therefore run and passed separately. The shared low-level implementation has four reviewed lexical `unsafe {`
   blocks while the superseded root helper contributed one removed block: the net inventory change is three, for a
   then-current total of 801 blocks across 244 tracked Rust files/67 nonzero files. R-S11e-33 later removes two
-  additional blocks from the still-tracked platform module and deletes one zero-unsafe example; after R-S11e-35
-  the current inventory is 850 blocks across 251 tracked Rust files/73 nonzero files with digest
-  `f0c6bc04d921ed43e90425cce27aaec28b5d43e0ae3b5aa2b9bae25400abb5b4`.
+  additional blocks from the still-tracked platform module and deletes one zero-unsafe example; after R-S11e-36
+  the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero files with digest
+  `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
 - **R-S11e-33 — desktop fatal-signal default disposition — SOURCE, COMPILE, TARGETED-TEST, AND MUTATION VERIFIED
   2026-07-18; FINAL EXACT RELEASE ARTIFACTS REMAIN WITH R-B2.** Platforms: Linux, macOS, and Windows non-mobile release desktop images, including
   viewer, server, and installed-service roles that share `core_main`. Endpoint/action: the process-wide
@@ -2219,9 +2219,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   image does not contain the Rust 1.75 rustfmt component, so no formatter result is claimed. This slice removes two
   lexical `unsafe {` blocks from the still-tracked platform module and deletes one zero-unsafe example. R-S11e-34
   subsequently adds the reviewed macOS descriptor helper and brings the already-compiled portable PTY crate into
-  tracked source authority; R-S11e-35 then deletes one obsolete Windows launcher block, so the current inventory is
-  850 blocks across 251 tracked Rust files/73 nonzero files with digest
-  `f0c6bc04d921ed43e90425cce27aaec28b5d43e0ae3b5aa2b9bae25400abb5b4`. Exact Linux/macOS/Windows release-artifact
+  tracked source authority; R-S11e-35 deletes one obsolete Windows launcher block and R-S11e-36 adds one reviewed
+  Windows privacy-broker wrapper block, so the current inventory is 851 blocks across 251 tracked Rust files/73
+  nonzero files with digest `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`. Exact Linux/macOS/Windows release-artifact
   compilation/execution remains part of the final R-B2 transaction and is not claimed here.
 - **R-S11e-34 — macOS child inherited descriptor authority — SOURCE, RUST 1.75 HOST-ANALOGUE BEHAVIOR, AND
   MUTATION VERIFIED 2026-07-18; NATIVE APPLE EVIDENCE REMAINS WITH R-B2.** Platform: macOS production child launches in viewer, controlled-side,
@@ -2304,9 +2304,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   adds three reviewed lexical `unsafe {` blocks in the previously zero-unsafe macOS shared module. Vendoring makes
   48 already-compiled upstream unsafe blocks visible to tracked-source inventory and the replacement PTY policy
   adds one net block relative to that upstream source; those 48 are newly auditable, not newly executable behavior.
-  R-S11e-35 subsequently deletes one obsolete Windows launcher block, so the current inventory is 850 blocks across
-  251 tracked Rust files/73 nonzero files with digest
-  `f0c6bc04d921ed43e90425cce27aaec28b5d43e0ae3b5aa2b9bae25400abb5b4`. The native-codec watch and synchronized
+  R-S11e-35 subsequently deletes one obsolete Windows launcher block and R-S11e-36 adds one reviewed Windows
+  privacy-broker wrapper block, so the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero
+  files with digest `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`. The native-codec watch and synchronized
   requirements SHA-256 `f8fc0ac0fec37684d260ae4b5b02f97dfcedde0f0ac77e945854849add9d4341` pass. Exact
   Linux/macOS/Windows release-artifact compilation/execution remains part of final R-B2 and is not claimed here.
 - **R-S11e-35 — Windows dormant generic process-launch authority — SOURCE, EXACT-SOURCE RUST 1.75
@@ -2359,6 +2359,66 @@ unreachable and a source/test/AST gate prevents reintroduction.
   executable self-test also retains its pre-existing scratch-replacement fixture failure; the source-mutation stage
   was therefore invoked independently through the verifier and passed. No native Windows execution or exact
   artifact evidence is claimed; those remain with the final R-B2 transaction.
+- **R-S11e-36 — Windows privacy-broker process and window authority — SOURCE, RUST 1.75 PARSE + LINUX
+  PORTABLE-CHECK, AND SOURCE-MUTATION VERIFIED 2026-07-19; NATIVE WINDOWS EVIDENCE REMAINS WITH R-B2.** Platform: Windows controlled-side
+  installed-service privacy mode, plus the portable packer's extraction path. Endpoint/action: controlled
+  `--server` startup, privacy-mode broker creation/injection/window selection, and portable setup. Boundary: the
+  LocalSystem or user-owned RustDesk process's termination/window-control authority ↔ another session,
+  installation, test, or portable instance selected only by global process basename or window title. Proven old
+  path: every Windows controlled-server startup called `try_kill_broker`; that helper enumerated the machine for
+  every `RuntimeBroker_rustdesk.exe` basename and used the current process token to terminate every accessible PID.
+  Portable extraction independently ran trusted `taskkill.exe /F /IM RuntimeBroker_rustdesk.exe` before replacing
+  its broker copy. Privacy-mode startup then accepted the first top-level `RustDeskPrivacyWindow` before creating
+  or proving a broker it owned. The demonstrated impact is cross-instance/cross-session denial and confused-deputy
+  window show/hide authority. This inspection did not establish a promptless ordinary-user-to-SYSTEM
+  code-execution primitive.
+
+  Closure: both basename cleanup paths and their machine-process termination helper are deleted; portable setup no
+  longer copies or kills an installed-service privacy broker. One privacy-mode instance now creates a fresh unnamed,
+  non-inherited job and configures `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. It initializes `STARTUPINFOW.cb`, creates
+  the fixed installed broker suspended with `bInheritHandles=FALSE`, retains the exact process/thread handles and
+  immutable PID, and assigns that process to the job before DLL injection or thread resume. These handles live in a
+  pending RAII owner until injection succeeds, `ResumeThread` proves the expected single suspend count, the retained
+  process handle remains live, and a window owned by that exact PID becomes ready; only then is ownership committed
+  to the privacy-mode instance. Every earlier return drops pending ownership: closing the final configured job handle
+  kills an assigned process tree, while a pre-assignment or failed-job-close path can terminate only its retained
+  exact process handle. Normal stop and owner death use the same retained kill-on-close job rather than process-name
+  discovery. Window title is now only a candidate filter: `FindWindowExA` enumerates matching top-level windows,
+  `GetWindowThreadProcessId` must equal the retained immutable PID, and retained-handle liveness is checked before
+  and after selection. A foreign same-title window and a pre-existing broker are never adopted.
+
+  The design follows Microsoft's job-object, assignment, nested-job, and startup-structure contracts:
+  https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects,
+  https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject,
+  https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs, and
+  https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-startupinfow.
+  `scripts/verify.sh` and the semantic workspace verifier bind the job configuration, valid suspended launch,
+  handle/PID retention, assignment-before-injection/resume transaction, exact-PID window selection with liveness,
+  obsolete global cleanup absence, R-S11v, Appendix C #144, and this entry. Their mutation fixtures cover each
+  authority edge and documentation/gate anchor. In the existing non-root, network-disabled Rust 1.75 image, Python
+  bytecode compilation and `bash -n` pass; the exact R-S11e-36 shell section passes; the semantic verifier's normal
+  source audit and its complete in-memory source-mutation set pass; and all four changed Rust files pass Rust 1.75
+  parse-only validation. The dependency inventory passes its behavioral self-test and live comparison. The native
+  codec watch normal and mutation self-tests pass against synchronized requirements SHA-256
+  `8441f7aa49ec9375e013776120b6cc452ffbf4882af160bd80f102634197f7e8`. An isolated disposable copy of the portable
+  crate compiles on Linux under Rust 1.75 with the existing dependency cache mounted read-only; Cargo regenerated
+  only that tmpfs copy's already-stale crate-local lock, because the repository normally resolves the crate through
+  the root workspace lock. The initial root-workspace attempt stopped before compilation at an unrelated uncached
+  `hwcodec` Git dependency, and the isolated `--locked` attempt stopped at that pre-existing private-lock drift;
+  neither stopped attempt is counted as compile evidence.
+
+  Vendored `winapi` 0.3.9 signatures were inspected directly for the job, wait, and information-class types; this
+  caught and corrected an initially wrong module import that parse-only could not detect. None of the existing
+  offline images contains a Windows Rust standard library, and `rustfmt` is likewise absent, so no Windows target
+  type-check, formatting-tool claim, native execution, exact Windows artifact, or final R-B2 evidence is made. The
+  broad executable verifier self-test still stops before its source-mutation stage at the scratch-replacement
+  fixture (`descriptor-owned directory` missed, cleanup retained state); running the clean pre-slice `HEAD` in a
+  separate tmpfs snapshot produces the identical failure, while invoking the source-mutation stage independently
+  through the verifier passes. The top-level `verify.sh` was not run because it builds an image, creates Docker
+  volumes, and deliberately executes root test containers; only its extracted read-only source gate was run here.
+  This slice adds one reviewed lexical `unsafe {` block in the Windows-only PID/liveness wrappers, leaving 851
+  blocks across 251 tracked Rust files/73 nonzero files with digest
+  `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3199,10 +3259,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; after the later R-S11e-35 Windows launcher closure, the current machine inventory is 850 across
+    blocks; after the later R-S11e-36 Windows privacy-broker closure, the current machine inventory is 851 across
     251 tracked Rust files/73 nonzero files, with the added deterministic Windows resource producer containing no
     lexical unsafe block and per-file-count digest
-    `f0c6bc04d921ed43e90425cce27aaec28b5d43e0ae3b5aa2b9bae25400abb5b4`.
+    `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -3303,7 +3363,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
     introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
     deterministic Windows resource-producer addition, R-S11e-28 descriptor closure, and R-S11e-29 helper-launch
-    descriptor hook, and the later R-S11e-35 Windows launcher closure, the current inventory is 850 across 251
+    descriptor hook, and the later R-S11e-36 Windows privacy-broker closure, the current inventory is 851 across 251
     tracked Rust files/73 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
@@ -4668,8 +4728,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f8fc0ac0fec37684d260ae4b5b02f97dfcedde0f0ac77e945854849add9d4341  requirements.html
+8441f7aa49ec9375e013776120b6cc452ffbf4882af160bd80f102634197f7e8  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11u, and Appendix C #143. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11v, and Appendix C #144. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

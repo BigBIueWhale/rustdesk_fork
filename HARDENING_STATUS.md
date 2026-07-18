@@ -272,6 +272,33 @@ closure: `scripts/verify.sh` gates both lifecycle callers, the shared teardown s
 the retained `START_NOT_STICKY` restart barrier. This is not a root/LPE path; it completes the Android
 R-D7a/R-S14 resource-lifetime invariant for retained capture grants.
 
+**R-D7a/R-T4 Android outgoing-client Activity/isolate ownership — SOURCE IMPLEMENTED / GATED;
+ANDROID ARM64 RELEASE TARGET BUILD VALIDATED; ON-DEVICE VALIDATION PENDING
+(2026-07-18).** Platform: Android viewer-side sessions in a process deliberately retained by the controlled-side
+`MainService`; the service/listener/capture lifetime is unchanged. Endpoint/action: Flutter Activity/isolate
+creation and teardown, `MainService.onTaskRemoved()`, JNI
+client-session ownership, and Rust `session_add_existed`/`session_add`/`session_start_`. Boundary: one outgoing
+Flutter UI owner ↔ the process-static native peer/session table that survives task removal. Attack surface closed
+in source: the old argument-free global client drain is deleted. Each Activity allocates a monotonic native
+generation before `super.onCreate`; Dart binds that generation to its isolate-wide UUID before `runApp`; Rust
+admits add/attach/start only while a read-held exact owner binding remains live through table insertion or I/O-loop
+spawn. Owner replacement and exact generation+UUID retirement hold the opposing write lock through the UUID-scoped
+drain, so neither a delayed obsolete Activity/task callback nor a check/use race can retire, insert, start, or close
+the replacement owner's sessions. Starting a replacement generation proactively drains the superseded UUID; task
+removal consumes only owner pairs recorded by stopped Activities. An invalid/missing/stale binding fails closed,
+while `MainService` remains persistent and continues owning only incoming controlled-side service state.
+Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
+drain, delayed-callback ABA rejection, and admission/transition lock exclusion; `scripts/verify.sh` gates the typed
+JNI surface, absence of argument-free/global drain APIs, registration-before-UI order, owner-scoped Activity/service
+teardown, and lock-held add/start/retire ordering. A disposable tracked-file candidate snapshot completed one
+offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
+1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
+was checked for nonzero size and then discarded with the scratch tree. This is target-integration evidence, not the
+R-B2 final signed/reproducible artifact proof. The real-device connect → swipe-away → relaunch → reconnect sequence
+remains pending and is not claimed here. This lifecycle split is Android-specific: iOS has no retained Android
+foreground service and keeps the shared next-isolate stale-UUID cleanup; desktop uses its existing
+per-session/window ownership and is unchanged.
+
 **R-X6/R-S14 Android final APK manifest authority — CLOSED / GATED (2026-07-11).**
 Platform: Android release APK. Endpoint/action: the single merged `AndroidManifest.xml` packaged into the
 signed APK, after app/source/library manifest merging. Boundary: co-installed apps and library-provided

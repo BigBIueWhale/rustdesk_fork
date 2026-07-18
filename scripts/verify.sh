@@ -6408,6 +6408,100 @@ if [ -n "$r_d7a" ]; then
 else
   echo "  ok  R-D7a keep-screen-on pinned during-controlled + onStartCommand START_NOT_STICKY + dead useVP9/MediaCodec encoder excised (raw ImageReader single) + Android raw media JNI copies into bounded Rust-owned storage"
 fi
+# R-D7a / R-T4: MainService deliberately survives task removal, but its outgoing viewer sessions
+# belong to one Flutter Activity/isolate. Lifecycle callbacks must therefore carry exact owner
+# authority. An argument-free global drain lets an obsolete Activity/onTaskRemoved callback close a
+# replacement isolate's live session. Bind a monotonic Activity generation to the isolate UUID,
+# reject stale session admission in Rust, and drain only that UUID.
+android_client_owner_bad=
+ma=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
+ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
+flutter_main=flutter/lib/main.dart
+grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
+  || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
+grep -qF 'external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean' "$ffi_kt" \
+  || android_client_owner_bad="$android_client_owner_bad no-generation-uuid-bind-jni"
+grep -qF 'external fun closeClientSessions(generation: Long, sessionId: String): Int' "$ffi_kt" \
+  || android_client_owner_bad="$android_client_owner_bad teardown-not-owner-scoped"
+grep -qF 'FFI.closeClientSessions()' "$ma" "$ms" "$ffi_kt" src/flutter_ffi.rs \
+  && android_client_owner_bad="$android_client_owner_bad argument-free-global-close-present"
+grep -qF 'takeStoppedClientSessionOwners()' "$ma" "$ms" \
+  || android_client_owner_bad="$android_client_owner_bad task-removal-not-stopped-owner-bound"
+grep -qF 'let owner_admission = acquire_android_client_owner(session_id)?;' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad session-admission-not-owner-bound"
+grep -qF 'take_sessions_owned_by(session_id)' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad teardown-not-uuid-scoped"
+grep -qF 'close_all_sessions' src/flutter.rs src/flutter_ffi.rs \
+  && android_client_owner_bad="$android_client_owner_bad global-client-drain-surface-present"
+grep -qF 'delayed_android_owner_callbacks_cannot_retire_or_close_the_replacement_owner' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad aba-regression-test-missing"
+grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad admission-transition-regression-test-missing"
+if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
+import sys
+from pathlib import Path
+
+activity, service, dart, rust = (Path(path).read_text() for path in sys.argv[1:])
+
+on_create = activity[activity.index("override fun onCreate("):activity.index("override fun onDestroy()")]
+activity_destroy = activity[activity.index("override fun onDestroy()"):activity.index("private fun bindMainService()")]
+on_stop = activity[activity.index("override fun onStop()"):activity.index("override fun onStart()")]
+on_start = activity[activity.index("override fun onStart()"):]
+task_removed = service[service.index("override fun onTaskRemoved("):service.index("private var isHalfScale")]
+run_mobile = dart[dart.index("void runMobileApp()"):dart.index("void runMultiWindow(")]
+session_add_existed = rust[rust.index("pub fn session_add_existed("):rust.index("pub fn session_add(\n")]
+session_add = rust[rust.index("pub fn session_add(\n"):rust.index("pub fn session_start_(")]
+session_start = rust[rust.index("pub fn session_start_("):rust.index("fn try_send_close_event(")]
+owner_begin = rust[rust.index("pub fn begin_android_client_owner("):rust.index("pub fn bind_android_client_owner(")]
+owner_close = rust[rust.index("pub fn close_android_client_owner("):rust.index("mod mobile_session_lifecycle_tests")]
+
+ok = (
+    activity.count("override fun onStart()") == 1
+    and activity.count("override fun onStop()") == 1
+    and on_create.index("FFI.beginClientSessionOwner()") < on_create.index("super.onCreate(savedInstanceState)")
+    and "FFI.registerClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)" in activity
+    and on_stop.index("isActivityStopped = true")
+        < on_stop.index("markClientSessionOwnerStopped(it)")
+        < on_stop.index("super.onStop()")
+    and on_start.index("super.onStart()")
+        < on_start.index("isActivityStopped = false")
+        < on_start.index("markClientSessionOwnerStarted(it)")
+    and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in activity_destroy
+    and "for (owner in MainActivity.takeStoppedClientSessionOwners())" in task_removed
+    and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in task_removed
+    and run_mobile.index("final ownerRegistered = await gFFI.invokeMethod(")
+        < run_mobile.index("register_client_session_owner")
+        < run_mobile.index("if (!ownerRegistered)")
+        < run_mobile.index("runApp(App())")
+    and session_add_existed.index("acquire_android_client_owner(&session_id)")
+        < session_add_existed.index("sessions::insert_peer_session_id")
+        < session_add_existed.index("drop(owner_admission)")
+    and session_add.index("acquire_android_client_owner(session_id)")
+        < session_add.index("close_sessions_from_previous_mobile_isolate(session_id)")
+        < session_add.index("sessions::insert_session")
+        < session_add.index("drop(owner_admission)")
+    and session_start.index("acquire_android_client_owner(session_id)")
+        < session_start.index("std::thread::spawn")
+        < session_start.index("drop(owner_admission)")
+    and owner_begin.index("ANDROID_CLIENT_OWNER.write()")
+        < owner_begin.index("owner.begin()")
+        < owner_begin.index("close_sessions_owned_by(&previous_owner)")
+        < owner_begin.index("drop(owner)")
+    and owner_close.index("ANDROID_CLIENT_OWNER.write()")
+        < owner_close.index("owner.retire(generation, session_id)")
+        < owner_close.index("close_sessions_owned_by(session_id)")
+        < owner_close.index("drop(owner)")
+)
+raise SystemExit(0 if ok else 1)
+PY
+then
+  android_client_owner_bad="$android_client_owner_bad lifecycle-or-admission-order-regressed"
+fi
+if [ -n "$android_client_owner_bad" ]; then
+  echo "  FAIL R-D7a/R-T4: Android outgoing-client Activity/isolate ownership regressed:$android_client_owner_bad"; rc=1
+else
+  echo "  ok  R-D7a/R-T4 Android outgoing sessions are generation+isolate-owned; stale Activity/task callbacks cannot drain a replacement isolate"
+fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
 # None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground

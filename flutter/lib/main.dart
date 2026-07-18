@@ -171,8 +171,15 @@ void runMainApp(bool startService) async {
 void runMobileApp() async {
   await initEnv(kAppTypeMain);
   // R-G4 / R-SV3 / §18: no startup version-check (updater excised). (Was checkUpdate().)
-  if (isAndroid) androidChannelInit();
-  if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
+  if (isAndroid) {
+    androidChannelInit();
+    final ownerRegistered = await gFFI.invokeMethod(
+        'register_client_session_owner', gFFI.sessionId.toString());
+    if (!ownerRegistered) {
+      debugPrint('Android client session owner registration failed closed');
+    }
+    platformFFI.syncAndroidServiceAppDirConfigPath();
+  }
   draggablePositions.load();
   runApp(App());
   await initUniLinks();

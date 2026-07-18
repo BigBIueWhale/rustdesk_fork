@@ -18,7 +18,9 @@ object FFI {
     external fun setClipboardManager(clipboardManager: RdClipboardManager)
     external fun startServer(app_dir: String, custom_client_config: String)
     external fun stopServer()
-    external fun closeClientSessions(): Int
+    external fun beginClientSessionOwner(): Long
+    external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean
+    external fun closeClientSessions(generation: Long, sessionId: String): Int
     external fun rebuildDirectServerListener()
     external fun onVideoFrameUpdate(buf: ByteBuffer)
     external fun onAudioFrameUpdate(buf: ByteBuffer)

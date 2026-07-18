@@ -2329,11 +2329,12 @@ pub fn session_get_common(
 
 #[cfg(target_os = "android")]
 pub mod server_side {
+    use super::SessionID;
     use hbb_common::{config, log};
     use jni::{
         errors::{Error as JniError, Result as JniResult},
         objects::{JByteArray, JClass, JObject, JString},
-        sys::{jboolean, jint, jstring},
+        sys::{jboolean, jint, jlong, jstring},
         JNIEnv,
     };
 
@@ -2403,20 +2404,71 @@ pub mod server_side {
         crate::direct_service::android_request_stop();
     }
 
+    fn parse_client_session_owner(env: &mut JNIEnv, value: &JString) -> Option<SessionID> {
+        let value: String = env.get_string(value).ok()?.into();
+        SessionID::parse_str(&value).ok()
+    }
+
     #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_closeClientSessions(
+    pub unsafe extern "system" fn Java_ffi_FFI_beginClientSessionOwner(
         _env: JNIEnv,
         _class: JClass,
+    ) -> jlong {
+        match crate::flutter::begin_android_client_owner() {
+            Some(generation) => generation as jlong,
+            None => {
+                log::error!("Android client owner generation space is exhausted");
+                0
+            }
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_registerClientSessionOwner(
+        env: JNIEnv,
+        _class: JClass,
+        generation: jlong,
+        session_id: JString,
+    ) -> jboolean {
+        let Ok(generation) = u64::try_from(generation) else {
+            return jboolean::from(false);
+        };
+        if generation == 0 {
+            return jboolean::from(false);
+        }
+        let mut env = env;
+        let Some(session_id) = parse_client_session_owner(&mut env, &session_id) else {
+            log::warn!("Rejected malformed Android client session owner UUID");
+            return jboolean::from(false);
+        };
+        jboolean::from(crate::flutter::bind_android_client_owner(
+            generation, session_id,
+        ))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_closeClientSessions(
+        env: JNIEnv,
+        _class: JClass,
+        generation: jlong,
+        session_id: JString,
     ) -> jint {
-        // The foreground MainService can keep this process and librustdesk's static state alive
-        // after Android removes the Flutter Activity/task. Outgoing sessions belong to that UI
-        // owner, not to the controlled-side service, so close only the client session table here.
-        // Taking the table before signalling the I/O loops makes repeated Activity/service callbacks
-        // idempotent and lets a replacement Flutter engine start cleanly at once.
-        let (peer_count, ui_count) = crate::flutter::close_all_sessions();
-        if peer_count != 0 {
+        let Ok(generation) = u64::try_from(generation) else {
+            return 0;
+        };
+        if generation == 0 {
+            return 0;
+        }
+        let mut env = env;
+        let Some(session_id) = parse_client_session_owner(&mut env, &session_id) else {
+            log::warn!("Ignored malformed Android client session owner UUID at teardown");
+            return 0;
+        };
+        let (peer_count, ui_count) =
+            crate::flutter::close_android_client_owner(generation, &session_id);
+        if peer_count != 0 || ui_count != 0 {
             log::info!(
-                "Closed {peer_count} Android client peer session(s) ({ui_count} UI handler(s)) at UI/task teardown"
+                "Closed {peer_count} Android client peer session(s) ({ui_count} UI handler(s)) for Activity owner generation {generation}"
             );
         }
         i32::try_from(peer_count).unwrap_or(i32::MAX)

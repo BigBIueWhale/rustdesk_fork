@@ -24,14 +24,43 @@ import com.hjq.permissions.XXPermissions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.Locale
+import java.util.UUID
 
 
 class MainActivity : FlutterActivity() {
     companion object {
+        data class ClientSessionOwner(val generation: Long, val sessionId: String)
+
         var flutterMethodChannel: MethodChannel? = null
         private var _rdClipboardManager: RdClipboardManager? = null
+        private val stoppedClientSessionOwners = LinkedHashMap<Long, String>()
         val rdClipboardManager: RdClipboardManager?
             get() = _rdClipboardManager;
+
+        @Synchronized
+        private fun markClientSessionOwnerStopped(owner: ClientSessionOwner) {
+            stoppedClientSessionOwners[owner.generation] = owner.sessionId
+        }
+
+        @Synchronized
+        private fun markClientSessionOwnerStarted(owner: ClientSessionOwner) {
+            stoppedClientSessionOwners.remove(owner.generation)
+        }
+
+        @Synchronized
+        private fun forgetClientSessionOwner(owner: ClientSessionOwner) {
+            stoppedClientSessionOwners.remove(owner.generation)
+        }
+
+        @Synchronized
+        fun takeStoppedClientSessionOwners(): List<ClientSessionOwner> {
+            val owners = stoppedClientSessionOwners.map { (generation, sessionId) ->
+                ClientSessionOwner(generation, sessionId)
+            }
+            stoppedClientSessionOwners.clear()
+            return owners
+        }
     }
 
     private val channelTag = "mChannel"
@@ -39,6 +68,9 @@ class MainActivity : FlutterActivity() {
     private var mainService: MainService? = null
     private var isServiceBound = false
     private var activityFlutterMethodChannel: MethodChannel? = null
+    private var clientSessionOwnerGeneration = 0L
+    private var clientSessionOwner: ClientSessionOwner? = null
+    private var isActivityStopped = false
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
@@ -83,6 +115,13 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Invalidate the previous Flutter engine's native admission before super.onCreate can
+        // attach and run this Activity's engine. Dart binds this generation to its isolate-wide
+        // UUID before the UI starts; delayed calls from an older engine then fail closed.
+        clientSessionOwnerGeneration = FFI.beginClientSessionOwner()
+        if (clientSessionOwnerGeneration == 0L) {
+            Log.e(logTag, "Failed to allocate an Android client session owner generation")
+        }
         super.onCreate(savedInstanceState)
         if (_rdClipboardManager == null) {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
@@ -95,14 +134,16 @@ class MainActivity : FlutterActivity() {
         isAudioStart = false
         audioRecordHandle.destroy()
 
-        // Outgoing client sessions are owned by this Flutter UI, while MainService owns only the
-        // controlled-side listener/capture service. MainService can deliberately keep the process
-        // alive after this Activity is destroyed, so synchronously release the native client table
-        // before Flutter tears down its engine and can no longer deliver an async sessionClose call.
-        val closedSessions = FFI.closeClientSessions()
-        if (closedSessions > 0) {
-            Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) on Activity destroy")
+        // Teardown is bound to this Activity generation and Flutter isolate UUID. A delayed
+        // onDestroy from an obsolete Activity cannot close the replacement Activity's sessions.
+        clientSessionOwner?.let { owner ->
+            forgetClientSessionOwner(owner)
+            val closedSessions = FFI.closeClientSessions(owner.generation, owner.sessionId)
+            if (closedSessions > 0) {
+                Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) for Activity owner ${owner.generation}")
+            }
         }
+        clientSessionOwner = null
 
         activityFlutterMethodChannel?.setMethodCallHandler(null)
         if (flutterMethodChannel === activityFlutterMethodChannel) {
@@ -162,6 +203,34 @@ class MainActivity : FlutterActivity() {
         flutterMethodChannel.setMethodCallHandler { call, result ->
             // make sure result will be invoked, otherwise flutter will await forever
             when (call.method) {
+                "register_client_session_owner" -> {
+                    val rawSessionId = call.arguments as? String
+                    val canonicalSessionId = try {
+                        rawSessionId?.let { UUID.fromString(it).toString() }
+                    } catch (e: IllegalArgumentException) {
+                        null
+                    }
+                    val isCanonical = rawSessionId != null &&
+                        canonicalSessionId == rawSessionId.lowercase(Locale.ROOT)
+                    val existingOwner = clientSessionOwner
+                    if (!isCanonical || canonicalSessionId == null || clientSessionOwnerGeneration == 0L) {
+                        Log.e(logTag, "Rejected invalid Flutter client session owner registration")
+                        result.success(false)
+                    } else if (existingOwner != null && existingOwner.sessionId != canonicalSessionId) {
+                        Log.e(logTag, "Rejected a second Flutter client session owner for one Activity")
+                        result.success(false)
+                    } else if (!FFI.registerClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)) {
+                        Log.w(logTag, "Rejected stale Flutter client session owner generation $clientSessionOwnerGeneration")
+                        result.success(false)
+                    } else {
+                        val owner = ClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)
+                        clientSessionOwner = owner
+                        if (isActivityStopped) {
+                            markClientSessionOwnerStopped(owner)
+                        }
+                        result.success(true)
+                    }
+                }
                 "init_service" -> {
                     bindMainService()
                     if (MainService.isReady) {
@@ -333,6 +402,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onStop() {
+        isActivityStopped = true
+        clientSessionOwner?.let { markClientSessionOwnerStopped(it) }
         super.onStop()
         // R-X6: the floating overlay window is cut — the controlled-status surface
         // is the mandatory foreground-service notification, not a
@@ -342,5 +413,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onStart() {
         super.onStart()
+        isActivityStopped = false
+        clientSessionOwner?.let { markClientSessionOwnerStarted(it) }
     }
 }

@@ -54,6 +54,53 @@ lazy_static::lazy_static! {
     static ref GLOBAL_EVENT_STREAM: RwLock<HashMap<String, StreamSink<String>>> = Default::default(); // rust to dart event channel
 }
 
+#[cfg(any(target_os = "android", test))]
+lazy_static::lazy_static! {
+    static ref ANDROID_CLIENT_OWNER: RwLock<AndroidClientOwnerState> = Default::default();
+}
+
+#[derive(Default)]
+struct AndroidClientOwnerState {
+    generation: u64,
+    session_id: Option<SessionID>,
+}
+
+impl AndroidClientOwnerState {
+    fn begin(&mut self) -> Option<(u64, Option<SessionID>)> {
+        let generation = self.generation.checked_add(1)?;
+        if generation > i64::MAX as u64 {
+            return None;
+        }
+        self.generation = generation;
+        Some((generation, self.session_id.take()))
+    }
+
+    fn bind(&mut self, generation: u64, session_id: SessionID) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        match self.session_id {
+            Some(current) => current == session_id,
+            None => {
+                self.session_id = Some(session_id);
+                true
+            }
+        }
+    }
+
+    fn allows(&self, session_id: &SessionID) -> bool {
+        self.session_id.as_ref() == Some(session_id)
+    }
+
+    fn retire(&mut self, generation: u64, session_id: &SessionID) -> bool {
+        if generation != self.generation || self.session_id.as_ref() != Some(session_id) {
+            return false;
+        }
+        self.session_id = None;
+        true
+    }
+}
+
 fn remote_cursor_rgba_len(width: i32, height: i32) -> Option<usize> {
     let width = usize::try_from(width).ok()?;
     let height = usize::try_from(height).ok()?;
@@ -1292,12 +1339,17 @@ pub fn session_add_existed(
     displays: Vec<i32>,
     is_view_camera: bool,
 ) -> ResultType<()> {
+    #[cfg(target_os = "android")]
+    let owner_admission = acquire_android_client_owner(&session_id)?;
+
     let conn_type = if is_view_camera {
         ConnType::VIEW_CAMERA
     } else {
         ConnType::DEFAULT_CONN
     };
     sessions::insert_peer_session_id(peer_id, conn_type, session_id, displays);
+    #[cfg(target_os = "android")]
+    drop(owner_admission);
     Ok(())
 }
 
@@ -1326,6 +1378,9 @@ pub fn session_add(
     if is_port_forward || is_rdp {
         bail!("Port forwarding is unavailable on mobile");
     }
+
+    #[cfg(target_os = "android")]
+    let owner_admission = acquire_android_client_owner(session_id)?;
 
     let conn_type = if is_file_transfer {
         ConnType::FILE_TRANSFER
@@ -1400,6 +1455,8 @@ pub fn session_add(
     let session = Arc::new(session.clone());
     sessions::insert_session(session_id.to_owned(), conn_type, session.clone());
 
+    #[cfg(target_os = "android")]
+    drop(owner_admission);
     Ok(session)
 }
 
@@ -1414,6 +1471,9 @@ pub fn session_start_(
     id: &str,
     event_stream: StreamSink<EventToUI>,
 ) -> ResultType<()> {
+    #[cfg(target_os = "android")]
+    let owner_admission = acquire_android_client_owner(session_id)?;
+
     // is_connected is used to indicate whether to start a peer connection. For two cases:
     // 1. "Move tab to new window"
     // 2. multi ui session within the same peer connection.
@@ -1450,6 +1510,8 @@ pub fn session_start_(
                 io_loop(session, round);
             });
         }
+        #[cfg(target_os = "android")]
+        drop(owner_admission);
         Ok(())
     } else {
         bail!("No session with peer id {}", id)
@@ -2068,6 +2130,11 @@ pub mod sessions {
 
     use super::*;
 
+    pub(super) struct ClientOwnerDrain {
+        pub(super) sessions: Vec<FlutterSession>,
+        pub(super) handlers: Vec<SessionHandler>,
+    }
+
     lazy_static::lazy_static! {
         // peer -> peer session, peer session -> ui sessions
         static ref SESSIONS: RwLock<HashMap<(String, ConnType), FlutterSession>> = Default::default();
@@ -2308,13 +2375,6 @@ pub mod sessions {
     }
 
     #[inline]
-    pub(super) fn take_all_sessions() -> Vec<FlutterSession> {
-        std::mem::take(&mut *SESSIONS.write().unwrap())
-            .into_values()
-            .collect()
-    }
-
-    #[inline]
     pub(super) fn take_sessions_not_owned_by(session_id: &SessionID) -> Vec<FlutterSession> {
         let mut sessions = SESSIONS.write().unwrap();
         let stale_keys = sessions
@@ -2332,6 +2392,35 @@ pub mod sessions {
             .into_iter()
             .filter_map(|key| sessions.remove(&key))
             .collect()
+    }
+
+    #[inline]
+    pub(super) fn take_sessions_owned_by(session_id: &SessionID) -> ClientOwnerDrain {
+        let mut sessions = SESSIONS.write().unwrap();
+        let mut removed_keys = Vec::new();
+        let mut removed_handlers = Vec::new();
+
+        for (key, session) in sessions.iter() {
+            let mut handlers = session.session_handlers.write().unwrap();
+            let Some(handler) = handlers.remove(session_id) else {
+                continue;
+            };
+            removed_handlers.push(handler);
+            if handlers.is_empty() {
+                removed_keys.push(key.clone());
+            } else {
+                check_remove_unused_displays(None, session_id, session, &handlers);
+            }
+        }
+
+        let removed_sessions = removed_keys
+            .into_iter()
+            .filter_map(|key| sessions.remove(&key))
+            .collect();
+        ClientOwnerDrain {
+            sessions: removed_sessions,
+            handlers: removed_handlers,
+        }
     }
 
     #[cfg(test)]
@@ -2406,17 +2495,77 @@ fn close_session_set(drained: Vec<FlutterSession>) -> (usize, usize) {
     (peer_count, ui_count)
 }
 
-/// Close every outgoing Flutter client session without touching the controlled-side server.
-///
-/// Android calls this synchronously when the UI Activity/task loses ownership. Removing the native
-/// map first makes cleanup idempotent and ensures a newly created Flutter engine cannot attach to a
-/// stale per-peer entry while the old I/O loop is winding down.
-pub fn close_all_sessions() -> (usize, usize) {
-    close_session_set(sessions::take_all_sessions())
-}
-
 fn close_sessions_from_previous_mobile_isolate(session_id: &SessionID) -> (usize, usize) {
     close_session_set(sessions::take_sessions_not_owned_by(session_id))
+}
+
+fn close_sessions_owned_by(session_id: &SessionID) -> (usize, usize) {
+    let sessions::ClientOwnerDrain { sessions, handlers } =
+        sessions::take_sessions_owned_by(session_id);
+    let peer_count = sessions.len();
+    let ui_count = handlers.len();
+
+    for handler in handlers {
+        try_send_close_event(&handler.event_stream);
+    }
+    for session in sessions {
+        session.close();
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    if ui_count != 0 {
+        crate::keyboard::release_remote_keys("map");
+    }
+
+    (peer_count, ui_count)
+}
+
+#[cfg(any(target_os = "android", test))]
+pub fn begin_android_client_owner() -> Option<u64> {
+    // Keep the owner write lock outside the session table lock. Admission takes the same locks in
+    // this order, so no obsolete add/start can cross the generation transition and land afterward.
+    let mut owner = ANDROID_CLIENT_OWNER.write().unwrap();
+    let (generation, previous_owner) = owner.begin()?;
+    if let Some(previous_owner) = previous_owner {
+        let (peer_count, ui_count) = close_sessions_owned_by(&previous_owner);
+        if peer_count != 0 || ui_count != 0 {
+            log::info!(
+                "Closed {peer_count} superseded Android client peer session(s) ({ui_count} UI handler(s)) before creating Activity owner generation {generation}"
+            );
+        }
+    }
+    drop(owner);
+    Some(generation)
+}
+
+#[cfg(any(target_os = "android", test))]
+pub fn bind_android_client_owner(generation: u64, session_id: SessionID) -> bool {
+    ANDROID_CLIENT_OWNER
+        .write()
+        .unwrap()
+        .bind(generation, session_id)
+}
+
+#[cfg(any(target_os = "android", test))]
+fn acquire_android_client_owner(
+    session_id: &SessionID,
+) -> ResultType<std::sync::RwLockReadGuard<'static, AndroidClientOwnerState>> {
+    let owner = ANDROID_CLIENT_OWNER.read().unwrap();
+    if !owner.allows(session_id) {
+        bail!("Android client session owner is no longer active");
+    }
+    Ok(owner)
+}
+
+#[cfg(any(target_os = "android", test))]
+pub fn close_android_client_owner(generation: u64, session_id: &SessionID) -> (usize, usize) {
+    let mut owner = ANDROID_CLIENT_OWNER.write().unwrap();
+    if !owner.retire(generation, session_id) {
+        return (0, 0);
+    }
+    let closed = close_sessions_owned_by(session_id);
+    drop(owner);
+    closed
 }
 
 #[cfg(test)]
@@ -2465,7 +2614,79 @@ mod mobile_session_lifecycle_tests {
         assert!(!current.close_requested.load(Ordering::Acquire));
         assert!(stale_files.close_requested.load(Ordering::Acquire));
         assert!(stale_control.close_requested.load(Ordering::Acquire));
-        assert_eq!(close_all_sessions(), (1, 1));
+        assert_eq!(close_sessions_owned_by(&current_session), (1, 1));
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn delayed_android_owner_callbacks_cannot_retire_or_close_the_replacement_owner() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let mut owners = AndroidClientOwnerState::default();
+        let old_session_id = SessionID::new_v4();
+        let new_session_id = SessionID::new_v4();
+        let (old_generation, previous) = owners.begin().unwrap();
+        assert!(previous.is_none());
+        assert!(owners.bind(old_generation, old_session_id));
+        assert!(owners.allows(&old_session_id));
+
+        let old_control = sessions::insert_test_session(
+            old_session_id,
+            "host-old-control",
+            ConnType::DEFAULT_CONN,
+        );
+        let old_files = sessions::insert_test_session(
+            old_session_id,
+            "host-old-files",
+            ConnType::FILE_TRANSFER,
+        );
+        let (new_generation, previous) = owners.begin().unwrap();
+        assert_eq!(previous, Some(old_session_id));
+        assert_eq!(close_sessions_owned_by(&previous.unwrap()), (2, 2));
+        assert!(old_control.close_requested.load(Ordering::Acquire));
+        assert!(old_files.close_requested.load(Ordering::Acquire));
+        assert!(!owners.allows(&old_session_id));
+        assert!(!owners.bind(old_generation, old_session_id));
+        assert!(owners.bind(new_generation, new_session_id));
+
+        let new_control = sessions::insert_test_session(
+            new_session_id,
+            "host-new-control",
+            ConnType::DEFAULT_CONN,
+        );
+        assert!(!owners.retire(old_generation, &old_session_id));
+        assert!(owners.allows(&new_session_id));
+        assert!(!new_control.close_requested.load(Ordering::Acquire));
+        assert!(sessions::contains_peer(
+            "host-new-control",
+            ConnType::DEFAULT_CONN
+        ));
+        assert!(owners.allows(&new_session_id));
+        assert_eq!(close_sessions_owned_by(&old_session_id), (0, 0));
+
+        assert!(owners.retire(new_generation, &new_session_id));
+        assert_eq!(close_sessions_owned_by(&new_session_id), (1, 1));
+        assert!(new_control.close_requested.load(Ordering::Acquire));
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn android_owner_admission_excludes_a_generation_transition() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let generation = begin_android_client_owner().unwrap();
+        let session_id = SessionID::new_v4();
+        assert!(bind_android_client_owner(generation, session_id));
+
+        let admission = acquire_android_client_owner(&session_id).unwrap();
+        assert!(ANDROID_CLIENT_OWNER.try_write().is_err());
+        drop(admission);
+
+        let next_generation = begin_android_client_owner().unwrap();
+        assert!(next_generation > generation);
+        assert!(acquire_android_client_owner(&session_id).is_err());
         sessions::clear_for_test();
     }
 }

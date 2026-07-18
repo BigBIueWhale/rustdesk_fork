@@ -339,11 +339,14 @@ class MainService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Removing the Android task does not stop this foreground service, and therefore does not
-        // kill the process that owns librustdesk's static outgoing-session table. Release only those
-        // UI-owned client sessions; keep the controlled-side listener and its foreground service up.
-        val closedSessions = FFI.closeClientSessions()
-        if (closedSessions > 0) {
-            Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) on task removal")
+        // kill the process that owns librustdesk's static outgoing-session table. Consume only
+        // owner pairs recorded by stopped Activities. Generation + isolate UUID binding makes this
+        // safe even when an obsolete task callback arrives after a replacement Activity starts.
+        for (owner in MainActivity.takeStoppedClientSessionOwners()) {
+            val closedSessions = FFI.closeClientSessions(owner.generation, owner.sessionId)
+            if (closedSessions > 0) {
+                Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) for removed task owner ${owner.generation}")
+            }
         }
         super.onTaskRemoved(rootIntent)
     }

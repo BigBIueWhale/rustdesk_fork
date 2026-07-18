@@ -50,6 +50,9 @@ case "$1" in
   debian-openrc-native-lifecycle)
     bash --noprofile --norc /work/scripts/smoke-openrc-lifecycle.sh
     ;;
+  debian-runit-native-lifecycle)
+    bash --noprofile --norc /work/scripts/smoke-runit-lifecycle.sh
+    ;;
   sibling-docker-server)
     control=/sibling
     installed_server=/usr/bin/rustdesk

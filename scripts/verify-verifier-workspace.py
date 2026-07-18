@@ -3158,10 +3158,11 @@ def smoke_readiness_mode_is_valid(mode):
 
 
 def validate_smoke_contract(
-    verify, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
+    verify, hardening, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
     pid_reuse_lifecycle, pid_reuse_lifecycle_mode,
     debian_sysv_lifecycle, debian_sysv_lifecycle_mode, openrc_lifecycle,
-    openrc_lifecycle_mode, devcheck_dockerfile, loginctl_fixture,
+    openrc_lifecycle_mode, runit_lifecycle, runit_lifecycle_mode,
+    devcheck_dockerfile, loginctl_fixture,
     loginctl_fixture_mode, process_guard, process_guard_mode, launcher, readiness,
     readiness_mode, typed_probe, session_probe, ipc_source, core_main, common_source,
     linux_source,
@@ -3173,8 +3174,15 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11c-27o — actual kernel numeric-PID reuse' HARDENING_STATUS.md", "actual PID reuse hardening ledger gate"),
         ('native OpenRC owns one exact supervisor and preserves unrelated RustDesk (R-S11c-27q)', "native OpenRC source gate"),
         ("grep -qF 'R-S11c-27q — native OpenRC lifecycle authority' HARDENING_STATUS.md", "native OpenRC hardening ledger gate"),
+        ('native runit owns one exact supervision tree and preserves unrelated RustDesk (R-S11c-27r)', "native runit source gate"),
+        ("grep -qF 'R-S11c-27r — native runit lifecycle authority' HARDENING_STATUS.md", "native runit hardening ledger gate"),
     ):
         require_text(verify, text, label)
+    require_text(
+        hardening,
+        "R-S11c-27r — native runit lifecycle authority",
+        "native runit hardening ledger",
+    )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
         ('mktemp -d /tmp/rustdesk-smoke-host.XXXXXXXXXX', "private host guard workspace"),
@@ -3200,6 +3208,7 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
         ('record_stage_status R-S11c-27l', "Debian SysV stage status preservation"),
         ('record_stage_status R-S11c-27q', "native OpenRC stage status preservation"),
+        ('record_stage_status R-S11c-27r', "native runit stage status preservation"),
         ('record_stage_status R-S11c-27n', "cross-container identity stage status preservation"),
         ('record_stage_status R-S11c-27o', "actual PID reuse stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
@@ -3210,6 +3219,7 @@ def validate_smoke_contract(
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server', "mounted sibling Docker stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle', "mounted Debian SysV stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-openrc-native-lifecycle', "mounted native OpenRC stage"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-runit-native-lifecycle', "mounted native runit stage"),
         ('start_sibling_docker()', "sibling Docker orchestrator"),
         ('stop_sibling_docker()', "sibling Docker survivor drain"),
         ('sibling_container_running', "sibling Docker running check"),
@@ -3241,9 +3251,9 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 21:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 22:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
-    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 20:
+    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 21:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
     if "rustdesk --server" in smoke:
         raise VerificationError("host smoke orchestrator retains historical-selector launch text")
@@ -3271,6 +3281,8 @@ def validate_smoke_contract(
         raise VerificationError("mounted Debian SysV lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(openrc_lifecycle_mode):
         raise VerificationError("mounted native OpenRC lifecycle stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(runit_lifecycle_mode):
+        raise VerificationError("mounted native runit lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(loginctl_fixture_mode):
         raise VerificationError("mounted loginctl fixture is not a regular executable file")
     if not smoke_readiness_mode_is_valid(process_guard_mode):
@@ -3281,9 +3293,11 @@ def validate_smoke_contract(
         ('sibling-docker-server)', "sibling Docker dispatch"),
         ('debian-sysv-installed-lifecycle)', "Debian SysV dispatch"),
         ('debian-openrc-native-lifecycle)', "native OpenRC dispatch"),
+        ('debian-runit-native-lifecycle)', "native runit dispatch"),
         ('bash --noprofile --norc /work/scripts/smoke-service-pid-reuse.sh', "PID reuse mounted script dispatch"),
         ('bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh', "Debian SysV mounted script dispatch"),
         ('bash --noprofile --norc /work/scripts/smoke-openrc-lifecycle.sh', "native OpenRC mounted script dispatch"),
+        ('bash --noprofile --norc /work/scripts/smoke-runit-lifecycle.sh', "native runit mounted script dispatch"),
         ('control=/sibling', "sibling Docker private control directory"),
         ('"$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log', "sibling Docker parked readiness"),
         ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
@@ -3380,6 +3394,47 @@ def validate_smoke_contract(
         if forbidden in openrc_lifecycle:
             raise VerificationError(
                 f"native OpenRC lifecycle retains forbidden host or broad process authority: {forbidden}"
+            )
+    require_text(
+        devcheck_dockerfile,
+        "runit=2.1.2-54",
+        "audited Debian runit package pin",
+    )
+    for text, label in (
+        ('readonly RUNIT_VERSION=2.1.2-54', "native runit exact version"),
+        ('[ "$(dpkg-query -W -f=\'${Version}\' runit)" = "$RUNIT_VERSION" ]', "native runit installed-version proof"),
+        ('[ "${VERSION_CODENAME:-}" = bookworm ]', "native runit Debian release proof"),
+        ('[ ! -e /run/systemd/system ]', "native runit backend proof"),
+        ('/usr/bin/runsvdir "$SERVICES"', "private native runsvdir launch"),
+        ('[b"/usr/bin/runsvdir", services, b""]', "exact runsvdir role"),
+        ('[b"runsv", b"rustdesk", b""]', "exact runsv role"),
+        ('runsvdir does not own exactly one runsv', "single runsv ownership proof"),
+        ('runit control authority is not a FIFO', "private runit FIFO proof"),
+        ('run_runit restart "$FIXTURE/restart.log"', "native runit restart"),
+        ('run_runit stop "$FIXTURE/stop.log"', "native runit stop"),
+        ('signal.pidfd_send_signal(supervisor_pidfd, signal.SIGKILL, None, 0)', "exact pidfd supervisor crash"),
+        ('runsv automatic crash recovery retained the crashed supervisor identity', "automatic runsv recovery proof"),
+        ('pidfd_signal_exact "$RUNSVDIR_PID" "$RUNSVDIR_START" HUP', "exact native manager shutdown"),
+        ('[ "$runsvdir_exit" -eq 111 ]', "documented runsvdir HUP result"),
+        ('b"/usr/bin/rustdesk", b"--service", b""', "exact RustDesk supervisor role"),
+        ('status.get("PPid") != str(supervisor)', "exact service-child parent proof"),
+        ('b"/proc/self/exe", b"--server", b"--service-owned-server", b""', "exact service-owned child role"),
+        ('b"rd-smoke-server", b"--server", b""', "native runit exact portable role"),
+        ('wait_portable_parked', "native runit typed portable readiness"),
+        ('assert_portable_alive', "portable noninterference proof"),
+        ('SMOKE_TYPED_IPC_READY state=parked', "typed parked IPC proof"),
+        ('networkless lifecycle has $tcp_count TCP listeners', "networkless listener proof"),
+        ('read-only source fixtures changed', "read-only source postcondition"),
+        ('RUNIT_NATIVE_LIFECYCLE=pass os=debian-%s runit=%s portable_uid=%s normal_restart=pass crash_recovery=automatic manager_shutdown=hup-111', "native runit lifecycle result"),
+    ):
+        require_text(runit_lifecycle, text, label)
+    for forbidden in (
+        "docker ", "sudo ", "--network=host", "--pid=host", "--privileged",
+        "--publish", "pkill", "killall", "pidof", "pgrep", "os.kill(", "kill -",
+    ):
+        if forbidden in runit_lifecycle:
+            raise VerificationError(
+                f"native runit lifecycle retains forbidden host or broad process authority: {forbidden}"
             )
     if '[b"rd-smoke-server", b"--server", b"--service-owned-server", b""]' in service_lifecycle:
         raise VerificationError("portable role isolation: portable server acquired service-owned argv")
@@ -4429,6 +4484,7 @@ def validate_sources(sources):
     )
     validate_smoke_contract(
         sources["verify"],
+        sources["hardening"],
         sources["smoke"],
         sources["smoke_stage"],
         sources["smoke_stage_mode"],
@@ -4440,6 +4496,8 @@ def validate_sources(sources):
         sources["debian_sysv_lifecycle_mode"],
         sources["openrc_lifecycle"],
         sources["openrc_lifecycle_mode"],
+        sources["runit_lifecycle"],
+        sources["runit_lifecycle_mode"],
         sources["devcheck_dockerfile"],
         sources["loginctl_fixture"],
         sources["loginctl_fixture_mode"],
@@ -9538,6 +9596,12 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
+            'record_stage_status R-S11c-27r',
+            'true # native runit lifecycle status removed',
+            "native runit stage status preservation",
+        ),
+        (
+            "smoke",
             'record_stage_status R-S11c-27n',
             'true # cross-container identity status removed',
             "cross-container identity stage status preservation",
@@ -9691,6 +9755,42 @@ def run_source_mutations(sources):
             'OPENRC_NATIVE_LIFECYCLE=pass os=debian-%s',
             'OPENRC_NATIVE_LIFECYCLE=skipped os=debian-%s',
             "native OpenRC lifecycle result",
+        ),
+        (
+            "smoke_stage",
+            'debian-runit-native-lifecycle)',
+            'debian-runit-native-lifecycle-disabled)',
+            "native runit dispatch",
+        ),
+        (
+            "devcheck_dockerfile",
+            'runit=2.1.2-54',
+            'runit',
+            "audited Debian runit package pin",
+        ),
+        (
+            "runit_lifecycle",
+            'runsv automatic crash recovery retained the crashed supervisor identity',
+            'automatic crash recovery was not checked',
+            "automatic runsv recovery proof",
+        ),
+        (
+            "runit_lifecycle",
+            'b"rd-smoke-server", b"--server", b""',
+            'b"rd-smoke-server", b"--server", b"--service-owned-server", b""',
+            "native runit exact portable role",
+        ),
+        (
+            "runit_lifecycle",
+            'RUNIT_NATIVE_LIFECYCLE=pass os=debian-%s',
+            'RUNIT_NATIVE_LIFECYCLE=skipped os=debian-%s',
+            "native runit lifecycle result",
+        ),
+        (
+            "hardening",
+            "R-S11c-27r — native runit lifecycle authority",
+            "R-S11c-27r — native runit lifecycle deferred",
+            "native runit hardening ledger",
         ),
         (
             "systemd_smoke_host",
@@ -10936,6 +11036,8 @@ def main():
             "debian_sysv_lifecycle_mode": os.lstat(repo / "scripts/smoke-debian-sysv-lifecycle.sh").st_mode,
             "openrc_lifecycle": (repo / "scripts/smoke-openrc-lifecycle.sh").read_text(encoding="utf-8"),
             "openrc_lifecycle_mode": os.lstat(repo / "scripts/smoke-openrc-lifecycle.sh").st_mode,
+            "runit_lifecycle": (repo / "scripts/smoke-runit-lifecycle.sh").read_text(encoding="utf-8"),
+            "runit_lifecycle_mode": os.lstat(repo / "scripts/smoke-runit-lifecycle.sh").st_mode,
             "devcheck_dockerfile": (repo / "scripts/Dockerfile.devcheck").read_text(encoding="utf-8"),
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,

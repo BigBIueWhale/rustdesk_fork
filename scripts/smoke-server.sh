@@ -490,6 +490,13 @@ record_stage_status R-S11c-27q
 grep -Eq '^OPENRC_NATIVE_LIFECYCLE=pass os=debian-12 openrc=0\.45\.2-2\+deb12u1 portable_uid=4000 normal_restart=pass stale_pidfile=overwritten crash_recovery=zap-start child_exit_ms=[0-9]+$' <<<"$openrc_out" \
   || { echo "  FAIL R-S11c-27q: native OpenRC lifecycle or unrelated portable survival was not proven"; rc=1; }
 
+echo "== (0g) Debian bookworm native runit: exact runsvdir/runsv/supervisor/child authority, restart/stop/automatic crash recovery, native shutdown, and portable noninterference (R-S11c-27r) =="
+run_stage runit_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-runit-native-lifecycle
+printf '%s\n' "$runit_out"
+record_stage_status R-S11c-27r
+grep -Eq '^RUNIT_NATIVE_LIFECYCLE=pass os=debian-12 runit=2\.1\.2-54 portable_uid=4000 normal_restart=pass crash_recovery=automatic manager_shutdown=hup-111 child_exit_ms=[0-9]+$' <<<"$runit_out" \
+  || { echo "  FAIL R-S11c-27r: native runit lifecycle or unrelated portable survival was not proven"; rc=1; }
+
 echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
 # The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN
 # BEFORE vpx_codec_enc_init then drives 5 encodes. A runtime W+X mmap/mprotect (a JIT) would SIGSEGV
@@ -739,7 +746,7 @@ if ! stop_host_guard; then
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: host historical-selector baseline preserved with zero new matches + exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: host historical-selector baseline preserved with zero new matches + exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-S11c-27r native runit exact lifecycle, automatic recovery, native shutdown, and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

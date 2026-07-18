@@ -3281,7 +3281,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     evidence, or external expert R-V3 review. The parent item and upcoming release remain **OPEN**.
 
   - **R-S11c-27p — packaged OpenRC/runit/manual supervisor templates — SOURCE/PACKAGE INTEGRATED
-    2026-07-18; NATIVE OPENRC EVIDENCE IS PROVIDED BY R-S11c-27q; NATIVE RUNIT AND PARENT ITEMS REMAIN OPEN.** The Debian
+    2026-07-18; NATIVE OPENRC/RUNIT EVIDENCE IS PROVIDED BY R-S11c-27q/r; PARENT ITEMS REMAIN OPEN.** The Debian
     package source now carries explicit service-manager templates under
     `res/service-managers/{openrc,runit,manual}` and stages them as exact mode-0755 regular files under
     `/usr/share/rustdesk/files/{openrc,runit,manual}`. They are downstream/administrator integration inputs,
@@ -3310,14 +3310,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     `docs/DEPLOYMENT.md` documents the three package paths, single-manager rule, and exact foreground stop model.
 
     This slice closes the missing source/package templates and the already-runtime-tested manual-supervisor wrapper
-    integration. R-S11c-27q subsequently supplies native OpenRC evidence; this row does **not** claim a built
-    final-release `.deb` or native runit manager transaction. Final-release `.deb` artifact proof, native runit
-    lifecycle evidence, exact-commit cold artifact evidence, and external expert R-V3 review remain open. The parent
-    item and upcoming release remain **OPEN**.
+    integration. R-S11c-27q/r subsequently supply native OpenRC and runit evidence; this row does **not** claim a
+    built final-release `.deb`. Final-release `.deb` artifact proof, exact-commit cold artifact evidence, and
+    external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
 
   - **R-S11c-27q — native OpenRC lifecycle authority — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
-    2026-07-18; NATIVE RUNIT AND PARENT ITEMS REMAIN OPEN.** A dedicated mounted lifecycle stage now runs the
-    real built RustDesk binary under Debian bookworm's exact `openrc=0.45.2-2+deb12u1` package in the existing
+    2026-07-18; NATIVE RUNIT EVIDENCE IS PROVIDED BY R-S11c-27r; PARENT ITEMS REMAIN OPEN.** A dedicated mounted
+    lifecycle stage now runs the real built RustDesk binary under Debian bookworm's exact
+    `openrc=0.45.2-2+deb12u1` package in the existing
     disposable, network-disabled lifecycle container. The fixture initializes an empty private OpenRC softlevel,
     installs byte-identical copies of the production OpenRC template and RustDesk executable, and installs only
     the bounded `loginctl` test fixture needed to select the root smoke seat. It does not start a host runlevel,
@@ -3349,9 +3349,56 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     OpenRC fixture as a first-class source and mutation-tests the package pin, native dispatch/status, portable
     survivor proof, and explicit crash recovery result.
 
-    This closes native OpenRC runtime evidence for the shipped template; it does **not** claim native runit runtime
-    evidence, a built final-release `.deb`, exact-commit cold artifact evidence, or external expert R-V3 review.
-    Those items and the upcoming release remain **OPEN**.
+    This closes native OpenRC runtime evidence for the shipped template; R-S11c-27r separately supplies native
+    runit runtime evidence. This row does **not** claim a built final-release `.deb`, exact-commit cold artifact
+    evidence, or external expert R-V3 review. Those items and the upcoming release remain **OPEN**.
+
+  - **R-S11c-27r — native runit lifecycle authority — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
+    2026-07-18; PARENT ITEMS REMAIN OPEN.** A dedicated mounted lifecycle stage now runs the real built RustDesk
+    binary under Debian bookworm's exact `runit=2.1.2-54` package in the existing disposable, network-disabled
+    lifecycle container. The fixture creates one root-owned private service tree, installs byte-identical copies of
+    the production runit `run` wrapper and RustDesk executable, places a `down` marker before starting the manager,
+    and installs only the bounded `loginctl` fixture needed to select the root smoke seat. It does not link a host
+    service, start a host runit instance, modify a host service, publish a container port, or share the host PID
+    namespace.
+
+    The native transaction binds the whole ownership chain rather than inferring it from process names. One exact
+    root-UID `/usr/bin/runsvdir` process directly owns exactly one exact `/usr/bin/runsv` process for the private
+    `rustdesk` directory. Its root-owned non-group/world-writable `supervise/control` and `supervise/ok` FIFOs are the
+    only manager control objects used. That `runsv` owns one root-UID `/usr/bin/rustdesk --service` foreground
+    supervisor executing the exact installed file object. RustDesk, rather than runit or the harness, publishes the
+    strict mode-0600 child record and directly owns the exact
+    `/proc/self/exe --server --service-owned-server` child: parent PID, start time, boot UUID, executable
+    device/inode, UID, generation UUID, NNP state, environment authority, typed parked IPC, and zero TCP-listen/UDP
+    surface are checked at runtime.
+
+    Native `sv -w 30 restart` drains the prior supervisor/child and starts different PID/start and generation
+    identities without replacing the owning `runsv`. Native `sv -w 30 stop` removes the RustDesk durable record,
+    terminates both exact identities, exposes runit's `down` state, and leaves the manager and unrelated process
+    alive; `start` then creates a fresh exact chain. An exact retained-pidfd `SIGKILL` of the RustDesk supervisor
+    proves the service child exits through parent-death binding. The unchanged `runsv` automatically starts a fresh
+    RustDesk supervisor, which rejects the exited strict record without signaling it and publishes a new child and
+    generation. Finally, an exact retained-pidfd `SIGHUP` to `runsvdir` exercises its documented native contract:
+    `runsvdir` exits 111 after signaling its monitored `runsv`; runsv's shutdown drains the exact RustDesk
+    supervisor and child with no durable record left. No process-name, command-line, or numeric-PID sweep is
+    available to the fixture.
+
+    A separate UID-4000 RustDesk portable server executes a distinct file object with exact neutral argv,
+    no-new-privileges, and five zero capability sets. Its PID/start/executable/UID/argv/environment identity is
+    rechecked after every native transition and it survives start, restart, stop, start, supervisor crash,
+    automatic recovery, and final manager shutdown. The first focused transaction emitted
+    `RUNIT_NATIVE_LIFECYCLE=pass os=debian-12 runit=2.1.2-54 portable_uid=4000 normal_restart=pass
+    crash_recovery=automatic manager_shutdown=hup-111 child_exit_ms=3`.
+
+    `scripts/verify.sh` seals the exact Debian runit pin, mounted networkless dispatch, full lifecycle result,
+    precise manager/supervisor/child/portable identities, private FIFO authority, automatic crash recovery, native
+    HUP/111 shutdown, source-mount postcondition, forbidden broad-authority strings, and this row. The workspace
+    verifier loads the runit fixture as a first-class source and mutation-tests the package pin, native
+    dispatch/status, portable role, automatic recovery, and final runtime result.
+
+    This closes native runit runtime evidence for the shipped template. It does **not** claim a built final-release
+    `.deb`, exact-commit cold artifact evidence, or external expert R-V3 review. Those items, the parent item, and the
+    upcoming release remain **OPEN**.
 
   Required implementation and release closure:
 

@@ -3850,6 +3850,66 @@ grep -qF 'R-S11c-27q — native OpenRC lifecycle authority' HARDENING_STATUS.md 
 if [ -n "$r_s11c27q" ]; then echo "  FAIL R-S11c-27q native OpenRC lifecycle:$r_s11c27q"; rc=1; else
   echo "  ok  R-S11c-27q pinned Debian OpenRC starts/restarts/stops one pidfile-bound --service supervisor, replaces stale state through explicit native recovery, and leaves an unrelated no-privilege RustDesk process untouched"; fi
 
+echo "== (3b-iii-h2s) native runit owns one exact supervision tree and preserves unrelated RustDesk (R-S11c-27r) =="
+r_s11c27r=
+bash -n scripts/smoke-runit-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
+  || r_s11c27r="$r_s11c27r smoke-shell-syntax-invalid"
+[ "$(stat -c %a scripts/smoke-runit-lifecycle.sh)" = 755 ] \
+  || r_s11c27r="$r_s11c27r smoke-script-not-executable"
+grep -qF 'runit=2.1.2-54' scripts/Dockerfile.devcheck \
+  || r_s11c27r="$r_s11c27r audited-runit-package-not-pinned"
+for token in \
+  'debian-runit-native-lifecycle)' \
+  'bash --noprofile --norc /work/scripts/smoke-runit-lifecycle.sh'; do
+  grep -qF -- "$token" scripts/smoke-server-stage.sh \
+    || r_s11c27r="$r_s11c27r stage:${token%% *}"
+done
+for token in \
+  'LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE' \
+  'bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-runit-native-lifecycle' \
+  'record_stage_status R-S11c-27r' \
+  'RUNIT_NATIVE_LIFECYCLE=pass os=debian-12 runit=2\.1\.2-54'; do
+  grep -qF -- "$token" scripts/smoke-server.sh \
+    || r_s11c27r="$r_s11c27r orchestration:${token%% *}"
+done
+for token in \
+  'readonly RUNIT_VERSION=2.1.2-54' \
+  '[ "$(dpkg-query -W -f='"'"'${Version}'"'"' runit)" = "$RUNIT_VERSION" ]' \
+  '/usr/bin/runsvdir "$SERVICES"' \
+  '[b"/usr/bin/runsvdir", services, b""]' \
+  '[b"runsv", b"rustdesk", b""]' \
+  'runsvdir does not own exactly one runsv' \
+  'runit control authority is not a FIFO' \
+  'run_runit restart "$FIXTURE/restart.log"' \
+  'run_runit stop "$FIXTURE/stop.log"' \
+  'signal.pidfd_send_signal(supervisor_pidfd, signal.SIGKILL, None, 0)' \
+  'runsv automatic crash recovery retained the crashed supervisor identity' \
+  'pidfd_signal_exact "$RUNSVDIR_PID" "$RUNSVDIR_START" HUP' \
+  '[ "$runsvdir_exit" -eq 111 ]' \
+  'b"/usr/bin/rustdesk", b"--service", b""' \
+  'status.get("PPid") != str(supervisor)' \
+  'b"/proc/self/exe", b"--server", b"--service-owned-server", b""' \
+  'wait_portable_parked' \
+  'assert_portable_alive' \
+  'b"rd-smoke-server", b"--server", b""' \
+  'SMOKE_TYPED_IPC_READY state=parked' \
+  'networkless lifecycle has $tcp_count TCP listeners' \
+  'read-only source fixtures changed' \
+  'RUNIT_NATIVE_LIFECYCLE=pass os=debian-%s runit=%s portable_uid=%s normal_restart=pass crash_recovery=automatic manager_shutdown=hup-111'; do
+  grep -qF -- "$token" scripts/smoke-runit-lifecycle.sh \
+    || r_s11c27r="$r_s11c27r fixture:${token%% *}"
+done
+for forbidden in 'docker ' 'sudo ' '--network=host' '--pid=host' '--privileged' '--publish' \
+  'pkill' 'killall' 'pidof' 'pgrep' 'os.kill(' 'kill -'; do
+  if grep -qF -- "$forbidden" scripts/smoke-runit-lifecycle.sh; then
+    r_s11c27r="$r_s11c27r forbidden-fixture-authority:$forbidden"
+  fi
+done
+grep -qF 'R-S11c-27r — native runit lifecycle authority' HARDENING_STATUS.md \
+  || r_s11c27r="$r_s11c27r hardening-ledger-missing"
+if [ -n "$r_s11c27r" ]; then echo "  FAIL R-S11c-27r native runit lifecycle:$r_s11c27r"; rc=1; else
+  echo "  ok  R-S11c-27r pinned Debian runit owns one runsvdir/runsv/--service/child tree, performs native restart/stop/automatic recovery and HUP shutdown, and leaves an unrelated no-privilege RustDesk process untouched"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

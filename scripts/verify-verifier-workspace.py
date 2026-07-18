@@ -3282,7 +3282,7 @@ def validate_smoke_contract(
     devcheck_dockerfile, loginctl_fixture,
     loginctl_fixture_mode, process_guard, process_guard_mode, launcher, readiness,
     readiness_mode, typed_probe, session_probe, ipc_source, core_main, common_source,
-    linux_source,
+    linux_source, hbb_common_linux, clipboard_fuse, scrap_hwcodec,
 ):
     for text, label in (
         ('cross-container service identity ignores identical path/bytes/role text (R-S11c-27n)', "cross-container source gate"),
@@ -3303,6 +3303,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority' HARDENING_STATUS.md", "pkcheck helper descriptor hardening ledger gate"),
         ('Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31)', "same-executable child descriptor source gate"),
         ("grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md", "same-executable child descriptor hardening ledger gate"),
+        ('Linux external-helper descriptor allowlist authority (R-S11r/R-S11e-32)', "external-helper descriptor source gate"),
+        ("grep -qF 'R-S11e-32 — Linux external-helper descriptor allowlist authority' HARDENING_STATUS.md", "external-helper descriptor hardening ledger gate"),
     ):
         require_text(verify, text, label)
     require_text(
@@ -3334,6 +3336,11 @@ def validate_smoke_contract(
         hardening,
         "R-S11e-31 — Linux same-executable child inherited descriptor authority",
         "same-executable child descriptor hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-32 — Linux external-helper descriptor allowlist authority",
+        "external-helper descriptor hardening ledger",
     )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -3995,16 +4002,19 @@ def validate_smoke_contract(
         "service child fixed cwd before spawn",
     )
     linux_helper_pre_exec = extract_between(
-        linux_source,
-        "pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(",
-        "\nfn arm_service_child_parent_death",
-        "Linux service helper descriptor pre-exec",
+        hbb_common_linux,
+        "fn linux_descriptor_upper_bound() -> io::Result<RawFd> {",
+        "\n// Deprecated.",
+        "shared Linux helper descriptor pre-exec",
     )
     for text, label in (
-        ("let descriptor_upper_bound = linux_service_descriptor_upper_bound()?", "helper descriptor parent-resolved bound"),
+        ('std::fs::read_to_string("/proc/sys/fs/nr_open")?', "helper descriptor parent-resolved bound"),
+        ("fn mark_nonstdio_descriptors_close_on_exec(last_fd: RawFd)", "helper descriptor range policy"),
+        ("libc::SYS_close_range", "helper descriptor close-range syscall"),
+        ("libc::CLOSE_RANGE_CLOEXEC", "helper descriptor close-on-exec policy"),
         ("command.pre_exec(move || {", "helper descriptor pre-exec hook"),
-        ("constrain_service_owned_nonstdio_descriptors(", "helper descriptor cleanup dispatch"),
-        ("ServiceDescriptorDisposition::CloseOnExec", "helper descriptor close-on-exec policy"),
+        ("mark_nonstdio_descriptors_close_on_exec(last_fd)?;", "helper descriptor cleanup dispatch"),
+        ("pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)", "stdio-only helper policy"),
     ):
         require_text(linux_helper_pre_exec, text, label)
     sudo_env_probe = extract_between(
@@ -4015,7 +4025,7 @@ def validate_smoke_contract(
     )
     for text, label in (
         ("let mut command = Command::new(&sudo);", "sudo probe mutable command"),
-        ("configure_linux_helper_close_nonstdio_on_exec(&mut command)", "sudo probe descriptor policy"),
+        ("configure_command_close_nonstdio_on_exec(&mut command)", "sudo probe descriptor policy"),
         ("command.output()", "sudo probe execution after descriptor policy"),
         ("Failed to constrain sudo environment probe descriptors", "sudo probe descriptor failure diagnostic"),
     ):
@@ -4024,7 +4034,7 @@ def validate_smoke_contract(
         sudo_env_probe,
         (
             "let mut command = Command::new(&sudo);",
-            "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
             "command.output()",
         ),
         "sudo probe descriptor policy before execution",
@@ -4037,7 +4047,7 @@ def validate_smoke_contract(
     )
     require_exact_count(
         run_as_user,
-        "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+        "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
         2,
         "run_as_user descriptor policy on both sudo branches",
     )
@@ -4051,11 +4061,11 @@ def validate_smoke_contract(
         run_as_user,
         (
             "let mut sudo = Command::new(&sudo_path);",
-            "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+            "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
             "let task = sudo.spawn()?;",
             "let Some(env_path) = env_path()",
             "let mut sudo = Command::new(&sudo_path);",
-            "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+            "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
             "let task = sudo.spawn()?;",
         ),
         "run_as_user descriptor policy before both sudo spawns",
@@ -4070,7 +4080,7 @@ def validate_smoke_contract(
     )
     require_exact_count(
         reopen_helpers,
-        "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+        "configure_command_close_nonstdio_on_exec(&mut command)",
         2,
         "reopen helpers descriptor policy",
     )
@@ -4086,7 +4096,7 @@ def validate_smoke_contract(
     for text, label in (
         ("let mut command = std::process::Command::new(pkcheck);", "pkcheck mutable command"),
         (
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)",
             "pkcheck descriptor policy",
         ),
         ("failed to constrain pkcheck descriptors", "pkcheck descriptor failure diagnostic"),
@@ -4097,7 +4107,7 @@ def validate_smoke_contract(
         pkcheck_authorization,
         (
             "let mut command = std::process::Command::new(pkcheck);",
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)",
             "let child = command.spawn();",
         ),
         "pkcheck descriptor policy before execution",
@@ -4113,7 +4123,7 @@ def validate_smoke_contract(
     for text, label in (
         ('#[cfg(target_os = "linux")]', "same-executable descriptor policy Linux scope"),
         (
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)",
             "same-executable child descriptor policy",
         ),
         (
@@ -4126,7 +4136,7 @@ def validate_smoke_contract(
     require_order(
         run_me_with_env,
         (
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)",
             "let result = cmd.args(&args).spawn();",
         ),
         "same-executable descriptor policy before spawn",
@@ -4162,6 +4172,187 @@ def validate_smoke_contract(
         ("inherited.is_none()", "final descriptor exclusion assertion"),
     ):
         require_text(run_me_descriptor_test, text, label)
+
+    shared_allowlist = extract_between(
+        hbb_common_linux,
+        "pub fn configure_command_descriptor_allowlist_on_exec(",
+        "\n/// Constrain a Linux child image to argv, environment, and stdio only.",
+        "shared Linux command descriptor allowlist",
+    )
+    for text, label in (
+        ("descriptor_limit.checked_sub(1)", "last valid descriptor derivation"),
+        ("fn validated_nonstdio_descriptor_allowlist(", "descriptor allowlist validator"),
+        ("fd <= libc::STDERR_FILENO || fd > last_fd", "descriptor allowlist bounds"),
+        ("validated.contains(&fd)", "descriptor allowlist duplicate rejection"),
+        ("fn set_descriptor_close_on_exec", "descriptor flag primitive"),
+        ("libc::F_GETFD", "descriptor flag inspection"),
+        ("libc::F_SETFD", "descriptor flag mutation"),
+        ("fn mark_nonstdio_descriptors_close_on_exec", "descriptor range primitive"),
+        ("libc::SYS_close_range", "descriptor range syscall"),
+        ("libc::CLOSE_RANGE_CLOEXEC", "descriptor range close-on-exec flag"),
+        ("for fd in (libc::STDERR_FILENO + 1)..=last_fd", "descriptor range fallback"),
+        ("pub fn configure_command_descriptor_allowlist_on_exec(", "shared descriptor allowlist API"),
+        ("pub fn configure_command_close_nonstdio_on_exec", "shared stdio-only API"),
+        ("configure_command_descriptor_allowlist_on_exec(command, &[])", "empty default allowlist"),
+    ):
+        require_text(linux_helper_pre_exec, text, label)
+    require_order(
+        linux_helper_pre_exec,
+        (
+            "libc::SYS_close_range",
+            "for fd in (libc::STDERR_FILENO + 1)..=last_fd",
+        ),
+        "shared descriptor close-range fallback ordering",
+    )
+    require_order(
+        shared_allowlist,
+        (
+            "let last_fd = linux_descriptor_upper_bound()?;",
+            "validated_nonstdio_descriptor_allowlist(allowed_nonstdio_descriptors, last_fd)?;",
+            "command.pre_exec(move || {",
+            "mark_nonstdio_descriptors_close_on_exec(last_fd)?;",
+            "for &fd in &allowed_nonstdio_descriptors",
+            "set_descriptor_close_on_exec(fd, false)?;",
+        ),
+        "shared descriptor default-close then explicit-allow ordering",
+    )
+    if "configure_linux_helper_close_nonstdio_on_exec" in linux_source:
+        raise VerificationError("root crate retains the superseded partial helper descriptor API")
+
+    helper_contracts = (
+        (
+            hbb_common_linux,
+            "fn run_loginctl(",
+            "\nfn spawn_message_command",
+            "loginctl descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut cmd)?;",
+            "cmd.output()",
+        ),
+        (
+            hbb_common_linux,
+            "fn spawn_message_command(",
+            "\n/// forever:",
+            "desktop notification descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command).is_err()",
+            "command.spawn().is_ok()",
+        ),
+        (
+            linux_source,
+            "pub fn lock_screen() {",
+            "\npub fn toggle_blank_screen",
+            "xdg-screensaver descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.spawn()",
+        ),
+        (
+            linux_source,
+            "fn xrandr_query() -> ResultType<String> {",
+            "\npub fn resolutions",
+            "xrandr query descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)?;",
+            "command.output()?",
+        ),
+        (
+            linux_source,
+            "pub fn change_resolution_directly(",
+            "\n#[inline]\npub fn is_xwayland_running",
+            "xrandr mutation descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)?;",
+            "command.spawn()?",
+        ),
+        (
+            linux_source,
+            "fn get_display_by_user(user: &str) -> String {",
+            "\n        fn set_is_subprocess",
+            "desktop discovery descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.output()",
+        ),
+        (
+            linux_source,
+            "fn systemctl_service(action: &str, app_name: &str) -> bool {",
+            "\npub fn uninstall_service",
+            "systemctl descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.status()",
+        ),
+        (
+            clipboard_fuse,
+            "fn fixed_fusermount_unmount(",
+            "\nfn unmount_stale_fuse_mount",
+            "fusermount unmount descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.output()",
+        ),
+    )
+    for source, start, end, label, policy, execution in helper_contracts:
+        helper = extract_between(source, start, end, label)
+        require_order(helper, (policy, execution), f"{label} before execution")
+    require_text(
+        scrap_hwcodec,
+        "pub fn start_check_process() {",
+        "hardware-codec check helper",
+    )
+    hwcodec_check = scrap_hwcodec.split("pub fn start_check_process() {", 1)[1]
+    require_order(
+        hwcodec_check,
+        ("configure_command_close_nonstdio_on_exec(", "command.spawn()"),
+        "hardware-codec check descriptor policy before execution",
+    )
+
+    fuse_mount = extract_between(
+        clipboard_fuse,
+        "fn mount_with_fixed_fusermount(",
+        "\nfn receive_fusermount_fd",
+        "fusermount explicit descriptor contract",
+    )
+    for text, label in (
+        ("FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string()", "fusermount descriptor number handoff"),
+        (
+            "configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])",
+            "fusermount exact descriptor allowlist",
+        ),
+        ("let child = command.spawn()", "fusermount controlled spawn"),
+    ):
+        require_text(fuse_mount, text, label)
+    require_order(
+        fuse_mount,
+        (
+            "configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])",
+            "let child = command.spawn()",
+        ),
+        "fusermount descriptor policy before spawn",
+    )
+    if "set_fd_cloexec(child_socket.as_raw_fd(), false)" in clipboard_fuse:
+        raise VerificationError("fusermount communication descriptor is made inheritable in the parent")
+
+    shared_descriptor_test = extract_between(
+        hbb_common_linux,
+        "fn r_s11e32_linux_command_descriptor_allowlist_is_exact()",
+        "\n    #[test]\n    fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries",
+        "shared descriptor actual-child regression",
+    )
+    for text, label in (
+        ('exec 9<>\\"$1\\"; exec \\"$2\\" --exact \\"$3\\" --nocapture', "inheritable descriptor launcher"),
+        ("metadata.dev() == target.dev() && metadata.ino() == target.ino()", "descriptor object identity proof"),
+        ("configure_command_descriptor_allowlist_on_exec(&mut allowed, &[9])", "explicit descriptor child"),
+        ('Some(std::ffi::OsStr::new("9"))', "explicit descriptor survival proof"),
+        ("configure_command_close_nonstdio_on_exec(&mut closed)", "default-close child"),
+        ("inherited.is_none()", "default descriptor exclusion proof"),
+    ):
+        require_text(shared_descriptor_test, text, label)
+    invalid_allowlist_test = extract_between(
+        hbb_common_linux,
+        "fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries()",
+        "\n    /// Test get_home_dir_trusted",
+        "shared descriptor invalid-allowlist regression",
+    )
+    for text, label in (
+        ("&[libc::STDERR_FILENO]", "stdio allowlist rejection"),
+        ("&[9, 9]", "duplicate allowlist rejection"),
+        ("&[outside_bound]", "out-of-range allowlist rejection"),
+    ):
+        require_text(invalid_allowlist_test, text, label)
     for source in (core_main, common_source):
         if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
             raise VerificationError("Rust server role regressed to semantic argv0 use")
@@ -4980,6 +5171,9 @@ def validate_sources(sources):
         sources["core_main"],
         sources["common_source"],
         sources["linux_source"],
+        sources["hbb_common_linux"],
+        sources["clipboard_fuse"],
+        sources["scrap_hwcodec"],
     )
     validate_faillo_contract(sources["faillo"])
     validate_private_tree_closure(sources["closure"])
@@ -9913,27 +10107,27 @@ def run_source_mutations(sources):
             "service child pre-exec inherited descriptor policy",
         ),
         (
-            "linux_source",
-            "pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(",
-            "pub(crate) fn configure_linux_helper_close_nonstdio_on_exec_disabled(",
-            "Linux service helper descriptor pre-exec",
+            "hbb_common_linux",
+            "pub fn configure_command_close_nonstdio_on_exec(",
+            "pub fn configure_command_close_nonstdio_on_exec_disabled(",
+            "stdio-only helper policy",
         ),
         (
             "linux_source",
-            "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
-            "configure_linux_helper_close_nonstdio_on_exec_disabled(&mut command)",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "configure_command_close_nonstdio_on_exec_disabled(&mut command)",
             "descriptor policy",
         ),
         (
             "linux_source",
-            "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
-            "configure_linux_helper_close_nonstdio_on_exec_disabled(&mut sudo)?;",
+            "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
+            "configure_command_close_nonstdio_on_exec_disabled(&mut sudo)?;",
             "run_as_user descriptor policy on both sudo branches",
         ),
         (
             "ipc_source",
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)",
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec_disabled(&mut command)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec_disabled(&mut command)",
             "pkcheck descriptor policy",
         ),
         (
@@ -9944,8 +10138,8 @@ def run_source_mutations(sources):
         ),
         (
             "common_source",
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)",
-            "crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec_disabled(&mut cmd)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec_disabled(&mut cmd)",
             "same-executable child descriptor policy",
         ),
         (
@@ -9953,6 +10147,72 @@ def run_source_mutations(sources):
             "inherited.is_none()",
             "inherited.is_some()",
             "final descriptor exclusion assertion",
+        ),
+        (
+            "hbb_common_linux",
+            "descriptor_limit.checked_sub(1)",
+            "descriptor_limit.checked_sub(0)",
+            "last valid descriptor derivation",
+        ),
+        (
+            "hbb_common_linux",
+            "libc::CLOSE_RANGE_CLOEXEC,",
+            "0,",
+            "helper descriptor close-on-exec policy",
+        ),
+        (
+            "hbb_common_linux",
+            "set_descriptor_close_on_exec(fd, false)?;",
+            "set_descriptor_close_on_exec(fd, true)?;",
+            "shared descriptor default-close then explicit-allow ordering",
+        ),
+        (
+            "hbb_common_linux",
+            "configure_command_close_nonstdio_on_exec(&mut cmd)?;",
+            "configure_command_close_nonstdio_on_exec_disabled(&mut cmd)?;",
+            "loginctl descriptor policy",
+        ),
+        (
+            "hbb_common_linux",
+            "configure_command_close_nonstdio_on_exec(&mut command).is_err()",
+            "configure_command_close_nonstdio_on_exec_disabled(&mut command).is_err()",
+            "desktop notification descriptor policy",
+        ),
+        (
+            "clipboard_fuse",
+            "configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "fusermount exact descriptor allowlist",
+        ),
+        (
+            "clipboard_fuse",
+            "configure_command_close_nonstdio_on_exec(&mut command).map_err(|e| {",
+            "configure_command_close_nonstdio_on_exec_disabled(&mut command).map_err(|e| {",
+            "fusermount unmount descriptor policy",
+        ),
+        (
+            "clipboard_fuse",
+            "    })?;\n    let mut command = Command::new(&helper);",
+            "    })?;\n    set_fd_cloexec(child_socket.as_raw_fd(), false)?;\n    let mut command = Command::new(&helper);",
+            "fusermount communication descriptor is made inheritable",
+        ),
+        (
+            "scrap_hwcodec",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(",
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec_disabled(",
+            "hardware-codec check descriptor policy",
+        ),
+        (
+            "hbb_common_linux",
+            "configure_command_descriptor_allowlist_on_exec(&mut allowed, &[9])",
+            "configure_command_close_nonstdio_on_exec(&mut allowed)",
+            "explicit descriptor child",
+        ),
+        (
+            "hbb_common_linux",
+            "&[9, 9]",
+            "&[9]",
+            "duplicate allowlist rejection",
         ),
         (
             "core_main",
@@ -11674,6 +11934,9 @@ def main():
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
+            "hbb_common_linux": (repo / "libs/hbb_common/src/platform/linux.rs").read_text(encoding="utf-8"),
+            "clipboard_fuse": (repo / "libs/clipboard/src/platform/unix/fuse/mod.rs").read_text(encoding="utf-8"),
+            "scrap_hwcodec": (repo / "libs/scrap/src/common/hwcodec.rs").read_text(encoding="utf-8"),
             "gitignore": (repo / ".gitignore").read_text(encoding="utf-8"),
             "android_rust": (repo / "scripts/android-rust-check.sh").read_text(encoding="utf-8"),
             "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),

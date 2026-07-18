@@ -618,7 +618,7 @@ where
     let mut cmd = std::process::Command::new(cmd);
     cmd.envs(envs.iter().map(|(k, v)| (k, v)));
     #[cfg(target_os = "linux")]
-    crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd).map_err(
+    hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd).map_err(
         |err| {
             std::io::Error::new(
                 std::io::ErrorKind::Other,

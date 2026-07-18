@@ -2823,33 +2823,36 @@ if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited
 # close-on-exec before sudo/env/reopen helper images run.
 echo "== (3b-iii-d8) Linux service helper inherited descriptor authority (R-S11o/R-S11e-29) =="
 r_s11e29=
-linux_helper_pre_exec=$(awk '/fn configure_linux_helper_close_nonstdio_on_exec/,/fn arm_service_child_parent_death/' src/platform/linux.rs)
+linux_helper_pre_exec=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
 sudo_env_probe=$(awk '/static ref SUDO_E_PRESERVES_ENV: bool = {/,/^    };/' src/platform/linux.rs)
 run_as_user_block=$(awk '/pub fn run_as_user</,/^}/' src/platform/linux.rs)
 reopen_helper_block=$(awk '/pub fn schedule_reopen_after_service_stop/,/fn linux_helper_path_is_clean_absolute/' src/platform/linux.rs)
 for helper_binding in \
-  'pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(' \
-  'let descriptor_upper_bound = linux_service_descriptor_upper_bound()?' \
+  'fn linux_descriptor_upper_bound() -> io::Result<RawFd>' \
+  'fs/nr_open' \
+  'fn mark_nonstdio_descriptors_close_on_exec(last_fd: RawFd)' \
+  'libc::SYS_close_range' \
+  'libc::CLOSE_RANGE_CLOEXEC' \
+  'pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)' \
   'command.pre_exec(move || {' \
-  'constrain_service_owned_nonstdio_descriptors(' \
-  'ServiceDescriptorDisposition::CloseOnExec'; do
+  'mark_nonstdio_descriptors_close_on_exec(last_fd)?;'; do
   grep -qF "$helper_binding" <<<"$linux_helper_pre_exec" || r_s11e29="$r_s11e29 helper-pre-exec-binding-missing"
 done
 for sudo_probe_binding in \
   'let mut command = Command::new(&sudo);' \
-  'configure_linux_helper_close_nonstdio_on_exec(&mut command)' \
+  'configure_command_close_nonstdio_on_exec(&mut command)' \
   'command.output()' \
   'Failed to constrain sudo environment probe descriptors'; do
   grep -qF "$sudo_probe_binding" <<<"$sudo_env_probe" || r_s11e29="$r_s11e29 sudo-env-probe-descriptor-policy-missing"
 done
 grep -qF 'let mut sudo = Command::new(&sudo_path);' <<<"$run_as_user_block" || r_s11e29="$r_s11e29 run-as-user-mutable-command-missing"
-[ "$(grep -cF 'configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block")" = 2 ] \
+[ "$(grep -cF 'configure_command_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block")" = 2 ] \
   || r_s11e29="$r_s11e29 run-as-user-descriptor-policy-not-on-both-branches"
 [ "$(grep -cF 'let task = sudo.spawn()?;' <<<"$run_as_user_block")" = 2 ] \
   || r_s11e29="$r_s11e29 run-as-user-spawn-shape-unexpected"
-first_run_as_user_helper_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
+first_run_as_user_helper_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
 first_run_as_user_spawn_line=$(grep -nF 'let task = sudo.spawn()?;' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
-last_run_as_user_helper_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
+last_run_as_user_helper_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
 last_run_as_user_spawn_line=$(grep -nF 'let task = sudo.spawn()?;' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
 if [ -z "$first_run_as_user_helper_line" ] || [ -z "$first_run_as_user_spawn_line" ] \
   || [ -z "$last_run_as_user_helper_line" ] || [ -z "$last_run_as_user_spawn_line" ] \
@@ -2860,7 +2863,7 @@ fi
 if grep -Eq '^[[:space:]]*let task = Command::new\(&sudo_path\)' <<<"$run_as_user_block"; then
   r_s11e29="$r_s11e29 run-as-user-direct-spawn-without-descriptor-policy"
 fi
-[ "$(grep -cF 'configure_linux_helper_close_nonstdio_on_exec(&mut command)' <<<"$reopen_helper_block")" = 2 ] \
+[ "$(grep -cF 'configure_command_close_nonstdio_on_exec(&mut command)' <<<"$reopen_helper_block")" = 2 ] \
   || r_s11e29="$r_s11e29 reopen-helper-descriptor-policy-missing"
 if grep -Eq 'Command::new\(&exe\)[[:space:]]*$|Command::new\(exe\)\.spawn\(\)' <<<"$reopen_helper_block"; then
   r_s11e29="$r_s11e29 reopen-helper-direct-spawn-without-descriptor-policy"
@@ -2882,12 +2885,12 @@ r_s11e30=
 pkcheck_authorization_block=$(awk '/fn linux_pkcheck_authorizes_service_owned_password_change/,/async fn linux_peer_is_authorized_for_service_owned_password_change/' src/ipc.rs)
 for pkcheck_binding in \
   'let mut command = std::process::Command::new(pkcheck);' \
-  'crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut command)' \
+  'hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)' \
   'failed to constrain pkcheck descriptors' \
   'let child = command.spawn();'; do
   grep -qF "$pkcheck_binding" <<<"$pkcheck_authorization_block" || r_s11e30="$r_s11e30 pkcheck-descriptor-policy-missing"
 done
-pkcheck_policy_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut command)' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
+pkcheck_policy_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut command)' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
 pkcheck_spawn_line=$(grep -nF 'let child = command.spawn();' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
 if [ -z "$pkcheck_policy_line" ] || [ -z "$pkcheck_spawn_line" ] \
   || [ "$pkcheck_policy_line" -ge "$pkcheck_spawn_line" ]; then
@@ -2914,12 +2917,12 @@ run_me_descriptor_test=$(awk '/fn linux_run_me_child_excludes_inherited_nonstdio
 headless_cm_launch=$(awk '/A root `--server` normally launches the CM/,/for _ in 0\.\.20/' src/server/connection.rs)
 for run_me_binding in \
   '#[cfg(target_os = "linux")]' \
-  'crate::platform::linux::configure_linux_helper_close_nonstdio_on_exec(&mut cmd)' \
+  'hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)' \
   'failed to constrain RustDesk child descriptors' \
   'let result = cmd.args(&args).spawn();'; do
   grep -qF "$run_me_binding" <<<"$run_me_with_env_block" || r_s11e31="$r_s11e31 run-me-descriptor-policy-missing"
 done
-run_me_policy_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut cmd)' <<<"$run_me_with_env_block" | head -n1 | cut -d: -f1)
+run_me_policy_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut cmd)' <<<"$run_me_with_env_block" | head -n1 | cut -d: -f1)
 run_me_spawn_line=$(grep -nF 'let result = cmd.args(&args).spawn();' <<<"$run_me_with_env_block" | head -n1 | cut -d: -f1)
 if [ -z "$run_me_policy_line" ] || [ -z "$run_me_spawn_line" ] \
   || [ "$run_me_policy_line" -ge "$run_me_spawn_line" ]; then
@@ -2945,6 +2948,101 @@ grep -qF '<tr><td>139</td>' requirements.html                                   
 grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md || r_s11e31="$r_s11e31 hardening-ledger-missing"
 if [ -n "$r_s11e31" ]; then echo "  FAIL R-S11e-31 Linux same-executable child inherited descriptor authority:$r_s11e31"; rc=1; else
   echo "  ok  R-S11e-31 Linux same-executable launches apply the non-stdio close-on-exec policy before exec and carry an actual-child regression"; fi
+
+# (3b-iii-d11) R-S11r/R-S11e-32: the descriptor contract belongs to
+# the shared Linux command boundary, not a root-crate subset. Every
+# remaining production Linux helper uses the stdio-only policy, while
+# fusermount receives only its protocol-required _FUSE_COMMFD socket.
+echo "== (3b-iii-d11) Linux external-helper descriptor allowlist authority (R-S11r/R-S11e-32) =="
+r_s11e32=
+shared_descriptor_policy=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
+loginctl_helper=$(awk '/fn run_loginctl/,/fn spawn_message_command/' libs/hbb_common/src/platform/linux.rs)
+message_helper=$(awk '/fn spawn_message_command/,/pub fn system_message/' libs/hbb_common/src/platform/linux.rs)
+lock_screen_helper=$(awk '/pub fn lock_screen\(\)/,/pub fn toggle_blank_screen/' src/platform/linux.rs)
+xrandr_query_helper=$(awk '/fn xrandr_query\(\)/,/pub fn resolutions/' src/platform/linux.rs)
+xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/pub fn is_xwayland_running/' src/platform/linux.rs)
+desktop_user_helper=$(awk '/fn get_display_by_user/,/fn set_is_subprocess/' src/platform/linux.rs)
+systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
+fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn receive_fusermount_fd/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+fuse_unmount_helper=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+hwcodec_check_helper=$(awk '/pub fn start_check_process\(\)/,/^}/' libs/scrap/src/common/hwcodec.rs)
+shared_descriptor_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_is_exact\(\)/,/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries/' libs/hbb_common/src/platform/linux.rs)
+invalid_allowlist_test=$(awk '/fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries\(\)/,/Test get_home_dir_trusted/' libs/hbb_common/src/platform/linux.rs)
+for shared_binding in \
+  'descriptor_limit.checked_sub(1)' \
+  'fn validated_nonstdio_descriptor_allowlist(' \
+  'fd <= libc::STDERR_FILENO || fd > last_fd' \
+  'validated.contains(&fd)' \
+  'fn mark_nonstdio_descriptors_close_on_exec(last_fd: RawFd)' \
+  'libc::CLOSE_RANGE_CLOEXEC' \
+  'for fd in (libc::STDERR_FILENO + 1)..=last_fd' \
+  'pub fn configure_command_descriptor_allowlist_on_exec(' \
+  'validated_nonstdio_descriptor_allowlist(allowed_nonstdio_descriptors, last_fd)?' \
+  'mark_nonstdio_descriptors_close_on_exec(last_fd)?;' \
+  'set_descriptor_close_on_exec(fd, false)?;' \
+  'pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)' \
+  'configure_command_descriptor_allowlist_on_exec(command, &[])'; do
+  grep -qF "$shared_binding" <<<"$shared_descriptor_policy" || r_s11e32="$r_s11e32 shared-policy-binding-missing"
+done
+check_r_s11e32_helper_contract() {
+  local helper_source=$1
+  local helper_policy=$2
+  local helper_execution=$3
+  local helper_policy_line helper_execution_line
+  grep -qF "$helper_policy" <<<"$helper_source" || r_s11e32="$r_s11e32 ordinary-helper-policy-missing"
+  grep -qF "$helper_execution" <<<"$helper_source" || r_s11e32="$r_s11e32 ordinary-helper-execution-missing"
+  helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1)
+  helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1)
+  if [ -z "$helper_policy_line" ] || [ -z "$helper_execution_line" ] \
+    || [ "$helper_policy_line" -ge "$helper_execution_line" ]; then
+    r_s11e32="$r_s11e32 ordinary-helper-policy-order-invalid"
+  fi
+}
+check_r_s11e32_helper_contract "$loginctl_helper" 'configure_command_close_nonstdio_on_exec(&mut cmd)?;' 'cmd.output()'
+check_r_s11e32_helper_contract "$message_helper" 'configure_command_close_nonstdio_on_exec(&mut command).is_err()' 'command.spawn().is_ok()'
+check_r_s11e32_helper_contract "$lock_screen_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.spawn()'
+check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.output()?'
+check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
+check_r_s11e32_helper_contract "$desktop_user_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
+check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
+check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
+check_r_s11e32_helper_contract "$hwcodec_check_helper" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
+for fuse_binding in \
+  'FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string()' \
+  'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' \
+  'let child = command.spawn()'; do
+  grep -qF "$fuse_binding" <<<"$fuse_mount_helper" || r_s11e32="$r_s11e32 fusermount-explicit-descriptor-contract-missing"
+done
+if grep -qF 'set_fd_cloexec(child_socket.as_raw_fd(), false)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_s11e32="$r_s11e32 fusermount-parent-inheritability-window-present"
+fi
+fuse_policy_line=$(grep -nF 'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' <<<"$fuse_mount_helper" | head -n1 | cut -d: -f1)
+fuse_spawn_line=$(grep -nF 'let child = command.spawn()' <<<"$fuse_mount_helper" | head -n1 | cut -d: -f1)
+if [ -z "$fuse_policy_line" ] || [ -z "$fuse_spawn_line" ] \
+  || [ "$fuse_policy_line" -ge "$fuse_spawn_line" ]; then
+  r_s11e32="$r_s11e32 fusermount-descriptor-policy-order-invalid"
+fi
+for runtime_binding in \
+  'exec 9<>\"$1\"; exec \"$2\" --exact \"$3\" --nocapture' \
+  'metadata.dev() == target.dev() && metadata.ino() == target.ino()' \
+  'configure_command_descriptor_allowlist_on_exec(&mut allowed, &[9])' \
+  'Some(std::ffi::OsStr::new("9"))' \
+  'configure_command_close_nonstdio_on_exec(&mut closed)' \
+  'inherited.is_none()'; do
+  grep -qF "$runtime_binding" <<<"$shared_descriptor_test" || r_s11e32="$r_s11e32 actual-child-allowlist-proof-missing"
+done
+for invalid_binding in \
+  '&[libc::STDERR_FILENO]' \
+  '&[9, 9]' \
+  '&[outside_bound]'; do
+  grep -qF "$invalid_binding" <<<"$invalid_allowlist_test" || r_s11e32="$r_s11e32 invalid-allowlist-proof-missing"
+done
+grep -qF '<span class="id">R-S11r</span>' requirements.html                         || r_s11e32="$r_s11e32 normative-requirement-missing"
+grep -qF 'Linux external-helper descriptor allowlist authority' requirements.html     || r_s11e32="$r_s11e32 appendix-disposition-missing"
+grep -qF '<tr><td>140</td>' requirements.html                                         || r_s11e32="$r_s11e32 appendix-row-missing"
+grep -qF 'R-S11e-32 — Linux external-helper descriptor allowlist authority' HARDENING_STATUS.md || r_s11e32="$r_s11e32 hardening-ledger-missing"
+if [ -n "$r_s11e32" ]; then echo "  FAIL R-S11e-32 Linux external-helper descriptor allowlist authority:$r_s11e32"; rc=1; else
+  echo "  ok  R-S11e-32 every production Linux helper has an application-owned descriptor contract; only fusermount receives its exact communication socket"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and

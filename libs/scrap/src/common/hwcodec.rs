@@ -725,7 +725,18 @@ pub fn start_check_process() {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(_) = exe.file_name().to_owned() {
                 let arg = "--check-hwcodec-config";
-                if let Ok(mut child) = std::process::Command::new(exe).arg(arg).spawn() {
+                let mut command = std::process::Command::new(exe);
+                command.arg(arg);
+                #[cfg(target_os = "linux")]
+                if let Err(err) =
+                    hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(
+                        &mut command,
+                    )
+                {
+                    log::error!("Failed to constrain hardware-codec check descriptors: {err}");
+                    return;
+                }
+                if let Ok(mut child) = command.spawn() {
                     #[cfg(windows)]
                     hwcodec::common::child_exit_when_parent_exit(child.id());
                     // wait up to 30 seconds, it maybe slow on windows startup for poorly performing machines

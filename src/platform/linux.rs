@@ -107,7 +107,7 @@ lazy_static::lazy_static! {
                         .args(["-n", "-E"])
                         .arg(&env);
                     if let Err(err) =
-                        configure_linux_helper_close_nonstdio_on_exec(&mut command)
+                        configure_command_close_nonstdio_on_exec(&mut command)
                     {
                         log::warn!(
                             "Failed to constrain sudo environment probe descriptors: {err}"
@@ -1820,24 +1820,6 @@ pub fn close_service_owned_nonstdio_descriptors() -> ResultType<()> {
         .map_err(|err| anyhow!("Failed to close inherited non-stdio descriptors: {err}"))
 }
 
-pub(crate) fn configure_linux_helper_close_nonstdio_on_exec(
-    command: &mut Command,
-) -> ResultType<()> {
-    let descriptor_upper_bound = linux_service_descriptor_upper_bound()?;
-    // The closure performs only raw Linux syscalls over the parent-resolved
-    // descriptor bound. It preserves stdio and makes every other inherited
-    // descriptor close before the helper image runs.
-    unsafe {
-        command.pre_exec(move || {
-            constrain_service_owned_nonstdio_descriptors(
-                descriptor_upper_bound,
-                ServiceDescriptorDisposition::CloseOnExec,
-            )
-        });
-    }
-    Ok(())
-}
-
 fn arm_service_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> std::io::Result<()> {
     // `PR_SET_PDEATHSIG` is cleared by a credential change and can also be cleared by
     // executing a privileged file. Arm it after the optional uid/gid drop in the pre-exec
@@ -2671,7 +2653,7 @@ where
             .arg("--")
             .arg(&cmd)
             .args(arg);
-        configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;
+        configure_command_close_nonstdio_on_exec(&mut sudo)?;
         let task = sudo.spawn()?;
         Ok(Some(task))
     } else {
@@ -2693,7 +2675,7 @@ where
         }
 
         sudo.arg(&cmd).args(arg);
-        configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;
+        configure_command_close_nonstdio_on_exec(&mut sudo)?;
         let task = sudo.spawn()?;
         Ok(Some(task))
     }
@@ -2761,7 +2743,15 @@ pub fn lock_screen() {
         log::warn!("xdg-screensaver was not found at a trusted fixed path");
         return;
     };
-    Command::new(xdg_screensaver).arg("lock").spawn().ok();
+    let mut command = Command::new(xdg_screensaver);
+    command.arg("lock");
+    if let Err(err) = configure_command_close_nonstdio_on_exec(&mut command) {
+        log::warn!("Failed to constrain xdg-screensaver descriptors: {err}");
+        return;
+    }
+    if let Err(err) = command.spawn() {
+        log::warn!("Failed to lock the screen with xdg-screensaver: {err}");
+    }
 }
 
 pub fn toggle_blank_screen(_v: bool) {
@@ -4276,7 +4266,10 @@ fn xrandr_query() -> ResultType<String> {
     let Some(xrandr) = xrandr_path() else {
         bail!("xrandr was not found at a trusted fixed path");
     };
-    let output = Command::new(xrandr).arg("--query").output()?;
+    let mut command = Command::new(xrandr);
+    command.arg("--query");
+    configure_command_close_nonstdio_on_exec(&mut command)?;
+    let output = command.output()?;
     Ok(normalize_xrandr_query_output(&String::from_utf8_lossy(
         &output.stdout,
     )))
@@ -4363,14 +4356,11 @@ pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> Re
     let Some(xrandr) = xrandr_path() else {
         bail!("xrandr was not found at a trusted fixed path");
     };
-    Command::new(xrandr)
-        .args(vec![
-            "--output",
-            name,
-            "--mode",
-            &format!("{}x{}", width, height),
-        ])
-        .spawn()?;
+    let mode = format!("{}x{}", width, height);
+    let mut command = Command::new(xrandr);
+    command.args(["--output", name, "--mode", &mode]);
+    configure_command_close_nonstdio_on_exec(&mut command)?;
+    command.spawn()?;
     Ok(())
 }
 
@@ -4624,7 +4614,11 @@ mod desktop {
         fn get_display_by_user(user: &str) -> String {
             // log::debug!("w {}", &user);
             if let Some(w) = w_path() {
-                if let Ok(output) = Command::new(w).arg(user).output() {
+                let mut command = Command::new(w);
+                command.arg(user);
+                let output = configure_command_close_nonstdio_on_exec(&mut command)
+                    .and_then(|()| command.output());
+                if let Ok(output) = output {
                     for line in String::from_utf8_lossy(&output.stdout).lines() {
                         let mut iter = line.split_whitespace();
                         let b = iter.nth(2);
@@ -4769,7 +4763,7 @@ pub fn schedule_reopen_after_service_stop(secs: u32) {
     command
         .arg(REOPEN_AFTER_SERVICE_STOP_ARG)
         .arg(secs.to_string());
-    if let Err(err) = configure_linux_helper_close_nonstdio_on_exec(&mut command) {
+    if let Err(err) = configure_command_close_nonstdio_on_exec(&mut command) {
         log::warn!("Failed to constrain RustDesk reopen descriptors: {}", err);
         return;
     }
@@ -4783,7 +4777,7 @@ pub fn reopen_after_service_stop(secs: u32) {
     match std::env::current_exe() {
         Ok(exe) => {
             let mut command = Command::new(exe);
-            if let Err(err) = configure_linux_helper_close_nonstdio_on_exec(&mut command) {
+            if let Err(err) = configure_command_close_nonstdio_on_exec(&mut command) {
                 log::warn!("Failed to constrain RustDesk reopen descriptors: {}", err);
                 return;
             }
@@ -4877,7 +4871,13 @@ fn systemctl_service(action: &str, app_name: &str) -> bool {
         log::error!("systemctl was not found at a trusted fixed path");
         return false;
     };
-    match Command::new(systemctl).arg(action).arg(app_name).status() {
+    let mut command = Command::new(systemctl);
+    command.arg(action).arg(app_name);
+    if let Err(err) = configure_command_close_nonstdio_on_exec(&mut command) {
+        log::error!("Failed to constrain systemctl {action} {app_name} descriptors: {err}");
+        return false;
+    }
+    match command.status() {
         Ok(status) if status.success() => true,
         Ok(status) => {
             log::error!("systemctl {action} {app_name} failed with status {status}");

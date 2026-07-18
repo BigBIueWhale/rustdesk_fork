@@ -4,7 +4,13 @@ use super::filetype::FileDescription;
 use crate::{ClipboardFile, CliprdrError};
 use cs::{FuseFileContentResponse, FuseFileContentResponseRouter, FuseServer};
 use fuser::MountOption;
-use hbb_common::{config::APP_NAME, log};
+use hbb_common::{
+    config::APP_NAME,
+    log,
+    platform::linux::{
+        configure_command_close_nonstdio_on_exec, configure_command_descriptor_allowlist_on_exec,
+    },
+};
 use parking_lot::Mutex;
 use std::{
     ffi::{CString, OsStr},
@@ -290,23 +296,27 @@ fn mount_with_fixed_fusermount(
     let (child_socket, receive_socket) = UnixStream::pair().map_err(|e| {
         fuse_common_error(format!("failed to create fusermount fd socket pair: {e}"))
     })?;
-    set_fd_cloexec(child_socket.as_raw_fd(), false)?;
-
-    let child = Command::new(&helper)
+    let mut command = Command::new(&helper);
+    command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg("-o")
         .arg(mount_options)
         .arg("--")
         .arg(mount_point)
-        .env(FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string())
-        .spawn()
+        .env(FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string());
+    configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])
         .map_err(|e| {
             fuse_common_error(format!(
-                "failed to start trusted fusermount helper {}: {e}",
-                helper.display()
+                "failed to constrain trusted fusermount helper descriptors: {e}"
             ))
         })?;
+    let child = command.spawn().map_err(|e| {
+        fuse_common_error(format!(
+            "failed to start trusted fusermount helper {}: {e}",
+            helper.display()
+        ))
+    })?;
     drop(child_socket);
 
     let fuse_fd = match receive_fusermount_fd(&receive_socket) {
@@ -717,21 +727,26 @@ fn unmount_clipboard_fuse_mount(mount_point: &Path) {
 
 fn fixed_fusermount_unmount(mount_point: &Path) -> Result<(), CliprdrError> {
     let helper = trusted_fusermount_helper()?;
-    let output = Command::new(&helper)
+    let mut command = Command::new(&helper);
+    command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg("-u")
         .arg("-q")
         .arg("-z")
         .arg("--")
-        .arg(mount_point)
-        .output()
-        .map_err(|e| {
-            fuse_common_error(format!(
-                "failed to start trusted fusermount unmount helper {}: {e}",
-                helper.display()
-            ))
-        })?;
+        .arg(mount_point);
+    configure_command_close_nonstdio_on_exec(&mut command).map_err(|e| {
+        fuse_common_error(format!(
+            "failed to constrain trusted fusermount unmount helper descriptors: {e}"
+        ))
+    })?;
+    let output = command.output().map_err(|e| {
+        fuse_common_error(format!(
+            "failed to start trusted fusermount unmount helper {}: {e}",
+            helper.display()
+        ))
+    })?;
     log_fusermount_output("unmount", &output);
     if output.status.success() {
         Ok(())

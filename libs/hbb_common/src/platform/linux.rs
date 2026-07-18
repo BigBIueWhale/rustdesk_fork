@@ -1,7 +1,10 @@
 use crate::ResultType;
 use std::{
     io,
-    os::unix::fs::MetadataExt,
+    os::{
+        fd::RawFd,
+        unix::{fs::MetadataExt, process::CommandExt},
+    },
     path::{Component, Path, PathBuf},
     process::Command,
 };
@@ -149,6 +152,133 @@ fn trusted_command_path(paths: &'static [&'static str]) -> Option<PathBuf> {
     paths
         .iter()
         .find_map(|path| trusted_fixed_executable_path(Path::new(path)))
+}
+
+fn linux_descriptor_upper_bound() -> io::Result<RawFd> {
+    let raw = std::fs::read_to_string("/proc/sys/fs/nr_open")?;
+    let value = raw.trim_end_matches('\n');
+    if value.is_empty()
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+        || (value.len() > 1 && value.starts_with('0'))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Linux descriptor-table bound is not canonical decimal",
+        ));
+    }
+    let descriptor_limit = value.parse::<RawFd>().map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Linux descriptor-table bound is invalid: {err}"),
+        )
+    })?;
+    let last_fd = descriptor_limit.checked_sub(1).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Linux descriptor-table bound has no valid descriptor",
+        )
+    })?;
+    if last_fd <= libc::STDERR_FILENO {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Linux descriptor-table bound does not cover non-stdio descriptors",
+        ));
+    }
+    Ok(last_fd)
+}
+
+fn validated_nonstdio_descriptor_allowlist(
+    descriptors: &[RawFd],
+    last_fd: RawFd,
+) -> io::Result<Vec<RawFd>> {
+    let mut validated = Vec::with_capacity(descriptors.len());
+    for &fd in descriptors {
+        if fd <= libc::STDERR_FILENO || fd > last_fd {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("allowed child descriptor {fd} is outside the non-stdio descriptor range"),
+            ));
+        }
+        if validated.contains(&fd) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("allowed child descriptor {fd} is duplicated"),
+            ));
+        }
+        validated.push(fd);
+    }
+    Ok(validated)
+}
+
+fn set_descriptor_close_on_exec(fd: RawFd, enabled: bool) -> io::Result<()> {
+    let descriptor_flags = unsafe { libc::syscall(libc::SYS_fcntl, fd, libc::F_GETFD) };
+    if descriptor_flags == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    let close_on_exec = libc::c_long::from(libc::FD_CLOEXEC);
+    let new_flags = if enabled {
+        descriptor_flags | close_on_exec
+    } else {
+        descriptor_flags & !close_on_exec
+    };
+    if new_flags != descriptor_flags
+        && unsafe { libc::syscall(libc::SYS_fcntl, fd, libc::F_SETFD, new_flags) } == -1
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn mark_nonstdio_descriptors_close_on_exec(last_fd: RawFd) -> io::Result<()> {
+    if unsafe {
+        libc::syscall(
+            libc::SYS_close_range,
+            (libc::STDERR_FILENO + 1) as libc::c_uint,
+            libc::c_uint::MAX,
+            libc::CLOSE_RANGE_CLOEXEC,
+        )
+    } == 0
+    {
+        return Ok(());
+    }
+
+    for fd in (libc::STDERR_FILENO + 1)..=last_fd {
+        match set_descriptor_close_on_exec(fd, true) {
+            Ok(()) => {}
+            Err(err) if err.raw_os_error() == Some(libc::EBADF) => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(())
+}
+
+/// Constrain a Linux child image to stdio plus an explicit non-stdio descriptor allowlist.
+///
+/// All allocation and `/proc` parsing happens in the parent. The pre-exec hook uses only raw
+/// descriptor syscalls, first marking every non-stdio descriptor close-on-exec and then clearing
+/// that flag only for the descriptors named by the caller.
+pub fn configure_command_descriptor_allowlist_on_exec(
+    command: &mut Command,
+    allowed_nonstdio_descriptors: &[RawFd],
+) -> io::Result<()> {
+    let last_fd = linux_descriptor_upper_bound()?;
+    let allowed_nonstdio_descriptors =
+        validated_nonstdio_descriptor_allowlist(allowed_nonstdio_descriptors, last_fd)?;
+    unsafe {
+        command.pre_exec(move || {
+            mark_nonstdio_descriptors_close_on_exec(last_fd)?;
+            for &fd in &allowed_nonstdio_descriptors {
+                set_descriptor_close_on_exec(fd, false)?;
+            }
+            Ok(())
+        });
+    }
+    Ok(())
+}
+
+/// Constrain a Linux child image to argv, environment, and stdio only.
+pub fn configure_command_close_nonstdio_on_exec(command: &mut Command) -> io::Result<()> {
+    configure_command_descriptor_allowlist_on_exec(command, &[])
 }
 
 // Deprecated. Use `hbb_common::platform::linux::is_kde_session()` instead for now.
@@ -386,8 +516,9 @@ fn run_loginctl(args: Option<Vec<&str>>) -> std::io::Result<std::process::Output
     };
     let mut cmd = std::process::Command::new(loginctl);
     if let Some(a) = args {
-        return cmd.args(a).output();
+        cmd.args(a);
     }
+    configure_command_close_nonstdio_on_exec(&mut cmd)?;
     cmd.output()
 }
 
@@ -395,7 +526,12 @@ fn spawn_message_command(paths: &'static [&'static str], args: &[&str]) -> bool 
     let Some(command) = trusted_command_path(paths) else {
         return false;
     };
-    Command::new(command).args(args).spawn().is_ok()
+    let mut command = Command::new(command);
+    command.args(args);
+    if configure_command_close_nonstdio_on_exec(&mut command).is_err() {
+        return false;
+    }
+    command.spawn().is_ok()
 }
 
 /// forever: may not work
@@ -660,6 +796,168 @@ ESCAPED="quote \" dollar \$ slash \\ tick \`"
         assert_eq!(
             parse_os_release_field(contents, "HASH").as_deref(),
             Some("value#not-comment")
+        );
+    }
+
+    #[test]
+    fn r_s11e32_linux_command_descriptor_allowlist_is_exact() {
+        use std::{
+            fs::{self, OpenOptions},
+            os::unix::fs::MetadataExt,
+        };
+
+        const ROLE_ENV: &str = "RUSTDESK_COMMAND_DESCRIPTOR_TEST_ROLE";
+        const TARGET_ENV: &str = "RUSTDESK_COMMAND_DESCRIPTOR_TEST_TARGET";
+        const TEST_NAME: &str =
+            "platform::linux::tests::r_s11e32_linux_command_descriptor_allowlist_is_exact";
+
+        let descriptor_for_target = || {
+            let target_path = std::env::var_os(TARGET_ENV)
+                .map(PathBuf::from)
+                .expect("target path must be supplied by the parent test");
+            let target = fs::metadata(&target_path).expect("target metadata must be readable");
+            for entry in
+                fs::read_dir("/proc/self/fd").expect("descriptor test proc directory must exist")
+            {
+                let entry = entry.expect("descriptor test proc entry must be readable");
+                let Ok(metadata) = fs::metadata(entry.path()) else {
+                    continue;
+                };
+                if metadata.dev() == target.dev() && metadata.ino() == target.ino() {
+                    return Some(entry.file_name());
+                }
+            }
+            None
+        };
+
+        match std::env::var(ROLE_ENV).as_deref() {
+            Ok("allowed") => {
+                assert_eq!(
+                    descriptor_for_target().as_deref(),
+                    Some(std::ffi::OsStr::new("9")),
+                    "explicitly allowed descriptor must survive as the exact kernel object"
+                );
+                return;
+            }
+            Ok("closed") => {
+                let inherited = descriptor_for_target();
+                assert!(
+                    inherited.is_none(),
+                    "default helper contract retained the launcher's descriptor as {:?}",
+                    inherited
+                );
+                return;
+            }
+            Ok("launcher") => {
+                assert_eq!(
+                    descriptor_for_target().as_deref(),
+                    Some(std::ffi::OsStr::new("9")),
+                    "shell launcher must inject descriptor 9 before testing the policy"
+                );
+                let target_path =
+                    std::env::var_os(TARGET_ENV).expect("launcher target path must be present");
+                let current_exe =
+                    std::env::current_exe().expect("test executable path must be available");
+
+                let mut allowed = Command::new(&current_exe);
+                allowed
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .env(ROLE_ENV, "allowed")
+                    .env(TARGET_ENV, &target_path);
+                configure_command_descriptor_allowlist_on_exec(&mut allowed, &[9])
+                    .expect("explicit descriptor allowlist must configure");
+                let allowed_status = allowed
+                    .status()
+                    .expect("allowlisted descriptor child must execute");
+                assert!(
+                    allowed_status.success(),
+                    "allowlisted descriptor child failed: {}",
+                    allowed_status
+                );
+
+                let mut closed = Command::new(current_exe);
+                closed
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .env(ROLE_ENV, "closed")
+                    .env(TARGET_ENV, target_path);
+                configure_command_close_nonstdio_on_exec(&mut closed)
+                    .expect("default descriptor contract must configure");
+                let closed_status = closed
+                    .status()
+                    .expect("default descriptor child must execute");
+                assert!(
+                    closed_status.success(),
+                    "default descriptor child failed: {}",
+                    closed_status
+                );
+                return;
+            }
+            Ok(role) => panic!("unexpected descriptor-test role: {}", role),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                panic!("descriptor-test role must be Unicode")
+            }
+            Err(std::env::VarError::NotPresent) => {}
+        }
+
+        let test_root = std::env::temp_dir().join(format!(
+            "rustdesk-command-descriptor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .expect("test clock must follow the Unix epoch")
+                .as_nanos()
+        ));
+        fs::create_dir(&test_root).expect("descriptor test directory must be creatable");
+        let target_path = test_root.join("parent-authority");
+        OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target_path)
+            .expect("descriptor test target must be creatable");
+
+        let current_exe = std::env::current_exe().expect("test executable path must be available");
+        let status = Command::new("/bin/sh")
+            .args([
+                std::ffi::OsStr::new("-c"),
+                std::ffi::OsStr::new("exec 9<>\"$1\"; exec \"$2\" --exact \"$3\" --nocapture"),
+                std::ffi::OsStr::new("rustdesk-command-descriptor-test"),
+                target_path.as_os_str(),
+                current_exe.as_os_str(),
+                std::ffi::OsStr::new(TEST_NAME),
+            ])
+            .env(ROLE_ENV, "launcher")
+            .env(TARGET_ENV, &target_path)
+            .status()
+            .expect("descriptor-injecting shell must execute");
+
+        fs::remove_file(&target_path).expect("descriptor test target must be removable");
+        fs::remove_dir(&test_root).expect("descriptor test directory must be removable");
+        assert!(
+            status.success(),
+            "descriptor-test launcher failed: {}",
+            status
+        );
+    }
+
+    #[test]
+    fn r_s11e32_linux_command_descriptor_allowlist_rejects_invalid_entries() {
+        let mut command = Command::new("/bin/true");
+        assert!(configure_command_descriptor_allowlist_on_exec(
+            &mut command,
+            &[libc::STDERR_FILENO]
+        )
+        .is_err());
+
+        let mut command = Command::new("/bin/true");
+        assert!(configure_command_descriptor_allowlist_on_exec(&mut command, &[9, 9]).is_err());
+
+        let mut command = Command::new("/bin/true");
+        let outside_bound = linux_descriptor_upper_bound()
+            .expect("descriptor-table bound must be readable")
+            .checked_add(1)
+            .expect("descriptor-table bound must fit a larger RawFd");
+        assert!(
+            configure_command_descriptor_allowlist_on_exec(&mut command, &[outside_bound]).is_err()
         );
     }
 

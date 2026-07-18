@@ -18,8 +18,8 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 798 lexical `unsafe {`
-blocks across 244 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 801 lexical `unsafe {`
+blocks across 244 tracked Rust files, 67 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -2042,8 +2042,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
   debug-binary runtime evidence only; final exact release `.deb` execution remains open under R-B2/R-S11c-27.
   The helper adds one reviewed lexical
-  `unsafe {` block; after R-S11e-29 the current inventory is 798 blocks across 244 tracked Rust files/66 nonzero
-  files with digest `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
+  `unsafe {` block; after R-S11e-32 the current inventory is 801 blocks across 244 tracked Rust files/67 nonzero
+  files with digest `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
 - **R-S11e-29 — Linux service-originated helper inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux root/service-originated helper launches. Endpoint/action: the `sudo -E env` probe,
@@ -2058,7 +2058,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   privileged-launch/root-to-helper capability leak and source-authority defect, not a demonstrated promptless
   ordinary-user-to-root escalation.
 
-  Closure: `src/platform/linux.rs::configure_linux_helper_close_nonstdio_on_exec` resolves the canonical
+  Closure, consolidated into the shared layer by R-S11e-32:
+  `libs/hbb_common/src/platform/linux.rs::configure_command_close_nonstdio_on_exec` resolves the canonical
   `/proc/sys/fs/nr_open` descriptor bound in the parent, then registers a Linux `pre_exec` hook that preserves
   descriptors 0–2 and marks every descriptor above stderr close-on-exec before the helper image runs. It uses the
   same `close_range(..., CLOSE_RANGE_CLOEXEC)` fast path and raw `fcntl(F_GETFD/F_SETFD)` fallback as R-S11e-28.
@@ -2073,8 +2074,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   helper launches, R-S11o, Appendix C #137, and this ledger entry. The verifier mutation suite renames the helper,
   deletes/renames probe and reopen helper calls, and removes `run_as_user` branch calls; each mutation must be
   rejected. This slice adds one reviewed lexical `unsafe {` block for the new helper-launch `pre_exec` registration;
-  the current inventory is 798 blocks across 244 tracked Rust files/66 nonzero files with digest
-  `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
+  after the shared R-S11e-32 policy the current inventory is 801 blocks across 244 tracked Rust files/67 nonzero
+  files with digest `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
 - **R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux service-owned unattended-password authorization. Endpoint/action: root service invocation of
@@ -2087,7 +2088,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `FD_CLOEXEC` into that helper image. This is a root-service-to-helper descriptor-capability leak and
   source-authority defect, not a demonstrated promptless ordinary-user-to-root escalation.
 
-  Closure: `src/platform/linux.rs::configure_linux_helper_close_nonstdio_on_exec` is now crate-visible and the
+  Closure: the shared `hbb_common::platform::linux::configure_command_close_nonstdio_on_exec` policy is public to
+  workspace crates and the
   pkcheck authorization path uses it before `command.spawn()`. `src/ipc.rs` now builds a mutable command, supplies
   only the fixed pkcheck argv, null-routes stdio, registers the parent-bound close-on-exec pre-exec hook, rejects
   the service-owned password operation if the hook cannot be configured, and only then executes the helper. The
@@ -2116,7 +2118,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   close-on-exec at the launch point.
 
   Closure: on Linux, `run_me_with_env` now applies
-  `configure_linux_helper_close_nonstdio_on_exec` before its only spawn. That reuses the parent-resolved
+  `configure_command_close_nonstdio_on_exec` before its only spawn. That reuses the parent-resolved
   `/proc/sys/fs/nr_open` bound, raw `close_range(CLOSE_RANGE_CLOEXEC)` fast path, and raw
   `fcntl(F_GETFD/F_SETFD)` fallback from R-S11n/R-S11o. A configuration error becomes an `io::Error` and no child
   is started. No executable-fd exception exists at this API. Non-Linux launch behavior and the child argv,
@@ -2136,6 +2138,52 @@ unreachable and a source/test/AST gate prevents reintroduction.
   unique production context after the old fragment was found in both production and a Rust source-contract test;
   all runtime mutation targets are now effective. This slice adds no dependency and no lexical `unsafe {` block;
   it reuses the production hook added by R-S11e-29.
+- **R-S11e-32 — Linux external-helper descriptor allowlist authority — SOURCE, ACTUAL-CHILD, AND MUTATION
+  VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH
+  R-B2/R-S11c-27.** Platform: Linux ordinary external and same-executable child launches outside the specialized
+  exact service-child bootstrap. Endpoint/action: shared `loginctl` and desktop-notification helpers; root-crate
+  sudo/env, pkcheck, xdg-screensaver, xrandr, `w`, delayed reopen, and systemctl helpers; clipboard fusermount
+  mount/unmount; same-executable `run_me_with_env`; and the feature-inert hardware-codec check launcher. Boundary:
+  descriptors held by a possibly root/service-owned RustDesk image ↔ child images whose authority is normally
+  argv, explicit environment, and stdio. The clipboard mount protocol deliberately adds exactly one non-stdio
+  Unix socket. Attack surface closed: R-S11e-29 through R-S11e-31 placed the ordinary pre-exec hook in the root
+  crate and covered the privileged helpers found in those slices, but shared `hbb_common` and dependent crates
+  could not call that API. The remaining command enumeration found direct launches without a RustDesk-owned
+  descriptor contract. The root service repeatedly reaches `loginctl` through desktop refresh and can reach
+  display/service helpers. A sensitive ambient descriptor lacking `FD_CLOEXEC` could therefore enter an external
+  image. Clipboard FUSE additionally cleared `FD_CLOEXEC` on `_FUSE_COMMFD` in the multithreaded parent before
+  spawning, creating a process-wide inheritance race. This is a root/service-to-helper capability leak on
+  service-reachable paths and descriptor-authority hygiene defect elsewhere, not a demonstrated promptless
+  ordinary-user-to-root primitive; it depends on a sensitive live inheritable descriptor.
+
+  Closure: `libs/hbb_common/src/platform/linux.rs` now owns the ordinary Linux helper policy. The parent reads and
+  canonically validates `/proc/sys/fs/nr_open`, validates an explicit duplicate-free allowlist containing only
+  non-stdio descriptors within that bound, and captures both as pre-exec data. The forked child uses raw
+  `close_range(CLOSE_RANGE_CLOEXEC)` with a raw `fcntl(F_GETFD/F_SETFD)` fallback to mark every descriptor above
+  stderr close-on-exec, then clears `FD_CLOEXEC` only for each explicit exception. The convenience API supplies an
+  empty allowlist. All enumerated production launches use that shared policy. Clipboard mount allowlists only its
+  exact `_FUSE_COMMFD` socket; that socket remains close-on-exec in the parent and becomes inheritable only in the
+  forked child immediately before exec. Clipboard unmount and every other ordinary helper remain stdio-only. The
+  specialized R-S11n exact service-child executable-fd handoff remains local and unchanged.
+
+  The Rust 1.75 actual-child regression is a real three-image proof: a shell exec injects descriptor 9; the
+  intermediate hbb_common test image proves the live descriptor's device/inode; one child launched through the
+  explicit API proves that exact object remains descriptor 9; and a second child launched through the default API
+  proves no live descriptor matches it. A companion regression rejects stderr, duplicate, and out-of-range
+  allowlist entries. The exact regression passed in a non-root, networkless, capability-free, no-new-privileges
+  Docker run with the source mounted read-only. Focused clipboard/FUSE compilation and the full RustDesk Linux
+  library check with `unix-file-copy-paste` passed under the same constraints. `scripts/verify.sh` and
+  `scripts/verify-verifier-workspace.py` bind the shared syscall/validation/ordering implementation, every
+  enumerated helper family, the exact FUSE exception, absence of the parent-side inheritability window, both
+  actual-child branches, invalid allowlists, R-S11r, Appendix C #140, and this entry. Final exact release `.deb`
+  execution remains open under R-B2/R-S11c-27. The extracted R-S11e-29 through R-S11e-32 source gate, semantic
+  source validator, and complete in-memory source-mutation matrix passed. The full behavioral verifier self-test
+  was also attempted, but its pre-existing descriptor-owned scratch replacement fixture fails identically at the
+  parent commit in this isolated Docker environment before mutation dispatch; the focused mutation dispatch was
+  therefore run and passed separately. The shared low-level implementation has four reviewed lexical `unsafe {`
+  blocks while the superseded root helper contributed one removed block: the net inventory change is three, for a
+  current total of 801 blocks across 244 tracked Rust files/67 nonzero files with digest
+  `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2976,10 +3024,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; after the later R-S11e-29 helper-launch descriptor hook, the current machine inventory is 798 across
-    244 tracked Rust files/66 nonzero files, with the added deterministic Windows resource producer containing no
+    blocks; after the later R-S11e-32 shared helper-launch descriptor policy, the current machine inventory is 801 across
+    244 tracked Rust files/67 nonzero files, with the added deterministic Windows resource producer containing no
     lexical unsafe block and per-file-count digest
-    `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
+    `75c6a5e7cc64fdcd585a8d2b8bd2a2e72dc268f2513e11625ab5414a48999079`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -3080,7 +3128,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
     introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
     deterministic Windows resource-producer addition, R-S11e-28 descriptor closure, and R-S11e-29 helper-launch
-    descriptor hook, the current inventory is 798 across 244 tracked Rust files/66 nonzero files.
+    descriptor hook, the current inventory is 801 across 244 tracked Rust files/67 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
     source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active
@@ -4444,8 +4492,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-582b186bcba3802cf173364248c513ad0708d8d7aba9329838448f9237adc872  requirements.html
+47ac1c117ad103df288091495c4e56b718ae2a6e91ae9720b96ed133fed67450  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11q, and Appendix C #139. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11r, and Appendix C #140. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

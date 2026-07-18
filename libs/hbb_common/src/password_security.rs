@@ -112,11 +112,11 @@ pub fn encrypt_str_or_original(s: &str, version: &str, max_len: usize) -> String
 pub fn decrypt_str_or_original(s: &str, current_version: &str) -> (String, bool, bool) {
     if s.len() > VERSION_LEN {
         if s.starts_with("00") {
-            if let Ok(v) = decrypt(s[VERSION_LEN..].as_bytes()) {
+            if let Ok(decrypted) = decrypt(s[VERSION_LEN..].as_bytes()) {
                 return (
-                    String::from_utf8_lossy(&v).to_string(),
+                    String::from_utf8_lossy(&decrypted.value).to_string(),
                     true,
-                    "00" != current_version,
+                    decrypted.should_rewrap || "00" != current_version,
                 );
             }
         }
@@ -158,8 +158,12 @@ pub fn decrypt_vec_or_original(v: &[u8], current_version: &str) -> (Vec<u8>, boo
     if v.len() > VERSION_LEN {
         let version = String::from_utf8_lossy(&v[..VERSION_LEN]);
         if version == "00" {
-            if let Ok(v) = decrypt(&v[VERSION_LEN..]) {
-                return (v, true, version != current_version);
+            if let Ok(decrypted) = decrypt(&v[VERSION_LEN..]) {
+                return (
+                    decrypted.value,
+                    true,
+                    decrypted.should_rewrap || version != current_version,
+                );
             }
         }
     }
@@ -177,9 +181,15 @@ fn encrypt(v: &[u8]) -> Result<String, ()> {
     }
 }
 
-fn decrypt(v: &[u8]) -> Result<Vec<u8>, ()> {
+struct DecryptedStorage {
+    value: Vec<u8>,
+    should_rewrap: bool,
+}
+
+fn decrypt(v: &[u8]) -> Result<DecryptedStorage, ()> {
     if !v.is_empty() {
-        base64::decode(v, base64::Variant::Original).and_then(|v| symmetric_crypt(&v, false))
+        base64::decode(v, base64::Variant::Original)
+            .and_then(|decoded| open_at_rest_payload(&decoded))
     } else {
         Err(())
     }
@@ -199,18 +209,25 @@ pub fn symmetric_crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, ()> {
         output.extend(encrypted);
         Ok(output)
     } else {
-        match crate::at_rest_storage_key() {
-            Ok(storage_key) => {
-                let key = secretbox_key_from_storage_key(storage_key.clone())?;
-                match open_secretbox_payload(data, &key) {
-                    Ok(v) => Ok(v),
-                    Err(_) => open_with_existing_key_pair(data, Some(&storage_key)),
-                }
+        open_at_rest_payload(data).map(|decrypted| decrypted.value)
+    }
+}
+
+fn open_at_rest_payload(data: &[u8]) -> Result<DecryptedStorage, ()> {
+    match crate::at_rest_storage_key() {
+        Ok(storage_key) => {
+            let key = secretbox_key_from_storage_key(storage_key.clone())?;
+            match open_secretbox_payload(data, &key) {
+                Ok(value) => Ok(DecryptedStorage {
+                    value,
+                    should_rewrap: false,
+                }),
+                Err(_) => open_with_existing_key_pair(data, Some(&storage_key)),
             }
-            Err(err) => {
-                log::error!("At-rest storage key unavailable for decryption: {err}");
-                open_with_existing_key_pair(data, None)
-            }
+        }
+        Err(err) => {
+            log::error!("At-rest storage key unavailable for decryption: {err}");
+            open_with_existing_key_pair(data, None)
         }
     }
 }
@@ -226,7 +243,10 @@ fn secretbox_key_from_storage_key(mut storage_key: Vec<u8>) -> Result<secretbox:
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn open_with_existing_key_pair(data: &[u8], primary_key: Option<&[u8]>) -> Result<Vec<u8>, ()> {
+fn open_with_existing_key_pair(
+    data: &[u8],
+    primary_key: Option<&[u8]>,
+) -> Result<DecryptedStorage, ()> {
     let Some(key_pair) = Config::get_existing_key_pair() else {
         return Err(());
     };
@@ -235,12 +255,29 @@ fn open_with_existing_key_pair(data: &[u8], primary_key: Option<&[u8]>) -> Resul
         return Err(());
     }
     let key = secretbox_key_from_storage_key(pk)?;
-    open_secretbox_payload(data, &key)
+    open_secretbox_payload(data, &key).map(|value| DecryptedStorage {
+        value,
+        should_rewrap: false,
+    })
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-fn open_with_existing_key_pair(_data: &[u8], _primary_key: Option<&[u8]>) -> Result<Vec<u8>, ()> {
-    Err(())
+fn open_with_existing_key_pair(
+    data: &[u8],
+    primary_key: Option<&[u8]>,
+) -> Result<DecryptedStorage, ()> {
+    let Some(key_pair) = Config::get_existing_key_pair() else {
+        return Err(());
+    };
+    let pk = key_pair.1;
+    if primary_key == Some(pk.as_slice()) {
+        return Err(());
+    }
+    let key = secretbox_key_from_storage_key(pk)?;
+    open_secretbox_payload(data, &key).map(|value| DecryptedStorage {
+        value,
+        should_rewrap: true,
+    })
 }
 
 fn open_secretbox_payload(data: &[u8], key: &secretbox::Key) -> Result<Vec<u8>, ()> {

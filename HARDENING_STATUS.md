@@ -3835,34 +3835,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
-- **Mobile (iOS + Android) at-rest config wrapper keyed by `get_uuid()`** — the mobile face of Appendix
-  C #14. On BOTH iOS and Android the
-  `password_prs` at-rest wrapper is keyed by the config keypair PK (`get_uuid()` — the off-file
-  `machine_uid` block is cfg-compiled out on both mobile platforms, `lib.rs:331`), which is itself
-  stored in plaintext in the same TOML, so the `symmetric_crypt` wrapper adds no confidentiality over
-  a plain config read. Scoped out, not fixed: §2 explicitly excludes endpoint at-rest reads, and the
-  stored value is already the Argon2id PRS (a memory-hard salted hash, R-P1/R-S9) — not the plaintext
-  password and not the OS/sudo credential even when those are reused — so a cold read yields only the
-  connect-equivalent hash. A proper fix rebinds the **mobile** at-rest key to the iOS Keychain
-  (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, `kSecUseDataProtectionKeychain`) / Android Keystore
-  (AES-256-GCM, StrongBox + TEE fallback, non-auth-bound, `setUnlockedDeviceRequired(false)`) — a
-  device-bound, hardware-wrapped, this-device-only random storage key — sourced ONLY by `symmetric_crypt`
-  via a new `at_rest_storage_key()` seam (NOT `get_uuid()`, a separate device-id function also exported as
-  the `main_get_uuid` FFI), and it MUST NOT change `derive_cpace_prs` output bytes (only the wrapper's key
-  SOURCE changes). A full fail-safe design + no-data-loss proof was worked out (2026-07-06): encrypt under
-  the hardware key; on decrypt try it, else **fall back to the legacy PK key and re-wrap** (the exact
-  desktop pattern at `password_security.rs:203-215`/`:546`, generalized to mobile); adopt the hardware key
-  only after an in-process encrypt→decrypt **self-test** passes, else degrade to today's behavior — so a
-  broken Keystore/Keychain/JNI integration cannot lose data; and the ultimate backstop is that the stored
-  value is `Argon2id(password)`, re-derivable by re-entering the password. It is NOT landed now: it is
-  LOW-severity (both local-exfil channels below are already closed), it lives in the single
-  highest-blast-radius at-rest chokepoint (`symmetric_crypt` keys EVERY at-rest secret — `config.password`
-  / `password_prs`, per-peer creds, socks pw, `unlock_pin`, `enc_id`, address book), and its
-  Keystore/Keychain round-trip is unverifiable on this Linux host (no device/emulator; iOS unbuildable; a
-  JNI marshaling error under `panic='abort'` can hard-abort rather than surface catchably). The fail-safe
-  design is ready to land after ONE on-device validation pass (Android emulator first; iOS as
-  source-conformance like the fork's other Apple-gated items) — recorded as a documented residual, not a
-  partial, unverifiable change. The Documents directory this wrapper
+- **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
+  SOURCE IMPLEMENTED 2026-07-18; ON-DEVICE/ARTIFACT VALIDATION PENDING.** This is the mobile face of
+  Appendix C #14. The old path on BOTH iOS and Android keyed `password_prs` at rest with the config
+  keypair PK (`get_uuid()` / `Config::get_key_pair().1` — the off-file `machine_uid` block is
+  cfg-compiled out on both mobile platforms), which is itself stored in plaintext in the same TOML, so the
+  `symmetric_crypt` wrapper added no confidentiality over a plain config read. The current source removes
+  that path as the primary key source: `libs/hbb_common/src/lib.rs::at_rest_storage_key()` on mobile now
+  returns only an already-installed 32-byte process key accepted by `set_mobile_at_rest_storage_key()`;
+  empty/wrong-length keys and failed encrypt→decrypt self-tests are rejected. `get_uuid()` is separated
+  back into mobile device-id metadata through `mobile_device_id()`, so the OS storage key is not exported
+  through `main_get_uuid`. Android process startup
+  (`flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt`) obtains a private
+  random storage key from `MobileAtRestStorageKey.kt`, where it is wrapped by `AndroidKeyStore` AES-256-GCM
+  with StrongBox attempted first and TEE fallback, non-auth-bound, and `setUnlockedDeviceRequired(false)`;
+  partial/corrupt stored envelopes fail closed, first creation requires a durable `SharedPreferences.commit()`,
+  and the committed envelope is re-read as a round-trip self-test before Rust injection through
+  `FFI.setMobileAtRestStorageKey`. iOS startup
+  (`flutter/ios/Runner/AppDelegate.swift`) loads or creates the same 32-byte random storage key as a
+  Keychain generic-password item using `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and
+  `kSecUseDataProtectionKeychain`, re-reads it before adoption, and injects it into Rust through
+  `rustdesk_set_mobile_at_rest_storage_key` declared in the bridging header. `derive_cpace_prs` output bytes
+  are unchanged; only the storage wrapper's key source changes. Existing mobile ciphertext encrypted under
+  the legacy config keypair is still accepted only as a read-only decrypt fallback through
+  `Config::get_existing_key_pair()`; when that fallback succeeds, `decrypt_str_or_original` /
+  `decrypt_vec_or_original` mark the value for re-store so the next write rewraps under the OS key. This
+  is still not artifact-closed: the Keystore/Keychain/JNI/Swift round trips were source-gated here, but not
+  run on an Android emulator/device or iOS build host in this loop. The Documents directory this wrapper
   sits in had **two** local-exfiltration channels, now closed by two separate fixes: (a) the **Files-app /
   iTunes file-sharing BROWSE** channel was closed by the APPLE-6 plist fix (dropping
   `UIFileSharingEnabled`/`UISupportsDocumentBrowser`, so the directory is no longer user-browsable); and

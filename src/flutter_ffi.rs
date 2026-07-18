@@ -45,6 +45,30 @@ lazy_static::lazy_static! {
     static ref TEXTURE_RENDER_KEY: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[no_mangle]
+pub unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key(
+    key: *const u8,
+    len: usize,
+) -> bool {
+    if key.is_null() {
+        log::error!("Rejected null mobile at-rest storage key");
+        return false;
+    }
+    if len != hbb_common::MOBILE_AT_REST_STORAGE_KEY_LEN {
+        log::error!("Rejected mobile at-rest storage key with invalid length: {len}");
+        return false;
+    }
+    let key = std::slice::from_raw_parts(key, len);
+    match hbb_common::set_mobile_at_rest_storage_key(key) {
+        Ok(()) => true,
+        Err(err) => {
+            log::error!("Rejected mobile at-rest storage key: {err}");
+            false
+        }
+    }
+}
+
 fn initialize(app_dir: &str, custom_client_config: &str) {
     // `APP_DIR` is set in `main_get_data_dir_ios()` on iOS.
     #[cfg(not(target_os = "ios"))]
@@ -2308,12 +2332,35 @@ pub mod server_side {
     use hbb_common::{config, log};
     use jni::{
         errors::{Error as JniError, Result as JniResult},
-        objects::{JClass, JObject, JString},
+        objects::{JByteArray, JClass, JObject, JString},
         sys::{jboolean, jint, jstring},
         JNIEnv,
     };
 
     use crate::start_server;
+
+    #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_setMobileAtRestStorageKey(
+        env: JNIEnv,
+        _class: JClass,
+        key: JByteArray,
+    ) -> jboolean {
+        let mut env = env;
+        let key = match env.convert_byte_array(&key) {
+            Ok(key) => key,
+            Err(err) => {
+                log::error!("Failed to receive Android at-rest storage key: {err}");
+                return jboolean::from(false);
+            }
+        };
+        match hbb_common::set_mobile_at_rest_storage_key(&key) {
+            Ok(()) => jboolean::from(true),
+            Err(err) => {
+                log::error!("Rejected Android at-rest storage key: {err}");
+                jboolean::from(false)
+            }
+        }
+    }
 
     #[no_mangle]
     pub unsafe extern "system" fn Java_ffi_FFI_startServer(

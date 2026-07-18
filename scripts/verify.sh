@@ -466,7 +466,15 @@ fi
 echo "== (3b-iii-a1) desktop at-rest wrapper does not mint service identity material (R-S11b-3f) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pk_fallback --color never
 r_s11b3f=
-get_uuid_body=$(awk '/^pub fn get_uuid\(\) -> Vec<u8> \{/{flag=1} flag{print} flag && /^}/{exit}' libs/hbb_common/src/lib.rs)
+get_uuid_body=$(awk '
+  /^pub fn get_uuid\(\) -> Vec<u8> \{/ { flag=1 }
+  flag {
+    print
+    depth += gsub(/\{/, "{")
+    depth -= gsub(/\}/, "}")
+    if (depth == 0) exit
+  }
+' libs/hbb_common/src/lib.rs)
 echo "$get_uuid_body" | grep -q 'machine_uuid()' || r_s11b3f="$r_s11b3f desktop-uuid-not-machine-uid"
 if echo "$get_uuid_body" | grep -q 'Config::get_key_pair'; then
   r_s11b3f="$r_s11b3f desktop-uuid-mints-keypair"
@@ -486,6 +494,96 @@ grep -A14 'pub fn encrypt_str_or_original' libs/hbb_common/src/password_security
 grep -A18 'pub fn encrypt_vec_or_original' libs/hbb_common/src/password_security.rs | grep -q 'return Vec::new()' || r_s11b3f="$r_s11b3f vec-encrypt-failure-not-fail-closed"
 if [ -n "$r_s11b3f" ]; then echo "  FAIL R-S11b-3f desktop at-rest key/identity boundary:$r_s11b3f"; rc=1; else
   echo "  ok  R-S11b-3f desktop at-rest wrapping uses a fallible machine-UID key, never get_uuid/keypair generation; legacy keypair decrypt remains read-only and mobile-only generation is cfg-isolated"; fi
+
+echo "== (3b-iii-a1m) mobile at-rest wrapper uses OS-protected storage key (Appendix C #14 mobile) =="
+mobile_at_rest_bad=
+grep -qF 'static ref MOBILE_AT_REST_STORAGE_KEY' libs/hbb_common/src/lib.rs \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-key-cache-missing"
+grep -qF 'pub const MOBILE_AT_REST_STORAGE_KEY_LEN: usize = sodiumoxide::crypto::secretbox::KEYBYTES' libs/hbb_common/src/lib.rs \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-key-len-not-secretbox-keybytes"
+grep -qF 'pub fn set_mobile_at_rest_storage_key(key: &[u8]) -> ResultType<()> {' libs/hbb_common/src/lib.rs \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-key-setter-missing"
+grep -A32 'pub fn set_mobile_at_rest_storage_key' libs/hbb_common/src/lib.rs | grep -qF 'mobile at-rest storage key self-test failed' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-key-self-test-missing"
+mobile_at_rest_body=$(awk '
+  /^pub fn at_rest_storage_key\(\) -> ResultType<Vec<u8>> \{/ { flag=1 }
+  flag {
+    print
+    depth += gsub(/\{/, "{")
+    depth -= gsub(/\}/, "}")
+    if (depth == 0) exit
+  }
+' libs/hbb_common/src/lib.rs)
+echo "$mobile_at_rest_body" | grep -qF 'mobile_at_rest_storage_key()' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-at-rest-not-using-os-key-cache"
+if echo "$mobile_at_rest_body" | grep -qF 'Config::get_key_pair'; then
+  mobile_at_rest_bad="$mobile_at_rest_bad mobile-at-rest-still-primary-config-keypair"
+fi
+grep -qF 'fn mobile_device_id() -> Vec<u8>' libs/hbb_common/src/lib.rs \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-device-id-seam-missing"
+grep -A16 'pub unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key' src/flutter_ffi.rs | grep -qF 'len != hbb_common::MOBILE_AT_REST_STORAGE_KEY_LEN' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-c-setter-length-check-missing"
+get_uuid_body=$(awk '
+  /^pub fn get_uuid\(\) -> Vec<u8> \{/ { flag=1 }
+  flag {
+    print
+    depth += gsub(/\{/, "{")
+    depth -= gsub(/\}/, "}")
+    if (depth == 0) exit
+  }
+' libs/hbb_common/src/lib.rs)
+echo "$get_uuid_body" | grep -qF 'mobile_device_id()' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-uuid-not-separated-from-at-rest-key"
+if echo "$get_uuid_body" | grep -qF 'at_rest_storage_key()'; then
+  mobile_at_rest_bad="$mobile_at_rest_bad mobile-uuid-exposes-at-rest-key"
+fi
+grep -A20 '#\[cfg(any(target_os = "android", target_os = "ios"))\]' libs/hbb_common/src/password_security.rs | grep -qF 'Config::get_existing_key_pair()' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-legacy-keypair-fallback-missing"
+grep -A26 '#\[cfg(any(target_os = "android", target_os = "ios"))\]' libs/hbb_common/src/password_security.rs | grep -qF 'should_rewrap: true' \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-legacy-fallback-not-rewrapped"
+grep -qF 'external fun setMobileAtRestStorageKey(key: ByteArray): Boolean' flutter/android/app/src/main/kotlin/ffi.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-jni-declaration-missing"
+grep -qF 'AndroidKeyStore' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-keystore-missing"
+grep -qF 'AES/GCM/NoPadding' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-aes-gcm-missing"
+grep -qF 'setIsStrongBoxBacked(true)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-strongbox-attempt-missing"
+grep -qF 'setUnlockedDeviceRequired(false)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-unlocked-device-policy-missing"
+grep -qF 'generated.contentEquals(reread)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-roundtrip-self-test-missing"
+grep -qF '.commit()' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-envelope-durable-commit-missing"
+grep -qF 'rereadCiphertext = prefs.getString(PREF_CIPHERTEXT, null)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-envelope-reread-missing"
+awk '/FFI.setMobileAtRestStorageKey/{seen=1} /FFI.onAppStart/{if (!seen) exit 1; found=1} END{exit found ? 0 : 1}' \
+  flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-key-not-installed-before-app-start"
+grep -qF 'bool rustdesk_set_mobile_at_rest_storage_key(const uint8_t *key, uintptr_t len);' flutter/ios/Runner/Runner-Bridging-Header.h \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-c-setter-declaration-missing"
+grep -qF 'kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly' flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-this-device-keychain-policy-missing"
+grep -qF 'kSecUseDataProtectionKeychain' flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-data-protection-keychain-missing"
+grep -qF 'SecItemCopyMatching' flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-keychain-read-missing"
+grep -qF 'SecItemAdd' flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-keychain-create-missing"
+grep -qF 'SecRandomCopyBytes' flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-key-generation-missing"
+grep -qF 'rustdesk_set_mobile_at_rest_storage_key' flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-rust-key-injection-missing"
+awk '/installMobileAtRestStorageKey\(\)/{seen=1} /GeneratedPluginRegistrant.register/{if (!seen) exit 1; found=1} END{exit found ? 0 : 1}' \
+  flutter/ios/Runner/AppDelegate.swift \
+  || mobile_at_rest_bad="$mobile_at_rest_bad ios-key-not-installed-before-plugin-init"
+grep -qF 'Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage' HARDENING_STATUS.md \
+  || mobile_at_rest_bad="$mobile_at_rest_bad hardening-ledger-missing"
+if [ -n "$mobile_at_rest_bad" ]; then
+  echo "  FAIL Appendix C #14 mobile at-rest storage key boundary:$mobile_at_rest_bad"; rc=1
+else
+  echo "  ok  mobile at-rest encryption uses an injected OS-protected storage key; get_uuid is separated; legacy config-keypair ciphertext is decrypt-only and rewrapped"
+fi
 
 echo "== (3b-iii-a1b) credential-bearing local stores use one durable transactional writer (R-S11b-4d) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never

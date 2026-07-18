@@ -12,6 +12,10 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "App start")
+        val storageKey = MobileAtRestStorageKey.getOrCreate(applicationContext)
+        if (storageKey == null || !FFI.setMobileAtRestStorageKey(storageKey)) {
+            Log.e(TAG, "Mobile at-rest storage key was not installed; encrypted config reads fail closed")
+        }
         FFI.onAppStart(applicationContext)
     }
 }

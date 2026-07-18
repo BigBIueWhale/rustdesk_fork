@@ -332,6 +332,58 @@ fn log_machine_uuid_error(err: &anyhow::Error) {
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+lazy_static::lazy_static! {
+    static ref MOBILE_AT_REST_STORAGE_KEY: std::sync::RwLock<Option<Vec<u8>>> =
+        std::sync::RwLock::new(None);
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub const MOBILE_AT_REST_STORAGE_KEY_LEN: usize = sodiumoxide::crypto::secretbox::KEYBYTES;
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub fn set_mobile_at_rest_storage_key(key: &[u8]) -> ResultType<()> {
+    if key.len() != MOBILE_AT_REST_STORAGE_KEY_LEN {
+        bail!(
+            "mobile at-rest storage key has invalid length: {}",
+            key.len()
+        );
+    }
+
+    let nonce = sodiumoxide::crypto::secretbox::gen_nonce();
+    let mut key_bytes = [0u8; sodiumoxide::crypto::secretbox::KEYBYTES];
+    key_bytes.copy_from_slice(key);
+    let secretbox_key = sodiumoxide::crypto::secretbox::Key(key_bytes);
+    let plaintext = b"rustdesk-mobile-at-rest-key-self-test";
+    let ciphertext = sodiumoxide::crypto::secretbox::seal(plaintext, &nonce, &secretbox_key);
+    let opened = sodiumoxide::crypto::secretbox::open(&ciphertext, &nonce, &secretbox_key)
+        .map_err(|_| anyhow::anyhow!("mobile at-rest storage key self-test failed"))?;
+    if opened != plaintext {
+        bail!("mobile at-rest storage key self-test mismatch");
+    }
+
+    *MOBILE_AT_REST_STORAGE_KEY.write().unwrap() = Some(key.to_vec());
+    Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn mobile_at_rest_storage_key() -> ResultType<Vec<u8>> {
+    MOBILE_AT_REST_STORAGE_KEY
+        .read()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("mobile OS at-rest storage key is not initialized"))
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn mobile_device_id() -> Vec<u8> {
+    let key = Config::get_key_pair().1;
+    if key.is_empty() {
+        log::error!("mobile device id key is empty");
+    }
+    key
+}
+
 pub fn at_rest_storage_key() -> ResultType<Vec<u8>> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -339,11 +391,7 @@ pub fn at_rest_storage_key() -> ResultType<Vec<u8>> {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let key = Config::get_key_pair().1;
-        if key.is_empty() {
-            bail!("mobile at-rest storage key is empty");
-        }
-        Ok(key)
+        mobile_at_rest_storage_key()
     }
 }
 
@@ -360,13 +408,7 @@ pub fn get_uuid() -> Vec<u8> {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        match at_rest_storage_key() {
-            Ok(key) => key,
-            Err(err) => {
-                log::error!("{err}");
-                Vec::new()
-            }
-        }
+        mobile_device_id()
     }
 }
 

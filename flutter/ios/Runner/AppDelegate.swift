@@ -1,12 +1,18 @@
 import UIKit
 import Flutter
+import Security
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private let mobileAtRestKeyService = "com.carriez.rustdesk.mobile-at-rest-storage"
+  private let mobileAtRestKeyAccount = "storage-key-v1"
+  private let mobileAtRestKeyLength = 32
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    installMobileAtRestStorageKey()
     // R-X6/R-S9 (iOS twin of Android `allowBackup="false"`): keep the fork's config
     // store out of iCloud and unencrypted iTunes/Finder device backups. Applied before
     // the Flutter engine boots, so the directory is flagged before Dart/Rust create any
@@ -15,6 +21,87 @@ import Flutter
     GeneratedPluginRegistrant.register(with: self)
     dummyMethodToEnforceBundling();
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  /// The mobile at-rest wrapper key is app/device state, not RustDesk config state. Store one
+  /// random 32-byte key in the iOS Keychain as this-device-only data and inject it into Rust before
+  /// Flutter/Rust config initialization. Existing config-keypair ciphertext is handled in Rust as a
+  /// read-only legacy decrypt fallback and then re-stored under this key; new encryption never uses
+  /// the config keypair as its primary key.
+  private func installMobileAtRestStorageKey() {
+    guard let key = loadOrCreateMobileAtRestStorageKey() else {
+      NSLog("RustDesk: mobile at-rest storage key unavailable; encrypted config reads fail closed")
+      return
+    }
+    let accepted = key.withUnsafeBytes { rawBuffer -> Bool in
+      guard let baseAddress = rawBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+        return false
+      }
+      return rustdesk_set_mobile_at_rest_storage_key(baseAddress, UInt(key.count))
+    }
+    if !accepted {
+      NSLog("RustDesk: Rust rejected the iOS mobile at-rest storage key")
+    }
+  }
+
+  private func mobileAtRestKeyQuery() -> [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: mobileAtRestKeyService,
+      kSecAttrAccount as String: mobileAtRestKeyAccount,
+      kSecUseDataProtectionKeychain as String: true,
+    ]
+  }
+
+  private func loadOrCreateMobileAtRestStorageKey() -> Data? {
+    if let existing = loadMobileAtRestStorageKey() {
+      return existing
+    }
+
+    var generated = [UInt8](repeating: 0, count: mobileAtRestKeyLength)
+    let randomStatus = SecRandomCopyBytes(kSecRandomDefault, generated.count, &generated)
+    guard randomStatus == errSecSuccess else {
+      NSLog("RustDesk: failed to generate iOS mobile at-rest storage key: \(randomStatus)")
+      return nil
+    }
+
+    var addQuery = mobileAtRestKeyQuery()
+    addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    addQuery[kSecValueData as String] = Data(generated)
+    let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+    if addStatus != errSecSuccess && addStatus != errSecDuplicateItem {
+      NSLog("RustDesk: failed to store iOS mobile at-rest storage key: \(addStatus)")
+      return nil
+    }
+
+    guard let reread = loadMobileAtRestStorageKey(),
+          reread.count == mobileAtRestKeyLength,
+          reread == Data(generated) else {
+      NSLog("RustDesk: iOS mobile at-rest storage key round-trip self-test failed")
+      return nil
+    }
+    return reread
+  }
+
+  private func loadMobileAtRestStorageKey() -> Data? {
+    var query = mobileAtRestKeyQuery()
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound {
+      return nil
+    }
+    guard status == errSecSuccess else {
+      NSLog("RustDesk: failed to read iOS mobile at-rest storage key: \(status)")
+      return nil
+    }
+    guard let data = result as? Data, data.count == mobileAtRestKeyLength else {
+      NSLog("RustDesk: refusing invalid iOS mobile at-rest storage key")
+      return nil
+    }
+    return data
   }
 
   /// R-X6/R-S9: exclude the app's config store — the Documents directory that

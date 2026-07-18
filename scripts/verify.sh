@@ -2363,7 +2363,7 @@ grep -qF '<RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersio
 if verify_scan_capture "$VERIFY_TMP/r_s11e23_legacy_registry" -nE 'get_uninstall_registry_subkey|get_install_info|get_reg_of|Wow6432Node|54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93|_is1' src/platform/windows.rs; then
   r_s11e23="$r_s11e23 legacy-uninstall-registry-authority-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e23_legacy_registry")"
 fi
-grep -qF 'Windows current-package registry authority' requirements.html               || r_s11e23="$r_s11e23 requirements-disposition-missing"
+grep -qF 'Windows legacy uninstall-registry metadata selected current service policy' requirements.html || r_s11e23="$r_s11e23 requirements-disposition-missing"
 grep -qF 'R-S11e-23 — Windows current-package registry authority' HARDENING_STATUS.md  || r_s11e23="$r_s11e23 hardening-ledger-missing"
 if [ -n "$r_s11e23" ]; then echo "  FAIL R-S11e-23 Windows current-package registry authority:$r_s11e23"; rc=1; else
   echo "  ok  R-S11e-23 installed-state and service-owned RDP policy use only the current MSI product's explicit 64-bit HKLM namespace and fixed non-reparse executable root"; fi

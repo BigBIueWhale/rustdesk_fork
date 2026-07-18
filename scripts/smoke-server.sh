@@ -400,6 +400,8 @@ grep -q '^SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot amb
   || { echo "  FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment"; rc=1; }
 grep -q '^SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt"; rc=1; }
+grep -q '^SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded$' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11e-28: Linux service supervisor/child retained launcher file-descriptor authority"; rc=1; }
 grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i: unrelated non-root portable server did not survive every service transition"; rc=1; }
 if [ "$lifecycle_stage_status" -eq 0 ] && [ "$sibling_stage_status" -eq 0 ] \

@@ -11,6 +11,8 @@ readonly RECORD=/run/rustdesk/service-child.record
 readonly FIXTURE=/tmp/rd-service-lifecycle
 readonly LOGINCTL_STATE=/tmp/rd-service-loginctl-state
 readonly HOSTILE_SERVICE_CWD=/tmp/rustdesk-attacker-cwd
+readonly HOSTILE_SERVICE_DESCRIPTOR=/tmp/rustdesk-inherited-root-authority
+readonly HOSTILE_SERVICE_DESCRIPTOR_FD=198
 
 if [ "$(stat -c '%u:%g:%a' -- "$SOURCE_BINARY")" != 0:0:755 ]; then
   echo "service lifecycle source binary must be root-owned mode 0755" >&2
@@ -50,6 +52,7 @@ PRE_PIDFD_START=
 PRE_PIDFD_GENERATION=
 ROOT_ENVIRONMENT_PROVEN=0
 WORKING_DIRECTORY_PROVEN=0
+FILE_DESCRIPTOR_AUTHORITY_PROVEN=0
 
 readonly -a HOSTILE_SERVICE_ENV=(
   env
@@ -291,7 +294,8 @@ PY
 
 assert_pre_pidfd_child_alive() {
   "$READY" --is-running "$PRE_PIDFD" "$PRE_PIDFD_START"
-  python3 - "$PRE_PIDFD" "$PRE_PIDFD_START" "$BINARY" "$PRE_PIDFD_GENERATION" "$$" <<'PY'
+  python3 - "$PRE_PIDFD" "$PRE_PIDFD_START" "$BINARY" "$PRE_PIDFD_GENERATION" "$$" \
+    "$HOSTILE_SERVICE_DESCRIPTOR" <<'PY'
 import os
 import sys
 
@@ -300,6 +304,21 @@ expected_start = int(sys.argv[2])
 expected_executable = os.stat(sys.argv[3])
 expected_generation = sys.argv[4].encode("ascii")
 expected_parent = sys.argv[5].encode("ascii")
+inherited_authority = os.stat(sys.argv[6])
+
+def carries_inherited_authority(process):
+    for descriptor in os.listdir(f"/proc/{process}/fd"):
+        try:
+            metadata = os.stat(f"/proc/{process}/fd/{descriptor}")
+        except FileNotFoundError:
+            continue
+        if (metadata.st_dev, metadata.st_ino) == (
+            inherited_authority.st_dev,
+            inherited_authority.st_ino,
+        ):
+            return True
+    return False
+
 raw = open(f"/proc/{pid}/stat", "rb").read()
 fields = raw.rsplit(b") ", 1)[1].split()
 if len(fields) < 20 or fields[0] in {b"Z", b"X"} or int(fields[19]) != expected_start:
@@ -326,6 +345,8 @@ if not expected_entries.issubset(set(environ)):
     raise SystemExit("pre-pidfd service child launch authority changed")
 if os.readlink(f"/proc/{pid}/cwd") != "/":
     raise SystemExit("pre-pidfd service child retained its launcher working directory")
+if carries_inherited_authority(pid):
+    raise SystemExit("pre-pidfd service child retained launcher file-descriptor authority")
 PY
 }
 
@@ -494,6 +515,7 @@ run_rejected_record_case() {
   before_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
   if (
     cd "$HOSTILE_SERVICE_CWD"
+    exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
     exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
   ) >"$log" 2>&1; then
     service_status=0
@@ -540,7 +562,7 @@ wait_for_service_child() {
   fi
   read -r CHILD CHILD_START GENERATION < <(python3 - "$SVC" "$RECORD" \
     "$expected_uid" "$expected_gid" "$expected_user" "$expected_home" "$expected_groups" \
-    "$BINARY" <<'PY'
+    "$BINARY" "$HOSTILE_SERVICE_DESCRIPTOR" <<'PY'
 import os
 import re
 import stat
@@ -555,8 +577,25 @@ expected_user = sys.argv[5]
 expected_home = sys.argv[6]
 expected_groups = sys.argv[7]
 expected_executable = os.stat(sys.argv[8])
+inherited_authority = os.stat(sys.argv[9])
+
+def carries_inherited_authority(process):
+    for descriptor in os.listdir(f"/proc/{process}/fd"):
+        try:
+            metadata = os.stat(f"/proc/{process}/fd/{descriptor}")
+        except FileNotFoundError:
+            continue
+        if (metadata.st_dev, metadata.st_ino) == (
+            inherited_authority.st_dev,
+            inherited_authority.st_ino,
+        ):
+            return True
+    return False
+
 if os.readlink(f"/proc/{supervisor}/cwd") != "/":
     raise SystemExit("service supervisor retained its launcher working directory")
+if carries_inherited_authority(supervisor):
+    raise SystemExit("service supervisor retained launcher file-descriptor authority")
 metadata = os.lstat(record_path)
 if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
     raise SystemExit("service child record is not a single-linked regular file")
@@ -604,6 +643,8 @@ if (executable.st_dev, executable.st_ino) != (
     raise SystemExit("service child did not execute the installed binary object")
 if os.readlink(f"/proc/{pid_number}/cwd") != "/":
     raise SystemExit("service child retained its supervisor working directory")
+if carries_inherited_authority(pid_number):
+    raise SystemExit("service child retained launcher file-descriptor authority")
 argv = open(f"/proc/{pid_number}/cmdline", "rb").read().split(b"\0")
 if argv[1:] != [b"--server", b"--service-owned-server", b""]:
     raise SystemExit("service child role differs")
@@ -715,6 +756,7 @@ PY
   if [ "$expected_uid" = 0 ]; then
     ROOT_ENVIRONMENT_PROVEN=1
     WORKING_DIRECTORY_PROVEN=1
+    FILE_DESCRIPTOR_AUTHORITY_PROVEN=1
     "$READY" --wait-parked "$CHILD" "$CHILD_START" "$log" "$PROBE" "$expected_uid"
   else
     chown "$expected_user:$expected_gid" "$log"
@@ -735,6 +777,7 @@ start_service() {
   chmod 0600 "$log"
   (
     cd "$HOSTILE_SERVICE_CWD"
+    exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
     exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
   ) >"$log" 2>&1 &
   SVC=$!
@@ -753,12 +796,14 @@ start_service_recovering() {
   if [ "$force_pre_pidfd" = force-pre-pidfd ]; then
     (
       cd "$HOSTILE_SERVICE_CWD"
+      exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
       exec "${HOSTILE_SERVICE_ENV[@]}" RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
         "$BINARY" --service
     ) >"$log" 2>&1 &
   else
     (
       cd "$HOSTILE_SERVICE_CWD"
+      exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
       exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
     ) >"$log" 2>&1 &
   fi
@@ -774,6 +819,7 @@ start_pre_pidfd_recorded_child() {
   chmod 0600 "$log"
   (
     cd "$HOSTILE_SERVICE_CWD"
+    exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
     exec env RUST_LOG=info HOME=/tmp \
       RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
       RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PRE_PIDFD_GENERATION" \
@@ -823,6 +869,20 @@ install -d -o rduser -g "$portable_gid" -m 0700 "$HOSTILE_SERVICE_CWD"
 printf '%s\n' '%%%not-a-signed-custom-client%%%' > "$HOSTILE_SERVICE_CWD/custom.txt"
 chown rduser:"$portable_gid" "$HOSTILE_SERVICE_CWD/custom.txt"
 chmod 0600 "$HOSTILE_SERVICE_CWD/custom.txt"
+printf '%s\n' 'inherited-root-file-authority-must-not-cross-exec' > "$HOSTILE_SERVICE_DESCRIPTOR"
+chown root:root "$HOSTILE_SERVICE_DESCRIPTOR"
+chmod 0600 "$HOSTILE_SERVICE_DESCRIPTOR"
+(
+  exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
+  python3 - "$HOSTILE_SERVICE_DESCRIPTOR_FD" <<'PY'
+import fcntl
+import sys
+
+descriptor = int(sys.argv[1])
+if fcntl.fcntl(descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC:
+    raise SystemExit("hostile service descriptor unexpectedly has FD_CLOEXEC")
+PY
+)
 install -o root -g root -m 0555 "$BINARY" "$FIXTURE/bin/rustdesk"
 install -o root -g root -m 0555 "$LAUNCHER" "$FIXTURE/bin/smoke-server-launcher"
 install -o root -g root -m 0555 "$READY" "$FIXTURE/bin/smoke-ready.sh"
@@ -1068,6 +1128,8 @@ printf 'SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=%s groups=%s generati
 printf 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded\n'
 [ "$WORKING_DIRECTORY_PROVEN" = 1 ]
 printf 'SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded\n'
+[ "$FILE_DESCRIPTOR_AUTHORITY_PROVEN" = 1 ]
+printf 'SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded\n'
 
 "$READY" --stop "$PORTABLE" "$PORTABLE_START"
 wait "$PORTABLE"

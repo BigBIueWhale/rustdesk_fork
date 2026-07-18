@@ -18,8 +18,8 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 796 lexical `unsafe {`
-blocks across 243 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 797 lexical `unsafe {`
+blocks across 244 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -1967,6 +1967,51 @@ unreachable and a source/test/AST gate prevents reintroduction.
   fixture (`scratch replacement fixture missed the descriptor-owned directory`); that unrelated assertion was not
   bypassed or weakened, so this entry claims the focused source/mutation/runtime evidence, not that self-test. This
   slice does not claim final execution of a cold release `.deb` or overall R-B2 completion.
+- **R-S11e-28 — Linux service-owned inherited descriptor authority — SOURCE, FOCUSED, AND
+  ACTUAL-DEBUG-BINARY RUNTIME VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH
+  R-B2/R-S11c-27.** Platform: Linux root service supervisor and
+  root/login-screen, active-user, and direct pre-pidfd service-owned server children. Endpoint/action: inherited
+  file-descriptor table at exact service-role bootstrap and supervisor-to-child `fork`/`exec`. Boundary:
+  init/manual/sudo launcher and privileged supervisor kernel-object capabilities ↔ service-owned runtime and
+  privilege-dropped child. Attack surface closed: Linux preserves an open descriptor across `execve` unless
+  `FD_CLOEXEC` is set. The service bootstrap did not close launcher descriptors, and the child pre-exec hook
+  cleared close-on-exec only for its exact executable without first constraining every other inherited descriptor.
+  A root-open file, directory, device, socket, or namespace handle can therefore remain usable after uid drop even
+  where pathname permission prevents reopening it. A pre-fix current debug binary launched directly as the exact
+  service-owned child retained fd 198 to a root-owned mode-0600 file in the live process. That proves the capability
+  leak at the supported manual/supervisor boundary; it does not prove that an ordinary user can cause a correctly
+  configured privileged launcher to admit an arbitrary descriptor. Standard managers and sudo commonly mitigate
+  this class, so it is classified as a privileged-launch confused deputy and root-to-child capability leak, not a
+  demonstrated promptless standard-user-to-root escalation.
+
+  Closure: exact Linux service roles now preserve only descriptors 0–2 as deliberate launcher process I/O. Before
+  cwd, global, custom-client, config, IPC, or network initialization, the supervisor and final child call
+  `close_range(3, UINT_MAX, 0)` and fail closed; if that syscall is unavailable or rejected, raw `close` plus
+  `fcntl(F_GETFD)` verification walks the canonical `/proc/sys/fs/nr_open` bound and treats only `EBADF` as already
+  closed. Before every child credential change, the allocation-free `pre_exec` hook applies
+  `close_range(..., CLOSE_RANGE_CLOEXEC)` with a raw `fcntl(F_GETFD/F_SETFD)` fallback over the parent-resolved
+  bound. Only the forked active-user child then clears `FD_CLOEXEC` on the already-opened, identity-checked exact
+  executable object; the final RustDesk image closes that descriptor during owning-supervisor liveness proof and
+  then closes every remaining non-stdio descriptor. The parent keeps its own descriptor table unchanged.
+
+  The full Linux library compiles under pinned Rust 1.75 in a non-root, network-disabled, capability-free,
+  no-new-privileges container with source and Cargo caches read-only. Shell/Python syntax checks and the dependency
+  inventory self-test pass. `scripts/verify.sh` and the verifier-workspace validator bind the `close_range` fast
+  paths, bounded raw-syscall fallbacks, canonical kernel bound, pre-exec-before-credentials ordering, final-image
+  close-before-initialization ordering, exact-executable exception and close, R-S11n, Appendix C #136, and the
+  mandatory hostile lifecycle result. Mutation cases replace `CLOSE_RANGE_CLOEXEC`, weaken the pre-exec policy,
+  delete final-image cleanup, delete live supervisor descriptor inspection, and downgrade the top-level result.
+  The lifecycle fixture opens fd 198 without close-on-exec to a root-only file in every manual launch path and
+  compares that object's device/inode against every live supervisor and child descriptor. The rebuilt current
+  debug binary and smoke readiness example passed that networkless Docker lifecycle fixture: graceful, forced,
+  crash/restart, pre-pidfd recovery, active-user credential drop, cwd, portable-sibling, and cross-container
+  identity checks passed, and the fixture emitted
+  `SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded` with
+  staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
+  debug-binary runtime evidence only; final exact release `.deb` execution remains open under R-B2/R-S11c-27.
+  The helper adds one reviewed lexical
+  `unsafe {` block; the current inventory is 797 blocks across 244 tracked Rust files/66 nonzero files with digest
+  `b7f097f7e38f9d76a86d784a6245a582d6d0dd4fe842b11ef38796b2389b01a0`.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2799,9 +2844,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; the current machine inventory is 796 across 244 tracked Rust files/66 nonzero files, with the added
+    blocks; the current machine inventory is 797 across 244 tracked Rust files/66 nonzero files, with the added
     deterministic Windows resource producer containing no lexical unsafe block and per-file-count digest
-    `f8cdc3616c8aeb27b30f3b273d37ce4b5617ac537e79372ecdad5fde5015e31d`.
+    `b7f097f7e38f9d76a86d784a6245a582d6d0dd4fe842b11ef38796b2389b01a0`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -2901,7 +2946,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     R-T9 drain. Its modifier/key-release cleanup instead runs inside `finish_graceful_shutdown()`, after the bounded
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
     introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
-    deterministic Windows resource-producer addition, the settled inventory remains 796 across 244 tracked Rust
+    deterministic Windows resource-producer addition and the later R-S11e-28 descriptor closure, the current inventory is 797 across 244 tracked Rust
     files/66 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
@@ -4243,8 +4288,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c452cbea6cd7850038b69de9b8dbe6dcd93e6a7f72de7710abf626eaf6d5774a  requirements.html
+fe44dc116aa607d8ea47196f41323f7927074588d5b197185629375a54509d6a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11m, and Appendix C #135. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, and Appendix C #136. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

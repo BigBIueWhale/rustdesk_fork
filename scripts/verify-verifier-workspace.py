@@ -3295,6 +3295,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11c-27r — native runit lifecycle authority' HARDENING_STATUS.md", "native runit hardening ledger gate"),
         ('Linux service-owned working-directory authority (R-S11m/R-S11e-27)', "service cwd source gate"),
         ("grep -qF 'R-S11e-27 — Linux service-owned working-directory authority' HARDENING_STATUS.md", "service cwd hardening ledger gate"),
+        ('Linux service-owned inherited descriptor authority (R-S11n/R-S11e-28)', "service inherited descriptor source gate"),
+        ("grep -qF 'R-S11e-28 — Linux service-owned inherited descriptor authority' HARDENING_STATUS.md", "service inherited descriptor hardening ledger gate"),
     ):
         require_text(verify, text, label)
     require_text(
@@ -3306,6 +3308,11 @@ def validate_smoke_contract(
         hardening,
         "R-S11e-27 — Linux service-owned working-directory authority",
         "service cwd hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-28 — Linux service-owned inherited descriptor authority",
+        "service inherited descriptor hardening ledger",
     )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -3337,6 +3344,8 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27o', "actual PID reuse stage status preservation"),
         ('FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt', "service cwd runtime result consumer"),
         ('SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded', "service cwd result binding"),
+        ('FAIL R-S11e-28: Linux service supervisor/child retained launcher file-descriptor authority', "service inherited descriptor runtime result consumer"),
+        ('SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded', "service inherited descriptor result binding"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
@@ -3601,8 +3610,23 @@ def validate_smoke_contract(
         ('os.readlink(f"/proc/{pid_number}/cwd") != "/"', "service child cwd runtime proof"),
         ('service consumed custom.txt from its hostile launcher directory', "ambient custom sidecar rejection"),
         ('SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded', "service cwd lifecycle result"),
+        ('readonly HOSTILE_SERVICE_DESCRIPTOR=/tmp/rustdesk-inherited-root-authority', "hostile inherited descriptor fixture"),
+        ('readonly HOSTILE_SERVICE_DESCRIPTOR_FD=198', "hostile inherited descriptor number"),
+        ('fcntl.fcntl(descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC', "hostile descriptor non-close-on-exec proof"),
+        ('inherited_authority = os.stat(', "inherited descriptor object identity"),
+        ('def carries_inherited_authority(process):', "inherited descriptor procfs scanner"),
+        ('if carries_inherited_authority(supervisor):', "supervisor inherited descriptor runtime proof"),
+        ('if carries_inherited_authority(pid_number):', "service child inherited descriptor runtime proof"),
+        ('if carries_inherited_authority(pid):', "pre-pidfd inherited descriptor runtime proof"),
+        ('SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded', "service inherited descriptor lifecycle result"),
     ):
         require_text(service_lifecycle, text, label)
+    require_exact_count(
+        service_lifecycle,
+        'exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"',
+        6,
+        "hostile inherited descriptor launch matrix",
+    )
     for text, label in (
         ('os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC', "exclusive no-follow hostile-record fixture"),
         ('before_identity=$(stat -c \'%d:%i:%u:%g:%a:%h:%s:%Y:%Z\'', "hostile-record metadata snapshot"),
@@ -3859,10 +3883,84 @@ def validate_smoke_contract(
         ),
         "service cwd binding before initialization",
     )
+    require_order(
+        service_bootstrap,
+        (
+            "crate::platform::require_service_owned_server_parent_liveness()",
+            "crate::platform::close_service_owned_nonstdio_descriptors()",
+            "std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY)",
+            "crate::common::global_init()",
+        ),
+        "service inherited descriptor close before initialization",
+    )
     require_text(
         service_bootstrap,
         "Linux service-owned working-directory authority failed closed",
         "service cwd fail-closed diagnostic",
+    )
+    require_text(
+        service_bootstrap,
+        "Linux service-owned inherited file-descriptor authority failed closed",
+        "service inherited descriptor fail-closed diagnostic",
+    )
+    descriptor_helper = extract_between(
+        linux_source,
+        "enum ServiceDescriptorDisposition {",
+        "\nfn arm_service_child_parent_death",
+        "Linux service descriptor cleanup",
+    )
+    for text, label in (
+        ('fs::read_to_string("/proc/sys/fs/nr_open")', "service descriptor fallback bound source"),
+        ('!value.bytes().all(|byte| byte.is_ascii_digit())', "service descriptor canonical bound validation"),
+        ('hbb_common::libc::SYS_close_range', "service descriptor close-range implementation"),
+        ('ServiceDescriptorDisposition::CloseOnExec => hbb_common::libc::CLOSE_RANGE_CLOEXEC,', "service descriptor close-on-exec implementation"),
+        ('hbb_common::libc::SYS_close', "service descriptor close fallback"),
+        ('hbb_common::libc::SYS_fcntl', "service descriptor fcntl fallback"),
+        ('hbb_common::libc::F_GETFD', "service descriptor fallback inspection"),
+        ('hbb_common::libc::F_SETFD', "service descriptor fallback mutation"),
+        ('hbb_common::libc::FD_CLOEXEC', "service descriptor fallback close-on-exec flag"),
+        ('Some(hbb_common::libc::EBADF)', "service descriptor absent-fd handling"),
+        ('constrain_service_owned_nonstdio_descriptors(last_fd, ServiceDescriptorDisposition::Close)', "service final-image close policy"),
+    ):
+        require_text(descriptor_helper, text, label)
+    require_order(
+        descriptor_helper,
+        (
+            "hbb_common::libc::SYS_close_range",
+            "for fd in (hbb_common::libc::STDERR_FILENO + 1)..=last_fd",
+        ),
+        "service descriptor close-range fallback ordering",
+    )
+    service_child_pre_exec = extract_between(
+        linux_source,
+        "fn configure_service_child_pre_exec(",
+        "\nfn insert_nonempty_env",
+        "Linux service child pre-exec",
+    )
+    require_text(
+        service_child_pre_exec,
+        "ServiceDescriptorDisposition::CloseOnExec",
+        "service child pre-exec inherited descriptor policy",
+    )
+    require_order(
+        service_child_pre_exec,
+        (
+            "ServiceDescriptorDisposition::CloseOnExec",
+            "hbb_common::libc::SYS_setgroups",
+            "hbb_common::libc::F_SETFD",
+        ),
+        "service child pre-exec descriptor ordering",
+    )
+    service_child_liveness = extract_between(
+        linux_source,
+        "pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {",
+        "\n#[inline]\nfn start_server(",
+        "Linux service child final-image liveness",
+    )
+    require_text(
+        service_child_liveness,
+        "nix::unistd::close(executable_fd)",
+        "service child exact executable descriptor close",
     )
     service_child_launch = extract_between(
         linux_source,
@@ -9611,7 +9709,37 @@ def run_source_mutations(sources):
             "smoke",
             'SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded',
             'SERVICE_LIFECYCLE_WORKING_DIRECTORY=skipped supervisor=/ child=/ ambient=excluded',
-            "service cwd runtime result consumer",
+            "service cwd result binding",
+        ),
+        (
+            "linux_source",
+            'ServiceDescriptorDisposition::CloseOnExec => hbb_common::libc::CLOSE_RANGE_CLOEXEC,',
+            'ServiceDescriptorDisposition::CloseOnExec => 0,',
+            "service descriptor close-on-exec implementation",
+        ),
+        (
+            "linux_source",
+            'ServiceDescriptorDisposition::CloseOnExec,\n            )?;',
+            'ServiceDescriptorDisposition::Close,\n            )?;',
+            "service child pre-exec inherited descriptor policy",
+        ),
+        (
+            "core_main",
+            'crate::platform::close_service_owned_nonstdio_descriptors()',
+            'crate::platform::close_service_owned_nonstdio_descriptors_disabled()',
+            "service inherited descriptor close before initialization",
+        ),
+        (
+            "service_lifecycle",
+            'if carries_inherited_authority(supervisor):',
+            'if False: # supervisor inherited descriptor proof removed',
+            "supervisor inherited descriptor runtime proof",
+        ),
+        (
+            "smoke",
+            'SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded',
+            'SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=skipped supervisor=excluded child=excluded ambient=excluded',
+            "service inherited descriptor result binding",
         ),
         (
             "service_lifecycle",

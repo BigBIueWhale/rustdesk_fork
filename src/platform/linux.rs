@@ -1706,6 +1706,103 @@ fn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ServiceDescriptorDisposition {
+    Close,
+    CloseOnExec,
+}
+
+fn linux_service_descriptor_upper_bound() -> ResultType<c_int> {
+    let raw = fs::read_to_string("/proc/sys/fs/nr_open")
+        .map_err(|err| anyhow!("Failed to read the Linux descriptor-table bound: {err}"))?;
+    let value = raw.trim_end_matches('\n');
+    if value.is_empty()
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+        || (value.len() > 1 && value.starts_with('0'))
+    {
+        bail!("Linux descriptor-table bound is not canonical decimal");
+    }
+    let last_fd = value
+        .parse::<c_int>()
+        .map_err(|err| anyhow!("Linux descriptor-table bound is invalid: {err}"))?;
+    if last_fd <= hbb_common::libc::STDERR_FILENO {
+        bail!("Linux descriptor-table bound does not cover non-stdio descriptors");
+    }
+    Ok(last_fd)
+}
+
+fn constrain_service_owned_nonstdio_descriptors(
+    last_fd: c_int,
+    disposition: ServiceDescriptorDisposition,
+) -> std::io::Result<()> {
+    let close_range_flags = match disposition {
+        ServiceDescriptorDisposition::Close => 0,
+        ServiceDescriptorDisposition::CloseOnExec => hbb_common::libc::CLOSE_RANGE_CLOEXEC,
+    };
+    unsafe {
+        if hbb_common::libc::syscall(
+            hbb_common::libc::SYS_close_range,
+            (hbb_common::libc::STDERR_FILENO + 1) as c_uint,
+            c_uint::MAX,
+            close_range_flags,
+        ) == 0
+        {
+            return Ok(());
+        }
+
+        for fd in (hbb_common::libc::STDERR_FILENO + 1)..=last_fd {
+            match disposition {
+                ServiceDescriptorDisposition::Close => {
+                    if hbb_common::libc::syscall(hbb_common::libc::SYS_close, fd) == -1 {
+                        let close_err = std::io::Error::last_os_error();
+                        if hbb_common::libc::syscall(
+                            hbb_common::libc::SYS_fcntl,
+                            fd,
+                            hbb_common::libc::F_GETFD,
+                        ) != -1
+                            || std::io::Error::last_os_error().raw_os_error()
+                                != Some(hbb_common::libc::EBADF)
+                        {
+                            return Err(close_err);
+                        }
+                    }
+                }
+                ServiceDescriptorDisposition::CloseOnExec => {
+                    let descriptor_flags = hbb_common::libc::syscall(
+                        hbb_common::libc::SYS_fcntl,
+                        fd,
+                        hbb_common::libc::F_GETFD,
+                    );
+                    if descriptor_flags == -1 {
+                        let err = std::io::Error::last_os_error();
+                        if err.raw_os_error() == Some(hbb_common::libc::EBADF) {
+                            continue;
+                        }
+                        return Err(err);
+                    }
+                    if descriptor_flags & c_long::from(hbb_common::libc::FD_CLOEXEC) == 0
+                        && hbb_common::libc::syscall(
+                            hbb_common::libc::SYS_fcntl,
+                            fd,
+                            hbb_common::libc::F_SETFD,
+                            descriptor_flags | c_long::from(hbb_common::libc::FD_CLOEXEC),
+                        ) == -1
+                    {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn close_service_owned_nonstdio_descriptors() -> ResultType<()> {
+    let last_fd = linux_service_descriptor_upper_bound()?;
+    constrain_service_owned_nonstdio_descriptors(last_fd, ServiceDescriptorDisposition::Close)
+        .map_err(|err| anyhow!("Failed to close inherited non-stdio descriptors: {err}"))
+}
+
 fn arm_service_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> std::io::Result<()> {
     // `PR_SET_PDEATHSIG` is cleared by a credential change and can also be cleared by
     // executing a privileged file. Arm it after the optional uid/gid drop in the pre-exec
@@ -1735,12 +1832,17 @@ fn configure_service_child_pre_exec(
     expected_parent: hbb_common::libc::pid_t,
     credentials: Option<ServiceChildCredentials>,
     executable_fd: Option<c_int>,
-) {
+) -> ResultType<()> {
+    let descriptor_upper_bound = linux_service_descriptor_upper_bound()?;
     // The closure performs only raw Linux syscalls and reads already-owned memory. It does
     // not allocate, lock, inspect the environment, or call NSS after fork. The parent
     // resolves the complete credential set before registering this hook.
     unsafe {
         command.pre_exec(move || {
+            constrain_service_owned_nonstdio_descriptors(
+                descriptor_upper_bound,
+                ServiceDescriptorDisposition::CloseOnExec,
+            )?;
             if let Some(credentials) = credentials.as_ref() {
                 syscall_succeeded(hbb_common::libc::syscall(
                     hbb_common::libc::SYS_setgroups,
@@ -1782,6 +1884,7 @@ fn configure_service_child_pre_exec(
             arm_service_child_parent_death(expected_parent)
         });
     }
+    Ok(())
 }
 
 fn insert_nonempty_env(command: &mut Command, key: &str, value: &str) {
@@ -1879,7 +1982,7 @@ fn try_start_server_(
     let executable_fd = child_executable
         .as_ref()
         .map(|executable| executable.as_raw_fd());
-    configure_service_child_pre_exec(&mut command, parent_pid, credentials, executable_fd);
+    configure_service_child_pre_exec(&mut command, parent_pid, credentials, executable_fd)?;
     let spawn_result = command.spawn();
     drop(child_executable);
     let mut process = spawn_result?;
@@ -3426,7 +3529,7 @@ mod process_cleanup_tests {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         if bind_to_parent {
-            configure_service_child_pre_exec(&mut command, parent_pid, None, None);
+            configure_service_child_pre_exec(&mut command, parent_pid, None, None).unwrap();
         }
         let mut child = command.spawn().unwrap();
         let proc_dir = PathBuf::from(format!("/proc/{}/", child.id()));

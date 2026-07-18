@@ -2580,6 +2580,91 @@ grep -qF 'R-S11e-27 — Linux service-owned working-directory authority' HARDENI
 if [ -n "$r_s11e27" ]; then echo "  FAIL R-S11e-27 Linux service-owned working-directory authority:$r_s11e27"; rc=1; else
   echo "  ok  R-S11e-27 Linux service supervisor and child bind cwd to '/', while custom.txt is executable-relative in debug and release builds"; fi
 
+# (3b-iii-d7) R-S11n/R-S11e-28: Linux service-owned roles accept no ambient
+# non-stdio descriptor capability from a manual/sudo/init launcher. The forked
+# child closes on exec everything except its exact executable object, and the
+# final service image closes every descriptor above stderr before initialization.
+echo "== (3b-iii-d7) Linux service-owned inherited descriptor authority (R-S11n/R-S11e-28) =="
+r_s11e28=
+descriptor_helper=$(awk '/enum ServiceDescriptorDisposition/,/fn arm_service_child_parent_death/' src/platform/linux.rs)
+service_child_pre_exec=$(awk '/fn configure_service_child_pre_exec\(/,/fn insert_nonempty_env/' src/platform/linux.rs)
+service_child_liveness=$(awk '/pub fn require_service_owned_server_parent_liveness\(\)/,/fn start_server\(/' src/platform/linux.rs)
+core_service_bootstrap=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/let mut args = Vec::new\(\);/' src/core_main.rs)
+for source_binding in \
+  'enum ServiceDescriptorDisposition' \
+  'CloseOnExec' \
+  'fs::read_to_string("/proc/sys/fs/nr_open")' \
+  '!value.bytes().all(|byte| byte.is_ascii_digit())' \
+  'value.len() > 1 && value.starts_with(' \
+  'hbb_common::libc::SYS_close_range' \
+  'hbb_common::libc::CLOSE_RANGE_CLOEXEC' \
+  'c_uint::MAX' \
+  'hbb_common::libc::SYS_close' \
+  'hbb_common::libc::SYS_fcntl' \
+  'hbb_common::libc::F_GETFD' \
+  'hbb_common::libc::F_SETFD' \
+  'hbb_common::libc::FD_CLOEXEC' \
+  'Some(hbb_common::libc::EBADF)' \
+  'pub fn close_service_owned_nonstdio_descriptors()' \
+  'ServiceDescriptorDisposition::Close'; do
+  grep -qF "$source_binding" <<<"$descriptor_helper" || r_s11e28="$r_s11e28 descriptor-source-binding-missing"
+done
+for pre_exec_binding in \
+  'let descriptor_upper_bound = linux_service_descriptor_upper_bound()?' \
+  'ServiceDescriptorDisposition::CloseOnExec' \
+  'hbb_common::libc::SYS_setgroups' \
+  'hbb_common::libc::SYS_setresgid' \
+  'hbb_common::libc::SYS_setresuid' \
+  'hbb_common::libc::SYS_fcntl' \
+  'hbb_common::libc::F_SETFD'; do
+  grep -qF "$pre_exec_binding" <<<"$service_child_pre_exec" || r_s11e28="$r_s11e28 child-pre-exec-binding-missing"
+done
+pre_exec_descriptor_line=$(grep -nF 'ServiceDescriptorDisposition::CloseOnExec' <<<"$service_child_pre_exec" | cut -d: -f1)
+pre_exec_groups_line=$(grep -nF 'hbb_common::libc::SYS_setgroups' <<<"$service_child_pre_exec" | cut -d: -f1)
+pre_exec_exec_fd_line=$(grep -nF 'hbb_common::libc::F_SETFD' <<<"$service_child_pre_exec" | cut -d: -f1)
+if [ -z "$pre_exec_descriptor_line" ] || [ -z "$pre_exec_groups_line" ] || [ -z "$pre_exec_exec_fd_line" ] \
+  || [ "$pre_exec_descriptor_line" -ge "$pre_exec_groups_line" ] \
+  || [ "$pre_exec_descriptor_line" -ge "$pre_exec_exec_fd_line" ]; then
+  r_s11e28="$r_s11e28 child-pre-exec-descriptor-bind-too-late"
+fi
+grep -qF 'nix::unistd::close(executable_fd)' <<<"$service_child_liveness" || r_s11e28="$r_s11e28 final-image-executable-descriptor-close-missing"
+grep -qF 'crate::platform::close_service_owned_nonstdio_descriptors()' <<<"$core_service_bootstrap" || r_s11e28="$r_s11e28 service-bootstrap-descriptor-close-missing"
+grep -qF 'Linux service-owned inherited file-descriptor authority failed closed' <<<"$core_service_bootstrap" || r_s11e28="$r_s11e28 service-bootstrap-descriptor-close-not-fail-closed"
+parent_liveness_line=$(grep -nF 'crate::platform::require_service_owned_server_parent_liveness()' <<<"$core_service_bootstrap" | cut -d: -f1)
+bootstrap_descriptor_line=$(grep -nF 'crate::platform::close_service_owned_nonstdio_descriptors()' <<<"$core_service_bootstrap" | cut -d: -f1)
+working_directory_line=$(grep -nF 'std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY)' <<<"$core_service_bootstrap" | cut -d: -f1)
+global_init_line=$(grep -nF 'crate::common::global_init()' <<<"$core_service_bootstrap" | cut -d: -f1)
+if [ -z "$parent_liveness_line" ] || [ -z "$bootstrap_descriptor_line" ] \
+  || [ -z "$working_directory_line" ] || [ -z "$global_init_line" ] \
+  || [ "$parent_liveness_line" -ge "$bootstrap_descriptor_line" ] \
+  || [ "$bootstrap_descriptor_line" -ge "$working_directory_line" ] \
+  || [ "$bootstrap_descriptor_line" -ge "$global_init_line" ]; then
+  r_s11e28="$r_s11e28 final-image-descriptor-close-order-invalid"
+fi
+for runtime_proof in \
+  'readonly HOSTILE_SERVICE_DESCRIPTOR=/tmp/rustdesk-inherited-root-authority' \
+  'readonly HOSTILE_SERVICE_DESCRIPTOR_FD=198' \
+  'fcntl.fcntl(descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC' \
+  'inherited_authority = os.stat(' \
+  'def carries_inherited_authority(process):' \
+  'inherited_authority.st_dev' \
+  'inherited_authority.st_ino' \
+  'service supervisor retained launcher file-descriptor authority' \
+  'service child retained launcher file-descriptor authority' \
+  'pre-pidfd service child retained launcher file-descriptor authority' \
+  'SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded'; do
+  grep -qF "$runtime_proof" scripts/smoke-service-lifecycle.sh || r_s11e28="$r_s11e28 hostile-runtime-proof-missing"
+done
+[ "$(grep -cF 'exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"' scripts/smoke-service-lifecycle.sh)" = 6 ] \
+  || r_s11e28="$r_s11e28 hostile-descriptor-launch-matrix-incomplete"
+grep -qF 'FAIL R-S11e-28: Linux service supervisor/child retained launcher file-descriptor authority' scripts/smoke-server.sh || r_s11e28="$r_s11e28 mandatory-smoke-consumer-missing"
+grep -qF '<span class="id">R-S11n</span>' requirements.html                        || r_s11e28="$r_s11e28 normative-requirement-missing"
+grep -qF 'Linux service-owned startup inherited non-stdio descriptor authority' requirements.html || r_s11e28="$r_s11e28 appendix-disposition-missing"
+grep -qF '<tr><td>136</td>' requirements.html                                       || r_s11e28="$r_s11e28 appendix-row-missing"
+grep -qF 'R-S11e-28 — Linux service-owned inherited descriptor authority' HARDENING_STATUS.md || r_s11e28="$r_s11e28 hardening-ledger-missing"
+if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited descriptor authority:$r_s11e28"; rc=1; else
+  echo "  ok  R-S11e-28 Linux service supervisor and child exclude ambient non-stdio descriptors while preserving only stdio and the forked child's temporary exact-executable handoff"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

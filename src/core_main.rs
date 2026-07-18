@@ -149,6 +149,12 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     #[cfg(target_os = "linux")]
     if linux_service_owned_config_role {
+        if let Err(err) = crate::platform::close_service_owned_nonstdio_descriptors() {
+            log::error!(
+                "Linux service-owned inherited file-descriptor authority failed closed: {err}"
+            );
+            std::process::exit(1);
+        }
         if let Err(err) = std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY) {
             log::error!("Linux service-owned working-directory authority failed closed: {err}");
             std::process::exit(1);

@@ -2368,6 +2368,58 @@ grep -qF 'R-S11e-23 — Windows current-package registry authority' HARDENING_ST
 if [ -n "$r_s11e23" ]; then echo "  FAIL R-S11e-23 Windows current-package registry authority:$r_s11e23"; rc=1; else
   echo "  ok  R-S11e-23 installed-state and service-owned RDP policy use only the current MSI product's explicit 64-bit HKLM namespace and fixed non-reparse executable root"; fi
 
+# (3b-iii-d3) R-S11j/R-S11e-24: privacy-mode display recovery is a same-process snapshot,
+# not a generic config record that an elevated --server can reinterpret as an arbitrary HKLM write.
+echo "== (3b-iii-d3) Windows privacy-display recovery authority (R-S11j/R-S11e-24) =="
+r_s11e24=
+reg_recovery_module=$(awk '/pub\(crate\) mod reg_display_settings/,/^}/' src/platform/windows.rs)
+reg_recovery_struct=$(awk '/pub\(crate\) struct RegRecovery/,/^    }/' src/platform/windows.rs)
+reg_recovery_read=$(awk '/pub\(crate\) fn read_reg_connectivity/,/^    }/' src/platform/windows.rs)
+reg_recovery_restore_one=$(awk '/fn restore_one_reg_connectivity/,/^    }/' src/platform/windows.rs)
+reg_recovery_restore_all=$(awk '/pub\(crate\) fn restore_reg_connectivity/,/^    }/' src/platform/windows.rs)
+grep -qF 'pub(crate) mod reg_display_settings {' src/platform/windows.rs              || r_s11e24="$r_s11e24 recovery-module-not-crate-private"
+grep -qF 'subkey: String,' <<<"$reg_recovery_struct"                                 || r_s11e24="$r_s11e24 enumerated-subkey-field-missing"
+grep -qF 'old_recent: RegValue,' <<<"$reg_recovery_struct"                           || r_s11e24="$r_s11e24 process-snapshot-field-missing"
+grep -qF 'const REG_GRAPHICS_DRIVERS_PATH: &str = "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers";' src/platform/windows.rs || r_s11e24="$r_s11e24 fixed-graphicsdrivers-parent-missing"
+grep -qF 'const REG_CONNECTIVITY_PATH: &str = "Connectivity";' src/platform/windows.rs || r_s11e24="$r_s11e24 fixed-connectivity-parent-missing"
+grep -qF 'const REG_RECENT_VALUE: &str = "Recent";' src/platform/windows.rs           || r_s11e24="$r_s11e24 fixed-recent-value-missing"
+grep -qF "subkey.contains('\\\\')" <<<"$reg_recovery_module"                       || r_s11e24="$r_s11e24 nested-subkey-rejection-missing"
+grep -qF 'subkey.chars().any(|value| value.is_control())' <<<"$reg_recovery_module"  || r_s11e24="$r_s11e24 control-subkey-rejection-missing"
+grep -qF 'subkey.encode_utf16().count() > MAX_REGISTRY_SUBKEY_NAME_UTF16' <<<"$reg_recovery_module" || r_s11e24="$r_s11e24 subkey-length-bound-missing"
+grep -qF 'reg_item.get_raw_value(REG_RECENT_VALUE)' <<<"$reg_recovery_read"          || r_s11e24="$r_s11e24 fixed-recent-snapshot-read-missing"
+grep -qF 'Err(err) if err.kind() == ErrorKind::NotFound => {}' <<<"$reg_recovery_read" || r_s11e24="$r_s11e24 absent-value-policy-missing"
+if grep -qF 'enum_values()' <<<"$reg_recovery_read"; then
+  r_s11e24="$r_s11e24 overbroad-connectivity-value-read-present"
+fi
+grep -qF 'let path = connectivity_subkey_path(&reg_recovery.subkey)?;' <<<"$reg_recovery_restore_one" || r_s11e24="$r_s11e24 restore-target-not-internally-derived"
+grep -qF 'hklm.open_subkey_with_flags(path, KEY_SET_VALUE)?' <<<"$reg_recovery_restore_one" || r_s11e24="$r_s11e24 least-privilege-fixed-target-open-missing"
+grep -qF 'reg_item.set_raw_value(REG_RECENT_VALUE, &reg_recovery.old_recent)?;' <<<"$reg_recovery_restore_one" || r_s11e24="$r_s11e24 fixed-recent-snapshot-write-missing"
+grep -qF 'for recovery in recoveries {' <<<"$reg_recovery_restore_all"               || r_s11e24="$r_s11e24 all-recoveries-not-attempted"
+grep -qF 'reg_recoveries: Vec<reg_display_settings::RegRecovery>' src/privacy_mode/win_virtual_display.rs || r_s11e24="$r_s11e24 process-local-owner-missing"
+grep -qF 'std::mem::take(&mut self.reg_recoveries)' src/privacy_mode/win_virtual_display.rs || r_s11e24="$r_s11e24 recoveries-not-consumed-once"
+grep -qF 'connectivity_recovery_contains_only_enumerated_subkey_and_snapshot' src/platform/windows.rs || r_s11e24="$r_s11e24 fixed-target-test-missing"
+grep -qF 'connectivity_recovery_rejects_invalid_subkeys' src/platform/windows.rs || r_s11e24="$r_s11e24 invalid-subkey-test-missing"
+grep -qF 'connectivity_subkey_path(&"x".repeat(256)).is_err()' src/platform/windows.rs || r_s11e24="$r_s11e24 overlong-subkey-test-missing"
+grep -qF 'connectivity_recovery_retains_every_changed_subkey' src/platform/windows.rs || r_s11e24="$r_s11e24 multi-display-recovery-test-missing"
+if printf '%s\n' "$reg_recovery_struct" | grep -Eq '^[[:space:]]*(path|key|new|changed|changed_recent):|\(Vec<u8>,[[:space:]]*isize\)'; then
+  r_s11e24="$r_s11e24 caller-selected-registry-target-or-type-field-present"
+fi
+if printf '%s\n' "$reg_recovery_module" | grep -Eq 'Serialize|Deserialize|serde_json|isize_to_reg_type'; then
+  r_s11e24="$r_s11e24 serialized-or-caller-selected-registry-type-recovery-present"
+fi
+if verify_scan_capture "$VERIFY_TMP/r_s11e24_config_replay" -nE 'CONFIG_KEY_REG_RECOVERY|"reg_recovery"|serde_json|Config::(get|set)_option' src/privacy_mode/win_virtual_display.rs; then
+  r_s11e24="$r_s11e24 generic-config-recovery-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e24_config_replay")"
+fi
+if grep -Eq 'restore_reg_connectivity|reg_recovery' src/core_main.rs src/privacy_mode.rs; then
+  r_s11e24="$r_s11e24 startup-or-exported-recovery-replay-present"
+fi
+grep -qF 'R-S11j' requirements.html                                                  || r_s11e24="$r_s11e24 normative-requirement-missing"
+grep -qF 'Windows privacy-display recovery serialized an arbitrary elevated HKLM write' requirements.html || r_s11e24="$r_s11e24 appendix-disposition-missing"
+grep -qF '<tr><td>132</td>' requirements.html                                        || r_s11e24="$r_s11e24 appendix-row-missing"
+grep -qF 'R-S11e-24 — Windows privacy-display registry recovery authority' HARDENING_STATUS.md || r_s11e24="$r_s11e24 hardening-ledger-missing"
+if [ -n "$r_s11e24" ]; then echo "  FAIL R-S11e-24 Windows privacy-display recovery authority:$r_s11e24"; rc=1; else
+  echo "  ok  R-S11e-24 privacy display recovery is a process-local fixed-target snapshot collection; serialized/config/startup arbitrary HKLM replay is absent"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

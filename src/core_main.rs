@@ -379,8 +379,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 crate::platform::stop_tray_processes();
                 hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
             }
-            #[cfg(windows)]
-            crate::privacy_mode::restore_reg_connectivity(true, false);
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
                 crate::start_server(true);

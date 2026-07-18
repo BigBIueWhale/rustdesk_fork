@@ -1,7 +1,7 @@
 use super::{PrivacyMode, PrivacyModeState, INVALID_PRIVACY_MODE_CONN_ID, NO_PHYSICAL_DISPLAYS};
 use crate::virtual_display_manager::MonitorMode;
 use crate::{platform::windows::reg_display_settings, virtual_display_manager};
-use hbb_common::{allow_err, bail, config::Config, log, ResultType};
+use hbb_common::{allow_err, bail, log, ResultType};
 use std::{
     io::Error,
     ops::{Deref, DerefMut},
@@ -29,8 +29,6 @@ use winapi::{
 
 pub(super) const PRIVACY_MODE_IMPL: &str = super::PRIVACY_MODE_IMPL_WIN_VIRTUAL_DISPLAY;
 
-const CONFIG_KEY_REG_RECOVERY: &str = "reg_recovery";
-
 struct Display {
     dm: DEVMODEW,
     name: [WCHAR; 32],
@@ -43,6 +41,7 @@ pub struct PrivacyModeImpl {
     displays: Vec<Display>,
     virtual_displays: Vec<Display>,
     virtual_displays_added: Vec<u32>,
+    reg_recoveries: Vec<reg_display_settings::RegRecovery>,
 }
 
 struct TurnOnGuard<'a> {
@@ -82,6 +81,7 @@ impl PrivacyModeImpl {
             displays: Vec::new(),
             virtual_displays: Vec::new(),
             virtual_displays_added: Vec::new(),
+            reg_recoveries: Vec::new(),
         }
     }
 
@@ -495,16 +495,8 @@ impl PrivacyMode for PrivacyModeImpl {
         ));
         let reg_connectivity_2 = reg_display_settings::read_reg_connectivity()?;
 
-        if let Some(reg_recovery) =
-            reg_display_settings::diff_recent_connectivity(reg_connectivity_1, reg_connectivity_2)
-        {
-            Config::set_option(
-                CONFIG_KEY_REG_RECOVERY.to_owned(),
-                serde_json::to_string(&reg_recovery)?,
-            );
-        } else {
-            reset_config_reg_connectivity();
-        };
+        guard.reg_recoveries =
+            reg_display_settings::diff_recent_connectivity(reg_connectivity_1, reg_connectivity_2)?;
 
         // OpenInputDesktop and block the others' input ?
         guard.conn_id = conn_id;
@@ -526,7 +518,12 @@ impl PrivacyMode for PrivacyModeImpl {
         self.restore();
         // We need to force restore the registry connectivity.
         // This is because the registry connection may be changed by `self.restore()`, but will not be fully restored.
-        restore_reg_connectivity(false, true);
+        let reg_recoveries = std::mem::take(&mut self.reg_recoveries);
+        if !reg_recoveries.is_empty() {
+            allow_err!(reg_display_settings::restore_reg_connectivity(
+                &reg_recoveries
+            ));
+        }
 
         if self.conn_id != INVALID_PRIVACY_MODE_CONN_ID {
             if let Some(state) = state {
@@ -560,27 +557,4 @@ impl Drop for PrivacyModeImpl {
             allow_err!(self.turn_off_privacy(self.conn_id, None));
         }
     }
-}
-
-#[inline]
-fn reset_config_reg_connectivity() {
-    Config::set_option(CONFIG_KEY_REG_RECOVERY.to_owned(), "".to_owned());
-}
-
-pub fn restore_reg_connectivity(plug_out_monitors: bool, force: bool) {
-    let config_recovery_value = Config::get_option(CONFIG_KEY_REG_RECOVERY);
-    if config_recovery_value.is_empty() {
-        return;
-    }
-    if plug_out_monitors {
-        let _ = virtual_display_manager::plug_out_monitor(-1, true, false);
-    }
-    if let Ok(reg_recovery) =
-        serde_json::from_str::<reg_display_settings::RegRecovery>(&config_recovery_value)
-    {
-        if let Err(e) = reg_display_settings::restore_reg_connectivity(reg_recovery, force) {
-            log::error!("Failed restore_reg_connectivity, error: {}", e);
-        }
-    }
-    reset_config_reg_connectivity();
 }

@@ -24,8 +24,6 @@ pub mod macos;
 
 #[cfg(windows)]
 mod win_virtual_display;
-#[cfg(windows)]
-pub use win_virtual_display::restore_reg_connectivity;
 
 pub const INVALID_PRIVACY_MODE_CONN_ID: i32 = 0;
 pub const OCCUPIED: &'static str = "Privacy occupied by another one.";

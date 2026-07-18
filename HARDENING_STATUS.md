@@ -1840,6 +1840,34 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the exact subkey; `scripts/verify.sh` binds the current MSI writer, explicit 64-bit read/write flags, fixed-root and
   executable-object proof, typed consumers, requirements/ledger disposition, and absence of every retired selector
   token. Appendix C #131 records the source-level finding; exact native/artifact proof remains with R-B2.
+- **R-S11e-24 — Windows privacy-display registry recovery authority — SOURCE IMPLEMENTED; NATIVE/ARTIFACT
+  EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Platform: Windows virtual-display privacy mode.
+  Endpoint/action: capture the GraphicsDrivers Connectivity `Recent` value around privacy-mode activation and restore
+  it after the normal display-mode rollback. Boundary: ordinary/user-profile configuration and startup state ↔ an
+  elevated HKLM registry writer. Attack surface closed: inherited `RegRecovery` was serde/JSON data in the generic
+  `reg_recovery` option and carried an arbitrary HKLM path, value name, raw old/new bytes, and integer registry types.
+  Startup `--server` deserialized and replayed that request; the stale-value comparison did not authenticate it because
+  the serialized `new` value was also caller-provided. This was not promoted to a demonstrated promptless
+  standard-user-to-SYSTEM exploit: the supported installed child reads the protected ProgramData config root created
+  by MSI and has no durable config-write authority after R-S11e-22, while a user-profile server needs deliberate
+  elevation before the HKLM sink succeeds. That same split proves the abstraction was wrong: it was non-durable where
+  the supported service needed it and over-authoritative where an elevated user-profile process could consume it.
+
+  Closure: `RegRecovery` is now a private process-local object that has no serde implementation and contains only one
+  directly enumerated Connectivity child name plus the prior raw `Recent` value read by that process. A process-local
+  collection retains every changed child instead of the inherited nondeterministic first `HashMap` match, and restore
+  attempts every retained value before reporting aggregate failure. The restoring module derives the fixed
+  `HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity` parent and fixed
+  `Recent` value name, rejects empty, nested, control-bearing, or overlong child names, and exposes no registry root,
+  path, value-name, or type selector. `PrivacyModeImpl` owns the snapshot collection and consumes it once after its
+  normal display restore. The generic config key, JSON conversion, startup replay, exported startup helper, and arbitrary
+  registry-type converter are deleted. This preserves the supported same-process normal turn-off behavior; it does not
+  claim durable crash recovery. Per R-S11j, a future durable design must use documented Windows CCD topology APIs or a
+  narrow service-owned transaction with receiver-side operation validation, never generic config replay. Verification
+  closure: native Windows unit tests pin fixed target derivation, invalid-subkey rejection, and multi-display retention;
+  `scripts/verify.sh` asserts process-local ownership, the fixed-target writer, the requirements/ledger/Appendix C #132
+  disposition, and
+  absence of serialized/config/startup recovery. Exact native/artifact proof remains with R-B2.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4116,8 +4144,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b88ea04ad28ee646fdce5a63d781560fd4c9914906c0ef3908eca35a424d8e5b  requirements.html
+b31bbce20ee0c6b427e768bdfc9ae90b57d67a2d9d1bd9817d3ef0a0751bd58c  requirements.html
 ```
 
-This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #131. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11j, and Appendix C #132. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

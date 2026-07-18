@@ -5479,23 +5479,40 @@ pub fn try_set_window_foreground(window: HWND) {
     }
 }
 
-pub mod reg_display_settings {
-    use hbb_common::ResultType;
-    use serde_derive::{Deserialize, Serialize};
+pub(crate) mod reg_display_settings {
+    use hbb_common::{bail, log, ResultType};
     use std::collections::HashMap;
+    use std::io::ErrorKind;
     use winreg::{enums::*, RegValue};
     const REG_GRAPHICS_DRIVERS_PATH: &str = "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers";
     const REG_CONNECTIVITY_PATH: &str = "Connectivity";
+    const REG_RECENT_VALUE: &str = "Recent";
+    const MAX_REGISTRY_SUBKEY_NAME_UTF16: usize = 255;
+    type ConnectivitySnapshot = HashMap<String, RegValue>;
 
-    #[derive(Serialize, Deserialize, Debug)]
-    pub struct RegRecovery {
-        path: String,
-        key: String,
-        old: (Vec<u8>, isize),
-        new: (Vec<u8>, isize),
+    #[derive(Debug)]
+    pub(crate) struct RegRecovery {
+        subkey: String,
+        old_recent: RegValue,
     }
 
-    pub fn read_reg_connectivity() -> ResultType<HashMap<String, HashMap<String, RegValue>>> {
+    fn connectivity_subkey_path(subkey: &str) -> ResultType<String> {
+        if subkey.is_empty()
+            || subkey.contains('\\')
+            || subkey.chars().any(|value| value.is_control())
+        {
+            bail!("invalid display connectivity registry subkey");
+        }
+        if subkey.encode_utf16().count() > MAX_REGISTRY_SUBKEY_NAME_UTF16 {
+            bail!("display connectivity registry subkey is too long");
+        }
+        Ok(format!(
+            "{}\\{}\\{}",
+            REG_GRAPHICS_DRIVERS_PATH, REG_CONNECTIVITY_PATH, subkey
+        ))
+    }
+
+    pub(crate) fn read_reg_connectivity() -> ResultType<ConnectivitySnapshot> {
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
         let reg_connectivity = hklm.open_subkey_with_flags(
             format!("{}\\{}", REG_GRAPHICS_DRIVERS_PATH, REG_CONNECTIVITY_PATH),
@@ -5505,84 +5522,123 @@ pub mod reg_display_settings {
         let mut map_connectivity = HashMap::new();
         for key in reg_connectivity.enum_keys() {
             let key = key?;
-            let mut map_item = HashMap::new();
+            connectivity_subkey_path(&key)?;
             let reg_item = reg_connectivity.open_subkey_with_flags(&key, KEY_READ)?;
-            for value in reg_item.enum_values() {
-                let (name, value) = value?;
-                map_item.insert(name, value);
+            match reg_item.get_raw_value(REG_RECENT_VALUE) {
+                Ok(value) => {
+                    map_connectivity.insert(key, value);
+                }
+                Err(err) if err.kind() == ErrorKind::NotFound => {}
+                Err(err) => return Err(err.into()),
             }
-            map_connectivity.insert(key, map_item);
         }
         Ok(map_connectivity)
     }
 
-    pub fn diff_recent_connectivity(
-        map1: HashMap<String, HashMap<String, RegValue>>,
-        map2: HashMap<String, HashMap<String, RegValue>>,
-    ) -> Option<RegRecovery> {
-        for (subkey, map_item2) in map2 {
-            if let Some(map_item1) = map1.get(&subkey) {
-                let key = "Recent";
-                if let Some(value1) = map_item1.get(key) {
-                    if let Some(value2) = map_item2.get(key) {
-                        if value1 != value2 {
-                            return Some(RegRecovery {
-                                path: format!(
-                                    "{}\\{}\\{}",
-                                    REG_GRAPHICS_DRIVERS_PATH, REG_CONNECTIVITY_PATH, subkey
-                                ),
-                                key: key.to_owned(),
-                                old: (value1.bytes.clone(), value1.vtype.clone() as isize),
-                                new: (value2.bytes.clone(), value2.vtype.clone() as isize),
-                            });
-                        }
-                    }
+    pub(crate) fn diff_recent_connectivity(
+        map1: ConnectivitySnapshot,
+        map2: ConnectivitySnapshot,
+    ) -> ResultType<Vec<RegRecovery>> {
+        let mut recoveries = Vec::new();
+        for (subkey, value2) in map2 {
+            if let Some(value1) = map1.get(&subkey) {
+                connectivity_subkey_path(&subkey)?;
+                if value1 != &value2 {
+                    recoveries.push(RegRecovery {
+                        subkey,
+                        old_recent: RegValue {
+                            bytes: value1.bytes.clone(),
+                            vtype: value1.vtype.clone(),
+                        },
+                    });
                 }
             }
         }
-        None
+        Ok(recoveries)
     }
 
-    pub fn restore_reg_connectivity(reg_recovery: RegRecovery, force: bool) -> ResultType<()> {
+    fn restore_one_reg_connectivity(reg_recovery: &RegRecovery) -> ResultType<()> {
+        let path = connectivity_subkey_path(&reg_recovery.subkey)?;
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
-        let reg_item = hklm.open_subkey_with_flags(&reg_recovery.path, KEY_READ | KEY_WRITE)?;
-        if !force {
-            let cur_reg_value = reg_item.get_raw_value(&reg_recovery.key)?;
-            let new_reg_value = RegValue {
-                bytes: reg_recovery.new.0,
-                vtype: isize_to_reg_type(reg_recovery.new.1),
-            };
-            // Compare if the current value is the same as the new value.
-            // If they are not the same, the registry value has been changed by other processes.
-            // So we do not restore the registry value.
-            if cur_reg_value != new_reg_value {
-                return Ok(());
-            }
-        }
-        let reg_value = RegValue {
-            bytes: reg_recovery.old.0,
-            vtype: isize_to_reg_type(reg_recovery.old.1),
-        };
-        reg_item.set_raw_value(&reg_recovery.key, &reg_value)?;
+        let reg_item = hklm.open_subkey_with_flags(path, KEY_SET_VALUE)?;
+        reg_item.set_raw_value(REG_RECENT_VALUE, &reg_recovery.old_recent)?;
         Ok(())
     }
 
-    #[inline]
-    fn isize_to_reg_type(i: isize) -> RegType {
-        match i {
-            0 => RegType::REG_NONE,
-            1 => RegType::REG_SZ,
-            2 => RegType::REG_EXPAND_SZ,
-            3 => RegType::REG_BINARY,
-            4 => RegType::REG_DWORD,
-            5 => RegType::REG_DWORD_BIG_ENDIAN,
-            6 => RegType::REG_LINK,
-            7 => RegType::REG_MULTI_SZ,
-            8 => RegType::REG_RESOURCE_LIST,
-            9 => RegType::REG_FULL_RESOURCE_DESCRIPTOR,
-            10 => RegType::REG_RESOURCE_REQUIREMENTS_LIST,
-            11 => RegType::REG_QWORD,
-            _ => RegType::REG_NONE,
+    pub(crate) fn restore_reg_connectivity(recoveries: &[RegRecovery]) -> ResultType<()> {
+        let mut failed = false;
+        for recovery in recoveries {
+            if let Err(err) = restore_one_reg_connectivity(recovery) {
+                failed = true;
+                log::error!(
+                    "Failed to restore display connectivity subkey '{}': {}",
+                    recovery.subkey,
+                    err
+                );
+            }
+        }
+        if failed {
+            bail!("one or more display connectivity values could not be restored");
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn recent_map(subkey: &str, bytes: &[u8]) -> ConnectivitySnapshot {
+            HashMap::from([(
+                subkey.to_owned(),
+                RegValue {
+                    bytes: bytes.to_vec(),
+                    vtype: RegType::REG_BINARY,
+                },
+            )])
+        }
+
+        #[test]
+        fn connectivity_recovery_contains_only_enumerated_subkey_and_snapshot() {
+            let recoveries = diff_recent_connectivity(
+                recent_map("fixed-child", b"before"),
+                recent_map("fixed-child", b"after"),
+            )
+            .unwrap();
+
+            assert_eq!(recoveries.len(), 1);
+            let recovery = &recoveries[0];
+            assert_eq!(recovery.subkey, "fixed-child");
+            assert_eq!(recovery.old_recent.bytes, b"before");
+            assert_eq!(recovery.old_recent.vtype, RegType::REG_BINARY);
+            assert_eq!(
+                connectivity_subkey_path(&recovery.subkey).unwrap(),
+                "SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers\\Connectivity\\fixed-child"
+            );
+        }
+
+        #[test]
+        fn connectivity_recovery_rejects_invalid_subkeys() {
+            for subkey in ["", "nested\\child", "line\nbreak"] {
+                assert!(connectivity_subkey_path(subkey).is_err());
+            }
+            assert!(connectivity_subkey_path(&"x".repeat(256)).is_err());
+        }
+
+        #[test]
+        fn connectivity_recovery_retains_every_changed_subkey() {
+            let mut before = recent_map("first", b"first-before");
+            before.extend(recent_map("second", b"second-before"));
+            let mut after = recent_map("first", b"first-after");
+            after.extend(recent_map("second", b"second-after"));
+
+            let mut recoveries = diff_recent_connectivity(before, after).unwrap();
+            recoveries.sort_by(|left, right| left.subkey.cmp(&right.subkey));
+
+            assert_eq!(recoveries.len(), 2);
+            assert_eq!(recoveries[0].subkey, "first");
+            assert_eq!(recoveries[0].old_recent.bytes, b"first-before");
+            assert_eq!(recoveries[1].subkey, "second");
+            assert_eq!(recoveries[1].old_recent.bytes, b"second-before");
         }
     }
 }

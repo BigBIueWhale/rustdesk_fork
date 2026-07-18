@@ -708,12 +708,10 @@ async fn authenticate_tcp_stream(stream: &mut Stream, addr: SocketAddr) -> Resul
         let keys = match handshake {
             Ok(keys) => keys,
             Err(e) => {
-                if e.is_password_guess() {
-                    // R-P14c: ONLY a key-confirmation tag mismatch is an online
-                    // password guess and feeds the per-source limiter (R-S10);
-                    // decode / order / AD / identity / timeout aborts MUST NOT, or a
-                    // malformed-frame flood would trip the owner's own block.
-                    hbb_common::cpace::record_guess_failure(addr.ip());
+                // R-P14c: the typed accounting choke records ONLY a key-confirmation
+                // mismatch. Decode / order / AD / identity / timeout aborts cannot
+                // mutate the limiter and become an attacker's lockout weapon.
+                if hbb_common::cpace::record_handshake_failure(addr.ip(), e) {
                     note_security_event(SecurityEvent::KeyConfirmFail, addr.ip());
                 }
                 bail!("CPace handshake failed: fail-closed");

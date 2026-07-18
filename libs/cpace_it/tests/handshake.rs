@@ -5,9 +5,13 @@
 //! cases cover the wrong-password (R-P3/R-P14c) and out-of-order (R-P14a) aborts.
 
 use hbb_common::bytes::Bytes;
-use hbb_common::cpace::{run_initiator, run_responder, DirectionalCipher, HandshakeError};
+use hbb_common::cpace::{
+    guess_limiter_allows, record_handshake_failure, run_initiator, run_responder,
+    DirectionalCipher, HandshakeError,
+};
 use hbb_common::message_proto::{cpace::Union as CpaceUnion, Cpace, CpaceStep1, CpaceStep3};
 use hbb_common::tcp::FramedStream;
+use std::net::{IpAddr, Ipv4Addr};
 use tokio::net::{TcpListener, TcpStream};
 
 /// Extract the error without requiring the `Ok` type to be `Debug` (the
@@ -18,6 +22,47 @@ fn err_of<T>(r: Result<T, HandshakeError>) -> HandshakeError {
         Ok(_) => panic!("expected a handshake error, got Ok"),
         Err(e) => e,
     }
+}
+
+/// Prime one TEST-NET-2 source to one failure below the production threshold.
+/// Passing a negative test's actual error through the production accounting
+/// choke can then prove, without race-prone global-map introspection, whether it
+/// consumed the tenth and blocking slot.
+fn prime_guess_limiter(last_octet: u8) -> IpAddr {
+    let source = IpAddr::V4(Ipv4Addr::new(198, 51, 100, last_octet));
+    for _ in 0..9 {
+        assert!(record_handshake_failure(
+            source,
+            HandshakeError::Confirmation,
+        ));
+    }
+    assert!(
+        guess_limiter_allows(source),
+        "nine confirmation failures must remain below the production threshold"
+    );
+    source
+}
+
+fn assert_failure_does_not_feed_limiter(error: HandshakeError, last_octet: u8) {
+    let source = prime_guess_limiter(last_octet);
+    assert!(
+        !record_handshake_failure(source, error),
+        "{error:?} must not be classified as an online password guess"
+    );
+    assert!(
+        guess_limiter_allows(source),
+        "{error:?} must not consume the tenth limiter slot"
+    );
+}
+
+fn assert_confirmation_feeds_limiter(error: HandshakeError, last_octet: u8) {
+    let source = prime_guess_limiter(last_octet);
+    assert_eq!(error, HandshakeError::Confirmation);
+    assert!(record_handshake_failure(source, error));
+    assert!(
+        !guess_limiter_allows(source),
+        "the tenth confirmation failure must block the source"
+    );
 }
 
 /// A connected pair of FramedStreams over loopback TCP (127.0.0.1, ephemeral
@@ -246,7 +291,8 @@ async fn responder_rejects_oversize_pre_pake_frame() {
     let (mut si, sr) = loopback_pair().await;
     let jr = tokio::spawn(async move {
         let mut sr = sr;
-        run_responder(&mut sr, "frame-cap-pw").await
+        let result = run_responder(&mut sr, "frame-cap-pw").await;
+        (result, sr.is_secured())
     });
     // The attacker raises ITS OWN cap (a hostile client emits whatever size it likes) and
     // blasts a 5 KiB raw frame on the still-UNKEYED stream — not even a valid CPace step.
@@ -254,10 +300,73 @@ async fn responder_rejects_oversize_pre_pake_frame() {
     // at the length prefix, before any body allocation.
     si.set_max_packet_length(64 * 1024);
     si.send_raw(vec![0x5au8; 5 * 1024]).await.ok(); // 5 KiB > the 4 KiB pre-PAKE cap
+    let (result, secured) = jr.await.unwrap();
+    let error = err_of(result);
     assert_eq!(
-        err_of(jr.await.unwrap()),
+        error,
         HandshakeError::Io,
         "R-S7/R-P14b: an oversize (>4 KiB) pre-PAKE frame must abort at the cap, never buffer"
+    );
+    assert!(!secured, "an oversize pre-key frame must not install keys");
+    assert_failure_does_not_feed_limiter(error, 21);
+}
+
+/// R-P14b / R-A10: an unauthenticated peer may declare a valid-sized first
+/// frame, send only a fragment, and keep the TCP socket open forever. The
+/// stateful codec must retain that incomplete frame, while the responder's
+/// bounded WAIT_1 deadline aborts the connection without parsing, keying, or
+/// charging the owner's online-guess budget.
+#[tokio::test(start_paused = true)]
+async fn partial_prekey_frame_times_out_without_key_or_guess_charge() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
+    let mut attacker = client.unwrap();
+    let (server, peer) = accepted.unwrap();
+
+    // BytesCodec's two-byte header is little-endian `(payload_len << 2) | 1`.
+    // Declare 64 bytes, deliver only one, and deliberately keep `attacker` open.
+    const DECLARED_PAYLOAD_LEN: u16 = 64;
+    let header = ((DECLARED_PAYLOAD_LEN << 2) | 1).to_le_bytes();
+    attacker.write_all(&header).await.unwrap();
+    attacker.write_all(&[0xA5]).await.unwrap();
+    attacker.flush().await.unwrap();
+
+    let responder = tokio::spawn(async move {
+        let mut stream = FramedStream::from(server, peer);
+        let result = run_responder(&mut stream, "partial-frame-pw").await;
+        let secured = stream.is_secured();
+        (result, secured)
+        // `stream` drops here, exactly as the production connection owner drops
+        // it after the failed authentication future returns.
+    });
+
+    let started = tokio::time::Instant::now();
+    let (result, secured) = tokio::time::timeout(std::time::Duration::from_secs(6), responder)
+        .await
+        .expect("the 5-second responder WAIT_1 deadline must beat the test guard")
+        .expect("the responder task must not panic");
+    assert_eq!(
+        tokio::time::Instant::now().duration_since(started),
+        std::time::Duration::from_secs(5),
+        "the incomplete frame must remain pending until the bounded WAIT_1 deadline"
+    );
+
+    let error = err_of(result);
+    assert_eq!(error, HandshakeError::Io);
+    assert!(!secured, "a partial pre-key frame must not install keys");
+    assert_failure_does_not_feed_limiter(error, 22);
+
+    let mut byte = [0u8; 1];
+    let read = tokio::time::timeout(std::time::Duration::from_secs(1), attacker.read(&mut byte))
+        .await
+        .expect("the failed responder must promptly drop its connection")
+        .expect("reading the responder's closed connection must not fail");
+    assert_eq!(
+        read, 0,
+        "the failed responder must close the TCP connection"
     );
 }
 
@@ -275,18 +384,26 @@ async fn initiator_rejects_oversize_pre_pake_frame() {
     let (si, mut sr) = loopback_pair().await;
     let ji = tokio::spawn(async move {
         let mut si = si;
-        run_initiator(&mut si, "frame-cap-pw").await
+        let result = run_initiator(&mut si, "frame-cap-pw").await;
+        (result, si.is_secured())
     });
     // The malicious host raises ITS OWN cap (a hostile server emits whatever size it likes) and,
     // instead of a valid step ②, blasts a 5 KiB raw frame on the still-UNKEYED stream. The
     // initiator's 4 KiB DECODE cap must reject it at the length prefix, before any body allocation.
     sr.set_max_packet_length(64 * 1024);
     sr.send_raw(vec![0x5au8; 5 * 1024]).await.ok(); // 5 KiB > the 4 KiB pre-PAKE cap
+    let (result, secured) = ji.await.unwrap();
+    let error = err_of(result);
     assert_eq!(
-        err_of(ji.await.unwrap()),
+        error,
         HandshakeError::Io,
         "R-S7/R-P14b: a malicious host's oversize (>4 KiB) pre-PAKE frame must abort the viewer at the cap, never buffer"
     );
+    assert!(
+        !secured,
+        "an oversize pre-key frame must not install viewer keys"
+    );
+    assert_failure_does_not_feed_limiter(error, 23);
 }
 
 #[tokio::test]
@@ -296,15 +413,30 @@ async fn wrong_password_aborts_at_confirmation() {
     // (EOF) without waiting out the 18 s per-step timeout.
     let jr = tokio::spawn(async move {
         let mut sr = sr;
-        run_responder(&mut sr, "the-right-password").await
+        let result = run_responder(&mut sr, "the-right-password").await;
+        (result, sr.is_secured())
     });
     let ji = tokio::spawn(async move {
         let mut si = si;
-        run_initiator(&mut si, "a-different-password").await
+        let result = run_initiator(&mut si, "a-different-password").await;
+        (result, si.is_secured())
     });
     // The responder verifies Ta first → the sole online-guess event (R-P14c).
-    assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Confirmation);
-    assert!(ji.await.unwrap().is_err(), "initiator also fails closed");
+    let (responder_result, responder_secured) = jr.await.unwrap();
+    let responder_error = err_of(responder_result);
+    assert_eq!(responder_error, HandshakeError::Confirmation);
+    assert!(
+        !responder_secured,
+        "wrong-password confirmation must not install responder keys"
+    );
+    assert_confirmation_feeds_limiter(responder_error, 24);
+
+    let (initiator_result, initiator_secured) = ji.await.unwrap();
+    assert!(initiator_result.is_err(), "initiator also fails closed");
+    assert!(
+        !initiator_secured,
+        "wrong-password failure must not install initiator keys"
+    );
 }
 
 #[test]
@@ -312,13 +444,14 @@ fn guess_limiter_blocks_after_threshold() {
     // R-S10 / R-P14c: a source is shed after too many online-guess (confirmation)
     // failures within the window; other sources are unaffected (a per-IP block,
     // not a global one — so a flood from one IP can't lock everyone out).
-    use hbb_common::cpace::{guess_limiter_allows, record_guess_failure};
-    use std::net::IpAddr;
     let ip: IpAddr = "198.51.100.7".parse().unwrap(); // TEST-NET-2, unique to this test
     let other: IpAddr = "198.51.100.8".parse().unwrap();
     assert!(guess_limiter_allows(ip), "a fresh source is allowed");
     for _ in 0..10 {
-        record_guess_failure(ip);
+        assert!(record_handshake_failure(
+            ip,
+            HandshakeError::Confirmation,
+        ));
     }
     assert!(!guess_limiter_allows(ip), "blocked after 10 online-guess failures");
     assert!(
@@ -383,7 +516,8 @@ async fn responder_rejects_out_of_order_first_frame() {
     let (si, sr) = loopback_pair().await;
     let jr = tokio::spawn(async move {
         let mut sr = sr;
-        run_responder(&mut sr, "pw").await
+        let result = run_responder(&mut sr, "pw").await;
+        (result, sr.is_secured())
     });
     let mut si = si;
     // Send step ③ as the very first frame, skipping ① (R-P14a violation). Built
@@ -397,7 +531,14 @@ async fn responder_rejects_out_of_order_first_frame() {
         ..Default::default()
     };
     si.send(&bogus).await.unwrap();
-    assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
+    let (result, secured) = jr.await.unwrap();
+    let error = err_of(result);
+    assert_eq!(error, HandshakeError::Protocol);
+    assert!(
+        !secured,
+        "an out-of-order pre-key step must not install keys"
+    );
+    assert_failure_does_not_feed_limiter(error, 25);
     drop(si);
 }
 
@@ -411,7 +552,8 @@ async fn responder_rejects_duplicate_first_frame() {
     let (si, sr) = loopback_pair().await;
     let jr = tokio::spawn(async move {
         let mut sr = sr;
-        run_responder(&mut sr, "pw").await
+        let result = run_responder(&mut sr, "pw").await;
+        (result, sr.is_secured())
     });
     let mut si = si;
     let step1 = Cpace {
@@ -426,7 +568,11 @@ async fn responder_rejects_duplicate_first_frame() {
     // buffer), and waits for step ③. The second ① arrives in WAIT_3 — a duplicate/wrong variant.
     si.send(&step1).await.unwrap();
     si.send(&step1).await.unwrap();
-    assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
+    let (result, secured) = jr.await.unwrap();
+    let error = err_of(result);
+    assert_eq!(error, HandshakeError::Protocol);
+    assert!(!secured, "a duplicate pre-key step must not install keys");
+    assert_failure_does_not_feed_limiter(error, 26);
     drop(si);
 }
 
@@ -443,7 +589,8 @@ async fn responder_rejects_malformed_length_field() {
     let (si, sr) = loopback_pair().await;
     let jr = tokio::spawn(async move {
         let mut sr = sr;
-        run_responder(&mut sr, "pw").await
+        let result = run_responder(&mut sr, "pw").await;
+        (result, sr.is_secured())
     });
     let mut si = si;
     // step ① with a 15-byte sid_a (NOT the required 16): exact::<16> MUST reject it before the
@@ -457,7 +604,11 @@ async fn responder_rejects_malformed_length_field() {
         ..Default::default()
     };
     si.send(&step1).await.unwrap();
-    assert_eq!(err_of(jr.await.unwrap()), HandshakeError::Protocol);
+    let (result, secured) = jr.await.unwrap();
+    let error = err_of(result);
+    assert_eq!(error, HandshakeError::Protocol);
+    assert!(!secured, "a malformed pre-key step must not install keys");
+    assert_failure_does_not_feed_limiter(error, 27);
     drop(si);
 }
 

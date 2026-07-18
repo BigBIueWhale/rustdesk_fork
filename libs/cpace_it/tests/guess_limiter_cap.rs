@@ -8,7 +8,7 @@
 //! Isolated in its own test file → its own process → a fresh GUESS_FAILURES static, so it cannot race
 //! the shared-static `guess_limiter_blocks_after_threshold` test.
 
-use hbb_common::cpace::{guess_limiter_tracked_count, record_guess_failure};
+use hbb_common::cpace::{guess_limiter_tracked_count, record_handshake_failure, HandshakeError};
 use std::net::{IpAddr, Ipv4Addr};
 
 #[test]
@@ -17,7 +17,10 @@ fn guess_limiter_caps_tracked_sources() {
     const FLOOD: u32 = 9000; // comfortably past the cap with distinct v4 sources
     for i in 0..FLOOD {
         // Ipv4Addr::from(u32) yields FLOOD distinct addresses (0.0.0.0 .. 0.0.35.39).
-        record_guess_failure(IpAddr::V4(Ipv4Addr::from(i)));
+        assert!(record_handshake_failure(
+            IpAddr::V4(Ipv4Addr::from(i)),
+            HandshakeError::Confirmation,
+        ));
     }
     let tracked = guess_limiter_tracked_count();
     assert!(

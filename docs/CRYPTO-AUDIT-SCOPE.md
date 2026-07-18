@@ -142,7 +142,7 @@ the same source tree.
 - `libs/hbb_common/src/cpace.rs`: `exact`, `send_cpace`, `recv_cpace`,
   `run_initiator_with_transcript`, `run_responder_with_transcript`,
   `HandshakeError::is_password_guess`, `guess_limiter_allows`, and
-  `record_guess_failure`.
+  `record_handshake_failure`.
 - `libs/hbb_common/src/stream.rs`: the sole transport variant and the
   `set_session_keys`/`is_secured` forwarding boundary.
 - `src/client.rs`: `key_initiator`, its `run_initiator` call, and its one key
@@ -197,14 +197,20 @@ implementations, vectors, static/dynamic analysis, fuzzing or property tests,
 and platform/runtime checks appropriate to the findings. Passing project tests
 is necessary evidence of the reviewed commit, not the audit conclusion.
 
-**Known current evidence gap:** `requirements.html` R-A10 mandates a behavioral
-test in which a partial/dribbled pre-key frame never completes and the test
-asserts that the R-P14b timeout fires, the connection drops without installing
-keys, and the online-guess limiter is not incremented. No such behavioral test
-exists in the current `libs/cpace_it/tests/handshake.rs`. The production source
-does apply a per-step timeout, but source inspection and static verifier gates
-are not the required runtime evidence. This handoff records the gap; it does
-not close it.
+**Behavioral R-A10 evidence now present:**
+`partial_prekey_frame_times_out_without_key_or_guess_charge` in
+`libs/cpace_it/tests/handshake.rs` sends a valid 64-byte pre-key frame header and
+only one payload byte while holding the raw TCP peer open. With Tokio's paused
+test clock, it proves the responder remains pending until the exact 5-second
+R-P14b WAIT_1 deadline, returns `HandshakeError::Io`, never engages the
+`FramedStream` cipher, and drops the connection. The test passes that actual
+error through the production accounting choke after priming a unique source to
+nine confirmed guesses and proves the source remains allowed; the companion
+wrong-password test proves a tenth `HandshakeError::Confirmation` is recorded
+and blocks. The same no-key/no-charge assertions now cover the oversize,
+out-of-order, duplicate, and malformed wire negatives.
+**This closes the known project-test evidence gap.** It is not independent
+review evidence and does not satisfy R-V3.
 
 ## 4. Required questions and deliverable
 

@@ -113,6 +113,11 @@ SOURCE_ANCHORS: Tuple[Tuple[str, str, str], ...] = (
     ),
     (
         "libs/hbb_common/src/cpace.rs",
+        "pub fn record_handshake_failure",
+        "record_handshake_failure",
+    ),
+    (
+        "libs/hbb_common/src/cpace.rs",
         "pub fn split_session_keys",
         "split_session_keys",
     ),
@@ -141,6 +146,11 @@ SOURCE_ANCHORS: Tuple[Tuple[str, str, str], ...] = (
     ),
     (
         "src/server.rs",
+        "record_handshake_failure(addr.ip(), e)",
+        "record_handshake_failure",
+    ),
+    (
+        "src/server.rs",
         "pub async fn create_tcp_connection",
         "create_tcp_connection",
     ),
@@ -148,6 +158,11 @@ SOURCE_ANCHORS: Tuple[Tuple[str, str, str], ...] = (
         "src/server/connection.rs",
         "self.authorized = true",
         "self.authorized = true",
+    ),
+    (
+        "libs/cpace_it/tests/handshake.rs",
+        "async fn partial_prekey_frame_times_out_without_key_or_guess_charge",
+        "partial_prekey_frame_times_out_without_key_or_guess_charge",
     ),
 )
 
@@ -167,8 +182,9 @@ REQUIRED_SCOPE_FACTS: Tuple[str, ...] = (
     "security-relevant code",
     "not an independent proof",
     "independence/conflict",
-    "No such behavioral test",
-    "required runtime evidence",
+    "Behavioral R-A10 evidence now present",
+    "production accounting choke",
+    "This closes the known project-test evidence gap",
     "It therefore does not satisfy R-V3.",
 )
 
@@ -240,6 +256,11 @@ def validate(texts: Mapping[str, str]) -> None:
             raise ScopeError(f"source anchor missing from {source}: {source_token!r}")
         if scope_token not in scope:
             raise ScopeError(f"{SCOPE} is missing current symbol anchor {scope_token!r}")
+
+    if "pub fn record_guess_failure" in texts["libs/hbb_common/src/cpace.rs"]:
+        raise ScopeError(
+            "blind public limiter mutation bypasses typed HandshakeError accounting"
+        )
 
     require_tokens(
         texts[PAKE_README],
@@ -330,6 +351,25 @@ def self_test(texts: Mapping[str, str]) -> None:
             "fn renamed_nfc",
         ),
         "source anchor missing",
+    )
+    expect_rejected(
+        "partial-frame evidence drift",
+        mutated(
+            texts,
+            "libs/cpace_it/tests/handshake.rs",
+            "async fn partial_prekey_frame_times_out_without_key_or_guess_charge",
+            "async fn removed_partial_frame_evidence",
+        ),
+        "source anchor missing",
+    )
+    blind_limiter = dict(texts)
+    blind_limiter["libs/hbb_common/src/cpace.rs"] += (
+        "\npub fn record_guess_failure(_: std::net::IpAddr) {}\n"
+    )
+    expect_rejected(
+        "blind limiter mutation",
+        blind_limiter,
+        "blind public limiter mutation",
     )
     stale = dict(texts)
     stale[TRANSPORT] += "\nStale pointer: `tcp.rs:999`.\n"

@@ -241,8 +241,8 @@ pub async fn run_responder(stream: &mut FramedStream, password: &str) -> HResult
 /// Drive the responder (controlled side) handshake to completion and return the
 /// two role-oriented keys (controlled seals with `k_s2c`, opens with `k_c2s`)
 /// PLUS the [`Transcript`] (`sid`/`Ya`/`Yb`) that binds this PAKE session. Caller
-/// installs the keys and, on [`HandshakeError::Confirmation`], increments the
-/// per-source limiter (R-P14c) — never on any other abort.
+/// installs the keys and passes any failure to [`record_handshake_failure`],
+/// which alone owns the R-P14c limiter taxonomy.
 pub async fn run_responder_with_transcript(
     stream: &mut FramedStream,
     password: &str,
@@ -500,7 +500,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Fixed (tumbling) per-source window for the online-guess limiter — NOT sliding: the window
-/// start is not advanced per failure (see `record_guess_failure`), so at most
+/// start is not advanced per failure (see `record_handshake_failure`), so at most
 /// `MAX_GUESSES_PER_WINDOW` confirmation failures per `GUESS_WINDOW` per source IP are allowed
 /// (R-S10), with a ~2x worst case straddling a boundary. That is immaterial: the CPace password is
 /// the real gate (one online guess per attempt, nothing offline-crackable); this is only DoS-safe
@@ -509,7 +509,7 @@ const GUESS_WINDOW: Duration = Duration::from_secs(60);
 /// Confirmation failures allowed from one source within a window before it is shed.
 const MAX_GUESSES_PER_WINDOW: u32 = 10;
 /// R-S10(b): a HARD ceiling on the number of distinct source IPs tracked, backstopping the
-/// time-eviction in `record_guess_failure` — so even a flood of distinct sources within one window
+/// time-eviction in `record_handshake_failure` — so even a flood of distinct sources within one window
 /// (each must complete a PAKE and fail R-P3 to be recorded here, and v4-only per R-D5 bounds the
 /// keyspace) cannot grow the map without bound. 8192 is ample for any real DMZ; over it, the
 /// oldest-window entries are evicted first — those past GUESS_WINDOW are already un-blocked
@@ -532,9 +532,16 @@ pub fn guess_limiter_allows(source: IpAddr) -> bool {
     }
 }
 
-/// Record one online-guess failure for `source`. Per R-P14c the caller invokes
-/// this ONLY on an R-P3 key-confirmation mismatch, never on any other abort.
-pub fn record_guess_failure(source: IpAddr) {
+/// Account for a failed handshake and report whether it was an online password
+/// guess. This is the only public mutation edge for the limiter: accepting the
+/// typed [`HandshakeError`] here makes the R-P14c rule structural, so a caller
+/// cannot accidentally charge malformed input, timeout, EOF, or any other
+/// non-confirmation abort against the owner's source address.
+pub fn record_handshake_failure(source: IpAddr, error: HandshakeError) -> bool {
+    if !error.is_password_guess() {
+        return false;
+    }
+
     let mut map = GUESS_FAILURES.lock().unwrap();
     let now = Instant::now();
     match map.get_mut(&source) {
@@ -562,6 +569,7 @@ pub fn record_guess_failure(source: IpAddr) {
             None => break,
         }
     }
+    true
 }
 
 /// Test-support introspection (R-S10(b)): how many source IPs the online-guess limiter currently
@@ -578,4 +586,3 @@ pub fn guess_limiter_tracked_count() -> usize {
 // an in-crate `#[cfg(test)]` here could not run. `cpace_it` depends only on
 // hbb_common's library (no dev-deps ⇒ no webrtc) and exercises the public API
 // (`run_initiator`/`run_responder`/`DirectionalCipher`) over a loopback socket.
-

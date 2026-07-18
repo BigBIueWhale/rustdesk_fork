@@ -3647,10 +3647,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   missing root/current symbol, a brittle line citation, a false independent-sign-off claim, or a
   removed R-V3 limitation; its mutation suite proves those representative regressions fail. This
   prepares an accurate external handoff. It does not perform the independent review, assess the
-  cryptography, or remove the pre-audit release blocker. The handoff also records a pre-existing
-  evidence gap rather than laundering it into an assurance claim: R-A10's required behavioral
-  partial/dribbled pre-key-frame timeout test is absent from the current `cpace_it` suite. The
-  production deadline exists, but source/static checks are not the mandated runtime evidence.
+  cryptography, or remove the pre-audit release blocker. **R-A10 PARTIAL-FRAME EVIDENCE GAP CLOSED
+  AT PROJECT-TEST LEVEL 2026-07-18.**
+  `partial_prekey_frame_times_out_without_key_or_guess_charge` now drives a raw loopback peer that
+  declares a valid 64-byte pre-key frame, delivers one byte, and remains open. Under Tokio's paused
+  clock it proves the exact 5-second WAIT_1 deadline returns `HandshakeError::Io`, no cipher is
+  engaged, and the connection is dropped. Limiter mutation now has one typed production choke,
+  `record_handshake_failure`: after nine confirmation failures the partial-frame `Io` leaves the
+  source allowed, while the companion wrong-password `Confirmation` consumes the tenth slot and
+  blocks it. The oversize, out-of-order, duplicate, and malformed wire negatives also assert no
+  key engagement and no limiter charge. `scripts/verify-crypto-audit-scope.py --self-test` anchors
+  the behavioral test and the typed accounting symbol so this evidence cannot disappear while the
+  handoff still claims it. This closes only the recorded R-A10 project-test gap; it is not external
+  audit evidence, does not satisfy R-V3, and does not remove the pre-audit production blocker.
 - **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
   not cover (both endpoints' keying paths traced in source): confirm-before-key

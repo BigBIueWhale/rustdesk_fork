@@ -6449,6 +6449,30 @@ ra6_clean 'totp|Auth2FA|auth_2fa|generate2fa|verify2fa|set_auth_2fa|add_trusted_
 # handler arm; the CM-side senders use the unqualified `Data::SwitchPermission`
 # (R-G7 GUI surface), so this gate is specific to the widener.
 ra6_clean 'ipc::Data::SwitchPermission'                                  'R-S16(d)(ii) SwitchPermission widener' || rc=1
+# R-G1/R-X7/R-S16/R-SV10: live-looking dead authentication/permission/rendezvous
+# scaffolding must stay absent where it would imply authority. These checks are
+# intentionally source-shape-specific: generic msgbox color taxonomy strings and
+# explanatory comments are not senders, enum variants, or protocol fields.
+r_live_dead=""
+grep -qE '^[[:space:]]*SwitchPermission[[:space:]]*\{|Data::SwitchPermission|backend currently sends SwitchPermission back to CM' src/ui_cm_interface.rs && r_live_dead="$r_live_dead cm-switchpermission-receiver"
+grep -qE '^[[:space:]]*SwitchPermission[[:space:]]*\{' src/ipc.rs && r_live_dead="$r_live_dead ipc-switchpermission-variant"
+grep -qE '^[[:space:]]*Authorize[[:space:]]*\{' src/ipc.rs && r_live_dead="$r_live_dead ipc-authorize-variant"
+grep -RInE 'send\(&Data::Authorize([^[:alnum:]_]|$)|msgbox\("(input-password|re-input-password|input-2fa)"|LOGIN_MSG_2FA_WRONG|REQUIRE_2FA' src --include='*.rs' >/dev/null \
+  && r_live_dead="$r_live_dead retired-login-prompt-or-2fa-sender"
+grep -RInE 'buildUnAuthorized|showLoginDialog|cmLoginRes|^[[:space:]]*(void|Future[^[:space:]]*|Widget)[[:space:]]+(enterPasswordDialog|wrongPasswordDialog)\b|class[[:space:]]+(Dialog2FaField|DialogEmailCodeField|DialogVerificationCodeField)\b|trust-this-device' flutter/lib >/dev/null \
+  && r_live_dead="$r_live_dead retired-flutter-auth-affordance"
+grep -qE '^[[:space:]]*bool[[:space:]]+enable_trusted_devices[[:space:]]*=' libs/hbb_common/protos/message.proto && r_live_dead="$r_live_dead proto-enable-trusted-devices-field"
+grep -qE '^[[:space:]]*reserved[[:space:]]+3;' libs/hbb_common/protos/message.proto || r_live_dead="$r_live_dead proto-loginresponse-tag3-not-reserved"
+grep -qE '^[[:space:]]*message[[:space:]]+IdPk\b' libs/hbb_common/protos/message.proto && r_live_dead="$r_live_dead proto-idpk-present"
+grep -RInE '\bfn[[:space:]]+decode_id_pk\b|decode_id_pk[[:space:]]*\(' src libs --include='*.rs' >/dev/null \
+  && r_live_dead="$r_live_dead decode-id-pk-present"
+grep -qE '\[I-(9|10|11|12)\].*\*\*FIX:\*\*|Data::SwitchPermission` from the connection|wired end-to-end behind a trigger that|enable_trusted_devices` viewer plumbing \(wired login-response' HARDENING_STATUS.md \
+  && r_live_dead="$r_live_dead stale-hardening-live-dead-ledger"
+if [ -n "$r_live_dead" ]; then
+  echo "  FAIL live-looking-dead audit surfaces: retired authority-looking scaffolding returned or stale ledger says it is pending:$r_live_dead"; rc=1
+else
+  echo "  ok  live-looking-dead auth/permission/rendezvous scaffolding absent and ledger closed (I-9..I-12)"
+fi
 # R-S16(d) / flutter UI correctness (the pinned-policy audit): a control whose write the policy funnel
 # rejects must not render as a live, mutating affordance that silently no-ops.
 #  - is_option_fixed() reports PINNED_SETTINGS keys as fixed, so every pinned control auto-greys (BUG4 root).

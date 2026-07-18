@@ -4060,10 +4060,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   excised, the files linger beside cfg-gated `common/linux.rs` WAYLAND arms);
   the neutered `--assign` arm in `core_main.rs` (assembles then discards a body —
   dials nobody); dead `--quick_support` plumbing in `libs/portable`;
-  `enable_trusted_devices` viewer plumbing (wired login-response→handler but unused)
-  and the `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs.
-  None affects behavior or opens a security path (reviewer + local re-confirm);
-  each is a candidate for a later focused excision carrying its own build re-prove.
+  and, at the time of this earlier note, `enable_trusted_devices` viewer plumbing plus
+  `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs. The trusted-device/2FA cluster was
+  subsequently excised and is closed/gated by I-11 below; it is no longer retained residue.
+  The other listed leftovers do not affect behavior or open a security path (reviewer +
+  local re-confirm) and remain candidates for focused excision with their own build re-prove.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
@@ -4248,40 +4249,35 @@ does not exist. That entire stratum is now gone — the tiers below record each 
 
 ### Tier 3 — "live-looking dead" code ✅ DONE (deleted — it had lied to the next auditor)
 
-- **[I-9] `enterPasswordDialog` is a normal-looking "Password Required" dialog that authenticates
-  NOTHING.** Its submit calls `gFFI.login()`, which sends a passwordless `LoginRequest` the host
-  authorizes purely by CPace (`src/server/connection.rs:2000`). It is unreachable — the host never
-  sends `LOGIN_MSG_PASSWORD_EMPTY`, and the only `LOGIN_MSG_PASSWORD_WRONG` send sits behind
-  `if !self.stream.is_secured()` (`connection.rs:2007`), a branch that cannot execute because login is
-  only reached on a keyed stream (R-A1). But it *looks* completely live
-  (`flutter/lib/common/widgets/dialog.dart:556`) — that is the danger. Do NOT confuse it with the LIVE
-  pre-keying `enterConnectPasswordDialog`. **FIX:** delete `enterPasswordDialog` and the non-`preKeying`
-  branch of `_connectDialog`; delete the dead `input-password`/`re-input-password` msgbox arms
-  (`client.rs:2923-2929`) and their `src/cli.rs` handlers.
+- **[I-9] Post-key password re-prompt UI — CLOSED/GATED 2026-07-18.** The live pre-keying
+  credential path is `connect-password-prompt`; the old post-key `enterPasswordDialog` /
+  `wrongPasswordDialog` Flutter dialogs are absent, and Rust no longer emits `input-password`,
+  `re-input-password`, or `input-2fa` msgboxes from the login-error path. `src/client.rs`
+  routes password prompting to pre-keying establishment failures, while keyed login errors are
+  non-credential errors. `scripts/verify.sh` gates the deleted Flutter dialog names and the
+  absence of Rust msgbox senders for the retired prompt types. The remaining literal strings in
+  generic Dart msgbox color/icon classification are inert display taxonomy, not an authentication
+  sender or dialog construction path.
 
-- **[I-10] A connection-manager `SwitchPermission` receiver whose comment asserts a data flow that
-  does not exist.** `src/ui_cm_interface.rs:591` handles a "privacy-mode rollback"
-  `Data::SwitchPermission` from the connection, and its comment states "the backend currently sends
-  SwitchPermission back to CM…" — but **nothing in `connection.rs`/`libs` ever constructs that
-  message**; the only senders are the CM→connection direction, and `connection.rs` has no
-  `SwitchPermission` arm (it falls to `_ => {}`). **FIX:** delete the receiver arm and the false comment.
+- **[I-10] Connection-manager `SwitchPermission` receiver — CLOSED/GATED 2026-07-18.** The CM
+  receive loop in `src/ui_cm_interface.rs` contains no `Data::SwitchPermission` arm or stale
+  "backend sends SwitchPermission back to CM" comment. `src/ipc.rs` contains no
+  `SwitchPermission` data variant, and `src/server/connection.rs` has no runtime permission-widener
+  handler. The desktop permission chips are read-only status indicators. `scripts/verify.sh` now
+  gates the CM receiver/IPC variant absence in addition to the existing connection-side
+  `ipc::Data::SwitchPermission` widener gate.
 
-- **[I-11] The `enable_trusted_devices` two-factor pipe is wired end-to-end behind a trigger that
-  never fires.** Wire field (`libs/hbb_common/protos/message.proto:152`) → `REQUIRE_2FA` reader
-  (`src/client/io_loop.rs:1590`) → `LoginConfigHandler` field (`src/client.rs:1362`) → getter
-  (`src/ui_session_interface.rs:1382`, **zero native callers**): a fully intact, fully disconnected
-  pipe — the host never sets the flag and never sends `REQUIRE_2FA` (the responder 2FA gate is
-  excised, `connection.rs:1073`). Same cluster: `LOGIN_MSG_2FA_WRONG`/`REQUIRE_2FA` consts
-  (`client.rs:114`); the `input-2fa` msgbox emitter that **survives on the Rust side though Dart has
-  no handler** (`client.rs:2938` — a half-excision); `trust-this-device` (read `client.rs:2932`, never
-  set to "Y"); and the never-instantiated Dart widgets `Dialog2FaField`/`DialogEmailCodeField`/
-  `DialogVerificationCodeField` (`dialog.dart:204/278/342`). **FIX:** excise the whole
-  2FA/trusted-devices cluster on both sides and drop the proto field.
+- **[I-11] Trusted-devices/2FA pipe — CLOSED/GATED 2026-07-18.** `LoginResponse` no longer carries
+  the old trusted-devices bit; tag 3 is reserved in `libs/hbb_common/protos/message.proto`.
+  `LoginConfigHandler` has no trusted-device field, the viewer has no 2FA login-response reader or
+  `input-2fa` sender, the 2FA/trusted-device Dart widgets are gone, and the broader R-X7 gate keeps
+  the responder 2FA machinery absent. `scripts/verify.sh` now also asserts the reserved proto tag and
+  the absence of the retired constants/widgets/senders.
 
-- **[I-12] `IdPk` + `decode_id_pk` — dead rendezvous crypto.** `message IdPk { id; pk }`
-  (`libs/hbb_common/protos/message.proto:38`) and `decode_id_pk` (`src/common.rs:1121`), which verified
-  a rendezvous server's signature over an id→public-key binding, have **zero callers** and `IdPk` is
-  never constructed (the one `server.rs` reference is a comment). **FIX:** delete both.
+- **[I-12] `IdPk` + `decode_id_pk` rendezvous crypto — CLOSED/GATED 2026-07-18.** The direct-IP fork
+  has no rendezvous id→public-key binding message: `libs/hbb_common/protos/message.proto` contains no
+  `message IdPk`, and `src/common.rs` contains no `decode_id_pk` helper. `scripts/verify.sh` gates
+  both source absences so the dead rendezvous crypto cannot silently return.
 
 ### Tier 4 — inert dead scaffolding ✅ DONE (~65 sites excised by root cause)
 
@@ -4311,14 +4307,17 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
 - **Dead Dart option constants:** `kOptionHideServerSetting`, `kOptionHideProxySetting`,
   `kOptionDisableChangeId`, `kOptionAllowDeepLinkServerSettings` (`flutter/lib/consts.dart:171-187`) —
   zero consumers. Delete.
-- **The attended-accept IPC pipeline (8 sites, A1–A8):** because `approve-mode` is pinned to
-  `"password"` (`config.rs:3176`), every connection is authorized before the CM sees it, so
-  `buildUnAuthorized`, `showLoginDialog`, the `cmLoginRes`/`authorize()` accept path, and the
-  `Data::Authorize` IPC variant are all dead. Excise the pipeline.
-- **The runtime permission-widener IPC pipeline (5 sites, B1–B5):** the CM permission chips are
-  read-only (`canModifyPermission=false`) and `connection.rs` has no `SwitchPermission` handler (dead
-  sink), so `cm_switch_permission`/`switch_permission`/`switch_permission_all` and the
-  `Data::SwitchPermission` variant are dead. Excise.
+- **The attended-accept IPC pipeline (8 sites, A1–A8) — CLOSED/GATED 2026-07-18:** because
+  `approve-mode` is pinned to `"password"` (`config.rs` `PINNED_SETTINGS`), every connection is
+  authorized before the CM sees it. `buildUnAuthorized`, `showLoginDialog`, `cmLoginRes`, the CM
+  `authorize()` accept path, and the `Data::Authorize` IPC variant are absent; `scripts/verify.sh`
+  gates the deleted UI/IPC senders and enum variant. The generic local function name
+  `authorize()` in unrelated IPC helpers is not this CM accept authority.
+- **The runtime permission-widener IPC pipeline (5 sites, B1–B5) — CLOSED/GATED 2026-07-18:** the
+  CM permission chips are read-only and the runtime widener surface is deleted. `src/ipc.rs` has no
+  `Data::SwitchPermission` variant, `src/ui_cm_interface.rs` has no receiver arm, and
+  `src/server/connection.rs` has no handler that can reassign connection capabilities mid-session;
+  `scripts/verify.sh` gates those absences.
 - **Misc:** the unshown my-numeric-ID machinery (`server_model.dart` `_serverId`/`fetchID`, fetched
   and never rendered); the serialized-but-unread `forceAlwaysRelay`/`sameServer`/`recording`/
   `block_input`/`restart` fields; `reconnect(_forceRelay)`; the `formatID` numeric-grouping

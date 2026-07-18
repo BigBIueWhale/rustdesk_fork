@@ -127,9 +127,6 @@ winapi = { version = "0.3", features = [
 # builds on the winapi 0.3 already in the lock, so this adds no new external crate lineage.
 ntapi = "0.4"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-osascript = "0.3"
-
 [target.'cfg(target_os = "linux")'.dependencies]
 sctk = { package = "smithay-client-toolkit", version = "0.20.0", default-features = false, features = [
     "calloop",

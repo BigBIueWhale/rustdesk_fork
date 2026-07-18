@@ -118,7 +118,7 @@ ctrlc = { version = "3.2", features = ["termination"] }
 # arboard = { version = "3.4", features = ["wayland-data-control"] }
 arboard = { git = "https://github.com/rustdesk-org/arboard", features = ["wayland-data-control"] }
 clipboard-master = { git = "https://github.com/rustdesk-org/clipboard-master" }
-portable-pty = { git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1", package = "portable-pty" }
+portable-pty = { path = "libs/portable_pty" }
 
 system_shutdown = "4.0"
 
@@ -237,7 +237,7 @@ jni = "0.21"
 android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock" }
 
 [workspace]
-members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/portable", "libs/pake", "libs/cpace_it", "libs/config_it", "libs/surface_it", "libs/compress_it", "libs/address_it", "libs/libxdo-sys-stub"]
+members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/portable", "libs/portable_pty", "libs/pake", "libs/cpace_it", "libs/config_it", "libs/surface_it", "libs/compress_it", "libs/address_it", "libs/libxdo-sys-stub"]
 exclude = ["vdi/host"]
 
 # Patch libxdo-sys to use a stub implementation that doesn't require libxdo

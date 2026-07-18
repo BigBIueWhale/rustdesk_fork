@@ -4785,11 +4785,17 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
     }
 
     let target = format!("gui/{peer_uid}/{label}");
-    let output = match std::process::Command::new(MACOS_LAUNCHCTL)
-        .arg("print")
-        .arg(&target)
-        .output()
+    let mut command = std::process::Command::new(MACOS_LAUNCHCTL);
+    command.arg("print").arg(&target);
+    if let Err(err) =
+        hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
     {
+        log::warn!(
+            "Rejected macOS service-owned password snapshot request: failed to constrain launchctl descriptors: {err}"
+        );
+        return false;
+    }
+    let output = match command.output() {
         Ok(output) if output.status.success() => output,
         Ok(output) => {
             log::warn!(

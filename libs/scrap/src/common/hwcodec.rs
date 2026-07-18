@@ -736,6 +736,15 @@ pub fn start_check_process() {
                     log::error!("Failed to constrain hardware-codec check descriptors: {err}");
                     return;
                 }
+                #[cfg(target_os = "macos")]
+                if let Err(err) =
+                    hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(
+                        &mut command,
+                    )
+                {
+                    log::error!("Failed to constrain hardware-codec check descriptors: {err}");
+                    return;
+                }
                 if let Ok(mut child) = command.spawn() {
                     #[cfg(windows)]
                     hwcodec::common::child_exit_when_parent_exit(child.id());

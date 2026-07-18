@@ -3078,6 +3078,158 @@ grep -qF 'R-S11e-33 — desktop fatal-signal default disposition' HARDENING_STAT
 if [ -n "$r_s11e33" ]; then echo "  FAIL R-S11e-33 desktop fatal-signal default-disposition authority:$r_s11e33"; rc=1; else
   echo "  ok  R-S11e-33 SIGSEGV retains the OS default disposition; crash-time Rust callbacks, config writes, input cleanup, and helper launches are absent"; fi
 
+# (3b-iii-d13) R-S11t/R-S11e-34: Darwin preserves descriptors across exec
+# unless close-on-exec is set. Every production macOS Command launch therefore
+# uses one shared stdio-only pre-exec policy, including the LaunchDaemon's
+# launchctl authorization query and root-to-user helper transition.
+echo "== (3b-iii-d13) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
+r_s11e34=
+hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' libs/hbb_common/src/platform/macos.rs)
+macos_platform_source=$(cat src/platform/macos.rs)
+macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_label_loaded/' src/platform/macos.rs)
+macos_launchctl_query=$(awk '/fn launchctl_label_loaded/,/fn ensure_launchctl_label_removed/' src/platform/macos.rs)
+macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/platform/macos.rs)
+macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' src/platform/macos.rs)
+macos_run_as_user=$(awk '/pub fn run_as_user_with_env/,/fn macos_launch_env_key_is_allowed/' src/platform/macos.rs)
+macos_lock_screen=$(awk '/pub fn lock_screen/,/pub fn start_os_service/' src/platform/macos.rs)
+macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' src/ipc.rs)
+macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' src/common.rs)
+macos_hwcodec_check=$(awk '/pub fn start_check_process\(\)/,/^}/' libs/scrap/src/common/hwcodec.rs)
+portable_pty_unix=$(cat libs/portable_pty/src/unix.rs)
+portable_pty_spawn=$(awk '/fn spawn_command\(&self, builder: CommandBuilder\)/,/let mut child = cmd.spawn\(\)\?;/' libs/portable_pty/src/unix.rs)
+terminal_pty_launch=$(awk '/let pty_system = portable_pty::native_pty_system\(\);/,/drop\(slave\);/' src/server/terminal_service.rs)
+for policy_binding in \
+  'const MAX_MACOS_DESCRIPTOR_LIMIT: u64 = 1_048_576;' \
+  'fn validated_macos_descriptor_upper_bound(descriptor_limit: u64)' \
+  'descriptor_limit == libc::RLIM_INFINITY' \
+  'descriptor_limit > MAX_MACOS_DESCRIPTOR_LIMIT' \
+  'libc::getrlimit(libc::RLIMIT_NOFILE' \
+  'for entry in fs::read_dir("/dev/fd")?' \
+  'descriptors.sort_unstable();' \
+  'descriptors.dedup();' \
+  'let descriptor_flags = libc::fcntl(fd, libc::F_GETFD);' \
+  'libc::fcntl(fd, libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)' \
+  'Err(err) if err.raw_os_error() == Some(libc::EBADF)' \
+  'for fd in (libc::STDERR_FILENO + 1)..=last_fd' \
+  'if fd <= last_fd' \
+  'pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)' \
+  'command.pre_exec(move || {' \
+  'mark_nonstdio_descriptors_close_on_exec(last_fd, &observed_descriptors)'; do
+  grep -qF "$policy_binding" <<<"$hbb_macos_descriptor_policy" \
+    || r_s11e34="$r_s11e34 shared-macos-policy-binding-missing"
+done
+check_r_s11e34_helper_contract() {
+  local helper_source=$1
+  local helper_policy=$2
+  local helper_execution=$3
+  local helper_policy_line helper_execution_line
+  grep -qF "$helper_policy" <<<"$helper_source" || r_s11e34="$r_s11e34 macos-helper-policy-missing"
+  grep -qF "$helper_execution" <<<"$helper_source" || r_s11e34="$r_s11e34 macos-helper-execution-missing"
+  helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1)
+  helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1)
+  if [ -z "$helper_policy_line" ] || [ -z "$helper_execution_line" ] \
+    || [ "$helper_policy_line" -ge "$helper_execution_line" ]; then
+    r_s11e34="$r_s11e34 macos-helper-policy-order-invalid"
+  fi
+}
+check_r_s11e34_helper_contract "$macos_checked_command" 'configure_command_close_nonstdio_on_exec(command)' 'command.status()'
+check_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
+check_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
+check_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
+check_r_s11e34_helper_contract "$macos_run_as_user" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
+check_r_s11e34_helper_contract "$macos_lock_screen" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
+check_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
+check_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
+check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
+[ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \
+  || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
+[ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 2 ] \
+  || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
+[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
+  || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
+[ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 5 ] \
+  || r_s11e34="$r_s11e34 macos-checked-command-inventory-drift"
+for pty_policy_binding in \
+  'const MAX_UNIX_DESCRIPTOR_LIMIT: u64 = 1_048_576;' \
+  'struct UnixChildDescriptorPolicy' \
+  'libc::getrlimit(libc::RLIMIT_NOFILE' \
+  'for entry in std::fs::read_dir("/dev/fd")?' \
+  'observed_descriptors.sort_unstable();' \
+  'observed_descriptors.dedup();' \
+  'let flags = libc::fcntl(fd, libc::F_GETFD);' \
+  'libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC)' \
+  'error.raw_os_error() == Some(libc::EBADF)' \
+  'for fd in (libc::STDERR_FILENO + 1)..=self.last_fd' \
+  'descriptor_policy.mark_close_on_exec()?;'; do
+  grep -qF "$pty_policy_binding" <<<"$portable_pty_unix" \
+    || r_s11e34="$r_s11e34 portable-pty-policy-binding-missing"
+done
+check_r_s11e34_helper_contract "$portable_pty_spawn" \
+  'let descriptor_policy = UnixChildDescriptorPolicy::prepare()?;' \
+  'cmd.stdin(self.as_stdio()?)'
+check_r_s11e34_helper_contract "$portable_pty_spawn" \
+  'descriptor_policy.mark_close_on_exec()?;' \
+  'let mut child = cmd.spawn()?;'
+if grep -qF 'close_random_fds' <<<"$portable_pty_unix"; then
+  r_s11e34="$r_s11e34 obsolete-portable-pty-best-effort-close-present"
+fi
+for pty_test_binding in \
+  'fn unix_child_descriptor_limit_is_bounded()' \
+  'fn pty_child_exec_failure_is_reported()' \
+  'the PTY spawn hid its post-fork exec failure from the parent' \
+  'fn pty_child_excludes_injected_nonstdio_descriptor()' \
+  'the intermediate PTY test image must prove the injected descriptor object' \
+  'the final PTY test image inherited the injected descriptor object'; do
+  grep -qF "$pty_test_binding" <<<"$portable_pty_unix" \
+    || r_s11e34="$r_s11e34 portable-pty-regression-binding-missing"
+done
+grep -qF 'portable-pty = { path = "libs/portable_pty" }' Cargo.toml \
+  || r_s11e34="$r_s11e34 portable-pty-root-path-binding-missing"
+grep -qF '"libs/portable_pty"' Cargo.toml \
+  || r_s11e34="$r_s11e34 portable-pty-workspace-member-missing"
+grep -qF 'filedescriptor = { version = "0.8", git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1" }' libs/portable_pty/Cargo.toml \
+  || r_s11e34="$r_s11e34 portable-pty-filedescriptor-pin-missing"
+grep -qF '80174f8009f41565f0fa8c66dab90d4f9211ae16' libs/portable_pty/RUSTDESK_PROVENANCE.md \
+  || r_s11e34="$r_s11e34 portable-pty-provenance-commit-missing"
+portable_pty_lock_record=$(awk '
+  /^\[\[package\]\]$/ { if (capture) exit; in_package=1; next }
+  in_package && /^name = "portable-pty"$/ { capture=1 }
+  capture { print }
+' Cargo.lock)
+grep -qF 'version = "0.8.1"' <<<"$portable_pty_lock_record" \
+  || r_s11e34="$r_s11e34 portable-pty-lock-version-missing"
+if grep -qF 'source = ' <<<"$portable_pty_lock_record"; then
+  r_s11e34="$r_s11e34 portable-pty-lock-still-external"
+fi
+grep -qF 'let mut cmd = CommandBuilder::new(&shell);' <<<"$terminal_pty_launch" \
+  || r_s11e34="$r_s11e34 macos-terminal-command-builder-missing"
+grep -qF '.spawn_command(cmd)' <<<"$terminal_pty_launch" \
+  || r_s11e34="$r_s11e34 macos-terminal-portable-pty-launch-missing"
+if grep -qE '^[[:space:]]*osascript[[:space:]]*=' libs/hbb_common/Cargo.toml \
+  || grep -qF 'name = "osascript"' Cargo.lock \
+  || grep -qF 'pub fn alert(' libs/hbb_common/src/platform/macos.rs; then
+  r_s11e34="$r_s11e34 obsolete-dependency-owned-macos-launch-present"
+fi
+for actual_child_binding in \
+  'fn macos_command_excludes_injected_nonstdio_descriptor()' \
+  'exec 9<\"$1\"; exec \"$2\" \"$3\" --nocapture' \
+  'the intermediate test image must prove the injected descriptor object' \
+  'configure_command_close_nonstdio_on_exec(&mut child).unwrap();' \
+  'the final test image inherited the injected descriptor object'; do
+  grep -qF "$actual_child_binding" libs/hbb_common/src/platform/macos.rs \
+    || r_s11e34="$r_s11e34 macos-actual-child-regression-binding-missing"
+done
+grep -qF 'macOS child inherited descriptor authority (R-S11t/R-S11e-34)' scripts/apple-conform-check.sh \
+  || r_s11e34="$r_s11e34 apple-source-conformance-gate-missing"
+grep -qF '<span class="id">R-S11t</span>' requirements.html \
+  || r_s11e34="$r_s11e34 normative-requirement-missing"
+grep -qF '<tr><td>142</td>' requirements.html \
+  || r_s11e34="$r_s11e34 appendix-row-missing"
+grep -qF 'R-S11e-34 — macOS child inherited descriptor authority' HARDENING_STATUS.md \
+  || r_s11e34="$r_s11e34 hardening-ledger-missing"
+if [ -n "$r_s11e34" ]; then echo "  FAIL R-S11e-34 macOS child inherited descriptor authority:$r_s11e34"; rc=1; else
+  echo "  ok  R-S11e-34 every production macOS child image is stdio-only; the unused dependency-owned PATH launch is absent"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

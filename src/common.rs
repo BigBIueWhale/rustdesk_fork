@@ -626,6 +626,15 @@ where
             )
         },
     )?;
+    #[cfg(target_os = "macos")]
+    hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd).map_err(
+        |err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("failed to constrain RustDesk child descriptors: {err}"),
+            )
+        },
+    )?;
     let result = cmd.args(&args).spawn();
     match result.as_ref() {
         Ok(_) => {}

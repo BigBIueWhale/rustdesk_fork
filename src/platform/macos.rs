@@ -318,6 +318,11 @@ fn bundled_service_executable() -> Option<PathBuf> {
 }
 
 fn run_checked_command(command: &mut Command, description: &str) -> bool {
+    if let Err(err) = hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(command)
+    {
+        log::error!("Failed to constrain {description} descriptors: {err}");
+        return false;
+    }
     match command.status() {
         Ok(status) if status.success() => true,
         Ok(status) => {
@@ -332,10 +337,15 @@ fn run_checked_command(command: &mut Command, description: &str) -> bool {
 }
 
 fn launchctl_label_loaded(label: &str) -> Option<bool> {
-    match Command::new(MACOS_LAUNCHCTL)
-        .args(&["list", label])
-        .status()
+    let mut command = Command::new(MACOS_LAUNCHCTL);
+    command.args(&["list", label]);
+    if let Err(err) =
+        hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
     {
+        log::error!("Failed to constrain launchctl label query descriptors: {err}");
+        return None;
+    }
+    match command.status() {
         Ok(status) => Some(status.success()),
         Err(err) => {
             log::error!("Failed to query launchctl label {label}: {err}");
@@ -494,11 +504,14 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
             return false;
         }
         if show_new_window {
-            if let Err(err) = std::process::Command::new(MACOS_OPEN)
+            let mut command = std::process::Command::new(MACOS_OPEN);
+            command
                 .arg("-n")
-                .arg(&format!("/Applications/{}.app", crate::get_app_name()))
-                .spawn()
-            {
+                .arg(&format!("/Applications/{}.app", crate::get_app_name()));
+            let reopen =
+                hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
+                    .and_then(|()| command.spawn());
+            if let Err(err) = reopen {
                 log::warn!("Failed to reopen macOS app after service uninstall: {err}");
             }
             // leave open a little time
@@ -859,12 +872,12 @@ pub fn is_prelogin() -> bool {
 // ...
 // ```
 pub fn is_locked() -> bool {
-    match std::process::Command::new(MACOS_IOREG)
-        .arg("-n")
-        .arg("Root")
-        .arg("-d1")
-        .output()
-    {
+    let mut command = std::process::Command::new(MACOS_IOREG);
+    command.arg("-n").arg("Root").arg("-d1");
+    let output =
+        hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
+            .and_then(|()| command.output());
+    match output {
         Ok(output) => {
             let output_str = String::from_utf8_lossy(&output.stdout);
             // Although `"CGSSessionScreenIsLocked"=Yes` was printed on my macOS,
@@ -917,6 +930,7 @@ where
         command.env(key, value.as_ref());
     }
     command.args(arg);
+    hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)?;
     let task = command.spawn()?;
     Ok(Some(task))
 }
@@ -929,12 +943,18 @@ fn macos_launch_env_key_is_allowed(key: &OsStr) -> bool {
 }
 
 pub fn lock_screen() {
-    std::process::Command::new(
+    let mut command = std::process::Command::new(
         "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",
-    )
-    .arg("-suspend")
-    .output()
-    .ok();
+    );
+    command.arg("-suspend");
+    let output =
+        hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
+            .and_then(|()| command.output());
+    match output {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => log::warn!("Failed to lock macOS screen: {}", output.status),
+        Err(err) => log::warn!("Failed to lock macOS screen: {err}"),
+    }
 }
 
 pub fn start_os_service() {

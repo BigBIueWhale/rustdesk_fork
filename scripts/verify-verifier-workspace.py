@@ -4288,7 +4288,10 @@ def validate_smoke_contract(
     hwcodec_check = scrap_hwcodec.split("pub fn start_check_process() {", 1)[1]
     require_order(
         hwcodec_check,
-        ("configure_command_close_nonstdio_on_exec(", "command.spawn()"),
+        (
+            "platform::linux::configure_command_close_nonstdio_on_exec(",
+            "command.spawn()",
+        ),
         "hardware-codec check descriptor policy before execution",
     )
 
@@ -5169,6 +5172,369 @@ def validate_fatal_signal_contract(sources):
     )
 
 
+def validate_macos_descriptor_contract(sources):
+    shared = sources["hbb_common_macos"]
+    for text, label in (
+        ("const MAX_MACOS_DESCRIPTOR_LIMIT: u64 = 1_048_576;", "macOS descriptor limit bound"),
+        ("fn validated_macos_descriptor_upper_bound(descriptor_limit: u64)", "macOS descriptor limit validator"),
+        ("descriptor_limit == libc::RLIM_INFINITY", "macOS infinite descriptor limit rejection"),
+        ("descriptor_limit > MAX_MACOS_DESCRIPTOR_LIMIT", "macOS excessive descriptor limit rejection"),
+        ("libc::getrlimit(libc::RLIMIT_NOFILE", "macOS parent descriptor limit query"),
+        ('for entry in fs::read_dir("/dev/fd")?', "macOS inherited descriptor enumeration"),
+        ("descriptors.sort_unstable();", "macOS descriptor sort"),
+        ("descriptors.dedup();", "macOS descriptor deduplication"),
+        ("let descriptor_flags = libc::fcntl(fd, libc::F_GETFD);", "macOS descriptor flag query"),
+        (
+            "libc::fcntl(fd, libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)",
+            "macOS descriptor close-on-exec mutation",
+        ),
+        ("Err(err) if err.raw_os_error() == Some(libc::EBADF)", "macOS absent descriptor handling"),
+        ("for fd in (libc::STDERR_FILENO + 1)..=last_fd", "macOS descriptor range traversal"),
+        ("if fd <= last_fd", "macOS observed high-descriptor partition"),
+        (
+            "pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)",
+            "shared macOS descriptor policy API",
+        ),
+        ("command.pre_exec(move || {", "macOS pre-exec registration"),
+        (
+            "mark_nonstdio_descriptors_close_on_exec(last_fd, &observed_descriptors)",
+            "macOS pre-exec descriptor enforcement",
+        ),
+        ("fn macos_command_descriptor_limit_is_bounded()", "macOS descriptor limit regression"),
+        (
+            "fn macos_command_excludes_injected_nonstdio_descriptor()",
+            "macOS actual-child descriptor regression",
+        ),
+    ):
+        require_text(shared, text, label)
+    require_order(
+        shared,
+        (
+            "let last_fd = macos_descriptor_upper_bound()?;",
+            "let observed_descriptors = observed_nonstdio_descriptors()?;",
+            "command.pre_exec(move || {",
+            "mark_nonstdio_descriptors_close_on_exec(last_fd, &observed_descriptors)",
+        ),
+        "macOS parent preparation before child descriptor enforcement",
+    )
+    require_order(
+        shared,
+        (
+            "let descriptor_flags = libc::fcntl(fd, libc::F_GETFD);",
+            "descriptor_flags & libc::FD_CLOEXEC == 0",
+            "libc::fcntl(fd, libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)",
+        ),
+        "macOS descriptor inspection before close-on-exec mutation",
+    )
+    actual_child = shared.split(
+        "fn macos_command_excludes_injected_nonstdio_descriptor()", 1
+    )[1]
+    for text, label in (
+        (
+            'exec 9<\\"$1\\"; exec \\"$2\\" \\"$3\\" --nocapture',
+            "macOS inheritable descriptor launcher",
+        ),
+        (
+            "the intermediate test image must prove the injected descriptor object",
+            "macOS intermediate descriptor identity proof",
+        ),
+        (
+            "configure_command_close_nonstdio_on_exec(&mut child).unwrap();",
+            "macOS actual-child descriptor enforcement",
+        ),
+        (
+            "the final test image inherited the injected descriptor object",
+            "macOS final descriptor exclusion proof",
+        ),
+    ):
+        require_text(actual_child, text, label)
+    if "pub fn alert(" in shared:
+        raise VerificationError("obsolete hbb_common macOS alert launch surface remains")
+    if re.search(r"(?m)^\s*osascript\s*=", sources["hbb_common_cargo"]):
+        raise VerificationError("obsolete osascript dependency remains in hbb_common")
+    if re.search(r'(?m)^name = "osascript"$', sources["cargo_lock"]):
+        raise VerificationError("obsolete osascript package remains in Cargo.lock")
+    hbb_common_lock = re.search(
+        r'(?ms)^\[\[package\]\]\nname = "hbb_common"\n.*?(?=^\[\[package\]\]|\Z)',
+        sources["cargo_lock"],
+    )
+    if hbb_common_lock is None:
+        raise VerificationError("hbb_common Cargo.lock record is missing")
+    if '"osascript"' in hbb_common_lock.group(0):
+        raise VerificationError("obsolete osascript hbb_common lock edge remains")
+
+    portable = sources["portable_pty_unix"]
+    for text, label in (
+        ("const MAX_UNIX_DESCRIPTOR_LIMIT: u64 = 1_048_576;", "portable PTY descriptor limit bound"),
+        ("struct UnixChildDescriptorPolicy", "portable PTY descriptor policy owner"),
+        ("fn validated_unix_descriptor_upper_bound(descriptor_limit: u64)", "portable PTY descriptor limit validator"),
+        ("descriptor_limit == libc::RLIM_INFINITY as u64", "portable PTY infinite descriptor limit rejection"),
+        ("descriptor_limit > MAX_UNIX_DESCRIPTOR_LIMIT", "portable PTY excessive descriptor limit rejection"),
+        ("libc::getrlimit(libc::RLIMIT_NOFILE", "portable PTY parent descriptor limit query"),
+        ('for entry in std::fs::read_dir("/dev/fd")?', "portable PTY parent descriptor enumeration"),
+        ("observed_descriptors.sort_unstable();", "portable PTY descriptor sort"),
+        ("observed_descriptors.dedup();", "portable PTY descriptor deduplication"),
+        ("let flags = libc::fcntl(fd, libc::F_GETFD);", "portable PTY descriptor flag query"),
+        (
+            "libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC)",
+            "portable PTY fail-closed close-on-exec primitive",
+        ),
+        ("error.raw_os_error() == Some(libc::EBADF)", "portable PTY absent descriptor handling"),
+        ("for fd in (libc::STDERR_FILENO + 1)..=self.last_fd", "portable PTY descriptor range traversal"),
+        ("if fd <= self.last_fd", "portable PTY observed high-descriptor partition"),
+        ("fn unix_child_descriptor_limit_is_bounded()", "portable PTY descriptor limit regression"),
+        ("fn pty_child_exec_failure_is_reported()", "portable PTY exec-error regression"),
+        (
+            "the PTY spawn hid its post-fork exec failure from the parent",
+            "portable PTY exec-error parent observation",
+        ),
+        (
+            "fn pty_child_excludes_injected_nonstdio_descriptor()",
+            "portable PTY actual-child descriptor regression",
+        ),
+        (
+            "the intermediate PTY test image must prove the injected descriptor object",
+            "portable PTY intermediate descriptor identity proof",
+        ),
+        (
+            "the final PTY test image inherited the injected descriptor object",
+            "portable PTY final descriptor exclusion proof",
+        ),
+    ):
+        require_text(portable, text, label)
+    if "close_random_fds" in portable:
+        raise VerificationError("obsolete allocating best-effort portable PTY descriptor close remains")
+    portable_descriptor_mark = extract_between(
+        portable,
+        "fn set_descriptor_close_on_exec_if_open(fd: RawFd) -> io::Result<()> {",
+        "\n}\n\nimpl PtyFd",
+        "portable PTY close-on-exec primitive",
+    )
+    require_order(
+        portable_descriptor_mark,
+        (
+            "let flags = libc::fcntl(fd, libc::F_GETFD);",
+            "error.raw_os_error() == Some(libc::EBADF)",
+            "flags & libc::FD_CLOEXEC == 0",
+            "&& libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) == -1",
+        ),
+        "portable PTY fail-closed close-on-exec primitive",
+    )
+    portable_spawn = extract_between(
+        portable,
+        "fn spawn_command(&self, builder: CommandBuilder) -> anyhow::Result<std::process::Child> {",
+        "\n        Ok(child)\n    }",
+        "portable PTY Unix child spawn",
+    )
+    require_order(
+        portable_spawn,
+        (
+            "let descriptor_policy = UnixChildDescriptorPolicy::prepare()?;",
+            "let mut cmd = builder.as_command()?;",
+            "cmd.stdin(self.as_stdio()?)",
+            "descriptor_policy.mark_close_on_exec()?;",
+            "let mut child = cmd.spawn()?;",
+        ),
+        "portable PTY parent preparation and child enforcement before exec",
+    )
+    require_text(
+        sources["root_cargo"],
+        'portable-pty = { path = "libs/portable_pty" }',
+        "portable PTY root path dependency",
+    )
+    require_text(
+        sources["root_cargo"],
+        'members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/portable", "libs/portable_pty", "libs/pake", "libs/cpace_it", "libs/config_it", "libs/surface_it", "libs/compress_it", "libs/address_it", "libs/libxdo-sys-stub"]',
+        "portable PTY workspace membership",
+    )
+    require_text(
+        sources["portable_pty_cargo"],
+        'filedescriptor = { version = "0.8", git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1" }',
+        "portable PTY filedescriptor source pin",
+    )
+    require_text(
+        sources["portable_pty_provenance"],
+        "80174f8009f41565f0fa8c66dab90d4f9211ae16",
+        "portable PTY vendored provenance commit",
+    )
+    for text, label in (
+        (
+            'with <strong>909 package records</strong>, of which <strong>37 are git-sourced records',
+            "current Cargo package/source requirement inventory",
+        ),
+        (
+            "27 of the 37 git-sourced lockfile records",
+            "current rustdesk-org Git requirement inventory",
+        ),
+        (
+            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "current Rust unsafe requirement inventory",
+        ),
+        (
+            "the one in-tree <code>portable-pty</code> exception is exact pinned source ownership required by R-S11t",
+            "requirements in-tree PTY provenance exception",
+        ),
+    ):
+        require_text(sources["requirements"], text, label)
+    portable_lock = re.search(
+        r'(?ms)^\[\[package\]\]\nname = "portable-pty"\n.*?(?=^\[\[package\]\]|\Z)',
+        sources["cargo_lock"],
+    )
+    if portable_lock is None:
+        raise VerificationError("portable-pty Cargo.lock record is missing")
+    if 'version = "0.8.1"' not in portable_lock.group(0):
+        raise VerificationError("portable-pty Cargo.lock version is not pinned to 0.8.1")
+    if "source = " in portable_lock.group(0):
+        raise VerificationError("portable-pty Cargo.lock record still delegates source authority")
+    terminal_launch = extract_between(
+        sources["terminal_service"],
+        "let pty_system = portable_pty::native_pty_system();",
+        "\n        drop(slave);",
+        "production terminal PTY launch",
+    )
+    require_order(
+        terminal_launch,
+        (
+            "let mut cmd = CommandBuilder::new(&shell);",
+            "opening.ensure_current()?;",
+            ".spawn_command(cmd)",
+        ),
+        "production macOS terminal shell uses the constrained portable PTY spawn",
+    )
+    for source_key, gate_name in (("verify", "source"), ("apple", "Apple-conformance")):
+        for text, label in (
+            (
+                "obsolete-portable-pty-best-effort-close-present",
+                "portable PTY obsolete-close rejection",
+            ),
+            (
+                "portable-pty-regression-binding-missing",
+                "portable PTY runtime-regression binding",
+            ),
+            (
+                "portable-pty-root-path-binding-missing",
+                "portable PTY in-tree dependency binding",
+            ),
+            (
+                "macos-terminal-portable-pty-launch-missing",
+                "production terminal PTY launch binding",
+            ),
+        ):
+            require_text(sources[source_key], text, f"{gate_name} {label}")
+
+    platform = sources["macos_source"]
+    for text, expected, label in (
+        ("command.status()", 2, "macOS platform status execution inventory"),
+        ("command.spawn()", 2, "macOS platform spawn execution inventory"),
+        ("command.output()", 2, "macOS platform output execution inventory"),
+        ("run_checked_command(", 5, "macOS checked-command inventory"),
+    ):
+        require_exact_count(platform, text, expected, label)
+    helper_contracts = (
+        (
+            platform,
+            "fn run_checked_command(command: &mut Command, description: &str) -> bool {",
+            "\nfn launchctl_label_loaded",
+            "macOS checked command descriptor policy",
+            "configure_command_close_nonstdio_on_exec(command)",
+            "command.status()",
+        ),
+        (
+            platform,
+            "fn launchctl_label_loaded(label: &str) -> Option<bool> {",
+            "\nfn ensure_launchctl_label_removed",
+            "macOS launchctl label query descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.status()",
+        ),
+        (
+            platform,
+            "pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {",
+            "\npub fn get_cursor_pos",
+            "macOS app reopen descriptor policy",
+            "configure_command_close_nonstdio_on_exec(",
+            "command.spawn()",
+        ),
+        (
+            platform,
+            "pub fn is_locked() -> bool {",
+            "\npub fn declare_remote_user_activity",
+            "macOS lock-state query descriptor policy",
+            "configure_command_close_nonstdio_on_exec(",
+            "command.output()",
+        ),
+        (
+            platform,
+            "pub fn run_as_user_with_env<I, K, V>(",
+            "\nfn macos_launch_env_key_is_allowed",
+            "macOS root-to-user helper descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)?;",
+            "command.spawn()?",
+        ),
+        (
+            platform,
+            "pub fn lock_screen() {",
+            "\npub fn start_os_service",
+            "macOS lock-screen helper descriptor policy",
+            "configure_command_close_nonstdio_on_exec(",
+            "command.output()",
+        ),
+        (
+            sources["ipc_source"],
+            "fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32) -> bool {",
+            "\n#[cfg(not(target_os = \"macos\"))]",
+            "macOS service snapshot launchctl descriptor policy",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.output()",
+        ),
+        (
+            sources["common_source"],
+            "pub fn run_me_with_env<T, I, K, V>(args: Vec<T>, envs: I)",
+            "\n#[inline]\npub fn username",
+            "macOS same-executable descriptor policy",
+            "platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)",
+            "let result = cmd.args(&args).spawn();",
+        ),
+    )
+    for source, start, end, label, policy, execution in helper_contracts:
+        helper = extract_between(source, start, end, label)
+        require_order(helper, (policy, execution), f"{label} before execution")
+    require_order(
+        sources["scrap_hwcodec"],
+        (
+            "platform::macos::configure_command_close_nonstdio_on_exec(",
+            "command.spawn()",
+        ),
+        "macOS hardware-codec helper descriptor policy before execution",
+    )
+    for source_key, text, label in (
+        (
+            "verify",
+            'echo "== (3b-iii-d13) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
+            "macOS descriptor source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
+            "macOS Apple-conformance gate",
+        ),
+        ("requirements", '<span class="id">R-S11t</span>', "macOS descriptor normative requirement"),
+        (
+            "requirements",
+            "portable-PTY terminal shell",
+            "macOS terminal PTY normative descriptor requirement",
+        ),
+        ("requirements", "<tr><td>142</td>", "macOS descriptor Appendix C disposition"),
+        (
+            "requirements",
+            "the terminal PTY path apply the policy",
+            "macOS terminal PTY Appendix C disposition",
+        ),
+        ("hardening", "R-S11e-34 — macOS child inherited descriptor authority", "macOS descriptor hardening ledger"),
+    ):
+        require_text(sources[source_key], text, label)
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -5179,6 +5545,7 @@ def validate_sources(sources):
     validate_r_b2_version_metadata(sources)
     validate_docs(sources)
     validate_fatal_signal_contract(sources)
+    validate_macos_descriptor_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -10338,6 +10705,408 @@ def run_source_mutations(sources):
             "fatal-signal hardening ledger",
         ),
         (
+            "hbb_common_macos",
+            "const MAX_MACOS_DESCRIPTOR_LIMIT: u64 = 1_048_576;",
+            "const MAX_MACOS_DESCRIPTOR_LIMIT: u64 = 0;",
+            "macOS descriptor limit bound",
+        ),
+        (
+            "hbb_common_macos",
+            "descriptor_limit == libc::RLIM_INFINITY",
+            "descriptor_limit == 1",
+            "macOS infinite descriptor limit rejection",
+        ),
+        (
+            "hbb_common_macos",
+            "descriptor_limit > MAX_MACOS_DESCRIPTOR_LIMIT",
+            "descriptor_limit < MAX_MACOS_DESCRIPTOR_LIMIT",
+            "macOS excessive descriptor limit rejection",
+        ),
+        (
+            "hbb_common_macos",
+            "libc::getrlimit(libc::RLIMIT_NOFILE",
+            "libc::getrlimit_disabled(libc::RLIMIT_NOFILE",
+            "macOS parent descriptor limit query",
+        ),
+        (
+            "hbb_common_macos",
+            'for entry in fs::read_dir("/dev/fd")?',
+            'for entry in fs::read_dir("/dev/null")?',
+            "macOS inherited descriptor enumeration",
+        ),
+        (
+            "hbb_common_macos",
+            "descriptors.sort_unstable();",
+            "descriptors.reverse();",
+            "macOS descriptor sort",
+        ),
+        (
+            "hbb_common_macos",
+            "descriptors.dedup();",
+            "descriptors.clear();",
+            "macOS descriptor deduplication",
+        ),
+        (
+            "hbb_common_macos",
+            "let descriptor_flags = libc::fcntl(fd, libc::F_GETFD);",
+            "let descriptor_flags = libc::fcntl(fd, libc::F_GETFL);",
+            "macOS descriptor flag query",
+        ),
+        (
+            "hbb_common_macos",
+            "libc::fcntl(fd, libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)",
+            "libc::fcntl(fd, libc::F_GETFD, descriptor_flags | libc::FD_CLOEXEC)",
+            "macOS descriptor close-on-exec mutation",
+        ),
+        (
+            "hbb_common_macos",
+            "Err(err) if err.raw_os_error() == Some(libc::EBADF)",
+            "Err(err) if err.raw_os_error() == Some(libc::EINTR)",
+            "macOS absent descriptor handling",
+        ),
+        (
+            "hbb_common_macos",
+            "for fd in (libc::STDERR_FILENO + 1)..=last_fd",
+            "for fd in (libc::STDERR_FILENO + 2)..=last_fd",
+            "macOS descriptor range traversal",
+        ),
+        (
+            "hbb_common_macos",
+            "if fd <= last_fd",
+            "if fd >= last_fd",
+            "macOS observed high-descriptor partition",
+        ),
+        (
+            "hbb_common_macos",
+            "pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)",
+            "pub fn configure_command_close_nonstdio_on_exec_disabled(command: &mut Command)",
+            "shared macOS descriptor policy API",
+        ),
+        (
+            "hbb_common_macos",
+            "command.pre_exec(move || {",
+            "command.pre_exec_disabled(move || {",
+            "macOS pre-exec registration",
+        ),
+        (
+            "hbb_common_macos",
+            "mark_nonstdio_descriptors_close_on_exec(last_fd, &observed_descriptors)",
+            "mark_nonstdio_descriptors_close_on_exec_disabled(last_fd, &observed_descriptors)",
+            "macOS pre-exec descriptor enforcement",
+        ),
+        (
+            "hbb_common_macos",
+            "fn macos_command_descriptor_limit_is_bounded()",
+            "fn macos_command_descriptor_limit_is_unbounded()",
+            "macOS descriptor limit regression",
+        ),
+        (
+            "hbb_common_macos",
+            "fn macos_command_excludes_injected_nonstdio_descriptor()",
+            "fn macos_command_accepts_injected_nonstdio_descriptor()",
+            "macOS actual-child descriptor regression",
+        ),
+        (
+            "hbb_common_macos",
+            'exec 9<\\"$1\\"; exec \\"$2\\" \\"$3\\" --nocapture',
+            'exec \\"$2\\" \\"$3\\" --nocapture',
+            "macOS inheritable descriptor launcher",
+        ),
+        (
+            "hbb_common_macos",
+            "configure_command_close_nonstdio_on_exec(&mut child).unwrap();",
+            "configure_command_close_nonstdio_on_exec_disabled(&mut child).unwrap();",
+            "macOS actual-child descriptor enforcement",
+        ),
+        (
+            "hbb_common_macos",
+            "the intermediate test image must prove the injected descriptor object",
+            "the intermediate test image may ignore the injected descriptor object",
+            "macOS intermediate descriptor identity proof",
+        ),
+        (
+            "hbb_common_macos",
+            "the final test image inherited the injected descriptor object",
+            "the final test image accepted the injected descriptor object",
+            "macOS final descriptor exclusion proof",
+        ),
+        (
+            "macos_source",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec_disabled",
+            "macOS",
+        ),
+        (
+            "ipc_source",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec_disabled(&mut command)",
+            "macOS service snapshot launchctl descriptor policy",
+        ),
+        (
+            "common_source",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec_disabled(&mut cmd)",
+            "macOS same-executable descriptor policy",
+        ),
+        (
+            "scrap_hwcodec",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(",
+            "hbb_common::platform::macos::configure_command_close_nonstdio_on_exec_disabled(",
+            "macOS hardware-codec helper descriptor policy",
+        ),
+        (
+            "hbb_common_cargo",
+            "[target.'cfg(target_os = \"linux\")'.dependencies]",
+            "[target.'cfg(target_os = \"macos\")'.dependencies]\nosascript = \"0.3\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]",
+            "obsolete osascript dependency remains in hbb_common",
+        ),
+        (
+            "cargo_lock",
+            '[[package]]\nname = "owned_ttf_parser"',
+            '[[package]]\nname = "osascript"\nversion = "0.3.0"\n\n[[package]]\nname = "owned_ttf_parser"',
+            "obsolete osascript package remains in Cargo.lock",
+        ),
+        (
+            "cargo_lock",
+            ' "machine-uid",\n "ntapi",',
+            ' "machine-uid",\n "ntapi",\n "osascript",',
+            "obsolete osascript hbb_common lock edge remains",
+        ),
+        (
+            "portable_pty_unix",
+            "const MAX_UNIX_DESCRIPTOR_LIMIT: u64 = 1_048_576;",
+            "const MAX_UNIX_DESCRIPTOR_LIMIT: u64 = 0;",
+            "portable PTY descriptor limit bound",
+        ),
+        (
+            "portable_pty_unix",
+            "descriptor_limit == libc::RLIM_INFINITY as u64",
+            "descriptor_limit == 1",
+            "portable PTY infinite descriptor limit rejection",
+        ),
+        (
+            "portable_pty_unix",
+            "descriptor_limit > MAX_UNIX_DESCRIPTOR_LIMIT",
+            "descriptor_limit < MAX_UNIX_DESCRIPTOR_LIMIT",
+            "portable PTY excessive descriptor limit rejection",
+        ),
+        (
+            "portable_pty_unix",
+            "libc::getrlimit(libc::RLIMIT_NOFILE",
+            "libc::getrlimit_disabled(libc::RLIMIT_NOFILE",
+            "portable PTY parent descriptor limit query",
+        ),
+        (
+            "portable_pty_unix",
+            'for entry in std::fs::read_dir("/dev/fd")?',
+            'for entry in std::fs::read_dir("/dev/null")?',
+            "portable PTY parent descriptor enumeration",
+        ),
+        (
+            "portable_pty_unix",
+            "observed_descriptors.sort_unstable();",
+            "observed_descriptors.reverse();",
+            "portable PTY descriptor sort",
+        ),
+        (
+            "portable_pty_unix",
+            "observed_descriptors.dedup();",
+            "observed_descriptors.clear();",
+            "portable PTY descriptor deduplication",
+        ),
+        (
+            "portable_pty_unix",
+            "let flags = libc::fcntl(fd, libc::F_GETFD);",
+            "let flags = libc::fcntl(fd, libc::F_GETFL);",
+            "portable PTY descriptor flag query",
+        ),
+        (
+            "portable_pty_unix",
+            "&& libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) == -1",
+            "&& libc::fcntl(fd, libc::F_GETFD, flags | libc::FD_CLOEXEC) == -1",
+            "portable PTY fail-closed close-on-exec primitive",
+        ),
+        (
+            "portable_pty_unix",
+            "error.raw_os_error() == Some(libc::EBADF)",
+            "error.raw_os_error() == Some(libc::EINTR)",
+            "portable PTY absent descriptor handling",
+        ),
+        (
+            "portable_pty_unix",
+            "for fd in (libc::STDERR_FILENO + 1)..=self.last_fd",
+            "for fd in (libc::STDERR_FILENO + 2)..=self.last_fd",
+            "portable PTY descriptor range traversal",
+        ),
+        (
+            "portable_pty_unix",
+            "let descriptor_policy = UnixChildDescriptorPolicy::prepare()?;",
+            "let descriptor_policy = UnixChildDescriptorPolicy::prepare_disabled()?;",
+            "portable PTY parent preparation and child enforcement before exec",
+        ),
+        (
+            "portable_pty_unix",
+            "descriptor_policy.mark_close_on_exec()?;",
+            "descriptor_policy.mark_close_on_exec_disabled()?;",
+            "portable PTY parent preparation and child enforcement before exec",
+        ),
+        (
+            "portable_pty_unix",
+            "struct UnixChildDescriptorPolicy {",
+            "pub fn close_random_fds() {}\n\nstruct UnixChildDescriptorPolicy {",
+            "obsolete allocating best-effort portable PTY descriptor close remains",
+        ),
+        (
+            "portable_pty_unix",
+            "fn unix_child_descriptor_limit_is_bounded()",
+            "fn unix_child_descriptor_limit_is_unbounded()",
+            "portable PTY descriptor limit regression",
+        ),
+        (
+            "portable_pty_unix",
+            "fn pty_child_exec_failure_is_reported()",
+            "fn pty_child_exec_failure_is_hidden()",
+            "portable PTY exec-error regression",
+        ),
+        (
+            "portable_pty_unix",
+            "the PTY spawn hid its post-fork exec failure from the parent",
+            "the PTY spawn may hide its post-fork exec failure from the parent",
+            "portable PTY exec-error parent observation",
+        ),
+        (
+            "portable_pty_unix",
+            "fn pty_child_excludes_injected_nonstdio_descriptor()",
+            "fn pty_child_accepts_injected_nonstdio_descriptor()",
+            "portable PTY actual-child descriptor regression",
+        ),
+        (
+            "portable_pty_unix",
+            "the intermediate PTY test image must prove the injected descriptor object",
+            "the intermediate PTY test image may ignore the injected descriptor object",
+            "portable PTY intermediate descriptor identity proof",
+        ),
+        (
+            "portable_pty_unix",
+            "the final PTY test image inherited the injected descriptor object",
+            "the final PTY test image accepted the injected descriptor object",
+            "portable PTY final descriptor exclusion proof",
+        ),
+        (
+            "root_cargo",
+            'portable-pty = { path = "libs/portable_pty" }',
+            'portable-pty = { git = "https://github.com/rustdesk-org/wezterm" }',
+            "portable PTY root path dependency",
+        ),
+        (
+            "root_cargo",
+            ', "libs/portable_pty"',
+            "",
+            "portable PTY workspace membership",
+        ),
+        (
+            "portable_pty_cargo",
+            'branch = "rustdesk/pty_based_0.8.1"',
+            'branch = "main"',
+            "portable PTY filedescriptor source pin",
+        ),
+        (
+            "portable_pty_provenance",
+            "80174f8009f41565f0fa8c66dab90d4f9211ae16",
+            "0000000000000000000000000000000000000000",
+            "portable PTY vendored provenance commit",
+        ),
+        (
+            "requirements",
+            'with <strong>909 package records</strong>, of which <strong>37 are git-sourced records',
+            'with <strong>910 package records</strong>, of which <strong>38 are git-sourced records',
+            "current Cargo package/source requirement inventory",
+        ),
+        (
+            "requirements",
+            "27 of the 37 git-sourced lockfile records",
+            "28 of the 38 git-sourced lockfile records",
+            "current rustdesk-org Git requirement inventory",
+        ),
+        (
+            "requirements",
+            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
+            "current Rust unsafe requirement inventory",
+        ),
+        (
+            "requirements",
+            "the one in-tree <code>portable-pty</code> exception is exact pinned source ownership required by R-S11t",
+            "the in-tree <code>portable-pty</code> exception is optional compatibility source",
+            "requirements in-tree PTY provenance exception",
+        ),
+        (
+            "cargo_lock",
+            'name = "portable-pty"\nversion = "0.8.1"',
+            'name = "portable-pty"\nversion = "0.8.1"\nsource = "git+https://github.com/rustdesk-org/wezterm"',
+            "portable-pty Cargo.lock record still delegates source authority",
+        ),
+        (
+            "terminal_service",
+            ".spawn_command(cmd)",
+            ".spawn_command_unconstrained(cmd)",
+            "production macOS terminal shell uses the constrained portable PTY spawn",
+        ),
+        (
+            "verify",
+            "obsolete-portable-pty-best-effort-close-present",
+            "obsolete-portable-pty-best-effort-close-ignored",
+            "source portable PTY obsolete-close rejection",
+        ),
+        (
+            "apple",
+            "portable-pty-regression-binding-missing",
+            "portable-pty-regression-binding-ignored",
+            "Apple-conformance portable PTY runtime-regression binding",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d13) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
+            'echo "== (3b-iii-d13) macOS child inherited descriptor compatibility (R-S11t/R-S11e-34) =="',
+            "macOS descriptor source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
+            'echo "== (2b-iv-a) macOS child inherited descriptor compatibility (R-S11t/R-S11e-34) =="',
+            "macOS Apple-conformance gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11t</span>',
+            '<span class="id">R-S11z</span>',
+            "macOS descriptor normative requirement",
+        ),
+        (
+            "requirements",
+            "portable-PTY terminal shell",
+            "portable-PTY terminal compatibility shell",
+            "macOS terminal PTY normative descriptor requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>142</td>",
+            "<tr><td>9142</td>",
+            "macOS descriptor Appendix C disposition",
+        ),
+        (
+            "requirements",
+            "the terminal PTY path apply the policy",
+            "the terminal PTY path may skip the policy",
+            "macOS terminal PTY Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-34 — macOS child inherited descriptor authority",
+            "R-S11e-34 — macOS child inherited descriptor compatibility",
+            "macOS descriptor hardening ledger",
+        ),
+        (
             "core_main",
             'crate::platform::close_service_owned_nonstdio_descriptors()',
             'crate::platform::close_service_owned_nonstdio_descriptors_disabled()',
@@ -11659,6 +12428,22 @@ def run_source_mutations(sources):
             changed = sources[key][:offset] + new + sources[key][offset + len(old):]
             mutated = dict(sources)
             mutated[key] = changed
+            if key == "requirements":
+                digest = hashlib.sha256(changed.encode("utf-8")).hexdigest()
+                mutated["native_watch"], native_hash_count = re.subn(
+                    r"(?m)^Requirements hash: [0-9a-f]{64}$",
+                    f"Requirements hash: {digest}",
+                    mutated["native_watch"],
+                )
+                mutated["hardening"], hardening_hash_count = re.subn(
+                    r"(?m)^[0-9a-f]{64}  requirements\.html$",
+                    f"{digest}  requirements.html",
+                    mutated["hardening"],
+                )
+                if native_hash_count != 1 or hardening_hash_count != 1:
+                    raise VerificationError(
+                        "requirements mutation fixture cannot synchronize derived hashes"
+                    )
             try:
                 validate_sources(mutated)
             except VerificationError as exc:
@@ -12062,6 +12847,12 @@ def main():
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "hbb_common_linux": (repo / "libs/hbb_common/src/platform/linux.rs").read_text(encoding="utf-8"),
+            "macos_source": (repo / "src/platform/macos.rs").read_text(encoding="utf-8"),
+            "hbb_common_macos": (repo / "libs/hbb_common/src/platform/macos.rs").read_text(encoding="utf-8"),
+            "portable_pty_unix": (repo / "libs/portable_pty/src/unix.rs").read_text(encoding="utf-8"),
+            "portable_pty_cargo": (repo / "libs/portable_pty/Cargo.toml").read_text(encoding="utf-8"),
+            "portable_pty_provenance": (repo / "libs/portable_pty/RUSTDESK_PROVENANCE.md").read_text(encoding="utf-8"),
+            "terminal_service": (repo / "src/server/terminal_service.rs").read_text(encoding="utf-8"),
             "system_message_example_state": (
                 "system-message-example-present"
                 if (repo / "libs/hbb_common/examples/system_message.rs").exists()

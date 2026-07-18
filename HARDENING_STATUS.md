@@ -11,15 +11,15 @@ history remains the traceability record for that intermediate work.
 
 > **Current `.6` source verdict (2026-07-14): implementation and release-harness state are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
 
-**Current machine inventory expectation.** `Cargo.lock` has 910 package records: 38 git-sourced records from
-27 unique git source URLs, including 28 rustdesk-org records from 21 unique rustdesk-org URLs.
+**Current machine inventory expectation.** `Cargo.lock` has 909 package records: 37 git-sourced records from
+27 unique git source URLs, including 27 rustdesk-org records from 21 unique rustdesk-org URLs.
 `flutter/pubspec.lock` has 199 package records, including 8 git records and 7 rustdesk-org records;
 `flutter/pubspec.yaml` declares 58 main and 6 dev dependencies, a 64-name union. `.github/workflows/` has
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 799 lexical `unsafe {`
-blocks across 243 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 851 lexical `unsafe {`
+blocks across 251 tracked Rust files, 73 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -2042,8 +2042,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
   debug-binary runtime evidence only; final exact release `.deb` execution remains open under R-B2/R-S11c-27.
   The helper adds one reviewed lexical
-  `unsafe {` block; after R-S11e-33 the current inventory is 799 blocks across 243 tracked Rust files/66 nonzero
-  files with digest `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
+  `unsafe {` block; after R-S11e-34 the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero
+  files with digest `1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b`.
 - **R-S11e-29 — Linux service-originated helper inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux root/service-originated helper launches. Endpoint/action: the `sudo -E env` probe,
@@ -2074,8 +2074,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   helper launches, R-S11o, Appendix C #137, and this ledger entry. The verifier mutation suite renames the helper,
   deletes/renames probe and reopen helper calls, and removes `run_as_user` branch calls; each mutation must be
   rejected. This slice adds one reviewed lexical `unsafe {` block for the new helper-launch `pre_exec` registration;
-  after R-S11e-33 the current inventory is 799 blocks across 243 tracked Rust files/66 nonzero
-  files with digest `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
+  after R-S11e-34 the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero
+  files with digest `1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b`.
 - **R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority — SOURCE AND
   MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
   Platform: Linux service-owned unattended-password authorization. Endpoint/action: root service invocation of
@@ -2183,9 +2183,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   therefore run and passed separately. The shared low-level implementation has four reviewed lexical `unsafe {`
   blocks while the superseded root helper contributed one removed block: the net inventory change is three, for a
   then-current total of 801 blocks across 244 tracked Rust files/67 nonzero files. R-S11e-33 later removes two
-  additional blocks from the still-tracked platform module and deletes one zero-unsafe example; the current
-  inventory is 799 blocks across 243 tracked Rust files/66 nonzero files with digest
-  `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
+  additional blocks from the still-tracked platform module and deletes one zero-unsafe example; after R-S11e-34
+  the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero files with digest
+  `1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b`.
 - **R-S11e-33 — desktop fatal-signal default disposition — SOURCE, COMPILE, TARGETED-TEST, AND MUTATION VERIFIED
   2026-07-18; FINAL EXACT RELEASE ARTIFACTS REMAIN WITH R-B2.** Platforms: Linux, macOS, and Windows non-mobile release desktop images, including
   viewer, server, and installed-service roles that share `core_main`. Endpoint/action: the process-wide
@@ -2217,10 +2217,96 @@ unreachable and a source/test/AST gate prevents reintroduction.
   metadata, the dependency inventory and its behavioral self-test, Python/shell syntax, native-codec watch,
   requirements-hash equality, and diff hygiene passed. Rust source edits are deletion-only; the local development
   image does not contain the Rust 1.75 rustfmt component, so no formatter result is claimed. This slice removes two
-  lexical `unsafe {` blocks from the still-tracked platform module and deletes one zero-unsafe example: the current
-  inventory is 799 blocks across 243 tracked Rust files/66 nonzero files with digest
-  `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`. Exact Linux/macOS/Windows release-artifact
+  lexical `unsafe {` blocks from the still-tracked platform module and deletes one zero-unsafe example. R-S11e-34
+  subsequently adds the reviewed macOS descriptor helper and brings the already-compiled portable PTY crate into
+  tracked source authority, so the current inventory is 851 blocks across 251 tracked Rust files/73 nonzero files
+  with digest `1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b`. Exact Linux/macOS/Windows release-artifact
   compilation/execution remains part of the final R-B2 transaction and is not claimed here.
+- **R-S11e-34 — macOS child inherited descriptor authority — SOURCE, RUST 1.75 HOST-ANALOGUE BEHAVIOR, AND
+  MUTATION VERIFIED 2026-07-18; NATIVE APPLE EVIDENCE REMAINS WITH R-B2.** Platform: macOS production child launches in viewer, controlled-side,
+  LaunchAgent, and root LaunchDaemon roles. Endpoint/action: service install/uninstall and LaunchAgent lifecycle
+  helpers; the LaunchDaemon's `launchctl print` service-owned snapshot authorization query; `launchctl asuser`
+  root-to-user helper transitions; same-executable CM/tray/whiteboard launches; the portable-PTY terminal shell;
+  app reopen, lock-state, and lock-screen tools; and the feature-inert hardware-codec checker. Boundary:
+  descriptors held by the current
+  RustDesk process, including root/service-owned IPC, credential-operation, log, directory, and kernel-object
+  capabilities ↔ a child image whose deliberate authority is only argv, explicitly selected environment, and
+  stdio. Attack surface closed: Darwin preserves descriptors across `exec` unless `FD_CLOEXEC` is set. Pinned
+  Rust 1.75's macOS `Command` path uses `posix_spawn` without Apple's close-by-default extension; the production
+  ordinary `Command` launch inventory supplied no application-owned non-stdio policy. The terminal path used the
+  pinned `portable-pty` fork instead; its post-fork `close_random_fds` allocated, walked `/dev/fd`, ignored
+  enumeration and close failures, and directly closed every descriptor above stderr. Besides violating the
+  post-fork async-signal-safe contract, that could close Rust's internal exec-error pipe before `exec` and make a
+  failed terminal image appear spawned. A sensitive descriptor lacking close-on-exec
+  could therefore enter `launchctl`, `osascript`, `open`, `ioreg`, `CGSession`, or a new RustDesk child. The
+  LaunchDaemon authorization query and root/user transition make this a privileged-to-helper capability-boundary
+  defect. It is not promoted to a demonstrated promptless ordinary-user-to-root primitive: exploitation still
+  requires a live sensitive inheritable descriptor. Separately, an unused public `hbb_common` alert API retained
+  `osascript` 0.3 solely to execute a PATH-selected dependency-owned helper beyond RustDesk's command policy.
+
+  Closure: `libs/hbb_common/src/platform/macos.rs` now owns one stdio-only ordinary-command policy. Before registering the
+  hook, the parent reads `RLIMIT_NOFILE`, rejects zero, infinity, or a value above the fork's bounded 1,048,576
+  descriptor operating envelope, and enumerates `/dev/fd`. The latter preserves coverage for inherited live
+  descriptors above a soft limit that a launcher lowered after opening them. The post-fork hook performs only raw
+  async-signal-safe `fcntl(F_GETFD/F_SETFD)` operations, marks every live descriptor above stderr close-on-exec,
+  treats only `EBADF` as absence, and returns every other failure to `Command` so the child launch fails closed.
+  The parent descriptor table is unchanged. No macOS production child protocol requires a non-stdio exception, so
+  this API has no allowlist surface. Every enumerated launch family applies the policy before `status`, `output`, or
+  `spawn`; the service-owned snapshot query rejects before executing `launchctl` if setup fails. The unused alert
+  API, `osascript` dependency, lockfile package, and hbb_common dependency edge are deleted rather than wrapped.
+  The exact pinned `portable-pty` 0.8.1 source from RustDesk's WezTerm fork commit
+  `80174f8009f41565f0fa8c66dab90d4f9211ae16` is now owned in `libs/portable_pty`, with its remaining source kept
+  byte-for-byte and provenance recorded. Its Unix PTY spawn prepares the same finite bound and `/dev/fd` snapshot
+  in the parent, then uses only raw `fcntl(F_GETFD/F_SETFD)` in the existing pre-exec closure. It marks rather than
+  closes non-stdio descriptors, so Rust's exec-error pipe remains usable until successful `exec`; only `EBADF` is
+  absence and every other error aborts spawn. The conservative policy applies to every Unix PTY child, avoiding a
+  weaker Linux terminal path while closing the macOS production shell inventory. The direct root dependency and
+  lock record now resolve that audited in-tree crate; its still-external `filedescriptor` edge remains exactly
+  pinned to the same RustDesk WezTerm fork branch.
+  One cfg-macOS unit regression pins finite/zero/infinite/over-bound descriptor-limit validation. A second uses
+  `/bin/sh` only as a separate test launcher: it opens descriptor 9, execs an intermediate copy of the exact test
+  image, proves the live descriptor's device/inode, and has that image launch a final copy through the production
+  policy; the final image must not contain that exact object. The parent test process never clears its own
+  close-on-exec flags, so the regression introduces no process-wide inheritability race. Three portable-PTY tests
+  separately pin the bound, prove an invalid executable is reported as a spawn error, and inject descriptor 9
+  through the actual PTY spawn path before proving the exact device/inode absent from the final image.
+
+  Primary contracts used for the design are Apple's `getrlimit(2)` documentation, Rust 1.75's exact Unix
+  `Command` implementation, Rust's `CommandExt::pre_exec` safety contract, and POSIX's async-signal-safe `fcntl`
+  contract:
+  https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getrlimit.2.html,
+  https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys/unix/process/process_unix.rs,
+  https://doc.rust-lang.org/1.75.0/std/os/unix/process/trait.CommandExt.html#method.pre_exec, and
+  https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html.
+
+  `scripts/verify.sh`, `scripts/apple-conform-check.sh`, and the semantic workspace verifier bind the bounded
+  parent preparation, raw close-on-exec primitive, high-descriptor coverage, fail-closed error semantics, exact
+  production launch inventory including the terminal PTY, all five regressions, dependency deletion/in-tree
+  ownership, R-S11t, Appendix C #142, and this entry. The
+  normal semantic verifier and both extracted shell gates passed. The complete in-memory source-mutation stage
+  passed after rejecting every primitive, launch-site, actual-child, dependency, gate, and documentation mutation;
+  its older Linux codec check was made platform-specific after the new macOS sibling correctly exposed the prior
+  ambiguous marker. Rust 1.75 accepted locked offline Cargo metadata and `rustfmt --check` for every touched Rust
+  file. A direct Rust 1.75 build of the shared module against locked `libc` 0.2.171 passed both tests on the Linux
+  host analogue, including the three-image injected-descriptor flow. That host analogue proves the source test and
+  generic Unix fork/exec behavior, not Darwin; native macOS compilation and execution of both tests, plus signed
+  Apple artifact inspection, remain explicitly pending under the exact-commit R-B2 transaction. Two broader
+  `hbb_common` check attempts stopped before compilation because offline Cargo would not accept the read-only
+  cached Git checkout; neither is counted as compile evidence and no cache ownership or permissions were changed.
+  With correctly user-owned disposable Cargo tmpfs and read-only cached leaves, the later locked offline
+  `portable-pty` test target compiled under Rust 1.75 and all three Unix tests passed, including the nested final
+  worker and preserved exec-error reporting. Native Darwin execution remains pending.
+
+  The dependency inventory and its behavioral self-test pass. Removing `osascript` and resolving `portable-pty`
+  in-tree leaves 909 Cargo package records with package digest
+  `a7906255d35ff864234e67599d47986faf3f6eb0e6121638e0d6ba5dc7d82e73` and 37 git-sourced records. This slice
+  adds three reviewed lexical `unsafe {` blocks in the previously zero-unsafe macOS shared module. Vendoring makes
+  48 already-compiled upstream unsafe blocks visible to tracked-source inventory and the replacement PTY policy
+  adds one net block relative to that upstream source; those 48 are newly auditable, not newly executable behavior.
+  The current inventory is 851 blocks across 251 tracked Rust files/73 nonzero files with digest
+  `1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b`. The native-codec watch and synchronized
+  requirements SHA-256 `a17aa0c3565824be388b3139932229c209395dfa99fcf594b72bfbdc0a402772` pass. Exact
+  Linux/macOS/Windows release-artifact compilation/execution remains part of final R-B2 and is not claimed here.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -3061,10 +3147,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; after the later R-S11e-33 fatal-signal closure, the current machine inventory is 799 across
-    243 tracked Rust files/66 nonzero files, with the added deterministic Windows resource producer containing no
+    blocks; after the later R-S11e-34 macOS descriptor closure, the current machine inventory is 851 across
+    251 tracked Rust files/73 nonzero files, with the added deterministic Windows resource producer containing no
     lexical unsafe block and per-file-count digest
-    `e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca`.
+    `1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -3165,8 +3251,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
     introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
     deterministic Windows resource-producer addition, R-S11e-28 descriptor closure, and R-S11e-29 helper-launch
-    descriptor hook, and the later R-S11e-33 fatal-signal closure, the current inventory is 799 across 243 tracked
-    Rust files/66 nonzero files.
+    descriptor hook, and the later R-S11e-34 macOS descriptor closure, the current inventory is 851 across 251
+    tracked Rust files/73 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
     source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active
@@ -4530,8 +4616,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e75f0ecc28cbdc84dbbae838404154b8f134a3a8957b17b450ea120dbbebebd1  requirements.html
+a17aa0c3565824be388b3139932229c209395dfa99fcf594b72bfbdc0a402772  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11s, and Appendix C #141. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11t, and Appendix C #142. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

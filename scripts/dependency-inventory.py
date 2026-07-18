@@ -39,12 +39,12 @@ EXPECTED = {
         "regular_files": 6,
     },
     "cargo_lock": {
-        "git_record_identities_sha256": "e73c48528d465242a0d3d05ba33e94bbbeb803789d4c4dbe872f39ad053bb13d",
+        "git_record_identities_sha256": "53dddf6ad2276d1825904927e9981bf310e3b6e46c4e77b07e8d5768acc4c5c0",
         "git_source_identities_sha256": "b783dd90085e2e74e2acbcba9e37c0c389084fa5cdea7725b3daea6cf98928d1",
-        "git_sourced_records": 38,
-        "package_records": 910,
-        "package_records_sha256": "dffebac6e46396025907dd5ed1820ce5930b7961b04a5b60c2ebf03cff56583c",
-        "rustdesk_org_git_records": 28,
+        "git_sourced_records": 37,
+        "package_records": 909,
+        "package_records_sha256": "a7906255d35ff864234e67599d47986faf3f6eb0e6121638e0d6ba5dc7d82e73",
+        "rustdesk_org_git_records": 27,
         "unique_git_source_urls": 27,
     },
     "flutter_pubspec": {
@@ -158,10 +158,10 @@ EXPECTED = {
         "regular_files": 8,
     },
     "rust_sources": {
-        "files_with_unsafe_blocks": 66,
-        "lexical_counts_by_file_sha256": "e980e78429807a300e33361eea42d9d98ce07fa9ac5b21df1a8c66cd21117aca",
-        "lexical_unsafe_open_brace_blocks": 799,
-        "tracked_rs_files": 243,
+        "files_with_unsafe_blocks": 73,
+        "lexical_counts_by_file_sha256": "1ceea23fc0a80a232797b89e65e78f87b0bcd59d95e0dc0c44dce38d2ea2f20b",
+        "lexical_unsafe_open_brace_blocks": 851,
+        "tracked_rs_files": 251,
     },
 }
 

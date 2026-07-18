@@ -1348,9 +1348,12 @@ echo "$launch_server_body" | grep -Fq 'SERVICE_OWNED_SERVER_ARG' || r_s11d13="$r
 if echo "$launch_server_body" | grep -Fq 'format!'; then
   r_s11d13="$r_s11d13 rust-launch-server-preformatted-command-leftover"
 fi
-run_exe_session_body=$(awk '/^fn run_exe_path_in_session_with_env/,/^}/' src/platform/windows.rs)
-echo "$run_exe_session_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-session-launch-not-using-bound-helper"
-grep -Fq 'run_exe_path_in_session_with_env(Path::new(exe), arg, session_id, show, envs)' src/platform/windows.rs || r_s11d13="$r_s11d13 rust-public-session-launch-not-delegated"
+run_current_exe_session_body=$(awk '/^fn run_current_exe_in_current_session_with_env/,/^}/' src/platform/windows.rs)
+echo "$run_current_exe_session_body" | grep -Fq 'let Some(session_id) = get_current_process_session_id()' || r_s11d13="$r_s11d13 rust-current-session-not-derived-at-receiver"
+echo "$run_current_exe_session_body" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11d13="$r_s11d13 rust-current-executable-not-derived-at-receiver"
+echo "$run_current_exe_session_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-current-image-session-launch-not-using-bound-helper"
+echo "$run_current_exe_session_body" | grep -Fq 'TRUE,' || r_s11d13="$r_s11d13 rust-current-image-session-launch-not-using-user-token"
+echo "$run_current_exe_session_body" | grep -Fq 'FALSE,' || r_s11d13="$r_s11d13 rust-current-image-session-launch-not-hidden"
 if grep -Fq 'pub fn launch_privileged_process' src/platform/windows.rs || grep -Fq 'launch_privileged_process' src/core_main.rs src/platform/windows.rs requirements.html HARDENING_STATUS.md; then
   r_s11d13="$r_s11d13 obsolete-launch-privileged-process-reference-leftover"
 fi
@@ -1358,6 +1361,45 @@ grep -Fq 'Windows service and session-token process launch provenance' requireme
 grep -Fq 'R-S11d-13 — Windows service and session-token process launch provenance' HARDENING_STATUS.md || r_s11d13="$r_s11d13 hardening-ledger-missing"
 if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token launch provenance:$r_s11d13"; rc=1; else
   echo "  ok  R-S11d-13 Windows service/session token launches bind lpApplicationName/current-directory, quote argv separately, and reject ambient executable identity"; fi
+
+echo "== (3b-iii-a5d2b) Windows helper launch API is role-confined (R-S11u/R-S11e-35) =="
+r_s11e35=
+windows_run_as_user=$(awk '/^pub fn run_as_user_with_env/,/^fn windows_env_block/' src/platform/windows.rs)
+grep -Fq 'fn windows_user_helper_launch_is_allowed(' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-role-policy-missing"
+grep -Fq '["--tray"] => envs.is_empty()' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-exact-role-missing"
+grep -Fq '["--cm"] => has_exact_environment([' src/platform/windows.rs || r_s11e35="$r_s11e35 cm-exact-role-missing"
+grep -Fq '["--whiteboard"] => has_exact_environment([' src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-exact-role-missing"
+grep -Fq 'envs.len() == expected.len()' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-cardinality-not-exact"
+grep -Fq 'envs.iter().all(|(_, value)| !value.is_empty())' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-empty-value-accepted"
+grep -Fq 'envs.iter().any(|(key, _)| key == expected)' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-key-membership-not-exact"
+for key in CM_LAUNCH_TOKEN_ENV CM_LAUNCH_PARENT_ENV WHITEBOARD_LAUNCH_TOKEN_ENV WHITEBOARD_LAUNCH_PARENT_ENV; do
+  grep -Fq "crate::common::$key" src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-key-missing:$key"
+done
+echo "$windows_run_as_user" | grep -Fq 'windows_user_helper_launch_is_allowed(&arg, &envs)' || r_s11e35="$r_s11e35 helper-policy-not-enforced"
+echo "$windows_run_as_user" | grep -Fq 'return run_current_exe_in_current_session_with_env(' || r_s11e35="$r_s11e35 localsystem-current-image-route-missing"
+echo "$windows_run_as_user" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11e35="$r_s11e35 non-system-current-image-route-missing"
+echo "$windows_run_as_user" | grep -Fq 'std::process::Command::new(exe)' || r_s11e35="$r_s11e35 non-system-current-image-spawn-missing"
+grep -Fq 'fn windows_user_helper_launch_shape_is_closed()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
+grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 token-launch-handle-inheritance-not-disabled"
+for obsolete in \
+  'pub fn run_exe_direct' \
+  'pub fn run_exe_in_cur_session' \
+  'pub fn run_exe_in_session' \
+  'pub fn run_background' \
+  'run_exe_path_direct_with_env' \
+  'run_exe_path_in_cur_session_with_env' \
+  'run_exe_path_in_session_with_env' \
+  'shellapi::ShellExecuteW' \
+  'ShellExecuteW('; do
+  if grep -Fq "$obsolete" src/platform/windows.rs; then
+    r_s11e35="$r_s11e35 obsolete-generic-launch-surface:$obsolete"
+  fi
+done
+grep -Fq '<span class="id">R-S11u</span>' requirements.html || r_s11e35="$r_s11e35 normative-requirement-missing"
+grep -Fq '<tr><td>143</td>' requirements.html || r_s11e35="$r_s11e35 appendix-disposition-missing"
+grep -Fq 'R-S11e-35 — Windows dormant generic process-launch authority' HARDENING_STATUS.md || r_s11e35="$r_s11e35 hardening-ledger-missing"
+if [ -n "$r_s11e35" ]; then echo "  FAIL R-S11e-35 Windows helper launch authority:$r_s11e35"; rc=1; else
+  echo "  ok  R-S11e-35 Windows user helpers launch only the current RustDesk image in the receiver-selected session under exact CM/tray/whiteboard role and environment shapes; generic executable/session/ShellExecute surfaces are absent"; fi
 
 echo "== (3b-iii-a5d3) Windows service/session token source is provenance-checked (R-S11d-14) =="
 r_s11d14=

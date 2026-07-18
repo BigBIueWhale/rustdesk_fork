@@ -63,7 +63,6 @@ use winapi::{
             ProcessIdToSessionId,
         },
         securitybaseapi::GetTokenInformation,
-        shellapi::ShellExecuteW,
         synchapi::WaitForSingleObject,
         sysinfoapi::{GetNativeSystemInfo, SYSTEM_INFO},
         winbase::*,
@@ -3541,6 +3540,28 @@ fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>> {
     Ok(command_line)
 }
 
+fn windows_user_helper_launch_is_allowed(arg: &[&str], envs: &[(OsString, OsString)]) -> bool {
+    let has_exact_environment = |expected: [&OsStr; 2]| {
+        envs.len() == expected.len()
+            && envs.iter().all(|(_, value)| !value.is_empty())
+            && expected
+                .iter()
+                .all(|expected| envs.iter().any(|(key, _)| key == expected))
+    };
+    match arg {
+        ["--tray"] => envs.is_empty(),
+        ["--cm"] => has_exact_environment([
+            OsStr::new(crate::common::CM_LAUNCH_TOKEN_ENV),
+            OsStr::new(crate::common::CM_LAUNCH_PARENT_ENV),
+        ]),
+        ["--whiteboard"] => has_exact_environment([
+            OsStr::new(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
+            OsStr::new(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
+        ]),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod process_launch_tests {
     use super::*;
@@ -3578,6 +3599,80 @@ mod process_launch_tests {
         assert!(
             windows_command_line(Path::new(r"C:\RustDesk\rustdesk.exe"), &["bad\0arg"]).is_err()
         );
+    }
+
+    #[test]
+    fn windows_user_helper_launch_shape_is_closed() {
+        let cm_environment = vec![
+            (
+                OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
+                OsString::from("token"),
+            ),
+            (
+                OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
+                OsString::from("42"),
+            ),
+        ];
+        assert!(windows_user_helper_launch_is_allowed(
+            &["--cm"],
+            &cm_environment
+        ));
+        assert!(windows_user_helper_launch_is_allowed(&["--tray"], &[]));
+        let whiteboard_environment = vec![
+            (
+                OsString::from(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
+                OsString::from("token"),
+            ),
+            (
+                OsString::from(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
+                OsString::from("42"),
+            ),
+        ];
+        assert!(windows_user_helper_launch_is_allowed(
+            &["--whiteboard"],
+            &whiteboard_environment
+        ));
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--cm"],
+            &whiteboard_environment
+        ));
+
+        let mut extra_environment = cm_environment.clone();
+        extra_environment.push((OsString::from("PATH"), OsString::from("C:\\untrusted")));
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--cm"],
+            &extra_environment
+        ));
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--server"],
+            &cm_environment
+        ));
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--tray"],
+            &cm_environment
+        ));
+        let wrong_environment = vec![
+            (OsString::from("PATH"), OsString::from("C:\\untrusted")),
+            (
+                OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
+                OsString::from("42"),
+            ),
+        ];
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--cm"],
+            &wrong_environment
+        ));
+        let duplicate_environment = vec![cm_environment[0].clone(), cm_environment[0].clone()];
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--cm"],
+            &duplicate_environment
+        ));
+        let mut empty_environment = cm_environment;
+        empty_environment[0].1.clear();
+        assert!(!windows_user_helper_launch_is_allowed(
+            &["--cm"],
+            &empty_environment
+        ));
     }
 }
 
@@ -3650,113 +3745,30 @@ where
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
-    let exe = std::env::current_exe()?;
-    run_exe_path_in_cur_session_with_env(&exe, arg, false, envs)
-}
-
-pub fn run_exe_direct(
-    exe: &str,
-    arg: Vec<&str>,
-    show: bool,
-) -> ResultType<Option<std::process::Child>> {
-    run_exe_direct_with_env(exe, arg, show, std::iter::empty::<(&str, &str)>())
-}
-
-pub fn run_exe_direct_with_env<I, K, V>(
-    exe: &str,
-    arg: Vec<&str>,
-    show: bool,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    run_exe_path_direct_with_env(Path::new(exe), arg, show, envs)
-}
-
-fn run_exe_path_direct_with_env<I, K, V>(
-    exe: &Path,
-    arg: Vec<&str>,
-    show: bool,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    let mut cmd = std::process::Command::new(exe);
-    cmd.envs(envs);
-    for a in arg {
-        cmd.arg(a);
+    let envs = envs
+        .into_iter()
+        .map(|(key, value)| (OsString::from(key.as_ref()), OsString::from(value.as_ref())))
+        .collect::<Vec<_>>();
+    if !windows_user_helper_launch_is_allowed(&arg, &envs) {
+        bail!("Refusing unsupported Windows user-helper launch shape");
     }
-    if !show {
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    match cmd.spawn() {
-        Ok(child) => Ok(Some(child)),
-        Err(e) => bail!("Failed to start process: {}", e),
-    }
-}
-
-pub fn run_exe_in_cur_session(
-    exe: &str,
-    arg: Vec<&str>,
-    show: bool,
-) -> ResultType<Option<std::process::Child>> {
-    run_exe_in_cur_session_with_env(exe, arg, show, std::iter::empty::<(&str, &str)>())
-}
-
-pub fn run_exe_in_cur_session_with_env<I, K, V>(
-    exe: &str,
-    arg: Vec<&str>,
-    show: bool,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    run_exe_path_in_cur_session_with_env(Path::new(exe), arg, show, envs)
-}
-
-fn run_exe_path_in_cur_session_with_env<I, K, V>(
-    exe: &Path,
-    arg: Vec<&str>,
-    show: bool,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
     if is_root() {
-        let Some(session_id) = get_current_process_session_id() else {
-            bail!("Failed to get current process session id");
-        };
-        run_exe_path_in_session_with_env(exe, arg, session_id, show, envs)
-    } else {
-        run_exe_path_direct_with_env(exe, arg, show, envs)
+        return run_current_exe_in_current_session_with_env(
+            arg,
+            envs.iter().map(|(key, value)| (key, value)),
+        );
     }
-}
 
-pub fn run_exe_in_session(
-    exe: &str,
-    arg: Vec<&str>,
-    session_id: DWORD,
-    show: bool,
-) -> ResultType<Option<std::process::Child>> {
-    run_exe_in_session_with_env(
-        exe,
-        arg,
-        session_id,
-        show,
-        std::iter::empty::<(&str, &str)>(),
-    )
+    let exe = std::env::current_exe()?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .envs(envs.iter().map(|(key, value)| (key, value)))
+        .args(arg)
+        .creation_flags(CREATE_NO_WINDOW);
+    command
+        .spawn()
+        .map(Some)
+        .map_err(|err| anyhow!("Failed to start current RustDesk process: {err}"))
 }
 
 fn windows_env_block<I, K, V>(envs: I) -> ResultType<Vec<u16>>
@@ -3784,11 +3796,8 @@ where
     Ok(block)
 }
 
-pub fn run_exe_in_session_with_env<I, K, V>(
-    exe: &str,
+fn run_current_exe_in_current_session_with_env<I, K, V>(
     arg: Vec<&str>,
-    session_id: DWORD,
-    show: bool,
     envs: I,
 ) -> ResultType<Option<std::process::Child>>
 where
@@ -3796,30 +3805,12 @@ where
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
-    run_exe_path_in_session_with_env(Path::new(exe), arg, session_id, show, envs)
-}
-
-fn run_exe_path_in_session_with_env<I, K, V>(
-    exe: &Path,
-    arg: Vec<&str>,
-    session_id: DWORD,
-    show: bool,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    let launched = launch_process_in_session_with_env(
-        exe,
-        &arg,
-        session_id,
-        TRUE,
-        if show { TRUE } else { FALSE },
-        envs,
-        NULL,
-    )?;
+    let Some(session_id) = get_current_process_session_id() else {
+        bail!("Failed to get current process session id");
+    };
+    let exe = std::env::current_exe()?;
+    let launched =
+        launch_process_in_session_with_env(&exe, &arg, session_id, TRUE, FALSE, envs, NULL)?;
     if launched.process.is_null() {
         if launched.token_pid == 0 {
             bail!(
@@ -4842,27 +4833,6 @@ pub fn get_user_token(session_id: u32, as_user: bool) -> HANDLE {
         } else {
             token
         }
-    }
-}
-
-pub fn run_background(exe: &str, arg: &str) -> ResultType<bool> {
-    let wexe = wide_string(exe);
-    let warg;
-    unsafe {
-        let ret = ShellExecuteW(
-            NULL as _,
-            NULL as _,
-            wexe.as_ptr() as _,
-            if arg.is_empty() {
-                NULL as _
-            } else {
-                warg = wide_string(arg);
-                warg.as_ptr() as _
-            },
-            NULL as _,
-            SW_HIDE,
-        );
-        return Ok(ret as i32 > 32);
     }
 }
 

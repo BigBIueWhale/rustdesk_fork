@@ -5367,7 +5367,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -5535,6 +5535,125 @@ def validate_macos_descriptor_contract(sources):
         require_text(sources[source_key], text, label)
 
 
+def validate_windows_helper_launch_contract(sources):
+    platform = sources["windows_source"]
+    native = sources["windows_native"]
+    for token in (
+        "pub fn run_exe_direct",
+        "pub fn run_exe_in_cur_session",
+        "pub fn run_exe_in_session",
+        "pub fn run_background",
+        "run_exe_path_direct_with_env",
+        "run_exe_path_in_cur_session_with_env",
+        "run_exe_path_in_session_with_env",
+        "shellapi::ShellExecuteW",
+        "ShellExecuteW(",
+    ):
+        if token in platform:
+            raise VerificationError(
+                f"Windows dormant generic process-launch surface remains: {token}"
+            )
+
+    policy = extract_between(
+        platform,
+        "fn windows_user_helper_launch_is_allowed(",
+        "\n#[cfg(test)]",
+        "Windows helper exact role/environment policy",
+    )
+    for text, label in (
+        ('["--tray"] => envs.is_empty()', "Windows tray exact launch shape"),
+        ('["--cm"] => has_exact_environment([', "Windows CM exact launch shape"),
+        (
+            '["--whiteboard"] => has_exact_environment([',
+            "Windows whiteboard exact launch shape",
+        ),
+        ("envs.len() == expected.len()", "Windows helper environment exact cardinality"),
+        (
+            "envs.iter().all(|(_, value)| !value.is_empty())",
+            "Windows helper nonempty environment values",
+        ),
+        (
+            "envs.iter().any(|(key, _)| key == expected)",
+            "Windows helper environment exact key membership",
+        ),
+        ("CM_LAUNCH_TOKEN_ENV", "Windows CM launch token environment"),
+        ("CM_LAUNCH_PARENT_ENV", "Windows CM launch parent environment"),
+        ("WHITEBOARD_LAUNCH_TOKEN_ENV", "Windows whiteboard launch token environment"),
+        ("WHITEBOARD_LAUNCH_PARENT_ENV", "Windows whiteboard launch parent environment"),
+    ):
+        require_text(policy, text, label)
+
+    run_as_user = extract_between(
+        platform,
+        "pub fn run_as_user_with_env<I, K, V>(",
+        "\nfn windows_env_block",
+        "Windows current-image helper launcher",
+    )
+    require_order(
+        run_as_user,
+        (
+            "windows_user_helper_launch_is_allowed(&arg, &envs)",
+            "if is_root()",
+            "run_current_exe_in_current_session_with_env(",
+        ),
+        "Windows helper policy before LocalSystem launch",
+    )
+    require_order(
+        run_as_user,
+        (
+            "windows_user_helper_launch_is_allowed(&arg, &envs)",
+            "let exe = std::env::current_exe()?;",
+            "std::process::Command::new(exe)",
+            ".spawn()",
+        ),
+        "Windows helper policy before same-principal current-image launch",
+    )
+
+    system_launch = extract_between(
+        platform,
+        "fn run_current_exe_in_current_session_with_env<I, K, V>(",
+        "\nconst SOFTWARE_SAS_GENERATION_NONE",
+        "Windows LocalSystem current-image helper launcher",
+    )
+    require_order(
+        system_launch,
+        (
+            "get_current_process_session_id()",
+            "let exe = std::env::current_exe()?;",
+            "launch_process_in_session_with_env(",
+            "&exe,",
+            "TRUE,",
+            "FALSE,",
+        ),
+        "Windows receiver-selected current-image session launch",
+    )
+    require_text(
+        native,
+        "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,",
+        "Windows token launch disables handle inheritance",
+    )
+    require_text(
+        platform,
+        "fn windows_user_helper_launch_shape_is_closed()",
+        "Windows closed helper launch-shape regression",
+    )
+    for source_key, text, label in (
+        (
+            "verify",
+            'echo "== (3b-iii-a5d2b) Windows helper launch API is role-confined (R-S11u/R-S11e-35) =="',
+            "Windows helper launch source gate",
+        ),
+        ("requirements", '<span class="id">R-S11u</span>', "Windows helper launch normative requirement"),
+        ("requirements", "<tr><td>143</td>", "Windows helper launch Appendix C disposition"),
+        (
+            "hardening",
+            "R-S11e-35 — Windows dormant generic process-launch authority",
+            "Windows helper launch hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -5546,6 +5665,7 @@ def validate_sources(sources):
     validate_docs(sources)
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
+    validate_windows_helper_launch_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -11030,7 +11150,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -11105,6 +11225,84 @@ def run_source_mutations(sources):
             "R-S11e-34 — macOS child inherited descriptor authority",
             "R-S11e-34 — macOS child inherited descriptor compatibility",
             "macOS descriptor hardening ledger",
+        ),
+        (
+            "windows_source",
+            "fn windows_user_helper_launch_is_allowed(arg:",
+            "pub fn run_background() {}\n\nfn windows_user_helper_launch_is_allowed(arg:",
+            "Windows dormant generic process-launch surface remains",
+        ),
+        (
+            "windows_source",
+            '["--tray"] => envs.is_empty()',
+            '["--server"] => envs.is_empty()',
+            "Windows tray exact launch shape",
+        ),
+        (
+            "windows_source",
+            "envs.len() == expected.len()",
+            "envs.len() >= expected.len()",
+            "Windows helper environment exact cardinality",
+        ),
+        (
+            "windows_source",
+            "envs.iter().any(|(key, _)| key == expected)",
+            "envs.iter().any(|(_, _)| true)",
+            "Windows helper environment exact key membership",
+        ),
+        (
+            "windows_source",
+            "envs.iter().all(|(_, value)| !value.is_empty())",
+            "envs.iter().all(|(_, _)| true)",
+            "Windows helper nonempty environment values",
+        ),
+        (
+            "windows_source",
+            "if !windows_user_helper_launch_is_allowed(&arg, &envs) {",
+            "if false { // helper role/environment policy removed",
+            "Windows helper policy before LocalSystem launch",
+        ),
+        (
+            "windows_source",
+            "fn run_current_exe_in_current_session_with_env<I, K, V>(",
+            "fn run_caller_selected_exe_in_caller_selected_session_with_env<I, K, V>(",
+            "Windows LocalSystem current-image helper launcher",
+        ),
+        (
+            "windows_native",
+            "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,",
+            "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, TRUE,",
+            "Windows token launch disables handle inheritance",
+        ),
+        (
+            "windows_source",
+            "fn windows_user_helper_launch_shape_is_closed()",
+            "fn windows_user_helper_launch_shape_is_open()",
+            "Windows closed helper launch-shape regression",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-a5d2b) Windows helper launch API is role-confined (R-S11u/R-S11e-35) =="',
+            'echo "== (3b-iii-a5d2b) Windows helper launch API is caller-selected (R-S11u/R-S11e-35) =="',
+            "Windows helper launch source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11u</span>',
+            '<span class="id">R-S11z</span>',
+            "Windows helper launch normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>143</td>",
+            "<tr><td>9143</td>",
+            "Windows helper launch Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-35 — Windows dormant generic process-launch authority",
+            "R-S11e-35 — Windows generic process-launch compatibility",
+            "Windows helper launch hardening ledger",
         ),
         (
             "core_main",
@@ -12846,6 +13044,8 @@ def main():
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
+            "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
+            "windows_native": (repo / "src/platform/windows.cc").read_text(encoding="utf-8"),
             "hbb_common_linux": (repo / "libs/hbb_common/src/platform/linux.rs").read_text(encoding="utf-8"),
             "macos_source": (repo / "src/platform/macos.rs").read_text(encoding="utf-8"),
             "hbb_common_macos": (repo / "libs/hbb_common/src/platform/macos.rs").read_text(encoding="utf-8"),

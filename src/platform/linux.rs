@@ -99,17 +99,34 @@ lazy_static::lazy_static! {
             let val = "1";
             let expected = format!("{key}={val}");
             match (sudo_path(), env_path()) {
-                (Some(sudo), Some(env)) => Command::new(&sudo)
-                    // -n for non-interactive to avoid password prompt
-                    .env(&key, val)
-                    .args(["-n", "-E"])
-                    .arg(&env)
-                    .output()
-                    .map(|o| {
-                        o.status.success()
-                            && String::from_utf8_lossy(&o.stdout).contains(expected.as_str())
-                    })
-                    .unwrap_or(false),
+                (Some(sudo), Some(env)) => {
+                    let mut command = Command::new(&sudo);
+                    command
+                        // -n for non-interactive to avoid password prompt
+                        .env(&key, val)
+                        .args(["-n", "-E"])
+                        .arg(&env);
+                    if let Err(err) =
+                        configure_linux_helper_close_nonstdio_on_exec(&mut command)
+                    {
+                        log::warn!(
+                            "Failed to constrain sudo environment probe descriptors: {err}"
+                        );
+                        false
+                    } else {
+                        match command.output() {
+                            Ok(output) => {
+                                output.status.success()
+                                    && String::from_utf8_lossy(&output.stdout)
+                                        .contains(expected.as_str())
+                            }
+                            Err(err) => {
+                                log::warn!("sudo -E environment probe failed: {err}");
+                                false
+                            }
+                        }
+                    }
+                }
                 _ => {
                     log::warn!("Trusted sudo/env path not found, SUDO_E_PRESERVES_ENV check skipped");
                     false
@@ -1803,6 +1820,22 @@ pub fn close_service_owned_nonstdio_descriptors() -> ResultType<()> {
         .map_err(|err| anyhow!("Failed to close inherited non-stdio descriptors: {err}"))
 }
 
+fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {
+    let descriptor_upper_bound = linux_service_descriptor_upper_bound()?;
+    // The closure performs only raw Linux syscalls over the parent-resolved
+    // descriptor bound. It preserves stdio and makes every other inherited
+    // descriptor close before the helper image runs.
+    unsafe {
+        command.pre_exec(move || {
+            constrain_service_owned_nonstdio_descriptors(
+                descriptor_upper_bound,
+                ServiceDescriptorDisposition::CloseOnExec,
+            )
+        });
+    }
+    Ok(())
+}
+
 fn arm_service_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> std::io::Result<()> {
     // `PR_SET_PDEATHSIG` is cleared by a credential change and can also be cleared by
     // executing a privileged file. Arm it after the optional uid/gid drop in the pre-exec
@@ -2623,8 +2656,8 @@ where
     let valid_envs = valid_sudo_envs(envs);
     let xdg_runtime_dir = format!("/run/user/{uid}");
     if *SUDO_E_PRESERVES_ENV {
-        let task = Command::new(&sudo_path)
-            .env("XDG_RUNTIME_DIR", &xdg_runtime_dir)
+        let mut sudo = Command::new(&sudo_path);
+        sudo.env("XDG_RUNTIME_DIR", &xdg_runtime_dir)
             .envs(
                 valid_envs
                     .iter()
@@ -2635,8 +2668,9 @@ where
             .arg(&username)
             .arg("--")
             .arg(&cmd)
-            .args(arg)
-            .spawn()?;
+            .args(arg);
+        configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;
+        let task = sudo.spawn()?;
         Ok(Some(task))
     } else {
         let Some(env_path) = env_path() else {
@@ -2657,6 +2691,7 @@ where
         }
 
         sudo.arg(&cmd).args(arg);
+        configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;
         let task = sudo.spawn()?;
         Ok(Some(task))
     }
@@ -4728,11 +4763,15 @@ pub fn schedule_reopen_after_service_stop(secs: u32) {
         }
     };
 
-    if let Err(err) = Command::new(&exe)
+    let mut command = Command::new(&exe);
+    command
         .arg(REOPEN_AFTER_SERVICE_STOP_ARG)
-        .arg(secs.to_string())
-        .spawn()
-    {
+        .arg(secs.to_string());
+    if let Err(err) = configure_linux_helper_close_nonstdio_on_exec(&mut command) {
+        log::warn!("Failed to constrain RustDesk reopen descriptors: {}", err);
+        return;
+    }
+    if let Err(err) = command.spawn() {
         log::warn!("Failed to schedule RustDesk reopen: {}", err);
     }
 }
@@ -4741,7 +4780,12 @@ pub fn reopen_after_service_stop(secs: u32) {
     std::thread::sleep(Duration::from_secs(secs as u64));
     match std::env::current_exe() {
         Ok(exe) => {
-            if let Err(err) = Command::new(exe).spawn() {
+            let mut command = Command::new(exe);
+            if let Err(err) = configure_linux_helper_close_nonstdio_on_exec(&mut command) {
+                log::warn!("Failed to constrain RustDesk reopen descriptors: {}", err);
+                return;
+            }
+            if let Err(err) = command.spawn() {
                 log::warn!("Failed to reopen RustDesk after service stop: {}", err);
             }
         }

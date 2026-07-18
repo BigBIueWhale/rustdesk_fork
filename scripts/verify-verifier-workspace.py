@@ -3297,6 +3297,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-27 — Linux service-owned working-directory authority' HARDENING_STATUS.md", "service cwd hardening ledger gate"),
         ('Linux service-owned inherited descriptor authority (R-S11n/R-S11e-28)', "service inherited descriptor source gate"),
         ("grep -qF 'R-S11e-28 — Linux service-owned inherited descriptor authority' HARDENING_STATUS.md", "service inherited descriptor hardening ledger gate"),
+        ('Linux service helper inherited descriptor authority (R-S11o/R-S11e-29)', "service helper descriptor source gate"),
+        ("grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md", "service helper descriptor hardening ledger gate"),
     ):
         require_text(verify, text, label)
     require_text(
@@ -3313,6 +3315,11 @@ def validate_smoke_contract(
         hardening,
         "R-S11e-28 — Linux service-owned inherited descriptor authority",
         "service inherited descriptor hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-29 — Linux service-originated helper inherited descriptor authority",
+        "service helper descriptor hardening ledger",
     )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -3973,6 +3980,89 @@ def validate_smoke_contract(
         ('.current_dir("/")', ".env_clear()", "let spawn_result = command.spawn();"),
         "service child fixed cwd before spawn",
     )
+    linux_helper_pre_exec = extract_between(
+        linux_source,
+        "fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {",
+        "\nfn arm_service_child_parent_death",
+        "Linux service helper descriptor pre-exec",
+    )
+    for text, label in (
+        ("let descriptor_upper_bound = linux_service_descriptor_upper_bound()?", "helper descriptor parent-resolved bound"),
+        ("command.pre_exec(move || {", "helper descriptor pre-exec hook"),
+        ("constrain_service_owned_nonstdio_descriptors(", "helper descriptor cleanup dispatch"),
+        ("ServiceDescriptorDisposition::CloseOnExec", "helper descriptor close-on-exec policy"),
+    ):
+        require_text(linux_helper_pre_exec, text, label)
+    sudo_env_probe = extract_between(
+        linux_source,
+        "static ref SUDO_E_PRESERVES_ENV: bool = {",
+        "\n#[inline]\nfn update_active_user_lookup_cache",
+        "sudo -E environment preservation probe",
+    )
+    for text, label in (
+        ("let mut command = Command::new(&sudo);", "sudo probe mutable command"),
+        ("configure_linux_helper_close_nonstdio_on_exec(&mut command)", "sudo probe descriptor policy"),
+        ("command.output()", "sudo probe execution after descriptor policy"),
+        ("Failed to constrain sudo environment probe descriptors", "sudo probe descriptor failure diagnostic"),
+    ):
+        require_text(sudo_env_probe, text, label)
+    require_order(
+        sudo_env_probe,
+        (
+            "let mut command = Command::new(&sudo);",
+            "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "command.output()",
+        ),
+        "sudo probe descriptor policy before execution",
+    )
+    run_as_user = extract_between(
+        linux_source,
+        "pub fn run_as_user<",
+        "\npub fn get_pa_monitor",
+        "Linux run_as_user helper launch",
+    )
+    require_exact_count(
+        run_as_user,
+        "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+        2,
+        "run_as_user descriptor policy on both sudo branches",
+    )
+    require_exact_count(
+        run_as_user,
+        "let task = sudo.spawn()?;",
+        2,
+        "run_as_user controlled sudo spawn points",
+    )
+    require_order(
+        run_as_user,
+        (
+            "let mut sudo = Command::new(&sudo_path);",
+            "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+            "let task = sudo.spawn()?;",
+            "let Some(env_path) = env_path()",
+            "let mut sudo = Command::new(&sudo_path);",
+            "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+            "let task = sudo.spawn()?;",
+        ),
+        "run_as_user descriptor policy before both sudo spawns",
+    )
+    if re.search(r"(?m)^\s*let task = Command::new\(&sudo_path\)", run_as_user):
+        raise VerificationError("run_as_user retains a chained sudo spawn without descriptor policy")
+    reopen_helpers = extract_between(
+        linux_source,
+        "pub fn schedule_reopen_after_service_stop(secs: u32) {",
+        "\nfn linux_helper_path_is_clean_absolute",
+        "Linux reopen helper launch",
+    )
+    require_exact_count(
+        reopen_helpers,
+        "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+        2,
+        "reopen helpers descriptor policy",
+    )
+    for forbidden in ("Command::new(&exe).arg(", "Command::new(exe).spawn()"):
+        if forbidden in reopen_helpers:
+            raise VerificationError(f"reopen helper retains direct spawn without descriptor policy: {forbidden}")
     for source in (core_main, common_source):
         if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
             raise VerificationError("Rust server role regressed to semantic argv0 use")
@@ -9722,6 +9812,24 @@ def run_source_mutations(sources):
             'ServiceDescriptorDisposition::CloseOnExec,\n            )?;',
             'ServiceDescriptorDisposition::Close,\n            )?;',
             "service child pre-exec inherited descriptor policy",
+        ),
+        (
+            "linux_source",
+            "fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {",
+            "fn configure_linux_helper_close_nonstdio_on_exec_disabled(command: &mut Command) -> ResultType<()> {",
+            "Linux service helper descriptor pre-exec",
+        ),
+        (
+            "linux_source",
+            "configure_linux_helper_close_nonstdio_on_exec(&mut command)",
+            "configure_linux_helper_close_nonstdio_on_exec_disabled(&mut command)",
+            "descriptor policy",
+        ),
+        (
+            "linux_source",
+            "configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?;",
+            "configure_linux_helper_close_nonstdio_on_exec_disabled(&mut sudo)?;",
+            "run_as_user descriptor policy on both sudo branches",
         ),
         (
             "core_main",

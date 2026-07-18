@@ -2665,6 +2665,62 @@ grep -qF 'R-S11e-28 — Linux service-owned inherited descriptor authority' HARD
 if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited descriptor authority:$r_s11e28"; rc=1; else
   echo "  ok  R-S11e-28 Linux service supervisor and child exclude ambient non-stdio descriptors while preserving only stdio and the forked child's temporary exact-executable handoff"; fi
 
+# (3b-iii-d8) R-S11o/R-S11e-29: Linux service-originated helper
+# commands do not rely on sudo or shell policy to discard privileged
+# non-stdio descriptors. The parent resolves the descriptor bound and
+# the post-fork/pre-exec hook marks every descriptor above stderr
+# close-on-exec before sudo/env/reopen helper images run.
+echo "== (3b-iii-d8) Linux service helper inherited descriptor authority (R-S11o/R-S11e-29) =="
+r_s11e29=
+linux_helper_pre_exec=$(awk '/fn configure_linux_helper_close_nonstdio_on_exec/,/fn arm_service_child_parent_death/' src/platform/linux.rs)
+sudo_env_probe=$(awk '/static ref SUDO_E_PRESERVES_ENV: bool = {/,/^    };/' src/platform/linux.rs)
+run_as_user_block=$(awk '/pub fn run_as_user</,/^}/' src/platform/linux.rs)
+reopen_helper_block=$(awk '/pub fn schedule_reopen_after_service_stop/,/fn linux_helper_path_is_clean_absolute/' src/platform/linux.rs)
+for helper_binding in \
+  'fn configure_linux_helper_close_nonstdio_on_exec(command: &mut Command) -> ResultType<()> {' \
+  'let descriptor_upper_bound = linux_service_descriptor_upper_bound()?' \
+  'command.pre_exec(move || {' \
+  'constrain_service_owned_nonstdio_descriptors(' \
+  'ServiceDescriptorDisposition::CloseOnExec'; do
+  grep -qF "$helper_binding" <<<"$linux_helper_pre_exec" || r_s11e29="$r_s11e29 helper-pre-exec-binding-missing"
+done
+for sudo_probe_binding in \
+  'let mut command = Command::new(&sudo);' \
+  'configure_linux_helper_close_nonstdio_on_exec(&mut command)' \
+  'command.output()' \
+  'Failed to constrain sudo environment probe descriptors'; do
+  grep -qF "$sudo_probe_binding" <<<"$sudo_env_probe" || r_s11e29="$r_s11e29 sudo-env-probe-descriptor-policy-missing"
+done
+grep -qF 'let mut sudo = Command::new(&sudo_path);' <<<"$run_as_user_block" || r_s11e29="$r_s11e29 run-as-user-mutable-command-missing"
+[ "$(grep -cF 'configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block")" = 2 ] \
+  || r_s11e29="$r_s11e29 run-as-user-descriptor-policy-not-on-both-branches"
+[ "$(grep -cF 'let task = sudo.spawn()?;' <<<"$run_as_user_block")" = 2 ] \
+  || r_s11e29="$r_s11e29 run-as-user-spawn-shape-unexpected"
+first_run_as_user_helper_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
+first_run_as_user_spawn_line=$(grep -nF 'let task = sudo.spawn()?;' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
+last_run_as_user_helper_line=$(grep -nF 'configure_linux_helper_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
+last_run_as_user_spawn_line=$(grep -nF 'let task = sudo.spawn()?;' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
+if [ -z "$first_run_as_user_helper_line" ] || [ -z "$first_run_as_user_spawn_line" ] \
+  || [ -z "$last_run_as_user_helper_line" ] || [ -z "$last_run_as_user_spawn_line" ] \
+  || [ "$first_run_as_user_helper_line" -ge "$first_run_as_user_spawn_line" ] \
+  || [ "$last_run_as_user_helper_line" -ge "$last_run_as_user_spawn_line" ]; then
+  r_s11e29="$r_s11e29 run-as-user-descriptor-policy-after-spawn"
+fi
+if grep -Eq '^[[:space:]]*let task = Command::new\(&sudo_path\)' <<<"$run_as_user_block"; then
+  r_s11e29="$r_s11e29 run-as-user-direct-spawn-without-descriptor-policy"
+fi
+[ "$(grep -cF 'configure_linux_helper_close_nonstdio_on_exec(&mut command)' <<<"$reopen_helper_block")" = 2 ] \
+  || r_s11e29="$r_s11e29 reopen-helper-descriptor-policy-missing"
+if grep -Eq 'Command::new\(&exe\)[[:space:]]*$|Command::new\(exe\)\.spawn\(\)' <<<"$reopen_helper_block"; then
+  r_s11e29="$r_s11e29 reopen-helper-direct-spawn-without-descriptor-policy"
+fi
+grep -qF '<span class="id">R-S11o</span>' requirements.html                        || r_s11e29="$r_s11e29 normative-requirement-missing"
+grep -qF 'Linux service-originated helper launch inherited descriptor authority' requirements.html || r_s11e29="$r_s11e29 appendix-disposition-missing"
+grep -qF '<tr><td>137</td>' requirements.html                                       || r_s11e29="$r_s11e29 appendix-row-missing"
+grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md || r_s11e29="$r_s11e29 hardening-ledger-missing"
+if [ -n "$r_s11e29" ]; then echo "  FAIL R-S11e-29 Linux service helper inherited descriptor authority:$r_s11e29"; rc=1; else
+  echo "  ok  R-S11e-29 Linux sudo/env, run-as-user, and reopen helpers mark non-stdio descriptors close-on-exec before helper exec"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

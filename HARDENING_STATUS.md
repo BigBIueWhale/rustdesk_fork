@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 797 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 798 lexical `unsafe {`
 blocks across 244 tracked Rust files, 66 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -2010,8 +2010,39 @@ unreachable and a source/test/AST gate prevents reintroduction.
   staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
   debug-binary runtime evidence only; final exact release `.deb` execution remains open under R-B2/R-S11c-27.
   The helper adds one reviewed lexical
-  `unsafe {` block; the current inventory is 797 blocks across 244 tracked Rust files/66 nonzero files with digest
-  `b7f097f7e38f9d76a86d784a6245a582d6d0dd4fe842b11ef38796b2389b01a0`.
+  `unsafe {` block; after R-S11e-29 the current inventory is 798 blocks across 244 tracked Rust files/66 nonzero
+  files with digest `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
+- **R-S11e-29 — Linux service-originated helper inherited descriptor authority — SOURCE AND
+  MUTATION VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.**
+  Platform: Linux root/service-originated helper launches. Endpoint/action: the `sudo -E env` probe,
+  `run_as_user` sudo/env launches used for tray/CM/whiteboard-style user-session helpers, and argv-only delayed
+  reopen helpers. Boundary: root/service-owned runtime descriptors ↔ helper images that should receive only argv,
+  environment, and stdio. Attack surface closed: Linux preserves descriptors across `execve` unless `FD_CLOEXEC` is
+  set. The exact service-owned child path was closed by R-S11e-28, but the adjacent generic helper-launch abstraction
+  still built `Command` objects without RustDesk-owned descriptor policy. Sudo commonly closes non-stdio fds by
+  default through sudoers `closefrom` policy, but that is configurable host policy and cannot be the product's
+  authority boundary. A root-open config, IPC/listener, service-runtime, directory, socket, or other kernel object
+  could therefore be inherited by a helper image if it was open and not close-on-exec at that launch point. This is a
+  privileged-launch/root-to-helper capability leak and source-authority defect, not a demonstrated promptless
+  ordinary-user-to-root escalation.
+
+  Closure: `src/platform/linux.rs::configure_linux_helper_close_nonstdio_on_exec` resolves the canonical
+  `/proc/sys/fs/nr_open` descriptor bound in the parent, then registers a Linux `pre_exec` hook that preserves
+  descriptors 0–2 and marks every descriptor above stderr close-on-exec before the helper image runs. It uses the
+  same `close_range(..., CLOSE_RANGE_CLOEXEC)` fast path and raw `fcntl(F_GETFD/F_SETFD)` fallback as R-S11e-28.
+  The sudo environment-preservation probe now creates a mutable command, configures the descriptor hook before
+  `output()`, logs and skips the probe if the hook cannot be configured, and no longer silently collapses probe
+  execution errors. Both `run_as_user` sudo branches call the hook before `sudo.spawn()?`. The delayed reopen
+  scheduler and reopened child likewise configure the hook before spawning. The direct service-child executable-fd
+  exception is not shared with these helpers.
+
+  `scripts/verify.sh` and `scripts/verify-verifier-workspace.py` bind the helper implementation, parent-resolved
+  descriptor bound, pre-exec close-on-exec policy, sudo probe ordering, both `run_as_user` branches, delayed reopen
+  helper launches, R-S11o, Appendix C #137, and this ledger entry. The verifier mutation suite renames the helper,
+  deletes/renames probe and reopen helper calls, and removes `run_as_user` branch calls; each mutation must be
+  rejected. This slice adds one reviewed lexical `unsafe {` block for the new helper-launch `pre_exec` registration;
+  the current inventory is 798 blocks across 244 tracked Rust files/66 nonzero files with digest
+  `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2844,9 +2875,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     rejection, exact role/generation matching, mode-0600 no-replace publication, preservation on wrong-record
     removal/publication, and the earlier real post-exec parent-death behavior; `scripts/verify.sh` binds those
     tests and the recovery/source/unit shape. The syscall implementation adds 23 reviewed lexical `unsafe {`
-    blocks; the current machine inventory is 797 across 244 tracked Rust files/66 nonzero files, with the added
-    deterministic Windows resource producer containing no lexical unsafe block and per-file-count digest
-    `b7f097f7e38f9d76a86d784a6245a582d6d0dd4fe842b11ef38796b2389b01a0`.
+    blocks; after the later R-S11e-29 helper-launch descriptor hook, the current machine inventory is 798 across
+    244 tracked Rust files/66 nonzero files, with the added deterministic Windows resource producer containing no
+    lexical unsafe block and per-file-count digest
+    `5bc965dc7c8525486ef192e6be033ae823b2f6e6a93c9bf576a3a3ca54784727`.
 
   - **R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED
     2026-07-16; PARENT ITEM REMAINS OPEN.** The direct-child stop helper no longer consumes its
@@ -2946,8 +2978,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     R-T9 drain. Its modifier/key-release cleanup instead runs inside `finish_graceful_shutdown()`, after the bounded
     session drain and local-IPC shutdown and immediately before the terminal success record/process exit. This
     introduces no new dependency package, production syscall, or lexical `unsafe {` block; after the separate
-    deterministic Windows resource-producer addition and the later R-S11e-28 descriptor closure, the current inventory is 797 across 244 tracked Rust
-    files/66 nonzero files.
+    deterministic Windows resource-producer addition, R-S11e-28 descriptor closure, and R-S11e-29 helper-launch
+    descriptor hook, the current inventory is 798 across 244 tracked Rust files/66 nonzero files.
 
     `scripts/smoke-service-lifecycle.sh` is a mandatory `scripts/smoke-server.sh` stage, invoked from a read-only
     source mount in a `--network none` container. A strict root-owned `loginctl` fixture admits exactly one active
@@ -4288,8 +4320,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-fe44dc116aa607d8ea47196f41323f7927074588d5b197185629375a54509d6a  requirements.html
+e9f3eaafc06dd05ff02f2a06935c0a97a2abdeaa1c07af1974627baff88dfc7d  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, and Appendix C #136. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, R-S11o, and Appendix C #137. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

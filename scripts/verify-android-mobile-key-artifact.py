@@ -16,6 +16,7 @@ MAIN_APPLICATION = "Lcom/carriez/flutter_hbb/MainApplication;"
 STORAGE_KEY_CLASS = "Lcom/carriez/flutter_hbb/MobileAtRestStorageKey;"
 RUSTDESK_LIBRARY = "lib/arm64-v8a/librustdesk.so"
 JNI_SETTER = "Java_ffi_FFI_setMobileAtRestStorageKey"
+WRAP_STORAGE_KEY_DESCRIPTOR_PATTERN = r"\(Ljavax/crypto/SecretKey;\[B\)L[^;]+;"
 MAX_DEX_BYTES = 64 * 1024 * 1024
 MAX_DEXDUMP_OUTPUT_BYTES = 512 * 1024 * 1024
 MAX_NATIVE_LIBRARY_BYTES = 256 * 1024 * 1024
@@ -101,8 +102,8 @@ def dex_member_names(archive):
 
 
 def class_blocks(dexdump_outputs, descriptor):
-    blocks = []
     header = re.compile(r"(?m)^\s*Class descriptor\s+:\s+'([^']+)'\s*$")
+    blocks = []
     for dex_name, text in dexdump_outputs:
         matches = list(header.finditer(text))
         for index, match in enumerate(matches):
@@ -113,6 +114,15 @@ def class_blocks(dexdump_outputs, descriptor):
     return blocks
 
 
+def all_class_blocks(dexdump_outputs):
+    header = re.compile(r"(?m)^\s*Class descriptor\s+:\s+'([^']+)'\s*$")
+    for dex_name, text in dexdump_outputs:
+        matches = list(header.finditer(text))
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            yield dex_name, match.group(1), text[match.start():end]
+
+
 def one_class_block(dexdump_outputs, descriptor):
     matches = class_blocks(dexdump_outputs, descriptor)
     if len(matches) != 1:
@@ -120,22 +130,24 @@ def one_class_block(dexdump_outputs, descriptor):
     return matches[0][1]
 
 
-def method_body(class_block, name, descriptor):
+def method_entries(class_block):
     entry_header = re.compile(r"(?m)^\s+#\d+\s+:\s+\(in [^)]+\)\s*$")
     headers = list(entry_header.finditer(class_block))
-    matching_entries = []
     for index, header in enumerate(headers):
         end = headers[index + 1].start() if index + 1 < len(headers) else len(class_block)
         entry = class_block[header.start():end]
         entry_name = re.search(r"(?m)^\s+name\s+:\s+'([^']+)'\s*$", entry)
         entry_type = re.search(r"(?m)^\s+type\s+:\s+'([^']+)'\s*$", entry)
-        if (
-            entry_name is not None
-            and entry_type is not None
-            and entry_name.group(1) == name
-            and entry_type.group(1) == descriptor
-        ):
-            matching_entries.append(entry)
+        if entry_name is not None and entry_type is not None:
+            yield entry_name.group(1), entry_type.group(1), entry
+
+
+def method_body(class_block, name, descriptor):
+    matching_entries = [
+        entry
+        for entry_name, entry_type, entry in method_entries(class_block)
+        if entry_name == name and entry_type == descriptor
+    ]
     if len(matching_entries) != 1:
         raise ArtifactError(
             f"{name}{descriptor} must have exactly one DEX method entry, found {len(matching_entries)}"
@@ -147,6 +159,50 @@ def method_body(class_block, name, descriptor):
     if body is None:
         raise ArtifactError(f"{name}{descriptor} must have a concrete DEX body")
     return body.group("body")
+
+
+def one_method_descriptor_matching(class_block, name, descriptor_pattern):
+    matching_descriptors = [
+        entry_type
+        for entry_name, entry_type, _ in method_entries(class_block)
+        if entry_name == name and re.fullmatch(descriptor_pattern, entry_type)
+    ]
+    if len(matching_descriptors) != 1:
+        raise ArtifactError(
+            f"{name} must have exactly one matching DEX method descriptor, "
+            f"found {len(matching_descriptors)}"
+        )
+    return matching_descriptors[0]
+
+
+def body_invokes(body, reference):
+    return any("invoke-" in line and reference in line for line in body.splitlines())
+
+
+def require_direct_or_one_hop_api_call(dexdump_outputs, caller_name, caller_body, api_reference):
+    if body_invokes(caller_body, api_reference):
+        return
+
+    invoked_outlines = []
+    for _, owner, class_block in all_class_blocks(dexdump_outputs):
+        for name, descriptor, _ in method_entries(class_block):
+            if not descriptor.startswith("("):
+                continue
+            try:
+                body = method_body(class_block, name, descriptor)
+            except ArtifactError:
+                continue
+            if not body_invokes(body, api_reference):
+                continue
+            outline_reference = f"{owner}.{name}:{descriptor}"
+            if body_invokes(caller_body, outline_reference):
+                invoked_outlines.append(outline_reference)
+
+    if len(invoked_outlines) != 1:
+        raise ArtifactError(
+            f"{caller_name}: expected one direct or one-hop DEX call to {api_reference}, "
+            f"found {len(invoked_outlines)} reachable outline methods"
+        )
 
 
 def require_in_order(where, text, needles):
@@ -167,6 +223,11 @@ def require_references(where, text, needles):
 def validate_dex(dexdump_outputs):
     main = one_class_block(dexdump_outputs, MAIN_APPLICATION)
     storage = one_class_block(dexdump_outputs, STORAGE_KEY_CLASS)
+    wrap_descriptor = one_method_descriptor_matching(
+        storage,
+        "wrapStorageKey",
+        WRAP_STORAGE_KEY_DESCRIPTOR_PATTERN,
+    )
 
     on_create = method_body(main, "onCreate", "()V")
     require_in_order(
@@ -191,7 +252,7 @@ def validate_dex(dexdump_outputs):
             "Landroid/content/Context;.getSharedPreferences:",
             "getOrCreateWrappingKey:()Ljavax/crypto/SecretKey;",
             "Ljava/security/SecureRandom;.nextBytes:([B)V",
-            "wrapStorageKey:(Ljavax/crypto/SecretKey;[B)Lkotlin/Pair;",
+            f"wrapStorageKey:{wrap_descriptor}",
             "Landroid/content/SharedPreferences$Editor;.commit:()Z",
             "unwrapStorageKey:(Ljavax/crypto/SecretKey;Ljava/lang/String;Ljava/lang/String;)[B",
             "Ljava/util/Arrays;.equals:([B[B)Z",
@@ -237,16 +298,24 @@ def validate_dex(dexdump_outputs):
             "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setEncryptionPaddings:",
             "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setRandomizedEncryptionRequired:",
             "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setUserAuthenticationRequired:",
-            "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setUnlockedDeviceRequired:",
-            "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setIsStrongBoxBacked:",
             "Ljavax/crypto/KeyGenerator;.generateKey:()Ljavax/crypto/SecretKey;",
         ],
     )
+    for api_reference in (
+        "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setUnlockedDeviceRequired:",
+        "Landroid/security/keystore/KeyGenParameterSpec$Builder;.setIsStrongBoxBacked:",
+    ):
+        require_direct_or_one_hop_api_call(
+            dexdump_outputs,
+            "MobileAtRestStorageKey.generateWrappingKey",
+            generate,
+            api_reference,
+        )
 
     wrap = method_body(
         storage,
         "wrapStorageKey",
-        "(Ljavax/crypto/SecretKey;[B)Lkotlin/Pair;",
+        wrap_descriptor,
     )
     require_references(
         "MobileAtRestStorageKey.wrapStorageKey",
@@ -384,6 +453,72 @@ def self_test():
         pass
     else:
         raise ArtifactError("self-test: code-less method borrowed the following method body")
+
+    obfuscated_wrap_descriptor = "(Ljavax/crypto/SecretKey;[B)Lp4/f;"
+    obfuscated_wrap = synthetic_method(
+        "Ltest/Test;",
+        "wrapStorageKey",
+        obfuscated_wrap_descriptor,
+        "wrapped body",
+    )
+    if (
+        one_method_descriptor_matching(
+            obfuscated_wrap,
+            "wrapStorageKey",
+            WRAP_STORAGE_KEY_DESCRIPTOR_PATTERN,
+        )
+        != obfuscated_wrap_descriptor
+    ):
+        raise ArtifactError("self-test: obfuscated object return descriptor was not resolved")
+    for bad_wrap in (
+        synthetic_method(
+            "Ltest/Test;",
+            "wrapStorageKey",
+            "(Ljavax/crypto/SecretKey;[B)I",
+            "primitive body",
+        ),
+        obfuscated_wrap + obfuscated_wrap,
+    ):
+        try:
+            one_method_descriptor_matching(
+                bad_wrap,
+                "wrapStorageKey",
+                WRAP_STORAGE_KEY_DESCRIPTOR_PATTERN,
+            )
+        except ArtifactError:
+            pass
+        else:
+            raise ArtifactError("self-test: invalid wrap method descriptor set was accepted")
+
+    outlined_api = "Landroid/test/Builder;.setRequired:(Z)Landroid/test/Builder;"
+    outline_reference = "Lobfuscated/ApiOutline;.a:(Landroid/test/Builder;Z)Landroid/test/Builder;"
+    outline_class = (
+        "  Class descriptor  : 'Lobfuscated/ApiOutline;'\n"
+        + synthetic_method(
+            "Lobfuscated/ApiOutline;",
+            "a",
+            "(Landroid/test/Builder;Z)Landroid/test/Builder;",
+            f"invoke-virtual {{v0, v1}}, {outlined_api}",
+        )
+    )
+    require_direct_or_one_hop_api_call(
+        [("classes.dex", outline_class)],
+        "self-test caller",
+        f"invoke-static {{v0, v1}}, {outline_reference}",
+        outlined_api,
+    )
+    try:
+        require_direct_or_one_hop_api_call(
+            [("classes.dex", outline_class)],
+            "self-test caller",
+            "unrelated body",
+            outlined_api,
+        )
+    except ArtifactError:
+        pass
+    else:
+        raise ArtifactError("self-test: unreachable API outline was accepted")
+
     require_in_order("self-test", "first second third", ["first", "second", "third"])
     try:
         require_in_order("self-test", "first third second", ["first", "second", "third"])

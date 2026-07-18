@@ -3634,7 +3634,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   not organizationally independent and not a professional external cryptographic audit.
   It therefore does not satisfy R-V3's required independent expert sign-off. The external
   audit remains a production-exposure blocker; scope and limitations of the completed AI
-  review are recorded in the report.
+  review are recorded in the report. **AUDITOR HANDOFF PREPARED 2026-07-18 — R-V3 remains
+  OUTSTANDING.** `docs/CRYPTO-AUDIT-SCOPE.md` now defines the exact-clean-public-commit review
+  object, whole-repository follow-the-call-graph rule, current mandatory roots from password/NFC/
+  Argon2id PRS derivation through CPace, wire choreography, the authorization edge, and the
+  two-key secretbox frame lifecycle, primary draft-21/RFC 8265/libsodium references, required
+  external deliverable, and the explicit non-sign-off boundary. The prior PAKE/transport entry
+  points had drifted to stale line numbers and, after the bounded custom NFC implementation grew,
+  materially understated the trust surface as approximately 600 lines of byte-shuffling. They now
+  use symbol anchors and expose the custom normalization code as mandatory audit scope.
+  `scripts/verify-crypto-audit-scope.py --self-test`, wired into `scripts/verify.sh`, rejects a
+  missing root/current symbol, a brittle line citation, a false independent-sign-off claim, or a
+  removed R-V3 limitation; its mutation suite proves those representative regressions fail. This
+  prepares an accurate external handoff. It does not perform the independent review, assess the
+  cryptography, or remove the pre-audit release blocker. The handoff also records a pre-existing
+  evidence gap rather than laundering it into an assurance claim: R-A10's required behavioral
+  partial/dribbled pre-key-frame timeout test is absent from the current `cpace_it` suite. The
+  production deadline exists, but source/static checks are not the mandated runtime evidence.
 - **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
   not cover (both endpoints' keying paths traced in source): confirm-before-key

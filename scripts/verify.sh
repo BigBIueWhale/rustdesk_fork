@@ -2322,7 +2322,7 @@ grep -q 'windows_peer_is_authorized_for_service_owned_share_rdp_change' src/ipc.
 grep -q 'Some(Data::ServiceOwnedShareRdpResult(ok))' src/ipc.rs                       || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
 grep -q 'RequestServiceOwnedShareRdp(enable)' src/platform/windows.rs                  || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
 grep -q 'handle_windows_service_owned_share_rdp_request' src/platform/windows.rs       || r_s11b3="$r_s11b3 windows-service-share-rdp-handler-missing"
-grep -q 'open_subkey_with_flags(subkey, KEY_SET_VALUE)' src/platform/windows.rs        || r_s11b3="$r_s11b3 windows-share-rdp-direct-registry-write-missing"
+grep -qF 'KEY_SET_VALUE | KEY_WOW64_64KEY' src/platform/windows.rs                     || r_s11b3="$r_s11b3 windows-share-rdp-direct-registry-write-missing"
 grep -q 'crate::ipc::set_service_owned_share_rdp(_enable)' src/ui_interface.rs         || r_s11b3="$r_s11b3 ui-share-rdp-not-service-typed"
 grep -q 'future: bind.mainIsRoot()' flutter/lib/desktop/pages/desktop_setting_page.dart || r_s11b3="$r_s11b3 ui-share-rdp-not-elevation-gated"
 if grep -Eq 'reg add .*share_rdp|run_cmds\([^)]*share_rdp|pub fn set_share_rdp' src/platform/windows.rs; then
@@ -2340,6 +2340,33 @@ grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs           
 grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
   echo "  ok  R-S11b-3 service-owned --server rejects typed option writes before privacy/config side effects; callers require typed ACK before persistence; Windows share_rdp remains only a typed elevated _service action"; fi
+
+# (3b-iii-d2) R-S11e-23: the current MSI owns the only uninstall-registry namespace that may
+# classify this Windows installation or store service-owned RDP session-sharing policy. Retired
+# Inno Setup keys and the alternate WOW64 view are not compatibility authority.
+echo "== (3b-iii-d2) Windows current-package registry authority (R-S11e-23) =="
+r_s11e23=
+grep -qF 'const UNINSTALL_REGISTRY_ROOT: &str =' src/platform/windows.rs                || r_s11e23="$r_s11e23 uninstall-root-missing"
+grep -qF 'fn current_package_uninstall_subkey() -> String' src/platform/windows.rs      || r_s11e23="$r_s11e23 current-package-key-missing"
+grep -qF 'package_uninstall_subkey(&crate::get_app_name())' src/platform/windows.rs     || r_s11e23="$r_s11e23 app-name-key-binding-missing"
+grep -qF 'KEY_READ | KEY_WOW64_64KEY' src/platform/windows.rs                          || r_s11e23="$r_s11e23 explicit-64bit-read-view-missing"
+grep -qF 'KEY_SET_VALUE | KEY_WOW64_64KEY' src/platform/windows.rs                     || r_s11e23="$r_s11e23 explicit-64bit-write-view-missing"
+grep -qF 'current_package_registry_value("InstallLocation")' src/platform/windows.rs  || r_s11e23="$r_s11e23 current-install-location-read-missing"
+grep -qF 'fixed_service_install_path(&install_location)' src/platform/windows.rs       || r_s11e23="$r_s11e23 fixed-install-root-validation-missing"
+grep -qF 'require_existing_directory_no_reparse(&install_dir, "current Windows package directory")' src/platform/windows.rs || r_s11e23="$r_s11e23 installed-directory-object-proof-missing"
+grep -qF 'require_existing_file_no_reparse(&executable, "current Windows package executable")' src/platform/windows.rs || r_s11e23="$r_s11e23 installed-executable-object-proof-missing"
+grep -qF 'current_package_registry_value("share_rdp")' src/platform/windows.rs         || r_s11e23="$r_s11e23 service-policy-current-package-read-missing"
+grep -qF 'current_package_uninstall_subkey(),' src/platform/windows.rs                 || r_s11e23="$r_s11e23 service-policy-current-package-write-missing"
+grep -qF 'package_uninstall_subkey_is_the_current_msi_namespace' src/platform/windows.rs || r_s11e23="$r_s11e23 namespace-regression-test-missing"
+grep -qF 'Name="InstallLocation" Value="[App.InstallFolder]"' res/msi/preprocess.py  || r_s11e23="$r_s11e23 msi-install-location-owner-missing"
+grep -qF '<RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\$(var.Product)"' res/msi/Package/Components/Regs.wxs || r_s11e23="$r_s11e23 msi-current-product-key-missing"
+if verify_scan_capture "$VERIFY_TMP/r_s11e23_legacy_registry" -nE 'get_uninstall_registry_subkey|get_install_info|get_reg_of|Wow6432Node|54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93|_is1' src/platform/windows.rs; then
+  r_s11e23="$r_s11e23 legacy-uninstall-registry-authority-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e23_legacy_registry")"
+fi
+grep -qF 'Windows current-package registry authority' requirements.html               || r_s11e23="$r_s11e23 requirements-disposition-missing"
+grep -qF 'R-S11e-23 — Windows current-package registry authority' HARDENING_STATUS.md  || r_s11e23="$r_s11e23 hardening-ledger-missing"
+if [ -n "$r_s11e23" ]; then echo "  FAIL R-S11e-23 Windows current-package registry authority:$r_s11e23"; rc=1; else
+  echo "  ok  R-S11e-23 installed-state and service-owned RDP policy use only the current MSI product's explicit 64-bit HKLM namespace and fixed non-reparse executable root"; fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and

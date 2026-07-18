@@ -470,8 +470,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   selects which Windows session the service-owned host serves. Attack surface closed: the UI/FFI path no
   longer commits HKLM state directly or shells out to `cmd.exe`/`reg.exe`; it sends the typed
   `Data::RequestServiceOwnedShareRdp(bool)` request to the protected Windows `_service` pipe. The service
-  validates the connected pipe client's elevated token at the receiver, writes the install registry value
-  directly as LocalSystem, and returns `Data::ServiceOwnedShareRdpResult(bool)`. The main IPC channel rejects
+  validates the connected pipe client's elevated token at the receiver, writes the current MSI product's exact
+  64-bit install-registry value directly as LocalSystem, and returns `Data::ServiceOwnedShareRdpResult(bool)`.
+  R-S11e-23 deletes the retired Inno/WOW64 selector that could previously redirect that policy to stale package
+  metadata. The main IPC channel rejects
   the same request with a negative typed ACK, and the settings toggle is writable only from an elevated
   RustDesk process. Verification closure: `scripts/verify.sh` asserts the typed request/result, main-channel
   denial, `_service` dispatch, receiver-side elevated-token gate, direct registry commit, absence of the
@@ -1813,6 +1815,31 @@ unreachable and a source/test/AST gate prevents reintroduction.
   failure paths. This scoped guarantee does not claim that every allocator, kernel, transport, or OS copy is wiped. This
   closes the former Windows machine-credential local-authority/LPE/storage class described by Appendix C #128 at
   source level; final native/cold validation remains outstanding.
+- **R-S11e-23 — Windows current-package registry authority — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS
+  OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Platform: Windows installed service and desktop package-state
+  queries. Endpoint/action: current-install classification, installed build-date read, and the LocalSystem-owned
+  `share_rdp` policy read/write reached through the typed elevated `_service` operation. Boundary: retired installer
+  compatibility metadata ↔ current MSI package identity and service-owned machine policy. Attack surface closed:
+  runtime no longer searches the retired Inno Setup `{54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93}_is1` keys or a manually
+  addressed `Wow6432Node` view before the current product key. A stale administrator-owned legacy `InstallLocation`
+  therefore cannot make the current package appear absent, redirect build metadata, or split RDP session-sharing
+  policy into a retired package namespace. This was not promoted to a promptless standard-user-to-SYSTEM finding:
+  HKLM uninstall state is normally administrator-owned, and the policy mutation already requires receiver-side
+  elevated-token proof. It was nevertheless the wrong authority abstraction after R-S11e-20 made MSI the sole
+  machine-state owner, and the same stale installed-state class had previously contributed to the independently
+  closed R-S11c-25 terminal principal defect.
+
+  Closure: runtime derives exactly
+  `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\<current constrained product name>`, matching the
+  current MSI component, and opens only the explicit 64-bit view with `KEY_WOW64_64KEY`. The service policy write,
+  fixed-name policy read, and fixed-name build-date read share that one package namespace; the generic registry-value
+  facade is deleted. Installed-state classification additionally requires the current key's nonempty
+  `InstallLocation` to equal the supported fixed Program Files service root and requires the exact product
+  executable to pass opened-object regular-file/non-reparse proof. There is no default-path, legacy-key,
+  alternate-view, or registry-selected executable fallback. Verification closure: the native Windows unit test pins
+  the exact subkey; `scripts/verify.sh` binds the current MSI writer, explicit 64-bit read/write flags, fixed-root and
+  executable-object proof, typed consumers, requirements/ledger disposition, and absence of every retired selector
+  token. Appendix C #131 records the source-level finding; exact native/artifact proof remains with R-B2.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -1835,7 +1862,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the IPC helper; user-owned `--server` option writes remain user-owned; whole user config is never imported
   over IPC after R-S11b-3b; generic config writes, generic config helpers, and the proxy IPC variant are absent
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
-  committed only by the LocalSystem service through a typed elevated `_service` request; service identity/salt
+  committed only by the LocalSystem service through a typed elevated `_service` request and, after R-S11e-23,
+  stored only in the current MSI product's exact 64-bit package namespace; service identity/salt
   reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
   R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g; whole-map option reads
   (`Config::get_options`, the UI cache, CLI `--option`, and `MainIpcRequest::StatusSnapshot`) now overlay
@@ -4088,8 +4116,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e884025c14f7755d865229dbb83c792ff76c02c358138eb740d5a57a47c0cca0  requirements.html
+b88ea04ad28ee646fdce5a63d781560fd4c9914906c0ef3908eca35a424d8e5b  requirements.html
 ```
 
-This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #130. It is a
+This hash binds the final normative requirements text, including R-B9, R-B13, and Appendix C #131. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

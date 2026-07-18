@@ -3979,7 +3979,7 @@ pub fn try_change_desktop() -> bool {
 }
 
 fn share_rdp() -> BOOL {
-    if get_reg("share_rdp") != "false" {
+    if current_package_registry_value("share_rdp").unwrap_or_default() != "false" {
         TRUE
     } else {
         FALSE
@@ -3991,10 +3991,11 @@ pub fn is_share_rdp() -> bool {
 }
 
 pub(crate) fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
-    let subkey = get_uninstall_registry_subkey();
-    let subkey = subkey.replace("HKEY_LOCAL_MACHINE\\", "");
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let key = hklm.open_subkey_with_flags(subkey, KEY_SET_VALUE)?;
+    let key = hklm.open_subkey_with_flags(
+        current_package_uninstall_subkey(),
+        KEY_SET_VALUE | KEY_WOW64_64KEY,
+    )?;
     let value = (if enable { "true" } else { "false" }).to_owned();
     key.set_value("share_rdp", &value)?;
     Ok(())
@@ -4205,43 +4206,35 @@ pub fn lock_screen() {
     }
 }
 
-const IS1: &str = "{54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93}_is1";
+const UNINSTALL_REGISTRY_ROOT: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
 
-fn get_subkey(name: &str, wow: bool) -> String {
-    let tmp = format!(
-        "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}",
-        name
-    );
-    if wow {
-        tmp.replace("Microsoft", "Wow6432Node\\Microsoft")
-    } else {
-        tmp
-    }
+fn package_uninstall_subkey(product: &str) -> String {
+    format!("{UNINSTALL_REGISTRY_ROOT}\\{product}")
 }
 
-fn get_uninstall_registry_subkey() -> String {
-    let subkey = get_subkey(IS1, false);
-    if !get_reg_of(&subkey, "InstallLocation").is_empty() {
-        return subkey;
-    }
-    let subkey = get_subkey(IS1, true);
-    if !get_reg_of(&subkey, "InstallLocation").is_empty() {
-        return subkey;
-    }
-    let app_name = crate::get_app_name();
-    let subkey = get_subkey(&app_name, true);
-    if !get_reg_of(&subkey, "InstallLocation").is_empty() {
-        return subkey;
-    }
-    return get_subkey(&app_name, false);
+fn current_package_uninstall_subkey() -> String {
+    package_uninstall_subkey(&crate::get_app_name())
 }
 
-pub fn get_install_info() -> (String, String, String) {
-    get_install_info_with_subkey(get_uninstall_registry_subkey())
+fn current_package_registry_value(name: &str) -> ResultType<String> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = hklm.open_subkey_with_flags(
+        current_package_uninstall_subkey(),
+        KEY_READ | KEY_WOW64_64KEY,
+    )?;
+    Ok(key.get_value(name)?)
 }
 
-fn get_default_install_info() -> (String, String, String) {
-    get_install_info_with_subkey(get_subkey(&crate::get_app_name(), false))
+fn installed_package_executable() -> ResultType<PathBuf> {
+    let install_location = current_package_registry_value("InstallLocation")?;
+    if install_location.trim().is_empty() {
+        bail!("current Windows package has no install location");
+    }
+    let install_dir = fixed_service_install_path(&install_location)?;
+    require_existing_directory_no_reparse(&install_dir, "current Windows package directory")?;
+    let executable = install_dir.join(format!("{}.exe", crate::get_app_name()));
+    require_existing_file_no_reparse(&executable, "current Windows package executable")?;
+    Ok(executable)
 }
 
 fn path_from_cotaskmem_pwstr(path: windows::core::PWSTR, label: &str) -> ResultType<PathBuf> {
@@ -4291,16 +4284,6 @@ fn windows_dir() -> ResultType<PathBuf> {
 
 fn default_install_path_buf() -> ResultType<PathBuf> {
     Ok(program_files_dir()?.join(crate::get_app_name()))
-}
-
-fn get_default_install_path() -> String {
-    default_install_path_buf()
-        .unwrap_or_else(|err| {
-            log::error!("Failed to resolve Program Files install path: {err}");
-            PathBuf::from("C:\\Program Files").join(crate::get_app_name())
-        })
-        .to_string_lossy()
-        .into_owned()
 }
 
 fn normalized_windows_path_text(path: &Path) -> String {
@@ -4421,16 +4404,6 @@ fn sha256_file(path: &Path) -> ResultType<[u8; 32]> {
         hasher.update(&buffer[..read]);
     }
     Ok(hasher.finalize().into())
-}
-
-fn get_install_info_with_subkey(subkey: String) -> (String, String, String) {
-    let mut path = get_reg_of(&subkey, "InstallLocation");
-    if path.is_empty() {
-        path = get_default_install_path();
-    }
-    path = path.trim_end_matches('\\').to_owned();
-    let exe = format!("{}\\{}.exe", path, crate::get_app_name());
-    (subkey, path, exe)
 }
 
 pub fn toggle_blank_screen(v: bool) {
@@ -4559,23 +4532,11 @@ pub fn add_recent_document(path: &str) {
 }
 
 pub fn is_installed() -> bool {
-    let (_, _, exe) = get_install_info();
-    std::fs::metadata(exe).is_ok()
+    installed_package_executable().is_ok()
 }
 
-pub fn get_reg(name: &str) -> String {
-    let subkey = get_uninstall_registry_subkey();
-    get_reg_of(&subkey, name)
-}
-
-fn get_reg_of(subkey: &str, name: &str) -> String {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    if let Ok(tmp) = hklm.open_subkey(subkey.replace("HKEY_LOCAL_MACHINE\\", "")) {
-        if let Ok(v) = tmp.get_value(name) {
-            return v;
-        }
-    }
-    "".to_owned()
+pub fn installed_build_date() -> String {
+    current_package_registry_value("BuildDate").unwrap_or_default()
 }
 
 // R-X4: get_license_from_exe_name (the custom-rendezvous-server-from-exe-name parser) removed.
@@ -5662,22 +5623,20 @@ fn get_pids<S: AsRef<str>>(name: S) -> ResultType<Vec<u32>> {
 }
 
 pub fn is_cur_exe_the_installed() -> bool {
-    let (_, _, exe) = get_install_info();
-    // Check if is installed, because `exe` is the default path if is not installed.
-    if !std::fs::metadata(&exe).is_ok() {
-        return false;
-    }
-    let mut path = std::env::current_exe().unwrap_or_default();
-    if let Ok(linked) = path.read_link() {
-        path = linked;
-    }
-    let path = path.to_string_lossy().to_lowercase();
-    path == exe.to_lowercase()
+    is_installed() && require_current_exe_is_fixed_service_runtime().is_ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_uninstall_subkey_is_the_current_msi_namespace() {
+        assert_eq!(
+            package_uninstall_subkey("RustDesk"),
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RustDesk"
+        );
+    }
 
     #[test]
     fn test_is_process_running_as_system_invalid_pid_errors() {

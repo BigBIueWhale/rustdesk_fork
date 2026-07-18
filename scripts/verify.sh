@@ -579,6 +579,22 @@ awk '/installMobileAtRestStorageKey\(\)/{seen=1} /GeneratedPluginRegistrant.regi
   || mobile_at_rest_bad="$mobile_at_rest_bad ios-key-not-installed-before-plugin-init"
 grep -qF 'Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage' HARDENING_STATUS.md \
   || mobile_at_rest_bad="$mobile_at_rest_bad hardening-ledger-missing"
+if grep -RInF 'Generated mobile at-rest keypair' libs/hbb_common/src/config.rs; then
+  mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-keypair-log"
+fi
+if grep -RInF 'mobile at-rest wrapper residual pending' HARDENING_STATUS.md requirements.html; then
+  mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-wrapper-residual-doc"
+fi
+if grep -RInF 'legacy `key_pair` remains only as its documented at-rest wrapper key pending Keychain/Keystore work' HARDENING_STATUS.md; then
+  mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-keypair-wrapper-doc"
+fi
+if grep -RInF 'UUID-obfuscated config holding the password-equivalent PRS' requirements.html flutter/android/app/src/main/AndroidManifest.xml; then
+  mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-uuid-backup-doc"
+fi
+grep -qF 'desktop remains machine-UUID obfuscation, while Android/iOS use an OS-protected app/device storage key' requirements.html \
+  || mobile_at_rest_bad="$mobile_at_rest_bad requirements-mobile-os-key-split-missing"
+grep -qF 'The legacy mobile config keypair is device-id metadata and decrypt-only migration fallback, not the primary wrapper key' requirements.html \
+  || mobile_at_rest_bad="$mobile_at_rest_bad requirements-mobile-legacy-keypair-role-missing"
 if [ -n "$mobile_at_rest_bad" ]; then
   echo "  FAIL Appendix C #14 mobile at-rest storage key boundary:$mobile_at_rest_bad"; rc=1
 else

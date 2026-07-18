@@ -109,9 +109,10 @@ import Security
   /// `Config::path` all resolve to — from device backups by setting the
   /// `NSURLIsExcludedFromBackupKey` resource value on it. That directory holds the
   /// per-remembered-peer connect-equivalent Argon2id PRS (`PeerConfig.password_prs`,
-  /// under `peers/`) and the machine-UUID config wrapper key (`Config.key_pair`), so a
-  /// local unencrypted backup would otherwise exfiltrate password-equivalent material —
-  /// the exact vector Android's `allowBackup="false"` closes.
+  /// under `peers/`), mobile at-rest ciphertext, and legacy config keypair/device-id
+  /// metadata, so a local unencrypted backup would otherwise exfiltrate credential
+  /// state outside the OS-protected storage boundary — the exact vector Android's
+  /// `allowBackup="false"` closes.
   ///
   /// This is a runtime resource value on the URL, not an Info.plist key. Setting it on
   /// the directory covers the directory's present and future contents (the `peers/`

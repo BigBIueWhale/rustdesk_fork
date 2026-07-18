@@ -3063,7 +3063,7 @@ impl Config {
         }
         let mut config = Config::load_::<Config>("");
         if config.key_pair.0.is_empty() {
-            log::info!("Generated mobile at-rest keypair");
+            log::info!("Generated mobile device-id keypair");
             let (pk, sk) = sign::gen_keypair();
             let key_pair = (sk.0.to_vec(), pk.0.into());
             config.key_pair = key_pair.clone();

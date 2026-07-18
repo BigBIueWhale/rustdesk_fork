@@ -326,7 +326,7 @@ from local remote-session toggles; and `scripts/verify.sh` asserts the Rust peer
 removed auto-persist helper, runtime fallback, bounded peer writes, and pending-request privacy-mode gate.
 
 **R-S9 permanent-password PRS read-state authority — CLOSED / GATED (2026-07-11).**
-Platforms: all controlled-side direct-listener/CPace targets; desktop machine-UUID storage and mobile persisted-key
+Platforms: all controlled-side direct-listener/CPace targets; desktop machine-UUID storage and mobile OS-key
 wrappers feed the same live PRS reader. Endpoint/action: permanent-password PRS reads that decide CPace auth,
 direct-listener binding, and "password set" status. Boundary: durable credential envelope or service-owned runtime
 snapshot ↔ network reachability/auth state. Attack surface closed: unavailable PRS states are now typed as
@@ -508,8 +508,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   zero-padding it into an all-zero secretbox key or storing current-version secrets as plaintext. Existing
   legacy desktop blobs encrypted under a previously stored keypair public key remain decryptable through
   `Config::get_existing_key_pair()`, which is read-only and never generates. Mobile `key_pair` generation is
-  cfg-isolated to Android/iOS because that remains the documented mobile at-rest wrapper residual pending the
-  Keychain/Keystore replacement. Verification closure: `scripts/verify.sh` runs the pk-fallback tests and
+  cfg-isolated to Android/iOS as device-id metadata; after the 2026-07-18 OS-key slice it is also only a
+  decrypt-only migration fallback for old mobile at-rest ciphertext, not the primary wrapper key. Verification
+  closure: `scripts/verify.sh` runs the pk-fallback tests and
   asserts desktop `get_uuid()` does not call the keypair generator, the generator is mobile-cfg-only,
   `get_cached_pk` is absent, `symmetric_crypt` uses the fallible at-rest key API rather than `get_uuid()`,
   empty wrapper keys are rejected, and current-version encryption failures return empty values rather than
@@ -2707,8 +2708,10 @@ researchers later found:
 - **URI-scheme CSRF / missing-authz config-import** (`30793`/`30797`/`30791`) →
   the deep-link config/password/key write authorities are **excised** (R-X6/R-X4).
 - **offline password brute-force / weak hashing** (`30789`/`30785`) → the PAKE
-  replaces the unstretched hash; no offline-crackable material (R-S6); the
-  at-rest store is the #14 HARDEN+ACCEPT residual.
+  replaces the unstretched hash; no offline-crackable material (R-S6); desktop
+  at-rest storage remains the Appendix C #14 machine-UUID HARDEN+ACCEPT residual,
+  while mobile source now uses OS-protected storage keys with on-device/artifact
+  validation still pending.
 - **client AiTM (cert-validation on retry)** (`30794`) → insecure-TLS-fallback
   excised, pinned `N`.
 - **`CVE-2026-58056` session-type-confusion** (a FileTransfer-authorized peer
@@ -4230,7 +4233,8 @@ does not exist. That entire stratum is now gone — the tiers below record each 
 
 - **[I-8] Retired `--get-fingerprint` phantom-key race.** Closed by deleting the fingerprint/pin
   workflow with R-S17/R-P5. Desktop no longer mints a host key while answering metadata; mobile's
-  legacy `key_pair` remains only as its documented at-rest wrapper key pending Keychain/Keystore work.
+  legacy `key_pair` is now device-id metadata plus decrypt-only migration fallback after the OS-key
+  mobile at-rest wrapper source slice.
 
 ### Tier 3 — "live-looking dead" code ✅ DONE (deleted — it had lied to the next auditor)
 
@@ -4343,7 +4347,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-51744b6f044bd5bfc1dff186a6e244c0924fb6fd434673ccfb8bd6b693338019  requirements.html
+59c7f473aa5370ee357ba138d332fdc5bcffdc4f2bcd35b04e368d8319c333cb  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n, R-S11o, R-S11p, and Appendix C #138. It is a

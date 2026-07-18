@@ -36,8 +36,8 @@
         android:label="RustDesk"
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher"
-        android:supportsRtl="true"><!-- R-X6: allowBackup=false (the UUID-obfuscated
-        config holds the password-equivalent PRS — block adb-backup exfil);
+        android:supportsRtl="true"><!-- R-X6: allowBackup=false (the app-private
+        config and OS-wrapped mobile at-rest envelope carry connect-equivalent PRS state — block backup exfil);
         networkSecurityConfig denies cleartext (defense-in-depth, §18); the upstream
         requestLegacyExternalStorage is removed (targetSdk 33 scoped storage). -->
 

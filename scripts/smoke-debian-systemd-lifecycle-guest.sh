@@ -2,15 +2,46 @@
 set -euo pipefail
 umask 077
 
-readonly ROOT=${1:-/mnt/rustdesk-source}
-readonly RUNTIME_LIBS=${2:-/mnt/rustdesk-libs}
-readonly BINARY=$ROOT/target/debug/rustdesk
+MODE=source
+ROOT=
+RUNTIME_LIBS=
+ARTIFACT=
+EXPECTED_ARTIFACT_SHA256=
+EXPECTED_COMMIT=
+case "$#" in
+    2)
+        ROOT=$1
+        RUNTIME_LIBS=$2
+        ;;
+    6)
+        [ "$1" = --release-deb ] \
+            || { printf 'usage: %s ROOT RUNTIME_LIBS | --release-deb ROOT RUNTIME_LIBS DEB SHA256 COMMIT\n' "${0##*/}" >&2; exit 2; }
+        MODE=release-deb
+        ROOT=$2
+        RUNTIME_LIBS=$3
+        ARTIFACT=$4
+        EXPECTED_ARTIFACT_SHA256=$5
+        EXPECTED_COMMIT=$6
+        ;;
+    *)
+        printf 'usage: %s ROOT RUNTIME_LIBS | --release-deb ROOT RUNTIME_LIBS DEB SHA256 COMMIT\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac
+readonly MODE ROOT RUNTIME_LIBS ARTIFACT EXPECTED_ARTIFACT_SHA256 EXPECTED_COMMIT
+if [ "$MODE" = source ]; then
+    BINARY=$ROOT/target/debug/rustdesk
+    PACKAGE=rustdesk-systemd-smoke
+else
+    BINARY=/usr/share/rustdesk/rustdesk
+    PACKAGE=rustdesk
+fi
+readonly BINARY PACKAGE
 readonly INIT_SOURCE=$ROOT/res/rustdesk.init
 readonly UNIT_SOURCE=$ROOT/res/rustdesk.service
 readonly CONTROL_SOURCE=$ROOT/res/DEBIAN
 readonly LOGINCTL_SOURCE=$ROOT/scripts/smoke-debian-systemd-loginctl.sh
 readonly FIXTURE=/var/tmp/rustdesk-debian-systemd
-readonly PACKAGE=rustdesk-systemd-smoke
 readonly UNIT=rustdesk.service
 readonly PORTABLE_UNIT=rustdesk-portable-smoke.service
 readonly SEAT_UID=4001
@@ -88,11 +119,13 @@ trap 'exit 143' TERM
 [ "${VERSION_CODENAME:-}" = bookworm ] \
     || fail "guest is not the audited Debian bookworm fixture: ${VERSION_CODENAME:-unknown}"
 for command in \
-    deb-systemd-helper deb-systemd-invoke dpkg dpkg-deb findmnt ldconfig \
-    python3 systemctl systemd-analyze systemd-run update-rc.d useradd xargs; do
+    deb-systemd-helper deb-systemd-invoke dpkg dpkg-deb dpkg-query findmnt ldconfig \
+    python3 sha256sum systemctl systemd-analyze systemd-run update-rc.d useradd xargs; do
     command -v "$command" >/dev/null || fail "required guest command is absent: $command"
 done
-for mountpoint in "$ROOT" "$RUNTIME_LIBS"; do
+mountpoints=("$ROOT" "$RUNTIME_LIBS")
+[ "$MODE" != release-deb ] || mountpoints+=("$ARTIFACT")
+for mountpoint in "${mountpoints[@]}"; do
     mount_options=$(findmnt -n -o OPTIONS --target "$mountpoint") \
         || fail "fixture mount is absent: $mountpoint"
     case ",$mount_options," in
@@ -100,21 +133,40 @@ for mountpoint in "$ROOT" "$RUNTIME_LIBS"; do
         *) fail "fixture mount is not read-only: $mountpoint ($mount_options)" ;;
     esac
 done
-for path in \
-    "$BINARY" "$INIT_SOURCE" "$UNIT_SOURCE" "$LOGINCTL_SOURCE" \
-    "$CONTROL_SOURCE/preinst" "$CONTROL_SOURCE/postinst" \
-    "$CONTROL_SOURCE/prerm" "$CONTROL_SOURCE/postrm"; do
+source_files=("$UNIT_SOURCE" "$LOGINCTL_SOURCE")
+if [ "$MODE" = source ]; then
+    source_files+=(
+        "$BINARY" "$INIT_SOURCE"
+        "$CONTROL_SOURCE/preinst" "$CONTROL_SOURCE/postinst"
+        "$CONTROL_SOURCE/prerm" "$CONTROL_SOURCE/postrm"
+    )
+else
+    [[ "$EXPECTED_ARTIFACT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'release artifact SHA-256 is not lowercase 64-hex'
+    [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'release source commit is not lowercase 40-hex'
+    [ -f "$ARTIFACT" ] && [ ! -L "$ARTIFACT" ] && [ -s "$ARTIFACT" ] \
+        || fail 'release artifact is not a regular non-empty ISO member'
+    [ "$(sha256sum "$ARTIFACT" | awk '{print $1}')" = "$EXPECTED_ARTIFACT_SHA256" ] \
+        || fail 'release artifact SHA-256 differs inside the guest'
+    [ "$(dpkg-deb -f "$ARTIFACT" Package 2>/dev/null)" = rustdesk ] \
+        || fail 'release artifact package identity differs inside the guest'
+    [ "$(dpkg-deb -f "$ARTIFACT" Architecture 2>/dev/null)" = amd64 ] \
+        || fail 'release artifact architecture differs inside the guest'
+    source_files+=("$ARTIFACT")
+fi
+for path in "${source_files[@]}"; do
     [ -f "$path" ] && [ ! -L "$path" ] \
         || fail "required source fixture is not a regular file: $path"
 done
-[ -x "$BINARY" ] && [ -x "$INIT_SOURCE" ] && [ -x "$LOGINCTL_SOURCE" ] \
-    || fail 'one or more executable fixtures lack execute permission'
+[ -x "$LOGINCTL_SOURCE" ] || fail 'loginctl fixture lacks execute permission'
+[ "$MODE" != source ] || {
+    [ -x "$BINARY" ] && [ -x "$INIT_SOURCE" ] \
+        || fail 'one or more source lifecycle fixtures lack execute permission'
+}
 
 source_identity=$(stat -c '%d:%i:%u:%g:%a' -- "$ROOT")
-source_hash=$(sha256sum \
-    "$BINARY" "$INIT_SOURCE" "$UNIT_SOURCE" "$LOGINCTL_SOURCE" \
-    "$CONTROL_SOURCE/preinst" "$CONTROL_SOURCE/postinst" \
-    "$CONTROL_SOURCE/prerm" "$CONTROL_SOURCE/postrm")
+source_hash=$(sha256sum "${source_files[@]}")
 
 [ ! -e /usr/bin/rustdesk ] && [ ! -L /usr/bin/rustdesk ] \
     || fail 'base guest unexpectedly has an installed /usr/bin/rustdesk'
@@ -403,16 +455,35 @@ assert_portable_alive() {
         || fail 'portable RustDesk was placed in the installed service cgroup'
 }
 
-build_package
-
+if [ "$MODE" = source ]; then
+    build_package
+    install_deb=$FIXTURE/rustdesk-systemd-smoke.deb
+    install_argv=(--install "$install_deb")
+else
+    install_deb=$ARTIFACT
+    # The pinned cloud image is intentionally minimal and offline. Runtime
+    # libraries were derived from this exact artifact and staged above; force
+    # only dependency admission so dpkg still unpacks, configures, and executes
+    # the artifact's real maintainer scripts in the disposable guest.
+    install_argv=(--force-depends --install "$install_deb")
+fi
+dpkg "${install_argv[@]}" >"$FIXTURE/install.log" 2>&1 \
+    || { sed -n '1,240p' "$FIXTURE/install.log" >&2; fail 'initial package install failed'; }
+[ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$PACKAGE" 2>/dev/null)" = 'ii ' ] \
+    || fail 'installed package did not reach configured state'
+[ -f "$BINARY" ] && [ ! -L "$BINARY" ] && [ -x "$BINARY" ] \
+    || fail 'installed RustDesk executable is absent or non-executable'
 ldd "$BINARY" >"$FIXTURE/ldd.log"
 if grep -q 'not found' "$FIXTURE/ldd.log"; then
     cat "$FIXTURE/ldd.log" >&2
     fail 'read-only runtime-library bundle is incomplete'
 fi
-
-dpkg -i "$FIXTURE/rustdesk-systemd-smoke.deb" >"$FIXTURE/install.log" 2>&1 \
-    || { sed -n '1,240p' "$FIXTURE/install.log" >&2; fail 'initial package install failed'; }
+[ "$MODE" != release-deb ] || {
+    [ -z "$(dpkg --verify "$PACKAGE" 2>"$FIXTURE/dpkg-verify.err")" ] \
+        || fail 'installed release artifact payload failed dpkg verification'
+    [ ! -s "$FIXTURE/dpkg-verify.err" ] \
+        || { cat "$FIXTURE/dpkg-verify.err" >&2; fail 'dpkg could not verify the installed release artifact'; }
+}
 cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service \
     || fail 'installed RustDesk unit differs from the production source fixture'
 systemd-analyze verify /usr/lib/systemd/system/rustdesk.service >/dev/null \
@@ -511,15 +582,15 @@ PORTABLE_START=
 
 [ "$source_identity" = "$(stat -c '%d:%i:%u:%g:%a' -- "$ROOT")" ] \
     || fail 'read-only source mount identity changed'
-[ "$source_hash" = "$(sha256sum \
-    "$BINARY" "$INIT_SOURCE" "$UNIT_SOURCE" "$LOGINCTL_SOURCE" \
-    "$CONTROL_SOURCE/preinst" "$CONTROL_SOURCE/postinst" \
-    "$CONTROL_SOURCE/prerm" "$CONTROL_SOURCE/postrm")" ] \
+[ "$source_hash" = "$(sha256sum "${source_files[@]}")" ] \
     || fail 'read-only source fixtures changed'
 
 systemd_version=$(systemd --version | sed -n '1s/^systemd \([0-9][0-9]*\).*/\1/p')
 printf 'DEBIAN_SYSTEMD_INSTALLED_LIFECYCLE=pass os=debian-%s systemd=%s seat_uid=%s portable_uid=%s crash_generation=%s\n' \
     "$VERSION_ID" "$systemd_version" "$SEAT_UID" "$PORTABLE_UID" "$crash_generation"
+[ "$MODE" != release-deb ] || printf \
+    'DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=%s commit=%s\n' \
+    "$EXPECTED_ARTIFACT_SHA256" "$EXPECTED_COMMIT"
 
 trap - EXIT HUP INT TERM
 rm -rf -- "$FIXTURE"

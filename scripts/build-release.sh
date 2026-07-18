@@ -122,6 +122,8 @@ ONLINE_SNAPSHOT_PARENT=""
 HOST_KEYSTORE=""
 HOST_KEYSTORE_PASS_FILE=""
 HOST_GOLDEN=""
+HOST_SYSTEMD_SMOKE_IMAGE=""
+SYSTEMD_SMOKE_STATE_DIR=""
 DEBIAN_IMAGE_ID=""
 ANDROID_IMAGE_ID=""
 WINDOWS_IMAGE_ID=""
@@ -387,6 +389,10 @@ create_workspace() {
     printf '{}\n' > "$DOCKER_CONFIG_DIR/config.json"
     chmod 0600 "$DOCKER_CONFIG_DIR/config.json"
     assert_release_docker_config
+    SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"
+    install -d -m 0700 "$SYSTEMD_SMOKE_STATE_DIR"
+    [ "$(stat -c '%u:%a' "$SYSTEMD_SMOKE_STATE_DIR")" = "$(id -u):700" ] \
+        || die "release systemd smoke scratch is not current-UID mode 0700"
     acquire_private_tree_closure_execution \
         || die "cannot acquire the committed private-tree helper authority"
 }
@@ -743,6 +749,8 @@ release_preflight() {
         || die "Android keystore password must be a non-symlink regular file"
     assert_private_signing_files
     HOST_GOLDEN="$(canonical_file "$REPO_ROOT/.harness-state/win11-golden.qcow2")"
+    HOST_SYSTEMD_SMOKE_IMAGE="$(canonical_file \
+        "$REPO_ROOT/.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2")"
     docker_local version >/dev/null || die "local Docker daemon is unavailable"
     DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
     ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
@@ -868,6 +876,8 @@ run_verification() {
         run_child ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online" \
         SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" ALLOW_DIRTY_TREE=0 \
         RELEASE_SRC_COMMIT="$PINNED_HEAD" \
+        SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE" \
+        SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_SMOKE_STATE_DIR" \
         /usr/bin/bash --noprofile --norc "$source/scripts/verify-release.sh" \
         || die "$label: complete release verification failed"
     reset_snapshot_build_state "$source" "$label after verification"
@@ -985,6 +995,47 @@ compare_snapshots() {
         [ "$hash_a" = "$hash_b" ] \
             || die "independent snapshot mismatch for $name ($hash_a vs $hash_b)"
     done
+}
+
+run_final_debian_artifact_lifecycle() {
+    local artifact="$SET_A/rustdesk-x86_64.deb" artifact_hash metadata
+    local -a fixture_env=()
+    assert_exact_set "$SET_A" 0
+    assert_exact_set "$SET_B" 0
+    metadata="$(stat -c '%u:%g:%a:%h' -- "$artifact" 2>/dev/null)" \
+        || die "final Debian artifact is absent before lifecycle verification"
+    [ "$metadata" = "$(id -u):$(id -g):400:1" ] \
+        || die "final Debian artifact is not current-user/current-group mode 0400 with one link"
+    artifact_hash="$(sha256sum "$artifact" | awk '{print $1}')" \
+        || die "cannot hash the final Debian artifact"
+    [[ "$artifact_hash" =~ ^[0-9a-f]{64}$ ]] \
+        || die "final Debian artifact SHA-256 is malformed"
+    [ "$(sha256sum "$SET_B/rustdesk-x86_64.deb" | awk '{print $1}')" = "$artifact_hash" ] \
+        || die "final Debian artifact changed after independent-snapshot comparison"
+    if [ "$FIXTURE_MODE" -eq 1 ]; then
+        fixture_env=(
+            RELEASE_FIXTURE_LOG="$FIXTURE_LOG"
+            RELEASE_FIXTURE_COMMIT="$PINNED_HEAD"
+        )
+    else
+        assert_snapshot_exact "$SOURCE_A" "before final Debian artifact lifecycle"
+        assert_snapshot_exact "$SOURCE_B" "before final Debian artifact lifecycle"
+    fi
+    run_snapshot_consumer "final Debian artifact lifecycle" \
+        run_child "${fixture_env[@]}" \
+        SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE" \
+        SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_SMOKE_STATE_DIR" \
+        /usr/bin/bash --noprofile --norc "$SOURCE_A/scripts/smoke-debian-systemd-lifecycle.sh" \
+        --release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD" \
+        || die "final Debian artifact lifecycle verification failed"
+    [ "$(stat -c '%u:%g:%a:%h' -- "$artifact" 2>/dev/null)" = "$metadata" ] \
+        || die "final Debian artifact metadata changed during lifecycle verification"
+    [ "$(sha256sum "$artifact" | awk '{print $1}')" = "$artifact_hash" ] \
+        || die "final Debian artifact bytes changed during lifecycle verification"
+    if [ "$FIXTURE_MODE" -eq 0 ]; then
+        assert_snapshot_exact "$SOURCE_A" "after final Debian artifact lifecycle"
+        assert_snapshot_exact "$SOURCE_B" "after final Debian artifact lifecycle"
+    fi
 }
 
 write_manifest() {
@@ -1114,6 +1165,25 @@ write_fixture_target() {
         fi
     } > "$source/scripts/build-$script_target.sh"
     chmod 0700 "$source/scripts/build-$script_target.sh"
+}
+
+write_fixture_debian_artifact_lifecycle() {
+    local source="$1"
+    {
+        printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+        printf '[ "$#" = 6 ]\n'
+        printf '[ "$1" = --release-deb ] && [ "$3" = --sha256 ] && [ "$5" = --commit ]\n'
+        printf 'artifact=$2; expected_hash=$4; expected_commit=$6\n'
+        printf '[ "$expected_commit" = "${RELEASE_FIXTURE_COMMIT:?}" ]\n'
+        printf '[ -f "$artifact" ] && [ ! -L "$artifact" ] && [ -s "$artifact" ]\n'
+        printf '[ "$(stat -c '\''%%u:%%g:%%a:%%h'\'' -- "$artifact")" = "$(id -u):$(id -g):400:1" ]\n'
+        printf '[ "$(sha256sum "$artifact" | awk '\''{print $1}'\'')" = "$expected_hash" ]\n'
+        printf '[ -f "${SYSTEMD_SMOKE_IMAGE:?}" ] && [ ! -L "$SYSTEMD_SMOKE_IMAGE" ]\n'
+        printf '[ -d "${SYSTEMD_SMOKE_STATE_DIR:?}" ] && [ ! -L "$SYSTEMD_SMOKE_STATE_DIR" ]\n'
+        printf '[ "$(stat -c '\''%%u:%%a'\'' "$SYSTEMD_SMOKE_STATE_DIR")" = "$(id -u):700" ]\n'
+        printf 'printf "debian-artifact-lifecycle|%%s|%%s|%%s\\n" "$artifact" "$expected_hash" "$expected_commit" >> "${RELEASE_FIXTURE_LOG:?}"\n'
+    } > "$source/scripts/smoke-debian-systemd-lifecycle.sh"
+    chmod 0700 "$source/scripts/smoke-debian-systemd-lifecycle.sh"
 }
 
 run_reset_self_test() {
@@ -1815,6 +1885,11 @@ run_self_test() {
     write_fixture_target "$SOURCE_A" android 'printf android > "$OUT_DIR/rustdesk-arm64.apk"'
     write_fixture_target "$SOURCE_A" windows 'printf windows-exe > "$OUT_DIR/rustdesk-setup.exe"; printf windows-msi > "$OUT_DIR/rustdesk.msi"'
     cp -a "$SOURCE_A/scripts/." "$SOURCE_B/scripts/"
+    write_fixture_debian_artifact_lifecycle "$SOURCE_A"
+    write_fixture_debian_artifact_lifecycle "$SOURCE_B"
+    HOST_SYSTEMD_SMOKE_IMAGE="$WORKSPACE/fixture-systemd-smoke.qcow2"
+    printf 'fixture systemd image\n' > "$HOST_SYSTEMD_SMOKE_IMAGE"
+    chmod 0400 "$HOST_SYSTEMD_SMOKE_IMAGE"
     export POISON_MARKER=present BASH_ENV=/does/not/exist GIT_CONFIG=/does/not/exist DOCKER_CONTEXT=hostile
     build_snapshot A "$SOURCE_A" "$OUTPUT_A" "$SET_A"
     build_snapshot B "$SOURCE_B" "$OUTPUT_B" "$SET_B"
@@ -1851,6 +1926,14 @@ run_self_test() {
     chmod 0400 "$ONLINE_SNAPSHOT_PARENT/online/fixture-input"
     assert_release_online_snapshot "fixture mutation recovery"
     compare_snapshots
+    run_final_debian_artifact_lifecycle
+    compare_snapshots
+    expected_lines=7
+    [ "$(wc -l < "$FIXTURE_LOG")" -eq "$expected_lines" ] \
+        || die "release self-test did not execute the final Debian artifact lifecycle exactly once"
+    [ "$(awk -F'|' '$1 == "debian-artifact-lifecycle" { count++; path=$2; hash=$3; commit=$4 } END { print count ":" path ":" hash ":" commit }' "$FIXTURE_LOG")" = \
+      "1:$SET_A/rustdesk-x86_64.deb:$(sha256sum "$SET_A/rustdesk-x86_64.deb" | awk '{print $1}'):$PINNED_HEAD" ] \
+        || die "release self-test final Debian artifact lifecycle binding differs"
     cp -a "$SET_A/." "$WORKSPACE/release-final"
     SET_A="$WORKSPACE/release-final"
     write_manifest "$SET_A"
@@ -1903,6 +1986,8 @@ main() {
         --verify-apk "$SET_A/rustdesk-arm64.apk" \
         || die "final APK certificate proof failed"
     reset_snapshot_build_state "$SOURCE_A" "after final APK certificate proof"
+    compare_snapshots
+    run_final_debian_artifact_lifecycle
     compare_snapshots
     write_manifest "$SET_A"
     assert_snapshot_exact "$SOURCE_B" "before final dist installation"

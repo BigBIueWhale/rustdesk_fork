@@ -17,11 +17,29 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/verify-scan.sh
 source scripts/verify-scan.sh
 verify_scan_preflight || exit 1
+PREFLIGHT=0
 case "${1:-}" in
   "") ;;
-  --preflight) [ "$#" -eq 1 ] || { echo "verify-release: --preflight takes no arguments" >&2; exit 2; }; exit 0 ;;
+  --preflight)
+    [ "$#" -eq 1 ] || { echo "verify-release: --preflight takes no arguments" >&2; exit 2; }
+    PREFLIGHT=1
+    ;;
   *) echo "usage: scripts/verify-release.sh [--preflight]" >&2; exit 2 ;;
 esac
+
+# A release snapshot has no ignored .harness-state cache. The outer release
+# transaction may supply the independently pinned cloud image and private VM
+# scratch, but that authority belongs only to the systemd gate; do not leak the
+# two paths into unrelated source, audit, Android, or smoke consumers.
+SYSTEMD_GATE_IMAGE=${SYSTEMD_SMOKE_IMAGE:-}
+SYSTEMD_GATE_STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-}
+if { [ -n "$SYSTEMD_GATE_IMAGE" ] && [ -z "$SYSTEMD_GATE_STATE_DIR" ]; } \
+    || { [ -z "$SYSTEMD_GATE_IMAGE" ] && [ -n "$SYSTEMD_GATE_STATE_DIR" ]; }; then
+  echo "verify-release: systemd image and state overrides must be supplied together" >&2
+  exit 2
+fi
+unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR
+[ "$PREFLIGHT" -eq 0 ] || exit 0
 
 # gate-script | one-line description
 GATES=(
@@ -48,6 +66,12 @@ for entry in "${GATES[@]}"; do
   if [[ "$s" == *.py* ]]; then
     read -r -a gate_args <<< "$s"
     python3 "scripts/${gate_args[0]}" "${gate_args[@]:1}"
+    gate_status=$?
+  elif [ "$s" = smoke-debian-systemd-lifecycle.sh ] \
+      && [ -n "$SYSTEMD_GATE_IMAGE" ]; then
+    SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE" \
+    SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_GATE_STATE_DIR" \
+      bash "scripts/$s"
     gate_status=$?
   else
     bash "scripts/$s"

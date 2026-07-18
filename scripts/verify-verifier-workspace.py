@@ -863,11 +863,23 @@ def validate_build_release(source):
         "\n}\n\nassert_exact_set() {",
         "snapshot build loop",
     )
+    artifact_lifecycle = extract_between(
+        source,
+        "run_final_debian_artifact_lifecycle() {",
+        "\n}\n\nwrite_manifest() {",
+        "final Debian artifact lifecycle",
+    )
     fixture_target = extract_between(
         source,
         "write_fixture_target() {",
-        "\n}\n\nrun_reset_self_test() {",
+        "\n}\n\nwrite_fixture_debian_artifact_lifecycle() {",
         "release target fixture writer",
+    )
+    fixture_artifact_lifecycle = extract_between(
+        source,
+        "write_fixture_debian_artifact_lifecycle() {",
+        "\n}\n\nrun_reset_self_test() {",
+        "release Debian artifact lifecycle fixture writer",
     )
     reset_self_test = extract_between(
         source,
@@ -964,6 +976,12 @@ def validate_build_release(source):
     )
     require_text(source, 'DOCKER_HOST_URI=unix:///var/run/docker.sock', "local Docker socket binding")
     require_text(source, 'DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"', "private Docker config")
+    require_text(source, 'SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"', "private systemd smoke scratch")
+    require_text(
+        source,
+        '"$(stat -c \'%u:%a\' "$SYSTEMD_SMOKE_STATE_DIR")" = "$(id -u):700"',
+        "private systemd smoke scratch authority",
+    )
     require_text(source, 'ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"', "single online snapshot location")
     require_text(
         source,
@@ -974,6 +992,11 @@ def validate_build_release(source):
         source,
         'run_child /usr/bin/bash --noprofile --norc "$REPO_ROOT/scripts/verify-release.sh" --preflight',
         "release source-gate preflight",
+    )
+    require_text(
+        source,
+        'HOST_SYSTEMD_SMOKE_IMAGE="$(canonical_file \\\n        "$REPO_ROOT/.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2")"',
+        "pinned host systemd image acquisition",
     )
     require_order(
         source,
@@ -995,7 +1018,7 @@ def validate_build_release(source):
     if "HOST_ONLINE_DIR" in source:
         raise VerificationError("release transaction retains the mutable canonical-online child path")
     require_text(source, "run_snapshot_consumer() {", "online snapshot consumer wrapper")
-    require_exact_count(source, "run_snapshot_consumer ", 6, "before/after online snapshot consumption")
+    require_exact_count(source, "run_snapshot_consumer ", 7, "before/after online snapshot consumption")
     require_text(
         source,
         'assert_release_online_snapshot "before final dist installation"',
@@ -1435,6 +1458,8 @@ def validate_build_release(source):
         (
             'reset_snapshot_build_state "$source" "$label before verification"',
             'run_snapshot_consumer "$label complete release verification"',
+            'SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE"',
+            'SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_SMOKE_STATE_DIR"',
             'reset_snapshot_build_state "$source" "$label after verification"',
         ),
         "verification reset envelope",
@@ -1497,6 +1522,66 @@ def validate_build_release(source):
     require_text(source, 'build_snapshot A "$SOURCE_A"', "snapshot A target execution")
     require_text(source, 'build_snapshot B "$SOURCE_B"', "snapshot B target execution")
     require_text(source, "independent snapshot mismatch for $name", "all-artifact A/B comparison")
+    for text, label in (
+        ('artifact="$SET_A/rustdesk-x86_64.deb"', "final Debian artifact selection"),
+        ('"$(id -u):$(id -g):400:1"', "final Debian artifact metadata authority"),
+        ('sha256sum "$SET_B/rustdesk-x86_64.deb"', "final Debian artifact A/B hash binding"),
+        ('assert_snapshot_exact "$SOURCE_A" "before final Debian artifact lifecycle"', "pre-artifact snapshot-A proof"),
+        ('assert_snapshot_exact "$SOURCE_B" "before final Debian artifact lifecycle"', "pre-artifact snapshot-B proof"),
+        ('run_snapshot_consumer "final Debian artifact lifecycle"', "artifact lifecycle online-input envelope"),
+        ('SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE"', "pinned systemd image handoff"),
+        ('SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_SMOKE_STATE_DIR"', "private systemd scratch handoff"),
+        ('"$SOURCE_A/scripts/smoke-debian-systemd-lifecycle.sh"', "snapshot-owned artifact lifecycle driver"),
+        ('--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"', "hash-and-commit-bound artifact lifecycle dispatch"),
+        ('assert_snapshot_exact "$SOURCE_A" "after final Debian artifact lifecycle"', "post-artifact snapshot-A proof"),
+        ('assert_snapshot_exact "$SOURCE_B" "after final Debian artifact lifecycle"', "post-artifact snapshot-B proof"),
+    ):
+        require_text(artifact_lifecycle, text, label)
+    require_order(
+        artifact_lifecycle,
+        (
+            'assert_exact_set "$SET_A" 0',
+            'sha256sum "$SET_B/rustdesk-x86_64.deb"',
+            'assert_snapshot_exact "$SOURCE_A" "before final Debian artifact lifecycle"',
+            'run_snapshot_consumer "final Debian artifact lifecycle"',
+            '--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"',
+            'assert_snapshot_exact "$SOURCE_A" "after final Debian artifact lifecycle"',
+        ),
+        "final Debian artifact lifecycle transaction",
+    )
+    require_order(
+        main,
+        (
+            'compare_snapshots\n',
+            'run_final_debian_artifact_lifecycle\n',
+            'compare_snapshots\n',
+            'write_manifest "$SET_A"',
+            'atomic_install_dist "$SET_A"',
+        ),
+        "artifact lifecycle before manifest and publication",
+    )
+    for text, label in (
+        ('[ "$#" = 6 ]', "artifact fixture closed argv"),
+        ('[ "$1" = --release-deb ] && [ "$3" = --sha256 ] && [ "$5" = --commit ]', "artifact fixture typed argv"),
+        ('"$(id -u):$(id -g):400:1"', "artifact fixture metadata proof"),
+        ('sha256sum "$artifact"', "artifact fixture hash proof"),
+        ('${SYSTEMD_SMOKE_IMAGE:?}', "artifact fixture image requirement"),
+        ('${SYSTEMD_SMOKE_STATE_DIR:?}', "artifact fixture scratch requirement"),
+        ('debian-artifact-lifecycle|%%s|%%s|%%s', "artifact fixture bound result"),
+    ):
+        require_text(fixture_artifact_lifecycle, text, label)
+    require_order(
+        transaction_self_test,
+        (
+            'compare_snapshots\n',
+            'run_final_debian_artifact_lifecycle\n',
+            'compare_snapshots\n',
+            'release self-test did not execute the final Debian artifact lifecycle exactly once',
+            'release self-test final Debian artifact lifecycle binding differs',
+            'write_manifest "$SET_A"',
+        ),
+        "final Debian artifact lifecycle self-test",
+    )
     require_text(source, "# reproducibility: independent-snapshots-a-equals-b", "manifest reproducibility identity")
     require_order(
         publication_tool,
@@ -1698,7 +1783,7 @@ def validate_build_release(source):
         'run_publication_reconciliation_self_test "$SET_A"',
         "publication reconciliation fixture dispatch",
     )
-    require_exact_count(main, "compare_snapshots\n", 1, "release transaction")
+    require_exact_count(main, "compare_snapshots\n", 2, "release transaction")
     require_order(
         main,
         (
@@ -1707,6 +1792,8 @@ def validate_build_release(source):
             'build_snapshot B "$SOURCE_B"',
             'run_snapshot_consumer "final APK certificate proof"',
             'reset_snapshot_build_state "$SOURCE_A" "after final APK certificate proof"',
+            "compare_snapshots\n",
+            "run_final_debian_artifact_lifecycle\n",
             "compare_snapshots\n",
             'write_manifest "$SET_A"',
             'assert_release_source_state "before final dist installation"',
@@ -2933,6 +3020,16 @@ def validate_scan_contract(scan, verify, apple, release):
     require_text(release, "source scripts/verify-scan.sh", "release scanner loading")
     require_text(release, "verify_scan_preflight || exit 1", "release scanner preflight")
     require_text(release, "--preflight)", "release side-effect-free preflight mode")
+    for text, label in (
+        ('SYSTEMD_GATE_IMAGE=${SYSTEMD_SMOKE_IMAGE:-}', "systemd image override capture"),
+        ('SYSTEMD_GATE_STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-}', "systemd scratch override capture"),
+        ("systemd image and state overrides must be supplied together", "systemd override pair admission"),
+        ('unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR', "systemd override environment confinement"),
+        ('[ "$s" = smoke-debian-systemd-lifecycle.sh ]', "systemd-only override dispatch"),
+        ('SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE"', "systemd image scoped handoff"),
+        ('SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_GATE_STATE_DIR"', "systemd scratch scoped handoff"),
+    ):
+        require_text(release, text, label)
     require_text(
         verify,
         "^[[:space:]]*virtual_display[[:space:]]*=",
@@ -2972,6 +3069,15 @@ def validate_systemd_smoke_contract(
         ('media=cdrom,readonly=on', "systemd VM immutable payload"),
         ('SOURCE_HASH_AFTER=$(sha256sum', "systemd VM source postcondition"),
         ('DEBIAN_SYSTEMD_VM_ISOLATION=pass network=none accel=kvm source=ro base=sha512', "systemd VM isolation result"),
+        ('[ "$(stat -c \'%u:%g:%a:%h\' -- "$RELEASE_DEB")" = "$(id -u):$(id -g):400:1" ]', "release .deb metadata authority"),
+        ('[ "$(sha256sum "$RELEASE_DEB" | awk \'{print $1}\')" = "$EXPECTED_DEB_SHA256" ]', "release .deb host hash binding"),
+        ("release-artifact lifecycle source must be a detached release snapshot", "release .deb detached source authority"),
+        ('python3 scripts/verify-debian-package-authority.py --repo "$PWD" --deb "$RELEASE_DEB"', "release .deb independent authority verification"),
+        ('dpkg-deb -x "$RELEASE_DEB" "$EXTRACTED"', "release .deb private extraction"),
+        ('docker_mounts+=(-v "$EXTRACTED:/artifact-root:ro")', "release .deb read-only dependency staging"),
+        ('payload_grafts+=("artifact/rustdesk-x86_64.deb=$RELEASE_DEB")', "release .deb immutable VM payload"),
+        ('DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$EXPECTED_DEB_SHA256 commit=$EXPECTED_COMMIT', "release .deb exact result marker"),
+        ('release .deb identity changed across the VM lifecycle', "release .deb post-run identity proof"),
     ):
         require_text(host, text, label)
     require_exact_count(host, "-nic none", 1, "systemd VM host network isolation")
@@ -3006,6 +3112,12 @@ def validate_systemd_smoke_contract(
         ('dpkg -r "$PACKAGE"', "installed systemd package removal"),
         ('dpkg --purge "$PACKAGE"', "installed systemd package purge"),
         ('DEBIAN_SYSTEMD_INSTALLED_LIFECYCLE=pass os=debian-%s systemd=%s seat_uid=%s portable_uid=%s crash_generation=%s', "installed systemd result marker"),
+        ('PACKAGE=rustdesk', "release artifact package identity"),
+        ('[ "$(sha256sum "$ARTIFACT" | awk \'{print $1}\')" = "$EXPECTED_ARTIFACT_SHA256" ]', "release artifact guest hash binding"),
+        ('install_argv=(--force-depends --install "$install_deb")', "offline release artifact installation"),
+        ('dpkg-query -W -f=\'${db:Status-Abbrev}\' "$PACKAGE"', "release artifact configured-state proof"),
+        ('dpkg --verify "$PACKAGE"', "release artifact installed-payload proof"),
+        ('DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=%s commit=%s', "release artifact guest result marker"),
     ):
         require_text(guest, text, label)
     require_order(
@@ -3060,6 +3172,11 @@ def validate_systemd_smoke_contract(
         hardening,
         "R-S11c-27m — installed Debian systemd lifecycle",
         "installed systemd hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11c-27s — final Debian artifact lifecycle gate",
+        "final Debian artifact lifecycle hardening ledger",
     )
 
 
@@ -9805,6 +9922,18 @@ def run_source_mutations(sources):
             "systemd VM dependency staging confinement",
         ),
         (
+            "systemd_smoke_host",
+            '[ "$(stat -c \'%u:%g:%a:%h\' -- "$RELEASE_DEB")" = "$(id -u):$(id -g):400:1" ]',
+            '[ -f "$RELEASE_DEB" ]',
+            "release .deb metadata authority",
+        ),
+        (
+            "systemd_smoke_host",
+            "DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$EXPECTED_DEB_SHA256 commit=$EXPECTED_COMMIT",
+            "DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass",
+            "release .deb exact result marker",
+        ),
+        (
             "systemd_smoke_guest",
             'cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service',
             'true # installed unit identity proof removed',
@@ -9829,6 +9958,24 @@ def run_source_mutations(sources):
             "installed systemd crash/restart transaction",
         ),
         (
+            "systemd_smoke_guest",
+            'install_argv=(--force-depends --install "$install_deb")',
+            'install_argv=(--install "$FIXTURE/rustdesk-systemd-smoke.deb")',
+            "offline release artifact installation",
+        ),
+        (
+            "build",
+            'reset_snapshot_build_state "$SOURCE_A" "after final APK certificate proof"\n    compare_snapshots\n    run_final_debian_artifact_lifecycle',
+            'reset_snapshot_build_state "$SOURCE_A" "after final APK certificate proof"\n    compare_snapshots',
+            "artifact lifecycle before manifest and publication",
+        ),
+        (
+            "hardening",
+            "R-S11c-27s — final Debian artifact lifecycle gate",
+            "R-S11c-27s — final Debian artifact lifecycle deferred",
+            "final Debian artifact lifecycle hardening ledger",
+        ),
+        (
             "systemd_smoke_loginctl",
             "exit 64",
             "exit 0",
@@ -9839,6 +9986,12 @@ def run_source_mutations(sources):
             "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference",
             "smoke-debian-systemd-lifecycle.sh|systemd smoke skipped",
             "installed systemd release gate",
+        ),
+        (
+            "release",
+            "unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR",
+            "true # systemd overrides remain ambient",
+            "systemd override environment confinement",
         ),
         (
             "pins",

@@ -3400,6 +3400,58 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     `.deb`, exact-commit cold artifact evidence, or external expert R-V3 review. Those items, the parent item, and the
     upcoming release remain **OPEN**.
 
+  - **R-S11c-27s — final Debian artifact lifecycle gate — SOURCE/RELEASE-TRANSACTION IMPLEMENTED AND
+    BEHAVIORALLY WIRED 2026-07-18; EXACT COLD ARTIFACT EXECUTION PENDING; PARENT ITEM REMAINS OPEN.** The prior
+    installed-systemd and SysV evidence deliberately constructed minimal packages around the real debug executable
+    and exact production lifecycle files. That proved the supervisor and maintainer-script behavior, but it did not
+    prove that the independently built, byte-reproducible `rustdesk-x86_64.deb` actually carries and executes that
+    behavior. The release transaction now closes the missing *gate*: after both complete release snapshots have
+    produced their four artifacts and A==B has been established, but before `SHA256SUMS` or final publication, it
+    invokes the pinned networkless systemd VM lifecycle against the exact pass-A `.deb`, then repeats the A==B
+    comparison. A lifecycle failure, artifact mutation, source mutation, or missing result marker aborts release.
+
+    Admission is bound to the private release transaction rather than an arbitrary pathname. The selected `.deb`
+    must be a current-user/current-group mode-0400, single-link, non-symlink regular file; its SHA-256 must equal the
+    independently compared pass-B artifact; and the lifecycle driver must run from the clean detached snapshot at
+    the exact 40-hex release commit. The driver rechecks canonical path, metadata, link count, package name,
+    architecture, SHA-256, clean/no-generated Git state, and the independent closed-inventory Debian artifact
+    verifier before extracting into private scratch. It records device/inode/size/owner/mode/link identity and
+    digest before any consumer, rechecks both after the VM, and places the package itself—not a reconstructed
+    package tree—on an immutable ISO9660 payload. Runtime libraries are derived from the exact extracted artifact in
+    the existing current-UID, all-capabilities-dropped, no-new-privileges, networkless Docker staging step.
+
+    Inside the disposable Debian 12 KVM guest, the artifact SHA-256, `rustdesk` package identity, `amd64`
+    architecture, and read-only payload mount are revalidated before installation. The offline cloud image is
+    intentionally minimal, so the fixture supplies the exact artifact-derived runtime library bundle and uses
+    dpkg's narrowly named `--force-depends` admission only to turn absent fixture package dependencies into warnings;
+    dpkg still unpacks and configures the exact archive and executes its real preinst/postinst/prerm/postrm scripts.
+    The test requires configured `ii` state, a clean `dpkg --verify`, the byte-exact production unit, and the complete
+    R-S11c-27m normal restart, stop/start, non-root child authority, unit-scoped supervisor crash/recovery, portable
+    sibling survival, removal, and purge transaction. Success additionally requires the exact artifact SHA-256 and
+    release commit in `DEBIAN_RELEASE_ARTIFACT_LIFECYCLE`; the host accepts no unbound success marker. This does not
+    claim APT dependency-resolution coverage, which is separate from the lifecycle behavior under test.
+
+    The release-snapshot path also fixes a concrete cold-transaction defect: ignored `.harness-state` content is
+    correctly absent from the clean detached source clones, so their pre-build systemd source gate could not find the
+    cached cloud image by a snapshot-relative default. `build-release.sh` now passes the canonical host cache file
+    explicitly; `verify-release.sh` captures and unsets that environment, then supplies the image/scratch pair only
+    to the systemd gate so unrelated source consumers never inherit those paths. The lifecycle driver independently
+    requires the publisher-pinned SHA-512, current-user mode-0444
+    single-link file, standalone qcow2 format, and structural integrity. Every mutable overlay, ISO, serial log, and
+    extracted package path instead lives beneath a current-user mode-0700 directory inside the private release
+    workspace. QEMU still receives `-nic none`; Docker receives no published port, host PID/cgroup namespace, Docker
+    socket bind, or added capability; and root exists only inside the throwaway VM for dpkg and its private systemd.
+
+    `build-release.sh --self-test` now synthesizes both artifact passes, proves the final lifecycle is invoked exactly
+    once with the pass-A path, A/B digest, exact commit, pinned-image handoff, and private scratch, and proves the
+    lifecycle occurs between two A==B comparisons and before manifest/publication. `scripts/verify.sh` and the
+    verifier-workspace semantic/mutation suite seal the host and guest artifact bindings, release ordering, source
+    snapshot handoff, confinement, result marker, and this ledger row. This row records only an implemented and
+    behaviorally wired release gate: no current final `.deb` satisfies the new gate, and the prohibited long cold
+    release build was not run during this slice. Final-release `.deb` runtime proof therefore remains **PENDING**
+    until the next clean exact-commit cold transaction emits the bound marker. Exact-commit four-artifact evidence
+    and external expert R-V3 review also remain open; the parent item and upcoming release remain **OPEN**.
+
   Required implementation and release closure:
 
   - The `--service` supervisor must retain direct ownership of every server child

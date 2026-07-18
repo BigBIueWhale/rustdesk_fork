@@ -3572,6 +3572,83 @@ grep -qF 'R-S11c-27m — installed Debian systemd lifecycle' HARDENING_STATUS.md
 if [ -n "$r_s11c27m" ]; then echo "  FAIL R-S11c-27m installed Debian systemd lifecycle:$r_s11c27m"; rc=1; else
   echo "  ok  R-S11c-27m pinned networkless KVM runs exact installed package/unit lifecycle, proves non-root child/cgroup identity across normal stop/restart and supervisor crash recovery, and preserves a separate portable unit"; fi
 
+echo "== (3b-iii-h2n1) final Debian artifact is hash/commit-bound into the installed lifecycle before publication (R-S11c-27s) =="
+r_s11c27s=
+build_release=scripts/build-release.sh
+for token in \
+  "stat -c '%u:%g:%a:%h' -- \"\$RELEASE_DEB\"" \
+  'sha256sum "$RELEASE_DEB"' \
+  'release-artifact lifecycle source must be a detached release snapshot' \
+  'python3 scripts/verify-debian-package-authority.py --repo "$PWD" --deb "$RELEASE_DEB"' \
+  'dpkg-deb -x "$RELEASE_DEB" "$EXTRACTED"' \
+  'docker_mounts+=(-v "$EXTRACTED:/artifact-root:ro")' \
+  'payload_grafts+=("artifact/rustdesk-x86_64.deb=$RELEASE_DEB")' \
+  'DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$EXPECTED_DEB_SHA256 commit=$EXPECTED_COMMIT' \
+  'release .deb identity changed across the VM lifecycle'; do
+  grep -qF -- "$token" "$systemd_host" \
+    || r_s11c27s="$r_s11c27s host:${token%% *}"
+done
+for token in \
+  'PACKAGE=rustdesk' \
+  'sha256sum "$ARTIFACT"' \
+  'install_argv=(--force-depends --install "$install_deb")' \
+  'dpkg-query -W -f=' \
+  'dpkg --verify "$PACKAGE"' \
+  'DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=%s commit=%s'; do
+  grep -qF -- "$token" "$systemd_guest" \
+    || r_s11c27s="$r_s11c27s guest:${token%% *}"
+done
+for token in \
+  'SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"' \
+  'SYSTEMD_SMOKE_IMAGE="$HOST_SYSTEMD_SMOKE_IMAGE"' \
+  'artifact="$SET_A/rustdesk-x86_64.deb"' \
+  'sha256sum "$SET_B/rustdesk-x86_64.deb"' \
+  'run_snapshot_consumer "final Debian artifact lifecycle"' \
+  '"$SOURCE_A/scripts/smoke-debian-systemd-lifecycle.sh"' \
+  '--release-deb "$artifact" --sha256 "$artifact_hash" --commit "$PINNED_HEAD"' \
+  'release self-test did not execute the final Debian artifact lifecycle exactly once'; do
+  grep -qF -- "$token" "$build_release" \
+    || r_s11c27s="$r_s11c27s release:${token%% *}"
+done
+for token in \
+  'SYSTEMD_GATE_IMAGE=${SYSTEMD_SMOKE_IMAGE:-}' \
+  'SYSTEMD_GATE_STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-}' \
+  'systemd image and state overrides must be supplied together' \
+  'unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR' \
+  '[ "$s" = smoke-debian-systemd-lifecycle.sh ]' \
+  'SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE"' \
+  'SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_GATE_STATE_DIR"'; do
+  grep -qF -- "$token" scripts/verify-release.sh \
+    || r_s11c27s="$r_s11c27s source-gate:${token%% *}"
+done
+if ! python3 - "$build_release" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+main = source[source.index("main() {"):source.index("\n}\n\nmain\n", source.index("main() {"))]
+ordered = (
+    'compare_snapshots\n',
+    'run_final_debian_artifact_lifecycle\n',
+    'compare_snapshots\n',
+    'write_manifest "$SET_A"',
+    'atomic_install_dist "$SET_A"',
+)
+position = -1
+for token in ordered:
+    position = main.index(token, position + 1)
+PY
+then
+  r_s11c27s="$r_s11c27s release-order"
+fi
+grep -qF 'R-S11c-27s — final Debian artifact lifecycle gate' HARDENING_STATUS.md \
+  || r_s11c27s="$r_s11c27s hardening-ledger-missing"
+if [ -n "$r_s11c27s" ]; then
+  echo "  FAIL R-S11c-27s final Debian artifact lifecycle gate:$r_s11c27s"; rc=1
+else
+  echo "  ok  R-S11c-27s A==B final .deb is mode/hash/commit-bound into the networkless installed lifecycle before manifest/publication, with private release scratch and a behavioral wiring fixture"
+fi
+
 echo "== (3b-iii-h2o) cross-container service identity ignores identical path/bytes/role text (R-S11c-27n) =="
 r_s11c27n=
 bash -n scripts/smoke-service-lifecycle.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \

@@ -11,6 +11,9 @@ use std::io::{BufRead, IsTerminal, Read as _};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const PASSWORD_CLI_USAGE: &str = "usage: rustdesk --password | rustdesk --password-stdin";
 
+#[cfg(target_os = "linux")]
+const LINUX_SERVICE_OWNED_WORKING_DIRECTORY: &str = "/";
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PasswordCliInput {
@@ -141,6 +144,13 @@ pub fn core_main() -> Option<Vec<String>> {
                 "Rejected Linux service-owned --server without a live owning supervisor: {}",
                 err
             );
+            std::process::exit(1);
+        }
+    }
+    #[cfg(target_os = "linux")]
+    if linux_service_owned_config_role {
+        if let Err(err) = std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY) {
+            log::error!("Linux service-owned working-directory authority failed closed: {err}");
             std::process::exit(1);
         }
     }

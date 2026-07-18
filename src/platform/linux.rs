@@ -1835,6 +1835,7 @@ fn try_start_server_(
     command
         .arg("--server")
         .arg(crate::common::SERVICE_OWNED_SERVER_ARG)
+        .current_dir("/")
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env(

@@ -1925,6 +1925,48 @@ unreachable and a source/test/AST gate prevents reintroduction.
   ambient reads and process-global mutation, hostile fixture, mandatory runtime result, R-S11l, and Appendix C #134.
   This source/runtime slice does not claim final execution of the exact cold Debian artifact or overall R-B2
   completion.
+- **R-S11e-27 — Linux service-owned working-directory authority — SOURCE, FOCUSED, AND
+  ACTUAL-DEBUG-BINARY RUNTIME VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH
+  R-B2/R-S11c-27.** Platform: Linux root service supervisor and both root/login-screen and active-user
+  service-owned server children; the custom-client loader correction is shared by every platform/build mode.
+  Endpoint/action: process startup cwd and optional signed `custom.txt` source selection before app-name, config,
+  and IPC namespace initialization. Boundary: init/manual/sudo launcher filesystem context ↔ service-owned runtime
+  identity and every later relative-path consumer. Attack surface closed: Rust `Command` inherited the supervisor's
+  cwd into both service children, while the supervisor itself retained whatever directory launched it. Debug builds
+  additionally read `./custom.txt` first and returned after any readable cwd file, including an invalid payload that
+  suppressed the executable-bound sidecar. A valid RustDesk-signed payload can change `APP_NAME` before the Linux
+  service config root and IPC paths are selected, so publisher signature validity did not make ambient cwd a sound
+  deployment selector. Release builds did not compile the cwd loader and an untrusted local user cannot forge the
+  Ed25519 signature; this is classified as a debug/manual privileged-launch identity/namespace confused deputy and
+  future-relative-path authority defect, not a demonstrated production-release exploit or promptless local
+  privilege escalation.
+
+  Closure: the debug cwd override is deleted rather than root-gated. `load_custom_client()` now derives the optional
+  sidecar only from an absolute `current_exe()` path (retaining the existing macOS Resources mapping), while mobile
+  embeddings keep the explicit in-memory signed payload API. Exact Linux `--service` and service-owned child roles
+  set cwd to `/` before `global_init()` or custom loading and exit if that fails. `try_start_server_()` independently
+  applies `Command::current_dir("/")` before spawn, so the local child-launch surface no longer encodes Rust's
+  inherit-parent default. Ordinary user-owned viewer/server cwd behavior remains unchanged.
+
+  Verification closure is bound at the same boundary: a focused unit regression pins absolute,
+  executable-relative custom sidecar derivation; `scripts/verify.sh` rejects the deleted debug/`./custom.txt`
+  loader, missing or late supervisor/child cwd binding, absent fail-closed behavior, and documentation drift. The
+  networkless actual-debug-binary lifecycle fixture launches service paths from a UID-4000-owned mode-0700 directory
+  containing malformed `custom.txt`, reads both exact live `/proc/<pid>/cwd` links, requires `/`, and fails if the
+  ambient file reaches the signed-config parser. `scripts/smoke-server.sh` makes the exact
+  `SERVICE_LIFECYCLE_WORKING_DIRECTORY` result mandatory. R-S11m and Appendix C #135 record the normative and defect
+  dispositions. The focused Rust regression passed (1/1); the non-root, network-disabled, source-read-only verifier
+  source pass succeeded and five isolated mutations were rejected for the intended cwd/sidecar/runtime-proof
+  regressions. The canonical smoke harness built the current debug binary in Docker and the network-disabled service
+  lifecycle stage emitted the mandatory
+  `SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded` result across normal, recovery,
+  hostile-record, forced pre-pidfd, root, and active-user paths. Its host identity monitor and portable/sibling
+  noninterference checks passed, as did the subsequent SysV, native OpenRC, native runit, loopback-listener, PAKE,
+  session, tunnel, file-transfer, and wire-capture stages. The full verifier-workspace mutation self-test was also
+  attempted twice in a constrained container but stopped at its pre-existing descriptor-owned scratch-replacement
+  fixture (`scratch replacement fixture missed the descriptor-owned directory`); that unrelated assertion was not
+  bypassed or weakened, so this entry claims the focused source/mutation/runtime evidence, not that self-test. This
+  slice does not claim final execution of a cold release `.deb` or overall R-B2 completion.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4201,8 +4243,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-179cd6a732140385c4463b10a044fe7b8958e7635206741bbe3cb26d44d2da90  requirements.html
+c452cbea6cd7850038b69de9b8dbe6dcd93e6a7f72de7710abf626eaf6d5774a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11k, and Appendix C #133. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11m, and Appendix C #135. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

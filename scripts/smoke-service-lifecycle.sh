@@ -10,6 +10,7 @@ readonly LAUNCHER=/work/target/smoke-server-launcher
 readonly RECORD=/run/rustdesk/service-child.record
 readonly FIXTURE=/tmp/rd-service-lifecycle
 readonly LOGINCTL_STATE=/tmp/rd-service-loginctl-state
+readonly HOSTILE_SERVICE_CWD=/tmp/rustdesk-attacker-cwd
 
 if [ "$(stat -c '%u:%g:%a' -- "$SOURCE_BINARY")" != 0:0:755 ]; then
   echo "service lifecycle source binary must be root-owned mode 0755" >&2
@@ -48,6 +49,7 @@ PRE_PIDFD=
 PRE_PIDFD_START=
 PRE_PIDFD_GENERATION=
 ROOT_ENVIRONMENT_PROVEN=0
+WORKING_DIRECTORY_PROVEN=0
 
 readonly -a HOSTILE_SERVICE_ENV=(
   env
@@ -322,6 +324,8 @@ expected_entries = {
 }
 if not expected_entries.issubset(set(environ)):
     raise SystemExit("pre-pidfd service child launch authority changed")
+if os.readlink(f"/proc/{pid}/cwd") != "/":
+    raise SystemExit("pre-pidfd service child retained its launcher working directory")
 PY
 }
 
@@ -488,7 +492,10 @@ run_rejected_record_case() {
   [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
   before_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")
   before_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
-  if "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service >"$log" 2>&1; then
+  if (
+    cd "$HOSTILE_SERVICE_CWD"
+    exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
+  ) >"$log" 2>&1; then
     service_status=0
   else
     service_status=$?
@@ -548,6 +555,8 @@ expected_user = sys.argv[5]
 expected_home = sys.argv[6]
 expected_groups = sys.argv[7]
 expected_executable = os.stat(sys.argv[8])
+if os.readlink(f"/proc/{supervisor}/cwd") != "/":
+    raise SystemExit("service supervisor retained its launcher working directory")
 metadata = os.lstat(record_path)
 if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
     raise SystemExit("service child record is not a single-linked regular file")
@@ -593,6 +602,8 @@ if (executable.st_dev, executable.st_ino) != (
     expected_executable.st_dev, expected_executable.st_ino
 ):
     raise SystemExit("service child did not execute the installed binary object")
+if os.readlink(f"/proc/{pid_number}/cwd") != "/":
+    raise SystemExit("service child retained its supervisor working directory")
 argv = open(f"/proc/{pid_number}/cmdline", "rb").read().split(b"\0")
 if argv[1:] != [b"--server", b"--service-owned-server", b""]:
     raise SystemExit("service child role differs")
@@ -697,8 +708,13 @@ PY
     sleep 0.1
     [ "$(stat -c %s "$log")" = "$service_log_size" ] && break
   done
+  if grep -Fq -- 'Failed to decode custom client config' "$log"; then
+    echo 'service lifecycle: service consumed custom.txt from its hostile launcher directory' >&2
+    return 1
+  fi
   if [ "$expected_uid" = 0 ]; then
     ROOT_ENVIRONMENT_PROVEN=1
+    WORKING_DIRECTORY_PROVEN=1
     "$READY" --wait-parked "$CHILD" "$CHILD_START" "$log" "$PROBE" "$expected_uid"
   else
     chown "$expected_user:$expected_gid" "$log"
@@ -717,7 +733,10 @@ start_service() {
   [ ! -e "$RECORD" ] && [ ! -L "$RECORD" ]
   : > "$log"
   chmod 0600 "$log"
-  "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service >"$log" 2>&1 &
+  (
+    cd "$HOSTILE_SERVICE_CWD"
+    exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
+  ) >"$log" 2>&1 &
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
   wait_for_service_child "$log" "$expected_uid" "$expected_gid" "$expected_user" \
@@ -732,10 +751,16 @@ start_service_recovering() {
   : > "$log"
   chmod 0600 "$log"
   if [ "$force_pre_pidfd" = force-pre-pidfd ]; then
-    "${HOSTILE_SERVICE_ENV[@]}" RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
-      "$BINARY" --service >"$log" 2>&1 &
+    (
+      cd "$HOSTILE_SERVICE_CWD"
+      exec "${HOSTILE_SERVICE_ENV[@]}" RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
+        "$BINARY" --service
+    ) >"$log" 2>&1 &
   else
-    "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service >"$log" 2>&1 &
+    (
+      cd "$HOSTILE_SERVICE_CWD"
+      exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
+    ) >"$log" 2>&1 &
   fi
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
@@ -747,11 +772,14 @@ start_pre_pidfd_recorded_child() {
   PRE_PIDFD_GENERATION=$(tr -d '\n' </proc/sys/kernel/random/uuid)
   : > "$log"
   chmod 0600 "$log"
-  RUST_LOG=info HOME=/tmp \
-    RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
-    RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PRE_PIDFD_GENERATION" \
-    bash --noprofile --norc -c 'exec -a rd-smoke-server "$1" --server --service-owned-server' \
-    bash "$BINARY" >"$log" 2>&1 &
+  (
+    cd "$HOSTILE_SERVICE_CWD"
+    exec env RUST_LOG=info HOME=/tmp \
+      RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
+      RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PRE_PIDFD_GENERATION" \
+      bash --noprofile --norc -c \
+      'exec -a rd-smoke-server "$1" --server --service-owned-server' bash "$BINARY"
+  ) >"$log" 2>&1 &
   PRE_PIDFD=$!
   PRE_PIDFD_START=$("$READY" --identity "$PRE_PIDFD")
   "$READY" --wait-parked "$PRE_PIDFD" "$PRE_PIDFD_START" "$log" "$PROBE" 0
@@ -791,6 +819,10 @@ id -u rduser >/dev/null 2>&1 || useradd -m -u 4000 rduser
 portable_gid=$(id -g rduser)
 install -d -o root -g root -m 0755 "$FIXTURE" "$FIXTURE/bin"
 install -d -o rduser -g "$portable_gid" -m 0700 "$FIXTURE/home"
+install -d -o rduser -g "$portable_gid" -m 0700 "$HOSTILE_SERVICE_CWD"
+printf '%s\n' '%%%not-a-signed-custom-client%%%' > "$HOSTILE_SERVICE_CWD/custom.txt"
+chown rduser:"$portable_gid" "$HOSTILE_SERVICE_CWD/custom.txt"
+chmod 0600 "$HOSTILE_SERVICE_CWD/custom.txt"
 install -o root -g root -m 0555 "$BINARY" "$FIXTURE/bin/rustdesk"
 install -o root -g root -m 0555 "$LAUNCHER" "$FIXTURE/bin/smoke-server-launcher"
 install -o root -g root -m 0555 "$READY" "$FIXTURE/bin/smoke-ready.sh"
@@ -1034,6 +1066,8 @@ printf 'SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=%s groups=%s generati
   "$seat_gid" "$seat_groups" "$nonroot_generation"
 [ "$ROOT_ENVIRONMENT_PROVEN" = 1 ]
 printf 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded\n'
+[ "$WORKING_DIRECTORY_PROVEN" = 1 ]
+printf 'SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded\n'
 
 "$READY" --stop "$PORTABLE" "$PORTABLE_START"
 wait "$PORTABLE"

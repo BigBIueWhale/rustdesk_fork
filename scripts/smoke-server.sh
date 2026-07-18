@@ -398,6 +398,8 @@ grep -Eq '^SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001 gid=4001 groups=4001,4
   || { echo "  FAIL R-S11c-27h: actual active-seat child did not complete the exact non-root descriptor-exec path"; rc=1; }
 grep -q '^SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment"; rc=1; }
+grep -q '^SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded$' <<<"$lifecycle_out" \
+  || { echo "  FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt"; rc=1; }
 grep -q '^PORTABLE_NONINTERFERENCE=pass uid=4000$' <<<"$lifecycle_out" \
   || { echo "  FAIL R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i: unrelated non-root portable server did not survive every service transition"; rc=1; }
 if [ "$lifecycle_stage_status" -eq 0 ] && [ "$sibling_stage_status" -eq 0 ] \

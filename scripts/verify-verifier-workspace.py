@@ -3293,12 +3293,19 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11c-27q — native OpenRC lifecycle authority' HARDENING_STATUS.md", "native OpenRC hardening ledger gate"),
         ('native runit owns one exact supervision tree and preserves unrelated RustDesk (R-S11c-27r)', "native runit source gate"),
         ("grep -qF 'R-S11c-27r — native runit lifecycle authority' HARDENING_STATUS.md", "native runit hardening ledger gate"),
+        ('Linux service-owned working-directory authority (R-S11m/R-S11e-27)', "service cwd source gate"),
+        ("grep -qF 'R-S11e-27 — Linux service-owned working-directory authority' HARDENING_STATUS.md", "service cwd hardening ledger gate"),
     ):
         require_text(verify, text, label)
     require_text(
         hardening,
         "R-S11c-27r — native runit lifecycle authority",
         "native runit hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-27 — Linux service-owned working-directory authority",
+        "service cwd hardening ledger",
     )
     for text, label in (
         ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
@@ -3328,6 +3335,8 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27r', "native runit stage status preservation"),
         ('record_stage_status R-S11c-27n', "cross-container identity stage status preservation"),
         ('record_stage_status R-S11c-27o', "actual PID reuse stage status preservation"),
+        ('FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt', "service cwd runtime result consumer"),
+        ('SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded', "service cwd result binding"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
@@ -3586,6 +3595,12 @@ def validate_smoke_contract(
         ('expected_executable = os.stat(sys.argv[8])', "expected installed executable proof"),
         ('service child did not execute the installed binary object', "live child installed-object check"),
         ('SERVICE_LIFECYCLE_CONTAINER_IDENTITY=pass path=/usr/bin/rustdesk', "main container identity result"),
+        ('readonly HOSTILE_SERVICE_CWD=/tmp/rustdesk-attacker-cwd', "hostile service cwd fixture"),
+        ('%%%not-a-signed-custom-client%%%', "hostile cwd custom sidecar"),
+        ('os.readlink(f"/proc/{supervisor}/cwd") != "/"', "supervisor cwd runtime proof"),
+        ('os.readlink(f"/proc/{pid_number}/cwd") != "/"', "service child cwd runtime proof"),
+        ('service consumed custom.txt from its hostile launcher directory', "ambient custom sidecar rejection"),
+        ('SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded', "service cwd lifecycle result"),
     ):
         require_text(service_lifecycle, text, label)
     for text, label in (
@@ -3811,6 +3826,55 @@ def validate_smoke_contract(
         ('nix::unistd::close(executable_fd)', "final-image descriptor close"),
     ):
         require_text(linux_source, text, label)
+    custom_client_loader = extract_between(
+        common_source,
+        "pub fn load_custom_client() {",
+        "\nfn read_custom_client_advanced_settings(",
+        "custom-client loader",
+    )
+    for text, label in (
+        ("std::env::current_exe()", "custom sidecar executable authority"),
+        ("custom_client_config_path(&executable)", "custom sidecar path derivation"),
+        ("if !executable.is_absolute()", "absolute executable path requirement"),
+        ('Some(path.join("custom.txt"))', "executable-relative custom sidecar"),
+    ):
+        require_text(custom_client_loader, text, label)
+    for forbidden in ('"./custom.txt"', "debug_assertions", "current_dir("):
+        if forbidden in custom_client_loader:
+            raise VerificationError(
+                f"custom-client loader retains ambient cwd authority: {forbidden}"
+            )
+    service_bootstrap = extract_between(
+        core_main,
+        "pub fn core_main() -> Option<Vec<String>> {",
+        "    let mut args = Vec::new();",
+        "Linux service bootstrap",
+    )
+    require_order(
+        service_bootstrap,
+        (
+            "std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY)",
+            "crate::common::global_init()",
+            "crate::load_custom_client();",
+        ),
+        "service cwd binding before initialization",
+    )
+    require_text(
+        service_bootstrap,
+        "Linux service-owned working-directory authority failed closed",
+        "service cwd fail-closed diagnostic",
+    )
+    service_child_launch = extract_between(
+        linux_source,
+        "fn try_start_server_(",
+        "\nfn stop_unregistered_service_child",
+        "Linux service child launch",
+    )
+    require_order(
+        service_child_launch,
+        ('.current_dir("/")', ".env_clear()", "let spawn_result = command.spawn();"),
+        "service child fixed cwd before spawn",
+    )
     for source in (core_main, common_source):
         if re.search(r"std::env::args(?:_os)?\(\)\.(?:next\(\)|nth\(0\))", source):
             raise VerificationError("Rust server role regressed to semantic argv0 use")
@@ -9518,6 +9582,36 @@ def run_source_mutations(sources):
             '$READY --hold-running "$SRV" "$SRV_START" /tmp/srv.log 64 "limiter-decay interval"',
             'sleep 6',
             "identity-monitored limiter-decay interval",
+        ),
+        (
+            "common_source",
+            "pub fn load_custom_client() {\n    let Some(path) = std::env::current_exe()",
+            "pub fn load_custom_client() {\n    let Some(path) = std::env::current_dir()",
+            "custom sidecar executable authority",
+        ),
+        (
+            "core_main",
+            "std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY)",
+            "std::env::set_current_dir(\".\")",
+            "service cwd binding before initialization",
+        ),
+        (
+            "linux_source",
+            '.current_dir("/")',
+            '.current_dir(".")',
+            "service child fixed cwd before spawn",
+        ),
+        (
+            "service_lifecycle",
+            'os.readlink(f"/proc/{supervisor}/cwd") != "/"',
+            'False # supervisor cwd proof removed',
+            "supervisor cwd runtime proof",
+        ),
+        (
+            "smoke",
+            'SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded',
+            'SERVICE_LIFECYCLE_WORKING_DIRECTORY=skipped supervisor=/ child=/ ambient=excluded',
+            "service cwd runtime result consumer",
         ),
         (
             "service_lifecycle",

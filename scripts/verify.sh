@@ -2528,6 +2528,58 @@ grep -qF 'R-S11e-26 — Linux service-child environment authority' HARDENING_STA
 if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
   echo "  ok  R-S11e-26 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio variables cannot re-enter after env_clear"; fi
 
+# (3b-iii-d6) R-S11m/R-S11e-27: Linux service-owned roles do not inherit pathname
+# authority from a manual/sudo/init launcher working directory. Custom-client sidecars
+# are executable-relative on every build, and both supervisor and child run from '/'.
+echo "== (3b-iii-d6) Linux service-owned working-directory authority (R-S11m/R-S11e-27) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config common::tests::custom_client_config_is_executable_relative --color never
+r_s11e27=
+custom_client_loader=$(awk '/pub fn load_custom_client\(\)/,/fn read_custom_client_advanced_settings/' src/common.rs)
+core_service_bootstrap=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/let mut args = Vec::new\(\);/' src/core_main.rs)
+service_child_launch=$(awk '/fn try_start_server_\(/,/fn stop_unregistered_service_child/' src/platform/linux.rs)
+grep -qF 'std::env::current_exe()' <<<"$custom_client_loader"                     || r_s11e27="$r_s11e27 custom-loader-executable-source-missing"
+grep -qF 'custom_client_config_path(&executable)' <<<"$custom_client_loader"       || r_s11e27="$r_s11e27 custom-loader-path-helper-missing"
+grep -qF 'if !executable.is_absolute()' <<<"$custom_client_loader"                 || r_s11e27="$r_s11e27 custom-loader-absolute-path-check-missing"
+grep -qF 'Some(path.join("custom.txt"))' <<<"$custom_client_loader"               || r_s11e27="$r_s11e27 custom-loader-sidecar-path-missing"
+if grep -qF 'debug_assertions' <<<"$custom_client_loader" \
+  || grep -qF '"./custom.txt"' <<<"$custom_client_loader" \
+  || grep -qF 'current_dir(' <<<"$custom_client_loader"; then
+  r_s11e27="$r_s11e27 ambient-custom-loader-present"
+fi
+grep -qF 'fn custom_client_config_is_executable_relative()' src/common.rs           || r_s11e27="$r_s11e27 executable-relative-regression-test-missing"
+grep -qF 'const LINUX_SERVICE_OWNED_WORKING_DIRECTORY: &str = "/";' src/core_main.rs || r_s11e27="$r_s11e27 fixed-service-working-directory-missing"
+grep -qF 'std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY)' <<<"$core_service_bootstrap" || r_s11e27="$r_s11e27 supervisor-working-directory-bind-missing"
+grep -qF 'Linux service-owned working-directory authority failed closed' <<<"$core_service_bootstrap" || r_s11e27="$r_s11e27 supervisor-working-directory-not-fail-closed"
+working_directory_line=$(grep -nF 'std::env::set_current_dir(LINUX_SERVICE_OWNED_WORKING_DIRECTORY)' <<<"$core_service_bootstrap" | cut -d: -f1)
+global_init_line=$(grep -nF 'crate::common::global_init()' <<<"$core_service_bootstrap" | cut -d: -f1)
+custom_load_line=$(grep -nF 'crate::load_custom_client();' <<<"$core_service_bootstrap" | cut -d: -f1)
+if [ -z "$working_directory_line" ] || [ -z "$global_init_line" ] || [ -z "$custom_load_line" ] \
+  || [ "$working_directory_line" -ge "$global_init_line" ] || [ "$working_directory_line" -ge "$custom_load_line" ]; then
+  r_s11e27="$r_s11e27 supervisor-working-directory-bind-too-late"
+fi
+grep -qF '.current_dir("/")' <<<"$service_child_launch"                           || r_s11e27="$r_s11e27 child-working-directory-bind-missing"
+child_cwd_line=$(grep -nF '.current_dir("/")' <<<"$service_child_launch" | cut -d: -f1)
+child_spawn_line=$(grep -nF 'let spawn_result = command.spawn();' <<<"$service_child_launch" | cut -d: -f1)
+if [ -z "$child_cwd_line" ] || [ -z "$child_spawn_line" ] || [ "$child_cwd_line" -ge "$child_spawn_line" ]; then
+  r_s11e27="$r_s11e27 child-working-directory-bind-too-late"
+fi
+for runtime_proof in \
+  'readonly HOSTILE_SERVICE_CWD=/tmp/rustdesk-attacker-cwd' \
+  '%%%not-a-signed-custom-client%%%' \
+  'service supervisor retained its launcher working directory' \
+  'service child retained its supervisor working directory' \
+  'service consumed custom.txt from its hostile launcher directory' \
+  'SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded'; do
+  grep -qF "$runtime_proof" scripts/smoke-service-lifecycle.sh || r_s11e27="$r_s11e27 hostile-runtime-proof-missing"
+done
+grep -qF 'FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt' scripts/smoke-server.sh || r_s11e27="$r_s11e27 mandatory-smoke-consumer-missing"
+grep -qF '<span class="id">R-S11m</span>' requirements.html                        || r_s11e27="$r_s11e27 normative-requirement-missing"
+grep -qF 'Linux service-owned startup inherited working-directory authority' requirements.html || r_s11e27="$r_s11e27 appendix-disposition-missing"
+grep -qF '<tr><td>135</td>' requirements.html                                        || r_s11e27="$r_s11e27 appendix-row-missing"
+grep -qF 'R-S11e-27 — Linux service-owned working-directory authority' HARDENING_STATUS.md || r_s11e27="$r_s11e27 hardening-ledger-missing"
+if [ -n "$r_s11e27" ]; then echo "  FAIL R-S11e-27 Linux service-owned working-directory authority:$r_s11e27"; rc=1; else
+  echo "  ok  R-S11e-27 Linux service supervisor and child bind cwd to '/', while custom.txt is executable-relative in debug and release builds"; fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

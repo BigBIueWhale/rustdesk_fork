@@ -1095,18 +1095,12 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
 }
 
 pub fn load_custom_client() {
-    #[cfg(debug_assertions)]
-    if let Ok(data) = std::fs::read_to_string("./custom.txt") {
-        read_custom_client(data.trim());
-        return;
-    }
-    let Some(path) = std::env::current_exe().map_or(None, |x| x.parent().map(|x| x.to_path_buf()))
+    let Some(path) = std::env::current_exe()
+        .ok()
+        .and_then(|executable| custom_client_config_path(&executable))
     else {
         return;
     };
-    #[cfg(target_os = "macos")]
-    let path = path.join("../Resources");
-    let path = path.join("custom.txt");
     if path.is_file() {
         let Ok(data) = std::fs::read_to_string(&path) else {
             log::error!("Failed to read custom client config");
@@ -1114,6 +1108,16 @@ pub fn load_custom_client() {
         };
         read_custom_client(&data.trim());
     }
+}
+
+fn custom_client_config_path(executable: &std::path::Path) -> Option<std::path::PathBuf> {
+    if !executable.is_absolute() {
+        return None;
+    }
+    let path = executable.parent()?.to_path_buf();
+    #[cfg(target_os = "macos")]
+    let path = path.join("../Resources");
+    Some(path.join("custom.txt"))
 }
 
 fn read_custom_client_advanced_settings(
@@ -1479,6 +1483,24 @@ mod tests {
         ] {
             assert!(!custom_client_app_name_is_valid(app_name), "{app_name:?}");
         }
+    }
+
+    #[test]
+    fn custom_client_config_is_executable_relative() {
+        let executable = std::path::Path::new("/opt/rustdesk/bin/rustdesk");
+        #[cfg(not(target_os = "macos"))]
+        let expected = std::path::Path::new("/opt/rustdesk/bin/custom.txt");
+        #[cfg(target_os = "macos")]
+        let expected = std::path::Path::new("/opt/rustdesk/bin/../Resources/custom.txt");
+
+        assert_eq!(
+            custom_client_config_path(executable).as_deref(),
+            Some(expected)
+        );
+        assert_eq!(
+            custom_client_config_path(std::path::Path::new("rustdesk")),
+            None
+        );
     }
 
     #[inline]

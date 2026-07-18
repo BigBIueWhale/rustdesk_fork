@@ -8892,6 +8892,17 @@ grep -qF -- '--init-script /src/scripts/android-gradle-offline.init.gradle' scri
   || android_gradle_bad="$android_gradle_bad no-tracked-init-authority"
 grep -qF 'export RUSTDESK_GRADLE_OFFLINE=1' scripts/android-apk-build.sh \
   || android_gradle_bad="$android_gradle_bad no-internal-offline-flag"
+android_generated_cleanup="rm -rf ./flutter/build ./flutter/android/app/src/main/jniLibs"
+grep -qF "$android_generated_cleanup" scripts/android-apk-build.sh \
+  || android_gradle_bad="$android_gradle_bad incomplete-generated-output-reset"
+cleanup_count="$(grep -cF "$android_generated_cleanup" scripts/android-apk-build.sh || true)"
+ndk_count="$(grep -cF 'bash ./flutter/ndk_arm64.sh' scripts/android-apk-build.sh || true)"
+if [ "$cleanup_count" -ne 1 ] || [ "$ndk_count" -ne 1 ]; then
+  android_gradle_bad="$android_gradle_bad generated-output-reset-or-ndk-build-not-unique"
+elif [ "$(grep -nF "$android_generated_cleanup" scripts/android-apk-build.sh | cut -d: -f1)" -ge \
+       "$(grep -nF 'bash ./flutter/ndk_arm64.sh' scripts/android-apk-build.sh | cut -d: -f1)" ]; then
+  android_gradle_bad="$android_gradle_bad generated-output-reset-not-before-ndk-build"
+fi
 grep -qF 'gradle.startParameter.offline = true' scripts/android-gradle-offline.init.gradle \
   || android_gradle_bad="$android_gradle_bad no-gradle-start-parameter"
 grep -qF 'test-android-gradle-cache.sh|non-root immutable Gradle projection' scripts/verify-release.sh \
@@ -9021,7 +9032,7 @@ fi
 if [ -n "$android_gradle_bad" ]; then
   echo "  FAIL R-B9/R-B10: Android Gradle cache/offline authority regressed:$android_gradle_bad"; rc=1
 else
-  echo "  ok  R-B9/R-B10 Android Gradle cache: immutable seed -> fresh owner-only projection; tracked init authority sets the real offline start parameter; pinned-image behavioral and online-snapshot mutation suites are release gates"
+  echo "  ok  R-B9/R-B10 Android build: immutable Gradle seed -> fresh owner-only projection; generated Flutter/JNI outputs reset before each pass; tracked init authority sets the real offline start parameter; pinned-image behavioral and online-snapshot mutation suites are release gates"
 fi
 
 echo "== (6c-a3) Android Rust target check is a mandatory pinned offline release gate (R-B9/R-B10) =="

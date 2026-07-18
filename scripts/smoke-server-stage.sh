@@ -41,6 +41,9 @@ case "$1" in
     install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk
     bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh
     ;;
+  service-pid-reuse)
+    bash --noprofile --norc /work/scripts/smoke-service-pid-reuse.sh
+    ;;
   debian-sysv-installed-lifecycle)
     bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh
     ;;

@@ -3069,6 +3069,7 @@ def smoke_readiness_mode_is_valid(mode):
 
 def validate_smoke_contract(
     verify, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
+    pid_reuse_lifecycle, pid_reuse_lifecycle_mode,
     debian_sysv_lifecycle, debian_sysv_lifecycle_mode, loginctl_fixture,
     loginctl_fixture_mode, process_guard, process_guard_mode, launcher, readiness,
     readiness_mode, typed_probe, session_probe, ipc_source, core_main, common_source,
@@ -3077,6 +3078,8 @@ def validate_smoke_contract(
     for text, label in (
         ('cross-container service identity ignores identical path/bytes/role text (R-S11c-27n)', "cross-container source gate"),
         ("grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.md", "cross-container hardening ledger gate"),
+        ('actual kernel numeric-PID reuse (R-S11c-27o)', "actual PID reuse source gate"),
+        ("grep -qF 'R-S11c-27o — actual kernel numeric-PID reuse' HARDENING_STATUS.md", "actual PID reuse hardening ledger gate"),
     ):
         require_text(verify, text, label)
     for text, label in (
@@ -3091,6 +3094,11 @@ def validate_smoke_contract(
         ("trap 'exit 143' TERM", "host guard termination cleanup"),
         ('BUILD_RUN=(docker run --rm', "writable build-only container"),
         ('LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE', "network-isolated lifecycle procfs authority"),
+        ('PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128', "isolated PID reuse container"),
+        ('--cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP', "PID reuse minimal capability set"),
+        ('--security-opt no-new-privileges --security-opt apparmor=unconfined', "PID reuse no-new-privileges and AppArmor scope"),
+        ('--tmpfs /tmp:rw,nosuid,nodev,mode=1777', "PID reuse private tmpfs"),
+        ('--tmpfs /run:rw,nosuid,nodev,noexec,mode=755', "PID reuse private runtime tmpfs"),
         ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
@@ -3099,10 +3107,12 @@ def validate_smoke_contract(
         ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
         ('record_stage_status R-S11c-27l', "Debian SysV stage status preservation"),
         ('record_stage_status R-S11c-27n', "cross-container identity stage status preservation"),
+        ('record_stage_status R-S11c-27o', "actual PID reuse stage status preservation"),
         ('STAGE_STATUS=$?', "isolated command failure status preservation"),
         ('bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test', "mounted readiness self-test"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot', "mounted non-root stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-lifecycle-manual', "mounted service lifecycle stage"),
+        ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-pid-reuse', "mounted PID reuse stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server', "mounted sibling Docker stage"),
         ('bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle', "mounted Debian SysV stage"),
         ('start_sibling_docker()', "sibling Docker orchestrator"),
@@ -3121,6 +3131,9 @@ def validate_smoke_contract(
         ('&& [ "$main_mount_namespace" != "$sibling_mount_namespace" ]', "cross-container mount-namespace separation"),
         ('&& [ "$main_pid_namespace" != "$sibling_pid_namespace" ]', "cross-container PID-namespace separation"),
         ('sibling_container_survived" == *" exe=$sibling_executable generation=$sibling_generation"', "cross-container survivor identity binding"),
+        ('SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=', "actual PID reuse result"),
+        ('[ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]', "PID reuse same numeric PID proof"),
+        ('[ "${BASH_REMATCH[3]}" != "${BASH_REMATCH[4]}" ]', "PID reuse changed start-time proof"),
     ):
         require_text(smoke, text, label)
     for forbidden in (
@@ -3133,9 +3146,9 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 19:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 20:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
-    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 19:
+    if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 20:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
     if "rustdesk --server" in smoke:
         raise VerificationError("host smoke orchestrator retains historical-selector launch text")
@@ -3157,6 +3170,8 @@ def validate_smoke_contract(
         raise VerificationError("mounted smoke stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(service_lifecycle_mode):
         raise VerificationError("mounted service lifecycle stage is not a regular executable file")
+    if not smoke_readiness_mode_is_valid(pid_reuse_lifecycle_mode):
+        raise VerificationError("mounted PID reuse lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(debian_sysv_lifecycle_mode):
         raise VerificationError("mounted Debian SysV lifecycle stage is not a regular executable file")
     if not smoke_readiness_mode_is_valid(loginctl_fixture_mode):
@@ -3165,8 +3180,10 @@ def validate_smoke_contract(
         raise VerificationError("smoke process guard is not a regular executable file")
     for text, label in (
         ('service-lifecycle-manual)', "service lifecycle dispatch"),
+        ('service-pid-reuse)', "PID reuse lifecycle dispatch"),
         ('sibling-docker-server)', "sibling Docker dispatch"),
         ('debian-sysv-installed-lifecycle)', "Debian SysV dispatch"),
+        ('bash --noprofile --norc /work/scripts/smoke-service-pid-reuse.sh', "PID reuse mounted script dispatch"),
         ('bash --noprofile --norc /work/scripts/smoke-debian-sysv-lifecycle.sh', "Debian SysV mounted script dispatch"),
         ('control=/sibling', "sibling Docker private control directory"),
         ('"$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log', "sibling Docker parked readiness"),
@@ -3284,6 +3301,29 @@ def validate_smoke_contract(
         if forbidden in service_lifecycle:
             raise VerificationError(
                 f"service lifecycle smoke retains broad or host authority: {forbidden}"
+            )
+    for text, label in (
+        ('readonly NS_LAST_PID=/proc/sys/kernel/ns_last_pid', "PID reuse ns_last_pid target"),
+        ('mount -o remount,rw /proc/sys', "PID reuse private proc sys remount"),
+        ('printf \'%s\\n\' "$previous" > "$NS_LAST_PID"', "PID reuse forced allocator predecessor"),
+        ('IFS= read -r observed < "$NS_LAST_PID"', "PID reuse forced allocator readback"),
+        ('[ "$observed" = "$previous" ]', "PID reuse forced allocator equality proof"),
+        ('launch_service_owned_child "$ORIGINAL_GENERATION" "$original_log" ORIGINAL_PID ORIGINAL_START', "PID reuse original exact child"),
+        ('launch_service_owned_child "$REUSED_GENERATION" "$reused_log" REUSED_PID REUSED_START', "PID reuse recycled exact child"),
+        ('[ "$ORIGINAL_PID" = "$target_pid" ]', "PID reuse original numeric PID proof"),
+        ('[ "$REUSED_PID" = "$target_pid" ]', "PID reuse recycled numeric PID proof"),
+        ('[ "$REUSED_START" != "$ORIGINAL_START" ]', "PID reuse changed start-time proof"),
+        ('[ "$reused_device:$reused_inode" = "$original_device:$original_inode" ]', "PID reuse same executable-object proof"),
+        ('grep -Fq -- "start time changed from $ORIGINAL_START to $REUSED_START" "$recovery_log"', "PID reuse production mismatch diagnostic"),
+        ('"$PROCESS_GUARD" wait-service-server "$REUSED_PID" "$REUSED_START" "$BINARY" "$$" "$REUSED_GENERATION"', "PID reuse recycled child exact authority proof"),
+        ('"$READY" --wait-parked "$REUSED_PID" "$REUSED_START" "$reused_log" "$PROBE" 0', "PID reuse recycled child survivor readiness"),
+        ('SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=%s reused_pid=%s old_start=%s reused_start=%s', "PID reuse result marker"),
+    ):
+        require_text(pid_reuse_lifecycle, text, label)
+    for forbidden in ("pkill", "os.kill(", "kill -", "sudo ", "--pid=host", "--privileged", "--publish"):
+        if forbidden in pid_reuse_lifecycle:
+            raise VerificationError(
+                f"PID reuse smoke retains broad or host authority: {forbidden}"
             )
     for text, label in (
         ('readonly STATE=/tmp/rd-service-loginctl-state', "loginctl switch state"),
@@ -4247,6 +4287,8 @@ def validate_sources(sources):
         sources["smoke_stage_mode"],
         sources["service_lifecycle"],
         sources["service_lifecycle_mode"],
+        sources["pid_reuse_lifecycle"],
+        sources["pid_reuse_lifecycle_mode"],
         sources["debian_sysv_lifecycle"],
         sources["debian_sysv_lifecycle_mode"],
         sources["loginctl_fixture"],
@@ -9219,6 +9261,30 @@ def run_source_mutations(sources):
             "pre-pidfd runtime result",
         ),
         (
+            "pid_reuse_lifecycle",
+            'SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=%s reused_pid=%s old_start=%s reused_start=%s',
+            'SERVICE_LIFECYCLE_PID_REUSE=skipped old_pid=%s reused_pid=%s old_start=%s reused_start=%s',
+            "PID reuse result marker",
+        ),
+        (
+            "pid_reuse_lifecycle",
+            '[ "$REUSED_PID" = "$target_pid" ]',
+            'true # recycled child numeric PID proof removed',
+            "PID reuse recycled numeric PID proof",
+        ),
+        (
+            "smoke",
+            'PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128',
+            'PID_REUSE_RUN=(docker run --rm --network none',
+            "isolated PID reuse container",
+        ),
+        (
+            "smoke",
+            'record_stage_status R-S11c-27o',
+            'true # actual PID reuse stage status removed',
+            "actual PID reuse stage status preservation",
+        ),
+        (
             "linux_source",
             'require_service_child_identity_match(record, "pre-pidfd kill fallback")',
             'true; // pre-pidfd signal revalidation removed',
@@ -10636,6 +10702,8 @@ def main():
             "smoke_stage_mode": os.lstat(repo / "scripts/smoke-server-stage.sh").st_mode,
             "service_lifecycle": (repo / "scripts/smoke-service-lifecycle.sh").read_text(encoding="utf-8"),
             "service_lifecycle_mode": os.lstat(repo / "scripts/smoke-service-lifecycle.sh").st_mode,
+            "pid_reuse_lifecycle": (repo / "scripts/smoke-service-pid-reuse.sh").read_text(encoding="utf-8"),
+            "pid_reuse_lifecycle_mode": os.lstat(repo / "scripts/smoke-service-pid-reuse.sh").st_mode,
             "debian_sysv_lifecycle": (repo / "scripts/smoke-debian-sysv-lifecycle.sh").read_text(encoding="utf-8"),
             "debian_sysv_lifecycle_mode": os.lstat(repo / "scripts/smoke-debian-sysv-lifecycle.sh").st_mode,
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),

@@ -3656,6 +3656,78 @@ grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.m
 if [ -n "$r_s11c27n" ]; then echo "  FAIL R-S11c-27n cross-container executable identity:$r_s11c27n"; rc=1; else
   echo "  ok  R-S11c-27n separate networkless PID/mount namespaces execute the same bytes from identical /usr/bin/rustdesk paths and exact service roles, while distinct file objects and generation-bound identities keep the sibling untargetable"; fi
 
+echo "== (3b-iii-h2p) Linux recovery rejects actual kernel numeric-PID reuse (R-S11c-27o) =="
+r_s11c27o=
+bash -n scripts/smoke-service-pid-reuse.sh scripts/smoke-server-stage.sh scripts/smoke-server.sh \
+  || r_s11c27o="$r_s11c27o smoke-shell-syntax-invalid"
+[ "$(stat -c %a scripts/smoke-service-pid-reuse.sh)" = 755 ] \
+  || r_s11c27o="$r_s11c27o pid-reuse-script-not-executable"
+for token in \
+  'let (first_start_time, state) = match read_service_child_proc_stat(record.pid)' \
+  'if first_start_time != record.start_time' \
+  'start time changed from {} to {first_start_time}' \
+  'require_service_child_identity_match(record, "pidfd recovery before SIGTERM")' \
+  'send_service_child_pidfd_signal(pidfd, hbb_common::libc::SIGTERM)'; do
+  grep -qF -- "$token" src/platform/linux.rs \
+    || r_s11c27o="$r_s11c27o production:${token%% *}"
+done
+for token in \
+  'PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128' \
+  '--cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP' \
+  '--security-opt no-new-privileges --security-opt apparmor=unconfined' \
+  '--tmpfs /tmp:rw,nosuid,nodev,mode=1777' \
+  '--tmpfs /run:rw,nosuid,nodev,noexec,mode=755' \
+  'run_stage pid_reuse_out "${PID_REUSE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-pid-reuse' \
+  'record_stage_status R-S11c-27o' \
+  'SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=' \
+  '[ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]' \
+  '[ "${BASH_REMATCH[3]}" != "${BASH_REMATCH[4]}" ]'; do
+  grep -qF -- "$token" scripts/smoke-server.sh \
+    || r_s11c27o="$r_s11c27o orchestration:${token%% *}"
+done
+for token in \
+  'service-pid-reuse)' \
+  'bash --noprofile --norc /work/scripts/smoke-service-pid-reuse.sh'; do
+  grep -qF -- "$token" scripts/smoke-server-stage.sh \
+    || r_s11c27o="$r_s11c27o stage:${token%% *}"
+done
+for token in \
+  'readonly NS_LAST_PID=/proc/sys/kernel/ns_last_pid' \
+  'mount -o remount,rw /proc/sys' \
+  'printf '\''%s\n'\'' "$previous" > "$NS_LAST_PID"' \
+  'IFS= read -r observed < "$NS_LAST_PID"' \
+  '[ "$observed" = "$previous" ]' \
+  'launch_service_owned_child "$ORIGINAL_GENERATION" "$original_log" ORIGINAL_PID ORIGINAL_START' \
+  'launch_service_owned_child "$REUSED_GENERATION" "$reused_log" REUSED_PID REUSED_START' \
+  '[ "$ORIGINAL_PID" = "$target_pid" ]' \
+  '[ "$REUSED_PID" = "$target_pid" ]' \
+  '[ "$REUSED_START" != "$ORIGINAL_START" ]' \
+  '[ "$reused_device:$reused_inode" = "$original_device:$original_inode" ]' \
+  'grep -Fq -- "start time changed from $ORIGINAL_START to $REUSED_START" "$recovery_log"' \
+  '"$PROCESS_GUARD" wait-service-server "$REUSED_PID" "$REUSED_START" "$BINARY" "$$" "$REUSED_GENERATION"' \
+  '"$READY" --wait-parked "$REUSED_PID" "$REUSED_START" "$reused_log" "$PROBE" 0' \
+  'SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=%s reused_pid=%s old_start=%s reused_start=%s'; do
+  grep -qF -- "$token" scripts/smoke-service-pid-reuse.sh \
+    || r_s11c27o="$r_s11c27o fixture:${token%% *}"
+done
+if ! awk '
+  /force_next_pid "\$target_pid"/ { force_count += 1; if (force_count == 1) first_force = NR; if (force_count == 2) second_force = NR }
+  /launch_service_owned_child "\$ORIGINAL_GENERATION"/ { first_launch = NR }
+  /launch_service_owned_child "\$REUSED_GENERATION"/ { second_launch = NR }
+  END { exit !(first_force && first_launch && second_force && second_launch && first_force < first_launch && second_force < second_launch) }
+' scripts/smoke-service-pid-reuse.sh; then
+  r_s11c27o="$r_s11c27o forced-pid-order-regressed"
+fi
+for forbidden in 'os.kill(' 'kill -' 'pkill' 'sudo ' '--pid=host' '--privileged' '--publish'; do
+  if grep -qF -- "$forbidden" scripts/smoke-service-pid-reuse.sh; then
+    r_s11c27o="$r_s11c27o forbidden-fixture-authority:$forbidden"
+  fi
+done
+grep -qF 'R-S11c-27o — actual kernel numeric-PID reuse' HARDENING_STATUS.md \
+  || r_s11c27o="$r_s11c27o hardening-ledger-missing"
+if [ -n "$r_s11c27o" ]; then echo "  FAIL R-S11c-27o actual PID reuse recovery:$r_s11c27o"; rc=1; else
+  echo "  ok  R-S11c-27o forces Linux ns_last_pid in a private PID namespace, reuses the same numeric PID for an exact-role RustDesk child with a new start time/generation, and proves recovery preserves the record while signaling nothing"; fi
+
 echo "== (3b-iii-h3) Linux xrandr resolution discovery avoids shell pipelines (R-S11c-10c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_xrandr --color never
 r_s11c10c=

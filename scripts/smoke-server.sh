@@ -60,6 +60,13 @@ RUN=(docker run --rm
 LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE
   -v "$PWD:/work:ro"
   -w /work "$IMG")
+PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128
+  --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP
+  --security-opt no-new-privileges --security-opt apparmor=unconfined
+  --tmpfs /tmp:rw,nosuid,nodev,mode=1777
+  --tmpfs /run:rw,nosuid,nodev,noexec,mode=755
+  -v "$PWD:/work:ro"
+  -w /work "$IMG")
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
 HOST_GUARD=$PWD/scripts/smoke-process-guard.py
@@ -455,7 +462,21 @@ else
   rc=1
 fi
 
-echo "== (0d) Debian bookworm without systemd: installed SysV package start/restart/upgrade/remove and portable noninterference (R-S11c-27l) =="
+echo "== (0d) Linux service-child recovery rejects actual forced numeric PID reuse (R-S11c-27o) =="
+run_stage pid_reuse_out "${PID_REUSE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh service-pid-reuse
+printf '%s\n' "$pid_reuse_out"
+record_stage_status R-S11c-27o
+pid_reuse_line=$(grep -E '^SERVICE_LIFECYCLE_PID_REUSE=pass old_pid=[0-9]+ reused_pid=[0-9]+ old_start=[0-9]+ reused_start=[0-9]+ old_generation=[0-9a-f-]{36} reused_generation=[0-9a-f-]{36} record_sha256=[0-9a-f]{64}$' <<<"$pid_reuse_out" || true)
+if [[ "$pid_reuse_line" =~ old_pid=([0-9]+)[[:space:]]reused_pid=([0-9]+)[[:space:]]old_start=([0-9]+)[[:space:]]reused_start=([0-9]+) ]] \
+  && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ] \
+  && [ "${BASH_REMATCH[3]}" != "${BASH_REMATCH[4]}" ]; then
+  echo "  ok  R-S11c-27o actual kernel PID reuse kept numeric PID constant while start-time identity changed and recovery failed closed"
+else
+  echo "  FAIL R-S11c-27o: actual kernel PID reuse was not proven with same numeric PID, changed start time, preserved record, and live recycled child"
+  rc=1
+fi
+
+echo "== (0e) Debian bookworm without systemd: installed SysV package start/restart/upgrade/remove and portable noninterference (R-S11c-27l) =="
 run_stage sysv_out "${LIFECYCLE_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh debian-sysv-installed-lifecycle
 printf '%s\n' "$sysv_out"
 record_stage_status R-S11c-27l
@@ -711,7 +732,7 @@ if ! stop_host_guard; then
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: host historical-selector baseline preserved with zero new matches + exact RustDesk executable under neutral smoke argv + mounted container stages + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: host historical-selector baseline preserved with zero new matches + exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

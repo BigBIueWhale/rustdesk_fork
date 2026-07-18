@@ -3224,9 +3224,61 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     `SMOKE OK`.
 
     This closes the cross-mount/container-namespace executable-identity and identical-in-container-path checklist
-    items. It is not actual forced kernel numeric-PID reuse, final-release `.deb` artifact proof, OpenRC/runit/manual
-    packaging integration, exact-commit cold artifact evidence, or external expert R-V3 review. The parent item and
-    upcoming release remain **OPEN**.
+    items. R-S11c-27o below supplies actual forced kernel numeric-PID reuse. Final-release `.deb` artifact proof,
+    OpenRC/runit/manual packaging integration, exact-commit cold artifact evidence, and external expert R-V3 review
+    remain open. The parent item and upcoming release remain **OPEN**.
+
+  - **R-S11c-27o — actual kernel numeric-PID reuse — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
+    2026-07-18; PARENT ITEM REMAINS OPEN.** The mandatory runtime smoke now proves the exact stale-PID race that
+    R-S11c-27 still needed: a dead service-owned RustDesk child leaves a strict durable record for PID `50000`, and
+    a different live RustDesk service-owned child is then forced by the kernel allocator to reuse that same numeric
+    PID inside a private Docker PID namespace. The second child intentionally uses the same executable object and
+    service-owned role but has a different `/proc/<pid>/stat` start time and different canonical service generation.
+    Production recovery must reject the stale record before any signal, preserve the record bytes, leave the
+    unrelated reused-PID child alive, and exit fail-closed with the concrete start-time mismatch diagnostic.
+
+    `scripts/smoke-service-pid-reuse.sh` is a dedicated bounded fixture for this case. It runs only from the
+    mounted stage dispatcher and never installs into or modifies the host. The fixture remounts `/proc/sys` writable
+    only inside the container's private PID namespace, writes `target_pid - 1` to
+    `/proc/sys/kernel/ns_last_pid`, reads the forced predecessor back, and immediately launches the next RustDesk
+    service-owned child. It remounts `/proc/sys` read-only again after each forced allocation. The two RustDesk
+    children are launched through the audited descriptor-bound smoke launcher as exact
+    `rd-smoke-server --server --service-owned-server` roles with no-new-privileges and empty inheritable, ambient,
+    and bounding capability sets. The durable record is written with exclusive no-follow open, full-write looping,
+    root-owned mode-0600 file authority, boot ID, PID, start time, executable device/inode, UID, generation, and
+    role. Cleanup removes only the exact record identity and SHA-256 it created.
+
+    `scripts/smoke-server.sh` keeps this proof separate from the ordinary lifecycle container because forcing
+    kernel PID allocation requires container-local checkpoint/restore-style authority. The new `PID_REUSE_RUN`
+    container uses `--network none`, `--read-only`, `--pids-limit 128`, `--cap-drop ALL` plus only
+    `SYS_ADMIN`, `CHECKPOINT_RESTORE`, and `SETPCAP`, no-new-privileges, an unconfined AppArmor profile for the
+    container-local procfs remount, read-only source bind, and private tmpfs `/tmp` and `/run`. It does not use
+    `--privileged`, host networking, host PID namespace sharing, published ports, the Docker socket, host systemd,
+    package manager authority, or any host RustDesk service authority. The tested RustDesk children and the
+    recovery supervisor then drop their capability sets before executing RustDesk; the elevated authority exists
+    only around the fixture's private PID allocator setup.
+
+    The runtime proof passed with original generation `c43b6eab-16fb-4b0c-aabd-de0eebd312ff` and reused generation
+    `ad49ed73-0794-429e-a8d8-c6a9ed863b68`. Both live children received PID `50000` and used executable identity
+    `66306:103678568`; the stale record start time was `38877641`, while the reused live child start time was
+    `38877752`. Recovery exited `1`, logged `Linux service lifecycle authority failed closed:` and the exact
+    `start time changed from 38877641 to 38877752` mismatch, preserved record SHA-256
+    `ea02c7853f5836bbe3f9bb714098b947a8ff7552cc5655390517743744f04a59`, and the process guard revalidated the
+    reused child as the exact surviving service-owned role before fixture cleanup. Retained log
+    `/tmp/rustdesk-rs11c27o-pid-reuse.log` is 858 bytes, mode 0664, SHA-256
+    `5417929969680708ab5656e539e0385a9eb640d9ccb2a2fa30d3ecb7d1285050`.
+
+    `scripts/verify.sh` now seals the unchanged production start-time predicate and pidfd recovery call, the new
+    mounted stage, the isolated Docker argv, the forced `ns_last_pid` write/readback ordering, proof that the first
+    and second children share the same numeric PID but not start time, same-executable-object proof, fail-closed
+    diagnostic proof, no-signal survivor proof, forbidden broad-authority strings, and this ledger row.
+    `scripts/verify-verifier-workspace.py` loads the PID-reuse fixture as a first-class sealed input and its
+    mutation suite rejects weakening the result marker, removing same-PID proof, weakening the isolated container
+    argv, or dropping the R-S11c-27o stage status.
+
+    This closes the actual forced kernel numeric-PID-reuse checklist item for service-child recovery. It is not a
+    final-release `.deb` artifact proof, OpenRC/runit/manual packaging integration, exact-commit cold artifact
+    evidence, or external expert R-V3 review. The parent item and upcoming release remain **OPEN**.
 
   Required implementation and release closure:
 

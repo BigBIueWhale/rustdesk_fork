@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[no_mangle]
-pub unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key(
+unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key(
     key: *const u8,
     len: usize,
 ) -> bool {

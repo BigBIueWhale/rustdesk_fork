@@ -521,8 +521,11 @@ if echo "$mobile_at_rest_body" | grep -qF 'Config::get_key_pair'; then
 fi
 grep -qF 'fn mobile_device_id() -> Vec<u8>' libs/hbb_common/src/lib.rs \
   || mobile_at_rest_bad="$mobile_at_rest_bad mobile-device-id-seam-missing"
-grep -A16 'pub unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key' src/flutter_ffi.rs | grep -qF 'len != hbb_common::MOBILE_AT_REST_STORAGE_KEY_LEN' \
+grep -A16 '^unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key' src/flutter_ffi.rs | grep -qF 'len != hbb_common::MOBILE_AT_REST_STORAGE_KEY_LEN' \
   || mobile_at_rest_bad="$mobile_at_rest_bad mobile-c-setter-length-check-missing"
+if grep -qF 'pub unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key' src/flutter_ffi.rs; then
+  mobile_at_rest_bad="$mobile_at_rest_bad mobile-c-setter-leaks-into-frb-api"
+fi
 get_uuid_body=$(awk '
   /^pub fn get_uuid\(\) -> Vec<u8> \{/ { flag=1 }
   flag {

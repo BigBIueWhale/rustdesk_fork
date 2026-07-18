@@ -3873,7 +3873,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Keychain generic-password item using `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and
   `kSecUseDataProtectionKeychain`, re-reads it before adoption, and injects it into Rust through
   `rustdesk_set_mobile_at_rest_storage_key` declared in the bridging header. `derive_cpace_prs` output bytes
-  are unchanged; only the storage wrapper's key source changes. Existing mobile ciphertext encrypted under
+  are unchanged; only the storage wrapper's key source changes. The `#[no_mangle]` C entry point is intentionally
+  private in the Rust namespace: Rust still exports the C symbol, while pinned FRB 1.80.1 ignores non-public
+  functions instead of trying to expose its raw pointer through the Dart bridge. Existing mobile ciphertext encrypted under
   the legacy config keypair is still accepted only as a read-only decrypt fallback through
   `Config::get_existing_key_pair()`; when that fallback succeeds, `decrypt_str_or_original` /
   `decrypt_vec_or_original` mark the value for re-store so the next write rewraps under the OS key. This

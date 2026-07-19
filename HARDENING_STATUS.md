@@ -4092,6 +4092,33 @@ unreachable and a source/test/AST gate prevents reintroduction.
   The pinned SDK-free Apple compiler cross-check establishes Rust ABI/source coherence only. SDK-backed execution,
   clipboard/config behavior, signed binaries, and exact-commit artifact proof remain R-R2/R-B2; external expert
   review remains R-V3.
+- **R-S11e-63 — complete Windows production-listener DACL coverage — SOURCE IMPLEMENTED; NATIVE WINDOWS AND
+  ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: Windows desktop named-pipe listeners. Surfaces:
+  `src/ipc.rs::new_listener`, the listener-postfix policy in `src/ipc/auth.rs`, fixed `_cm`, and the token-derived
+  whiteboard listener. Boundary: unrelated local Windows account ↔ application-level helper authentication.
+  Proven gap: the main, password, service, credential/control/SAS, and URL listeners already supplied explicit SDDL,
+  but `_cm` and `_whiteboard_<hmac>` fell through `SecurityAttributes::empty()`. The pinned IPC dependency maps that
+  value to null `SECURITY_ATTRIBUTES`. Microsoft documents that the resulting default named-pipe descriptor grants
+  read access to Everyone and Anonymous and that a read-only client may connect to a duplex pipe. Exact process and
+  bidirectional launch-token checks still prevented helper authority use, but they run after pipe acceptance. An
+  unrelated local account could therefore enter pre-authentication; on `_cm`, an exact current-image `--server`
+  process could repeatedly occupy the inline one-second launch-proof wait. This was cross-user local availability,
+  not an authentication bypass, credential disclosure, privilege escalation, remote authority, host change, or
+  evidence of compromise.
+
+  Source closure: one exhaustive Windows listener-postfix policy now includes exact `_cm` and accepts a whiteboard
+  postfix only when it uses the shared `_whiteboard_` prefix followed by exactly 32 lowercase hexadecimal characters.
+  Both use the existing protected logon/session-scoped SDDL. The listener constructor has no Windows default/null
+  descriptor branch: an unrecognized or malformed postfix fails before endpoint creation. The DACL still denies
+  Network, omits Everyone/Anonymous/Administrators, admits LocalSystem for the required service/helper topology, and
+  gives the active-session principal only the narrow client mask without `FILE_CREATE_PIPE_INSTANCE`; system-only
+  credential/control/SAS endpoints remain unchanged. `_cm` exact-role plus mutual-HMAC authentication and whiteboard
+  exact-parent plus token-derived endpoint and mutual-HMAC authentication remain independent receiver checks.
+  `scripts/verify-windows-ipc-dacl-coverage.py`, the focused Windows regression, the shared source gate, and their
+  mutation matrices bind production call-site coverage, exact dynamic-postfix syntax, explicit-SDDL-only creation,
+  unknown-postfix refusal, and preservation of the application authentication layers. R-S11aw and Appendix C #171
+  make the model normative. Native Windows multi-session execution and exact signed-artifact proof remain R-R2/R-B2;
+  external expert review remains R-V3.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4125,17 +4152,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
-  predictable `\\.\pipe\<APP>\query{postfix}` names and broad create permissions for main/`_service`.
+  predictable `\\.\pipe\<APP>\query{postfix}` names and broad/default permissions across production listeners.
   Boundary: local process ↔ IPC endpoint identity. Attack surface: pipe squatting, spoofing/confusion, or
-  denial of service even where message auth blocks higher impact. Current state: Windows main and `_service`
-  listeners no longer use the broad `allow_everyone_create` descriptor. Privileged listener creation builds
+  denial of service even where message auth blocks higher impact. Current state: every production Windows listener,
+  including `_cm` and the strictly formed token-derived whiteboard endpoint, builds
   an explicit SDDL DACL: LocalSystem can create/own service-side pipe instances; a non-System user-owned
   server gets its own logon/user SID for server-instance creation; the active session identity gets only the
   client read/write/synchronize mask and not `FILE_CREATE_PIPE_INSTANCE`; `Everyone` and the Administrators
   group are absent from the base DACL. Windows clients open the pipe with that explicit non-generic mask and
   verify the connected server PID/executable, with `_service` additionally requiring a LocalSystem server.
   The long-lived `_service` listener is recreated on active-session changes so its DACL and the runtime
-  expected-session check do not drift. Status: closed for the named-pipe endpoint boundary.
+  expected-session check do not drift. Unknown listener postfixes fail closed instead of receiving Windows' default
+  descriptor. Status: closed for the named-pipe endpoint boundary.
 - **R-S11c-9 — Windows URL forwarding via unauthenticated window messages — CLOSED 2026-07-09.**
   Platform: Windows desktop. Endpoint: `WM_COPYDATA` / `WM_USER+2` URL forwarding to an existing UI
   window. Boundary: local process ↔ URL/deep-link dispatcher. Closure: the Rust helper
@@ -6437,8 +6465,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-539a54322f5e78b71fb686acb780939ff4a5119c807bc55967c3da92c7a9bbe9  requirements.html
+752bdaeb3d47d4b4fee5d83786c4e160ce4dbaba20345b0a8c729270048ce918  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11av, and Appendix C #170. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aw, and Appendix C #171. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -9176,6 +9176,116 @@ def validate_macos_variadic_open_mode_contract(sources):
     )
 
 
+def validate_windows_ipc_dacl_coverage_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    validator = sources["windows_ipc_dacl_validator"]
+    ipc_source = sources["ipc_source"]
+    auth_source = sources["ipc_auth_source"]
+    cm_source = sources["ui_cm_source"]
+    whiteboard_source = sources["whiteboard_server"]
+
+    heading = (
+        'echo "== (3b-iii-d9cm) Windows production-listener DACL coverage '
+        '(R-S11aw/R-S11e-63) =="'
+    )
+    require_text(verify, heading, "Windows production-listener DACL shared gate")
+    require_text(
+        verify,
+        "verify-windows-ipc-dacl-coverage.py",
+        "Windows production-listener DACL semantic validator",
+    )
+    require_text(verify, "--self-test", "Windows production-listener DACL mutation suite")
+
+    for text, label in (
+        ("def validate(sources", "Windows listener-DACL validator semantic entry"),
+        ("def validate_listener_inventory(sources", "Windows listener call-site inventory"),
+        ("def run_mutations(sources", "Windows listener-DACL validator mutation entry"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Windows listener-DACL mutation inventory"),
+        ("mutation was not rejected", "Windows listener-DACL mutation rejection"),
+    ):
+        require_text(validator, text, label)
+
+    for source, text, label in (
+        (
+            ipc_source,
+            'const WHITEBOARD_ENDPOINT_POSTFIX_PREFIX: &str = "_whiteboard_";',
+            "shared whiteboard endpoint prefix",
+        ),
+        (
+            auth_source,
+            "fn windows_whiteboard_ipc_postfix_is_valid(postfix: &str) -> bool",
+            "strict whiteboard postfix classifier",
+        ),
+        (auth_source, "suffix.len() == 32", "exact whiteboard postfix length"),
+        (
+            auth_source,
+            '|| postfix == "_cm"',
+            "connection-manager restricted-DACL classification",
+        ),
+        (
+            auth_source,
+            "|| windows_whiteboard_ipc_postfix_is_valid(postfix)",
+            "whiteboard restricted-DACL classification",
+        ),
+        (
+            auth_source,
+            "let sddl = windows_ipc_listener_sddl(postfix)?;",
+            "mandatory explicit listener SDDL",
+        ),
+        (
+            auth_source,
+            "Unsupported Windows IPC endpoint has no explicit DACL policy",
+            "unknown listener fail-closed policy",
+        ),
+        (
+            auth_source,
+            'windows_ipc_listener_security_attributes("_portable_service").is_err()',
+            "unknown listener refusal regression",
+        ),
+        (
+            cm_source,
+            "ipc::answer_cm_endpoint_challenge(&mut stream).await",
+            "connection-manager application authentication",
+        ),
+        (
+            whiteboard_source,
+            "ipc::answer_whiteboard_endpoint_challenge(&mut stream).await",
+            "whiteboard application authentication",
+        ),
+    ):
+        require_text(source, text, label)
+
+    listener_attributes = extract_between(
+        auth_source,
+        "pub(crate) fn windows_ipc_listener_security_attributes(",
+        "\n#[cfg(windows)]\npub(crate) fn windows_ipc_listener_sddl(",
+        "Windows listener security-attribute constructor",
+    )
+    if "SecurityAttributes::empty()" in listener_attributes:
+        raise VerificationError("default/null Windows listener security attributes remain")
+
+    for text, label in (
+        ('<span class="id">R-S11aw</span>', "Windows listener-DACL requirement"),
+        (
+            "Every production Windows IPC listener is born with an explicit local DACL",
+            "Windows listener-DACL requirement title",
+        ),
+        ("<tr><td>171</td>", "Windows listener-DACL Appendix C row"),
+        (
+            "Windows helper pipes inherited the default Everyone/Anonymous read grant",
+            "Windows listener-DACL Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-63 — complete Windows production-listener DACL coverage",
+        "Windows listener-DACL hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -10040,6 +10150,7 @@ def validate_sources(sources):
     validate_linux_service_admission_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
     validate_macos_variadic_open_mode_contract(sources)
+    validate_windows_ipc_dacl_coverage_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -17550,6 +17661,54 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
+            'echo "== (3b-iii-d9cm) Windows production-listener DACL coverage (R-S11aw/R-S11e-63) =="',
+            'echo "== (3b-iii-d9cm) Windows partial-listener DACL coverage (R-S11aw/R-S11e-63) =="',
+            "Windows production-listener DACL shared gate",
+        ),
+        (
+            "windows_ipc_dacl_validator",
+            "def run_mutations(sources",
+            "def skip_mutations(sources",
+            "Windows listener-DACL validator mutation entry",
+        ),
+        (
+            "ipc_auth_source",
+            '|| postfix == "_cm"',
+            '|| postfix == "_cm_disabled"',
+            "connection-manager restricted-DACL classification",
+        ),
+        (
+            "ipc_auth_source",
+            "|| windows_whiteboard_ipc_postfix_is_valid(postfix)",
+            "|| false && windows_whiteboard_ipc_postfix_is_valid(postfix)",
+            "whiteboard restricted-DACL classification",
+        ),
+        (
+            "ipc_auth_source",
+            "let sddl = windows_ipc_listener_sddl(postfix)?;",
+            "if !windows_ipc_postfix_uses_restricted_dacl(postfix) { return Ok(parity_tokio_ipc::SecurityAttributes::empty()); }\n    let sddl = windows_ipc_listener_sddl(postfix)?;",
+            "default/null Windows listener security attributes remain",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11aw</span>',
+            '<span class="id">R-S11az</span>',
+            "Windows listener-DACL requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>171</td>",
+            "<tr><td>9171</td>",
+            "Windows listener-DACL Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-63 — complete Windows production-listener DACL coverage",
+            "R-S11e-63 — default Windows helper DACLs retained",
+            "Windows listener-DACL hardening ledger",
+        ),
+        (
+            "verify",
             'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
             'echo "== (3b-iii-d9c7) Linux account-name service-child compatibility (R-S11ah/R-S11e-48) =="',
             "Linux selected-session principal source gate",
@@ -20500,6 +20659,9 @@ def main():
             "macos_variadic_mode_validator": (
                 repo / "scripts/verify-macos-variadic-open-mode.py"
             ).read_text(encoding="utf-8"),
+            "windows_ipc_dacl_validator": (
+                repo / "scripts/verify-windows-ipc-dacl-coverage.py"
+            ).read_text(encoding="utf-8"),
             "ipc_auth_source": (repo / "src/ipc/auth.rs").read_text(encoding="utf-8"),
             "ipc_fs_source": (repo / "src/ipc/fs.rs").read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
@@ -20529,6 +20691,8 @@ def main():
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
             "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
+            "ui_cm_source": (repo / "src/ui_cm_interface.rs").read_text(encoding="utf-8"),
+            "whiteboard_server": (repo / "src/whiteboard/server.rs").read_text(encoding="utf-8"),
             "direct_service": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
             "whiteboard_client": (repo / "src/whiteboard/client.rs").read_text(encoding="utf-8"),

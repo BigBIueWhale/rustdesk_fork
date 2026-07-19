@@ -79,12 +79,25 @@ use windows::{
     },
 };
 
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 const WINDOWS_URL_IPC_POSTFIX: &str = "_url";
 
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 #[inline]
-pub(crate) fn windows_privileged_ipc_uses_restricted_dacl(postfix: &str) -> bool {
+fn windows_whiteboard_ipc_postfix_is_valid(postfix: &str) -> bool {
+    postfix
+        .strip_prefix(super::WHITEBOARD_ENDPOINT_POSTFIX_PREFIX)
+        .is_some_and(|suffix| {
+            suffix.len() == 32
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+}
+
+#[cfg(any(windows, test))]
+#[inline]
+pub(crate) fn windows_ipc_postfix_uses_restricted_dacl(postfix: &str) -> bool {
     postfix.is_empty()
         || postfix == super::password::USER_PASSWORD_IPC_POSTFIX
         || hbb_common::config::is_service_ipc_postfix(postfix)
@@ -92,6 +105,8 @@ pub(crate) fn windows_privileged_ipc_uses_restricted_dacl(postfix: &str) -> bool
         || postfix == super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
         || postfix == super::WINDOWS_SERVICE_SAS_IPC_POSTFIX
         || postfix == WINDOWS_URL_IPC_POSTFIX
+        || postfix == "_cm"
+        || windows_whiteboard_ipc_postfix_is_valid(postfix)
 }
 
 #[cfg(windows)]
@@ -977,9 +992,6 @@ pub(crate) fn windows_named_pipe_client_access_mask() -> u32 {
 pub(crate) fn windows_ipc_listener_security_attributes(
     postfix: &str,
 ) -> ResultType<parity_tokio_ipc::SecurityAttributes> {
-    if !windows_privileged_ipc_uses_restricted_dacl(postfix) {
-        return Ok(parity_tokio_ipc::SecurityAttributes::empty());
-    }
     let sddl = windows_ipc_listener_sddl(postfix)?;
     parity_tokio_ipc::SecurityAttributes::from_sddl(&sddl).map_err(|err| {
         anyhow::anyhow!(
@@ -993,8 +1005,8 @@ pub(crate) fn windows_ipc_listener_security_attributes(
 
 #[cfg(windows)]
 pub(crate) fn windows_ipc_listener_sddl(postfix: &str) -> ResultType<String> {
-    if !windows_privileged_ipc_uses_restricted_dacl(postfix) {
-        bail!("Windows sensitive IPC endpoint requires a restricted DACL");
+    if !windows_ipc_postfix_uses_restricted_dacl(postfix) {
+        bail!("Unsupported Windows IPC endpoint has no explicit DACL policy");
     }
     Ok(windows_restricted_ipc_sddl(
         &windows_ipc_dacl_sids_for_postfix(postfix)?,
@@ -4412,31 +4424,44 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]
-    fn test_windows_privileged_ipc_uses_restricted_dacl_policy() {
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(""));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
-            "_service"
-        ));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+    fn r_s11e63_windows_ipc_postfix_uses_restricted_dacl_policy() {
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(""));
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl("_service"));
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(
             super::super::password::USER_PASSWORD_IPC_POSTFIX
         ));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(
             super::super::password::SERVICE_PASSWORD_IPC_POSTFIX
         ));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(
             super::super::WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX
         ));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(
             super::super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX
         ));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl(
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(
             super::super::WINDOWS_SERVICE_SAS_IPC_POSTFIX
         ));
-        assert!(super::windows_privileged_ipc_uses_restricted_dacl("_url"));
-        assert!(!super::windows_privileged_ipc_uses_restricted_dacl(
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl("_url"));
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl("_cm"));
+        assert!(super::windows_ipc_postfix_uses_restricted_dacl(
+            "_whiteboard_0123456789abcdef0123456789abcdef"
+        ));
+        assert!(!super::windows_ipc_postfix_uses_restricted_dacl(
+            "_whiteboard_0123456789abcdef0123456789abcde"
+        ));
+        assert!(!super::windows_ipc_postfix_uses_restricted_dacl(
+            "_whiteboard_0123456789abcdef0123456789abcdeg"
+        ));
+        assert!(!super::windows_ipc_postfix_uses_restricted_dacl(
             "_portable_service"
         ));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn r_s11e63_windows_unknown_ipc_listener_has_no_default_dacl_fallback() {
+        assert!(super::windows_ipc_listener_security_attributes("_portable_service").is_err());
     }
 
     #[test]

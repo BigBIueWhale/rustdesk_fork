@@ -2470,11 +2470,11 @@ pub enum MainIpcResponse {
     TerminalSessionCount(usize),
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 pub(crate) const WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 pub(crate) const WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX: &str = "_service_main_control";
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 pub(crate) const WINDOWS_SERVICE_SAS_IPC_POSTFIX: &str = "_service_sas";
 #[cfg(target_os = "windows")]
 pub(crate) const WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS: u64 = 5_000;
@@ -3950,6 +3950,9 @@ const WHITEBOARD_SERVER_PROOF_CONTEXT: &[u8] = b"rustdesk.whiteboard.server-proo
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const WHITEBOARD_ENDPOINT_NAME_CONTEXT: &[u8] = b"rustdesk.whiteboard.endpoint-name.v1";
 
+#[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
+const WHITEBOARD_ENDPOINT_POSTFIX_PREFIX: &str = "_whiteboard_";
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
 
@@ -4097,7 +4100,8 @@ fn whiteboard_endpoint_name_suffix(launch_token: &str) -> ResultType<String> {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) fn whiteboard_endpoint_postfix(launch_token: &str) -> ResultType<String> {
     Ok(format!(
-        "_whiteboard_{}",
+        "{}{}",
+        WHITEBOARD_ENDPOINT_POSTFIX_PREFIX,
         whiteboard_endpoint_name_suffix(launch_token)?
     ))
 }

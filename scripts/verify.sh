@@ -818,6 +818,9 @@ echo "== (3b-iii-a3) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
 r_s11c6=
 grep -q 'windows_ipc_listener_security_attributes(postfix)' src/ipc.rs              || r_s11c6="$r_s11c6 listener-not-dacl-routed"
 grep -q 'SecurityAttributes::from_sddl' src/ipc/auth.rs                            || r_s11c6="$r_s11c6 no-sddl-security-attributes"
+if awk '/pub\(crate\) fn windows_ipc_listener_security_attributes\(/,/^}/' src/ipc/auth.rs | grep -q 'SecurityAttributes::empty'; then
+  r_s11c6="$r_s11c6 default-windows-listener-security-present"
+fi
 grep -q 'String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)")' src/ipc/auth.rs             || r_s11c6="$r_s11c6 base-dacl-not-system-only"
 grep -q 'WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b' src/ipc/auth.rs || r_s11c6="$r_s11c6 narrow-client-mask-missing"
 grep -q 'FILE_CREATE_PIPE_INSTANCE' src/ipc/auth.rs                                || r_s11c6="$r_s11c6 create-instance-negative-test-missing"
@@ -833,7 +836,7 @@ if grep -q 'String::from("D:P(A;;GA;;;SY)(A;;GA;;;BA)' src/ipc/auth.rs; then
   r_s11c6="$r_s11c6 administrators-in-base-dacl"
 fi
 if [ -n "$r_s11c6" ]; then echo "  FAIL R-S11c-6 Windows named-pipe DACL hardening:$r_s11c6"; rc=1; else
-  echo "  ok  R-S11c-6 Windows named pipes use SDDL DACLs, narrow client opens, server PID verification, and session-refreshed _service listeners"
+  echo "  ok  R-S11c-6 Windows production named pipes use explicit SDDL DACLs, narrow client opens, server PID verification, and session-refreshed _service listeners"
 fi
 
 echo "== (3b-iii-a4) Windows terminal helper pipes bind to launched helper PID (R-S11c-12) =="
@@ -4479,6 +4482,23 @@ grep -qF 'macOS variadic file-creation ABI (R-S11av/R-S11e-62)' scripts/apple-co
 if [ -n "$r_s11e62" ]; then echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"; rc=1; else
   echo "  ok  R-S11e-62 macOS-reachable variadic creation modes are ABI-promoted while fixed-prototype mode_t calls remain exact"; fi
 
+# (3b-iii-d9cm) R-S11aw/R-S11e-63: every production Windows IPC
+# listener receives an explicit local DACL; unknown postfixes fail closed.
+echo "== (3b-iii-d9cm) Windows production-listener DACL coverage (R-S11aw/R-S11e-63) =="
+r_s11e63=
+python3 scripts/verify-windows-ipc-dacl-coverage.py --repo . \
+  || r_s11e63="$r_s11e63 windows-ipc-dacl-coverage-semantic-invalid"
+python3 scripts/verify-windows-ipc-dacl-coverage.py --repo . --self-test \
+  || r_s11e63="$r_s11e63 windows-ipc-dacl-coverage-mutations-invalid"
+python3 -c 'from pathlib import Path; p = Path("scripts/verify-windows-ipc-dacl-coverage.py"); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  || r_s11e63="$r_s11e63 validator-python-syntax-invalid"
+grep -qF '<span class="id">R-S11aw</span>' requirements.html || r_s11e63="$r_s11e63 normative-requirement-missing"
+grep -qF '<tr><td>171</td>' requirements.html || r_s11e63="$r_s11e63 appendix-row-missing"
+grep -qF 'R-S11e-63 — complete Windows production-listener DACL coverage' HARDENING_STATUS.md \
+  || r_s11e63="$r_s11e63 hardening-ledger-missing"
+if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener DACL coverage:$r_s11e63"; rc=1; else
+  echo "  ok  R-S11e-63 every production Windows IPC listener uses explicit local SDDL and unknown postfixes fail closed"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -7880,7 +7900,7 @@ fi
 grep -qF 'return if let Err(_) = crate::ipc::send_url_scheme(uni_links)' src/core_main.rs || r_s11c9_win_url="$r_s11c9_win_url core-main-no-url-ipc"
 grep -qF 'authorize_windows_url_ipc_connection' src/ipc.rs || r_s11c9_win_url="$r_s11c9_win_url ipc-no-windows-url-auth"
 grep -qF 'postfix == WINDOWS_URL_IPC_POSTFIX' src/ipc/auth.rs || r_s11c9_win_url="$r_s11c9_win_url url-pipe-not-restricted"
-grep -qF 'assert!(super::windows_privileged_ipc_uses_restricted_dacl("_url"))' src/ipc/auth.rs || r_s11c9_win_url="$r_s11c9_win_url no-url-dacl-test"
+grep -qF 'assert!(super::windows_ipc_postfix_uses_restricted_dacl("_url"))' src/ipc/auth.rs || r_s11c9_win_url="$r_s11c9_win_url no-url-dacl-test"
 grep -qF '#[cfg(any(target_os = "windows", target_os = "macos"))]' src/server.rs || r_s11c9_win_url="$r_s11c9_win_url server-not-windows"
 grep -qF 'rustdesk_send_url_scheme' src/flutter.rs || r_s11c9_win_url="$r_s11c9_win_url c-abi-url-bridge-missing"
 grep -qF 'url.starts_with(&crate::get_uri_prefix())' src/flutter.rs || r_s11c9_win_url="$r_s11c9_win_url c-abi-url-prefix-not-checked"

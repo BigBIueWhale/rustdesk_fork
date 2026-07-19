@@ -287,10 +287,19 @@ drain, so neither a delayed obsolete Activity/task callback nor a check/use race
 the replacement owner's sessions. Starting a replacement generation proactively drains the superseded UUID; task
 removal consumes only owner pairs recorded by stopped Activities. An invalid/missing/stale binding fails closed,
 while `MainService` remains persistent and continues owning only incoming controlled-side service state.
+Follow-up closure (2026-07-19): a stopped `MainActivity` can remain in Android's back stack while a newer
+instance advances the native generation; returning to that older instance runs `onStart()` without another
+`onCreate()`. It now atomically resumes its existing isolate UUID, re-synchronizing the current native generation
+without disruption when that UUID is already current or allocating a fresh generation and draining a different
+superseded owner under the same write lock before marking itself started. Thus an OS-restored Activity cannot keep
+rendering with a permanently stale generation, and delayed teardown from the displaced instance still cannot
+retire the resumed owner. Initial Dart owner registration also fails visibly closed: a false result closes that
+stale Activity before `runApp`, rather than launching a UI whose native add/start calls must all fail.
 Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
-drain, delayed-callback ABA rejection, and admission/transition lock exclusion; `scripts/verify.sh` gates the typed
-JNI surface, absence of argument-free/global drain APIs, registration-before-UI order, owner-scoped Activity/service
-teardown, and lock-held add/start/retire ordering. A disposable tracked-file candidate snapshot completed one
+drain, delayed-callback ABA rejection, admission/transition lock exclusion, and stopped-Activity ownership
+resumption without generation reuse; `scripts/verify.sh` gates the typed JNI surface, absence of
+argument-free/global drain APIs, registration-before-UI-or-exit order, owner-scoped Activity/service teardown,
+started-Activity resumption, and lock-held add/start/resume/retire ordering. A disposable tracked-file candidate snapshot completed one
 offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
 1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
 was checked for nonzero size and then discarded with the scratch tree. This is target-integration evidence, not the

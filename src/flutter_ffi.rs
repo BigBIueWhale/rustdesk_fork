@@ -2447,6 +2447,29 @@ pub mod server_side {
     }
 
     #[no_mangle]
+    pub unsafe extern "system" fn Java_ffi_FFI_resumeClientSessionOwner(
+        env: JNIEnv,
+        _class: JClass,
+        generation: jlong,
+        session_id: JString,
+    ) -> jlong {
+        let Ok(generation) = u64::try_from(generation) else {
+            return 0;
+        };
+        if generation == 0 {
+            return 0;
+        }
+        let mut env = env;
+        let Some(session_id) = parse_client_session_owner(&mut env, &session_id) else {
+            log::warn!("Rejected malformed Android client session owner UUID at Activity resume");
+            return 0;
+        };
+        crate::flutter::resume_android_client_owner(generation, session_id)
+            .and_then(|generation| jlong::try_from(generation).ok())
+            .unwrap_or(0)
+    }
+
+    #[no_mangle]
     pub unsafe extern "system" fn Java_ffi_FFI_closeClientSessions(
         env: JNIEnv,
         _class: JClass,

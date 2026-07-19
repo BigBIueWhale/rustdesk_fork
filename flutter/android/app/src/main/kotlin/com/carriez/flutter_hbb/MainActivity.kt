@@ -414,6 +414,22 @@ class MainActivity : FlutterActivity() {
     override fun onStart() {
         super.onStart()
         isActivityStopped = false
-        clientSessionOwner?.let { markClientSessionOwnerStarted(it) }
+        val owner = clientSessionOwner ?: return
+        val resumedGeneration = FFI.resumeClientSessionOwner(owner.generation, owner.sessionId)
+        if (resumedGeneration == 0L) {
+            Log.e(logTag, "Failed to resume Android client session ownership; closing stale Activity")
+            forgetClientSessionOwner(owner)
+            clientSessionOwner = null
+            finish()
+            return
+        }
+
+        // onStart can run without onCreate when Android restores an older Activity from the back
+        // stack. Replace its stale generation with the native generation acquired above. Forgetting
+        // the old stopped marker first prevents a delayed task callback from retaining dead metadata.
+        forgetClientSessionOwner(owner)
+        val resumedOwner = ClientSessionOwner(resumedGeneration, owner.sessionId)
+        clientSessionOwner = resumedOwner
+        markClientSessionOwnerStarted(resumedOwner)
     }
 }

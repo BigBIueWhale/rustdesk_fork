@@ -175,8 +175,11 @@ void runMobileApp() async {
     androidChannelInit();
     final ownerRegistered = await gFFI.invokeMethod(
         'register_client_session_owner', gFFI.sessionId.toString());
-    if (!ownerRegistered) {
-      debugPrint('Android client session owner registration failed closed');
+    if (ownerRegistered != true) {
+      debugPrint(
+          'Android client session owner registration failed closed; terminating stale Activity');
+      await SystemNavigator.pop();
+      return;
     }
     platformFFI.syncAndroidServiceAppDirConfigPath();
   }

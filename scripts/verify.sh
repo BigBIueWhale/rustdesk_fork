@@ -7531,6 +7531,10 @@ grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
 grep -qF 'external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-uuid-bind-jni"
+grep -qF 'external fun resumeClientSessionOwner(generation: Long, sessionId: String): Long' "$ffi_kt" \
+  || android_client_owner_bad="$android_client_owner_bad no-stopped-activity-resume-jni"
+grep -qF 'fn Java_ffi_FFI_resumeClientSessionOwner(' src/flutter_ffi.rs \
+  || android_client_owner_bad="$android_client_owner_bad no-stopped-activity-resume-native-jni"
 grep -qF 'external fun closeClientSessions(generation: Long, sessionId: String): Int' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad teardown-not-owner-scoped"
 grep -qF 'FFI.closeClientSessions()' "$ma" "$ms" "$ffi_kt" src/flutter_ffi.rs \
@@ -7547,6 +7551,8 @@ grep -qF 'delayed_android_owner_callbacks_cannot_retire_or_close_the_replacement
   || android_client_owner_bad="$android_client_owner_bad aba-regression-test-missing"
 grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad admission-transition-regression-test-missing"
+grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad stopped-activity-resume-regression-test-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path
@@ -7563,7 +7569,12 @@ session_add_existed = rust[rust.index("pub fn session_add_existed("):rust.index(
 session_add = rust[rust.index("pub fn session_add(\n"):rust.index("pub fn session_start_(")]
 session_start = rust[rust.index("pub fn session_start_("):rust.index("fn try_send_close_event(")]
 owner_begin = rust[rust.index("pub fn begin_android_client_owner("):rust.index("pub fn bind_android_client_owner(")]
+owner_resume = rust[rust.index("pub fn resume_android_client_owner("):rust.index("fn acquire_android_client_owner(")]
 owner_close = rust[rust.index("pub fn close_android_client_owner("):rust.index("mod mobile_session_lifecycle_tests")]
+registration_failure = run_mobile[
+    run_mobile.index("if (ownerRegistered != true)"):
+    run_mobile.index("platformFFI.syncAndroidServiceAppDirConfigPath()")
+]
 
 ok = (
     activity.count("override fun onStart()") == 1
@@ -7575,14 +7586,18 @@ ok = (
         < on_stop.index("super.onStop()")
     and on_start.index("super.onStart()")
         < on_start.index("isActivityStopped = false")
-        < on_start.index("markClientSessionOwnerStarted(it)")
+        < on_start.index("FFI.resumeClientSessionOwner(owner.generation, owner.sessionId)")
+        < on_start.index("clientSessionOwner = resumedOwner")
+        < on_start.index("markClientSessionOwnerStarted(resumedOwner)")
     and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in activity_destroy
     and "for (owner in MainActivity.takeStoppedClientSessionOwners())" in task_removed
     and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in task_removed
     and run_mobile.index("final ownerRegistered = await gFFI.invokeMethod(")
         < run_mobile.index("register_client_session_owner")
-        < run_mobile.index("if (!ownerRegistered)")
+        < run_mobile.index("if (ownerRegistered != true)")
         < run_mobile.index("runApp(App())")
+    and registration_failure.index("SystemNavigator.pop()")
+        < registration_failure.index("return;")
     and session_add_existed.index("acquire_android_client_owner(&session_id)")
         < session_add_existed.index("sessions::insert_peer_session_id")
         < session_add_existed.index("drop(owner_admission)")
@@ -7597,6 +7612,10 @@ ok = (
         < owner_begin.index("owner.begin()")
         < owner_begin.index("close_sessions_owned_by(&previous_owner)")
         < owner_begin.index("drop(owner)")
+    and owner_resume.index("ANDROID_CLIENT_OWNER.write()")
+        < owner_resume.index("owner.resume(generation, session_id)")
+        < owner_resume.index("close_sessions_owned_by(&previous_owner)")
+        < owner_resume.index("drop(owner)")
     and owner_close.index("ANDROID_CLIENT_OWNER.write()")
         < owner_close.index("owner.retire(generation, session_id)")
         < owner_close.index("close_sessions_owned_by(session_id)")

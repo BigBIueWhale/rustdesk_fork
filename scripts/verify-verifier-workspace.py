@@ -3334,6 +3334,9 @@ def validate_smoke_contract(
         ('Linux loginctl session-query authority (R-S11z/R-S11e-40)', "loginctl session authority source gate"),
         ('if grep -qF \'XDG_SESSION_TYPE\' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then', "loginctl ambient session source gate"),
         ("grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md", "loginctl session hardening ledger gate"),
+        ('Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41)', "systemctl lifecycle authority source gate"),
+        ('if grep -Eq \'action: *&str|\\.envs?[[:space:]]*\\(\' <<<"$systemctl_authority"; then', "systemctl generic action/environment source gate"),
+        ("grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md", "systemctl lifecycle hardening ledger gate"),
         ('Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31)', "same-executable child descriptor source gate"),
         ("grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md", "same-executable child descriptor hardening ledger gate"),
         ('Linux external-helper descriptor allowlist authority (R-S11r/R-S11e-32)', "external-helper descriptor source gate"),
@@ -3404,6 +3407,26 @@ def validate_smoke_contract(
         requirements,
         "Linux loginctl session-query authority and ambient desktop confusion",
         "loginctl session Appendix C disposition",
+    )
+    require_text(
+        hardening,
+        "R-S11e-41 — Linux systemctl service-lifecycle authority",
+        "systemctl lifecycle hardening ledger",
+    )
+    require_text(
+        requirements,
+        '<span class="id">R-S11aa</span>',
+        "systemctl lifecycle normative requirement",
+    )
+    require_text(
+        requirements,
+        '<tr><td>149</td>',
+        "systemctl lifecycle Appendix C row",
+    )
+    require_text(
+        requirements,
+        "Linux systemctl service-lifecycle environment and target authority",
+        "systemctl lifecycle Appendix C disposition",
     )
     require_text(
         hardening,
@@ -4337,6 +4360,148 @@ def validate_smoke_contract(
         ("unexpected.is_empty()", "actual-child complete empty environment proof"),
     ):
         require_text(loginctl_tests, text, label)
+
+    systemctl_authority = extract_between(
+        linux_source,
+        "enum SystemctlServiceAction {",
+        "\npub fn uninstall_service",
+        "Linux systemctl service-lifecycle authority",
+    )
+    systemctl_command_policy = extract_between(
+        systemctl_authority,
+        "fn configure_systemctl_environment(command: &mut Command)",
+        "\nfn systemctl_service(action: SystemctlServiceAction, app_name: &str) -> bool",
+        "Linux systemctl command policy",
+    )
+    systemctl_execution = extract_between(
+        linux_source,
+        "fn systemctl_service(action: SystemctlServiceAction, app_name: &str) -> bool",
+        "\npub fn uninstall_service",
+        "Linux systemctl checked execution",
+    )
+    for text, label in (
+        ("Self::Enable => \"enable\"", "typed enable action"),
+        ("Self::Start => \"start\"", "typed start action"),
+        ("Self::Disable => \"disable\"", "typed disable action"),
+        ("Self::Stop => \"stop\"", "typed stop action"),
+        (
+            "fn systemctl_service_unit(app_name: &str) -> Option<String>",
+            "locally validated service unit",
+        ),
+        ("const MAX_APP_NAME_LEN: usize = 64;", "bounded application name"),
+        ("!bytes[0].is_ascii_alphabetic()", "alphabetic unit-name start"),
+        (
+            "!bytes[bytes.len() - 1].is_ascii_alphanumeric()",
+            "alphanumeric unit-name end",
+        ),
+        (
+            "byte.is_ascii_alphanumeric() || *byte == b'-'",
+            "closed unit-name alphabet",
+        ),
+        (
+            'format!("{}.service", app_name.to_ascii_lowercase())',
+            "explicit service suffix",
+        ),
+    ):
+        require_text(systemctl_authority, text, label)
+    for text, label in (
+        ("command.env_clear();", "empty systemctl environment"),
+        ('"--system"', "explicit system-manager scope"),
+        ('"--no-pager"', "pager disabled"),
+        ('"--no-ask-password"', "interactive authorization disabled"),
+        ('"--"', "option terminator"),
+        ("action.verb()", "typed verb serialization"),
+        (".stdin(std::process::Stdio::null())", "null systemctl stdin"),
+    ):
+        require_text(systemctl_command_policy, text, label)
+    require_order(
+        systemctl_command_policy,
+        (
+            "configure_systemctl_environment(command);",
+            ".args([",
+            ".stdin(std::process::Stdio::null())",
+        ),
+        "systemctl environment/argv/stdin authority",
+    )
+    if re.search(r"action:\s*&str|\.envs?\s*\(", systemctl_authority):
+        raise VerificationError("systemctl lifecycle retains a generic action or explicit environment")
+    for text, label in (
+        (
+            "configure_systemctl_command(&mut command, action, &unit);",
+            "systemctl command policy application",
+        ),
+        (
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "systemctl descriptor policy",
+        ),
+        ("match command.status()", "checked systemctl execution"),
+        ("Ok(status) if status.success() => true", "successful-exit authority"),
+    ):
+        require_text(systemctl_execution, text, label)
+    require_order(
+        systemctl_execution,
+        (
+            "configure_systemctl_command(&mut command, action, &unit);",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "match command.status()",
+            "Ok(status) if status.success() => true",
+        ),
+        "systemctl command/descriptor/status authority",
+    )
+    for text, label in (
+        (
+            "systemctl_service(SystemctlServiceAction::Enable, &app_name)",
+            "typed enable call",
+        ),
+        (
+            "systemctl_service(SystemctlServiceAction::Start, &app_name)",
+            "typed start call",
+        ),
+        (
+            "systemctl_service(SystemctlServiceAction::Disable, &app_name)",
+            "typed disable call",
+        ),
+        (
+            "systemctl_service(SystemctlServiceAction::Stop, &app_name)",
+            "typed stop call",
+        ),
+    ):
+        require_text(linux_source, text, label)
+
+    systemctl_tests = extract_between(
+        linux_source,
+        "fn r_s11e41_systemctl_service_actions_and_unit_are_exact()",
+        "\n    #[test]\n    fn r_s11c10_privileged_command_candidates_are_fixed_system_paths",
+        "Linux systemctl focused regressions",
+    )
+    for text, label in (
+        ('"rustdesk.service"', "exact service-unit argv regression"),
+        (
+            "fn r_s11e41_systemctl_child_excludes_inherited_environment()",
+            "actual-child systemctl environment regression",
+        ),
+        (
+            '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)',
+            "hostile system-bus fixture",
+        ),
+        (
+            '.env("SYSTEMCTL_FORCE_BUS", "1")',
+            "hostile forced-full-bus fixture",
+        ),
+        (
+            '.env("SYSTEMD_UNIT_PATH", HOSTILE_UNIT_PATH)',
+            "hostile unit-path fixture",
+        ),
+        ('.env("SYSTEMD_PAGER", "/bin/sh")', "hostile pager fixture"),
+        ('.env("SYSTEMD_OFFLINE", "1")', "hostile offline-mode fixture"),
+        (
+            "configure_systemctl_environment(&mut worker);",
+            "actual-child production environment policy",
+        ),
+        ("std::env::var_os(variable).is_none()", "selected environment exclusions"),
+        ("unexpected.is_empty()", "complete empty environment proof"),
+    ):
+        require_text(systemctl_tests, text, label)
     run_me_with_env = extract_between(
         common_source,
         "pub fn run_me_with_env<",
@@ -4485,7 +4650,7 @@ def validate_smoke_contract(
         ),
         (
             linux_source,
-            "fn systemctl_service(action: &str, app_name: &str) -> bool {",
+            "fn systemctl_service(action: SystemctlServiceAction, app_name: &str) -> bool {",
             "\npub fn uninstall_service",
             "systemctl descriptor policy",
             "configure_command_close_nonstdio_on_exec(&mut command)",
@@ -12105,6 +12270,60 @@ def run_source_mutations(sources):
             "R-S11e-40 — Linux loginctl session-query authority",
             "R-S11e-40 — Linux loginctl session-query compatibility",
             "loginctl session hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9c) Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41) =="',
+            'echo "== (3b-iii-d9c) Linux systemctl service-lifecycle compatibility (R-S11aa/R-S11e-41) =="',
+            "systemctl lifecycle authority source gate",
+        ),
+        (
+            "verify",
+            'if grep -Eq \'action: *&str|\\.envs?[[:space:]]*\\(\' <<<"$systemctl_authority"; then',
+            "if false; then",
+            "systemctl generic action/environment source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11aa</span>',
+            '<span class="id">R-S11zz</span>',
+            "systemctl lifecycle normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>149</td>",
+            "<tr><td>9149</td>",
+            "systemctl lifecycle Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-41 — Linux systemctl service-lifecycle authority",
+            "R-S11e-41 — Linux systemctl service-lifecycle compatibility",
+            "systemctl lifecycle hardening ledger",
+        ),
+        (
+            "linux_source",
+            "fn configure_systemctl_environment(command: &mut Command) {\n    command.env_clear();\n}",
+            "fn configure_systemctl_environment(command: &mut Command) {\n    let _ = command;\n}",
+            "empty systemctl environment",
+        ),
+        (
+            "linux_source",
+            'Self::Enable => "enable"',
+            'Self::Enable => "reenable"',
+            "typed enable action",
+        ),
+        (
+            "linux_source",
+            'Some(format!("{}.service", app_name.to_ascii_lowercase()))',
+            'Some(format!("{}.target", app_name.to_ascii_lowercase()))',
+            "explicit service suffix",
+        ),
+        (
+            "linux_source",
+            '            "--system",\n            "--no-pager",\n            "--no-ask-password",',
+            '            "--user",\n            "--no-pager",\n            "--no-ask-password",',
+            "explicit system-manager scope",
         ),
         (
             "server_source",

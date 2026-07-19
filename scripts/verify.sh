@@ -3123,6 +3123,90 @@ grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS
 if [ -n "$r_s11e40" ]; then echo "  FAIL R-S11e-40 Linux loginctl session-query authority:$r_s11e40"; rc=1; else
   echo "  ok  R-S11e-40 Linux session discovery uses typed local loginctl queries, stable authority-field parsing across systemd list versions, an empty helper environment, and no ambient XDG session substitution"; fi
 
+# (3b-iii-d9c) R-S11aa/R-S11e-41: privileged systemd service
+# lifecycle calls own their action, unit identity, interaction mode, and
+# complete child environment rather than inheriting launcher policy.
+echo "== (3b-iii-d9c) Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e41_ --color never
+r_s11e41=
+systemctl_authority=$(awk '/enum SystemctlServiceAction/,/pub fn uninstall_service/' src/platform/linux.rs)
+systemctl_command_policy=$(awk '/fn configure_systemctl_environment/,/fn systemctl_service\(action: SystemctlServiceAction/' src/platform/linux.rs)
+systemctl_execution=$(awk '/fn systemctl_service\(action: SystemctlServiceAction/,/pub fn uninstall_service/' src/platform/linux.rs)
+systemctl_install=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/linux.rs)
+systemctl_uninstall=$(awk '/pub fn uninstall_service\(show_new_window: bool, _: bool\) -> bool/,/^}/' src/platform/linux.rs)
+systemctl_tests=$(awk '/fn r_s11e41_systemctl_service_actions_and_unit_are_exact/,/fn r_s11c10_privileged_command_candidates_are_fixed_system_paths/' src/platform/linux.rs)
+for binding in \
+  'enum SystemctlServiceAction' \
+  'Self::Enable => "enable"' \
+  'Self::Start => "start"' \
+  'Self::Disable => "disable"' \
+  'Self::Stop => "stop"' \
+  'fn systemctl_service_unit(app_name: &str) -> Option<String>' \
+  'const MAX_APP_NAME_LEN: usize = 64;' \
+  '!bytes[0].is_ascii_alphabetic()' \
+  '!bytes[bytes.len() - 1].is_ascii_alphanumeric()' \
+  "byte.is_ascii_alphanumeric() || *byte == b'-'" \
+  'format!("{}.service", app_name.to_ascii_lowercase())' \
+  'fn configure_systemctl_environment(command: &mut Command)' \
+  'command.env_clear();' \
+  'fn configure_systemctl_command(' \
+  '"--system"' \
+  '"--no-pager"' \
+  '"--no-ask-password"' \
+  'action.verb()' \
+  '.stdin(std::process::Stdio::null())'; do
+  grep -qF "$binding" <<<"$systemctl_authority" || r_s11e41="$r_s11e41 systemctl-policy-binding-missing"
+done
+if grep -Eq 'action: *&str|\.envs?[[:space:]]*\(' <<<"$systemctl_authority"; then
+  r_s11e41="$r_s11e41 generic-action-or-explicit-environment-present"
+fi
+systemctl_env_line=$(grep -nF 'configure_systemctl_environment(command);' <<<"$systemctl_command_policy" | head -n1 | cut -d: -f1)
+systemctl_args_line=$(grep -nF '.args([' <<<"$systemctl_command_policy" | head -n1 | cut -d: -f1)
+systemctl_stdin_line=$(grep -nF '.stdin(std::process::Stdio::null())' <<<"$systemctl_command_policy" | head -n1 | cut -d: -f1)
+if [ -z "$systemctl_env_line" ] || [ -z "$systemctl_args_line" ] || [ -z "$systemctl_stdin_line" ] \
+  || [ "$systemctl_env_line" -ge "$systemctl_args_line" ] \
+  || [ "$systemctl_args_line" -ge "$systemctl_stdin_line" ]; then
+  r_s11e41="$r_s11e41 systemctl-environment-argv-stdin-order-invalid"
+fi
+systemctl_configure_line=$(grep -nF 'configure_systemctl_command(&mut command, action, &unit);' <<<"$systemctl_execution" | head -n1 | cut -d: -f1)
+systemctl_descriptor_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut command)' <<<"$systemctl_execution" | head -n1 | cut -d: -f1)
+systemctl_status_line=$(grep -nF 'match command.status()' <<<"$systemctl_execution" | head -n1 | cut -d: -f1)
+if [ -z "$systemctl_configure_line" ] || [ -z "$systemctl_descriptor_line" ] || [ -z "$systemctl_status_line" ] \
+  || [ "$systemctl_configure_line" -ge "$systemctl_descriptor_line" ] \
+  || [ "$systemctl_descriptor_line" -ge "$systemctl_status_line" ]; then
+  r_s11e41="$r_s11e41 systemctl-command-descriptor-status-order-invalid"
+fi
+for call in \
+  'systemctl_service(SystemctlServiceAction::Enable, &app_name)' \
+  'systemctl_service(SystemctlServiceAction::Start, &app_name)'; do
+  grep -qF "$call" <<<"$systemctl_install" || r_s11e41="$r_s11e41 typed-install-call-missing"
+done
+for call in \
+  'systemctl_service(SystemctlServiceAction::Disable, &app_name)' \
+  'systemctl_service(SystemctlServiceAction::Stop, &app_name)'; do
+  grep -qF "$call" <<<"$systemctl_uninstall" || r_s11e41="$r_s11e41 typed-uninstall-call-missing"
+done
+for proof in \
+  'fn r_s11e41_systemctl_service_actions_and_unit_are_exact()' \
+  '"rustdesk.service"' \
+  '"rustdesk.service",' \
+  'fn r_s11e41_systemctl_child_excludes_inherited_environment()' \
+  '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)' \
+  '.env("SYSTEMCTL_FORCE_BUS", "1")' \
+  '.env("SYSTEMD_UNIT_PATH", HOSTILE_UNIT_PATH)' \
+  '.env("SYSTEMD_PAGER", "/bin/sh")' \
+  '.env("SYSTEMD_OFFLINE", "1")' \
+  'configure_systemctl_environment(&mut worker);' \
+  'unexpected.is_empty()'; do
+  grep -qF "$proof" <<<"$systemctl_tests" || r_s11e41="$r_s11e41 focused-regression-missing"
+done
+grep -qF '<span class="id">R-S11aa</span>' requirements.html || r_s11e41="$r_s11e41 normative-requirement-missing"
+grep -qF 'Linux systemctl service-lifecycle environment and target authority' requirements.html || r_s11e41="$r_s11e41 appendix-disposition-missing"
+grep -qF '<tr><td>149</td>' requirements.html || r_s11e41="$r_s11e41 appendix-row-missing"
+grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md || r_s11e41="$r_s11e41 hardening-ledger-missing"
+if [ -n "$r_s11e41" ]; then echo "  FAIL R-S11e-41 Linux systemctl service-lifecycle authority:$r_s11e41"; rc=1; else
+  echo "  ok  R-S11e-41 Linux service lifecycle uses a typed four-verb system-manager request, a locally validated explicit service unit, empty environment, null stdin, fixed trusted image, stdio-only descriptor boundary, and successful exit"; fi
+
 # (3b-iii-d10) R-S11q/R-S11e-31: every Linux same-executable
 # helper launch owns its descriptor contract. This includes the root
 # service-owned headless CM route, so run_me_with_env must apply the
@@ -4071,19 +4155,19 @@ echo "$core_uninstall_block" | grep -Fq 'std::process::exit(1);' || r_s11c16="$r
 if grep -Fq 'crate::platform::install_service();' src/core_main.rs || grep -Fq 'crate::platform::uninstall_service(false, true);' src/core_main.rs; then
   r_s11c16="$r_s11c16 stale-core-service-call-discard"
 fi
-linux_systemctl_body=$(awk '/fn systemctl_service\(action: &str, app_name: &str\) -> bool/,/^}/' src/platform/linux.rs)
+linux_systemctl_body=$(awk '/fn systemctl_service\(action: SystemctlServiceAction, app_name: &str\) -> bool/,/^}/' src/platform/linux.rs)
 linux_install_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/linux.rs)
 linux_uninstall_body=$(awk '/pub fn uninstall_service\(show_new_window: bool, _: bool\) -> bool/,/^}/' src/platform/linux.rs)
 echo "$linux_systemctl_body" | grep -Fq 'Ok(status) if status.success() => true' || r_s11c16="$r_s11c16 linux-systemctl-success-not-explicit"
-echo "$linux_systemctl_body" | grep -Fq 'log::error!("systemctl {action} {app_name} failed with status {status}")' || r_s11c16="$r_s11c16 linux-systemctl-nonzero-not-logged"
+echo "$linux_systemctl_body" | grep -Fq 'failed with status {status}' || r_s11c16="$r_s11c16 linux-systemctl-nonzero-not-logged"
 echo "$linux_systemctl_body" | grep -Fq 'Err(err)' || r_s11c16="$r_s11c16 linux-systemctl-spawn-error-not-handled"
 if echo "$linux_install_body" | grep -Eq 'copy_user_config_to_root_service_config|copy_service_config_files|copy_service_config_file|fs::copy'; then
   r_s11c16="$r_s11c16 linux-install-imports-user-config"
 fi
-echo "$linux_install_body" | grep -Fq 'if !systemctl_service("enable", &app_name)' || r_s11c16="$r_s11c16 linux-install-enable-not-fatal"
-echo "$linux_install_body" | grep -Fq 'if !systemctl_service("start", &app_name)' || r_s11c16="$r_s11c16 linux-install-start-not-fatal"
-echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service("disable", &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-disable-not-fatal"
-echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service("stop", &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-stop-not-fatal"
+echo "$linux_install_body" | grep -Fq 'if !systemctl_service(SystemctlServiceAction::Enable, &app_name)' || r_s11c16="$r_s11c16 linux-install-enable-not-fatal"
+echo "$linux_install_body" | grep -Fq 'if !systemctl_service(SystemctlServiceAction::Start, &app_name)' || r_s11c16="$r_s11c16 linux-install-start-not-fatal"
+echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service(SystemctlServiceAction::Disable, &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-disable-not-fatal"
+echo "$linux_uninstall_body" | grep -Fq 'if !systemctl_service(SystemctlServiceAction::Stop, &app_name)' || r_s11c16="$r_s11c16 linux-uninstall-stop-not-fatal"
 if echo "$linux_uninstall_body" | grep -Fq 'copy_user_config_to_root_service_config()'; then
   r_s11c16="$r_s11c16 linux-uninstall-runs-config-migration"
 fi
@@ -5239,7 +5323,7 @@ echo "== (3b-iii-h9) Linux service lifecycle systemctl avoids shell command cons
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_service --color never
 r_s11c10i=
 grep -q 'const SYSTEMCTL_PATHS' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-fixed-systemctl-paths"
-grep -q 'fn systemctl_service(action: &str, app_name: &str) -> bool' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-systemctl-argv-helper"
+grep -q 'fn systemctl_service(action: SystemctlServiceAction, app_name: &str) -> bool' src/platform/linux.rs || r_s11c10i="$r_s11c10i no-typed-systemctl-helper"
 grep -q 'Command::new(systemctl)' src/platform/linux.rs || r_s11c10i="$r_s11c10i systemctl-not-argv-only"
 if grep -qE 'copy_user_config_to_root_service_config|copy_service_config_files|copy_service_config_file|prepare_service_config_dir|fs::copy\(.*toml|/root/\.config' src/platform/linux.rs; then
   r_s11c10i="$r_s11c10i service-install-imports-user-config"

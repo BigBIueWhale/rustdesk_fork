@@ -4703,25 +4703,89 @@ fn systemctl_path() -> Option<PathBuf> {
     trusted_command_path(&SYSTEMCTL_PATHS)
 }
 
-fn systemctl_service(action: &str, app_name: &str) -> bool {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SystemctlServiceAction {
+    Enable,
+    Start,
+    Disable,
+    Stop,
+}
+
+impl SystemctlServiceAction {
+    fn verb(self) -> &'static str {
+        match self {
+            Self::Enable => "enable",
+            Self::Start => "start",
+            Self::Disable => "disable",
+            Self::Stop => "stop",
+        }
+    }
+}
+
+fn systemctl_service_unit(app_name: &str) -> Option<String> {
+    const MAX_APP_NAME_LEN: usize = 64;
+
+    let bytes = app_name.as_bytes();
+    if bytes.is_empty()
+        || bytes.len() > MAX_APP_NAME_LEN
+        || !bytes[0].is_ascii_alphabetic()
+        || !bytes[bytes.len() - 1].is_ascii_alphanumeric()
+        || !bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+    {
+        return None;
+    }
+    Some(format!("{}.service", app_name.to_ascii_lowercase()))
+}
+
+fn configure_systemctl_environment(command: &mut Command) {
+    command.env_clear();
+}
+
+fn configure_systemctl_command(command: &mut Command, action: SystemctlServiceAction, unit: &str) {
+    configure_systemctl_environment(command);
+    command
+        .args([
+            "--system",
+            "--no-pager",
+            "--no-ask-password",
+            "--",
+            action.verb(),
+            unit,
+        ])
+        .stdin(std::process::Stdio::null());
+}
+
+fn systemctl_service(action: SystemctlServiceAction, app_name: &str) -> bool {
+    let Some(unit) = systemctl_service_unit(app_name) else {
+        log::error!("Refusing invalid systemctl service application name: {app_name:?}");
+        return false;
+    };
     let Some(systemctl) = systemctl_path() else {
         log::error!("systemctl was not found at a trusted fixed path");
         return false;
     };
     let mut command = Command::new(systemctl);
-    command.arg(action).arg(app_name);
+    configure_systemctl_command(&mut command, action, &unit);
     if let Err(err) = configure_command_close_nonstdio_on_exec(&mut command) {
-        log::error!("Failed to constrain systemctl {action} {app_name} descriptors: {err}");
+        log::error!(
+            "Failed to constrain systemctl {} {unit} descriptors: {err}",
+            action.verb()
+        );
         return false;
     }
     match command.status() {
         Ok(status) if status.success() => true,
         Ok(status) => {
-            log::error!("systemctl {action} {app_name} failed with status {status}");
+            log::error!(
+                "systemctl {} {unit} failed with status {status}",
+                action.verb()
+            );
             false
         }
         Err(err) => {
-            log::error!("Failed to run systemctl {action} {app_name}: {err}");
+            log::error!("Failed to run systemctl {} {unit}: {err}", action.verb());
             false
         }
     }
@@ -4733,11 +4797,11 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
         return false;
     }
     log::info!("Uninstalling service...");
-    let app_name = crate::get_app_name().to_lowercase();
-    if !systemctl_service("disable", &app_name) {
+    let app_name = crate::get_app_name();
+    if !systemctl_service(SystemctlServiceAction::Disable, &app_name) {
         return false;
     }
-    if !systemctl_service("stop", &app_name) {
+    if !systemctl_service(SystemctlServiceAction::Stop, &app_name) {
         return false;
     }
     // Stopping the service can terminate child processes before this branch runs.
@@ -4753,11 +4817,11 @@ pub fn install_service() -> bool {
         return false;
     }
     log::info!("Installing service...");
-    let app_name = crate::get_app_name().to_lowercase();
-    if !systemctl_service("enable", &app_name) {
+    let app_name = crate::get_app_name();
+    if !systemctl_service(SystemctlServiceAction::Enable, &app_name) {
         return false;
     }
-    if !systemctl_service("start", &app_name) {
+    if !systemctl_service(SystemctlServiceAction::Start, &app_name) {
         log::error!("Failed to enable/start the {app_name} service");
         return false;
     }
@@ -4773,6 +4837,118 @@ mod service_lifecycle_tests {
         for path in SYSTEMCTL_PATHS {
             assert!(Path::new(path).is_absolute());
             assert!(path.ends_with("/systemctl"));
+        }
+    }
+
+    #[test]
+    fn r_s11e41_systemctl_service_actions_and_unit_are_exact() {
+        let cases = [
+            (SystemctlServiceAction::Enable, "enable"),
+            (SystemctlServiceAction::Start, "start"),
+            (SystemctlServiceAction::Disable, "disable"),
+            (SystemctlServiceAction::Stop, "stop"),
+        ];
+        for (action, verb) in cases {
+            let mut command = Command::new("/usr/bin/systemctl");
+            configure_systemctl_command(&mut command, action, "rustdesk.service");
+            let arguments: Vec<_> = command.get_args().collect();
+            assert_eq!(
+                arguments,
+                [
+                    "--system",
+                    "--no-pager",
+                    "--no-ask-password",
+                    "--",
+                    verb,
+                    "rustdesk.service",
+                ]
+            );
+        }
+
+        assert_eq!(
+            systemctl_service_unit("RustDesk-Haggai7").as_deref(),
+            Some("rustdesk-haggai7.service")
+        );
+        for invalid in [
+            "",
+            "-rustdesk",
+            "rustdesk-",
+            "rustdesk.service",
+            "rust/desk",
+            "rust desk",
+            "rüstdesk",
+        ] {
+            assert!(systemctl_service_unit(invalid).is_none(), "{invalid:?}");
+        }
+        assert!(systemctl_service_unit(&format!("r{}", "a".repeat(63))).is_some());
+        assert!(systemctl_service_unit(&format!("r{}", "a".repeat(64))).is_none());
+    }
+
+    #[test]
+    fn r_s11e41_systemctl_child_excludes_inherited_environment() {
+        const ROLE: &str = "RUSTDESK_TEST_SYSTEMCTL_ENVIRONMENT_ROLE";
+        const TEST_NAME: &str = "platform::linux::service_lifecycle_tests::r_s11e41_systemctl_child_excludes_inherited_environment";
+        const HOSTILE_BUS: &str = "unix:path=/tmp/rustdesk-hostile-systemctl-system-bus";
+        const HOSTILE_UNIT_PATH: &str = "/tmp/rustdesk-hostile-systemctl-units";
+
+        match std::env::var(ROLE).as_deref() {
+            Ok("launcher") => {
+                assert_eq!(
+                    std::env::var("DBUS_SYSTEM_BUS_ADDRESS").as_deref(),
+                    Ok(HOSTILE_BUS)
+                );
+                assert_eq!(std::env::var("SYSTEMCTL_FORCE_BUS").as_deref(), Ok("1"));
+                assert_eq!(
+                    std::env::var("SYSTEMD_UNIT_PATH").as_deref(),
+                    Ok(HOSTILE_UNIT_PATH)
+                );
+                assert_eq!(std::env::var("SYSTEMD_PAGER").as_deref(), Ok("/bin/sh"));
+                assert_eq!(std::env::var("SYSTEMD_OFFLINE").as_deref(), Ok("1"));
+                let mut worker = Command::new(std::env::current_exe().unwrap());
+                configure_systemctl_environment(&mut worker);
+                let status = worker
+                    .env(ROLE, "worker")
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
+            Ok("worker") => {
+                for variable in [
+                    "DBUS_SYSTEM_BUS_ADDRESS",
+                    "SYSTEMCTL_FORCE_BUS",
+                    "SYSTEMD_UNIT_PATH",
+                    "SYSTEMD_PAGER",
+                    "SYSTEMD_OFFLINE",
+                ] {
+                    assert!(
+                        std::env::var_os(variable).is_none(),
+                        "{} survived",
+                        variable
+                    );
+                }
+                let unexpected: Vec<_> = std::env::vars_os()
+                    .filter(|(key, _)| key != std::ffi::OsStr::new(ROLE))
+                    .collect();
+                assert!(
+                    unexpected.is_empty(),
+                    "unexpected environment: {:?}",
+                    unexpected
+                );
+            }
+            _ => {
+                let status = Command::new(std::env::current_exe().unwrap())
+                    .env(ROLE, "launcher")
+                    .env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)
+                    .env("SYSTEMCTL_FORCE_BUS", "1")
+                    .env("SYSTEMD_UNIT_PATH", HOSTILE_UNIT_PATH)
+                    .env("SYSTEMD_PAGER", "/bin/sh")
+                    .env("SYSTEMD_OFFLINE", "1")
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
         }
     }
 

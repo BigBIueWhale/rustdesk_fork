@@ -2643,6 +2643,64 @@ unreachable and a source/test/AST gate prevents reintroduction.
   root identity is used. No host RustDesk process/service/configuration, listener, firewall, or network state is
   inspected or changed. The long full release build and root service fixtures remain excluded. Exact clean Debian
   artifact execution remains owned by R-B2/R-S11c-27 and is not inferred from this source slice.
+- **R-S11e-41 — Linux systemctl service-lifecycle authority — SOURCE IMPLEMENTED AND SOURCE-GATED 2026-07-19;
+  EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux privileged desktop service
+  installation and uninstallation. Endpoint/action: the fixed-path `systemctl` child used to enable, start, disable,
+  or stop the installed service. Boundary: already-privileged RustDesk launch state and signed application identity ↔
+  systemd system-manager unit-file and runtime service authority.
+
+  Proven old path: R-S11c-10i/R-S11e-32 already required direct argv, a canonical root-owned executable, the
+  stdio-only descriptor contract, and checked child status. `systemctl_service(action: &str, app_name: &str)` still
+  inherited the privileged process's complete environment, represented its command as a generic string, passed an
+  unsuffixed unit whose type systemctl inferred, selected no explicit manager scope, and retained ambient stdin and
+  authorization interaction. systemd 252 documents `systemctl [OPTIONS...] COMMAND [UNIT...]`, the system/user
+  scope distinction, zero-only success, `--no-ask-password`, elevated pager risk, and that enable searches unit-file
+  directories and creates symlinks. Its pinned `acquire_bus` source also reads `SYSTEMCTL_FORCE_BUS`: a true value
+  replaces the direct local-manager connection with the full D-Bus path, where the companion
+  `DBUS_SYSTEM_BUS_ADDRESS` variable can select the endpoint. Its unit-load contract states that
+  `SYSTEMD_UNIT_PATH` overrides the load path. The child also otherwise inherited pager, offline-mode, loader,
+  search-path, locale, and home variables.
+
+  Authority assessment: source/history review found only the fixed install/uninstall CLI calls, which first require
+  the process already to have superuser authority; Linux has no in-process elevation on this path. The signed custom
+  application name was already restricted to 1–64 ASCII bytes with a letter first, alphanumeric last, and only
+  alphanumerics/hyphens. No inspected systemd/SysV/OpenRC/runit/manual launcher or repository call gives an ordinary
+  user a proved write into the privileged environment, action, or application name. This is conceptual privileged-
+  helper/future-deployment authority and deterministic receiver correctness, not a demonstrated promptless local
+  privilege escalation or evidence of host compromise.
+
+  Closure: `SystemctlServiceAction` represents exactly Enable/Start/Disable/Stop and serializes only the corresponding
+  four verbs. `systemctl_service_unit` independently revalidates the signed application-name grammar at the
+  privileged receiver, lowercases it, and appends the explicit `.service` suffix; invalid, path-shaped, option-shaped,
+  suffixed, non-ASCII, or oversized input fails before process construction. `configure_systemctl_command` clears the
+  entire child environment, adds no variable, nulls stdin, and emits exact
+  `--system --no-pager --no-ask-password -- <typed verb> <validated unit>` argv. The existing trusted canonical image,
+  non-stdio descriptor policy, spawn-error handling, and successful-exit requirement remain. Install/uninstall call
+  only the typed variants and retain fail-fast lifecycle completion.
+
+  Verification: Rust 1.75 compiled and ran two focused tests in the existing non-root networkless devcheck image.
+  The pure regression covers all four action serializations, exact scope/noninteractive/terminator/unit argv, signed-
+  grammar normalization, malformed target rejection, and both length boundaries. A two-hop actual-child regression
+  gives an intermediate launcher hostile `SYSTEMCTL_FORCE_BUS`, `DBUS_SYSTEM_BUS_ADDRESS`, `SYSTEMD_UNIT_PATH`,
+  `SYSTEMD_PAGER`, and `SYSTEMD_OFFLINE`, applies the production environment policy to the final child, and proves
+  every hostile variable and every environment entry except its test role marker is absent. The image's systemd 252
+  systemctl also parsed the exact option-terminator-before-command shape and reached command dispatch. Dedicated
+  shell and semantic gates bind the
+  typed policy, validator, argv/environment/stdin/descriptor/status ordering, consumers, regressions, R-S11aa,
+  Appendix C #149, and this ledger; independent mutation cases cover the gate identity, ledgers, environment removal,
+  verb, suffix, and system scope. The dedicated R-S11e-41 gate and adjacent R-S11e-32/R-S11c-16/R-S11c-10i gates,
+  normal semantic verifier, complete source-mutation verifier, Bash syntax, native-codec watch and self-test,
+  dependency inventory and its 103 checks, fresh full Linux library check, Rust 1.75 slice formatting, requirements-
+  hash equality, and `git diff --check` all pass. Requirements SHA-256 is
+  `939bf619bd2086e54c05bd1744c3978f881ef0078b851b02e1360891f8284282`, synchronized in both tracked ledgers.
+  Publication evidence is recorded after commit and push.
+
+  All project code/test execution for this slice uses the invoking non-root UID in an existing local image, networking
+  disabled, all capabilities dropped, no-new-privileges, a read-only root filesystem, read-only source/Cargo inputs,
+  and disposable tmpfs outputs. No image is built or pulled; no Docker socket, host PID/network namespace, port
+  publication, service/config path, or host root identity is used. No host RustDesk process/service/configuration,
+  listener, firewall, or network state is inspected or changed. The long full release build and root service fixtures
+  remain excluded. Exact clean Debian artifact execution remains owned by R-B2/R-S11c-27 and is not inferred here.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4982,8 +5040,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5349fee77bdc9107ccfa2fa426d05cef138451214a8c0943a11ddc491f3b4b43  requirements.html
+939bf619bd2086e54c05bd1744c3978f881ef0078b851b02e1360891f8284282  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11z, and Appendix C #148. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aa, and Appendix C #149. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

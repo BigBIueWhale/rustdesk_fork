@@ -3341,6 +3341,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md", "selected X11 display hardening ledger gate"),
         ('Linux obsolete Xorg process authority (R-S11ac/R-S11e-43)', "obsolete Xorg process authority source gate"),
         ("grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md", "obsolete Xorg process hardening ledger gate"),
+        ('Linux headless CM parent authority (R-S11ad/R-S11e-44)', "headless CM parent authority source gate"),
+        ("grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARDENING_STATUS.md", "headless CM parent hardening ledger gate"),
         ('Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41)', "systemctl lifecycle authority source gate"),
         ('if grep -Eq \'action: *&str|\\.envs?[[:space:]]*\\(\' <<<"$systemctl_authority"; then', "systemctl generic action/environment source gate"),
         ("grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md", "systemctl lifecycle hardening ledger gate"),
@@ -3971,10 +3973,9 @@ def validate_smoke_contract(
         (
             "let runtime = ServiceRuntime::acquire()?;",
             "runtime.recover_previous_child()?;",
-            "stop_headless_connection_manager_processes();",
             "ipc::start(crate::POSTFIX_SERVICE)",
         ),
-        "hostile-record recovery precedes signal and listener authority",
+        "hostile-record recovery precedes listener authority",
     )
     for text, label in (
         ('.custom_flags(hbb_common::libc::O_CLOEXEC)', "service executable parent close-on-exec"),
@@ -4039,7 +4040,7 @@ def validate_smoke_contract(
     descriptor_helper = extract_between(
         linux_source,
         "enum ServiceDescriptorDisposition {",
-        "\nfn arm_service_child_parent_death",
+        "\nfn arm_linux_child_parent_death",
         "Linux service descriptor cleanup",
     )
     for text, label in (
@@ -4550,26 +4551,6 @@ def validate_smoke_contract(
     ):
         raise VerificationError("Linux desktop X11 selection retains heuristic endpoint authority")
 
-    xorg_cleanup_authority = extract_between(
-        linux_source,
-        "fn stop_headless_connection_manager_processes() {",
-        "\nfn should_start_server(",
-        "Linux headless connection-manager cleanup",
-    )
-    cleanup_compact = re.sub(r"\s+", "", xorg_cleanup_authority)
-    if cleanup_compact != (
-        'fnstop_headless_connection_manager_processes(){'
-        'kill_current_exe_processes_with_arg("--cm-no-ui","--cm-no-ui");}'
-    ):
-        raise VerificationError(
-            "Linux Xorg cleanup is not scoped to the headless connection manager"
-        )
-    require_exact_count(
-        linux_source,
-        "stop_headless_connection_manager_processes();",
-        3,
-        "Linux headless connection-manager cleanup call count",
-    )
     xorg_headless_authority = extract_between(
         linux_source,
         "pub fn is_headless(&self) -> bool {",
@@ -6348,7 +6329,7 @@ def validate_cross_platform_user_helper_contract(sources):
             "if crate::platform::is_root() && !headless_service_user {",
             "WindowsUserHelperLaunch::ConnectionManager {",
             "Refusing root-to-user connection-manager launch; the user-context service must own it",
-            ".push(crate::run_me_with_env(args, cm_launch_env())?);",
+            "super::CHILD_PROCESS.lock().unwrap().push(child);",
         ),
         "connection-manager typed/fail-closed/same-user launch topology",
     )
@@ -6675,6 +6656,144 @@ def validate_windows_process_state_contract(sources):
         require_text(sources[source_key], text, label)
 
 
+def validate_linux_headless_cm_parent_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    common_source = sources["common_source"]
+    linux_source = sources["linux_source"]
+    connection_source = sources["connection_source"]
+
+    require_text(
+        verify,
+        "Linux headless CM parent authority (R-S11ad/R-S11e-44)",
+        "headless CM parent source gate",
+    )
+    parent_authority = extract_between(
+        linux_source,
+        "fn arm_linux_child_parent_death(",
+        "\nfn configure_service_child_pre_exec(",
+        "Linux child parent-death authority",
+    )
+    for text, label in (
+        ("SYS_prctl", "raw prctl syscall"),
+        ("hbb_common::libc::PR_SET_PDEATHSIG,", "parent-death operation"),
+        ("hbb_common::libc::SIGKILL", "unignorable parent-death signal"),
+        ("SYS_getppid", "post-arm parent observation"),
+        (
+            "actual_parent != hbb_common::libc::c_long::from(expected_parent)",
+            "captured-parent comparison",
+        ),
+        (
+            "std::io::Error::from_raw_os_error(hbb_common::libc::ESRCH)",
+            "changed-parent spawn rejection",
+        ),
+        (
+            "pub(crate) fn configure_command_kill_on_parent_death",
+            "parent-bound Command policy",
+        ),
+        (
+            "command.pre_exec(move || arm_linux_child_parent_death(expected_parent))",
+            "pre-exec parent-death registration",
+        ),
+    ):
+        require_text(parent_authority, text, label)
+
+    common_launch = extract_between(
+        common_source,
+        "pub fn run_me_with_env<T",
+        "\n    let result = cmd.args(&args).spawn();",
+        "same-executable child launch policy",
+    )
+    for text, label in (
+        (
+            "pub(crate) fn run_me_with_env_and_parent_death",
+            "typed parent-bound same-executable API",
+        ),
+        ("run_me_with_env_inner(args, envs, true)", "parent-bound policy selection"),
+        ("run_me_with_env_inner(args, envs, false)", "ordinary policy selection"),
+        ("if kill_on_parent_death {", "parent-death conditional"),
+        (
+            "crate::platform::linux::configure_command_kill_on_parent_death(&mut cmd)?;",
+            "parent-death hook application",
+        ),
+        (
+            "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)",
+            "same-executable child descriptor policy",
+        ),
+    ):
+        require_text(common_launch, text, label)
+    parent_hook_offset = common_launch.index(
+        "configure_command_kill_on_parent_death(&mut cmd)?;"
+    )
+    descriptor_hook_offset = common_launch.index(
+        "configure_command_close_nonstdio_on_exec(&mut cmd)"
+    )
+    if parent_hook_offset >= descriptor_hook_offset:
+        raise VerificationError(
+            "Linux parent-death hook is not registered before the descriptor policy"
+        )
+
+    cm_launch = extract_between(
+        connection_source,
+        "// The headless path and ordinary user-owned server start the CM",
+        "\n            for _ in 0..20 {",
+        "connection-manager child launch",
+    )
+    cm_launch_compact = re.sub(r"\s+", "", cm_launch)
+    require_text(
+        cm_launch_compact,
+        "ifheadless_cm{crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?}else{crate::run_me_with_env(args,cm_launch_env())?}",
+        "headless-only parent-bound launch selection",
+    )
+    for forbidden in (
+        "fn stop_headless_connection_manager_processes",
+        "stop_headless_connection_manager_processes();",
+        "fn kill_current_exe_processes_with_arg",
+        "fn kill_process(",
+    ):
+        if forbidden in linux_source:
+            raise VerificationError(
+                f"Linux headless CM global process authority remains: {forbidden}"
+            )
+
+    actual_child_test = extract_between(
+        common_source,
+        "fn r_s11e44_linux_parent_bound_child_dies_with_launcher()",
+        "\n    // R-SV6(d)",
+        "Linux parent-bound actual-child regression",
+    )
+    for text, label in (
+        ("run_me_with_env_and_parent_death(", "production helper invocation"),
+        ("SYS_pidfd_open", "exact worker pidfd retention"),
+        (".kill()", "launcher termination"),
+        (
+            'assert_eq!(observed, 1, "parent-bound child survived launcher death")',
+            "worker-death assertion",
+        ),
+    ):
+        require_text(actual_child_test, text, label)
+
+    for text, label in (
+        ('<span class="id">R-S11ad</span>', "headless CM parent requirement"),
+        (
+            "Linux headless connection-manager lifetime is bound at spawn to its exact server parent",
+            "headless CM parent authority clause",
+        ),
+        ("<tr><td>152</td>", "headless CM parent Appendix C row"),
+        (
+            "Linux root-service headless-CM global process authority",
+            "headless CM parent Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-44 — Linux headless connection-manager parent authority",
+        "headless CM parent hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -6690,6 +6809,7 @@ def validate_sources(sources):
     validate_cross_platform_user_helper_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
+    validate_linux_headless_cm_parent_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -12606,6 +12726,129 @@ def run_source_mutations(sources):
             "obsolete Xorg process hardening ledger",
         ),
         (
+            "verify",
+            'echo "== (3b-iii-d9c3) Linux headless CM parent authority (R-S11ad/R-S11e-44) =="',
+            'echo "== (3b-iii-d9c3) Linux headless CM compatibility (R-S11ad/R-S11e-44) =="',
+            "headless CM parent source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ad</span>',
+            '<span class="id">R-S11zz</span>',
+            "headless CM parent requirement",
+        ),
+        (
+            "requirements",
+            "Linux headless connection-manager lifetime is bound at spawn to its exact server parent",
+            "Linux headless connection-manager lifetime may use global process discovery",
+            "headless CM parent authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>152</td>",
+            "<tr><td>9152</td>",
+            "headless CM parent Appendix C row",
+        ),
+        (
+            "requirements",
+            "Linux root-service headless-CM global process authority",
+            "Linux supported headless-CM global process authority",
+            "headless CM parent Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-44 — Linux headless connection-manager parent authority",
+            "R-S11e-44 — Linux headless connection-manager compatibility",
+            "headless CM parent hardening ledger",
+        ),
+        (
+            "linux_source",
+            "hbb_common::libc::PR_SET_PDEATHSIG,",
+            "hbb_common::libc::PR_GET_PDEATHSIG,",
+            "parent-death operation",
+        ),
+        (
+            "linux_source",
+            "            hbb_common::libc::PR_SET_PDEATHSIG,\n"
+            "            hbb_common::libc::SIGKILL,",
+            "            hbb_common::libc::PR_SET_PDEATHSIG,\n"
+            "            hbb_common::libc::SIGTERM,",
+            "unignorable parent-death signal",
+        ),
+        (
+            "linux_source",
+            "hbb_common::libc::syscall(hbb_common::libc::SYS_getppid)",
+            "hbb_common::libc::syscall(hbb_common::libc::SYS_getpid)",
+            "post-arm parent observation",
+        ),
+        (
+            "linux_source",
+            "actual_parent != hbb_common::libc::c_long::from(expected_parent)",
+            "actual_parent == hbb_common::libc::c_long::from(expected_parent)",
+            "captured-parent comparison",
+        ),
+        (
+            "linux_source",
+            "std::io::Error::from_raw_os_error(hbb_common::libc::ESRCH)",
+            "std::io::Error::from_raw_os_error(hbb_common::libc::EAGAIN)",
+            "changed-parent spawn rejection",
+        ),
+        (
+            "linux_source",
+            "command.pre_exec(move || arm_linux_child_parent_death(expected_parent));",
+            "command.pre_exec(move || Ok(()));",
+            "pre-exec parent-death registration",
+        ),
+        (
+            "common_source",
+            "run_me_with_env_inner(args, envs, true)",
+            "run_me_with_env_inner(args, envs, false)",
+            "parent-bound policy selection",
+        ),
+        (
+            "common_source",
+            "        crate::platform::linux::configure_command_kill_on_parent_death(&mut cmd)?;",
+            "        // parent-death hook removed",
+            "parent-death hook application",
+        ),
+        (
+            "common_source",
+            "        crate::platform::linux::configure_command_kill_on_parent_death(&mut cmd)?;",
+            "        hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)?;\n"
+            "        crate::platform::linux::configure_command_kill_on_parent_death(&mut cmd)?;",
+            "Linux parent-death hook is not registered before the descriptor policy",
+        ),
+        (
+            "connection_source",
+            "crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?",
+            "crate::run_me_with_env(args, cm_launch_env())?",
+            "headless-only parent-bound launch selection",
+        ),
+        (
+            "common_source",
+            "fn r_s11e44_linux_parent_bound_child_dies_with_launcher()",
+            "fn r_s11e44_linux_parent_bound_child_may_survive_launcher()",
+            "Linux parent-bound actual-child regression",
+        ),
+        (
+            "linux_source",
+            "fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "fn stop_headless_connection_manager_processes() {}\n\nfn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "Linux headless CM global process authority remains",
+        ),
+        (
+            "linux_source",
+            "fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "obsolete Linux Xorg process authority remains",
+        ),
+        (
+            "linux_source",
+            "fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "fn stop_subprocess() {}\n\nfn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "obsolete Linux Xorg process authority remains",
+        ),
+        (
             "linux_source",
             "            self.sid.is_empty()\n        }",
             "            self.sid.is_empty() || self.username.is_empty()\n        }",
@@ -12619,39 +12862,9 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "fn stop_headless_connection_manager_processes() {",
-            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn stop_headless_connection_manager_processes() {",
-            "obsolete Linux Xorg process authority remains",
-        ),
-        (
-            "linux_source",
             "        pub sid: String,",
             "        pub is_rustdesk_subprocess: bool,\n        pub sid: String,",
             "obsolete Linux Xorg process authority remains",
-        ),
-        (
-            "linux_source",
-            "fn stop_headless_connection_manager_processes() {",
-            "fn stop_subprocess() {}\n\nfn stop_headless_connection_manager_processes() {",
-            "obsolete Linux Xorg process authority remains",
-        ),
-        (
-            "linux_source",
-            '    kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui");',
-            '    kill_current_exe_processes_with_arg("Xorg", "Xorg");',
-            "Linux Xorg cleanup is not scoped to the headless connection manager",
-        ),
-        (
-            "linux_source",
-            "                stop_headless_connection_manager_processes();\n"
-            "                start_server(\n"
-            "                    &desktop,\n"
-            "                    ServiceChildPrincipal::ActiveDesktopUser,",
-            "                // headless connection-manager cleanup removed\n"
-            "                start_server(\n"
-            "                    &desktop,\n"
-            "                    ServiceChildPrincipal::ActiveDesktopUser,",
-            "Linux headless connection-manager cleanup call count",
         ),
         (
             "hbb_common_linux",
@@ -13065,7 +13278,7 @@ def run_source_mutations(sources):
             "linux_source",
             'runtime.recover_previous_child()?;',
             'true; // hostile-record recovery removed',
-            "hostile-record recovery precedes signal and listener authority",
+            "hostile-record recovery precedes listener authority",
         ),
         (
             "smoke_ready",

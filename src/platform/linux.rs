@@ -1763,12 +1763,13 @@ pub fn close_service_owned_nonstdio_descriptors() -> ResultType<()> {
         .map_err(|err| anyhow!("Failed to close inherited non-stdio descriptors: {err}"))
 }
 
-fn arm_service_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> std::io::Result<()> {
+fn arm_linux_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> std::io::Result<()> {
     // `PR_SET_PDEATHSIG` is cleared by a credential change and can also be cleared by
-    // executing a privileged file. Arm it after the optional uid/gid drop in the pre-exec
-    // hook, and arm it again in the final RustDesk image before server startup. Setting it
-    // before checking getppid closes the parent-exit race: an earlier exit changes the
-    // observed parent, while a later exit delivers SIGKILL to this exact child.
+    // executing a privileged file. The service bootstrap calls this after its optional
+    // uid/gid drop and again in the final server image; same-principal children arm it
+    // directly before exec. Setting it before checking getppid closes the parent-exit
+    // race: an earlier exit changes the observed parent, while a later exit delivers
+    // SIGKILL to this exact child.
     syscall_succeeded(unsafe {
         hbb_common::libc::syscall(
             hbb_common::libc::SYS_prctl,
@@ -1783,6 +1784,21 @@ fn arm_service_child_parent_death(expected_parent: hbb_common::libc::pid_t) -> s
     if actual_parent != hbb_common::libc::c_long::from(expected_parent) {
         // Keep the pre-exec error path allocation-free as well as the success path.
         return Err(std::io::Error::from_raw_os_error(hbb_common::libc::ESRCH));
+    }
+    Ok(())
+}
+
+pub(crate) fn configure_command_kill_on_parent_death(command: &mut Command) -> std::io::Result<()> {
+    let expected_parent = hbb_common::libc::pid_t::try_from(std::process::id()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "RustDesk parent pid does not fit pid_t",
+        )
+    })?;
+    // This hook runs before the ordinary descriptor-policy hook registered by
+    // `run_me_with_env_inner`. Both callbacks use only raw syscalls and captured data.
+    unsafe {
+        command.pre_exec(move || arm_linux_child_parent_death(expected_parent));
     }
     Ok(())
 }
@@ -1841,7 +1857,7 @@ fn configure_service_child_pre_exec(
                 0,
                 0,
             ))?;
-            arm_service_child_parent_death(expected_parent)
+            arm_linux_child_parent_death(expected_parent)
         });
     }
     Ok(())
@@ -2022,7 +2038,7 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
         nix::unistd::close(executable_fd)
             .map_err(|err| anyhow!("Failed to close the service executable descriptor: {err}"))?;
     }
-    arm_service_child_parent_death(expected_parent)?;
+    arm_linux_child_parent_death(expected_parent)?;
     Ok(())
 }
 
@@ -2168,10 +2184,6 @@ fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime)
     terminate_child(server, "--server", runtime).map(|_| ())
 }
 
-fn stop_headless_connection_manager_processes() {
-    kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui");
-}
-
 fn should_start_server(
     is_display_changed: bool,
     uid: &mut String,
@@ -2260,7 +2272,6 @@ pub fn start_os_service() -> ResultType<()> {
 
     let runtime = ServiceRuntime::acquire()?;
     runtime.recover_previous_child()?;
-    stop_headless_connection_manager_processes();
     // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
     // fork XTEST/enigo is the sole injection backend, so the world-mode _uinput_*
     // cross-uid sockets the X11 --server never connects to are absent (shrinking
@@ -2298,7 +2309,6 @@ pub fn start_os_service() -> ResultType<()> {
                 &mut server,
                 &runtime,
             )? {
-                stop_headless_connection_manager_processes();
                 start_server(
                     &desktop,
                     ServiceChildPrincipal::RootService,
@@ -2324,7 +2334,6 @@ pub fn start_os_service() -> ResultType<()> {
                 &mut user_server,
                 &runtime,
             )? {
-                stop_headless_connection_manager_processes();
                 start_server(
                     &desktop,
                     ServiceChildPrincipal::ActiveDesktopUser,
@@ -2812,18 +2821,6 @@ fn signal_process(pid: u32, label: &str, signal: i32) {
     let err = std::io::Error::last_os_error();
     if err.raw_os_error() != Some(hbb_common::libc::ESRCH) {
         log::warn!("Failed to signal {label} process pid={pid} signal={signal}: {err}");
-    }
-}
-
-fn kill_process(pid: u32, label: &str) {
-    signal_process(pid, label, hbb_common::libc::SIGKILL);
-}
-
-fn kill_current_exe_processes_with_arg(arg: &str, label: &str) {
-    for process in current_exe_process_cmdlines() {
-        if process_has_exact_arg(&process.args, arg) {
-            kill_process(process.pid, label);
-        }
     }
 }
 
@@ -3720,7 +3717,7 @@ mod process_cleanup_tests {
                     .unwrap()
                     .parse::<hbb_common::libc::pid_t>()
                     .unwrap();
-                arm_service_child_parent_death(expected_parent).unwrap();
+                arm_linux_child_parent_death(expected_parent).unwrap();
                 let mut stream =
                     UnixStream::connect(std::env::var_os(SOCKET_ENV).unwrap()).unwrap();
                 stream.write_all(&std::process::id().to_ne_bytes()).unwrap();
@@ -3807,7 +3804,7 @@ mod process_cleanup_tests {
     }
 
     #[test]
-    fn r_s11c10_process_kill_matchers_are_exact_argv_based() {
+    fn r_s11c10_process_signal_matchers_are_exact_argv_based() {
         let server = vec!["/usr/bin/rustdesk".to_owned(), "--server".to_owned()];
         assert!(process_has_exact_arg(&server, "--server"));
         assert!(!process_has_exact_arg(&server, "--serverless"));

@@ -605,6 +605,34 @@ where
     K: AsRef<std::ffi::OsStr>,
     V: AsRef<std::ffi::OsStr>,
 {
+    run_me_with_env_inner(args, envs, false)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn run_me_with_env_and_parent_death<T, I, K, V>(
+    args: Vec<T>,
+    envs: I,
+) -> std::io::Result<std::process::Child>
+where
+    T: AsRef<std::ffi::OsStr>,
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+{
+    run_me_with_env_inner(args, envs, true)
+}
+
+fn run_me_with_env_inner<T, I, K, V>(
+    args: Vec<T>,
+    envs: I,
+    kill_on_parent_death: bool,
+) -> std::io::Result<std::process::Child>
+where
+    T: AsRef<std::ffi::OsStr>,
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+{
     let envs = envs
         .into_iter()
         .map(|(k, v)| {
@@ -618,6 +646,10 @@ where
     let mut cmd = std::process::Command::new(cmd);
     cmd.envs(envs.iter().map(|(k, v)| (k, v)));
     #[cfg(target_os = "linux")]
+    if kill_on_parent_death {
+        crate::platform::linux::configure_command_kill_on_parent_death(&mut cmd)?;
+    }
+    #[cfg(target_os = "linux")]
     hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd).map_err(
         |err| {
             std::io::Error::new(
@@ -626,6 +658,8 @@ where
             )
         },
     )?;
+    #[cfg(not(target_os = "linux"))]
+    let _ = kill_on_parent_death;
     #[cfg(target_os = "macos")]
     hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd).map_err(
         |err| {
@@ -1522,6 +1556,164 @@ mod tests {
             status.success(),
             "descriptor-test launcher failed: {status}"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn r_s11e44_linux_parent_bound_child_dies_with_launcher() {
+        use std::{
+            fs,
+            io::{ErrorKind, Read as _, Write as _},
+            os::{
+                fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
+                unix::{fs::DirBuilderExt as _, net::UnixListener, net::UnixStream},
+            },
+            process::{Child, Command},
+        };
+
+        const TEST_NAME: &str =
+            "common::tests::r_s11e44_linux_parent_bound_child_dies_with_launcher";
+        const ROLE_ENV: &str = "RUSTDESK_TEST_PARENT_BOUND_CHILD_ROLE";
+        const SOCKET_ENV: &str = "RUSTDESK_TEST_PARENT_BOUND_CHILD_SOCKET";
+
+        match std::env::var(ROLE_ENV).as_deref() {
+            Ok("launcher") => {
+                let socket = std::env::var_os(SOCKET_ENV)
+                    .expect("parent-bound child socket must be supplied");
+                let envs = [
+                    (
+                        std::ffi::OsString::from(ROLE_ENV),
+                        std::ffi::OsString::from("worker"),
+                    ),
+                    (std::ffi::OsString::from(SOCKET_ENV), socket),
+                ];
+                let _worker = run_me_with_env_and_parent_death(
+                    vec!["--exact", TEST_NAME, "--nocapture"],
+                    envs,
+                )
+                .expect("parent-bound child must spawn");
+                loop {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok("worker") => {
+                let mut stream = UnixStream::connect(
+                    std::env::var_os(SOCKET_ENV)
+                        .expect("parent-bound child socket must be supplied"),
+                )
+                .expect("parent-bound child must reach the controller");
+                stream
+                    .write_all(&std::process::id().to_ne_bytes())
+                    .expect("parent-bound child pid must be reported");
+                loop {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok(role) => panic!("unexpected parent-bound child test role: {role}"),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                panic!("parent-bound child test role must be Unicode")
+            }
+            Err(std::env::VarError::NotPresent) => {}
+        }
+
+        struct LauncherGuard(Child);
+        impl Drop for LauncherGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let test_root = std::env::temp_dir().join(format!(
+            "rustdesk-parent-bound-child-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .expect("test clock must follow the Unix epoch")
+                .as_nanos()
+        ));
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&test_root)
+            .expect("parent-bound child test directory must be creatable");
+        let socket_path = test_root.join("ready.sock");
+        let listener = UnixListener::bind(&socket_path)
+            .expect("parent-bound child listener must be creatable");
+        listener
+            .set_nonblocking(true)
+            .expect("parent-bound child listener must be nonblocking");
+        let mut launcher = LauncherGuard(
+            Command::new(std::env::current_exe().expect("test executable must be available"))
+                .args(["--exact", TEST_NAME, "--nocapture"])
+                .env(ROLE_ENV, "launcher")
+                .env(SOCKET_ENV, &socket_path)
+                .spawn()
+                .expect("parent-bound child launcher must spawn"),
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut worker_stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(err) if err.kind() == ErrorKind::WouldBlock && Instant::now() < deadline => {
+                    if let Some(status) = launcher
+                        .0
+                        .try_wait()
+                        .expect("launcher status must be observable")
+                    {
+                        panic!("parent-bound child launcher exited early: {status}");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(err) => panic!("parent-bound child did not report readiness: {err}"),
+            }
+        };
+        let mut worker_pid = [0u8; std::mem::size_of::<u32>()];
+        worker_stream
+            .read_exact(&mut worker_pid)
+            .expect("parent-bound child pid must be readable");
+        let worker_pid = hbb_common::libc::pid_t::try_from(u32::from_ne_bytes(worker_pid))
+            .expect("parent-bound child pid must fit pid_t");
+        let pidfd =
+            unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_pidfd_open, worker_pid, 0) };
+        assert!(
+            pidfd >= 0,
+            "pidfd_open is required for the parent-bound child test"
+        );
+        let pidfd = unsafe { OwnedFd::from_raw_fd(pidfd as i32) };
+
+        launcher
+            .0
+            .kill()
+            .expect("parent-bound child launcher must be killable");
+        launcher
+            .0
+            .wait()
+            .expect("parent-bound child launcher must be reapable");
+        let mut pollfd = hbb_common::libc::pollfd {
+            fd: pidfd.as_raw_fd(),
+            events: hbb_common::libc::POLLIN,
+            revents: 0,
+        };
+        let observed = unsafe { hbb_common::libc::poll(&mut pollfd, 1, 5_000) };
+        if observed != 1 || pollfd.revents & hbb_common::libc::POLLIN == 0 {
+            unsafe {
+                hbb_common::libc::syscall(
+                    hbb_common::libc::SYS_pidfd_send_signal,
+                    pidfd.as_raw_fd(),
+                    hbb_common::libc::SIGKILL,
+                    std::ptr::null::<hbb_common::libc::siginfo_t>(),
+                    0,
+                );
+            }
+        }
+        assert_eq!(observed, 1, "parent-bound child survived launcher death");
+        assert_ne!(pollfd.revents & hbb_common::libc::POLLIN, 0);
+
+        drop(worker_stream);
+        drop(listener);
+        fs::remove_file(&socket_path).expect("parent-bound child socket must be removable");
+        fs::remove_dir(&test_root).expect("parent-bound child test directory must be removable");
     }
 
     // R-SV6(d) / R-D6 / §18: the api-server resolution MUST default to a sovereign empty string —

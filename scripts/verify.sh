@@ -1424,7 +1424,8 @@ grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must
 grep -Fq 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-cm-launch-missing"
 grep -Fq 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11e38="$r_s11e38 typed-windows-whiteboard-launch-missing"
 grep -Fq 'WindowsUserHelperLaunch::Tray' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-tray-launch-missing"
-grep -Fq '.push(crate::run_me_with_env(args, cm_launch_env())?);' src/server/connection.rs || r_s11e38="$r_s11e38 same-user-cm-launch-missing"
+grep -Fq 'let child = if headless_cm {' src/server/connection.rs || r_s11e38="$r_s11e38 same-user-cm-launch-selection-missing"
+grep -Fq 'super::CHILD_PROCESS.lock().unwrap().push(child);' src/server/connection.rs || r_s11e38="$r_s11e38 same-user-cm-launch-missing"
 grep -Fq 'whiteboard_launch_env(&launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
 grep -Fq '<span class="id">R-S11x</span>' requirements.html || r_s11e38="$r_s11e38 normative-requirement-missing"
 grep -Fq '<tr><td>146</td>' requirements.html || r_s11e38="$r_s11e38 appendix-disposition-missing"
@@ -2842,7 +2843,7 @@ if [ -n "$r_s11e27" ]; then echo "  FAIL R-S11e-27 Linux service-owned working-d
 # final service image closes every descriptor above stderr before initialization.
 echo "== (3b-iii-d7) Linux service-owned inherited descriptor authority (R-S11n/R-S11e-28) =="
 r_s11e28=
-descriptor_helper=$(awk '/enum ServiceDescriptorDisposition/,/fn arm_service_child_parent_death/' src/platform/linux.rs)
+descriptor_helper=$(awk '/enum ServiceDescriptorDisposition/,/fn arm_linux_child_parent_death/' src/platform/linux.rs)
 service_child_pre_exec=$(awk '/fn configure_service_child_pre_exec\(/,/fn insert_nonempty_env/' src/platform/linux.rs)
 service_child_liveness=$(awk '/pub fn require_service_owned_server_parent_liveness\(\)/,/fn start_server\(/' src/platform/linux.rs)
 core_service_bootstrap=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/let mut args = Vec::new\(\);/' src/core_main.rs)
@@ -3218,16 +3219,10 @@ if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session di
 echo "== (3b-iii-d9c2) Linux obsolete Xorg process authority (R-S11ac/R-S11e-43) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e43_ --color never
 r_s11e43=
-xorg_cleanup_authority=$(awk '/fn stop_headless_connection_manager_processes/,/fn should_start_server/' src/platform/linux.rs)
 xorg_headless_authority=$(awk '/pub fn is_headless\(&self\)/,/fn get_display_xauth_wayland/' src/platform/linux.rs)
 xorg_headless_test=$(awk '/fn r_s11e43_headless_state_is_derived_from_the_selected_session/,/fn test_desktop_env/' src/platform/linux.rs)
 xorg_launcher_history=$(awk '/R-X14 \/ R-S18/,/lazy_static::lazy_static/' src/platform/linux_desktop_manager.rs)
-xorg_cleanup_compact=$(printf '%s' "$xorg_cleanup_authority" | tr -d '[:space:]')
 xorg_headless_compact=$(printf '%s' "$xorg_headless_authority" | tr -d '[:space:]')
-[ "$xorg_cleanup_compact" = 'fnstop_headless_connection_manager_processes(){kill_current_exe_processes_with_arg("--cm-no-ui","--cm-no-ui");}fnshould_start_server(' ] \
-  || r_s11e43="$r_s11e43 cleanup-not-exactly-headless-cm"
-[ "$(grep -cF 'stop_headless_connection_manager_processes();' src/platform/linux.rs)" -eq 3 ] \
-  || r_s11e43="$r_s11e43 cleanup-call-count-not-three"
 [ "$xorg_headless_compact" = 'pubfnis_headless(&self)->bool{self.sid.is_empty()}fnget_display_xauth_wayland(&mutself){' ] \
   || r_s11e43="$r_s11e43 headless-not-selected-session-only"
 for test_binding in \
@@ -3256,6 +3251,72 @@ grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.
   || r_s11e43="$r_s11e43 hardening-ledger-missing"
 if [ -n "$r_s11e43" ]; then echo "  FAIL R-S11e-43 Linux obsolete Xorg process authority:$r_s11e43"; rc=1; else
   echo "  ok  R-S11e-43 no Xorg process text can mint root signal or desktop-state authority; headless state is absence of the exact selected logind session"; fi
+
+# (3b-iii-d9c3) R-S11ad/R-S11e-44: the root supervisor does not
+# rediscover no-UI connection managers through mutable process text. The exact
+# server parent binds the exact child at spawn and the kernel owns retirement.
+echo "== (3b-iii-d9c3) Linux headless CM parent authority (R-S11ad/R-S11e-44) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e44_ --color never
+r_s11e44=
+linux_parent_death_authority=$(awk '/fn arm_linux_child_parent_death/,/fn configure_service_child_pre_exec/' src/platform/linux.rs)
+common_parent_bound_launch=$(awk '/pub fn run_me_with_env<T/,/let result = cmd.args\(&args\).spawn/' src/common.rs)
+connection_manager_launch=$(awk '/if stream.is_none\(\) \{/,/for _ in 0\.\.20/' src/server/connection.rs)
+for binding in \
+  'fn arm_linux_child_parent_death' \
+  'SYS_prctl' \
+  'hbb_common::libc::PR_SET_PDEATHSIG,' \
+  'hbb_common::libc::SIGKILL' \
+  'SYS_getppid' \
+  'actual_parent != hbb_common::libc::c_long::from(expected_parent)' \
+  'std::io::Error::from_raw_os_error(hbb_common::libc::ESRCH)' \
+  'pub(crate) fn configure_command_kill_on_parent_death' \
+  'command.pre_exec(move || arm_linux_child_parent_death(expected_parent))'; do
+  grep -qF "$binding" <<<"$linux_parent_death_authority" || r_s11e44="$r_s11e44 parent-death-authority-missing"
+done
+for binding in \
+  'pub(crate) fn run_me_with_env_and_parent_death' \
+  'run_me_with_env_inner(args, envs, true)' \
+  'if kill_on_parent_death {' \
+  'crate::platform::linux::configure_command_kill_on_parent_death(&mut cmd)?;' \
+  'hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)'; do
+  grep -qF "$binding" <<<"$common_parent_bound_launch" || r_s11e44="$r_s11e44 production-launch-policy-missing"
+done
+parent_death_hook_line=$(grep -nF 'configure_command_kill_on_parent_death(&mut cmd)?;' <<<"$common_parent_bound_launch" | head -n1 | cut -d: -f1)
+descriptor_hook_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut cmd)' <<<"$common_parent_bound_launch" | head -n1 | cut -d: -f1)
+if [ -z "$parent_death_hook_line" ] || [ -z "$descriptor_hook_line" ] || [ "$parent_death_hook_line" -ge "$descriptor_hook_line" ]; then
+  r_s11e44="$r_s11e44 parent-death-hook-not-before-descriptor-policy"
+fi
+connection_manager_launch_compact=$(printf '%s' "$connection_manager_launch" | tr -d '[:space:]')
+case "$connection_manager_launch_compact" in
+  *'ifheadless_cm{crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?}else{crate::run_me_with_env(args,cm_launch_env())?}'*) ;;
+  *) r_s11e44="$r_s11e44 headless-only-call-site-missing" ;;
+esac
+for forbidden in \
+  'fn stop_headless_connection_manager_processes' \
+  'stop_headless_connection_manager_processes();' \
+  'fn kill_current_exe_processes_with_arg' \
+  'fn kill_process('; do
+  if grep -qF "$forbidden" src/platform/linux.rs; then
+    r_s11e44="$r_s11e44 global-cm-process-authority-present"
+  fi
+done
+for binding in \
+  'fn r_s11e44_linux_parent_bound_child_dies_with_launcher()' \
+  'run_me_with_env_and_parent_death(' \
+  'SYS_pidfd_open' \
+  'parent-bound child survived launcher death'; do
+  grep -qF "$binding" src/common.rs || r_s11e44="$r_s11e44 actual-child-regression-missing"
+done
+grep -qF '<span class="id">R-S11ad</span>' requirements.html || r_s11e44="$r_s11e44 normative-requirement-missing"
+grep -qF 'Linux headless connection-manager lifetime is bound at spawn to its exact server parent' requirements.html \
+  || r_s11e44="$r_s11e44 normative-authority-clause-missing"
+grep -qF '<tr><td>152</td>' requirements.html || r_s11e44="$r_s11e44 appendix-row-missing"
+grep -qF 'Linux root-service headless-CM global process authority' requirements.html \
+  || r_s11e44="$r_s11e44 appendix-disposition-missing"
+grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARDENING_STATUS.md \
+  || r_s11e44="$r_s11e44 hardening-ledger-missing"
+if [ -n "$r_s11e44" ]; then echo "  FAIL R-S11e-44 Linux headless CM parent authority:$r_s11e44"; rc=1; else
+  echo "  ok  R-S11e-44 no root process-table sweep owns headless CMs; the exact server launch arms kernel parent-death authority before exec"; fi
 
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
@@ -3375,7 +3436,7 @@ for runtime_binding in \
   'inherited.is_none()'; do
   grep -qF "$runtime_binding" <<<"$run_me_descriptor_test" || r_s11e31="$r_s11e31 actual-child-proof-missing"
 done
-grep -qF '.push(crate::run_me_with_env(args, cm_launch_env())?);' <<<"$headless_cm_launch" \
+grep -qF 'crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?' <<<"$headless_cm_launch" \
   || r_s11e31="$r_s11e31 service-owned-headless-cm-consumer-missing"
 grep -qF '<span class="id">R-S11q</span>' requirements.html                         || r_s11e31="$r_s11e31 normative-requirement-missing"
 grep -qF 'Linux same-executable child inherited descriptor authority' requirements.html || r_s11e31="$r_s11e31 appendix-disposition-missing"
@@ -4358,19 +4419,16 @@ if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery she
   echo "  ok  R-S11c-10a Linux prelogin/home/env discovery uses users+/proc helpers, not shell pipelines"; fi
 
 echo "== (3b-iii-h2) Linux service lifecycle process cleanup avoids shell pipelines (R-S11c-10b) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_kill --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_signal --color never
 r_s11c10b=
 grep -q 'fn all_process_cmdlines' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-proc-process-enumerator"
 grep -q 'fn current_exe_process_cmdlines' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-current-exe-process-enumerator"
 grep -q 'fn proc_exe_matches_path' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-proc-exe-identity-check"
 grep -q 'fn process_has_exact_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-exact-argv-matcher"
-grep -q 'fn kill_process' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-kill-helper"
 grep -q 'hbb_common::libc::kill' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-kill-syscall"
-if grep -qF 'kill_current_exe_processes_with_arg("--server"' src/platform/linux.rs; then
-  r_s11c10b="$r_s11c10b global-server-sweep-regressed"
+if grep -Eq 'kill_current_exe_processes_with_arg|stop_headless_connection_manager_processes|fn kill_process' src/platform/linux.rs; then
+  r_s11c10b="$r_s11c10b global-service-helper-sweep-regressed"
 fi
-grep -q 'kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui")' src/platform/linux.rs || r_s11c10b="$r_s11c10b cm-cleanup-not-argv-backed"
-grep -q 'fn stop_headless_connection_manager_processes' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-scoped-cm-cleanup-helper"
 grep -q 'fn signal_current_exe_processes_with_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-signal-helper"
 grep -q 'pub fn stop_tray_processes()' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-tray-cleanup-helper"
 grep -q 'crate::platform::stop_tray_processes();' src/core_main.rs || r_s11c10b="$r_s11c10b core-server-not-using-tray-cleanup-helper"
@@ -4386,7 +4444,6 @@ if ! echo "$tray_cleanup_compact" | grep -qE 'signal_current_exe_processes_with_
   r_s11c10b="$r_s11c10b tray-cleanup-not-exact-tray-argv"
 fi
 linux_process_cleanup_blocks=$(
-  awk '/fn stop_headless_connection_manager_processes/,/fn should_start_server/' src/platform/linux.rs
   awk '/fn all_process_cmdlines/,/fn proc_env_name_is_valid/' src/platform/linux.rs
 )
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
@@ -4397,7 +4454,7 @@ if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/l
   r_s11c10b="$r_s11c10b pkill-tray-cleanup-regressed"
 fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
-  echo "  ok  R-S11c-10b Linux CM/tray cleanup verifies current executable identity and exact argv, while server and Xorg lifecycle have no global process sweep"; fi
+  echo "  ok  R-S11c-10b same-user tray cleanup verifies current executable identity and exact argv; CM, server, and Xorg lifecycle have no global process sweep"; fi
 
 echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27a_linux_service_child_parent_death --color never
@@ -4424,18 +4481,18 @@ echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresgid' || r_s11c27a="$r
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresuid' || r_s11c27a="$r_s11c27a uid-drop-not-native"
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_fcntl' || r_s11c27a="$r_s11c27a forked-child-executable-descriptor-not-enabled"
 echo "$service_child_pre_exec_block" | grep -qF 'PR_SET_NO_NEW_PRIVS' || r_s11c27a="$r_s11c27a exec-privilege-regain-not-blocked"
-echo "$service_child_pre_exec_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a pre-exec-parent-death-binding-missing"
+echo "$service_child_pre_exec_block" | grep -qF 'arm_linux_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a pre-exec-parent-death-binding-missing"
 if ! echo "$service_child_pre_exec_block" | awk '
   /SYS_setgroups/ { groups = NR }
   /SYS_setresgid/ { gid = NR }
   /SYS_setresuid/ { uid = NR }
   /PR_SET_NO_NEW_PRIVS/ { no_new_privs = NR }
-  /arm_service_child_parent_death\(expected_parent\)/ { death = NR }
+  /arm_linux_child_parent_death\(expected_parent\)/ { death = NR }
   END { exit !(groups && groups < gid && gid < uid && uid < no_new_privs && no_new_privs < death) }
 '; then
   r_s11c27a="$r_s11c27a credential-drop-or-parent-binding-order-regressed"
 fi
-service_child_parent_death_block=$(awk '/fn arm_service_child_parent_death/,/fn configure_service_child_pre_exec/' src/platform/linux.rs)
+service_child_parent_death_block=$(awk '/fn arm_linux_child_parent_death/,/fn configure_service_child_pre_exec/' src/platform/linux.rs)
 echo "$service_child_parent_death_block" | grep -qF 'PR_SET_PDEATHSIG' || r_s11c27a="$r_s11c27a no-parent-death-binding"
 echo "$service_child_parent_death_block" | grep -qF 'hbb_common::libc::SIGKILL' || r_s11c27a="$r_s11c27a no-crash-death-signal"
 echo "$service_child_parent_death_block" | grep -qF 'hbb_common::libc::SYS_getppid' || r_s11c27a="$r_s11c27a parent-exit-race-not-checked"
@@ -4447,7 +4504,7 @@ if ! echo "$service_child_parent_death_block" | awk '
   r_s11c27a="$r_s11c27a parent-death-set-then-check-order-regressed"
 fi
 service_child_final_arm_block=$(awk '/pub fn require_service_owned_server_parent_liveness/,/^}/' src/platform/linux.rs)
-echo "$service_child_final_arm_block" | grep -qF 'arm_service_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a parent-death-binding-not-rearmed-after-exec"
+echo "$service_child_final_arm_block" | grep -qF 'arm_linux_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a parent-death-binding-not-rearmed-after-exec"
 grep -qF 'crate::platform::require_service_owned_server_parent_liveness()' src/core_main.rs || r_s11c27a="$r_s11c27a final-server-image-not-rearmed"
 grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c27a="$r_s11c27a exact-child-termination-helper-missing"
 grep -qF 'child: &mut Option<OwnedServiceChild>' src/platform/linux.rs || r_s11c27a="$r_s11c27a retained-exact-child-ownership-missing"
@@ -4497,14 +4554,14 @@ echo "$service_recovery_block" | grep -qF 'service_child_cmdline_has_exact_role'
 echo "$service_recovery_block" | grep -qF 'service_child_environment_has_generation' || r_s11c27b="$r_s11c27b generation-revalidation-missing"
 echo "$service_recovery_block" | grep -qF 'final identity-check-to-kill race cannot be eliminated' || r_s11c27b="$r_s11c27b pre-pidfd-residual-race-not-explicit"
 echo "$service_recovery_block" | grep -qF 'send_revalidated_service_child_pid_signal' || r_s11c27b="$r_s11c27b pre-pidfd-revalidated-fallback-missing"
-service_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/stop_headless_connection_manager_processes\(\);/' src/platform/linux.rs)
+service_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/ipc::start\(crate::POSTFIX_SERVICE\)/' src/platform/linux.rs)
 if ! echo "$service_entry_block" | awk '
   /ServiceRuntime::acquire/ { lease = NR }
   /recover_previous_child/ { recovery = NR }
-  /stop_headless_connection_manager_processes/ { loop_start = NR }
-  END { exit !(lease && recovery && loop_start && lease < recovery && recovery < loop_start) }
+  /ipc::start\(crate::POSTFIX_SERVICE\)/ { listener = NR }
+  END { exit !(lease && recovery && listener && lease < recovery && recovery < listener) }
 '; then
-  r_s11c27b="$r_s11c27b recovery-not-before-service-loop"
+  r_s11c27b="$r_s11c27b recovery-not-before-service-listener"
 fi
 grep -qF 'Linux service lifecycle authority failed closed' src/core_main.rs || r_s11c27b="$r_s11c27b service-entry-not-fail-closed"
 grep -qE '^RuntimeDirectory=rustdesk$' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-runtime-directory-missing"
@@ -5846,7 +5903,7 @@ grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c10j="$r_s11c10j li
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
 grep -qF 'SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT,' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
 linux_child_stop_block=$(
-  awk '/fn stop_server/,/fn stop_headless_connection_manager_processes/' src/platform/linux.rs
+  awk '/fn stop_server/,/fn should_start_server/' src/platform/linux.rs
   awk '/if should_kill/,/if let Some\(ps\) = server.as_mut/' src/platform/linux.rs
   awk '/if let Some\(ps\) = user_server.take/,/log::info!\("Exit"\)/' src/platform/linux.rs
 )

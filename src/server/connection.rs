@@ -8445,11 +8445,16 @@ async fn start_ipc(
                 bail!("Refusing unsupported root-to-user connection-manager launch");
             } else {
                 log::debug!("Start cm");
+                #[cfg(target_os = "linux")]
+                let child = if headless_cm {
+                    crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?
+                } else {
+                    crate::run_me_with_env(args, cm_launch_env())?
+                };
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                let child = crate::run_me_with_env(args, cm_launch_env())?;
                 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-                super::CHILD_PROCESS
-                    .lock()
-                    .unwrap()
-                    .push(crate::run_me_with_env(args, cm_launch_env())?);
+                super::CHILD_PROCESS.lock().unwrap().push(child);
                 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
                 super::CHILD_PROCESS
                     .lock()

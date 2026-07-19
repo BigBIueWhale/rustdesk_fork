@@ -10121,6 +10121,111 @@ def validate_windows_scm_service_entry_contract(sources):
     )
 
 
+def validate_smoke_container_authority_contract(sources):
+    smoke = sources["smoke"]
+    stage = sources["smoke_stage"]
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+
+    require_order(
+        smoke,
+        (
+            "readonly IMG=rd-devcheck",
+            "IMAGE_ID=$(docker image inspect --format '{{.Id}}' \"$IMG\") || {",
+            'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then',
+            "readonly IMAGE_ID",
+            "BUILD_RUN=(docker run",
+        ),
+        "local smoke image resolution precedes every container",
+    )
+    require_exact_count(smoke, '"$IMG"', 1, "smoke image tag is inspect-only")
+    require_exact_count(smoke, '"$IMAGE_ID"', 6, "every smoke container uses the immutable image ID")
+    require_exact_count(smoke, "docker run", 5, "complete smoke container launch inventory")
+
+    build = extract_between(smoke, "BUILD_RUN=(", "\nRUN=(", "smoke build container")
+    runtime = extract_between(smoke, "\nRUN=(", "\nLIFECYCLE_RUN=(", "smoke runtime container")
+    lifecycle = extract_between(
+        smoke, "LIFECYCLE_RUN=(", "\nPID_REUSE_RUN=(", "smoke lifecycle container"
+    )
+    pid_reuse = extract_between(
+        smoke, "PID_REUSE_RUN=(", "\nPORT_HEX=", "smoke PID-reuse container"
+    )
+    sibling = extract_through(
+        smoke,
+        'docker_out=$(docker run -d --name "$SIBLING_NAME"',
+        "2>&1)",
+        "smoke sibling container",
+    )
+    container_blocks = (build, runtime, lifecycle, pid_reuse, sibling)
+    for block, label in zip(
+        container_blocks,
+        ("build", "runtime", "lifecycle", "PID-reuse", "sibling"),
+    ):
+        require_text(block, "--network none", f"smoke {label} network isolation")
+        require_text(block, "--pull=never", f"smoke {label} implicit-pull refusal")
+        require_text(block, '"$IMAGE_ID"', f"smoke {label} immutable image identity")
+
+    require_text(
+        build,
+        "-v rd-cargo-cache:/usr/local/cargo/registry",
+        "smoke build registry cache authority",
+    )
+    require_text(
+        build,
+        "-v rd-git-cache:/usr/local/cargo/git",
+        "smoke build Git cache authority",
+    )
+    require_absent(runtime, "/usr/local/cargo/", "smoke runtime dependency-cache authority")
+
+    complete_launch_surface = "\n".join(container_blocks)
+    for token, label in (
+        ("--network host", "host network"),
+        ("--network=host", "host network"),
+        ("--publish", "published port"),
+        ("--publish-all", "published ports"),
+        ("--pid=host", "host PID namespace"),
+        ("--privileged", "privileged container"),
+        ("/var/run/docker.sock", "Docker socket"),
+    ):
+        require_absent(complete_launch_surface, token, f"smoke {label} authority")
+    if re.search(r"(?m)(?:^|[ \t])-p(?:[ =]|$)", complete_launch_surface):
+        raise VerificationError("smoke short-form published port authority: forbidden contract remains present")
+    if re.search(r"(?m)(?:^|[ \t])-P(?:[ \t\\]|$)", complete_launch_surface):
+        raise VerificationError("smoke short-form published ports authority: forbidden contract remains present")
+
+    build_stage = extract_between(stage, "  build)\n", "    ;;\n  mdwe)", "smoke Cargo build stage")
+    require_text(
+        build_stage,
+        "cargo build --locked --offline --features linux-pkg-config",
+        "smoke locked offline Cargo build",
+    )
+    require_exact_count(build_stage, "cargo build ", 1, "sole smoke Cargo build")
+
+    requirement = extract_html_requirement(
+        requirements, "R-S11ax", "smoke container authority requirement"
+    )
+    for token, label in (
+        ("canonical local image ID", "canonical local image requirement"),
+        ("<code>--pull=never</code>", "implicit image-pull refusal requirement"),
+        ("<code>--network none</code>", "network-none requirement"),
+        ("<code>--locked --offline</code>", "locked offline Cargo requirement"),
+        ("MUST NOT</span> publish ports", "port-publication prohibition"),
+    ):
+        require_text(requirement, token, label)
+    require_text(requirements, "<tr><td>172</td>", "smoke container authority Appendix C row")
+    require_text(
+        hardening,
+        "R-S11e-64 — smoke container image, network, and dependency authority",
+        "smoke container authority hardening ledger",
+    )
+    require_text(
+        verify,
+        "Smoke container image/network authority (R-S11ax/R-S11e-64)",
+        "smoke container authority source gate",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -10181,6 +10286,7 @@ def validate_sources(sources):
         sources["deployment"],
         sources["hardening"],
     )
+    validate_smoke_container_authority_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -13777,6 +13883,132 @@ def python_mutation_scopes(source, offsets):
 
 def run_source_mutations(sources):
     mutations = (
+        (
+            "smoke",
+            'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then',
+            'if [[ -z "$IMAGE_ID" ]]; then',
+            "local smoke image resolution precedes every container",
+        ),
+        (
+            "smoke",
+            "BUILD_RUN=(docker run --rm --network none --pull=never",
+            "BUILD_RUN=(docker run --rm --pull=never",
+            "smoke build network isolation",
+        ),
+        (
+            "smoke",
+            "\nRUN=(docker run --rm --network none --pull=never",
+            "\nRUN=(docker run --rm --pull=never",
+            "smoke runtime network isolation",
+        ),
+        (
+            "smoke",
+            "BUILD_RUN=(docker run --rm --network none --pull=never",
+            "BUILD_RUN=(docker run --rm --network none",
+            "smoke build implicit-pull refusal",
+        ),
+        (
+            "smoke",
+            "\nRUN=(docker run --rm --network none --pull=never",
+            "\nRUN=(docker run --rm --network none",
+            "smoke runtime implicit-pull refusal",
+        ),
+        (
+            "smoke",
+            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE --pull=never",
+            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE",
+            "smoke lifecycle implicit-pull refusal",
+        ),
+        (
+            "smoke",
+            "PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128 --pull=never",
+            "PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128",
+            "smoke PID-reuse implicit-pull refusal",
+        ),
+        (
+            "smoke",
+            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE --pull=never",
+            "LIFECYCLE_RUN=(docker run --rm --cap-add SYS_PTRACE --pull=never",
+            "smoke lifecycle network isolation",
+        ),
+        (
+            "smoke",
+            "PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128 --pull=never",
+            "PID_REUSE_RUN=(docker run --rm --read-only --pids-limit 128 --pull=never",
+            "smoke PID-reuse network isolation",
+        ),
+        (
+            "smoke",
+            "  -v rd-git-cache:/usr/local/cargo/git\n  -w /work \"$IMAGE_ID\")",
+            "  -w /work \"$IMAGE_ID\")",
+            "smoke build Git cache authority",
+        ),
+        (
+            "smoke",
+            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -w /work "$IMAGE_ID")',
+            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -v rd-cargo-cache:/usr/local/cargo/registry\n  -w /work "$IMAGE_ID")',
+            "smoke runtime dependency-cache authority",
+        ),
+        (
+            "smoke",
+            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
+            'RUN=(docker run --rm --network none --pull=never --publish 21118:21118\n  -v "$PWD:/work:ro"',
+            "smoke published port authority",
+        ),
+        (
+            "smoke",
+            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
+            'RUN=(docker run --rm --network none --pull=never\n  -v /var/run/docker.sock:/var/run/docker.sock\n  -v "$PWD:/work:ro"',
+            "smoke Docker socket authority",
+        ),
+        (
+            "smoke",
+            "readonly IMAGE_ID\nBUILD_RUN=(docker run",
+            "readonly IMAGE_ID\ndocker run --rm bad-image true\nBUILD_RUN=(docker run",
+            "complete smoke container launch inventory",
+        ),
+        (
+            "smoke",
+            '  -w /work "$IMAGE_ID")\nRUN=(',
+            '  -w /work "$IMG")\nRUN=(',
+            "smoke image tag is inspect-only",
+        ),
+        (
+            "smoke",
+            'docker run -d --name "$SIBLING_NAME" --network none --pull=never',
+            'docker run -d --name "$SIBLING_NAME" --network none',
+            "smoke sibling implicit-pull refusal",
+        ),
+        (
+            "smoke_stage",
+            "cargo build --locked --offline --features linux-pkg-config",
+            "cargo build --features linux-pkg-config",
+            "smoke locked offline Cargo build",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ax</span>',
+            '<span class="id">R-S11ax-disabled</span>',
+            "smoke container authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>172</td>",
+            "<tr><td>172-disabled</td>",
+            "smoke container authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-64 — smoke container image, network, and dependency authority",
+            "R-S11e-64 — smoke container authority deferred",
+            "smoke container authority hardening ledger",
+        ),
+        (
+            "verify",
+            "Smoke container image/network authority (R-S11ax/R-S11e-64)",
+            "Smoke container authority disabled (R-S11ax/R-S11e-64)",
+            "smoke container authority source gate",
+        ),
         (
             "build",
             "run_child() {\n    assert_release_docker_config\n    /usr/bin/env -i",

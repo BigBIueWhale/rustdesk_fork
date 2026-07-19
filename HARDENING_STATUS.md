@@ -4119,6 +4119,36 @@ unreachable and a source/test/AST gate prevents reintroduction.
   unknown-postfix refusal, and preservation of the application authentication layers. R-S11aw and Appendix C #171
   make the model normative. Native Windows multi-session execution and exact signed-artifact proof remain R-R2/R-B2;
   external expert review remains R-V3.
+- **R-S11e-64 — smoke container image, network, and dependency authority — SOURCE IMPLEMENTED; CONTAINER
+  EXECUTION AND EXACT-ARTIFACT EVIDENCE REMAIN R-B2.** Platform: Linux Docker runtime-smoke harness. Surfaces:
+  `scripts/smoke-server.sh`, its five Docker launch sites, and the sole Cargo build in
+  `scripts/smoke-server-stage.sh`. Boundary: repository-controlled smoke execution ↔ Docker daemon image,
+  network, host/peer, and dependency-resolution authority. Proven gap: `BUILD_RUN` and the ordinary `RUN` used
+  Docker's implicit default bridge, which Docker documents as providing outbound connectivity and access to the
+  host and peer containers. The lifecycle, PID-reuse, and sibling containers already selected `--network none`,
+  but all five launches named the mutable `rd-devcheck` tag without `--pull=never`; Docker's default missing-image
+  policy could therefore pull. The sole Cargo build was neither locked nor offline, and ordinary runtime stages
+  needlessly mounted the mutable registry cache. The old harness contained no `-p`/`--publish`, its bind shim
+  rewrote the tested `0.0.0.0:21118` bind to container `127.0.0.1:21118`, and Docker blocks unpublished ports from
+  outside the host by default. This was excessive harness egress, peer/host reach, implicit image acquisition, and
+  dependency-resolution authority—not public DMZ port exposure, a host RustDesk/service/config mutation, privilege
+  escalation, or evidence of compromise.
+
+  Source closure: before any launch the harness locally inspects the already-present tag once, validates the
+  canonical `sha256:<64 lowercase hexadecimal>` image ID, marks it immutable, and uses only that ID. Build, ordinary
+  runtime, lifecycle, PID-reuse, and sibling launches all specify `--network none` and `--pull=never`; no launch
+  publishes a port, selects host network/PID or privileged mode, or mounts the Docker socket. Network-none retains
+  container loopback, which is the only network required by the same-container protocol/capture tests. The build
+  retains read-write source plus explicit registry and Git caches and invokes Cargo exactly once with
+  `--locked --offline`; missing locked inputs now fail closed. Ordinary runtime loses its unused dependency cache,
+  and all non-build stages retain read-only source. Existing lifecycle capabilities and root service semantics are
+  unchanged because they are the behavior the release smoke must exercise. R-S11ax and Appendix C #172 make this
+  authority model normative. The shared workspace semantic validator covers the complete launch inventory and has
+  deliberate mutations for image-ID validation/use, every network/pull class, cache separation, Cargo offline/lock
+  enforcement, requirement/ledger/gate presence, and the sibling. The focused shared source gate duplicates the
+  fail-loud launch-policy checks. No container, application binary, host listener, host firewall, or host RustDesk
+  service was executed or changed while closing this source slice. Exact runtime-smoke execution and release-artifact
+  evidence remain R-B2; external expert review remains R-V3.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6465,8 +6495,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-752bdaeb3d47d4b4fee5d83786c4e160ce4dbaba20345b0a8c729270048ce918  requirements.html
+08a5e3571af348ffc46d7b67cc4bc066c0899d2573b09cebdddf8cb6f914aa6d  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aw, and Appendix C #171. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ax, and Appendix C #172. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

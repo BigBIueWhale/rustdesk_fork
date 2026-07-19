@@ -7,7 +7,7 @@
 # pinned-toolchain container and exercises it headless over the docker LOOPBACK — what the spec's
 # R-B4 ("assume nothing builds until watched") and R-A8 (runtime exercise) call for.
 #
-# It binds 127.0.0.1 — never 0.0.0.0 — in an isolated `--rm` container with no published ports.
+# It binds 127.0.0.1 — never 0.0.0.0 — in a network-none `--rm` container with no published ports.
 # The production binary has no runtime bind-address switch; this harness uses an LD_PRELOAD bind
 # shim that rewrites only the public test bind (0.0.0.0:21118 -> 127.0.0.1:21118).
 #
@@ -49,25 +49,34 @@
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
-IMG=rd-devcheck
-BUILD_RUN=(docker run --rm
+readonly IMG=rd-devcheck
+IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMG") || {
+  echo "smoke: required local image $IMG is absent" >&2
+  exit 1
+}
+if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "smoke: local image $IMG did not resolve to a canonical image ID" >&2
+  exit 1
+fi
+readonly IMAGE_ID
+BUILD_RUN=(docker run --rm --network none --pull=never
   -v "$PWD:/work:rw"
   -v rd-cargo-cache:/usr/local/cargo/registry
-  -w /work "$IMG")
-RUN=(docker run --rm
+  -v rd-git-cache:/usr/local/cargo/git
+  -w /work "$IMAGE_ID")
+RUN=(docker run --rm --network none --pull=never
   -v "$PWD:/work:ro"
-  -v rd-cargo-cache:/usr/local/cargo/registry
-  -w /work "$IMG")
-LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE
+  -w /work "$IMAGE_ID")
+LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE --pull=never
   -v "$PWD:/work:ro"
-  -w /work "$IMG")
-PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128
+  -w /work "$IMAGE_ID")
+PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128 --pull=never
   --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP
   --security-opt no-new-privileges --security-opt apparmor=unconfined
   --tmpfs /tmp:rw,nosuid,nodev,mode=1777
   --tmpfs /run:rw,nosuid,nodev,noexec,mode=755
   -v "$PWD:/work:ro"
-  -w /work "$IMG")
+  -w /work "$IMAGE_ID")
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
 HOST_GUARD=$PWD/scripts/smoke-process-guard.py
@@ -169,10 +178,10 @@ start_sibling_docker() {
   fi
   suffix=${SIBLING_ROOT##*.}
   SIBLING_NAME="rd-smoke-sibling-$suffix"
-  docker_out=$(docker run -d --name "$SIBLING_NAME" --network none \
+  docker_out=$(docker run -d --name "$SIBLING_NAME" --network none --pull=never \
     -v "$PWD:/work:ro" \
     -v "$SIBLING_ROOT:/sibling:rw" \
-    -w /work "$IMG" \
+    -w /work "$IMAGE_ID" \
     bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server 2>&1)
   if [ "$?" -ne 0 ]; then
     printf '%s\n' "$docker_out" >&2

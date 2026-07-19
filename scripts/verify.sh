@@ -4499,6 +4499,51 @@ grep -qF 'R-S11e-63 — complete Windows production-listener DACL coverage' HARD
 if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener DACL coverage:$r_s11e63"; rc=1; else
   echo "  ok  R-S11e-63 every production Windows IPC listener uses explicit local SDDL and unknown postfixes fail closed"; fi
 
+# (3b-iii-d9cn) R-S11ax/R-S11e-64: the runtime smoke harness uses
+# only an already-present immutable image, a network-none namespace,
+# and locked/offline dependency inputs; it never publishes a host port.
+echo "== (3b-iii-d9cn) Smoke container image/network authority (R-S11ax/R-S11e-64) =="
+r_s11e64=
+smoke_build_run=$(awk '/^BUILD_RUN=\(/{inside=1} /^RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_runtime_run=$(awk '/^RUN=\(/{inside=1} /^LIFECYCLE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_lifecycle_run=$(awk '/^LIFECYCLE_RUN=\(/{inside=1} /^PID_REUSE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_pid_reuse_run=$(awk '/^PID_REUSE_RUN=\(/{inside=1} /^PORT_HEX=/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_sibling_run=$(awk '/docker_out=\$\(docker run -d --name "\$SIBLING_NAME"/{inside=1} inside{print} inside && /2>&1\)/{exit}' scripts/smoke-server.sh)
+grep -qF 'readonly IMG=rd-devcheck' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-source-tag-missing"
+grep -qF 'IMAGE_ID=$(docker image inspect --format '\''{{.Id}}'\'' "$IMG") || {' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 local-image-resolution-missing"
+grep -qF 'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 canonical-image-id-validation-missing"
+grep -qF 'readonly IMAGE_ID' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-image-id-missing"
+for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
+  grep -qF -- '--network none' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 network-none-missing"
+  grep -qF -- '--pull=never' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 implicit-pull-refusal-missing"
+  grep -qF '"$IMAGE_ID"' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 immutable-image-use-missing"
+done
+grep -qF -- '-v rd-cargo-cache:/usr/local/cargo/registry' <<<"$smoke_build_run" \
+  || r_s11e64="$r_s11e64 build-registry-cache-missing"
+grep -qF -- '-v rd-git-cache:/usr/local/cargo/git' <<<"$smoke_build_run" \
+  || r_s11e64="$r_s11e64 build-git-cache-missing"
+if grep -qF '/usr/local/cargo/' <<<"$smoke_runtime_run"; then
+  r_s11e64="$r_s11e64 runtime-dependency-cache-present"
+fi
+smoke_launch_surface="$smoke_build_run
+$smoke_runtime_run
+$smoke_lifecycle_run
+$smoke_pid_reuse_run
+$smoke_sibling_run"
+if grep -Eq -- '(^|[[:space:]])-p([=[:space:]]|$)|(^|[[:space:]])-P([[:space:]\\]|$)|--publish|--network([=[:space:]]+)host|--pid=host|--privileged|/var/run/docker[.]sock' <<<"$smoke_launch_surface"; then
+  r_s11e64="$r_s11e64 host-or-publication-authority-present"
+fi
+grep -qF 'cargo build --locked --offline --features linux-pkg-config' scripts/smoke-server-stage.sh \
+  || r_s11e64="$r_s11e64 locked-offline-cargo-build-missing"
+grep -qF '<span class="id">R-S11ax</span>' requirements.html || r_s11e64="$r_s11e64 normative-requirement-missing"
+grep -qF '<tr><td>172</td>' requirements.html || r_s11e64="$r_s11e64 appendix-row-missing"
+grep -qF 'R-S11e-64 — smoke container image, network, and dependency authority' HARDENING_STATUS.md \
+  || r_s11e64="$r_s11e64 hardening-ledger-missing"
+if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64 smoke container image/network authority:$r_s11e64"; rc=1; else
+  echo "  ok  R-S11e-64 all smoke launches use one local immutable image ID, network none, no pull or port publication, and locked/offline build inputs"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

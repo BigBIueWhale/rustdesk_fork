@@ -3112,6 +3112,7 @@ for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-lo
     '"3:--no-pager --no-legend list-sessions")' \
     '"5:--no-pager --property=State show-session -- 1")' \
     '"5:--no-pager --property=Type show-session -- 1")' \
+    '"5:--no-pager --property=Display show-session -- 1")' \
     '"6:--no-pager --property=State --property=Seat show-session -- 1")'; do
     grep -qF "$fixture_query" "$fixture" || r_s11e40="$r_s11e40 ${fixture##*/}:strict-query-missing"
   done
@@ -3123,10 +3124,98 @@ grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS
 if [ -n "$r_s11e40" ]; then echo "  FAIL R-S11e-40 Linux loginctl session-query authority:$r_s11e40"; rc=1; else
   echo "  ok  R-S11e-40 Linux session discovery uses typed local loginctl queries, stable authority-field parsing across systemd list versions, an empty helper environment, and no ambient XDG session substitution"; fi
 
-# (3b-iii-d9c) R-S11aa/R-S11e-41: privileged systemd service
+# (3b-iii-d9c) R-S11ab/R-S11e-42: the exact active logind
+# session remains the sole authority for the local X11 endpoint, and a
+# process-derived credential hint must describe that same endpoint.
+echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S11e-42) =="
+"${RUN[@]}" cargo test -p hbb_common --lib r_s11e42_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e42_ --color never
+r_s11e42=
+x11_logind_authority=$(awk '/fn parse_local_x_display_name/,/pub fn get_values_of_seat0/' libs/hbb_common/src/platform/linux.rs)
+x11_loginctl_vocabulary=$(awk '/enum LoginctlProperty/,/enum LoginctlQuery/' libs/hbb_common/src/platform/linux.rs)
+x11_environment_authority=$(awk '/fn xauthority_from_environ_for_display/,/fn get_env\(/' src/platform/linux.rs)
+x11_desktop_authority=$(awk '/fn get_display_x11/,/fn set_is_subprocess/' src/platform/linux.rs)
+x11_refresh_authority=$(awk '/pub fn refresh\(&mut self\)/,/    #\[cfg\(test\)\]/' src/platform/linux.rs)
+x11_shared_tests=$(awk '/fn r_s11e42_x11_display_names_are_local_and_canonical/,/fn r_s11e40_session_display_fallback_is_binary_owned/' libs/hbb_common/src/platform/linux.rs)
+x11_root_tests=$(awk '/fn r_s11e42_xauthority_is_bound_to_the_selected_display/,/^}/' src/platform/linux.rs)
+for binding in \
+  'Display,' \
+  'Self::Display => "Display"' \
+  'Self::Display => "--property=Display"'; do
+  grep -qF "$binding" <<<"$x11_loginctl_vocabulary" || r_s11e42="$r_s11e42 typed-display-property-missing"
+done
+for binding in \
+  "display.strip_prefix(':')" \
+  "components.next()?.parse::<u32>().ok()?" \
+  'format!(":{display_number}.{screen_number}")' \
+  'pub fn local_x_display_names_share_server' \
+  '(Some((left, _)), Some((right, _))) if left == right' \
+  'loginctl_session_properties(session, &[LoginctlProperty::Display])' \
+  '.and_then(|display| normalize_local_x_display_name(&display))'; do
+  grep -qF "$binding" <<<"$x11_logind_authority" || r_s11e42="$r_s11e42 exact-session-display-binding-missing"
+done
+for binding in \
+  'let observed_display = proc_environ_value(environ, "DISPLAY")?;' \
+  '!local_x_display_names_share_server(&observed_display, display)' \
+  'let xauthority = proc_environ_value(environ, "XAUTHORITY")?;' \
+  'xauthority.bytes().any(|byte| byte.is_ascii_control())' \
+  '!Path::new(&xauthority).is_absolute()' \
+  'matching_process_cmdlines(uid, process_pattern)' \
+  'xauthority_from_environ_for_display(&environ, display)'; do
+  grep -qF "$binding" <<<"$x11_environment_authority" || r_s11e42="$r_s11e42 display-bound-xauthority-missing"
+done
+for binding in \
+  'self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();' \
+  'self.xauth.clear();' \
+  'if self.display.is_empty() {' \
+  'xauthority_from_matching_process(&self.uid, process, &self.display)' \
+  'let gdm = format!("/run/user/{}/gdm/Xauthority", self.uid);' \
+  'if Path::new(&gdm).is_file()'; do
+  grep -qF "$binding" <<<"$x11_desktop_authority" || r_s11e42="$r_s11e42 desktop-display-chain-missing"
+done
+for binding in \
+  'if self.is_wayland() {' \
+  'self.get_display_x11();' \
+  'self.get_xauth_x11();'; do
+  grep -qF "$binding" <<<"$x11_refresh_authority" || r_s11e42="$r_s11e42 retained-session-refresh-missing"
+done
+grep -qF $'                    self.get_display_x11();\n                    self.get_xauth_x11();' \
+  <<<"$x11_refresh_authority" || r_s11e42="$r_s11e42 retained-session-refresh-pair-missing"
+if grep -Eq 'get_env\(ENV_KEY_DISPLAY|get_display_by_user|display_from_x11_socket|self\.display = ":0"|\.replace\("localhost"|get_xauth_from_xorg|matching_process_cmdlines\(&self\.uid, "Xorg"\)' <<<"$x11_desktop_authority"; then
+  r_s11e42="$r_s11e42 heuristic-display-or-xorg-authority-present"
+fi
+if grep -Eq 'const W_PATHS|fn w_path\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\.X11-unix' src/platform/linux.rs; then
+  r_s11e42="$r_s11e42 legacy-display-fallback-present"
+fi
+for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-loginctl.sh; do
+  grep -qF '"5:--no-pager --property=Display show-session -- 1")' "$fixture" \
+    || r_s11e42="$r_s11e42 ${fixture##*/}:display-query-missing"
+  grep -qF "'Display=:0'" "$fixture" \
+    || r_s11e42="$r_s11e42 ${fixture##*/}:display-result-missing"
+done
+for test_binding in \
+  'fn r_s11e42_x11_display_names_are_local_and_canonical()' \
+  'normalize_local_x_display_name(":0007.02")' \
+  'local_x_display_names_share_server(":7", ":0007.02")' \
+  '"localhost:0"' \
+  'fn r_s11e42_xauthority_is_bound_to_the_selected_display()' \
+  'xauthority_from_environ_for_display(selected, ":8")' \
+  'b"DISPLAY=host:7\0XAUTHORITY=/tmp/remote.auth\0"'; do
+  grep -qF "$test_binding" <<<"$x11_shared_tests$x11_root_tests" || r_s11e42="$r_s11e42 focused-regression-missing"
+done
+grep -qF '<span class="id">R-S11ab</span>' requirements.html || r_s11e42="$r_s11e42 normative-requirement-missing"
+grep -qF 'Linux X11 endpoint selection remains bound to the exact active logind session' requirements.html \
+  || r_s11e42="$r_s11e42 normative-authority-clause-missing"
+grep -qF '<tr><td>150</td>' requirements.html || r_s11e42="$r_s11e42 appendix-row-missing"
+grep -qF 'Linux selected X11 session lost endpoint authority' requirements.html || r_s11e42="$r_s11e42 appendix-disposition-missing"
+grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md || r_s11e42="$r_s11e42 hardening-ledger-missing"
+if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session display authority:$r_s11e42"; rc=1; else
+  echo "  ok  R-S11e-42 X11 DISPLAY comes only from the exact selected logind session and process Xauthority hints must describe that endpoint"; fi
+
+# (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
-echo "== (3b-iii-d9c) Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41) =="
+echo "== (3b-iii-d9d) Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e41_ --color never
 r_s11e41=
 systemctl_authority=$(awk '/enum SystemctlServiceAction/,/pub fn uninstall_service/' src/platform/linux.rs)
@@ -3261,7 +3350,6 @@ loginctl_helper=$(awk '/fn run_loginctl/,/#\[derive\(Debug, Clone\)\]/' libs/hbb
 lock_screen_helper=$(awk '/pub fn lock_screen\(\)/,/pub fn toggle_blank_screen/' src/platform/linux.rs)
 xrandr_query_helper=$(awk '/fn xrandr_query\(\)/,/pub fn resolutions/' src/platform/linux.rs)
 xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/pub fn is_xwayland_running/' src/platform/linux.rs)
-desktop_user_helper=$(awk '/fn get_display_by_user/,/fn set_is_subprocess/' src/platform/linux.rs)
 systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
 fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn receive_fusermount_fd/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 fuse_unmount_helper=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
@@ -3302,7 +3390,6 @@ check_r_s11e32_helper_contract "$loginctl_helper" 'configure_command_close_nonst
 check_r_s11e32_helper_contract "$lock_screen_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.spawn()'
 check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.output()?'
 check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
-check_r_s11e32_helper_contract "$desktop_user_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_r_s11e32_helper_contract "$hwcodec_check_helper" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
@@ -4206,7 +4293,7 @@ if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle com
   echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux service install does not import user config, and macOS AppleScript/launchctl/plist completion is checked"; fi
 
 # (3b-iii-h) R-S11c-10a: Linux root-context desktop discovery must not build passwd/proc
-# lookups through a shell. This is a narrow sub-slice: env/home/Xorg/subprocess discovery
+# lookups through a shell. This is a narrow sub-slice: env/home/subprocess discovery
 # only. Lifecycle kill/service commands and display-tool invocations remain separate R-S11c-10 work.
 echo "== (3b-iii-h) Linux desktop discovery avoids root shell interpolation (R-S11c-10a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_ --color never
@@ -4214,21 +4301,18 @@ r_s11c10a=
 grep -q 'fn matching_process_cmdlines' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-cmdline-helper"
 grep -q 'fn proc_environ_value' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-environ-parser"
 grep -q 'is_non_login_shell(user.shell())' src/platform/linux.rs || r_s11c10a="$r_s11c10a prelogin-not-passwd-api-backed"
-grep -q 'matching_process_cmdlines(&self.uid, "Xorg")' src/platform/linux.rs || r_s11c10a="$r_s11c10a xorg-discovery-not-proc-backed"
 grep -q 'any_process_cmdline_contains(&format!' src/platform/linux.rs || r_s11c10a="$r_s11c10a subprocess-discovery-not-proc-backed"
 linux_discovery_blocks=$(
   awk '/pub fn is_prelogin/,/fn is_non_login_shell/' src/platform/linux.rs
-  awk '/fn get_env\(/,/fn get_env_from_pid/' src/platform/linux.rs
-  awk '/fn get_env_from_pid/,/#\[link/' src/platform/linux.rs
-  awk '/fn get_home\(&mut self\)/,/fn get_xauth_from_xorg/' src/platform/linux.rs
-  awk '/fn get_xauth_from_xorg/,/fn get_xauth_x11/' src/platform/linux.rs
+  awk '/fn get_envs/,/#\[link/' src/platform/linux.rs
+  awk '/fn get_home\(&mut self\)/,/fn set_is_subprocess/' src/platform/linux.rs
   awk '/fn set_is_subprocess/,/pub fn refresh/' src/platform/linux.rs
 )
 if echo "$linux_discovery_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|getent passwd|ps -[uef]|cat /proc|grep |awk |sed |xargs|CMD_SH'; then
   r_s11c10a="$r_s11c10a shell-shaped-discovery-regressed"
 fi
 if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery shell interpolation:$r_s11c10a"; rc=1; else
-  echo "  ok  R-S11c-10a Linux prelogin/home/env/Xorg/subprocess discovery uses users+/proc helpers, not shell pipelines"; fi
+  echo "  ok  R-S11c-10a Linux prelogin/home/env/subprocess discovery uses users+/proc helpers, not shell pipelines"; fi
 
 echo "== (3b-iii-h2) Linux service lifecycle process cleanup avoids shell pipelines (R-S11c-10b) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_kill --color never
@@ -4762,10 +4846,12 @@ for token in \
   '"3:--no-pager --no-legend list-sessions")' \
   '"5:--no-pager --property=State show-session -- 1")' \
   '"5:--no-pager --property=Type show-session -- 1")' \
+  '"5:--no-pager --property=Display show-session -- 1")' \
   '"6:--no-pager --property=State --property=Seat show-session -- 1")' \
   '1 4001 rdseat seat0' \
   'State=active' \
   'Type=x11' \
+  'Display=:0' \
   'exit 64'; do
   grep -qF -- "$token" "$systemd_loginctl" \
     || r_s11c27m="$r_s11c27m loginctl:${token%% *}"
@@ -5345,7 +5431,6 @@ echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (
 r_s11c10k=
 grep -q 'const SUDO_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sudo-paths"
 grep -q 'const ENV_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-env-paths"
-grep -q 'const W_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-w-paths"
 grep -q 'const XDG_SCREENSAVER_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-xdg-screensaver-paths"
 grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
 grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-canonical-trusted-command-resolver"
@@ -5359,8 +5444,6 @@ grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' src/pl
 grep -q 'fn sudo_path() -> Option' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-resolver"
 grep -q 'fn valid_sudo_envs' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-env-validator"
 grep -q 'Command::new(&sudo_path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k sudo-not-canonical-path"
-grep -q 'Command::new(w).arg(user).output()' src/platform/linux.rs || r_s11c10k="$r_s11c10k w-not-fixed-path"
-grep -q 'display_from_x11_socket_dir_for_user(user, Path::new("/tmp/.X11-unix"))' src/platform/linux.rs || r_s11c10k="$r_s11c10k x11-socket-fallback-not-native"
 grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs || r_s11c10k="$r_s11c10k cm-detection-not-proc-backed"
 grep -Fq 'Linux helper canonical target provenance' requirements.html || r_s11c10k="$r_s11c10k canonical-helper-requirements-missing"
 grep -Fq 'R-S11e-3 — Linux helper canonical target provenance' HARDENING_STATUS.md || r_s11c10k="$r_s11c10k canonical-helper-ledger-missing"

@@ -1492,7 +1492,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   password body is sent before the raw endpoint proof completes.
 - **R-S11e-3 — Linux helper canonical target provenance — CLOSED 2026-07-11.**
   Platform: Linux `.deb` installed-service mode and shared Linux helper paths when invoked by privileged processes.
-  Endpoint/action: fixed helper launches such as the root-to-user `sudo`/`env` server launch, `w`/`xrandr`/
+  Endpoint/action: fixed helper launches such as the then-present `w` display fallback, `xrandr`/
   `xdg-screensaver`/`systemctl` app-side helpers, and shared `loginctl`/notification helpers. Boundary: privileged
   RustDesk process execution authority ↔ local filesystem helper resolution. Attack surface closed: fixed helper
   resolution no longer verifies metadata through one path and executes the original candidate string. Resolvers reject
@@ -1502,7 +1502,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   write bits, and return the canonical `PathBuf` that is passed to `Command::new`. This closes the symlink-chain
   target-swap class for privileged helper launches without changing helper command semantics. Verification closure:
   `scripts/verify.sh` runs app-side and shared helper resolver tests and requires canonicalization, candidate/canonical
-  parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition.
+  parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition. R-S11e-42 later
+  deletes the `w` display fallback entirely; this entry continues to describe the remaining helper resolver contract.
 - **R-S11e-4 — macOS service proof ownership — SOURCE IMPLEMENTED.** Generic `_service` and password
   `_service_password` have independent proof capacities. The accepted socket's uid, effective-pid metadata, and
   `LOCAL_PEERTOKEN` are captured immediately. Security.framework proof executes on a dedicated exactly owned OS
@@ -2581,7 +2582,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11e-40 — Linux loginctl session-query authority — SOURCE IMPLEMENTED AND SOURCE-GATED 2026-07-19;
   EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux installed supervisor and
   service-owned/user-owned desktop processes. Endpoint/action: the shared fixed-path `loginctl` calls used to list
-  logind sessions and read `Type`, `State`, `Seat`, and `LockedHint`. Boundary: root/service process launch state and
+  logind sessions and read `Type`, `State`, `Seat`, `LockedHint`, and (after R-S11e-42) `Display`. Boundary:
+  root/service process launch state and
   locally reported logind data ↔ active-user selection, display-protocol classification, lock state, and
   service-child replacement decisions.
 
@@ -2607,7 +2609,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   ordinary-user-to-root primitive.
 
   Closure: `LoginctlQuery` has only `ListSessions` and `SessionProperties`; the latter accepts only the closed
-  `LoginctlProperty::{Type,State,Seat,LockedHint}` vocabulary. It emits fixed local queries with explicit
+  `LoginctlProperty::{Type,State,Seat,LockedHint}` vocabulary, extended only with the exact-session `Display`
+  property by R-S11e-42. It emits fixed local queries with explicit
   `--no-pager`, list-only `--no-legend`, `show-session --property=...`, and `--` before the separate session ID.
   `configure_loginctl_environment` clears every inherited variable before argv and the existing descriptor policy
   are applied. `run_loginctl` requires a successful exit. The strict list parser requires UTF-8 and validates the
@@ -2701,6 +2704,83 @@ unreachable and a source/test/AST gate prevents reintroduction.
   publication, service/config path, or host root identity is used. No host RustDesk process/service/configuration,
   listener, firewall, or network state is inspected or changed. The long full release build and root service fixtures
   remain excluded. Exact clean Debian artifact execution remains owned by R-B2/R-S11c-27 and is not inferred here.
+- **R-S11e-42 — Linux selected X11 session display authority — SOURCE IMPLEMENTED AND SOURCE-GATED
+  2026-07-19; EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux installed supervisor
+  and the root or privilege-dropped service-owned server it launches. Endpoint/action: selection of `DISPLAY` and the
+  optional `XAUTHORITY` environment override for the active X11 desktop. Boundary: exact active logind
+  session/UID/seat authority ↔ local X server endpoint and client credential selected for the service-owned child.
+
+  Proven old path: `Desktop::refresh` first selected one exact session ID, UID, username, seat, and protocol through
+  the R-S11z typed logind boundary. `Desktop::get_display_x11` then discarded the session ID. It searched loosely
+  name-matched same-UID process environments; on failure it ran `w <username>`, parsed the third whitespace field of
+  human-formatted output, scanned `/tmp/.X11-unix`, and finally invented `:0`. The socket helper sorted global `Xn`
+  sockets and returned the first selected-user-owned socket, but if none matched it deliberately returned the last
+  socket owned by somebody else. It proved only file type and owner, not association with the selected logind
+  session. The final hostname/`localhost` text replacements could also turn some non-local strings into local display
+  selectors. Xauthority discovery independently accepted the first named-process `XAUTHORITY` for the UID, without
+  requiring that process's `DISPLAY` to match, then accepted the first same-UID Xorg `-auth` argument without tying
+  that Xorg server to the chosen display. The positive `r_s11c10_x11_socket_display_discovery_reads_metadata` test
+  explicitly required a missing username to receive another owner's `:7`, preserving the cross-owner fallback as
+  intended behavior.
+
+  Research and authority assessment: the official systemd 252 login1 interface exposes `Display` on the exact
+  session object. `CreateSession` receives the graphical display; the pinned `pam_systemd` source obtains it from
+  `PAM_XDISPLAY`; the pinned session D-Bus vtable directly maps `Display` to that session's stored field. A later
+  `SetDisplay` is accepted only from that session's current controller and only for a graphical session. The X server
+  manual defines `/tmp/.X11-unix/Xn` only as the Unix-domain socket for display number `n`; that name contains no
+  logind session or user binding. Xlib/Xauthority documentation separately makes `DISPLAY` the mandatory endpoint,
+  makes `XAUTHORITY` only the optional credential-file selector, defaults the latter to `$HOME/.Xauthority`, and
+  records credentials by display. The old path therefore had a real deterministic cross-session/cross-owner endpoint
+  selection defect. It is also a conceptual privileged-local-endpoint confused-deputy path when the selected child
+  remains root: a global unowned X endpoint could be supplied to a privileged client. Source review did not prove a
+  promptless ordinary-user-to-root exploit. A selected standard-user child drops to that UID before exec, same-UID
+  process state is not a stronger principal, and code execution from a wrong root endpoint would require an
+  additional reachable X-client defect or a privileged root-session precondition. This is not evidence that the host
+  was compromised.
+
+  Closure: `LoginctlProperty::Display` extends the closed R-S11z vocabulary. `get_x11_display_of_session` queries only
+  the already-selected session and passes its result through `normalize_local_x_display_name`, which accepts and
+  canonicalizes only local `:<u32>[.<u32>]` syntax. Missing, empty, malformed, remote/hostname-qualified, or
+  unavailable values return no display. `get_display_x11` has no process, `w`, socket, hostname-rewrite, Xorg, or
+  `:0` fallback. A retained active X11 session requeries the same session's Display and refreshes its credential hint,
+  so temporary absence or a controller-authorized update can recover without retaining stale endpoint state.
+  `xauthority_from_environ_for_display` reads `DISPLAY` and `XAUTHORITY` from one process environment, requires the
+  former and the selected endpoint to name the same validated local numeric X server (screen suffix differences are
+  equivalent), and accepts only a nonempty absolute control-free credential path. Process discovery remains
+  selected-UID-only. If no such hint exists,
+  no `XAUTHORITY` override is passed and the privilege-dropped child uses Xlib's standard passwd-derived
+  `HOME/.Xauthority`; the sole explicit fallback is the existing selected-UID `/run/user/<uid>/gdm/Xauthority` file.
+  Server-side Xorg `-auth` inference is deleted. The obsolete fixed `w` candidates/resolver, socket parser, cross-owner
+  behavior, and positive socket regression are deleted with the fallback.
+
+  Verification: Rust 1.75 compiled and ran both focused regressions in the existing networkless devcheck image. The
+  shared test proves exact Display query argv/property parsing, strict local-display canonicalization and remote or
+  malformed rejection, and screen-independent numeric-server identity. The root-library test proves that DISPLAY and
+  XAUTHORITY come from one process image, `:7.0` is valid for selected server `:7`, wrong/remote displays fail, and
+  relative credential paths fail. A first root regression run correctly failed when the draft compared canonical
+  display strings including their screen suffixes; the implementation was changed to compare the validated numeric
+  X server identity and the complete focused run then passed (one shared test with 150 filtered out and one root test
+  with 307 filtered out). The full locked/offline Linux library check passed in 28.53 seconds with only the existing
+  warning set. Both strict loginctl fixtures answer only the exact enumerated Display query with `Display=:0`.
+
+  The extracted R-S11e-42 shell gate, normal semantic workspace verifier, and its complete independent source-mutation
+  matrix pass. The mutations independently target the gate and legacy-absence gate, normative ID and authority text,
+  Appendix row and disposition, ledger, local syntax, exact property, credential/display comparison, endpoint
+  assignment, adjacent retained-session display/credential refresh, legacy fallback insertion, and fixture removal.
+  Rust 1.75 full-file formatting for the shared file and edited-line formatting for the large root platform file,
+  Bash/dash/Python syntax, requirements-hash equality, and `git diff --check` pass. Dependency inventory plus all 103
+  behavioral checks pass with 909 Cargo packages and 849 lexical `unsafe {` blocks across 251 tracked Rust files; the
+  count falls by one because deleting the obsolete socket regression deletes its test-only `geteuid` unsafe block.
+  Native-codec normal and mutation checks pass against synchronized requirements SHA-256
+  `ca2c2d398194eeede5136b1cabb2b664379e065b517402be531342ba65323d1d`. Publication evidence is recorded after commit
+  and push.
+
+  All project code/test execution for this slice is constrained to the invoking non-root UID in the existing local
+  devcheck image, with networking disabled, all capabilities dropped, no-new-privileges, read-only root/source/Cargo
+  inputs, and disposable tmpfs outputs. No image is built or pulled and no Docker socket, host PID/network namespace,
+  published port, service/config path, or host root identity enters a container. No host RustDesk process/service/
+  configuration, listener, firewall, or networking state is inspected or changed. The long full release verifier and
+  root service fixtures remain excluded. Exact clean Debian artifact execution remains owned by R-B2/R-S11c-27.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2786,11 +2866,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   control-script/package-build failures, the release build compares emitted `.deb` maintainer scripts to source
   and validates their lifecycle semantics before hashing artifacts, and the unit/supervisor stop path is
   cgroup/SIGTERM-first with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
-  the root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
+  the then-present root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
   resolve only trusted fixed `/usr/bin`/`/bin` candidates and now execute the trusted canonical target after
   candidate-parent, canonical-parent, root-owned, non-writable, and executable-bit checks; `--cm` detection is
   `/proc`/current-exe/argv-backed instead of `ps`; and the X11
-  socket fallback reads `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`.
+  socket fallback read `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`. R-S11e-42
+  later deletes both `w` and the X11 socket fallback because helper provenance and native metadata did not make
+  either source authoritative for the already-selected logind session.
   R-S11c-10l closes the Linux `--server` tray cleanup: `src/core_main.rs` no longer launches PATH-selected
   `pkill -f`; it calls `platform::stop_tray_processes()`, which selects only current-executable processes
   with an exact `--tray` argv through `/proc` and sends SIGTERM.
@@ -5040,8 +5122,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-939bf619bd2086e54c05bd1744c3978f881ef0078b851b02e1360891f8284282  requirements.html
+ca2c2d398194eeede5136b1cabb2b664379e065b517402be531342ba65323d1d  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aa, and Appendix C #149. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ab, and Appendix C #150. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

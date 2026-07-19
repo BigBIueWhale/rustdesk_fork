@@ -10,7 +10,7 @@ use hbb_common::{
     log,
     message_proto::{DisplayInfo, Resolution},
     regex::{Captures, Regex},
-    users::{get_user_by_name, get_user_by_uid, os::unix::UserExt},
+    users::{get_user_by_name, os::unix::UserExt},
 };
 use libxdo_sys::{self, xdo_t, Window};
 use std::{
@@ -21,7 +21,7 @@ use std::{
     os::{
         fd::{AsRawFd as _, FromRawFd as _},
         unix::{
-            fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
+            fs::{MetadataExt, OpenOptionsExt},
             process::CommandExt,
         },
     },
@@ -54,7 +54,6 @@ const SERVICE_RUNTIME_DIR: &[u8] = b"/run/rustdesk\0";
 const SERVICE_RUNTIME_LOCK: &[u8] = b"service-supervisor.lock\0";
 const SERVICE_CHILD_RECORD: &[u8] = b"service-child.record\0";
 const SERVICE_CHILD_RECORD_TMP: &[u8] = b"service-child.record.tmp\0";
-const W_PATHS: [&str; 2] = ["/usr/bin/w", "/bin/w"];
 const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
 const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
 pub const REOPEN_AFTER_SERVICE_STOP_ARG: &str = "--reopen-after-service-stop";
@@ -2789,26 +2788,8 @@ fn process_is_xwayland(args: &[String]) -> bool {
     process_basename_eq(args, "Xwayland")
 }
 
-fn is_ascii_digit_string(value: &str) -> bool {
-    !value.is_empty() && value.chars().all(|c| c.is_ascii_digit())
-}
-
 fn is_local_x_display_arg(arg: &str) -> bool {
-    let Some(rest) = arg.strip_prefix(':') else {
-        return false;
-    };
-    let mut parts = rest.split('.');
-    let Some(display) = parts.next() else {
-        return false;
-    };
-    if !is_ascii_digit_string(display) {
-        return false;
-    }
-    match (parts.next(), parts.next()) {
-        (None, None) => true,
-        (Some(screen), None) => is_ascii_digit_string(screen),
-        _ => false,
-    }
+    normalize_local_x_display_name(arg).is_some()
 }
 
 fn xwayland_display_arg(args: &[String]) -> Option<&str> {
@@ -2828,51 +2809,6 @@ pub(crate) fn xwayland_display_from_proc() -> Option<String> {
         }
     }
     None
-}
-
-fn x11_socket_display_name(name: &OsStr) -> Option<(u32, String)> {
-    let name = name.to_str()?;
-    let display = name.strip_prefix('X')?;
-    if !is_ascii_digit_string(display) {
-        return None;
-    }
-    let display_num = display.parse::<u32>().ok()?;
-    Some((display_num, format!(":{display}")))
-}
-
-fn x11_socket_owner_matches_user(path: &Path, user: &str) -> Option<bool> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    if !metadata.file_type().is_socket() {
-        return None;
-    }
-    let owner = get_user_by_uid(metadata.uid())?;
-    Some(owner.name() == OsStr::new(user))
-}
-
-fn display_from_x11_socket_dir_for_user(user: &str, dir: &Path) -> String {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return String::new();
-    };
-    let mut displays = Vec::new();
-    for entry in entries.flatten() {
-        let Some((display_num, display)) = x11_socket_display_name(&entry.file_name()) else {
-            continue;
-        };
-        let Some(owner_matches) = x11_socket_owner_matches_user(&entry.path(), user) else {
-            continue;
-        };
-        displays.push((display_num, display, owner_matches));
-    }
-    displays.sort_by_key(|(display_num, _, _)| *display_num);
-
-    let mut last = String::new();
-    for (_, display, owner_matches) in displays {
-        if owner_matches {
-            return display;
-        }
-        last = display;
-    }
-    last
 }
 
 fn signal_process(pid: u32, label: &str, signal: i32) {
@@ -2966,11 +2902,6 @@ fn proc_environ_value(environ: &[u8], name: &str) -> Option<String> {
     None
 }
 
-fn read_proc_environ_value(pid: u32, name: &str) -> Option<String> {
-    let environ = std::fs::read(PathBuf::from(format!("/proc/{pid}/environ"))).ok()?;
-    proc_environ_value(&environ, name)
-}
-
 fn get_envs<'a>(
     uid: &str,
     process_pat: &str,
@@ -3053,18 +2984,45 @@ fn get_envs<'a>(
     best
 }
 
+fn xauthority_from_environ_for_display(environ: &[u8], display: &str) -> Option<String> {
+    let observed_display = proc_environ_value(environ, "DISPLAY")?;
+    if !local_x_display_names_share_server(&observed_display, display) {
+        return None;
+    }
+    let xauthority = proc_environ_value(environ, "XAUTHORITY")?;
+    if xauthority.is_empty()
+        || xauthority.bytes().any(|byte| byte.is_ascii_control())
+        || !Path::new(&xauthority).is_absolute()
+    {
+        return None;
+    }
+    Some(xauthority)
+}
+
+fn xauthority_from_matching_process(
+    uid: &str,
+    process_pattern: &str,
+    display: &str,
+) -> Option<String> {
+    for process in matching_process_cmdlines(uid, process_pattern)
+        .into_iter()
+        .rev()
+    {
+        let Ok(environ) = std::fs::read(PathBuf::from(format!("/proc/{}/environ", process.pid)))
+        else {
+            continue;
+        };
+        if let Some(xauthority) = xauthority_from_environ_for_display(&environ, display) {
+            return Some(xauthority);
+        }
+    }
+    None
+}
+
 #[inline]
 fn get_env(name: &str, uid: &str, process: &str) -> String {
     get_envs(uid, process, &[name])
         .remove(name)
-        .unwrap_or_default()
-}
-
-#[inline]
-fn get_env_from_pid(name: &str, pid: &str) -> String {
-    pid.parse::<u32>()
-        .ok()
-        .and_then(|pid| read_proc_environ_value(pid, name))
         .unwrap_or_default()
 }
 
@@ -3963,37 +3921,24 @@ mod process_cleanup_tests {
     }
 
     #[test]
-    fn r_s11c10_x11_socket_display_discovery_reads_metadata() {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = PathBuf::from(format!(
-            "/tmp/rd-x11-{}-{}",
-            std::process::id(),
-            nonce
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-
-        let socket_path = root.join("X7");
-        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-        fs::write(root.join("X9"), "not a socket").unwrap();
-        fs::write(root.join("not-x"), "ignored").unwrap();
-
-        let uid = unsafe { hbb_common::libc::geteuid() };
-        let username = get_user_by_uid(uid)
-            .unwrap()
-            .name()
-            .to_string_lossy()
-            .into_owned();
-        assert_eq!(display_from_x11_socket_dir_for_user(&username, &root), ":7");
+    fn r_s11e42_xauthority_is_bound_to_the_selected_display() {
+        let selected = b"DISPLAY=:7.0\0XAUTHORITY=/run/user/1000/selected.auth\0";
         assert_eq!(
-            display_from_x11_socket_dir_for_user("__missing__", &root),
-            ":7"
+            xauthority_from_environ_for_display(selected, ":7").as_deref(),
+            Some("/run/user/1000/selected.auth")
         );
-
-        fs::remove_dir_all(root).unwrap();
+        assert_eq!(xauthority_from_environ_for_display(selected, ":8"), None);
+        assert_eq!(
+            xauthority_from_environ_for_display(b"DISPLAY=:7\0XAUTHORITY=relative.auth\0", ":7"),
+            None
+        );
+        assert_eq!(
+            xauthority_from_environ_for_display(
+                b"DISPLAY=host:7\0XAUTHORITY=/tmp/remote.auth\0",
+                ":7"
+            ),
+            None
+        );
     }
 }
 
@@ -4320,37 +4265,7 @@ mod desktop {
         }
 
         fn get_display_x11(&mut self) {
-            for _ in 1..=10 {
-                let display_proc = vec![
-                    XWAYLAND,
-                    IBUS_DAEMON,
-                    GNOME_GOA_DAEMON,
-                    PLASMA_KDED,
-                    XFCE4_PANEL,
-                    SDDM_GREETER,
-                ];
-                for proc in display_proc {
-                    self.display = get_env(ENV_KEY_DISPLAY, &self.uid, proc);
-                    if !self.display.is_empty() {
-                        break;
-                    }
-                }
-                if !self.display.is_empty() {
-                    break;
-                }
-                sleep_millis(300);
-            }
-
-            if self.display.is_empty() {
-                self.display = Self::get_display_by_user(&self.username);
-            }
-            if self.display.is_empty() {
-                self.display = ":0".to_owned();
-            }
-            self.display = self
-                .display
-                .replace(&hbb_common::whoami::hostname(), "")
-                .replace("localhost", "");
+            self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();
         }
 
         fn get_home(&mut self) {
@@ -4359,123 +4274,33 @@ mod desktop {
                 .unwrap_or_else(|| format!("/home/{}", &self.username));
         }
 
-        fn get_xauth_from_xorg(&mut self) {
-            for process in matching_process_cmdlines(&self.uid, "Xorg") {
-                let mut args = process.args.iter();
-                while let Some(arg) = args.next() {
-                    if arg != "-auth" {
-                        continue;
-                    }
-                    let Some(auth) = args.next() else {
-                        continue;
-                    };
-                    let auth_path = Path::new(auth);
-                    if auth_path.is_absolute() {
-                        if auth_path.exists() {
-                            self.xauth = auth.to_string();
-                        }
-                        return;
-                    }
-                    let home_dir = get_env_from_pid("HOME", &process.pid.to_string());
-                    let base_dir = if home_dir.is_empty() {
-                        get_user_home_by_name(&self.username)
-                            .map(|home| home.to_string_lossy().to_string())
-                            .unwrap_or_else(|| "/home".to_string())
-                    } else {
-                        home_dir
-                    };
-                    if Path::new(&base_dir).exists() {
-                        self.xauth = Path::new(&base_dir)
-                            .join(auth)
-                            .to_string_lossy()
-                            .to_string();
-                    }
+        fn get_xauth_x11(&mut self) {
+            self.xauth.clear();
+            if self.display.is_empty() {
+                return;
+            }
+            let tray = format!("{} +--tray", crate::get_app_name().to_lowercase());
+            for process in [
+                XWAYLAND,
+                IBUS_DAEMON,
+                GNOME_GOA_DAEMON,
+                PLASMA_KDED,
+                XFCE4_PANEL,
+                SDDM_GREETER,
+                tray.as_str(),
+            ] {
+                if let Some(xauthority) =
+                    xauthority_from_matching_process(&self.uid, process, &self.display)
+                {
+                    self.xauth = xauthority;
                     return;
                 }
             }
-        }
 
-        fn get_xauth_x11(&mut self) {
-            // try by direct access to window manager process by name
-            let tray = format!("{} +--tray", crate::get_app_name().to_lowercase());
-            for _ in 1..=10 {
-                let display_proc = vec![
-                    XWAYLAND,
-                    IBUS_DAEMON,
-                    GNOME_GOA_DAEMON,
-                    PLASMA_KDED,
-                    XFCE4_PANEL,
-                    SDDM_GREETER,
-                    tray.as_str(),
-                ];
-                for proc in display_proc {
-                    self.xauth = get_env("XAUTHORITY", &self.uid, proc);
-                    if !self.xauth.is_empty() {
-                        break;
-                    }
-                }
-                if !self.xauth.is_empty() {
-                    break;
-                }
-                sleep_millis(300);
+            let gdm = format!("/run/user/{}/gdm/Xauthority", self.uid);
+            if Path::new(&gdm).is_file() {
+                self.xauth = gdm;
             }
-
-            // get from Xorg process, parameter and environment
-            if self.xauth.is_empty() {
-                self.get_xauth_from_xorg();
-            }
-
-            // fallback to default file name
-            if self.xauth.is_empty() {
-                let gdm = format!("/run/user/{}/gdm/Xauthority", self.uid);
-                self.xauth = if std::path::Path::new(&gdm).exists() {
-                    gdm
-                } else {
-                    let username = &self.username;
-                    match get_user_home_by_name(username) {
-                        None => {
-                            if username == "root" {
-                                format!("/{}/.Xauthority", username)
-                            } else {
-                                let tmp = format!("/home/{}/.Xauthority", username);
-                                if std::path::Path::new(&tmp).exists() {
-                                    tmp
-                                } else {
-                                    format!("/var/lib/{}/.Xauthority", username)
-                                }
-                            }
-                        }
-                        Some(home) => {
-                            format!(
-                                "{}/.Xauthority",
-                                home.as_path().to_string_lossy().to_string()
-                            )
-                        }
-                    }
-                };
-            }
-        }
-
-        fn get_display_by_user(user: &str) -> String {
-            // log::debug!("w {}", &user);
-            if let Some(w) = w_path() {
-                let mut command = Command::new(w);
-                command.arg(user);
-                let output = configure_command_close_nonstdio_on_exec(&mut command)
-                    .and_then(|()| command.output());
-                if let Ok(output) = output {
-                    for line in String::from_utf8_lossy(&output.stdout).lines() {
-                        let mut iter = line.split_whitespace();
-                        let b = iter.nth(2);
-                        if let Some(b) = b {
-                            if b.starts_with(":") {
-                                return b.to_owned();
-                            }
-                        }
-                    }
-                }
-            }
-            display_from_x11_socket_dir_for_user(user, Path::new("/tmp/.X11-unix"))
         }
 
         fn set_is_subprocess(&mut self) {
@@ -4488,11 +4313,16 @@ mod desktop {
         pub fn refresh(&mut self) {
             if !self.sid.is_empty() && is_active_and_seat0(&self.sid) {
                 // Xwayland display and xauth may not be available in a short time after login.
-                if is_xwayland_running() && !self.is_login_wayland() {
-                    self.get_display_xauth_xwayland();
-                    self.is_rustdesk_subprocess = false;
-                } else if self.is_wayland() {
-                    self.get_display_xauth_wayland();
+                if self.is_wayland() {
+                    if is_xwayland_running() && !self.is_login_wayland() {
+                        self.get_display_xauth_xwayland();
+                        self.is_rustdesk_subprocess = false;
+                    } else {
+                        self.get_display_xauth_wayland();
+                    }
+                } else {
+                    self.get_display_x11();
+                    self.get_xauth_x11();
                 }
                 return;
             }
@@ -4685,10 +4515,6 @@ fn trusted_command_path(paths: &'static [&'static str]) -> Option<PathBuf> {
     paths
         .iter()
         .find_map(|path| trusted_fixed_executable_path(Path::new(path)))
-}
-
-fn w_path() -> Option<PathBuf> {
-    trusted_command_path(&W_PATHS)
 }
 
 fn xrandr_path() -> Option<PathBuf> {
@@ -4954,12 +4780,7 @@ mod service_lifecycle_tests {
 
     #[test]
     fn r_s11c10_privileged_command_candidates_are_fixed_system_paths() {
-        let command_sets: [&[&str]; 4] = [
-            &W_PATHS,
-            &XRANDR_PATHS,
-            &XDG_SCREENSAVER_PATHS,
-            &SYSTEMCTL_PATHS,
-        ];
+        let command_sets: [&[&str]; 3] = [&XRANDR_PATHS, &XDG_SCREENSAVER_PATHS, &SYSTEMCTL_PATHS];
         for paths in command_sets {
             for path in paths {
                 assert!(Path::new(path).is_absolute());

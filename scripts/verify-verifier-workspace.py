@@ -3163,9 +3163,11 @@ def validate_systemd_smoke_contract(
         ('"3:--no-pager --no-legend list-sessions")', "systemd VM loginctl session listing"),
         ('"5:--no-pager --property=State show-session -- 1")', "systemd VM loginctl state query"),
         ('"5:--no-pager --property=Type show-session -- 1")', "systemd VM loginctl type query"),
+        ('"5:--no-pager --property=Display show-session -- 1")', "systemd VM loginctl display query"),
         ('1 4001 rdseat seat0', "systemd VM loginctl non-root seat"),
         ('State=active', "systemd VM loginctl active seat"),
         ('Type=x11', "systemd VM loginctl X11 seat"),
+        ('Display=:0', "systemd VM loginctl X11 display"),
         ('exit 64', "systemd VM loginctl unexpected-argv rejection"),
     ):
         require_text(loginctl, text, label)
@@ -3334,6 +3336,9 @@ def validate_smoke_contract(
         ('Linux loginctl session-query authority (R-S11z/R-S11e-40)', "loginctl session authority source gate"),
         ('if grep -qF \'XDG_SESSION_TYPE\' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then', "loginctl ambient session source gate"),
         ("grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md", "loginctl session hardening ledger gate"),
+        ('Linux selected X11 session display authority (R-S11ab/R-S11e-42)', "selected X11 display authority source gate"),
+        ("if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\\.X11-unix' src/platform/linux.rs; then", "legacy X11 display fallback absence gate"),
+        ("grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md", "selected X11 display hardening ledger gate"),
         ('Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41)', "systemctl lifecycle authority source gate"),
         ('if grep -Eq \'action: *&str|\\.envs?[[:space:]]*\\(\' <<<"$systemctl_authority"; then', "systemctl generic action/environment source gate"),
         ("grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md", "systemctl lifecycle hardening ledger gate"),
@@ -3804,7 +3809,9 @@ def validate_smoke_contract(
         ('printf \'1 %s %s seat0\\n\' "$uid" "$username"', "loginctl exact selected seat"),
         ('"5:--no-pager --property=State show-session -- 1")', "loginctl state query"),
         ('"5:--no-pager --property=Type show-session -- 1")', "loginctl type query"),
+        ('"5:--no-pager --property=Display show-session -- 1")', "loginctl display query"),
         ('"6:--no-pager --property=State --property=Seat show-session -- 1")', "loginctl session query"),
+        ('Display=:0', "loginctl selected X11 display"),
         ('exit 64', "loginctl unexpected-argv rejection"),
     ):
         require_text(loginctl_fixture, text, label)
@@ -4361,6 +4368,186 @@ def validate_smoke_contract(
     ):
         require_text(loginctl_tests, text, label)
 
+    x11_logind_authority = extract_between(
+        hbb_common_linux,
+        "fn parse_local_x_display_name",
+        "\n#[inline]\nfn session_values",
+        "Linux selected X11 logind display authority",
+    )
+    x11_loginctl_vocabulary = extract_between(
+        hbb_common_linux,
+        "enum LoginctlProperty",
+        "\nenum LoginctlQuery",
+        "Linux X11 loginctl property vocabulary",
+    )
+    x11_environment_authority = extract_between(
+        linux_source,
+        "fn xauthority_from_environ_for_display",
+        "\n#[inline]\nfn get_env(",
+        "Linux display-bound Xauthority selection",
+    )
+    x11_desktop_authority = extract_between(
+        linux_source,
+        "fn get_display_x11",
+        "\n        fn set_is_subprocess",
+        "Linux desktop X11 display authority",
+    )
+    x11_refresh_authority = extract_between(
+        linux_source,
+        "pub fn refresh(&mut self)",
+        "\n    #[cfg(test)]",
+        "Linux retained-session X11 refresh authority",
+    )
+    for text, label in (
+        ("Display,", "typed loginctl Display property"),
+        ('Self::Display => "Display"', "typed loginctl Display row"),
+        ('Self::Display => "--property=Display"', "typed loginctl Display argument"),
+    ):
+        require_text(x11_loginctl_vocabulary, text, label)
+    for text, label in (
+        ("display.strip_prefix(':')", "local display prefix"),
+        ("components.next()?.parse::<u32>().ok()?", "decimal display component"),
+        ('format!(":{display_number}.{screen_number}")', "canonical screen component"),
+        (
+            "pub fn local_x_display_names_share_server",
+            "same-server display comparison helper",
+        ),
+        (
+            "(Some((left, _)), Some((right, _))) if left == right",
+            "screen-independent display-server identity",
+        ),
+        (
+            "loginctl_session_properties(session, &[LoginctlProperty::Display])",
+            "exact-session Display query",
+        ),
+        (
+            ".and_then(|display| normalize_local_x_display_name(&display))",
+            "queried display normalization",
+        ),
+    ):
+        require_text(x11_logind_authority, text, label)
+    for text, label in (
+        (
+            'let observed_display = proc_environ_value(environ, "DISPLAY")?;',
+            "same-environment display read",
+        ),
+        (
+            "!local_x_display_names_share_server(&observed_display, display)",
+            "selected-display credential binding",
+        ),
+        (
+            'let xauthority = proc_environ_value(environ, "XAUTHORITY")?;',
+            "same-environment Xauthority read",
+        ),
+        (
+            "xauthority.bytes().any(|byte| byte.is_ascii_control())",
+            "control-free Xauthority path",
+        ),
+        ("!Path::new(&xauthority).is_absolute()", "absolute Xauthority path"),
+        ("matching_process_cmdlines(uid, process_pattern)", "selected-UID process lookup"),
+        (
+            "xauthority_from_environ_for_display(&environ, display)",
+            "same-image credential extraction",
+        ),
+    ):
+        require_text(x11_environment_authority, text, label)
+    for text, label in (
+        (
+            "self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();",
+            "exact selected-session display assignment",
+        ),
+        ("self.xauth.clear();", "stale Xauthority clearing"),
+        ("if self.display.is_empty() {", "missing-display credential denial"),
+        (
+            "xauthority_from_matching_process(&self.uid, process, &self.display)",
+            "display-bound process credential call",
+        ),
+        (
+            'let gdm = format!("/run/user/{}/gdm/Xauthority", self.uid);',
+            "selected-UID GDM credential fallback",
+        ),
+        ("if Path::new(&gdm).is_file()", "existing GDM credential file"),
+    ):
+        require_text(x11_desktop_authority, text, label)
+    for text, label in (
+        ("if self.is_wayland() {", "protocol-specific refresh branch"),
+        (
+            "                    self.get_display_x11();\n"
+            "                    self.get_xauth_x11();",
+            "retained X11 session display requery",
+        ),
+    ):
+        require_text(x11_refresh_authority, text, label)
+    for text, label in (
+        (
+            "fn r_s11e42_x11_display_names_are_local_and_canonical()",
+            "local-display parser regression",
+        ),
+        (
+            'normalize_local_x_display_name(":0007.02")',
+            "display canonicalization regression",
+        ),
+        (
+            'local_x_display_names_share_server(":7", ":0007.02")',
+            "screen-independent server comparison regression",
+        ),
+        ('"localhost:0"', "remote display rejection regression"),
+    ):
+        require_text(loginctl_tests, text, label)
+    for text, label in (
+        (
+            "fn r_s11e42_xauthority_is_bound_to_the_selected_display()",
+            "display-bound Xauthority regression",
+        ),
+        (
+            'xauthority_from_environ_for_display(selected, ":8")',
+            "wrong-display Xauthority rejection",
+        ),
+        (
+            'b"DISPLAY=host:7\\0XAUTHORITY=/tmp/remote.auth\\0"',
+            "remote-display Xauthority rejection",
+        ),
+    ):
+        require_text(linux_source, text, label)
+    for text, label in (
+        ('<span class="id">R-S11ab</span>', "selected X11 display normative requirement"),
+        (
+            "Linux X11 endpoint selection remains bound to the exact active logind session",
+            "selected X11 display normative authority clause",
+        ),
+        ("<tr><td>150</td>", "selected X11 display Appendix C row"),
+        (
+            "Linux selected X11 session lost endpoint authority",
+            "selected X11 display Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-42 — Linux selected X11 session display authority",
+        "selected X11 display hardening ledger",
+    )
+    for forbidden in (
+        "const W_PATHS",
+        "fn w_path(",
+        "get_display_by_user",
+        "display_from_x11_socket",
+        "x11_socket_display_name",
+        "x11_socket_owner_matches_user",
+        "get_xauth_from_xorg",
+        "/tmp/.X11-unix",
+    ):
+        if forbidden in linux_source:
+            raise VerificationError(
+                f"Linux X11 display selection retains legacy fallback authority: {forbidden}"
+            )
+    if re.search(
+        r'get_env\(ENV_KEY_DISPLAY|get_display_by_user|self\.display = ":0"|'
+        r'\.replace\("localhost"|matching_process_cmdlines\(&self\.uid, "Xorg"\)',
+        x11_desktop_authority,
+    ):
+        raise VerificationError("Linux desktop X11 selection retains heuristic endpoint authority")
+
     systemctl_authority = extract_between(
         linux_source,
         "enum SystemctlServiceAction {",
@@ -4639,14 +4826,6 @@ def validate_smoke_contract(
             "xrandr mutation descriptor policy",
             "configure_command_close_nonstdio_on_exec(&mut command)?;",
             "command.spawn()?",
-        ),
-        (
-            linux_source,
-            "fn get_display_by_user(user: &str) -> String {",
-            "\n        fn set_is_subprocess",
-            "desktop discovery descriptor policy",
-            "configure_command_close_nonstdio_on_exec(&mut command)",
-            "command.output()",
         ),
         (
             linux_source,
@@ -12273,8 +12452,92 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== (3b-iii-d9c) Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41) =="',
-            'echo "== (3b-iii-d9c) Linux systemctl service-lifecycle compatibility (R-S11aa/R-S11e-41) =="',
+            'echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S11e-42) =="',
+            'echo "== (3b-iii-d9c) Linux selected X11 session display compatibility (R-S11ab/R-S11e-42) =="',
+            "selected X11 display authority source gate",
+        ),
+        (
+            "verify",
+            "if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\\.X11-unix' src/platform/linux.rs; then",
+            "if false; then",
+            "legacy X11 display fallback absence gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ab</span>',
+            '<span class="id">R-S11zz</span>',
+            "selected X11 display normative requirement",
+        ),
+        (
+            "requirements",
+            "Linux X11 endpoint selection remains bound to the exact active logind session",
+            "Linux X11 endpoint selection may infer the active desktop",
+            "selected X11 display normative authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>150</td>",
+            "<tr><td>9150</td>",
+            "selected X11 display Appendix C row",
+        ),
+        (
+            "requirements",
+            "Linux selected X11 session lost endpoint authority",
+            "Linux selected X11 session retained endpoint authority",
+            "selected X11 display Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-42 — Linux selected X11 session display authority",
+            "R-S11e-42 — Linux selected X11 session display compatibility",
+            "selected X11 display hardening ledger",
+        ),
+        (
+            "hbb_common_linux",
+            "    let rest = display.strip_prefix(':')?;",
+            "    let rest = display.split_once(':')?.1;",
+            "local display prefix",
+        ),
+        (
+            "hbb_common_linux",
+            "    loginctl_session_properties(session, &[LoginctlProperty::Display])",
+            "    loginctl_session_properties(session, &[LoginctlProperty::Type])",
+            "exact-session Display query",
+        ),
+        (
+            "linux_source",
+            "    if !local_x_display_names_share_server(&observed_display, display) {",
+            "    if false {",
+            "selected-display credential binding",
+        ),
+        (
+            "linux_source",
+            "            self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();",
+            "            self.display = \":0\".to_owned();",
+            "exact selected-session display assignment",
+        ),
+        (
+            "linux_source",
+            "                    self.get_display_x11();\n                    self.get_xauth_x11();",
+            "                    self.get_xauth_x11();",
+            "retained X11 session display requery",
+        ),
+        (
+            "linux_source",
+            "fn xauthority_from_environ_for_display(environ: &[u8], display: &str) -> Option<String> {",
+            "fn get_display_by_user(_: &str) -> String { \":0\".to_owned() }\n\nfn xauthority_from_environ_for_display(environ: &[u8], display: &str) -> Option<String> {",
+            "Linux X11 display selection retains legacy fallback authority",
+        ),
+        (
+            "loginctl_fixture",
+            '  "5:--no-pager --property=Display show-session -- 1")\n    printf \'%s\\n\' \'Display=:0\'\n    ;;\n',
+            "",
+            "loginctl display query",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9d) Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41) =="',
+            'echo "== (3b-iii-d9d) Linux systemctl service-lifecycle compatibility (R-S11aa/R-S11e-41) =="',
             "systemctl lifecycle authority source gate",
         ),
         (

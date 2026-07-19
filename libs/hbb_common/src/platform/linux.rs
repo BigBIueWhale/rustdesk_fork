@@ -389,6 +389,51 @@ pub fn get_display_server_of_session(session: &str) -> String {
     normalize_session_display_server(display_server.as_deref())
 }
 
+fn parse_local_x_display_name(display: &str) -> Option<(u32, Option<u32>)> {
+    let rest = display.strip_prefix(':')?;
+    let mut components = rest.split('.');
+    let display_number = components.next()?.parse::<u32>().ok()?;
+    let screen_number = match (components.next(), components.next()) {
+        (None, None) => None,
+        (Some(screen), None) => Some(screen.parse::<u32>().ok()?),
+        _ => return None,
+    };
+    if rest.is_empty()
+        || rest.starts_with('.')
+        || rest
+            .bytes()
+            .any(|byte| !byte.is_ascii_digit() && byte != b'.')
+    {
+        return None;
+    }
+    Some((display_number, screen_number))
+}
+
+pub fn normalize_local_x_display_name(display: &str) -> Option<String> {
+    let (display_number, screen_number) = parse_local_x_display_name(display)?;
+    Some(match screen_number {
+        Some(screen_number) => format!(":{display_number}.{screen_number}"),
+        None => format!(":{display_number}"),
+    })
+}
+
+pub fn local_x_display_names_share_server(left: &str, right: &str) -> bool {
+    matches!(
+        (
+            parse_local_x_display_name(left),
+            parse_local_x_display_name(right)
+        ),
+        (Some((left, _)), Some((right, _))) if left == right
+    )
+}
+
+pub fn get_x11_display_of_session(session: &str) -> Option<String> {
+    loginctl_session_properties(session, &[LoginctlProperty::Display])
+        .ok()
+        .and_then(|mut values| values.pop())
+        .and_then(|display| normalize_local_x_display_name(&display))
+}
+
 #[inline]
 fn session_values(indices: &[usize], session: Option<&LoginctlSession>) -> Vec<String> {
     indices
@@ -481,6 +526,7 @@ pub fn is_session_locked(sid: &str) -> bool {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LoginctlProperty {
+    Display,
     LockedHint,
     Seat,
     State,
@@ -490,6 +536,7 @@ enum LoginctlProperty {
 impl LoginctlProperty {
     fn name(self) -> &'static str {
         match self {
+            Self::Display => "Display",
             Self::LockedHint => "LockedHint",
             Self::Seat => "Seat",
             Self::State => "State",
@@ -499,6 +546,7 @@ impl LoginctlProperty {
 
     fn argument(self) -> &'static str {
         match self {
+            Self::Display => "--property=Display",
             Self::LockedHint => "--property=LockedHint",
             Self::Seat => "--property=Seat",
             Self::State => "--property=State",
@@ -847,6 +895,20 @@ mod tests {
         assert_eq!(
             LoginctlQuery::SessionProperties {
                 session: "c7",
+                properties: &[LoginctlProperty::Display],
+            }
+            .arguments(),
+            [
+                "--no-pager",
+                "--property=Display",
+                "show-session",
+                "--",
+                "c7",
+            ]
+        );
+        assert_eq!(
+            LoginctlQuery::SessionProperties {
+                session: "c7",
                 properties: &[LoginctlProperty::State, LoginctlProperty::Seat],
             }
             .arguments(),
@@ -915,6 +977,43 @@ mod tests {
             &[LoginctlProperty::State],
         )
         .is_err());
+    }
+
+    #[test]
+    fn r_s11e42_x11_display_names_are_local_and_canonical() {
+        assert_eq!(normalize_local_x_display_name(":0").as_deref(), Some(":0"));
+        assert_eq!(
+            normalize_local_x_display_name(":0007.02").as_deref(),
+            Some(":7.2")
+        );
+        assert!(local_x_display_names_share_server(":7", ":0007.02"));
+        assert!(!local_x_display_names_share_server(":7", ":8"));
+        for invalid in [
+            "",
+            ":",
+            ":.0",
+            ":0.",
+            ":0.1.2",
+            ":-1",
+            ":+1",
+            ":one",
+            "localhost:0",
+            "host:0",
+            "unix/:0",
+            " :0",
+            ":0 ",
+        ] {
+            assert_eq!(
+                normalize_local_x_display_name(invalid),
+                None,
+                "accepted {invalid:?}"
+            );
+        }
+        assert_eq!(
+            parse_loginctl_session_properties(b"Display=:17.0\n", &[LoginctlProperty::Display])
+                .unwrap(),
+            [":17.0"]
+        );
     }
 
     #[test]

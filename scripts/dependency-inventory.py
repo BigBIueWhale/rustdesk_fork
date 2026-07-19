@@ -159,8 +159,8 @@ EXPECTED = {
     },
     "rust_sources": {
         "files_with_unsafe_blocks": 73,
-        "lexical_counts_by_file_sha256": "3e6b6efdea22e9dc967553eb7999340a6335efcda2e48f7109ddd6592d1628eb",
-        "lexical_unsafe_open_brace_blocks": 850,
+        "lexical_counts_by_file_sha256": "15b543c2c379461286980f8a563c8a182123aeff44364530d8185d0c6f456ea6",
+        "lexical_unsafe_open_brace_blocks": 849,
         "tracked_rs_files": 251,
     },
 }

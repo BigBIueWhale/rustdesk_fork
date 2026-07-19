@@ -523,6 +523,11 @@ def require_exact_count(source, text, expected, label):
         raise VerificationError(f"{label}: expected exactly {expected} occurrences, found {count}")
 
 
+def require_absent(source, text, label):
+    if text in source:
+        raise VerificationError(f"{label}: forbidden contract remains present")
+
+
 def require_order(source, tokens, label):
     positions = []
     cursor = 0
@@ -8120,6 +8125,206 @@ def validate_macos_service_signal_drain_contract(sources):
     )
 
 
+def validate_controlled_server_lifecycle_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    server_source = sources["server_source"]
+    direct_service = sources["direct_service"]
+
+    heading = (
+        'echo "== (3b-iii-d9cf) desktop controlled-server signal/listener lifecycle '
+        'ownership (R-S11ap/R-S11e-56) =="'
+    )
+    gate = extract_between(
+        verify,
+        heading,
+        "\n# (3b-iii-d9d)",
+        "desktop controlled-server lifecycle source gate",
+    )
+    require_text(
+        gate,
+        "controlled-server-lifecycle-ownership-invalid",
+        "desktop controlled-server lifecycle structural gate",
+    )
+    require_text(
+        apple,
+        'echo "== (2b-iv-a-0e) desktop controlled-server signal/listener lifecycle '
+        'ownership (R-S11ap/R-S11e-56) =="',
+        "desktop controlled-server lifecycle Apple source gate",
+    )
+
+    desktop_entry = extract_between(
+        server_source,
+        '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n'
+        '#[tokio::main]\npub async fn start_server(is_server: bool)',
+        '\n#[cfg(any(target_os = "windows", target_os = "macos"))]\n'
+        '#[tokio::main(flavor = "current_thread")]',
+        "desktop controlled-server entry",
+    )
+    require_order(
+        desktop_entry,
+        (
+            "install_controlled_server_shutdown_signals()",
+            "crate::common::set_server_running(true);",
+            "crate::ipc::start_windows_service_main_ipc()",
+            'crate::ipc::start("")',
+            "crate::direct_service::start_direct_only(shutdown_signals).await;",
+        ),
+        "controlled-server signal proof before IPC/listener admission",
+    )
+    registration_failure = extract_between(
+        desktop_entry,
+        "match crate::direct_service::install_controlled_server_shutdown_signals()",
+        "crate::common::set_server_running(true);",
+        "controlled-server signal registration failure",
+    )
+    require_text(
+        registration_failure,
+        "std::process::exit(1);",
+        "controlled-server pre-admission registration failure status",
+    )
+
+    installer = extract_between(
+        direct_service,
+        "pub(crate) fn install_controlled_server_shutdown_signals(",
+        '\n#[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]\n'
+        "impl ControlledServerShutdownSignals",
+        "controlled-server signal installation",
+    )
+    require_order(
+        installer,
+        (
+            "signal(SignalKind::terminate())",
+            "Failed to install controlled-server SIGTERM receiver",
+            "signal(SignalKind::interrupt())",
+            "Failed to install controlled-server SIGINT receiver",
+            "tokio::signal::windows::ctrl_c()",
+            "Failed to install controlled-server Ctrl-C receiver",
+        ),
+        "fallible Unix and Windows controlled-server signal constructors",
+    )
+
+    owner = extract_between(
+        direct_service,
+        "async fn own_controlled_server_lifecycle(",
+        "\n/// Android/iOS receive the exact mobile listener-generation input.",
+        "desktop controlled-server listener owner",
+    )
+    require_order(
+        owner,
+        (
+            "let shutdown = crate::server::shutdown_token();",
+            "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
+            "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
+            "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+            "crate::server::request_graceful_shutdown();",
+            "crate::server::request_graceful_shutdown_after_listener_failure();",
+            "if direct_listener_outcome.is_none()",
+            "direct_listener_outcome = Some(task.await);",
+            "Ok(()) if crate::server::is_shutting_down() => None",
+            'Ok(()) => Some("direct listener returned without a shutdown request".to_owned())',
+            'Err(err) => Some(format!("direct listener task failed: {err}"))',
+            "crate::server::request_graceful_shutdown_after_listener_failure();",
+            "crate::server::finish_graceful_shutdown().await;",
+        ),
+        "controlled-server cancel/signal/listener join and failure finalization",
+    )
+    require_exact_count(
+        owner,
+        "request_graceful_shutdown_after_listener_failure();",
+        2,
+        "controlled-server signal/listener fatal producers",
+    )
+    for forbidden in ("tokio::spawn", "sleep(", "process::exit"):
+        if forbidden in owner:
+            raise VerificationError(
+                "controlled-server lifecycle owner retains detached/blocking/exit authority"
+            )
+
+    start = extract_between(
+        direct_service,
+        "pub async fn start_direct_only(",
+        '\n#[cfg_attr(not(target_os = "android"), allow(unused_variables))]',
+        "direct-only service entry",
+    )
+    require_order(
+        start,
+        (
+            "own_controlled_server_lifecycle(None, shutdown_signals).await;",
+            "let direct_listener = tokio::spawn(async move {",
+            "direct_server(server_cloned, android_generation).await;",
+            "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
+        ),
+        "retained controlled-server direct-listener ownership",
+    )
+    require_exact_count(
+        start,
+        "let direct_listener = tokio::spawn",
+        1,
+        "sole retained direct-listener task",
+    )
+    require_absent(
+        direct_service,
+        "tokio::signal::ctrl_c().await",
+        "lazy detached controlled-server Ctrl-C future",
+    )
+    require_absent(
+        direct_service,
+        "tokio::spawn(async {\n        // The drain is initiated",
+        "detached controlled-server signal task",
+    )
+    require_exact_count(
+        start,
+        '#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;',
+        1,
+        "iOS-only retained mobile parking loop",
+    )
+    require_text(
+        server_source,
+        "start_direct_only(Some(generation)).await;",
+        "Android service-generation direct-listener entry",
+    )
+    require_text(
+        start,
+        "android_generation_current(my_generation)",
+        "Android service-generation listener ownership",
+    )
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11ap</span>',
+        '\n\n<h2 id="excise">',
+        "desktop controlled-server lifecycle requirement",
+    )
+    for text, label in (
+        ("before marking the server running", "pre-admission signal requirement"),
+        ("retain the sole <code>JoinHandle</code>", "retained direct-listener requirement"),
+        ("joins the exact listener", "listener destruction before drain requirement"),
+        ("produce status 1 rather than a false-healthy parked process", "fatal listener outcome requirement"),
+        ("Android retains its foreground-service generation teardown", "mobile boundary requirement"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        (
+            "Desktop controlled-side termination and public-listener completion have one retained owner",
+            "desktop controlled-server lifecycle requirement title",
+        ),
+        ("<tr><td>164</td>", "desktop controlled-server lifecycle Appendix C row"),
+        (
+            "The desktop controlled-side server detached both termination receipt and its sole public listener from lifecycle ownership",
+            "desktop controlled-server lifecycle Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership",
+        "desktop controlled-server lifecycle hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -8977,6 +9182,7 @@ def validate_sources(sources):
     validate_ipc_listener_failure_outcome_contract(sources)
     validate_linux_service_ipc_lifecycle_contract(sources)
     validate_macos_service_signal_drain_contract(sources)
+    validate_controlled_server_lifecycle_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -15863,6 +16069,186 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
+            'echo "== (3b-iii-d9cf) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="',
+            'echo "== (3b-iii-d9cf) detached desktop controlled-server lifecycle (R-S11ap/R-S11e-56) =="',
+            "desktop controlled-server lifecycle source gate",
+        ),
+        (
+            "verify",
+            "controlled-server-lifecycle-ownership-invalid",
+            "controlled-server-lifecycle-ownership-unchecked",
+            "desktop controlled-server lifecycle structural gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0e) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="',
+            'echo "== (2b-iv-a-0e) detached desktop controlled-server lifecycle (R-S11ap/R-S11e-56) =="',
+            "desktop controlled-server lifecycle Apple source gate",
+        ),
+        (
+            "server_source",
+            "install_controlled_server_shutdown_signals()",
+            "install_controlled_server_shutdown_signals_after_admission()",
+            "controlled-server signal proof before IPC/listener admission",
+        ),
+        (
+            "server_source",
+            'log::error!("Controlled-server shutdown setup failed closed: {err}");\n                    std::process::exit(1);',
+            'log::warn!("Controlled-server shutdown setup unavailable: {err}");\n                    return;',
+            "controlled-server pre-admission registration failure status",
+        ),
+        (
+            "direct_service",
+            "signal(SignalKind::terminate())",
+            "signal(SignalKind::hangup())",
+            "fallible Unix and Windows controlled-server signal constructors",
+        ),
+        (
+            "direct_service",
+            "tokio::signal::windows::ctrl_c()",
+            "tokio::signal::ctrl_c()",
+            "fallible Unix and Windows controlled-server signal constructors",
+        ),
+        (
+            "direct_service",
+            "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
+            "_ = std::future::pending::<()>() => ControlledServerLifecycleEvent::ShutdownRequested",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
+            "signal = std::future::pending() => ControlledServerLifecycleEvent::Signal(signal)",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+            "outcome = std::future::pending()",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "request_graceful_shutdown_after_listener_failure();",
+            "request_graceful_shutdown();",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "direct_listener_outcome = Some(task.await);",
+            "task.abort();",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "Ok(()) if crate::server::is_shutting_down() => None",
+            "Ok(()) => None",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            'Err(err) => Some(format!("direct listener task failed: {err}"))',
+            "Err(_) => None",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "crate::server::finish_graceful_shutdown().await;",
+            "crate::server::begin_graceful_shutdown().await;",
+            "controlled-server cancel/signal/listener join and failure finalization",
+        ),
+        (
+            "direct_service",
+            "let direct_listener = tokio::spawn(async move {",
+            "let _detached_listener = tokio::spawn(async move {",
+            "retained controlled-server direct-listener ownership",
+        ),
+        (
+            "direct_service",
+            "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
+            "own_controlled_server_lifecycle(None, shutdown_signals).await;",
+            "retained controlled-server direct-listener ownership",
+        ),
+        (
+            "direct_service",
+            'Err(anyhow!("Controlled-server {name} receiver ended unexpectedly"))',
+            'Err(anyhow!("tokio::signal::ctrl_c().await"))',
+            "lazy detached controlled-server Ctrl-C future",
+        ),
+        (
+            "direct_service",
+            'log::info!("R-T9: {name} received");',
+            'log::info!("tokio::spawn(async {\\n        // The drain is initiated");',
+            "controlled-server lifecycle owner retains detached/blocking/exit authority",
+        ),
+        (
+            "direct_service",
+            '#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;',
+            '#[cfg(not(target_os = "android"))]\n    loop {\n        sleep(3600.).await;',
+            "iOS-only retained mobile parking loop",
+        ),
+        (
+            "server_source",
+            "start_direct_only(Some(generation)).await;",
+            "start_direct_only(None).await;",
+            "Android service-generation direct-listener entry",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ap</span>',
+            '<span class="id">R-S11aq</span>',
+            "desktop controlled-server lifecycle requirement",
+        ),
+        (
+            "requirements",
+            "Desktop controlled-side termination and public-listener completion have one retained owner",
+            "Desktop controlled-side termination may detach the public listener",
+            "desktop controlled-server lifecycle requirement title",
+        ),
+        (
+            "requirements",
+            "retain the sole <code>JoinHandle</code>",
+            "discard the sole <code>JoinHandle</code>",
+            "retained direct-listener requirement",
+        ),
+        (
+            "requirements",
+            "joins the exact listener",
+            "detaches the exact listener",
+            "listener destruction before drain requirement",
+        ),
+        (
+            "requirements",
+            "produce status 1 rather than a false-healthy parked process",
+            "produce status 0 for a false-healthy parked process",
+            "fatal listener outcome requirement",
+        ),
+        (
+            "requirements",
+            "Android retains its foreground-service generation teardown",
+            "Android consumes the desktop process-global shutdown owner",
+            "mobile boundary requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>164</td>",
+            "<tr><td>9164</td>",
+            "desktop controlled-server lifecycle Appendix C row",
+        ),
+        (
+            "requirements",
+            "The desktop controlled-side server detached both termination receipt and its sole public listener from lifecycle ownership",
+            "The desktop controlled-side server always owned its public listener",
+            "desktop controlled-server lifecycle Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership",
+            "R-S11e-56 — detached desktop controlled-server lifecycle",
+            "desktop controlled-server lifecycle hardening ledger",
+        ),
+        (
+            "verify",
             'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
             'echo "== (3b-iii-d9c7) Linux account-name service-child compatibility (R-S11ah/R-S11e-48) =="',
             "Linux selected-session principal source gate",
@@ -16776,8 +17162,8 @@ def run_source_mutations(sources):
         ),
         (
             "server_source",
-            "if is_server {\n        crate::common::set_server_running(true);",
-            "if is_server {\n        crate::platform::try_kill_broker();\n        crate::common::set_server_running(true);",
+            "        };\n        crate::common::set_server_running(true);",
+            "        };\n        crate::platform::try_kill_broker();\n        crate::common::set_server_running(true);",
             "Windows ambient privacy-broker authority remains in server_source: try_kill_broker",
         ),
         (
@@ -18821,6 +19207,7 @@ def main():
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
             "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
+            "direct_service": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
             "whiteboard_client": (repo / "src/whiteboard/client.rs").read_text(encoding="utf-8"),
             "portable_source": (repo / "libs/portable/src/main.rs").read_text(encoding="utf-8"),

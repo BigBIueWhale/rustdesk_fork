@@ -3,6 +3,8 @@ use hbb_common::{
     config::{self, Config, PermanentPasswordPrsRead},
     log, sleep, tokio,
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::{anyhow::anyhow, ResultType};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::server::{new as new_server, ServerPtr};
@@ -349,12 +351,170 @@ fn self_enforce_resource_limits() {
 #[cfg(not(target_os = "linux"))]
 fn self_enforce_resource_limits() {}
 
-/// `android_generation` (R-D7a, N1/F1): on Android this is `Some(g)` — the generation
-/// `android_begin_generation()` established for THIS service start, captured in the JNI
-/// `startServer` and threaded here BY VALUE (never re-loaded from the global inside the thread,
-/// which a concurrent stop/re-start could have superseded). Desktop/iOS pass `None`: their
-/// listener lifetime is the process/`systemd`-unit lifetime (R-X9), not a service generation.
-pub async fn start_direct_only(android_generation: Option<u64>) {
+#[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]
+pub(crate) struct ControlledServerShutdownSignals {
+    sigterm: tokio::signal::unix::Signal,
+    sigint: tokio::signal::unix::Signal,
+}
+
+#[cfg(all(not(any(target_os = "android", target_os = "ios")), windows))]
+pub(crate) struct ControlledServerShutdownSignals {
+    ctrl_c: tokio::signal::windows::CtrlC,
+}
+
+#[cfg(all(
+    not(any(target_os = "android", target_os = "ios")),
+    not(any(unix, windows))
+))]
+pub(crate) struct ControlledServerShutdownSignals;
+
+/// Install the controlled-side process signal receivers before main, service-control, or public
+/// listener admission begins. Tokio keeps a registered Unix signal disposition for process life,
+/// so registration failure cannot be downgraded to a detached task diagnostic.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn install_controlled_server_shutdown_signals(
+) -> ResultType<ControlledServerShutdownSignals> {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let sigterm = signal(SignalKind::terminate())
+            .map_err(|err| anyhow!("Failed to install controlled-server SIGTERM receiver: {err}"))?;
+        let sigint = signal(SignalKind::interrupt())
+            .map_err(|err| anyhow!("Failed to install controlled-server SIGINT receiver: {err}"))?;
+        return Ok(ControlledServerShutdownSignals { sigterm, sigint });
+    }
+    #[cfg(windows)]
+    {
+        let ctrl_c = tokio::signal::windows::ctrl_c()
+            .map_err(|err| anyhow!("Failed to install controlled-server Ctrl-C receiver: {err}"))?;
+        return Ok(ControlledServerShutdownSignals { ctrl_c });
+    }
+    #[cfg(not(any(unix, windows)))]
+    Err(anyhow!(
+        "Controlled-server shutdown signals are unsupported on this desktop target"
+    ))
+}
+
+#[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]
+impl ControlledServerShutdownSignals {
+    async fn recv(&mut self) -> ResultType<&'static str> {
+        let (name, received) = tokio::select! {
+            received = self.sigterm.recv() => ("SIGTERM", received),
+            received = self.sigint.recv() => ("SIGINT", received),
+        };
+        if received.is_some() {
+            Ok(name)
+        } else {
+            Err(anyhow!("Controlled-server {name} receiver ended unexpectedly"))
+        }
+    }
+}
+
+#[cfg(all(not(any(target_os = "android", target_os = "ios")), windows))]
+impl ControlledServerShutdownSignals {
+    async fn recv(&mut self) -> ResultType<&'static str> {
+        if self.ctrl_c.recv().await.is_some() {
+            Ok("Ctrl-C")
+        } else {
+            Err(anyhow!(
+                "Controlled-server Ctrl-C receiver ended unexpectedly"
+            ))
+        }
+    }
+}
+
+#[cfg(all(
+    not(any(target_os = "android", target_os = "ios")),
+    not(any(unix, windows))
+))]
+impl ControlledServerShutdownSignals {
+    async fn recv(&mut self) -> ResultType<&'static str> {
+        Err(anyhow!(
+            "Controlled-server shutdown signals are unsupported on this desktop target"
+        ))
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn wait_for_direct_listener_task(
+    task: &mut Option<tokio::task::JoinHandle<()>>,
+) -> Result<(), tokio::task::JoinError> {
+    match task.as_mut() {
+        Some(task) => task.await,
+        None => std::future::pending().await,
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum ControlledServerLifecycleEvent {
+    ShutdownRequested,
+    Signal(ResultType<&'static str>),
+    DirectListener(Result<(), tokio::task::JoinError>),
+}
+
+/// Own the complete desktop controlled-side listener lifetime. A normal signal or authenticated
+/// service-control request closes admission, joins the exact listener task, and only then enters
+/// the existing session/IPC drain. An unexpected clean return, cancellation, or panic is fatal.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn own_controlled_server_lifecycle(
+    mut direct_listener: Option<tokio::task::JoinHandle<()>>,
+    mut signals: ControlledServerShutdownSignals,
+) {
+    let shutdown = crate::server::shutdown_token();
+    let event = tokio::select! {
+        biased;
+        _ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested,
+        signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal),
+        outcome = wait_for_direct_listener_task(&mut direct_listener) => {
+            ControlledServerLifecycleEvent::DirectListener(outcome)
+        }
+    };
+
+    let mut direct_listener_outcome = None;
+    match event {
+        ControlledServerLifecycleEvent::ShutdownRequested => {}
+        ControlledServerLifecycleEvent::Signal(Ok(name)) => {
+            log::info!("R-T9: {name} received");
+            crate::server::request_graceful_shutdown();
+        }
+        ControlledServerLifecycleEvent::Signal(Err(err)) => {
+            log::error!("Controlled-server shutdown receiver failed: {err}");
+            crate::server::request_graceful_shutdown_after_listener_failure();
+        }
+        ControlledServerLifecycleEvent::DirectListener(outcome) => {
+            direct_listener_outcome = Some(outcome);
+        }
+    }
+
+    if direct_listener_outcome.is_none() {
+        if let Some(task) = direct_listener.take() {
+            direct_listener_outcome = Some(task.await);
+        }
+    }
+    if let Some(outcome) = direct_listener_outcome {
+        let failure = match outcome {
+            Ok(()) if crate::server::is_shutting_down() => None,
+            Ok(()) => Some("direct listener returned without a shutdown request".to_owned()),
+            Err(err) => Some(format!("direct listener task failed: {err}")),
+        };
+        if let Some(failure) = failure {
+            log::error!("Controlled-server lifecycle failure: {failure}");
+            crate::server::request_graceful_shutdown_after_listener_failure();
+        }
+    }
+
+    crate::server::finish_graceful_shutdown().await;
+}
+
+/// Android/iOS receive the exact mobile listener-generation input. Desktop receives an already
+/// installed signal owner, so listener/IPC admission cannot race fallible signal registration.
+pub async fn start_direct_only(
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    android_generation: Option<u64>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    shutdown_signals: ControlledServerShutdownSignals,
+) {
     if let Err(_reason) = assert_startup_invariants() {
         // Reached ONLY on Android/iOS — the desktop --service exits inside the assert and
         // never returns Err. The Rust core shares the interactive app process here, so we
@@ -377,7 +537,14 @@ pub async fn start_direct_only(android_generation: Option<u64>) {
     }
     self_enforce_resource_limits();
     if config::is_outgoing_only() {
-        // A viewer-only box binds no inbound listener (R-SV5); park the service future.
+        // A viewer-only box binds no inbound listener (R-SV5), but a desktop controlled process
+        // still owns truthful signal/service-control completion rather than parking past it.
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            own_controlled_server_lifecycle(None, shutdown_signals).await;
+            return;
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
         loop {
             sleep(1.).await;
         }
@@ -390,61 +557,24 @@ pub async fn start_direct_only(android_generation: Option<u64>) {
     check_zombie();
     let server = new_server();
     let server_cloned = server.clone();
-    tokio::spawn(async move {
-        direct_server(server_cloned, android_generation).await;
-    });
-    // R-T9 (§20): install the graceful-shutdown handler. SIGTERM (what `systemctl stop` / an
-    // upgrade sends) or SIGINT stops the accept loop and drains live sessions with a bounded
-    // deadline before exiting — so an upgrade mid-session does not truncate an in-flight transfer.
-    // The unit cgroup's TimeoutStopSec/SIGKILL path remains the backstop for a hung process.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    tokio::spawn(async {
-        // The drain is initiated only from inside an actual signal branch (so a target with no
-        // signal mechanism simply never shuts down here, rather than draining on startup).
-        #[cfg(unix)]
-        {
-            use tokio::signal::unix::{signal, SignalKind};
-            let mut sigterm = match signal(SignalKind::terminate()) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error!("R-T9: failed to install SIGTERM handler: {}", e);
-                    return;
-                }
-            };
-            let mut sigint = match signal(SignalKind::interrupt()) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error!("R-T9: failed to install SIGINT handler: {}", e);
-                    return;
-                }
-            };
-            tokio::select! {
-                _ = sigterm.recv() => log::info!("R-T9: SIGTERM received"),
-                _ = sigint.recv() => log::info!("R-T9: SIGINT received"),
-            }
-            crate::server::begin_graceful_shutdown().await;
-        }
-        #[cfg(windows)]
-        {
-            if let Err(e) = tokio::signal::ctrl_c().await {
-                log::error!("R-T9: failed to await Ctrl-C: {}", e);
-                return;
-            }
-            log::info!("R-T9: Ctrl-C received");
-            crate::server::begin_graceful_shutdown().await;
-        }
+    let android_generation = None;
+    let direct_listener = tokio::spawn(async move {
+        direct_server(server_cloned, android_generation).await;
     });
     // It is ok to run xdesktop manager when the headless function is not allowed.
     #[cfg(target_os = "linux")]
     if crate::is_server() {
         crate::platform::linux_desktop_manager::start_xdesktop();
     }
-    // The direct listener runs in its spawned task; there is no registration loop to
-    // re-enter, so just keep the service future alive without busy-work.
-    //
-    // Desktop/iOS: the listener lifetime is the process / `systemd`-unit lifetime (R-X9), so park
-    // indefinitely — a graceful stop is the R-T9 SIGTERM drain path above, process death otherwise.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;
+        return;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let _direct_listener = direct_listener;
+    #[cfg(target_os = "ios")]
     loop {
         sleep(3600.).await;
     }
@@ -521,8 +651,9 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
     loop {
         // R-T9 (§20): on graceful shutdown, stop accepting and drop the listener (returning here
         // drops the `listener` local, so the listening socket closes and new SYNs get an RST), then
-        // leave the accept loop. begin_graceful_shutdown() drives the live-session drain and the
-        // process exit; this only guarantees no new connection is admitted past the signal.
+        // leave the accept loop. The retained desktop lifecycle owner joins this task and then
+        // drives the live-session/local-IPC finalizer; this branch guarantees no new connection is
+        // admitted after cancellation.
         if crate::server::is_shutting_down() {
             log::info!("R-T9: shutdown — direct_server stops accepting");
             // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop publishes

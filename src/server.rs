@@ -1047,6 +1047,16 @@ pub async fn start_server(is_server: bool) {
     });
 
     if is_server {
+        // Signal registration is part of controlled-server admission. Install it before the main
+        // IPC, Windows service-control IPC, or public direct listener can accept work.
+        let shutdown_signals =
+            match crate::direct_service::install_controlled_server_shutdown_signals() {
+                Ok(signals) => signals,
+                Err(err) => {
+                    log::error!("Controlled-server shutdown setup failed closed: {err}");
+                    std::process::exit(1);
+                }
+            };
         crate::common::set_server_running(true);
         #[cfg(target_os = "windows")]
         if crate::common::is_service_owned_server_process() {
@@ -1068,9 +1078,9 @@ pub async fn start_server(is_server: bool) {
         });
         // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
         // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
-        // R-D7a (N1/F1): desktop/`--service` has no Android service generation — its listener
-        // lifetime is the process/systemd-unit lifetime (R-X9), so pass `None`.
-        crate::direct_service::start_direct_only(None).await;
+        // Desktop listener/signal completion stays owned by this server runtime; Android uses its
+        // separate foreground-service generation entry above.
+        crate::direct_service::start_direct_only(shutdown_signals).await;
     } else {
         match crate::ipc::get_main_status_snapshot(1000).await {
             Ok(_) => {}

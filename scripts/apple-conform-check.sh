@@ -1519,6 +1519,124 @@ else
   note "ok  R-S11e-55 macOS installs fallible cancellation-only termination handling after root proof and before protected listener admission; the existing listener owner drains all accepted service/password work"
 fi
 
+echo "== (2b-iv-a-0e) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="
+r_s11e56=
+python3 - "$REPO" <<'PY' || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
+from pathlib import Path
+import sys
+
+repo = Path(sys.argv[1])
+server = (repo / "src/server.rs").read_text(encoding="utf-8")
+direct = (repo / "src/direct_service.rs").read_text(encoding="utf-8")
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+desktop_entry = region(
+    server,
+    '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n#[tokio::main]\npub async fn start_server(is_server: bool)',
+    '\n#[cfg(any(target_os = "windows", target_os = "macos"))]\n#[tokio::main(flavor = "current_thread")]',
+)
+ordered(
+    desktop_entry,
+    "install_controlled_server_shutdown_signals()",
+    "crate::common::set_server_running(true);",
+    "crate::ipc::start_windows_service_main_ipc()",
+    'crate::ipc::start("")',
+    "crate::direct_service::start_direct_only(shutdown_signals).await;",
+)
+registration_failure = region(
+    desktop_entry,
+    "match crate::direct_service::install_controlled_server_shutdown_signals()",
+    "crate::common::set_server_running(true);",
+)
+if 'std::process::exit(1);' not in registration_failure:
+    raise SystemExit(1)
+
+installer = region(
+    direct,
+    "pub(crate) fn install_controlled_server_shutdown_signals(",
+    '\n#[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]\nimpl ControlledServerShutdownSignals',
+)
+ordered(
+    installer,
+    "signal(SignalKind::terminate())",
+    "Failed to install controlled-server SIGTERM receiver",
+    "signal(SignalKind::interrupt())",
+    "Failed to install controlled-server SIGINT receiver",
+    "tokio::signal::windows::ctrl_c()",
+    "Failed to install controlled-server Ctrl-C receiver",
+)
+
+owner = region(
+    direct,
+    "async fn own_controlled_server_lifecycle(",
+    "\n/// Android/iOS receive the exact mobile listener-generation input.",
+)
+ordered(
+    owner,
+    "let shutdown = crate::server::shutdown_token();",
+    "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
+    "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
+    "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+    "crate::server::request_graceful_shutdown();",
+    "crate::server::request_graceful_shutdown_after_listener_failure();",
+    "if direct_listener_outcome.is_none()",
+    "direct_listener_outcome = Some(task.await);",
+    "Ok(()) if crate::server::is_shutting_down() => None",
+    'Ok(()) => Some("direct listener returned without a shutdown request".to_owned())',
+    'Err(err) => Some(format!("direct listener task failed: {err}"))',
+    "crate::server::request_graceful_shutdown_after_listener_failure();",
+    "crate::server::finish_graceful_shutdown().await;",
+)
+if owner.count("request_graceful_shutdown_after_listener_failure();") != 2:
+    raise SystemExit(1)
+if "tokio::spawn" in owner or "sleep(" in owner or "process::exit" in owner:
+    raise SystemExit(1)
+
+start = region(
+    direct,
+    "pub async fn start_direct_only(",
+    '\n#[cfg_attr(not(target_os = "android"), allow(unused_variables))]',
+)
+ordered(
+    start,
+    "own_controlled_server_lifecycle(None, shutdown_signals).await;",
+    "let direct_listener = tokio::spawn(async move {",
+    "direct_server(server_cloned, android_generation).await;",
+    "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
+)
+if start.count("let direct_listener = tokio::spawn") != 1:
+    raise SystemExit(1)
+if "tokio::signal::ctrl_c().await" in direct:
+    raise SystemExit(1)
+if "tokio::spawn(async {\n        // The drain is initiated" in direct:
+    raise SystemExit(1)
+if start.count('#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;') != 1:
+    raise SystemExit(1)
+if "start_direct_only(Some(generation)).await;" not in server:
+    raise SystemExit(1)
+if "android_generation_current(my_generation)" not in start:
+    raise SystemExit(1)
+PY
+grep -qF '<span class="id">R-S11ap</span>' "$REPO/requirements.html" || r_s11e56="$r_s11e56 normative-requirement-missing"
+grep -qF '<tr><td>164</td>' "$REPO/requirements.html" || r_s11e56="$r_s11e56 appendix-row-missing"
+grep -qF 'R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership' "$REPO/HARDENING_STATUS.md" \
+  || r_s11e56="$r_s11e56 hardening-ledger-missing"
+if [ -n "$r_s11e56" ]; then
+  echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"
+  rc=1
+else
+  note "ok  R-S11e-56 macOS LaunchAgent and the shared desktop controlled-server path install signals before IPC admission, retain/join the public listener, and fail nonzero on unexpected completion"
+fi
+
 echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' "$REPO/libs/hbb_common/src/platform/macos.rs")

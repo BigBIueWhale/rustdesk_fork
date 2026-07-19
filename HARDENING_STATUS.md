@@ -3756,6 +3756,70 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and no published ports. No image was built or pulled, and no Docker socket, host PID namespace, or host network
   namespace was exposed inside a container. No host RustDesk service/process/configuration/listener, firewall, or
   network policy was inspected or changed.
+- **R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership — SOURCE, SHARED/APPLE
+  SOURCE GATES, SEMANTIC, AND MUTATION VERIFIED; NATIVE COMPILE/INSTALLED/ARTIFACT EVIDENCE PENDING
+  2026-07-19.** Platforms: Linux service-owned child, macOS LaunchAgent controlled-side server, and Windows
+  service-owned child, through their shared exact desktop `--server` entry. Endpoint/action: process termination,
+  main/service-control IPC admission, the sole public direct TCP listener, and authenticated-session/local-IPC
+  drain. Boundary: OS/service-supervisor lifecycle authority ↔ truthful controlled-service liveness and finality.
+
+  Proven old path and history: desktop `server::start_server(true)` started main IPC and, on Windows, the
+  service-main control/credential IPC thread before calling `direct_service::start_direct_only(None)`.
+  `start_direct_only` then spawned `direct_server` and discarded its Tokio `JoinHandle`, spawned and discarded a
+  separate signal task only after the public listener could begin binding, and parked the parent future forever.
+  Unix SIGTERM/SIGINT construction failure was logged inside that detached task and returned only from the task.
+  A clean return or unwind of `direct_server` was likewise unobserved, leaving main IPC and the process alive while
+  the only public service had disappeared. `git blame` traces the detached listener/park to the direct-only lift and
+  the detached signal task to the original R-T9 implementation; later Android generation and direct-IP hardening
+  preserved the desktop topology but did not create it. This is deterministic service availability/recovery and
+  admitted-session stop correctness, not a PAKE/authentication bypass, remote task-termination primitive, or
+  evidence of host compromise.
+
+  Primary contract and authority model: Tokio 1.44.2 documents `JoinHandle` as the owned permission to observe task
+  completion and says dropping it detaches the task; awaiting it proves the spawned task's destructor has completed,
+  while `&mut JoinHandle` is cancellation-safe in `select!`
+  (https://docs.rs/tokio/1.44.2/tokio/task/struct.JoinHandle.html). Its Unix `signal` constructor is synchronously
+  fallible and Tokio warns that the installed process disposition is never restored, even after every corresponding
+  stream is dropped (https://docs.rs/tokio/1.44.2/tokio/signal/unix/fn.signal.html). The Windows-specific Ctrl-C
+  constructor is likewise synchronously fallible and returns an owned stream
+  (https://docs.rs/tokio/1.44.2/tokio/signal/windows/fn.ctrl_c.html). The correct local API therefore creates one
+  platform signal owner before any controlled IPC/public-listener admission and transfers it into one async owner
+  that retains the exact direct-listener task. Signals and authenticated service-control cancellation request the
+  existing process token; the retained listener is joined before the existing sole session/IPC finalizer. Failure
+  does not create another runtime, watchdog, timer, second drain, or compatibility fallback.
+
+  Source closure: desktop `server::start_server(true)` now calls the cfg-specific fallible
+  `install_controlled_server_shutdown_signals` before setting the server-running flag or starting Windows
+  service-main IPC, ordinary main IPC, or the public listener. Unix owns exact SIGTERM and SIGINT Tokio streams;
+  Windows owns the Windows-specific Ctrl-C stream, while normal SCM child shutdown remains the independently
+  authenticated service-main `Shutdown` request. Any constructor error exits status 1 before admission.
+  `start_direct_only`'s desktop parameter is now the already-installed signal owner rather than an irrelevant
+  optional Android generation. It retains the sole `direct_server` `JoinHandle` and transfers it to
+  `own_controlled_server_lifecycle`, whose one biased select observes process cancellation, signal receipt/stream
+  loss, or task completion. A normal signal requests cancellation. Every normal path awaits the exact listener so
+  its `ListenerBoundGuard`, socket, and future locals are destroyed before `finish_graceful_shutdown` drains
+  authenticated sessions and local IPC. Signal-stream loss, listener clean return without cancellation, task
+  cancellation, or unwind uses R-S11am's release/acquire failure latch before the same finalizer, producing status 1.
+  The detached desktop signal task and unconditional desktop parking loop are deleted. Android still receives its
+  captured foreground-service generation, retains the existing generation checks/runtime-unwind teardown, and never
+  consumes the desktop signal owner or process-global cancellation token; iOS remains on the mobile signature.
+
+  Evidence boundary and execution accounting: R-S11ap and Appendix C #164 bind this closure. The exact shared gate
+  `(3b-iii-d9cf)` and Apple gate `(2b-iv-a-0e)` passed independently after whole-script `bash -n`; the semantic
+  verifier passed both its positive source-contract run and the complete source-mutation matrix. Those checks bind
+  pre-IPC registration, fallible Unix/Windows constructors, parameter transfer, cancellation/signal/listener
+  selection, exact task join, fatal classification, listener-before-finalizer order, detached-task/desktop-park
+  absence, and preserved Android generation ownership. The requirements digest and native-codec watch were updated
+  and the offline native-codec source gate passed. Native init/launchd/SCM stop/failure injection and exact-commit
+  artifacts remain R-R2/R-B2 and are not inferred from Linux source inspection. The pinned Rust 1.75 image has no
+  rustfmt component, so no formatter result is claimed. Three isolated offline compile setups reached dependency
+  compilation only and then UID 1000 correctly received `EACCES` on the existing root-owned cached `pin-utils`
+  source before RustDesk was reached; the second and third attempts used readable target seeds but Cargo invalidated
+  their fingerprints under the isolated logical inputs and still required that source. No cache ownership/mode,
+  image, capability, or root authority was changed to bypass the refusal. All attempts used networking disabled,
+  read-only source/toolchain/dependency/seed inputs, dropped capabilities, `no-new-privileges`, bounded resources,
+  disposable tmpfs output, and no published ports; every container and output tmpfs has been removed. No host
+  RustDesk service/process/configuration/listener, firewall, or network policy was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6101,8 +6165,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-00f87fa658ab77669e8c089e8480b258cb3ac8738b9652271fd288c4037b39af  requirements.html
+09ef57d02c7f9802b15d06ab099890fa1d7641e73e591cebbe8808de18991eec  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ao, and Appendix C #163. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ap, and Appendix C #164. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

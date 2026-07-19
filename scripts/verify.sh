@@ -4356,6 +4356,123 @@ grep -qF 'R-S11e-55 — macOS LaunchDaemon protected IPC signal drain' HARDENING
 if [ -n "$r_s11e55" ]; then echo "  FAIL R-S11e-55 macOS protected IPC signal drain:$r_s11e55"; rc=1; else
   echo "  ok  R-S11e-55 every macOS root service entry installs fallible cancellation-only termination handling before protected listeners, whose existing owner drains accepted work and password state"; fi
 
+# (3b-iii-d9cf) R-S11ap/R-S11e-56: the desktop controlled process owns signal
+# registration, its sole public-listener task, and listener destruction before final drain.
+echo "== (3b-iii-d9cf) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="
+r_s11e56=
+python3 - src/server.rs src/direct_service.rs <<'PY' \
+  || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
+from pathlib import Path
+import sys
+
+server, direct = (Path(path).read_text(encoding="utf-8") for path in sys.argv[1:])
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+desktop_entry = region(
+    server,
+    '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n#[tokio::main]\npub async fn start_server(is_server: bool)',
+    '\n#[cfg(any(target_os = "windows", target_os = "macos"))]\n#[tokio::main(flavor = "current_thread")]',
+)
+ordered(
+    desktop_entry,
+    "install_controlled_server_shutdown_signals()",
+    "crate::common::set_server_running(true);",
+    "crate::ipc::start_windows_service_main_ipc()",
+    'crate::ipc::start("")',
+    "crate::direct_service::start_direct_only(shutdown_signals).await;",
+)
+registration_failure = region(
+    desktop_entry,
+    "match crate::direct_service::install_controlled_server_shutdown_signals()",
+    "crate::common::set_server_running(true);",
+)
+if 'std::process::exit(1);' not in registration_failure:
+    raise SystemExit(1)
+
+installer = region(
+    direct,
+    "pub(crate) fn install_controlled_server_shutdown_signals(",
+    '\n#[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]\nimpl ControlledServerShutdownSignals',
+)
+ordered(
+    installer,
+    "signal(SignalKind::terminate())",
+    "Failed to install controlled-server SIGTERM receiver",
+    "signal(SignalKind::interrupt())",
+    "Failed to install controlled-server SIGINT receiver",
+    "tokio::signal::windows::ctrl_c()",
+    "Failed to install controlled-server Ctrl-C receiver",
+)
+
+owner = region(
+    direct,
+    "async fn own_controlled_server_lifecycle(",
+    "\n/// Android/iOS receive the exact mobile listener-generation input.",
+)
+ordered(
+    owner,
+    "let shutdown = crate::server::shutdown_token();",
+    "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
+    "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
+    "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+    "crate::server::request_graceful_shutdown();",
+    "crate::server::request_graceful_shutdown_after_listener_failure();",
+    "if direct_listener_outcome.is_none()",
+    "direct_listener_outcome = Some(task.await);",
+    "Ok(()) if crate::server::is_shutting_down() => None",
+    'Ok(()) => Some("direct listener returned without a shutdown request".to_owned())',
+    'Err(err) => Some(format!("direct listener task failed: {err}"))',
+    "crate::server::request_graceful_shutdown_after_listener_failure();",
+    "crate::server::finish_graceful_shutdown().await;",
+)
+if owner.count("request_graceful_shutdown_after_listener_failure();") != 2:
+    raise SystemExit(1)
+if "tokio::spawn" in owner or "sleep(" in owner or "process::exit" in owner:
+    raise SystemExit(1)
+
+start = region(
+    direct,
+    "pub async fn start_direct_only(",
+    '\n#[cfg_attr(not(target_os = "android"), allow(unused_variables))]',
+)
+ordered(
+    start,
+    "own_controlled_server_lifecycle(None, shutdown_signals).await;",
+    "let direct_listener = tokio::spawn(async move {",
+    "direct_server(server_cloned, android_generation).await;",
+    "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
+)
+if start.count("let direct_listener = tokio::spawn") != 1:
+    raise SystemExit(1)
+if "tokio::signal::ctrl_c().await" in direct:
+    raise SystemExit(1)
+if "tokio::spawn(async {\n        // The drain is initiated" in direct:
+    raise SystemExit(1)
+if start.count('#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;') != 1:
+    raise SystemExit(1)
+if "start_direct_only(Some(generation)).await;" not in server:
+    raise SystemExit(1)
+if "android_generation_current(my_generation)" not in start:
+    raise SystemExit(1)
+PY
+grep -qF '<span class="id">R-S11ap</span>' requirements.html || r_s11e56="$r_s11e56 normative-requirement-missing"
+grep -qF '<tr><td>164</td>' requirements.html || r_s11e56="$r_s11e56 appendix-row-missing"
+grep -qF 'desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56)' scripts/apple-conform-check.sh \
+  || r_s11e56="$r_s11e56 apple-source-conformance-gate-missing"
+grep -qF 'R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership' HARDENING_STATUS.md \
+  || r_s11e56="$r_s11e56 hardening-ledger-missing"
+if [ -n "$r_s11e56" ]; then echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"; rc=1; else
+  echo "  ok  R-S11e-56 desktop controlled servers install signals before IPC admission, retain and join the sole public listener, and classify unexpected completion as fatal before the shared drain"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -9076,11 +9193,12 @@ else
   echo "  ok  R-T8/R-T16 single-writer + framing/processing-order contract codified (no second-writer handle)"
 fi
 # R-T9 (§20): graceful shutdown on SIGTERM/SIGINT. A process-wide CancellationToken (server.rs) is
-# cancelled by the signal handler (direct_service.rs); the accept loop then stops accepting and
-# drops its listener, every live session's run-loop drains via its `cancelled()` select-arm
-# (CloseReason -> flush -> CM Close), and a BOUNDED drain deadline — shorter than the unit's
-# TimeoutStopSec — precedes a force-exit(0). The unit cgroup's TimeoutStopSec/SIGKILL path stays the backstop.
-# Presence gate across the three layers (server primitive, connection drain arm, mediator handler).
+# cancelled by the retained signal/listener lifecycle owner (direct_service.rs); the accept loop
+# then stops accepting and drops its listener, every live session's run-loop drains via its
+# `cancelled()` select-arm (CloseReason -> flush -> CM Close), and a BOUNDED drain deadline — shorter
+# than the unit's TimeoutStopSec — precedes the status-selected exit (ordinary stop 0, latched
+# listener failure 1). The unit cgroup's TimeoutStopSec/SIGKILL path stays the backstop.
+# Presence gate across the server primitive, connection drain arm, and retained lifecycle owner.
 r_t9_missing=
 grep -q 'fn begin_graceful_shutdown' src/server.rs         || r_t9_missing="$r_t9_missing begin_graceful_shutdown"
 grep -q 'fn is_shutting_down' src/server.rs                || r_t9_missing="$r_t9_missing is_shutting_down"
@@ -9090,6 +9208,7 @@ grep -q 'flush_writer' libs/hbb_common/src/tcp.rs          || r_t9_missing="$r_t
 grep -q 'WriterCommand::Drain' libs/hbb_common/src/tcp.rs  || r_t9_missing="$r_t9_missing writer-drain-command"
 grep -q 'self.stream.flush_writer().await' src/server/connection.rs || r_t9_missing="$r_t9_missing close-reason-flush"
 grep -q 'SignalKind::terminate' src/direct_service.rs || r_t9_missing="$r_t9_missing sigterm-handler"
+grep -q 'own_controlled_server_lifecycle' src/direct_service.rs || r_t9_missing="$r_t9_missing retained-lifecycle-owner"
 grep -q 'is_shutting_down()' src/direct_service.rs    || r_t9_missing="$r_t9_missing accept-stop"
 grep -qE '^TimeoutStopSec=[1-9][0-9]*$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-TimeoutStopSec(must be a positive drain backstop, =0 is infinite)"
 grep -qE '^KillMode=control-group$' res/rustdesk.service || r_t9_missing="$r_t9_missing service-KillMode-control-group"
@@ -9099,7 +9218,7 @@ fi
 if [ -n "$r_t9_missing" ]; then
   echo "  FAIL R-T9: graceful-shutdown machinery incomplete:$r_t9_missing"; rc=1
 else
-  echo "  ok  R-T9 graceful shutdown present (signal handler + accept-stop + drain arm + bounded exit)"
+  echo "  ok  R-T9 graceful shutdown present (retained signal/listener owner + accept-stop + drain arm + bounded status-selected exit)"
 fi
 # R-T14 (§20): the cross-backend cancellation-safety guarantee — dropping a tokio read future
 # consumes ZERO bytes on epoll/kqueue/IOCP because mio's do_io does a synchronous std recv (no

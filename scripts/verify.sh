@@ -4460,6 +4460,25 @@ grep -qF 'macOS privileged helper current-build binding (R-S11au/R-S11e-61)' scr
 if [ -n "$r_s11e61" ]; then echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"; rc=1; else
   echo "  ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, upgrade status, reinstall, and partial-state uninstall share one current-build authority"; fi
 
+# (3b-iii-d9cl) R-S11av/R-S11e-62: Darwin's narrow mode_t cannot be
+# passed directly through the variadic open/openat creation-mode argument.
+echo "== (3b-iii-d9cl) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="
+r_s11e62=
+python3 scripts/verify-macos-variadic-open-mode.py --repo . \
+  || r_s11e62="$r_s11e62 macos-variadic-open-mode-semantic-invalid"
+python3 scripts/verify-macos-variadic-open-mode.py --repo . --self-test \
+  || r_s11e62="$r_s11e62 macos-variadic-open-mode-mutations-invalid"
+python3 -m py_compile scripts/verify-macos-variadic-open-mode.py \
+  || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
+grep -qF '<span class="id">R-S11av</span>' requirements.html || r_s11e62="$r_s11e62 normative-requirement-missing"
+grep -qF '<tr><td>170</td>' requirements.html || r_s11e62="$r_s11e62 appendix-row-missing"
+grep -qF 'R-S11e-62 — macOS variadic file-creation ABI' HARDENING_STATUS.md \
+  || r_s11e62="$r_s11e62 hardening-ledger-missing"
+grep -qF 'macOS variadic file-creation ABI (R-S11av/R-S11e-62)' scripts/apple-conform-check.sh \
+  || r_s11e62="$r_s11e62 apple-source-conformance-gate-missing"
+if [ -n "$r_s11e62" ]; then echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"; rc=1; else
+  echo "  ok  R-S11e-62 macOS-reachable variadic creation modes are ABI-promoted while fixed-prototype mode_t calls remain exact"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

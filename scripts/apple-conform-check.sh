@@ -1222,6 +1222,21 @@ else
   note "ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, stale-upgrade detection/reinstall, and partial-state uninstall share one current-build authority"
 fi
 
+echo "== (2b-iii-c5b) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="
+r_s11e62=
+python3 "$REPO/scripts/verify-macos-variadic-open-mode.py" --repo "$REPO" \
+  || r_s11e62="$r_s11e62 macos-variadic-open-mode-semantic-invalid"
+python3 "$REPO/scripts/verify-macos-variadic-open-mode.py" --repo "$REPO" --self-test \
+  || r_s11e62="$r_s11e62 macos-variadic-open-mode-mutations-invalid"
+python3 -m py_compile "$REPO/scripts/verify-macos-variadic-open-mode.py" \
+  || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
+if [ -n "$r_s11e62" ]; then
+  echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"
+  rc=1
+else
+  note "ok  R-S11e-62 macOS-reachable variadic creation modes are ABI-promoted while fixed-prototype mode_t calls remain exact"
+fi
+
 echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="
 r_s11e38=
 for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed'; do

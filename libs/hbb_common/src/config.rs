@@ -2316,7 +2316,7 @@ fn store_config_bytes_transaction_unix(
                     | crate::libc::O_EXCL
                     | crate::libc::O_CLOEXEC
                     | crate::libc::O_NOFOLLOW,
-                0o600 as crate::libc::mode_t,
+                0o600 as crate::libc::c_uint,
             )
         };
         if fd < 0 {

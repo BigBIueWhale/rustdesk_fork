@@ -9079,6 +9079,103 @@ def validate_macos_helper_build_binding_contract(sources):
     )
 
 
+def validate_macos_variadic_open_mode_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    validator = sources["macos_variadic_mode_validator"]
+
+    for source, heading, label in (
+        (
+            verify,
+            'echo "== (3b-iii-d9cl) macOS variadic file-creation ABI '
+            '(R-S11av/R-S11e-62) =="',
+            "macOS variadic-mode shared gate",
+        ),
+        (
+            apple,
+            'echo "== (2b-iii-c5b) macOS variadic file-creation ABI '
+            '(R-S11av/R-S11e-62) =="',
+            "macOS variadic-mode Apple gate",
+        ),
+    ):
+        require_text(source, heading, label)
+        require_text(
+            source,
+            "verify-macos-variadic-open-mode.py",
+            f"{label} semantic validator",
+        )
+        require_text(source, "--self-test", f"{label} mutation suite")
+
+    for text, label in (
+        ("def validate(sources", "macOS variadic-mode validator semantic entry"),
+        ("def run_mutations(sources", "macOS variadic-mode validator mutation entry"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "macOS variadic-mode mutation inventory"),
+        ("mutation was not rejected", "macOS variadic-mode mutation rejection"),
+        ("fixed-prototype macOS mkdirat mode_t", "fixed-prototype distinction"),
+    ):
+        require_text(validator, text, label)
+
+    for source, text, label in (
+        (
+            sources["config_source"],
+            "0o600 as crate::libc::c_uint,",
+            "config variadic mode promotion",
+        ),
+        (
+            sources["hbb_fs_source"],
+            "mode as crate::libc::c_uint",
+            "portable variadic mode promotion",
+        ),
+        (
+            sources["ipc_fs_source"],
+            "hbb_common::libc::open(path_c.as_ptr(), flags, 0o0600)",
+            "PID-file promoted variadic mode",
+        ),
+        (
+            sources["macos_paste_task"],
+            "0o666 as libc::c_uint",
+            "macOS paste variadic mode promotion",
+        ),
+        (
+            sources["macos_pasteboard_context"],
+            "0o600 as libc::c_uint",
+            "macOS placeholder variadic mode promotion",
+        ),
+        (
+            sources["config_source"],
+            "crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t)",
+            "config fixed-prototype mode_t",
+        ),
+        (
+            sources["macos_paste_task"],
+            "libc::mkdirat(parent_fd, name.as_ptr(), 0o777 as libc::mode_t)",
+            "macOS paste fixed-prototype mode_t",
+        ),
+    ):
+        require_text(source, text, label)
+
+    for text, label in (
+        ('<span class="id">R-S11av</span>', "macOS variadic-mode requirement"),
+        (
+            "macOS file-creation modes obey the C variadic ABI",
+            "macOS variadic-mode requirement title",
+        ),
+        ("<tr><td>170</td>", "macOS variadic-mode Appendix C row"),
+        (
+            "macOS creation calls passed narrow <code>mode_t</code> values directly to variadic <code>openat</code>",
+            "macOS variadic-mode Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-62 — macOS variadic file-creation ABI",
+        "macOS variadic-mode hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -9942,6 +10039,7 @@ def validate_sources(sources):
     validate_desktop_ipc_retained_owner_contract(sources)
     validate_linux_service_admission_contract(sources)
     validate_macos_helper_build_binding_contract(sources)
+    validate_macos_variadic_open_mode_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -17374,6 +17472,84 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
+            'echo "== (3b-iii-d9cl) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="',
+            'echo "== (3b-iii-d9cl) macOS narrow file-creation ABI (R-S11av/R-S11e-62) =="',
+            "macOS variadic-mode shared gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iii-c5b) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="',
+            'echo "== (2b-iii-c5b) macOS narrow file-creation ABI (R-S11av/R-S11e-62) =="',
+            "macOS variadic-mode Apple gate",
+        ),
+        (
+            "macos_variadic_mode_validator",
+            "def run_mutations(sources",
+            "def skip_mutations(sources",
+            "macOS variadic-mode validator mutation entry",
+        ),
+        (
+            "config_source",
+            "0o600 as crate::libc::c_uint,",
+            "0o600 as crate::libc::mode_t,",
+            "config variadic mode promotion",
+        ),
+        (
+            "hbb_fs_source",
+            "mode as crate::libc::c_uint",
+            "mode as crate::libc::mode_t",
+            "portable variadic mode promotion",
+        ),
+        (
+            "ipc_fs_source",
+            "hbb_common::libc::open(path_c.as_ptr(), flags, 0o0600)",
+            "hbb_common::libc::open(path_c.as_ptr(), flags, 0o0600 as hbb_common::libc::mode_t)",
+            "PID-file promoted variadic mode",
+        ),
+        (
+            "macos_paste_task",
+            "0o666 as libc::c_uint",
+            "0o666 as libc::mode_t",
+            "macOS paste variadic mode promotion",
+        ),
+        (
+            "macos_pasteboard_context",
+            "0o600 as libc::c_uint",
+            "0o600 as libc::mode_t",
+            "macOS placeholder variadic mode promotion",
+        ),
+        (
+            "config_source",
+            "crate::libc::fchmod(fd, 0o600 as crate::libc::mode_t)",
+            "crate::libc::fchmod(fd, 0o600 as crate::libc::c_uint)",
+            "config fixed-prototype mode_t",
+        ),
+        (
+            "macos_paste_task",
+            "libc::mkdirat(parent_fd, name.as_ptr(), 0o777 as libc::mode_t)",
+            "libc::mkdirat(parent_fd, name.as_ptr(), 0o777 as libc::c_uint)",
+            "macOS paste fixed-prototype mode_t",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11av</span>',
+            '<span class="id">R-S11az</span>',
+            "macOS variadic-mode requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>170</td>",
+            "<tr><td>9170</td>",
+            "macOS variadic-mode Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-62 — macOS variadic file-creation ABI",
+            "R-S11e-62 — narrow macOS variadic modes",
+            "macOS variadic-mode hardening ledger",
+        ),
+        (
+            "verify",
             'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
             'echo "== (3b-iii-d9c7) Linux account-name service-child compatibility (R-S11ah/R-S11e-48) =="',
             "Linux selected-session principal source gate",
@@ -20321,7 +20497,11 @@ def main():
             "macos_helper_binding_validator": (
                 repo / "scripts/verify-macos-helper-build-binding.py"
             ).read_text(encoding="utf-8"),
+            "macos_variadic_mode_validator": (
+                repo / "scripts/verify-macos-variadic-open-mode.py"
+            ).read_text(encoding="utf-8"),
             "ipc_auth_source": (repo / "src/ipc/auth.rs").read_text(encoding="utf-8"),
+            "ipc_fs_source": (repo / "src/ipc/fs.rs").read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
             "closure": (repo / "scripts/verify-private-tree-closure.py").read_text(encoding="utf-8"),
             "finalizer": (repo / "scripts/finalize-release-set.py").read_text(encoding="utf-8"),
@@ -20333,6 +20513,13 @@ def main():
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
             "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
             "config_source": (repo / "libs/hbb_common/src/config.rs").read_text(encoding="utf-8"),
+            "hbb_fs_source": (repo / "libs/hbb_common/src/fs.rs").read_text(encoding="utf-8"),
+            "macos_paste_task": (
+                repo / "libs/clipboard/src/platform/unix/macos/paste_task.rs"
+            ).read_text(encoding="utf-8"),
+            "macos_pasteboard_context": (
+                repo / "libs/clipboard/src/platform/unix/macos/pasteboard_context.rs"
+            ).read_text(encoding="utf-8"),
             "hbb_common_cargo": (repo / "libs/hbb_common/Cargo.toml").read_text(encoding="utf-8"),
             "hbb_common_platform": (repo / "libs/hbb_common/src/platform/mod.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),

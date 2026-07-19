@@ -184,7 +184,7 @@ pub(super) fn create_placeholder_file(
                     | libc::O_CLOEXEC
                     | libc::O_NOFOLLOW
                     | libc::O_NOCTTY,
-                0o600 as libc::mode_t,
+                0o600 as libc::c_uint,
             )
         };
         if fd >= 0 {

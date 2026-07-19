@@ -252,7 +252,7 @@ fn open_relative_file_exclusive_no_follow(
                 | libc::O_CLOEXEC
                 | libc::O_NOFOLLOW
                 | libc::O_NOCTTY,
-            0o666 as libc::mode_t,
+            0o666 as libc::c_uint,
         )
     };
     if fd < 0 {

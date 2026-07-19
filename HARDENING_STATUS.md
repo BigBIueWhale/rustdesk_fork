@@ -4071,6 +4071,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   separately document all-architecture validation. Native signed app replacement, admin reinstall/relaunch,
   universal-binary rejection injection, and exact-commit artifact proof remain R-R2/R-B2. External expert audit
   remains R-V3.
+- **R-S11e-62 — macOS variadic file-creation ABI — SOURCE IMPLEMENTED; SDK-BACKED NATIVE AND ARTIFACT
+  EVIDENCE REMAIN R-R2/R-B2.** Platform: macOS source-conformance and Apple-target Rust compilation. Surfaces:
+  `libs/hbb_common/src/config.rs`, `libs/hbb_common/src/fs.rs`, `src/ipc/fs.rs`, and the macOS clipboard
+  paste/placeholder sources.
+  Boundary: Rust's typed Darwin `mode_t` ↔ the C variadic `open`/`openat` ABI. Proven gap: Darwin's pinned libc
+  exposes `mode_t` as `u16`, while Apple declares `open`/`openat` with an ellipsis. Three creation calls passed that
+  narrow type directly and the pinned Apple-target compiler rejected them with E0617 before the hardened config and
+  clipboard paths could be compiled. This was deterministic Apple build/ABI correctness and unreachable hardening,
+  not evidence of runtime privilege escalation, public exposure, corrupted files, host changes, or compromise.
+
+  Source closure: only the three variadic creation-mode arguments are explicitly promoted to `libc::c_uint`, as
+  Rust's E0617 diagnostic requires and as the pre-existing portable file-transfer helper already did. The numeric
+  modes, `O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW` protections, descriptor type checks, atomic config replacement, and
+  clipboard cleanup are unchanged. Fixed-prototype `mkdir`, `mkdirat`, and `fchmod` calls deliberately retain
+  `mode_t`; the correction is not a blanket type substitution. The already-correct promoted `i32` PID-file literal
+  remains unchanged. `scripts/verify-macos-variadic-open-mode.py` binds the three corrected calls, both correct call
+  shapes, the fixed-prototype distinction, requirements/ledger, and both source gates, and rejects 13 deliberate
+  mutations. R-S11av and Appendix C #170 make the model normative.
+  The pinned SDK-free Apple compiler cross-check establishes Rust ABI/source coherence only. SDK-backed execution,
+  clipboard/config behavior, signed binaries, and exact-commit artifact proof remain R-R2/R-B2; external expert
+  review remains R-V3.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6416,8 +6437,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f2752e7e462ca7d3fecb61739f446a849a2e6c2029f6e7f7b3c8573e47fc9473  requirements.html
+539a54322f5e78b71fb686acb780939ff4a5119c807bc55967c3da92c7a9bbe9  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11au, and Appendix C #169. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11av, and Appendix C #170. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

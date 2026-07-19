@@ -4242,6 +4242,11 @@ fn terminate_and_reap_linux_pkcheck(child: &mut std::process::Child, reason: &st
 }
 
 #[cfg(target_os = "linux")]
+fn configure_linux_pkcheck_environment(command: &mut std::process::Command) {
+    command.env_clear();
+}
+
+#[cfg(target_os = "linux")]
 fn linux_pkcheck_authorizes_service_owned_password_change(
     subject: String,
     shutdown: hbb_common::tokio_util::sync::CancellationToken,
@@ -4254,6 +4259,7 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         return false;
     };
     let mut command = std::process::Command::new(pkcheck);
+    configure_linux_pkcheck_environment(&mut command);
     command
         .arg("--action-id")
         .arg(SET_UNATTENDED_PASSWORD_POLKIT_ACTION)
@@ -8449,6 +8455,52 @@ mod test {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn linux_pkcheck_child_excludes_inherited_environment() {
+        const ROLE: &str = "RUSTDESK_TEST_PKCHECK_ENVIRONMENT_ROLE";
+        const HOSTILE_BUS: &str = "unix:path=/tmp/rustdesk-hostile-system-bus";
+        const TEST_FILTER: &str = "linux_pkcheck_child_excludes_inherited_environment";
+
+        match std::env::var(ROLE).as_deref() {
+            Ok("launcher") => {
+                assert_eq!(
+                    std::env::var("DBUS_SYSTEM_BUS_ADDRESS").as_deref(),
+                    Ok(HOSTILE_BUS)
+                );
+                let mut worker = std::process::Command::new(std::env::current_exe().unwrap());
+                configure_linux_pkcheck_environment(&mut worker);
+                let status = worker
+                    .env(ROLE, "worker")
+                    .arg(TEST_FILTER)
+                    .arg("--nocapture")
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
+            Ok("worker") => {
+                assert!(std::env::var_os("DBUS_SYSTEM_BUS_ADDRESS").is_none());
+                let unexpected: Vec<_> = std::env::vars_os()
+                    .filter(|(key, _)| key != std::ffi::OsStr::new(ROLE))
+                    .collect();
+                assert!(
+                    unexpected.is_empty(),
+                    "unexpected environment: {unexpected:?}"
+                );
+            }
+            _ => {
+                let status = std::process::Command::new(std::env::current_exe().unwrap())
+                    .env(ROLE, "launcher")
+                    .env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)
+                    .arg(TEST_FILTER)
+                    .arg("--nocapture")
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn linux_password_authorization_is_bounded_reaped_and_capacity_isolated() {
         let source = include_str!("ipc.rs");
         let start = source.find("fn terminate_and_reap_linux_pkcheck").unwrap();
@@ -8460,6 +8512,7 @@ mod test {
         for required in [
             "PKCHECK_AUTHORIZATION_TIMEOUT",
             "let mut command = std::process::Command::new(pkcheck);",
+            "configure_linux_pkcheck_environment(&mut command)",
             "configure_command_close_nonstdio_on_exec(&mut command)",
             "let child = command.spawn();",
             "child.try_wait()",

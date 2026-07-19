@@ -3302,7 +3302,7 @@ def smoke_readiness_mode_is_valid(mode):
 
 
 def validate_smoke_contract(
-    verify, hardening, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
+    verify, hardening, requirements, smoke, stage, stage_mode, service_lifecycle, service_lifecycle_mode,
     pid_reuse_lifecycle, pid_reuse_lifecycle_mode,
     debian_sysv_lifecycle, debian_sysv_lifecycle_mode, openrc_lifecycle,
     openrc_lifecycle_mode, runit_lifecycle, runit_lifecycle_mode,
@@ -3328,6 +3328,9 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md", "service helper descriptor hardening ledger gate"),
         ('Linux pkcheck helper inherited descriptor authority (R-S11p/R-S11e-30)', "pkcheck helper descriptor source gate"),
         ("grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority' HARDENING_STATUS.md", "pkcheck helper descriptor hardening ledger gate"),
+        ('Linux pkcheck helper ambient environment authority (R-S11y/R-S11e-39)', "pkcheck helper environment source gate"),
+        ('if grep -Eq \'\\.envs?[[:space:]]*\\(\' <<<"$pkcheck_environment_policy$pkcheck_authorization_block"; then', "pkcheck explicit environment source gate"),
+        ("grep -qF 'R-S11e-39 — Linux service-owned pkcheck inherited environment authority' HARDENING_STATUS.md", "pkcheck helper environment hardening ledger gate"),
         ('Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31)', "same-executable child descriptor source gate"),
         ("grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md", "same-executable child descriptor hardening ledger gate"),
         ('Linux external-helper descriptor allowlist authority (R-S11r/R-S11e-32)', "external-helper descriptor source gate"),
@@ -3358,6 +3361,26 @@ def validate_smoke_contract(
         hardening,
         "R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority",
         "pkcheck helper descriptor hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11e-39 — Linux service-owned pkcheck inherited environment authority",
+        "pkcheck helper environment hardening ledger",
+    )
+    require_text(
+        requirements,
+        '<span class="id">R-S11y</span>',
+        "pkcheck environment normative requirement",
+    )
+    require_text(
+        requirements,
+        '<tr><td>147</td>',
+        "pkcheck environment Appendix C row",
+    )
+    require_text(
+        requirements,
+        "Linux service-owned pkcheck inherited environment authority",
+        "pkcheck environment Appendix C disposition",
     )
     require_text(
         hardening,
@@ -4072,6 +4095,19 @@ def validate_smoke_contract(
     for forbidden in ("Command::new(&exe).arg(", "Command::new(exe).spawn()"):
         if forbidden in reopen_helpers:
             raise VerificationError(f"reopen helper retains direct spawn without descriptor policy: {forbidden}")
+    pkcheck_environment_policy = extract_between(
+        ipc_source,
+        "fn configure_linux_pkcheck_environment",
+        "\nfn linux_pkcheck_authorizes_service_owned_password_change",
+        "Linux pkcheck environment policy",
+    )
+    require_text(
+        pkcheck_environment_policy,
+        "command.env_clear();",
+        "pkcheck empty environment",
+    )
+    if re.search(r"\.envs?\s*\(", pkcheck_environment_policy):
+        raise VerificationError("pkcheck environment policy reintroduces an explicit variable")
     pkcheck_authorization = extract_between(
         ipc_source,
         "fn linux_pkcheck_authorizes_service_owned_password_change",
@@ -4080,6 +4116,10 @@ def validate_smoke_contract(
     )
     for text, label in (
         ("let mut command = std::process::Command::new(pkcheck);", "pkcheck mutable command"),
+        (
+            "configure_linux_pkcheck_environment(&mut command);",
+            "pkcheck environment policy",
+        ),
         (
             "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)",
             "pkcheck descriptor policy",
@@ -4092,6 +4132,7 @@ def validate_smoke_contract(
         pkcheck_authorization,
         (
             "let mut command = std::process::Command::new(pkcheck);",
+            "configure_linux_pkcheck_environment(&mut command);",
             "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)",
             "let child = command.spawn();",
         ),
@@ -4099,6 +4140,38 @@ def validate_smoke_contract(
     )
     if re.search(r"std::process::Command::new\(pkcheck\)\s*\.", pkcheck_authorization):
         raise VerificationError("pkcheck retains direct spawn without descriptor policy")
+    if re.search(r"\.envs?\s*\(", pkcheck_authorization):
+        raise VerificationError("pkcheck authorization reintroduces an explicit environment")
+    pkcheck_environment_test = extract_between(
+        ipc_source,
+        "fn linux_pkcheck_child_excludes_inherited_environment",
+        "\n    #[cfg(target_os = \"linux\")]\n    #[test]\n    fn linux_password_authorization_is_bounded_reaped_and_capacity_isolated",
+        "Linux pkcheck actual-child environment regression",
+    )
+    for text, label in (
+        (
+            'const HOSTILE_BUS: &str = "unix:path=/tmp/rustdesk-hostile-system-bus";',
+            "hostile system-bus fixture",
+        ),
+        (
+            '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)',
+            "hostile system-bus inheritance",
+        ),
+        (
+            "configure_linux_pkcheck_environment(&mut worker);",
+            "actual-child environment policy",
+        ),
+        (
+            'std::env::var_os("DBUS_SYSTEM_BUS_ADDRESS").is_none()',
+            "actual-child system-bus exclusion",
+        ),
+        (
+            "key != std::ffi::OsStr::new(ROLE)",
+            "actual-child complete environment inventory",
+        ),
+        ("unexpected.is_empty()", "actual-child empty environment assertion"),
+    ):
+        require_text(pkcheck_environment_test, text, label)
     run_me_with_env = extract_between(
         common_source,
         "pub fn run_me_with_env<",
@@ -6059,6 +6132,7 @@ def validate_sources(sources):
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
+        sources["requirements"],
         sources["smoke"],
         sources["smoke_stage"],
         sources["smoke_stage_mode"],
@@ -11053,6 +11127,30 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
+            "    command.env_clear();",
+            '    command.env("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/tmp/ambient");',
+            "pkcheck empty environment",
+        ),
+        (
+            "ipc_source",
+            "    command.env_clear();",
+            '    command.env_clear();\n    command.env("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/tmp/ambient");',
+            "pkcheck environment policy reintroduces an explicit variable",
+        ),
+        (
+            "ipc_source",
+            "    configure_linux_pkcheck_environment(&mut command);",
+            "    // pkcheck environment policy removed",
+            "pkcheck environment policy",
+        ),
+        (
+            "ipc_source",
+            'std::env::var_os("DBUS_SYSTEM_BUS_ADDRESS").is_none()',
+            'std::env::var_os("DBUS_SYSTEM_BUS_ADDRESS").is_some()',
+            "actual-child system-bus exclusion",
+        ),
+        (
+            "ipc_source",
             "    }\n    let child = command.spawn();\n    let mut child = match child {",
             "    }\n    let child = std::process::Command::new(pkcheck).spawn();\n    let mut child = match child {",
             "pkcheck execution after descriptor policy",
@@ -11728,6 +11826,36 @@ def run_source_mutations(sources):
             "R-S11e-38 — cross-platform root-to-user helper launch authority",
             "R-S11e-38 — cross-platform root-to-user helper compatibility",
             "cross-platform helper hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9a) Linux pkcheck helper ambient environment authority (R-S11y/R-S11e-39) =="',
+            'echo "== (3b-iii-d9a) Linux pkcheck helper ambient environment compatibility (R-S11y/R-S11e-39) =="',
+            "pkcheck helper environment source gate",
+        ),
+        (
+            "verify",
+            'if grep -Eq \'\\.envs?[[:space:]]*\\(\' <<<"$pkcheck_environment_policy$pkcheck_authorization_block"; then',
+            'if false; then',
+            "pkcheck explicit environment source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11y</span>',
+            '<span class="id">R-S11z</span>',
+            "pkcheck environment normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>147</td>",
+            "<tr><td>9147</td>",
+            "pkcheck environment Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-39 — Linux service-owned pkcheck inherited environment authority",
+            "R-S11e-39 — Linux service-owned pkcheck environment compatibility",
+            "pkcheck helper environment hardening ledger",
         ),
         (
             "server_source",

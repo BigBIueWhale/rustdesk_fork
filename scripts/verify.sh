@@ -2988,6 +2988,46 @@ grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authori
 if [ -n "$r_s11e30" ]; then echo "  FAIL R-S11e-30 Linux pkcheck helper inherited descriptor authority:$r_s11e30"; rc=1; else
   echo "  ok  R-S11e-30 Linux service-owned pkcheck authorization marks non-stdio descriptors close-on-exec before helper exec"; fi
 
+# (3b-iii-d9a) R-S11y/R-S11e-39: the service-owned pkcheck
+# authorization decision is independent of the root supervisor's
+# ambient environment. In particular, DBUS_SYSTEM_BUS_ADDRESS must not
+# redirect the helper away from the operating system's default system
+# bus endpoint.
+echo "== (3b-iii-d9a) Linux pkcheck helper ambient environment authority (R-S11y/R-S11e-39) =="
+r_s11e39=
+pkcheck_environment_policy=$(awk '/fn configure_linux_pkcheck_environment/,/fn linux_pkcheck_authorizes_service_owned_password_change/' src/ipc.rs)
+pkcheck_environment_test=$(awk '/fn linux_pkcheck_child_excludes_inherited_environment/,/fn linux_password_authorization_is_bounded_reaped_and_capacity_isolated/' src/ipc.rs)
+grep -qF 'fn configure_linux_pkcheck_environment(command: &mut std::process::Command)' <<<"$pkcheck_environment_policy" \
+  || r_s11e39="$r_s11e39 environment-policy-missing"
+grep -qF 'command.env_clear();' <<<"$pkcheck_environment_policy" \
+  || r_s11e39="$r_s11e39 environment-clear-missing"
+if grep -Eq '\.envs?[[:space:]]*\(' <<<"$pkcheck_environment_policy$pkcheck_authorization_block"; then
+  r_s11e39="$r_s11e39 explicit-environment-reintroduced"
+fi
+grep -qF 'configure_linux_pkcheck_environment(&mut command);' <<<"$pkcheck_authorization_block" \
+  || r_s11e39="$r_s11e39 authorization-policy-call-missing"
+pkcheck_environment_line=$(grep -nF 'configure_linux_pkcheck_environment(&mut command);' <<<"$pkcheck_authorization_block" | head -n1 | cut -d: -f1)
+if [ -z "$pkcheck_environment_line" ] || [ -z "$pkcheck_policy_line" ] || [ -z "$pkcheck_spawn_line" ] \
+  || [ "$pkcheck_environment_line" -ge "$pkcheck_policy_line" ] \
+  || [ "$pkcheck_environment_line" -ge "$pkcheck_spawn_line" ]; then
+  r_s11e39="$r_s11e39 environment-policy-order-invalid"
+fi
+for runtime_binding in \
+  'const HOSTILE_BUS: &str = "unix:path=/tmp/rustdesk-hostile-system-bus";' \
+  '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)' \
+  'configure_linux_pkcheck_environment(&mut worker);' \
+  'std::env::var_os("DBUS_SYSTEM_BUS_ADDRESS").is_none()' \
+  'key != std::ffi::OsStr::new(ROLE)' \
+  'unexpected.is_empty()'; do
+  grep -qF "$runtime_binding" <<<"$pkcheck_environment_test" || r_s11e39="$r_s11e39 actual-child-proof-missing"
+done
+grep -qF '<span class="id">R-S11y</span>' requirements.html || r_s11e39="$r_s11e39 normative-requirement-missing"
+grep -qF 'Linux service-owned pkcheck inherited environment authority' requirements.html || r_s11e39="$r_s11e39 appendix-disposition-missing"
+grep -qF '<tr><td>147</td>' requirements.html || r_s11e39="$r_s11e39 appendix-row-missing"
+grep -qF 'R-S11e-39 — Linux service-owned pkcheck inherited environment authority' HARDENING_STATUS.md || r_s11e39="$r_s11e39 hardening-ledger-missing"
+if [ -n "$r_s11e39" ]; then echo "  FAIL R-S11e-39 Linux pkcheck helper ambient environment authority:$r_s11e39"; rc=1; else
+  echo "  ok  R-S11e-39 Linux service-owned pkcheck starts with an empty environment and an actual child excludes a hostile inherited system-bus selector"; fi
+
 # (3b-iii-d10) R-S11q/R-S11e-31: every Linux same-executable
 # helper launch owns its descriptor contract. This includes the root
 # service-owned headless CM route, so run_me_with_env must apply the

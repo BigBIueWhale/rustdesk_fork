@@ -2520,6 +2520,64 @@ unreachable and a source/test/AST gate prevents reintroduction.
   top-level verifier/full release build was not run because it deliberately builds images and executes root service
   fixtures, and the controlling prompt forbids the long full release build. Native Darwin/Windows execution and
   exact release-artifact evidence therefore remain explicitly pending under R-B2.
+- **R-S11e-39 — Linux service-owned pkcheck inherited environment authority — SOURCE IMPLEMENTED AND SOURCE-GATED
+  2026-07-19; EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux
+  installed/service-owned unattended-password receiver.
+  Endpoint/action: the root service's fixed `/usr/bin/pkcheck --action-id
+  com.carriez.RustDesk.set-unattended-password --process <pid,start-time,uid> --allow-user-interaction` child.
+  Boundary: root supervisor launch environment ↔ the external helper whose successful exit is accepted as the
+  administrative authorization decision. Proven old path: R-S11e/R-S11e-1/R-S11e-15/R-S11e-30 already bound the
+  action, live kernel-derived subject, trusted root-owned executable, timeout/reap behavior, and inherited
+  descriptors, but `std::process::Command::new(pkcheck)` still inherited the supervisor's complete environment.
+  The official `pkcheck(1)` contract describes the program as a wrapper around the polkit D-Bus interface, and the
+  D-Bus specification makes `DBUS_SYSTEM_BUS_ADDRESS` the environment-selected system-bus address, falling back to
+  the well-known local system-bus socket only when it is absent. Ambient loader, path, home, and locale variables
+  were likewise unnecessary inputs to an exit-status-only privileged authorization helper.
+
+  Authority assessment: the packaged systemd, SysV, OpenRC, runit, and manual configurations and the inspected
+  service call graph expose no proved ordinary-user write into the root supervisor's environment. A hostile value
+  requires a privileged or otherwise misconfigured launcher. This is therefore conceptual privileged authorization-
+  endpoint/future-deployment authority and defense in depth, not a demonstrated promptless ordinary-user-to-root
+  primitive and not evidence that the polkit daemon or policy was bypassed on a supported deployment.
+
+  Closure: `configure_linux_pkcheck_environment` calls `Command::env_clear()` immediately after the trusted image is
+  selected. The authorization command adds no environment variables and then applies only its fixed argv, null
+  stdio, R-S11p descriptor policy, bounded execution, and fail-closed result handling. The change is deliberately
+  confined to pkcheck; display/session helpers whose protocol explicitly needs selected environment values are not
+  broadened or refactored. A two-hop Linux unit regression gives an intermediate test image a hostile
+  `DBUS_SYSTEM_BUS_ADDRESS`, applies the exact production environment policy to a final test image, and proves that
+  the final image receives no environment entry except its test-only role marker. `scripts/verify.sh` and the
+  semantic workspace verifier bind the primitive, production call and ordering before descriptor configuration and
+  spawn, absence of explicit replacement variables, actual-child proof, R-S11y, Appendix C #147, this entry, and
+  independent source mutations. Primary contracts:
+  https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html,
+  https://dbus.freedesktop.org/doc/dbus-specification.html, and
+  https://doc.rust-lang.org/std/process/struct.Command.html#method.env_clear.
+
+  Verification: Rust 1.75 compiled and executed the two-hop focused regression in the existing `rd-devcheck` image;
+  all three parent/launcher/worker invocations reported the one selected test passing, with 305 tests filtered out.
+  A separate `cargo check --offline --locked --lib --features linux-pkg-config` completed in 28.11 seconds. The normal
+  semantic workspace verifier and its complete independently invocable in-memory source-mutation matrix pass; the
+  mutations independently remove environment clearing, add a replacement bus selector after clearing, remove the
+  production policy call, invert the actual-child bus-address assertion, or rename the shell gate, normative
+  requirement, Appendix row, and hardening record; each is rejected by its intended contract. The extracted
+  R-S11e-30/R-S11e-39 shell gates, Bash/Python syntax, exact
+  Rust 1.75 rustfmt check, native-codec normal/self-test, requirements-hash synchronization, and `git diff --check`
+  pass. The first focused-test setup attempt is not counted: an unpinned rustup channel tried to write an update
+  check under the read-only container root. Pinning the already-installed exact `1.75.0-x86_64-unknown-linux-gnu`
+  toolchain produced the passing run. A first combined native/format command placed a Docker volume option after the
+  image name, so both native gates passed before the command ended on the resulting missing `/toolchain` path; the
+  correctly composed command was rerun and all three checks passed.
+
+  Checks ran as the invoking non-root UID in the existing local image
+  `sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking disabled, all
+  capabilities dropped, no-new-privileges, source read-only, Cargo registry/git caches read-only, and build outputs
+  in disposable tmpfs. No image was built or pulled and no Docker socket, host PID/network namespace, published
+  port, service/config path, or host root identity entered a container. No host RustDesk process/service/config,
+  listener, firewall, or networking state was inspected or changed. The long top-level verifier and full release
+  build were not run because they deliberately build images and/or execute root service fixtures and the controlling
+  prompt forbids that expansion. Exact clean Debian artifact execution remains owned by R-B2/R-S11c-27; this source
+  slice does not substitute for that release evidence. Publication evidence is recorded after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4859,8 +4917,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8109ed42b15edc90ac2d65f6838239aa8d847508b75e40169f352a45cdb7c92e  requirements.html
+5e2ff110dea6ae6af33e0094fa9452a8b2f6bc6a2363359cb70512b494f5a74f  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11x, and Appendix C #146. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11y, and Appendix C #147. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

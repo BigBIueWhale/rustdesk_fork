@@ -4221,6 +4221,53 @@ unreachable and a source/test/AST gate prevents reintroduction.
   or use root; the generated ignored verifier bytecode was removed. This was still a process-boundary violation and
   is recorded rather than hidden. No host RustDesk, service, configuration, listener, firewall, or host-network state
   was inspected or changed.
+- **R-S11e-67 — Linux clipboard fusermount process-context finality — SOURCE IMPLEMENTED; NATIVE INSTALLED-HELPER
+  AND EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: Linux desktop clipboard file-copy FUSE. Surfaces:
+  `mount_with_fixed_fusermount` and the `fixed_fusermount_unmount` teardown fallback. Boundary: ordinary user
+  RustDesk process context ↔ the externally installed `fusermount3`/`fusermount` image that supplies the narrow
+  setuid-root mount boundary. Proven gap: both launchers already used a canonical fixed helper whose file and both
+  parents are root-owned and non-writable, an absolute current-user-owned prepared mountpoint, owner-only mount
+  options, explicit argv, stdio pipes, and the R-S11e-32 descriptor policy; Linux euid 0 is separately refused before
+  mountpoint setup. They nevertheless inherited the long-lived desktop process's complete environment and current
+  directory. The dynamic loader's secure-execution filtering is implementation-dependent defense inside the child,
+  not an application-owned input contract, and it does not establish that arbitrary non-loader variables are valid
+  helper authority. Upstream documents fusermount as setuid root and its current mount utility deliberately supplies
+  an empty environment when it spawns its own privileged `/bin/mount`/`/bin/umount` children. This was ambient
+  process-context integrity debt at a privileged external-helper boundary, not a demonstrated working local-root
+  exploit, remote trigger, exploitation incident, or evidence of compromise.
+
+  Source closure: one `FusermountOperation` type distinguishes mount from unmount and one
+  `configure_fusermount_process_context` policy owns the complete child context before argv, descriptor setup, or
+  execution. It clears every inherited variable, fixes the initial directory at `/`, and nulls stdin. Mount adds only
+  `_FUSE_COMMFD=<the exact allowlisted socket fd>`; unmount adds no environment entry. There is no preserved `PATH`,
+  profile, temporary-directory, locale, loader, FUSE-device, or compatibility environment. Both callers use the typed
+  policy exactly once and do not mutate environment or CWD afterward. Fixed executable provenance, euid-0 refusal,
+  mountpoint safety, owner-only options, exact descriptor allowlisting, SCM_RIGHTS receipt, checked status, and
+  no-follow teardown are unchanged. R-S11ba and Appendix C #175 make the model normative. Two actual-child unit
+  regressions poison the `Command` with a sentinel and prove `/usr/bin/env` observes exactly the communication-fd
+  entry for mount and an empty environment for unmount, with `/` selected in both cases. The shared source gate and
+  semantic workspace validator bind policy inventory, typed caller topology, ordering, regressions, requirement,
+  Appendix row, and this ledger; deliberate mutations cover environment reset, directory/stdin policy, operation
+  typing, both callers, exact child output, and documentary bindings. Native execution against an installed setuid
+  helper and exact Debian artifact evidence remain R-R2/R-B2; external expert review remains R-V3.
+
+  Verification: the focused two-test Rust 1.75 actual-child filter passes, as does the complete 29-test clipboard
+  library target when run serially. One preceding parallel full-target run passed 27 tests and timed out in two
+  unchanged `read_node_*` tests; the exact three-test cluster and then the complete target passed with one test
+  thread, so the red run is retained as scheduler-sensitive evidence rather than hidden or reclassified as green.
+  The full RustDesk Linux library check with `linux-pkg-config,unix-file-copy-paste` completes successfully; its
+  existing warnings are unchanged. The semantic workspace validator passes normally and with its complete source-
+  mutation matrix, and the focused shell gate executes successfully. Bash syntax, native-codec watch normal/self-
+  test, dependency inventory normal/all 103 mutations, requirements-digest synchronization, and diff hygiene pass.
+  The available immutable Rust 1.75 image has no installed Rustfmt component; no networked install or toolchain
+  mutation was attempted. An initial test setup correctly failed because executable Cargo temporaries had been
+  prohibited, and a second reached the pre-existing root-owned unreadable `pin-utils` extracted cache entry. Neither
+  condition was bypassed with root or a permission change: final compilation re-extracted the read-only crate
+  archives and Git inputs into disposable user-owned tmpfs storage. All substantive checks ran in the already-present
+  immutable image as UID/GID 1000 with networking and pulls disabled, source/toolchain/input caches read-only, root
+  filesystem read-only, disposable output/cache storage, no capabilities, no-new-privileges, bounded pids, and no
+  published ports or Docker socket. No host RustDesk, service, configuration, listener, firewall, or host-network
+  state was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6567,8 +6614,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c4bd7c481d80e663bbd330146ddc30f79f2fb1160eeb1be4d3677fe9adf57e6c  requirements.html
+2d39219d9383736bfce09a6165dc70b7930ad99d03893e8de3ea4e05147f6363  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11az, and Appendix C #174. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ba, and Appendix C #175. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -54,6 +54,24 @@ const FUSERMOUNT_HELPERS: &[&str] = &[
     "/bin/fusermount",
 ];
 
+enum FusermountOperation {
+    Mount { communication_fd: RawFd },
+    Unmount,
+}
+
+fn configure_fusermount_process_context(
+    command: &mut Command,
+    operation: FusermountOperation,
+) {
+    command.env_clear().current_dir("/").stdin(Stdio::null());
+    match operation {
+        FusermountOperation::Mount { communication_fd } => {
+            command.env(FUSE_COMMFD_ENV, communication_fd.to_string());
+        }
+        FusermountOperation::Unmount => {}
+    }
+}
+
 pub fn get_exclude_paths(is_client: bool) -> Arc<String> {
     if is_client {
         FUSE_MOUNT_POINT_CLIENT.clone()
@@ -297,14 +315,19 @@ fn mount_with_fixed_fusermount(
         fuse_common_error(format!("failed to create fusermount fd socket pair: {e}"))
     })?;
     let mut command = Command::new(&helper);
+    configure_fusermount_process_context(
+        &mut command,
+        FusermountOperation::Mount {
+            communication_fd: child_socket.as_raw_fd(),
+        },
+    );
     command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg("-o")
         .arg(mount_options)
         .arg("--")
-        .arg(mount_point)
-        .env(FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string());
+        .arg(mount_point);
     configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])
         .map_err(|e| {
             fuse_common_error(format!(
@@ -728,6 +751,7 @@ fn unmount_clipboard_fuse_mount(mount_point: &Path) {
 fn fixed_fusermount_unmount(mount_point: &Path) -> Result<(), CliprdrError> {
     let helper = trusted_fusermount_helper()?;
     let mut command = Command::new(&helper);
+    configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);
     command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -932,6 +956,35 @@ mod tests {
     #[test]
     fn trusted_fusermount_path_rejects_relative_path() {
         assert!(trusted_fusermount_path(Path::new("fusermount3")).is_none());
+    }
+
+    #[test]
+    fn r_s11e67_fusermount_mount_process_context_is_exact() {
+        let mut command = Command::new("/usr/bin/env");
+        command.env("RUSTDESK_AMBIENT_SENTINEL", "attacker-controlled");
+        configure_fusermount_process_context(
+            &mut command,
+            FusermountOperation::Mount {
+                communication_fd: 9,
+            },
+        );
+        assert_eq!(command.get_current_dir(), Some(Path::new("/")));
+
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"_FUSE_COMMFD=9\n");
+    }
+
+    #[test]
+    fn r_s11e67_fusermount_unmount_process_context_is_exact() {
+        let mut command = Command::new("/usr/bin/env");
+        command.env("RUSTDESK_AMBIENT_SENTINEL", "attacker-controlled");
+        configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);
+        assert_eq!(command.get_current_dir(), Some(Path::new("/")));
+
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
     }
 
     #[cfg(target_os = "linux")]

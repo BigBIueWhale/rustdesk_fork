@@ -153,6 +153,9 @@ the FUSE server will figure out the file system tree and rearrange its content.
   `_FUSE_COMMFD` fd-passing protocol, then served through
   `fuser::Session::from_fd` with owner-only access. RustDesk does not call
   fuser's `spawn_mount2` direct `mount(2)` path.
+  - The helper starts at `/` with null stdin and no inherited environment.
+    Mount receives only its exact `_FUSE_COMMFD`; unmount receives no
+    environment entries.
   - `AUTO_UNMOUNT` is not enabled because fuser widens the kernel mount to
     `allow_other` for that mode. RustDesk owns teardown explicitly instead.
   - stale clipboard FUSE mounts are cleared with a direct no-follow

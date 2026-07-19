@@ -4973,7 +4973,7 @@ def validate_smoke_contract(
         "fusermount explicit descriptor contract",
     )
     for text, label in (
-        ("FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string()", "fusermount descriptor number handoff"),
+        ("communication_fd: child_socket.as_raw_fd()", "fusermount descriptor number handoff"),
         (
             "configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])",
             "fusermount exact descriptor allowlist",
@@ -6337,6 +6337,178 @@ def validate_macos_privileged_script_environment_contract(sources):
             "hardening",
             "R-S11e-66 — macOS administrator-script environment finality",
             "macOS privileged-script hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+
+def validate_fusermount_process_context_contract(sources):
+    source = sources["clipboard_fuse"]
+    policy = extract_between(
+        source,
+        "enum FusermountOperation {",
+        "\npub fn get_exclude_paths",
+        "Linux fusermount typed process-context policy",
+    )
+    for text, label in (
+        (
+            "Mount { communication_fd: RawFd }",
+            "fusermount typed mount communication capability",
+        ),
+        ("Unmount,", "fusermount typed unmount operation"),
+        (
+            "fn configure_fusermount_process_context(",
+            "fusermount process-context policy",
+        ),
+        (".env_clear()", "fusermount complete environment reset"),
+        ('.current_dir("/")', "fusermount fixed working directory"),
+        (".stdin(Stdio::null())", "fusermount null stdin"),
+        ("match operation {", "fusermount exhaustive operation policy"),
+        (
+            "FusermountOperation::Mount { communication_fd } => {",
+            "fusermount operation-derived mount environment",
+        ),
+        (
+            "command.env(FUSE_COMMFD_ENV, communication_fd.to_string());",
+            "fusermount exact communication environment",
+        ),
+        (
+            "FusermountOperation::Unmount => {}",
+            "fusermount operation-derived empty unmount environment",
+        ),
+    ):
+        require_text(policy, text, label)
+    require_exact_count(policy, ".env_clear()", 1, "fusermount complete environment reset")
+    require_exact_count(policy, ".env(", 1, "fusermount exact replacement environment")
+    require_exact_count(policy, ".current_dir(", 1, "fusermount fixed working directory")
+    require_exact_count(policy, ".stdin(", 1, "fusermount null stdin")
+    require_order(
+        policy,
+        (
+            ".env_clear()",
+            '.current_dir("/")',
+            ".stdin(Stdio::null())",
+            "match operation {",
+            "FusermountOperation::Mount { communication_fd } => {",
+            "command.env(FUSE_COMMFD_ENV, communication_fd.to_string());",
+            "FusermountOperation::Unmount => {}",
+        ),
+        "fusermount complete process context before operation environment",
+    )
+
+    mount = extract_between(
+        source,
+        "fn mount_with_fixed_fusermount(",
+        "\nfn receive_fusermount_fd",
+        "Linux clipboard fusermount mount caller",
+    )
+    require_exact_count(
+        mount,
+        "configure_fusermount_process_context(",
+        1,
+        "fusermount mount process-context policy call",
+    )
+    require_text(
+        mount,
+        "FusermountOperation::Mount {\n            communication_fd: child_socket.as_raw_fd(),",
+        "fusermount mount exact communication capability",
+    )
+    require_absent(mount, ".env(", "fusermount mount post-policy environment mutation")
+    require_absent(mount, ".current_dir(", "fusermount mount post-policy directory mutation")
+    require_order(
+        mount,
+        (
+            "let mut command = Command::new(&helper);",
+            "configure_fusermount_process_context(",
+            ".stdout(Stdio::piped())",
+            "configure_command_descriptor_allowlist_on_exec(&mut command",
+            "command.spawn()",
+        ),
+        "fusermount mount process context before argv descriptors and execution",
+    )
+
+    unmount = extract_between(
+        source,
+        "fn fixed_fusermount_unmount(mount_point: &Path) -> Result<(), CliprdrError> {",
+        "\nfn unmount_stale_fuse_mount",
+        "Linux clipboard fusermount unmount caller",
+    )
+    require_exact_count(
+        unmount,
+        "configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);",
+        1,
+        "fusermount unmount process-context policy call",
+    )
+    require_absent(unmount, ".env(", "fusermount unmount post-policy environment mutation")
+    require_absent(unmount, ".current_dir(", "fusermount unmount post-policy directory mutation")
+    require_order(
+        unmount,
+        (
+            "let mut command = Command::new(&helper);",
+            "configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);",
+            ".stdout(Stdio::piped())",
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "command.output()",
+        ),
+        "fusermount unmount process context before argv descriptors and execution",
+    )
+
+    actual_children = extract_between(
+        source,
+        "fn r_s11e67_fusermount_mount_process_context_is_exact() {",
+        "\n    #[cfg(target_os = \"linux\")]",
+        "fusermount exact process-context actual-child regressions",
+    )
+    for text, label in (
+        (
+            'command.env("RUSTDESK_AMBIENT_SENTINEL", "attacker-controlled");',
+            "fusermount hostile ambient-environment fixture",
+        ),
+        (
+            "FusermountOperation::Mount {\n                communication_fd: 9,",
+            "fusermount mount actual-child operation",
+        ),
+        (
+            'assert_eq!(command.get_current_dir(), Some(Path::new("/")));',
+            "fusermount actual-child fixed directory proof",
+        ),
+        ('assert_eq!(output.stdout, b"_FUSE_COMMFD=9\\n");', "fusermount exact mount environment proof"),
+        (
+            "configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);",
+            "fusermount unmount actual-child operation",
+        ),
+        ("assert!(output.stdout.is_empty());", "fusermount empty unmount environment proof"),
+    ):
+        require_text(actual_children, text, label)
+    require_exact_count(
+        actual_children,
+        'let mut command = Command::new("/usr/bin/env");',
+        2,
+        "fusermount actual-child process inventory",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S11ba", "fusermount process-context requirement"
+    )
+    for text, label in (
+        ("clear the complete inherited environment", "fusermount environment-reset requirement"),
+        ("fix the initial working directory", "fusermount fixed-directory requirement"),
+        ("null stdin", "fusermount null-stdin requirement"),
+        ("add exactly one environment entry", "fusermount exact mount-environment requirement"),
+        ("unmount operation", "fusermount empty unmount-environment requirement"),
+    ):
+        require_text(requirement, text, label)
+    for source_key, text, label in (
+        (
+            "verify",
+            "Linux clipboard fusermount process-context finality (R-S11ba/R-S11e-67)",
+            "fusermount process-context source gate",
+        ),
+        ("requirements", "<tr><td>175</td>", "fusermount process-context Appendix C row"),
+        (
+            "hardening",
+            "R-S11e-67 — Linux clipboard fusermount process-context finality",
+            "fusermount process-context hardening ledger",
         ),
     ):
         require_text(sources[source_key], text, label)
@@ -10438,6 +10610,7 @@ def validate_sources(sources):
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
     validate_macos_privileged_script_environment_contract(sources)
+    validate_fusermount_process_context_contract(sources)
     validate_windows_helper_launch_contract(sources)
     validate_cross_platform_user_helper_contract(sources)
     validate_macos_service_principal_contract(sources)
@@ -15734,13 +15907,13 @@ def run_source_mutations(sources):
             "clipboard_fuse",
             "configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])",
             "configure_command_close_nonstdio_on_exec(&mut command)",
-            "fusermount exact descriptor allowlist",
+            "fusermount mount process context before argv descriptors and execution",
         ),
         (
             "clipboard_fuse",
             "configure_command_close_nonstdio_on_exec(&mut command).map_err(|e| {",
             "configure_command_close_nonstdio_on_exec_disabled(&mut command).map_err(|e| {",
-            "fusermount unmount descriptor policy",
+            "fusermount unmount process context before argv descriptors and execution",
         ),
         (
             "clipboard_fuse",
@@ -16467,6 +16640,108 @@ def run_source_mutations(sources):
             "R-S11e-66 — macOS administrator-script environment finality",
             "R-S11e-66 — macOS administrator-script environment deferred",
             "macOS privileged-script hardening ledger",
+        ),
+        (
+            "clipboard_fuse",
+            ".env_clear().current_dir(\"/\").stdin(Stdio::null());",
+            '.env_remove("LD_PRELOAD").current_dir("/").stdin(Stdio::null());',
+            "fusermount complete environment reset",
+        ),
+        (
+            "clipboard_fuse",
+            '.env_clear().current_dir("/").stdin(Stdio::null());',
+            '.env_clear().current_dir("/tmp").stdin(Stdio::null());',
+            "fusermount fixed working directory",
+        ),
+        (
+            "clipboard_fuse",
+            '.env_clear().current_dir("/").stdin(Stdio::null());',
+            '.env_clear().current_dir("/").stdin(Stdio::inherit());',
+            "fusermount null stdin",
+        ),
+        (
+            "clipboard_fuse",
+            "Mount { communication_fd: RawFd }",
+            "Mount { communication_fd: String }",
+            "fusermount typed mount communication capability",
+        ),
+        (
+            "clipboard_fuse",
+            "match operation {",
+            "if let FusermountOperation::Mount { communication_fd } = operation {",
+            "fusermount exhaustive operation policy",
+        ),
+        (
+            "clipboard_fuse",
+            "FusermountOperation::Mount { communication_fd } => {",
+            "FusermountOperation::Unmount => {",
+            "fusermount operation-derived mount environment",
+        ),
+        (
+            "clipboard_fuse",
+            "FusermountOperation::Unmount => {}",
+            "_ => {}",
+            "fusermount operation-derived empty unmount environment",
+        ),
+        (
+            "clipboard_fuse",
+            "command.env(FUSE_COMMFD_ENV, communication_fd.to_string());",
+            'command.env("HOME", "/tmp");',
+            "fusermount exact communication environment",
+        ),
+        (
+            "clipboard_fuse",
+            "    configure_fusermount_process_context(\n        &mut command,\n        FusermountOperation::Mount {\n            communication_fd: child_socket.as_raw_fd(),\n        },\n    );",
+            "    let _ = child_socket.as_raw_fd();",
+            "fusermount mount process-context policy call",
+        ),
+        (
+            "clipboard_fuse",
+            "    let mut command = Command::new(&helper);\n    configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);",
+            "    let mut command = Command::new(&helper);\n    let _ = &mut command;",
+            "fusermount unmount process-context policy call",
+        ),
+        (
+            "clipboard_fuse",
+            '        command.env("RUSTDESK_AMBIENT_SENTINEL", "attacker-controlled");\n        configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);\n        assert_eq!(command.get_current_dir(), Some(Path::new("/")));',
+            '        command.env("RUSTDESK_AMBIENT_SENTINEL", "attacker-controlled");\n        assert_eq!(command.get_current_dir(), Some(Path::new("/")));',
+            "fusermount unmount actual-child operation",
+        ),
+        (
+            "clipboard_fuse",
+            'assert_eq!(output.stdout, b"_FUSE_COMMFD=9\\n");',
+            'assert_eq!(output.stdout, b"HOME=/tmp\\n");',
+            "fusermount exact mount environment proof",
+        ),
+        (
+            "clipboard_fuse",
+            "assert!(output.stdout.is_empty());",
+            "assert!(!output.stdout.is_empty());",
+            "fusermount empty unmount environment proof",
+        ),
+        (
+            "verify",
+            "Linux clipboard fusermount process-context finality (R-S11ba/R-S11e-67)",
+            "Linux clipboard fusermount ambient-context compatibility (R-S11ba/R-S11e-67)",
+            "fusermount process-context source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ba</span>',
+            '<span class="id">R-S11ba-disabled</span>',
+            "fusermount process-context requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>175</td>",
+            "<tr><td>175-disabled</td>",
+            "fusermount process-context Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-67 — Linux clipboard fusermount process-context finality",
+            "R-S11e-67 — Linux clipboard fusermount ambient-context compatibility",
+            "fusermount process-context hardening ledger",
         ),
         (
             "macos_source",

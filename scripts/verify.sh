@@ -4619,6 +4619,78 @@ grep -qF 'R-S11e-66 — macOS administrator-script environment finality' HARDENI
 if [ -n "$r_s11e66" ]; then echo "  FAIL R-S11e-66 macOS administrator-script environment finality:$r_s11e66"; rc=1; else
   echo "  ok  R-S11e-66 administrator-authorized service scripts receive only the fixed system PATH/C locale and root working directory"; fi
 
+# (3b-iii-d9cq) R-S11ba/R-S11e-67: the fixed, potentially setuid
+# fusermount helper receives only the process context required by its typed
+# mount or unmount operation, never the desktop process's ambient context.
+echo "== (3b-iii-d9cq) Linux clipboard fusermount process-context finality (R-S11ba/R-S11e-67) =="
+r_s11e67=
+fusermount_context_policy=$(awk '/enum FusermountOperation/,/pub fn get_exclude_paths/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+fusermount_mount_caller=$(awk '/fn mount_with_fixed_fusermount/,/fn receive_fusermount_fd/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+fusermount_unmount_caller=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
+for binding in \
+  'Mount { communication_fd: RawFd }' \
+  'Unmount,' \
+  'fn configure_fusermount_process_context(' \
+  '.env_clear()' \
+  '.current_dir("/")' \
+  '.stdin(Stdio::null())' \
+  'match operation {' \
+  'FusermountOperation::Mount { communication_fd } => {' \
+  'FusermountOperation::Unmount => {}' \
+  'command.env(FUSE_COMMFD_ENV, communication_fd.to_string());'; do
+  grep -qF "$binding" <<<"$fusermount_context_policy" \
+    || r_s11e67="$r_s11e67 typed-process-context-binding-missing"
+done
+[ "$(grep -cF '.env_clear()' <<<"$fusermount_context_policy")" = 1 ] \
+  || r_s11e67="$r_s11e67 environment-reset-inventory-drift"
+[ "$(grep -cF '.env(' <<<"$fusermount_context_policy")" = 1 ] \
+  || r_s11e67="$r_s11e67 replacement-environment-inventory-drift"
+[ "$(grep -cF '.current_dir(' <<<"$fusermount_context_policy")" = 1 ] \
+  || r_s11e67="$r_s11e67 working-directory-inventory-drift"
+[ "$(grep -cF '.stdin(' <<<"$fusermount_context_policy")" = 1 ] \
+  || r_s11e67="$r_s11e67 stdin-inventory-drift"
+[ "$(grep -cF 'configure_fusermount_process_context(' <<<"$fusermount_mount_caller")" = 1 ] \
+  || r_s11e67="$r_s11e67 mount-policy-call-invalid"
+grep -qF 'FusermountOperation::Mount {' <<<"$fusermount_mount_caller" \
+  || r_s11e67="$r_s11e67 mount-operation-missing"
+grep -qF 'communication_fd: child_socket.as_raw_fd(),' <<<"$fusermount_mount_caller" \
+  || r_s11e67="$r_s11e67 mount-communication-capability-missing"
+[ "$(grep -cF 'configure_fusermount_process_context(&mut command, FusermountOperation::Unmount);' <<<"$fusermount_unmount_caller")" = 1 ] \
+  || r_s11e67="$r_s11e67 unmount-policy-call-invalid"
+for caller in "$fusermount_mount_caller" "$fusermount_unmount_caller"; do
+  if grep -Eq '[.]env(_clear|_remove)?[(]|[.]current_dir[(]|[.]stdin[(]' <<<"$caller"; then
+    r_s11e67="$r_s11e67 post-policy-process-context-mutation-present"
+  fi
+done
+mount_policy_line=$(grep -nF 'configure_fusermount_process_context(' <<<"$fusermount_mount_caller" | head -n1 | cut -d: -f1)
+mount_descriptor_line=$(grep -nF 'configure_command_descriptor_allowlist_on_exec(&mut command' <<<"$fusermount_mount_caller" | head -n1 | cut -d: -f1)
+mount_spawn_line=$(grep -nF 'command.spawn()' <<<"$fusermount_mount_caller" | head -n1 | cut -d: -f1)
+if [ -z "$mount_policy_line" ] || [ -z "$mount_descriptor_line" ] || [ -z "$mount_spawn_line" ] \
+  || [ "$mount_policy_line" -ge "$mount_descriptor_line" ] || [ "$mount_descriptor_line" -ge "$mount_spawn_line" ]; then
+  r_s11e67="$r_s11e67 mount-process-context-order-invalid"
+fi
+unmount_policy_line=$(grep -nF 'configure_fusermount_process_context(' <<<"$fusermount_unmount_caller" | head -n1 | cut -d: -f1)
+unmount_descriptor_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut command)' <<<"$fusermount_unmount_caller" | head -n1 | cut -d: -f1)
+unmount_output_line=$(grep -nF 'command.output()' <<<"$fusermount_unmount_caller" | head -n1 | cut -d: -f1)
+if [ -z "$unmount_policy_line" ] || [ -z "$unmount_descriptor_line" ] || [ -z "$unmount_output_line" ] \
+  || [ "$unmount_policy_line" -ge "$unmount_descriptor_line" ] || [ "$unmount_descriptor_line" -ge "$unmount_output_line" ]; then
+  r_s11e67="$r_s11e67 unmount-process-context-order-invalid"
+fi
+for regression in \
+  'fn r_s11e67_fusermount_mount_process_context_is_exact()' \
+  'assert_eq!(output.stdout, b"_FUSE_COMMFD=9\n");' \
+  'fn r_s11e67_fusermount_unmount_process_context_is_exact()' \
+  'assert!(output.stdout.is_empty());'; do
+  grep -qF "$regression" libs/clipboard/src/platform/unix/fuse/mod.rs \
+    || r_s11e67="$r_s11e67 actual-child-regression-binding-missing"
+done
+grep -qF '<span class="id">R-S11ba</span>' requirements.html || r_s11e67="$r_s11e67 normative-requirement-missing"
+grep -qF '<tr><td>175</td>' requirements.html || r_s11e67="$r_s11e67 appendix-row-missing"
+grep -qF 'R-S11e-67 — Linux clipboard fusermount process-context finality' HARDENING_STATUS.md \
+  || r_s11e67="$r_s11e67 hardening-ledger-missing"
+if [ -n "$r_s11e67" ]; then echo "  FAIL R-S11e-67 Linux clipboard fusermount process-context finality:$r_s11e67"; rc=1; else
+  echo "  ok  R-S11e-67 mount receives only its communication-fd environment while unmount receives none; both start at root with null stdin"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -4801,7 +4873,7 @@ check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nons
 check_r_s11e32_helper_contract "$fuse_unmount_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_r_s11e32_helper_contract "$hwcodec_check_helper" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 for fuse_binding in \
-  'FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string()' \
+  'communication_fd: child_socket.as_raw_fd()' \
   'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' \
   'let child = command.spawn()'; do
   grep -qF "$fuse_binding" <<<"$fuse_mount_helper" || r_s11e32="$r_s11e32 fusermount-explicit-descriptor-contract-missing"
@@ -6949,7 +7021,7 @@ grep -qF '"/bin/fusermount3"' libs/clipboard/src/platform/unix/fuse/mod.rs || r_
 grep -qF '"/usr/bin/fusermount"' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-usr-bin-fusermount"
 grep -qF 'fs::canonicalize(path)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r helper-target-not-canonicalized"
 grep -qF 'Command::new(&helper)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r helper-not-executed-by-verified-path"
-grep -qF '.env(FUSE_COMMFD_ENV, child_socket.as_raw_fd().to_string())' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-commfd-not-passed"
+grep -qF 'communication_fd: child_socket.as_raw_fd()' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-commfd-not-passed"
 grep -qF 'fn receive_fusermount_fd(socket: &UnixStream) -> Result<OwnedFd, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fd-receiver"
 grep -qF 'libc::SCM_RIGHTS' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-scm-rights-validation"
 grep -qF 'libc::MSG_CTRUNC' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-control-truncation-check"

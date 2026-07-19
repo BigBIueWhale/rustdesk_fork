@@ -7940,6 +7940,186 @@ def validate_linux_service_ipc_lifecycle_contract(sources):
     )
 
 
+def validate_macos_service_signal_drain_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    root_cargo = sources["root_cargo"]
+    macos_source = sources["macos_source"]
+    ipc_source = sources["ipc_source"]
+    core_main = sources["core_main"]
+    service_source = sources["service_source"]
+
+    heading = (
+        'echo "== (3b-iii-d9ce) macOS LaunchDaemon protected IPC signal drain '
+        '(R-S11ao/R-S11e-55) =="'
+    )
+    gate = extract_between(
+        verify,
+        heading,
+        "\n# (3b-iii-d9d)",
+        "macOS protected IPC signal-drain source gate",
+    )
+    require_text(
+        gate,
+        "signal-registration-or-drain-order-invalid",
+        "macOS protected IPC signal-drain structural gate",
+    )
+    require_text(
+        apple,
+        'echo "== (2b-iv-a-0d) macOS LaunchDaemon protected IPC signal drain '
+        '(R-S11ao/R-S11e-55) =="',
+        "macOS protected IPC Apple source gate",
+    )
+
+    require_exact_count(
+        root_cargo,
+        'ctrlc = { version = "3.2", features = ["termination"] }',
+        1,
+        "termination-enabled macOS service signal dependency",
+    )
+    require_exact_count(
+        macos_source,
+        "ctrlc::set_handler",
+        1,
+        "sole macOS service signal registration",
+    )
+    handler = extract_between(
+        macos_source,
+        "fn install_macos_service_shutdown_handler()",
+        "\npub fn start_os_service()",
+        "macOS service signal registration",
+    )
+    require_order(
+        handler,
+        (
+            "ctrlc::set_handler(|| {",
+            "crate::server::request_graceful_shutdown();",
+            '.map_err(|err| anyhow!("Failed to install macOS service shutdown handlers: {err}"))',
+        ),
+        "fallible macOS service cancellation handler",
+    )
+    callback = extract_between(
+        handler,
+        "ctrlc::set_handler(|| {",
+        "\n    })\n    .map_err",
+        "macOS service termination callback",
+    )
+    callback = callback.split("{", 1)[1].strip()
+    if callback != "crate::server::request_graceful_shutdown();":
+        raise VerificationError(
+            "macOS service termination callback is not cancellation-only"
+        )
+    for forbidden in (
+        "request_graceful_shutdown_after_listener_failure",
+        "begin_graceful_shutdown",
+        "finish_graceful_shutdown",
+        "process::exit",
+        "tokio::",
+        ".join(",
+        "sleep(",
+        "log::",
+    ):
+        if forbidden in handler:
+            raise VerificationError(
+                "macOS service termination callback retains work or outcome authority"
+            )
+
+    start = extract_between(
+        macos_source,
+        "pub fn start_os_service()",
+        "\n#[cfg(test)]",
+        "macOS protected service listener entry",
+    )
+    require_order(
+        start,
+        (
+            "if !is_root()",
+            'bail!("macOS --service requires effective UID 0")',
+            "install_macos_service_shutdown_handler()?;",
+            "crate::ipc::start(crate::POSTFIX_SERVICE)",
+        ),
+        "macOS root proof and signal registration before listener",
+    )
+    run_service = extract_between(
+        macos_source,
+        "pub fn run_service()",
+        "\npub fn lock_screen()",
+        "central macOS root service bootstrap",
+    )
+    require_order(
+        run_service,
+        (
+            "let home = service_principal_home()?;",
+            "Config::initialize_macos_service_owned_root(home)?;",
+            'hbb_common::init_log(false, "service");',
+            "start_os_service()",
+        ),
+        "macOS protected root bootstrap before signal-owned listener",
+    )
+    require_text(
+        core_main,
+        "crate::platform::macos::run_service()",
+        "common exact macOS service entry convergence",
+    )
+    require_text(
+        service_source,
+        "crate::platform::macos::run_service()",
+        "dedicated macOS service executable convergence",
+    )
+
+    drain = extract_between(
+        ipc_source,
+        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc)",
+        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+        "protected Unix service IPC drain",
+    )
+    require_order(
+        drain,
+        (
+            "_ = shutdown.cancelled() => break,",
+            "password_mutations().begin_shutdown();",
+            "while let Some(result) = transactions.join_next().await",
+            "password_mutations().drain().await;",
+            "password_mutations().clear_after_transactions_drain();",
+            "drop(listener_guard);",
+        ),
+        "macOS cancellation through complete protected IPC drain",
+    )
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11ao</span>',
+        '\n\n<h2 id="excise">',
+        "macOS protected IPC signal-drain requirement",
+    )
+    for text, label in (
+        ("After numeric effective-UID-zero proof", "root-before-handler requirement"),
+        ("Registration failure <span class=\"kw\">MUST</span> fail", "fallible handler requirement"),
+        ("perform only the capacity-independent process cancellation request", "cancellation-only handler requirement"),
+        ("return normally after a requested signal", "ordinary signal outcome requirement"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        (
+            "macOS LaunchDaemon termination reaches the protected service IPC drain",
+            "macOS protected IPC signal-drain requirement title",
+        ),
+        ("<tr><td>163</td>", "macOS protected IPC signal-drain Appendix C row"),
+        (
+            "The macOS root LaunchDaemon did not translate launchd termination into protected-IPC cancellation",
+            "macOS protected IPC signal-drain Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-55 — macOS LaunchDaemon protected IPC signal drain",
+        "macOS protected IPC signal-drain hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -8796,6 +8976,7 @@ def validate_sources(sources):
     validate_macos_service_storage_root_contract(sources)
     validate_ipc_listener_failure_outcome_contract(sources)
     validate_linux_service_ipc_lifecycle_contract(sources)
+    validate_macos_service_signal_drain_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -15000,8 +15181,8 @@ def run_source_mutations(sources):
         ),
         (
             "macos_source",
-            '    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }\n    log::info!("Username: {}", crate::username());',
-            '    log::info!("Username: {}", crate::username());\n    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }',
+            '    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }\n    install_macos_service_shutdown_handler()?;\n    log::info!("Username: {}", crate::username());',
+            '    log::info!("Username: {}", crate::username());\n    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }\n    install_macos_service_shutdown_handler()?;',
             "macOS service receiver principal ordering",
         ),
         (
@@ -15559,6 +15740,126 @@ def run_source_mutations(sources):
             "R-S11e-54 — Linux protected service IPC lifecycle ownership",
             "R-S11e-54 — detached Linux protected service IPC",
             "Linux protected IPC lifecycle hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9ce) macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55) =="',
+            'echo "== (3b-iii-d9ce) macOS LaunchDaemon default signal termination (R-S11ao/R-S11e-55) =="',
+            "macOS protected IPC signal-drain source gate",
+        ),
+        (
+            "verify",
+            "signal-registration-or-drain-order-invalid",
+            "signal-registration-unchecked",
+            "macOS protected IPC signal-drain structural gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0d) macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55) =="',
+            'echo "== (2b-iv-a-0d) macOS LaunchDaemon default signal termination (R-S11ao/R-S11e-55) =="',
+            "macOS protected IPC Apple source gate",
+        ),
+        (
+            "root_cargo",
+            'ctrlc = { version = "3.2", features = ["termination"] }',
+            'ctrlc = { version = "3.2" }',
+            "termination-enabled macOS service signal dependency",
+        ),
+        (
+            "macos_source",
+            "fn install_macos_service_shutdown_handler()",
+            "fn leave_macos_service_signals_at_default()",
+            "macOS service signal registration",
+        ),
+        (
+            "macos_source",
+            "ctrlc::set_handler",
+            "ctrlc_disabled::set_handler",
+            "sole macOS service signal registration",
+        ),
+        (
+            "macos_source",
+            "ctrlc::set_handler(|| {\n        crate::server::request_graceful_shutdown();\n    })",
+            "ctrlc::set_handler(|| {\n        crate::server::request_graceful_shutdown_after_listener_failure();\n    })",
+            "fallible macOS service cancellation handler",
+        ),
+        (
+            "macos_source",
+            "ctrlc::set_handler(|| {\n        crate::server::request_graceful_shutdown();\n    })",
+            "ctrlc::set_handler(|| {\n        log::info!(\"termination\");\n        crate::server::request_graceful_shutdown();\n    })",
+            "macOS service termination callback is not cancellation-only",
+        ),
+        (
+            "macos_source",
+            '.map_err(|err| anyhow!("Failed to install macOS service shutdown handlers: {err}"))',
+            '.map_err(|_err| anyhow!("ignored macOS signal registration"))',
+            "fallible macOS service cancellation handler",
+        ),
+        (
+            "macos_source",
+            "install_macos_service_shutdown_handler()?;",
+            "let _ = install_macos_service_shutdown_handler();",
+            "macOS root proof and signal registration before listener",
+        ),
+        (
+            "macos_source",
+            "    if !is_root() {\n        bail!(\"macOS --service requires effective UID 0\");\n    }\n    install_macos_service_shutdown_handler()?;",
+            "    install_macos_service_shutdown_handler()?;\n    if !is_root() {\n        bail!(\"macOS --service requires effective UID 0\");\n    }",
+            "macOS root proof and signal registration before listener",
+        ),
+        (
+            "ipc_source",
+            "#[cfg(target_os = \"macos\")]\n    password_mutations().begin_shutdown();",
+            "#[cfg(target_os = \"macos\")]\n    password_mutations().begin_shutdown_disabled();",
+            "macOS cancellation through complete protected IPC drain",
+        ),
+        (
+            "ipc_source",
+            "        password_mutations().drain().await;\n        password_mutations().clear_after_transactions_drain();",
+            "        password_mutations().clear_after_transactions_drain();\n        password_mutations().drain().await;",
+            "macOS cancellation through complete protected IPC drain",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ao</span>',
+            '<span class="id">R-S11ap</span>',
+            "macOS protected IPC signal-drain requirement",
+        ),
+        (
+            "requirements",
+            "macOS LaunchDaemon termination reaches the protected service IPC drain",
+            "macOS LaunchDaemon termination bypasses protected service IPC drain",
+            "macOS protected IPC signal-drain requirement title",
+        ),
+        (
+            "requirements",
+            "perform only the capacity-independent process cancellation request",
+            "perform an asynchronous finalizer from the callback",
+            "cancellation-only handler requirement",
+        ),
+        (
+            "requirements",
+            "return normally after a requested signal",
+            "terminate immediately after a requested signal",
+            "ordinary signal outcome requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>163</td>",
+            "<tr><td>9163</td>",
+            "macOS protected IPC signal-drain Appendix C row",
+        ),
+        (
+            "requirements",
+            "The macOS root LaunchDaemon did not translate launchd termination into protected-IPC cancellation",
+            "The macOS root LaunchDaemon always drained termination",
+            "macOS protected IPC signal-drain Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-55 — macOS LaunchDaemon protected IPC signal drain",
+            "R-S11e-55 — macOS LaunchDaemon abrupt termination",
+            "macOS protected IPC signal-drain hardening ledger",
         ),
         (
             "verify",

@@ -3686,6 +3686,76 @@ unreachable and a source/test/AST gate prevents reintroduction.
   RustDesk process/service/configuration, listener, firewall, or network namespace was inspected or changed. Native
   installed-service setup/stop/failure injection, exact-commit artifact/reproducibility evidence, the wider open
   release ledger, and external audit remain pending; this source closure does not claim them.
+- **R-S11e-55 — macOS LaunchDaemon protected IPC signal drain — SOURCE, SHARED/APPLE SOURCE GATES, SEMANTIC,
+  AND MUTATION VERIFIED; NATIVE INSTALLED/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platform: macOS
+  root LaunchDaemon, through both the dedicated PrivilegedHelperTools service executable and the common app
+  binary's exact `--service` entry. Endpoints: generic protected `_service` and raw `_service_password`. Boundary:
+  launchd termination ↔ the receiver-owned admission close, accepted-work drain, password-mutation finality, and
+  truthful ordinary service stop.
+
+  Proven old path and history: both root-service entries centralize through `platform::macos::run_service`, which
+  proves effective UID 0, selects the protected root configuration/log namespace, and synchronously calls
+  `ipc::start(POSTFIX_SERVICE)`. The service-owned controlled-side `--server` process separately installs Tokio
+  SIGTERM/SIGINT handling, but the root daemon installed no signal handler anywhere before entering its protected
+  listener. The IPC future already observes the process cancellation token, closes admission, begins password-ledger
+  shutdown, joins every accepted generic/password transaction, drains and clears the macOS no-eviction mutation
+  ledger, drops its listener guard, and returns. With the inherited default SIGTERM disposition, launchd could
+  terminate the complete root process before that existing drain became reachable. `git blame` traces the
+  signal-less listener entry to the original service path; the later root-principal/config-root changes preserved
+  it but did not create this defect. This is deterministic privileged-operation finality and service-stop
+  correctness, not a peer-authorization bypass, remote signal primitive, or evidence of host compromise.
+
+  Primary contracts and authority model: Apple's launchd job guide says system shutdown sends SIGTERM to every
+  daemon launchd started and explicitly directs daemons to install a SIGTERM handler before their service loop
+  (https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+  Apple's daemon lifecycle guide says shutdown later escalates to SIGKILL
+  (https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/Lifecycle.html).
+  POSIX gives SIGTERM a process-termination default disposition. The correct owner split is therefore one fallible
+  pre-listener signal registration whose callback performs only the thread-safe process cancellation request; the
+  already-owned async listener remains the sole transaction and credential-drain implementation.
+
+  Closure: `install_macos_service_shutdown_handler` uses the existing `ctrlc` dependency with its already-pinned
+  `termination` feature and maps registration failure into a service error. `start_os_service` still rejects a
+  nonzero effective UID first, then installs the handler before opening either protected listener. Its callback
+  contains only `request_graceful_shutdown`: it does not block on or create a runtime, join, sleep, log, exit, run a
+  second finalizer, or set R-S11am's fatal-listener-loss latch. The synchronous listener observes cancellation and
+  follows its existing complete drain before returning normally. Both service entrypoints retain their centralized
+  `run_service` failure propagation; the separate LaunchAgent server, Linux supervisor, and Windows SCM paths are
+  unchanged.
+
+  Proof/gates and verification: the exact extracted shared and Apple source gates pass. They bind the termination
+  feature, sole macOS registration, exact cancellation-only callback, root-before-handler-before-listener order,
+  both entrypoints' convergence, and preservation of cancellation-before-transaction-join-before-password-ledger-
+  drain/clear-before-listener-guard-drop. R-S11ao, Appendix C #163, and this ledger bind the normative closure. The
+  normal semantic workspace verifier and complete independently invoked source-mutation matrix pass. Mutations
+  reject removal of either gate, termination-feature removal, missing/renamed registration, fatal-latch substitution,
+  callback logging or added work, swallowed registration failure, handler-before-root or listener-before-handler
+  order, missing/reordered mutation drain, and requirement/Appendix/ledger drift. The existing R-S11e-47/R-S11e-52
+  mutations independently retain both service-entry convergence and error propagation.
+
+  Bash syntax, in-memory Python compilation, exact requirements-digest synchronization, and `git diff --check`
+  pass. Native-codec normal/self-test and dependency inventory plus all 103 inventory mutations pass unchanged:
+  909 Cargo packages and 855 lexical `unsafe {` blocks across 251 tracked Rust files. The already-present immutable
+  Apple-check image contains no `rustfmt`, so no formatter/SDK-free Rust parse result is claimed. A direct offline
+  Apple-target Cargo attempt remained non-evidence: it compiled dependencies only until UID 1000 correctly received
+  `EACCES` on a root-owned cached `pin-utils` source before the RustDesk crate was reached. No ownership, mode,
+  capability, image, or cache authority was changed to bypass that refusal. Native macOS launchd stop/upgrade
+  behavior, compilation, signed installed-helper execution, and exact-commit artifact/reproducibility proof remain
+  R-R2/R-B2 and are not inferred from Linux source inspection.
+
+  Failure accounting and execution boundary: the first mutation run found the older R-S11e-47 root-before-log
+  fixture's immediate adjacency had been intentionally split by the new mandatory handler; its target now preserves
+  root-before-observable-work while including the intervening handler. A later mutation name retained the checked
+  `ctrlc::set_handler` text as a substring, and two new entrypoint mutations duplicated earlier, more-specific
+  validators; the mutation was made genuinely token-removing and the redundant twins were deleted without weakening
+  production validation. The final complete matrix passes. A final combined rerun completed both semantic passes,
+  then its digest-only shell tail failed because the outer shell expanded an `awk` `$1` under `set -u`; the simpler
+  independent digest assertion passed, and no project assertion failed. Every project verifier/check command ran as
+  numeric UID/GID 1000 in an existing digest-addressed image with networking disabled, source/root/toolchain/
+  dependency inputs read-only, all capabilities dropped, `no-new-privileges`, bounded resources, disposable output,
+  and no published ports. No image was built or pulled, and no Docker socket, host PID namespace, or host network
+  namespace was exposed inside a container. No host RustDesk service/process/configuration/listener, firewall, or
+  network policy was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6031,8 +6101,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-132329dfe6482038a5253d722bbf7f12dcd350f2d4b495659d2b08e5ad0a06e1  requirements.html
+00f87fa658ab77669e8c089e8480b258cb3ac8738b9652271fd288c4037b39af  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11an, and Appendix C #162. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ao, and Appendix C #163. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

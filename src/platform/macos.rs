@@ -955,10 +955,18 @@ pub fn lock_screen() {
     }
 }
 
+fn install_macos_service_shutdown_handler() -> ResultType<()> {
+    ctrlc::set_handler(|| {
+        crate::server::request_graceful_shutdown();
+    })
+    .map_err(|err| anyhow!("Failed to install macOS service shutdown handlers: {err}"))
+}
+
 pub fn start_os_service() -> ResultType<()> {
     if !is_root() {
         bail!("macOS --service requires effective UID 0");
     }
+    install_macos_service_shutdown_handler()?;
     log::info!("Username: {}", crate::username());
     crate::ipc::start(crate::POSTFIX_SERVICE)
 }

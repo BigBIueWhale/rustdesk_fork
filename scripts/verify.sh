@@ -4241,6 +4241,121 @@ grep -qF 'R-S11e-54 — Linux protected service IPC lifecycle ownership' HARDENI
 if [ -n "$r_s11e54" ]; then echo "  FAIL R-S11e-54 Linux protected service IPC lifecycle:$r_s11e54"; rc=1; else
   echo "  ok  R-S11e-54 Linux starts no controlled child before both protected listeners are ready and joins their complete admitted-work drain before child termination"; fi
 
+# (3b-iii-d9ce) R-S11ao/R-S11e-55: launchd SIGTERM reaches the
+# already-owned macOS protected-IPC transaction and password-ledger drain.
+echo "== (3b-iii-d9ce) macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55) =="
+r_s11e55=
+for binding in \
+  'ctrlc = { version = "3.2", features = ["termination"] }' \
+  'fn install_macos_service_shutdown_handler() -> ResultType<()> {' \
+  'ctrlc::set_handler(|| {' \
+  'crate::server::request_graceful_shutdown();' \
+  'Failed to install macOS service shutdown handlers' \
+  'install_macos_service_shutdown_handler()?;' \
+  'crate::ipc::start(crate::POSTFIX_SERVICE)'; do
+  grep -qF "$binding" Cargo.toml src/platform/macos.rs || r_s11e55="$r_s11e55 signal-drain-binding-missing"
+done
+python3 - Cargo.toml src/platform/macos.rs src/ipc.rs src/core_main.rs src/service.rs <<'PY' \
+  || r_s11e55="$r_s11e55 signal-registration-or-drain-order-invalid"
+from pathlib import Path
+import sys
+
+cargo, macos, ipc, core, service = (
+    Path(path).read_text(encoding="utf-8") for path in sys.argv[1:]
+)
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+if cargo.count('ctrlc = { version = "3.2", features = ["termination"] }') != 1:
+    raise SystemExit(1)
+if macos.count("ctrlc::set_handler") != 1:
+    raise SystemExit(1)
+
+handler = region(
+    macos,
+    "fn install_macos_service_shutdown_handler()",
+    "\npub fn start_os_service()",
+)
+ordered(
+    handler,
+    "ctrlc::set_handler(|| {",
+    "crate::server::request_graceful_shutdown();",
+    '.map_err(|err| anyhow!("Failed to install macOS service shutdown handlers: {err}"))',
+)
+callback = region(handler, "ctrlc::set_handler(|| {", "\n    })\n    .map_err")
+callback = callback.split("{", 1)[1].strip()
+if callback != "crate::server::request_graceful_shutdown();":
+    raise SystemExit(1)
+for forbidden in (
+    "request_graceful_shutdown_after_listener_failure",
+    "begin_graceful_shutdown",
+    "finish_graceful_shutdown",
+    "process::exit",
+    "tokio::",
+    ".join(",
+    "sleep(",
+    "log::",
+):
+    if forbidden in handler:
+        raise SystemExit(1)
+
+start = region(macos, "pub fn start_os_service()", "\n#[cfg(test)]")
+ordered(
+    start,
+    "if !is_root()",
+    'bail!("macOS --service requires effective UID 0")',
+    "install_macos_service_shutdown_handler()?;",
+    "crate::ipc::start(crate::POSTFIX_SERVICE)",
+)
+run = region(macos, "pub fn run_service()", "\npub fn lock_screen()")
+ordered(
+    run,
+    "let home = service_principal_home()?;",
+    "Config::initialize_macos_service_owned_root(home)?;",
+    'hbb_common::init_log(false, "service");',
+    "start_os_service()",
+)
+if "crate::platform::macos::run_service()" not in core:
+    raise SystemExit(1)
+if "crate::platform::macos::run_service()" not in service:
+    raise SystemExit(1)
+
+drain = region(
+    ipc,
+    "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc)",
+    '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+)
+ordered(
+    drain,
+    "_ = shutdown.cancelled() => break,",
+    "password_mutations().begin_shutdown();",
+    "while let Some(result) = transactions.join_next().await",
+    "password_mutations().drain().await;",
+    "password_mutations().clear_after_transactions_drain();",
+    "drop(listener_guard);",
+)
+PY
+grep -qF '<span class="id">R-S11ao</span>' requirements.html || r_s11e55="$r_s11e55 normative-requirement-missing"
+grep -qF 'macOS LaunchDaemon termination reaches the protected service IPC drain' requirements.html \
+  || r_s11e55="$r_s11e55 normative-signal-drain-clause-missing"
+grep -qF '<tr><td>163</td>' requirements.html || r_s11e55="$r_s11e55 appendix-row-missing"
+grep -qF 'The macOS root LaunchDaemon did not translate launchd termination into protected-IPC cancellation' requirements.html \
+  || r_s11e55="$r_s11e55 appendix-disposition-missing"
+grep -qF 'macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55)' scripts/apple-conform-check.sh \
+  || r_s11e55="$r_s11e55 apple-source-conformance-gate-missing"
+grep -qF 'R-S11e-55 — macOS LaunchDaemon protected IPC signal drain' HARDENING_STATUS.md \
+  || r_s11e55="$r_s11e55 hardening-ledger-missing"
+if [ -n "$r_s11e55" ]; then echo "  FAIL R-S11e-55 macOS protected IPC signal drain:$r_s11e55"; rc=1; else
+  echo "  ok  R-S11e-55 every macOS root service entry installs fallible cancellation-only termination handling before protected listeners, whose existing owner drains accepted work and password state"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

@@ -3318,6 +3318,80 @@ grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARD
 if [ -n "$r_s11e44" ]; then echo "  FAIL R-S11e-44 Linux headless CM parent authority:$r_s11e44"; rc=1; else
   echo "  ok  R-S11e-44 no root process-table sweep owns headless CMs; the exact server launch arms kernel parent-death authority before exec"; fi
 
+# (3b-iii-d9c4) R-S11ae/R-S11e-45: the final current-image process-table
+# consumers are deleted. Selected logind state and the retained Child own
+# service replacement; a newly spawned tray performs only its own singleton check.
+echo "== (3b-iii-d9c4) Linux current-image lifecycle authority deletion (R-S11ae/R-S11e-45) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e45_ --color never
+r_s11e45=
+service_replacement_policy=$(awk '/fn service_child_needs_replacement\(/,/fn should_start_server\(/' src/platform/linux.rs)
+service_replacement_driver=$(awk '/fn should_start_server\(/,/pub fn start_os_service\(/' src/platform/linux.rs)
+service_replacement_test=$(awk '/fn r_s11e45_linux_service_child_replacement_uses_owned_state_only\(\)/,/fn r_s11c10_process_discovery_matches_xwayland_by_argv\(\)/' src/platform/linux.rs)
+server_tray_launch=$(awk '/else if args\[0\] == "--server"/,/#\[cfg\(any\(target_os = "linux", target_os = "windows"\)\)\]/' src/core_main.rs)
+tray_receiver=$(awk '/if args\[0\] == "--tray"/,/else if args\[0\] == "--install-service"/' src/core_main.rs)
+for binding in \
+  'fn service_child_needs_replacement(' \
+  'if desktop.is_headless() {' \
+  'if !uid.is_empty() {' \
+  'uid.clear();' \
+  'is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty()' \
+  '*uid = desktop.uid.clone();'; do
+  grep -qF "$binding" <<<"$service_replacement_policy" || r_s11e45="$r_s11e45 owned-replacement-policy-missing"
+done
+for binding in \
+  'service_child_needs_replacement(is_display_changed, uid, desktop)' \
+  'terminate_child(server, "--server", runtime)?;' \
+  'match ps.process.try_wait()' \
+  'remove_reaped_service_child_record(runtime, &ps, "--server")?;'; do
+  grep -qF "$binding" <<<"$service_replacement_driver" || r_s11e45="$r_s11e45 retained-child-replacement-driver-missing"
+done
+for forbidden in \
+  'fn get_cm(' \
+  'current_exe_process_cmdlines' \
+  'current_executable_path' \
+  'proc_exe_matches_path' \
+  'process_has_exact_arg' \
+  'signal_current_exe_processes_with_arg' \
+  'fn signal_process(' \
+  'stop_tray_processes' \
+  'cm0' \
+  'last_restart' \
+  'get_terminal_session_count()' \
+  'SpotUdp'; do
+  if grep -qF "$forbidden" src/platform/linux.rs src/core_main.rs; then
+    r_s11e45="$r_s11e45 current-image-lifecycle-authority-present:$forbidden"
+  fi
+done
+grep -qF 'hbb_common::allow_err!(crate::run_me(vec!["--tray"]));' <<<"$server_tray_launch" \
+  || r_s11e45="$r_s11e45 exact-tray-launch-missing"
+if grep -qF 'stop_tray_processes' <<<"$server_tray_launch"; then
+  r_s11e45="$r_s11e45 server-still-signals-tray"
+fi
+for binding in \
+  'if args[0] == "--tray" {' \
+  'if !crate::check_process("--tray", true) {' \
+  'crate::tray::start_tray();'; do
+  grep -qF "$binding" <<<"$tray_receiver" || r_s11e45="$r_s11e45 tray-singleton-receiver-missing"
+done
+for binding in \
+  'fn r_s11e45_linux_service_child_replacement_uses_owned_state_only()' \
+  'assert!(!service_child_needs_replacement(false, &mut uid, &stable));' \
+  'assert!(service_child_needs_replacement(true, &mut uid, &stable));' \
+  'assert_eq!(uid, "1001");' \
+  'assert!(uid.is_empty());'; do
+  grep -qF "$binding" <<<"$service_replacement_test" || r_s11e45="$r_s11e45 focused-regression-missing"
+done
+grep -qF '<span class="id">R-S11ae</span>' requirements.html || r_s11e45="$r_s11e45 normative-requirement-missing"
+grep -qF 'Linux server and tray lifecycle use owned state, never current-image process-table presentation' requirements.html \
+  || r_s11e45="$r_s11e45 normative-authority-clause-missing"
+grep -qF '<tr><td>153</td>' requirements.html || r_s11e45="$r_s11e45 appendix-row-missing"
+grep -qF 'Linux remaining current-image process-table lifecycle authority' requirements.html \
+  || r_s11e45="$r_s11e45 appendix-disposition-missing"
+grep -qF 'R-S11e-45 — Linux remaining current-image process-table lifecycle authority' HARDENING_STATUS.md \
+  || r_s11e45="$r_s11e45 hardening-ledger-missing"
+if [ -n "$r_s11e45" ]; then echo "  FAIL R-S11e-45 Linux current-image lifecycle authority deletion:$r_s11e45"; rc=1; else
+  echo "  ok  R-S11e-45 service replacement uses selected logind state plus the retained Child, and server startup signals no tray or CM selected through process text"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -4418,33 +4492,14 @@ fi
 if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery shell interpolation:$r_s11c10a"; rc=1; else
   echo "  ok  R-S11c-10a Linux prelogin/home/env discovery uses users+/proc helpers, not shell pipelines"; fi
 
-echo "== (3b-iii-h2) Linux service lifecycle process cleanup avoids shell pipelines (R-S11c-10b) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_signal --color never
+echo "== (3b-iii-h2) Linux service lifecycle has no global process cleanup authority (R-S11c-10b/R-S11e-45) =="
 r_s11c10b=
 grep -q 'fn all_process_cmdlines' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-proc-process-enumerator"
-grep -q 'fn current_exe_process_cmdlines' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-current-exe-process-enumerator"
-grep -q 'fn proc_exe_matches_path' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-proc-exe-identity-check"
-grep -q 'fn process_has_exact_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-exact-argv-matcher"
-grep -q 'hbb_common::libc::kill' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-kill-syscall"
-if grep -Eq 'kill_current_exe_processes_with_arg|stop_headless_connection_manager_processes|fn kill_process' src/platform/linux.rs; then
+if grep -Eq 'kill_current_exe_processes_with_arg|stop_headless_connection_manager_processes|fn kill_process|current_exe_process_cmdlines|signal_current_exe_processes_with_arg|stop_tray_processes|fn signal_process' src/platform/linux.rs src/core_main.rs; then
   r_s11c10b="$r_s11c10b global-service-helper-sweep-regressed"
 fi
-grep -q 'fn signal_current_exe_processes_with_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-signal-helper"
-grep -q 'pub fn stop_tray_processes()' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-tray-cleanup-helper"
-grep -q 'crate::platform::stop_tray_processes();' src/core_main.rs || r_s11c10b="$r_s11c10b core-server-not-using-tray-cleanup-helper"
-tray_cleanup_block=$(awk '/pub fn stop_tray_processes\(\)/,/^}/' src/platform/linux.rs)
-if ! echo "$tray_cleanup_block" | grep -q 'signal_current_exe_processes_with_arg'; then
-  r_s11c10b="$r_s11c10b tray-cleanup-not-proc-helper-backed"
-fi
-if ! echo "$tray_cleanup_block" | grep -q 'hbb_common::libc::SIGTERM'; then
-  r_s11c10b="$r_s11c10b tray-cleanup-not-sigterm"
-fi
-tray_cleanup_compact=$(printf '%s' "$tray_cleanup_block" | tr -d '[:space:]')
-if ! echo "$tray_cleanup_compact" | grep -qE 'signal_current_exe_processes_with_arg\("--tray","--tray",hbb_common::libc::SIGTERM,?\);'; then
-  r_s11c10b="$r_s11c10b tray-cleanup-not-exact-tray-argv"
-fi
 linux_process_cleanup_blocks=$(
-  awk '/fn all_process_cmdlines/,/fn proc_env_name_is_valid/' src/platform/linux.rs
+  awk '/fn all_process_cmdlines/,/fn matching_process_cmdlines/' src/platform/linux.rs
 )
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
   r_s11c10b="$r_s11c10b shell-shaped-process-cleanup-regressed"
@@ -4454,7 +4509,7 @@ if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/l
   r_s11c10b="$r_s11c10b pkill-tray-cleanup-regressed"
 fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
-  echo "  ok  R-S11c-10b same-user tray cleanup verifies current executable identity and exact argv; CM, server, and Xorg lifecycle have no global process sweep"; fi
+  echo "  ok  R-S11c-10b/R-S11e-45 Linux lifecycle has no shell or current-image process sweep; /proc cmdline enumeration remains discovery-only"; fi
 
 echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27a_linux_service_child_parent_death --color never
@@ -5544,7 +5599,9 @@ grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' src/pl
 grep -q 'fn sudo_path() -> Option' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-resolver"
 grep -q 'fn valid_sudo_envs' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-env-validator"
 grep -q 'Command::new(&sudo_path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k sudo-not-canonical-path"
-grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs || r_s11c10k="$r_s11c10k cm-detection-not-proc-backed"
+if grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs; then
+  r_s11c10k="$r_s11c10k stale-current-image-lifecycle-authority"
+fi
 grep -Fq 'Linux helper canonical target provenance' requirements.html || r_s11c10k="$r_s11c10k canonical-helper-requirements-missing"
 grep -Fq 'R-S11e-3 — Linux helper canonical target provenance' HARDENING_STATUS.md || r_s11c10k="$r_s11c10k canonical-helper-ledger-missing"
 if grep -RInE 'Command::new\("(sudo|ps|w|ls|xrandr|xdg-screensaver)"\)|Command::new\(CMD_(PS|SH)\.as_str\(\)\)|Command::new\("which"\)' src/platform/linux.rs >"$VERIFY_TMP/rd_verify_r_s11c10k"; then

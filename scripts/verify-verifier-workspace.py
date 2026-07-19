@@ -3343,6 +3343,8 @@ def validate_smoke_contract(
         ("grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md", "obsolete Xorg process hardening ledger gate"),
         ('Linux headless CM parent authority (R-S11ad/R-S11e-44)', "headless CM parent authority source gate"),
         ("grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARDENING_STATUS.md", "headless CM parent hardening ledger gate"),
+        ('Linux current-image lifecycle authority deletion (R-S11ae/R-S11e-45)', "current-image lifecycle authority source gate"),
+        ("grep -qF 'R-S11e-45 — Linux remaining current-image process-table lifecycle authority' HARDENING_STATUS.md", "current-image lifecycle hardening ledger gate"),
         ('Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41)', "systemctl lifecycle authority source gate"),
         ('if grep -Eq \'action: *&str|\\.envs?[[:space:]]*\\(\' <<<"$systemctl_authority"; then', "systemctl generic action/environment source gate"),
         ("grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md", "systemctl lifecycle hardening ledger gate"),
@@ -3924,7 +3926,16 @@ def validate_smoke_contract(
     require_text(core_main, 'args[0] == "--server"', "server dispatch from argument one")
     require_text(common_source, 'std::env::args().nth(1) == Some("--server".to_owned())', "server role argument-one predicate")
     require_text(common_source, "SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV", "service executable descriptor environment binding")
-    require_text(linux_source, "std::env::current_exe().ok()", "Linux executable identity source")
+    require_text(
+        linux_source,
+        '.open("/proc/self/exe")',
+        "Linux non-root service-child executable-object source",
+    )
+    require_text(
+        linux_source,
+        '.unwrap_or_else(|| "/proc/self/exe".to_owned())',
+        "Linux root service-child executable-object source",
+    )
     require_text(
         linux_source,
         'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";',
@@ -6794,6 +6805,144 @@ def validate_linux_headless_cm_parent_contract(sources):
     )
 
 
+def validate_linux_current_image_lifecycle_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    core_main = sources["core_main"]
+    linux_source = sources["linux_source"]
+
+    require_text(
+        verify,
+        "Linux current-image lifecycle authority deletion (R-S11ae/R-S11e-45)",
+        "current-image lifecycle authority source gate",
+    )
+    replacement_policy = extract_between(
+        linux_source,
+        "fn service_child_needs_replacement(",
+        "\nfn should_start_server(",
+        "Linux service-child replacement policy",
+    )
+    for text, label in (
+        ("if desktop.is_headless() {", "headless transition"),
+        ("if !uid.is_empty() {", "prior selected-user state"),
+        ("uid.clear();", "headless state commit"),
+        (
+            "is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty()",
+            "selected display or UID transition",
+        ),
+        ("*uid = desktop.uid.clone();", "selected UID commit"),
+    ):
+        require_text(replacement_policy, text, label)
+
+    replacement_driver = extract_between(
+        linux_source,
+        "fn should_start_server(",
+        "\npub fn start_os_service(",
+        "Linux retained-child replacement driver",
+    )
+    for text, label in (
+        (
+            "service_child_needs_replacement(is_display_changed, uid, desktop)",
+            "closed replacement-policy call",
+        ),
+        (
+            'terminate_child(server, "--server", runtime)?;',
+            "exact retained-child stop",
+        ),
+        ("match ps.process.try_wait()", "retained-child exit observation"),
+        (
+            'remove_reaped_service_child_record(runtime, &ps, "--server")?;',
+            "exact reaped-record removal",
+        ),
+    ):
+        require_text(replacement_driver, text, label)
+
+    for forbidden in (
+        "fn get_cm(",
+        "current_exe_process_cmdlines",
+        "current_executable_path",
+        "proc_exe_matches_path",
+        "process_has_exact_arg",
+        "signal_current_exe_processes_with_arg",
+        "fn signal_process(",
+        "stop_tray_processes",
+        "cm0",
+        "last_restart",
+        "get_terminal_session_count()",
+        "SpotUdp",
+    ):
+        if forbidden in linux_source or forbidden in core_main:
+            raise VerificationError(
+                f"Linux current-image lifecycle authority remains: {forbidden}"
+            )
+
+    server_tray_launch = extract_between(
+        core_main,
+        '} else if args[0] == "--server" {',
+        '\n            #[cfg(any(target_os = "linux", target_os = "windows"))]',
+        "Linux server tray launch",
+    )
+    require_text(
+        server_tray_launch,
+        'hbb_common::allow_err!(crate::run_me(vec!["--tray"]));',
+        "exact tray launch",
+    )
+    tray_receiver = extract_between(
+        core_main,
+        'if args[0] == "--tray" {',
+        '\n        } else if args[0] == "--install-service" {',
+        "Linux tray singleton receiver",
+    )
+    for text, label in (
+        (
+            'if !crate::check_process("--tray", true) {',
+            "same-UID tray singleton check",
+        ),
+        ("crate::tray::start_tray();", "tray start sink"),
+    ):
+        require_text(tray_receiver, text, label)
+
+    replacement_test = extract_between(
+        linux_source,
+        "fn r_s11e45_linux_service_child_replacement_uses_owned_state_only()",
+        "\n    #[test]\n    fn r_s11c10_process_discovery_matches_xwayland_by_argv()",
+        "Linux owned-state replacement regression",
+    )
+    for text, label in (
+        (
+            "assert!(!service_child_needs_replacement(false, &mut uid, &stable));",
+            "stable selected-state assertion",
+        ),
+        (
+            "assert!(service_child_needs_replacement(true, &mut uid, &stable));",
+            "display-change assertion",
+        ),
+        ('assert_eq!(uid, "1001");', "selected-UID transition assertion"),
+        ("assert!(uid.is_empty());", "headless transition assertion"),
+    ):
+        require_text(replacement_test, text, label)
+
+    for text, label in (
+        ('<span class="id">R-S11ae</span>', "current-image lifecycle requirement"),
+        (
+            "Linux server and tray lifecycle use owned state, never current-image process-table presentation",
+            "current-image lifecycle authority clause",
+        ),
+        ("<tr><td>153</td>", "current-image lifecycle Appendix C row"),
+        (
+            "Linux remaining current-image process-table lifecycle authority",
+            "current-image lifecycle Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-45 — Linux remaining current-image process-table lifecycle authority",
+        "current-image lifecycle hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -6810,6 +6959,7 @@ def validate_sources(sources):
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
+    validate_linux_current_image_lifecycle_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -12762,6 +12912,72 @@ def run_source_mutations(sources):
             "headless CM parent hardening ledger",
         ),
         (
+            "verify",
+            'echo "== (3b-iii-d9c4) Linux current-image lifecycle authority deletion (R-S11ae/R-S11e-45) =="',
+            'echo "== (3b-iii-d9c4) Linux current-image lifecycle compatibility (R-S11ae/R-S11e-45) =="',
+            "current-image lifecycle authority source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ae</span>',
+            '<span class="id">R-S11zz</span>',
+            "current-image lifecycle requirement",
+        ),
+        (
+            "requirements",
+            "Linux server and tray lifecycle use owned state, never current-image process-table presentation",
+            "Linux server and tray lifecycle may use current-image process presentation",
+            "current-image lifecycle authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>153</td>",
+            "<tr><td>9153</td>",
+            "current-image lifecycle Appendix C row",
+        ),
+        (
+            "requirements",
+            "Linux remaining current-image process-table lifecycle authority",
+            "Linux supported current-image process-table lifecycle authority",
+            "current-image lifecycle Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-45 — Linux remaining current-image process-table lifecycle authority",
+            "R-S11e-45 — Linux current-image process compatibility",
+            "current-image lifecycle hardening ledger",
+        ),
+        (
+            "linux_source",
+            "pub fn is_login_wayland() -> bool {",
+            "fn get_cm() -> bool { true }\n\npub fn is_login_wayland() -> bool {",
+            "Linux current-image lifecycle authority remains: fn get_cm(",
+        ),
+        (
+            "linux_source",
+            "fn proc_env_name_is_valid(name: &str) -> bool {",
+            "pub fn stop_tray_processes() {}\n\nfn proc_env_name_is_valid(name: &str) -> bool {",
+            "Linux current-image lifecycle authority remains: stop_tray_processes",
+        ),
+        (
+            "core_main",
+            '                hbb_common::allow_err!(crate::run_me(vec!["--tray"]));',
+            '                crate::platform::stop_tray_processes();\n                hbb_common::allow_err!(crate::run_me(vec!["--tray"]));',
+            "Linux current-image lifecycle authority remains: stop_tray_processes",
+        ),
+        (
+            "linux_source",
+            "    if desktop.is_headless() {",
+            "    if false {",
+            "headless transition",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e45_linux_service_child_replacement_uses_owned_state_only()",
+            "fn r_s11e45_linux_service_child_replacement_may_use_process_text()",
+            "owned-state replacement regression",
+        ),
+        (
             "linux_source",
             "hbb_common::libc::PR_SET_PDEATHSIG,",
             "hbb_common::libc::PR_GET_PDEATHSIG,",
@@ -12832,20 +13048,20 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
-            "fn stop_headless_connection_manager_processes() {}\n\nfn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
+            "fn stop_headless_connection_manager_processes() {}\n\nfn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
             "Linux headless CM global process authority remains",
         ),
         (
             "linux_source",
-            "fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
-            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
+            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
             "obsolete Linux Xorg process authority remains",
         ),
         (
             "linux_source",
-            "fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
-            "fn stop_subprocess() {}\n\nfn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {",
+            "fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
+            "fn stop_subprocess() {}\n\nfn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
             "obsolete Linux Xorg process authority remains",
         ),
         (

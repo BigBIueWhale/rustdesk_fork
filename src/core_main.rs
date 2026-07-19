@@ -398,7 +398,8 @@ pub fn core_main() -> Option<Vec<String>> {
             #[cfg(target_os = "linux")]
             {
                 hbb_common::allow_err!(crate::platform::check_autostart_config());
-                crate::platform::stop_tray_processes();
+                // The tray owns its same-user singleton check in the `--tray` receiver.
+                // Starting a server must not turn global process-table text into signal authority.
                 hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
             }
             #[cfg(any(target_os = "linux", target_os = "windows"))]

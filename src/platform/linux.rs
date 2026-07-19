@@ -2184,52 +2184,37 @@ fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime)
     terminate_child(server, "--server", runtime).map(|_| ())
 }
 
+fn service_child_needs_replacement(
+    is_display_changed: bool,
+    uid: &mut String,
+    desktop: &Desktop,
+) -> bool {
+    if desktop.is_headless() {
+        if !uid.is_empty() {
+            // From having a monitor to not having a monitor.
+            uid.clear();
+            return true;
+        }
+    } else if is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty() {
+        *uid = desktop.uid.clone();
+        return true;
+    }
+    false
+}
+
 fn should_start_server(
     is_display_changed: bool,
     uid: &mut String,
     desktop: &Desktop,
-    cm0: &mut bool,
-    last_restart: &mut Instant,
     server: &mut Option<OwnedServiceChild>,
     runtime: &ServiceRuntime,
 ) -> ResultType<bool> {
-    let cm = get_cm();
     let mut start_new = false;
-    let mut should_kill = false;
-
-    if desktop.is_headless() {
-        if !uid.is_empty() {
-            // From having a monitor to not having a monitor.
-            *uid = "".to_owned();
-            should_kill = true;
-        }
-    } else if is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty() {
-        *uid = desktop.uid.clone();
-        should_kill = true;
-    }
-
-    if !should_kill
-        && !cm
-        && ((*cm0 && last_restart.elapsed().as_secs() > 60)
-            || last_restart.elapsed().as_secs() > 3600)
-    {
-        let terminal_session_count = crate::ipc::get_terminal_session_count().unwrap_or(0);
-        if terminal_session_count > 0 {
-            // There are terminal sessions, so we don't restart the server.
-            // We also need to keep `cm0` unchanged, so that we can reach this branch the next time.
-            return Ok(false);
-        }
-        // restart server if new connections all closed, or every one hour,
-        // as a workaround to resolve "SpotUdp" (dns resolve)
-        // and x server get displays failure issue
-        should_kill = true;
-        log::info!("restart server");
-    }
+    let should_kill = service_child_needs_replacement(is_display_changed, uid, desktop);
 
     if should_kill {
         if server.is_some() {
             terminate_child(server, "--server", runtime)?;
-            *last_restart = Instant::now();
         }
     }
 
@@ -2258,7 +2243,6 @@ fn should_start_server(
         }
         start_new = true;
     }
-    *cm0 = cm;
     Ok(start_new)
 }
 
@@ -2287,8 +2271,6 @@ pub fn start_os_service() -> ResultType<()> {
     let mut uid = "".to_owned();
     let mut server: Option<OwnedServiceChild> = None;
     let mut user_server: Option<OwnedServiceChild> = None;
-    let mut cm0 = false;
-    let mut last_restart = Instant::now();
     while running.load(Ordering::SeqCst) {
         desktop.refresh();
         update_active_user_lookup_cache(&desktop);
@@ -2300,15 +2282,7 @@ pub fn start_os_service() -> ResultType<()> {
             stop_server(&mut user_server, &runtime)?;
             // try start subprocess "--server"
             // No need to check is_display_changed here.
-            if should_start_server(
-                false,
-                &mut uid,
-                &desktop,
-                &mut cm0,
-                &mut last_restart,
-                &mut server,
-                &runtime,
-            )? {
+            if should_start_server(false, &mut uid, &desktop, &mut server, &runtime)? {
                 start_server(
                     &desktop,
                     ServiceChildPrincipal::RootService,
@@ -2329,8 +2303,6 @@ pub fn start_os_service() -> ResultType<()> {
                 is_display_changed,
                 &mut uid,
                 &desktop,
-                &mut cm0,
-                &mut last_restart,
                 &mut user_server,
                 &runtime,
             )? {
@@ -2390,12 +2362,6 @@ pub fn get_active_userid() -> String {
 /// Returns the active uid from a fresh seat0 lookup, bypassing the service-loop cache.
 pub fn get_active_userid_fresh() -> String {
     get_values_of_seat0(&[1])[0].clone()
-}
-
-fn get_cm() -> bool {
-    current_exe_process_cmdlines()
-        .iter()
-        .any(|process| process_has_exact_arg(&process.args, "--cm"))
 }
 
 pub fn is_login_wayland() -> bool {
@@ -2696,43 +2662,6 @@ fn all_process_cmdlines() -> Vec<ProcCommand> {
     processes
 }
 
-fn current_executable_path() -> Option<PathBuf> {
-    std::env::current_exe().ok()
-}
-
-fn proc_exe_matches_path(proc_path: &Path, expected: &Path) -> bool {
-    std::fs::read_link(proc_path.join("exe"))
-        .map(|path| path == expected)
-        .unwrap_or(false)
-}
-
-fn current_exe_process_cmdlines() -> Vec<ProcCommand> {
-    let Some(current_exe) = current_executable_path() else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return Vec::new();
-    };
-
-    let mut processes = Vec::new();
-    for entry in entries.flatten() {
-        let Some(pid) = proc_entry_pid(&entry) else {
-            continue;
-        };
-        let proc_path = entry.path();
-        if !proc_exe_matches_path(&proc_path, &current_exe) {
-            continue;
-        }
-        let Some(args) = read_proc_cmdline_args(&proc_path) else {
-            continue;
-        };
-        processes.push(ProcCommand { pid, args });
-    }
-
-    processes.sort_by_key(|process| process.pid);
-    processes
-}
-
 fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {
     let Ok(uid_num) = uid.parse::<u32>() else {
         return Vec::new();
@@ -2763,10 +2692,6 @@ fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {
 
     processes.sort_by_key(|process| process.pid);
     processes
-}
-
-fn process_has_exact_arg(args: &[String], expected: &str) -> bool {
-    args.iter().any(|arg| arg == expected)
 }
 
 fn process_basename(args: &[String]) -> Option<&str> {
@@ -2806,38 +2731,6 @@ pub(crate) fn xwayland_display_from_proc() -> Option<String> {
         }
     }
     None
-}
-
-fn signal_process(pid: u32, label: &str, signal: i32) {
-    if pid == 0 || pid == std::process::id() {
-        return;
-    }
-    let rc = unsafe {
-        hbb_common::libc::kill(pid as hbb_common::libc::pid_t, signal)
-    };
-    if rc == 0 {
-        return;
-    }
-    let err = std::io::Error::last_os_error();
-    if err.raw_os_error() != Some(hbb_common::libc::ESRCH) {
-        log::warn!("Failed to signal {label} process pid={pid} signal={signal}: {err}");
-    }
-}
-
-fn signal_current_exe_processes_with_arg(arg: &str, label: &str, signal: i32) {
-    for process in current_exe_process_cmdlines() {
-        if process_has_exact_arg(&process.args, arg) {
-            signal_process(process.pid, label, signal);
-        }
-    }
-}
-
-pub fn stop_tray_processes() {
-    signal_current_exe_processes_with_arg(
-        "--tray",
-        "--tray",
-        hbb_common::libc::SIGTERM,
-    );
 }
 
 fn proc_env_name_is_valid(name: &str) -> bool {
@@ -3804,20 +3697,34 @@ mod process_cleanup_tests {
     }
 
     #[test]
-    fn r_s11c10_process_signal_matchers_are_exact_argv_based() {
-        let server = vec!["/usr/bin/rustdesk".to_owned(), "--server".to_owned()];
-        assert!(process_has_exact_arg(&server, "--server"));
-        assert!(!process_has_exact_arg(&server, "--serverless"));
+    fn r_s11e45_linux_service_child_replacement_uses_owned_state_only() {
+        let mut uid = "1000".to_owned();
+        let stable = Desktop {
+            sid: "session-1".to_owned(),
+            uid: uid.clone(),
+            ..Default::default()
+        };
+        assert!(!service_child_needs_replacement(false, &mut uid, &stable));
 
-        let tray = vec!["/usr/bin/rustdesk".to_owned(), "--tray".to_owned()];
-        assert!(process_has_exact_arg(&tray, "--tray"));
-        assert!(!process_has_exact_arg(&tray, "rustdesk --tray"));
-        assert!(!process_has_exact_arg(&tray, "--tray-extra"));
+        assert!(service_child_needs_replacement(true, &mut uid, &stable));
+        assert_eq!(uid, "1000");
 
-        let current_processes = current_exe_process_cmdlines();
-        assert!(current_processes
-            .iter()
-            .any(|process| process.pid == std::process::id()));
+        let changed_user = Desktop {
+            sid: "session-2".to_owned(),
+            uid: "1001".to_owned(),
+            ..Default::default()
+        };
+        assert!(service_child_needs_replacement(
+            false,
+            &mut uid,
+            &changed_user
+        ));
+        assert_eq!(uid, "1001");
+
+        let headless = Desktop::default();
+        assert!(service_child_needs_replacement(false, &mut uid, &headless));
+        assert!(uid.is_empty());
+        assert!(!service_child_needs_replacement(false, &mut uid, &headless));
     }
 
     #[test]

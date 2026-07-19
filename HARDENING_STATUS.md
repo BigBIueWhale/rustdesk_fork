@@ -975,9 +975,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs the `r_s11c10_` Linux unit tests and asserts that the touched discovery function
   bodies contain no shell-shaped passwd/proc/process pipeline.
 - **R-S11c-10b — Linux helper/tray process cleanup shell pipelines — CLOSED 2026-07-09;
-  server authority superseded 2026-07-16; CM authority deleted 2026-07-19.** Platform: Linux installed-service
-  helper and tray cleanup. Historical surface: `stop_subprocess()`; residual surface: `stop_tray_processes()` in
-  `src/platform/linux.rs`. Boundary: service/user helper cleanup ↔ local process table.
+  ALL CURRENT-IMAGE LIFECYCLE AUTHORITY DELETED 2026-07-19.** Platform: Linux installed-service
+  helper and tray cleanup. Historical surfaces: `stop_subprocess()`, the server/CM sweeps, and
+  `stop_tray_processes()` in `src/platform/linux.rs`. Boundary: service/user helper cleanup ↔ local process table.
   Attack surface closed: root-context cleanup no longer interpolates the
   app name into `ps | grep | awk | xargs kill -9` shell pipelines. It enumerates `/proc/<pid>/cmdline`
   directly and historically matched RustDesk `--cm-no-ui` and `--tray` helpers by `/proc/<pid>/exe` equality to the
@@ -985,10 +985,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the analogous global `--server` sweep entirely: process-table discovery is no longer service-child
   lifecycle authority. R-S11e-43 later deletes the Xorg basename/argv kill and config-path classification
   residue because R-X14 removed RustDesk's Xorg launcher, leaving no owned Xorg identity to clean up. R-S11e-44
-  deletes the remaining service-owned headless-CM process sweep and binds each CM to its exact server parent at
-  spawn. Verification closure: `scripts/verify.sh` runs the focused process tests and asserts the remaining
-  same-user tray block uses the `/proc` argv helper and direct SIGTERM, contains no shell-shaped cleanup path, and
-  cannot regress global CM, server, or Xorg lifecycle sweeps.
+  deletes the service-owned headless-CM process sweep and binds each CM to its exact server parent at spawn.
+  R-S11e-45 deletes the final current-image enumerator, the `--cm` restart heuristic, and the `--tray` signal path;
+  no global current-image process-table cleanup remains. Verification closure: `scripts/verify.sh` runs the focused
+  replacement-policy regression, requires the complete deletion, retains the tray receiver's same-UID singleton
+  check, and rejects any restored CM/server/Xorg/tray lifecycle sweep.
 - **R-S11c-10c — Linux xrandr resolution discovery shell pipeline — CLOSED 2026-07-09.**
   Platform: Linux installed service/display helper path. Surfaces: supported-resolution discovery and current
   resolution lookup in `src/platform/linux.rs`. Boundary: display metadata lookup ↔ root-context process
@@ -2891,6 +2892,68 @@ unreachable and a source/test/AST gate prevents reintroduction.
   long release verifier and root service fixtures remain excluded. Exact clean Debian artifact execution remains
   owned by R-B2/R-S11c-27 and is not inferred from source conformance; publication evidence is recorded after commit
   and push.
+- **R-S11e-45 — Linux remaining current-image process-table lifecycle authority — SOURCE-GATED 2026-07-19;
+  EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform:
+  Linux installed supervisor, its root or privilege-dropped service-owned `--server` child, and the separate tray.
+  Endpoint/action: service-child replacement decisions and tray replacement at server startup. Boundary: the
+  supervisor/server's lifecycle and signal authority ↔ unrelated processes selected through current-image pathname
+  equality and displayed argv.
+
+  Proven old path: `get_cm()` enumerated every `/proc/<pid>/exe` equal to the current service image and treated any
+  exact displayed `--cm` argument as connection-manager state. An unprivileged user can execute the genuine installed
+  image with that role. Holding the presentation suppressed the inherited hourly restart; removing it after the
+  service had observed it could drive the 60-second delayed restart branch. Every Linux `--server` also called
+  `stop_tray_processes()`, which selected all current-image processes displaying exact `--tray` and applied the
+  server's SIGTERM authority before spawning a replacement. Active-desktop children normally had only same-UID
+  signal permission, while a headless root child carried root signal authority. Linux documents proc cmdline as the
+  command line a process wants an observer to see, `execve(2)` accepts caller-selected argv, and `kill(2)` applies the
+  sender's UID/capability authority. Path plus argv therefore did not establish ownership.
+
+  Closure: the current-image enumerator, path comparator, exact-argument authority helper, numeric signal wrapper,
+  tray cleanup API/call, CM-presence heuristic, and `cm0`/`last_restart` elapsed-state branch are deleted. The timed
+  restart comment identified SpotUdp/DNS as its owner, but R-D4 excised that rendezvous topology; the direct listener
+  owns its own bounded bind/retry loop. `service_child_needs_replacement` now has the complete receiver-owned decision
+  vocabulary: selected-logind headless transition, selected UID change, or selected display/Xauthority change.
+  `should_start_server` separately observes exit of its retained exact `Child`, and explicit service shutdown still
+  drains that exact child. A Linux server continues to start the current image with exact `--tray`; the existing
+  `--tray` receiver performs its same-UID singleton check, so a new candidate exits when a tray already exists and no
+  pre-existing process is signaled. R-S11ae and Appendix C #153 bind this deletion.
+
+  Primary contracts:
+  https://man7.org/linux/man-pages/man5/proc_pid_cmdline.5.html,
+  https://man7.org/linux/man-pages/man2/execve.2.html, and
+  https://man7.org/linux/man-pages/man2/kill.2.html. A pure regression covers stable selected state, display change,
+  UID change, headless transition, and stable headless state. `scripts/verify.sh` and the semantic workspace verifier
+  bind the closed replacement vocabulary, retained tray launch/singleton receiver, complete
+  forbidden-symbol deletion, R-S11ae, Appendix C #153, this entry, and independent source mutations. This is a
+  concrete ordinary-user-triggerable root-service restart-state spoofing/availability correction plus deletion of
+  conceptual privileged or same-principal global-signal authority. It is not evidence of a promptless privilege
+  escalation or host compromise; termination or restart influence did not grant root code execution.
+
+  Verification: Rust/Cargo 1.75 completed the focused locked/offline regression with one selected test passed, zero
+  failures, and 309 filtered out, then completed the full Linux library
+  `cargo check --offline --locked --lib --features linux-pkg-config` in 27.21 seconds with only the repository's
+  existing warning set. The extracted R-S11e-45 and adjacent R-S11c-10b shell gates pass. The normal semantic
+  workspace audit and its complete independent source-mutation set pass; the mutations cover the gate, normative ID
+  and authority clause, Appendix C row/disposition, ledger, restored CM/tray authority, server-side tray signaling,
+  and the headless state edge. Bash/Python syntax and Rust 1.75 formatting for `src/core_main.rs` and every edited
+  `src/platform/linux.rs` line pass; unrelated pre-existing whole-file Linux formatting drift remains untouched.
+  Dependency inventory and all 103 inventory mutations pass: 909 Cargo packages and 853 lexical `unsafe {` blocks
+  across 251 tracked Rust files/74 nonzero files, with per-file digest
+  `35572ccbfbc3ac1f9467e23212dca00930c356f8f448dd5056a0f763a1292619`. The one-block decrease is the deleted raw
+  `kill(2)` wrapper. Native-codec normal/self-test and requirements-hash equality pass at
+  `4bc75ad3cdd8029873b6eae4d8a6f786dcd26bc180a1d4df220ce49bb5b60d01`.
+
+  Every code/build/test execution used UID 1000 in the existing local
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, all capabilities dropped, no-new-privileges, source/toolchain/Cargo inputs read-only, and executable
+  outputs only on disposable container tmpfs. No image was built or pulled; no Docker socket, host PID/network
+  namespace, published port, host service/config mount, host root identity, or host RustDesk/network/firewall
+  inspection was used. The first compile setup reached only dependency build scripts and was not counted because an
+  accidentally non-executable output tmpfs correctly denied their execution; the clean rerun changed only that
+  container-local tmpfs to executable. The long release verifier and root service fixtures remain excluded. Exact
+  clean Debian artifact execution remains owned by R-B2/R-S11c-27 and is not inferred from source conformance;
+  publication evidence is recorded after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2980,14 +3043,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   cgroup/SIGTERM-first with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
   the then-present root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
   resolve only trusted fixed `/usr/bin`/`/bin` candidates and now execute the trusted canonical target after
-  candidate-parent, canonical-parent, root-owned, non-writable, and executable-bit checks; `--cm` detection is
-  `/proc`/current-exe/argv-backed instead of `ps`; and the X11
+  candidate-parent, canonical-parent, root-owned, non-writable, and executable-bit checks; the then-present `--cm`
+  detection was `/proc`/current-exe/argv-backed instead of `ps` before R-S11e-45 deleted that lifecycle heuristic;
+  and the X11
   socket fallback read `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`. R-S11e-42
   later deletes both `w` and the X11 socket fallback because helper provenance and native metadata did not make
   either source authoritative for the already-selected logind session.
-  R-S11c-10l closes the Linux `--server` tray cleanup: `src/core_main.rs` no longer launches PATH-selected
-  `pkill -f`; it calls `platform::stop_tray_processes()`, which selects only current-executable processes
-  with an exact `--tray` argv through `/proc` and sends SIGTERM.
+  R-S11c-10l first replaced Linux `--server` tray cleanup's PATH-selected `pkill -f` with exact executable/argv
+  selection. R-S11e-45 completes the authority correction by deleting process-table tray signaling entirely:
+  `--server` starts a tray candidate, and the `--tray` receiver's same-UID singleton check decides whether that new
+  helper should run without signaling any pre-existing process.
   R-S11c-10m closes the shared Linux helper command-provenance residue in
   `libs/hbb_common/src/platform/linux.rs` plus the delayed service-reopen path: shared `loginctl` and
   crash-notification helpers no longer use `which`, bare command names, or Flatpak host spawning; they select
@@ -5234,8 +5299,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a5ad2af8ede6c842c07bb5fbc1363cc55e4378ef0d80b2df47a32a131bc4b847  requirements.html
+4bc75ad3cdd8029873b6eae4d8a6f786dcd26bc180a1d4df220ce49bb5b60d01  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ad, and Appendix C #152. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ae, and Appendix C #153. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

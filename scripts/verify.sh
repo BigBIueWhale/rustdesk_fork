@@ -3392,6 +3392,79 @@ grep -qF 'R-S11e-45 — Linux remaining current-image process-table lifecycle au
 if [ -n "$r_s11e45" ]; then echo "  FAIL R-S11e-45 Linux current-image lifecycle authority deletion:$r_s11e45"; rc=1; else
   echo "  ok  R-S11e-45 service replacement uses selected logind state plus the retained Child, and server startup signals no tray or CM selected through process text"; fi
 
+# (3b-iii-d9c5) R-S11af/R-S11e-46: Linux tray and autostart are
+# non-root user-session UI. A privileged service-owned server keeps its
+# controlled-side display endpoint but cannot create an independent root UI.
+echo "== (3b-iii-d9c5) Linux privileged service-to-tray boundary (R-S11af/R-S11e-46) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e46_ --color never
+r_s11e46=
+linux_ui_policy=$(awk '/fn linux_user_session_ui_allowed\(/,/^}/' src/core_main.rs)
+linux_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn get_pa_monitor\(/' src/platform/linux.rs)
+empty_arg_tray_launch=$(awk '/if args\.is_empty\(\)/,/^    }/' src/core_main.rs)
+server_tray_launch=$(awk '/else if args\[0\] == "--server"/,/#\[cfg\(any\(target_os = "linux", target_os = "windows"\)\)\]/' src/core_main.rs)
+tray_receiver=$(awk '/if args\[0\] == "--tray"/,/else if args\[0\] == "--install-service"/' src/core_main.rs)
+principal_test=$(awk '/fn r_s11e46_linux_tray_requires_non_root_principal\(\)/,/^    }/' src/core_main.rs)
+root_policy_test=$(awk '/fn r_s11e46_linux_root_principal_is_numeric_effective_uid\(\)/,/^    }/' src/platform/linux.rs)
+for binding in \
+  'fn linux_user_session_ui_allowed(is_root: bool) -> bool {' \
+  '!is_root'; do
+  grep -qF "$binding" <<<"$linux_ui_policy" || r_s11e46="$r_s11e46 closed-principal-policy-missing"
+done
+for binding in \
+  'fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {' \
+  'effective_uid == 0' \
+  'pub fn is_root() -> bool {' \
+  'effective_uid_is_root(hbb_common::users::get_effective_uid())'; do
+  grep -qF "$binding" <<<"$linux_root_policy" || r_s11e46="$r_s11e46 numeric-effective-uid-policy-missing"
+done
+if grep -qF 'crate::username() == "root"' <<<"$linux_root_policy"; then
+  r_s11e46="$r_s11e46 account-name-root-policy-present"
+fi
+for binding in \
+  'linux_user_session_ui_allowed(is_root())' \
+  'crate::check_process("--server", false)'; do
+  grep -qF "$binding" <<<"$empty_arg_tray_launch" || r_s11e46="$r_s11e46 empty-argument-tray-guard-missing"
+done
+for binding in \
+  'if linux_user_session_ui_allowed(crate::platform::is_root()) {' \
+  'hbb_common::allow_err!(crate::platform::check_autostart_config());' \
+  'hbb_common::allow_err!(crate::run_me(vec!["--tray"]));'; do
+  grep -qF "$binding" <<<"$server_tray_launch" || r_s11e46="$r_s11e46 server-tray-principal-guard-missing"
+done
+for binding in \
+  'if !linux_user_session_ui_allowed(crate::platform::is_root()) {' \
+  'log::error!("Linux --tray is a user-session role and refuses root");' \
+  'std::process::exit(1);' \
+  'if !crate::check_process("--tray", true) {' \
+  'crate::tray::start_tray();'; do
+  grep -qF "$binding" <<<"$tray_receiver" || r_s11e46="$r_s11e46 tray-receiver-principal-boundary-missing"
+done
+for binding in \
+  'fn r_s11e46_linux_tray_requires_non_root_principal()' \
+  'assert!(linux_user_session_ui_allowed(false));' \
+  'assert!(!linux_user_session_ui_allowed(true));'; do
+  grep -qF "$binding" <<<"$principal_test" || r_s11e46="$r_s11e46 focused-regression-missing"
+done
+for binding in \
+  'fn r_s11e46_linux_root_principal_is_numeric_effective_uid()' \
+  'assert!(effective_uid_is_root(0));' \
+  'assert!(!effective_uid_is_root(1));' \
+  'assert!(!effective_uid_is_root(1_000));'; do
+  grep -qF "$binding" <<<"$root_policy_test" || r_s11e46="$r_s11e46 numeric-root-regression-missing"
+done
+grep -qF '<span class="id">R-S11af</span>' requirements.html || r_s11e46="$r_s11e46 normative-requirement-missing"
+grep -qF 'Linux privileged service children never create user-session UI' requirements.html \
+  || r_s11e46="$r_s11e46 normative-principal-clause-missing"
+grep -qF 'get_effective_uid() == 0' requirements.html \
+  || r_s11e46="$r_s11e46 normative-effective-uid-clause-missing"
+grep -qF '<tr><td>154</td>' requirements.html || r_s11e46="$r_s11e46 appendix-row-missing"
+grep -qF 'Linux root service child created an independent privileged tray and GUI' requirements.html \
+  || r_s11e46="$r_s11e46 appendix-disposition-missing"
+grep -qF 'R-S11e-46 — Linux privileged service-to-tray boundary' HARDENING_STATUS.md \
+  || r_s11e46="$r_s11e46 hardening-ledger-missing"
+if [ -n "$r_s11e46" ]; then echo "  FAIL R-S11e-46 Linux privileged service-to-tray boundary:$r_s11e46"; rc=1; else
+  echo "  ok  R-S11e-46 root service-owned servers create no tray/autostart/UI role, the tray receiver refuses root, and non-root user-session tray behavior remains"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

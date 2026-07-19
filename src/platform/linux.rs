@@ -2494,8 +2494,12 @@ pub fn is_locked() -> bool {
     is_session_locked(session)
 }
 
+fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {
+    effective_uid == 0
+}
+
 pub fn is_root() -> bool {
-    crate::username() == "root"
+    effective_uid_is_root(hbb_common::users::get_effective_uid())
 }
 
 pub fn get_pa_monitor() -> String {
@@ -3725,6 +3729,13 @@ mod process_cleanup_tests {
         assert!(service_child_needs_replacement(false, &mut uid, &headless));
         assert!(uid.is_empty());
         assert!(!service_child_needs_replacement(false, &mut uid, &headless));
+    }
+
+    #[test]
+    fn r_s11e46_linux_root_principal_is_numeric_effective_uid() {
+        assert!(effective_uid_is_root(0));
+        assert!(!effective_uid_is_root(1));
+        assert!(!effective_uid_is_root(1_000));
     }
 
     #[test]

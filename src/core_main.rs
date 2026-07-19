@@ -207,7 +207,8 @@ pub fn core_main() -> Option<Vec<String>> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     if args.is_empty() {
         #[cfg(target_os = "linux")]
-        let should_check_start_tray = crate::check_process("--server", false);
+        let should_check_start_tray =
+            linux_user_session_ui_allowed(is_root()) && crate::check_process("--server", false);
         // We can use `crate::check_process("--server", false)` on Windows.
         // Because `--server` process is the System user's process. We can't get the arguments in `check_process()`.
         // We can assume that self service running means the server is also running on Windows.
@@ -333,6 +334,11 @@ pub fn core_main() -> Option<Vec<String>> {
         // R-X4: the ungated `--remove <path>` file-delete gadget is excised — it
         // deleted any path with no install/root gate.
         if args[0] == "--tray" {
+            #[cfg(target_os = "linux")]
+            if !linux_user_session_ui_allowed(crate::platform::is_root()) {
+                log::error!("Linux --tray is a user-session role and refuses root");
+                std::process::exit(1);
+            }
             if !crate::check_process("--tray", true) {
                 crate::tray::start_tray();
             }
@@ -396,10 +402,10 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
             }
             #[cfg(target_os = "linux")]
-            {
+            if linux_user_session_ui_allowed(crate::platform::is_root()) {
                 hbb_common::allow_err!(crate::platform::check_autostart_config());
                 // The tray owns its same-user singleton check in the `--tray` receiver.
-                // Starting a server must not turn global process-table text into signal authority.
+                // Only a non-root user-session server may create this independent UI role.
                 hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
             }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -717,6 +723,11 @@ fn is_root() -> bool {
     crate::platform::is_root()
 }
 
+#[cfg(any(target_os = "linux", test))]
+fn linux_user_session_ui_allowed(is_root: bool) -> bool {
+    !is_root
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
 fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
     matches!(
@@ -758,6 +769,12 @@ mod tests {
         ] {
             assert!(!is_user_main_ipc_scope_cli_command(&args(&[command])));
         }
+    }
+
+    #[test]
+    fn r_s11e46_linux_tray_requires_non_root_principal() {
+        assert!(linux_user_session_ui_allowed(false));
+        assert!(!linux_user_session_ui_allowed(true));
     }
 
     #[test]

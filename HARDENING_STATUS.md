@@ -987,9 +987,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   residue because R-X14 removed RustDesk's Xorg launcher, leaving no owned Xorg identity to clean up. R-S11e-44
   deletes the service-owned headless-CM process sweep and binds each CM to its exact server parent at spawn.
   R-S11e-45 deletes the final current-image enumerator, the `--cm` restart heuristic, and the `--tray` signal path;
-  no global current-image process-table cleanup remains. Verification closure: `scripts/verify.sh` runs the focused
-  replacement-policy regression, requires the complete deletion, retains the tray receiver's same-UID singleton
-  check, and rejects any restored CM/server/Xorg/tray lifecycle sweep.
+  no global current-image process-table cleanup remains. R-S11e-46 then limits automatic Linux tray creation to a
+  non-root user-session principal and makes the tray receiver reject root, so the root service child cannot turn its
+  selected display endpoint into an independent privileged UI. Verification closure: `scripts/verify.sh` runs the
+  focused replacement/principal regressions, requires the complete deletion, retains the non-root tray receiver's
+  same-UID singleton check, and rejects any restored CM/server/Xorg/tray lifecycle sweep or privileged tray edge.
 - **R-S11c-10c — Linux xrandr resolution discovery shell pipeline — CLOSED 2026-07-09.**
   Platform: Linux installed service/display helper path. Surfaces: supported-resolution discovery and current
   resolution lookup in `src/platform/linux.rs`. Boundary: display metadata lookup ↔ root-context process
@@ -2954,6 +2956,90 @@ unreachable and a source/test/AST gate prevents reintroduction.
   container-local tmpfs to executable. The long release verifier and root service fixtures remain excluded. Exact
   clean Debian artifact execution remains owned by R-B2/R-S11c-27 and is not inferred from source conformance;
   publication evidence is recorded after commit and push.
+- **R-S11e-46 — Linux privileged service-to-tray boundary — SOURCE-GATED 2026-07-19;
+  EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux installed supervisor,
+  its root or privilege-dropped service-owned `--server` child, the independent `--tray` process, and the tray's
+  no-argument Open child. Endpoint/action: automatic autostart-state maintenance and tray/UI launch during server
+  startup. Boundary: the privileged controlled-side service role and its selected display credentials ↔ interactive
+  per-user desktop UI and independently surviving child processes.
+
+  Proven old path: `start_os_service` selects `ServiceChildPrincipal::RootService` for the root desktop and the GDM
+  Wayland login screen. `try_start_server_` correctly clears the child environment, but then supplies the selected
+  desktop's display/Xauthority or Wayland/runtime-directory and session-bus values because the controlled-side root
+  server needs that endpoint. The common Linux `--server` arm unconditionally called `check_autostart_config()` and
+  `run_me(["--tray"])`. The tray inherited the server's effective root principal and bounded environment, was not
+  parent-death-bound to the retained service child, and its Open action used `run_me([])` to create the full GUI with
+  that same root principal. A server replacement or exit therefore did not retire the privileged tray, and a tray
+  interaction could create another root GUI. The shared Linux `is_root()` also compared the resolved effective
+  account name to the literal `root`; numeric effective UID 0 is the kernel privilege identity, so a renamed UID-0
+  passwd entry or unexpected name lookup would have made the new boundary incomplete. Git history attributes the
+  unconditional common launch to the upstream import, not to the fork's recent service hardening.
+
+  Authority model and closure: the root service-owned server retains its selected display endpoint for the listener,
+  capture, and input roles, but Linux tray/autostart is classified as non-root user-session UI. The empty-argument
+  automatic-tray path now requires `linux_user_session_ui_allowed(is_root())`. The Linux `--server` arm checks the
+  same closed principal policy before either touching per-user autostart state or spawning the exact tray role. The
+  shared Linux root predicate now uses the already-present safe `hbb_common::users::get_effective_uid() == 0`
+  authority, never account-name equality. The `--tray` receiver independently checks that effective principal and
+  exits 1 before singleton discovery or UI construction when UID 0, so a future privileged caller cannot bypass the
+  spawning-side policy. Non-root portable and active-seat service-owned servers retain the existing exact tray
+  launch, same-UID receiver singleton check, and Open behavior. No root service, listener, capture, input,
+  display-selection, or privilege-drop logic changes.
+
+  Primary contracts: the freedesktop Desktop Application Autostart specification defines application autostart as a
+  user's post-login desktop-environment mechanism and its override under the user's configuration home
+  (https://specifications.freedesktop.org/autostart/0.5/); the Wayland client API defines `WAYLAND_DISPLAY` and
+  `XDG_RUNTIME_DIR` as the compositor connection selector (https://wayland.freedesktop.org/docs/html/apb.html); and
+  polkit's privileged-execution security notes deliberately strip `DISPLAY`/`XAUTHORITY`, describing their retention
+  for privileged GUI applications as discouraged legacy behavior
+  (https://polkit.pages.freedesktop.org/polkit/pkexec.1.html). The service server is the narrow controlled-side
+  exception that needs a selected graphical endpoint; the independent tray/viewer GUI is not.
+
+  Proof and gates: `r_s11e46_linux_tray_requires_non_root_principal` binds root refusal and non-root preservation;
+  `r_s11e46_linux_root_principal_is_numeric_effective_uid` binds UID 0 and representative nonzero UIDs.
+  `scripts/verify.sh` extracts and binds the numeric effective-UID root predicate, closed UI policy, empty-argument
+  guard, server-side autostart/tray guard, receiver-side non-success refusal before process discovery, regressions,
+  R-S11af, Appendix C #154, and this entry.
+  The semantic workspace verifier independently interprets those source regions and rejects mutations of the gate,
+  policy, all three call-site/receiver edges, proof, normative requirement/title, Appendix row/disposition, and
+  ledger. This closes a concrete promptless service-to-root-GUI creation path and an unbound privileged-UI lifetime.
+  It does not claim a demonstrated ordinary-user-to-root exploit or host compromise: converting the pre-existing root
+  GUI/display connection into attacker-controlled root execution would require an additional interaction or defect.
+
+  Verification: Rust/Cargo 1.75 completed the focused locked/offline gate with both selected tests passed, zero
+  failures, and 310 filtered out. The final full
+  `cargo check --offline --locked --lib --features linux-pkg-config` completed in 27.40 seconds with only the
+  repository's existing warning set. The extracted R-S11e-46 and adjacent R-S11e-45 shell gates pass. The normal
+  semantic workspace audit and its complete independently executed source-mutation matrix pass; mutations cover the
+  gate, numeric effective-UID source/comparison/proof, all three spawning/receiver boundaries, non-success ordering,
+  normative ID/title/effective-UID clause, Appendix row/disposition, ledger, and preserved non-root assertions.
+  Bash/Python syntax, `git diff --check`, Rust 1.75 formatting of `src/core_main.rs`, and an emitted-format hunk audit
+  proving that neither edited region in the large Linux platform file intersects its unrelated pre-existing
+  whole-file formatting drift pass. Dependency inventory and all 103 inventory mutations pass unchanged: 909 Cargo
+  packages and 853 lexical `unsafe {` blocks across 251 tracked Rust files/74 nonzero files, digest
+  `35572ccbfbc3ac1f9467e23212dca00930c356f8f448dd5056a0f763a1292619`. Native-codec normal/self-test and
+  requirements-hash equality pass at
+  `2ab29eb2732b6003e8f4a7aca74b973be35b2dd911e288f08db27db4433927e2`.
+
+  Setup/failure accounting: the first syntax bundle reached only Cargo's rustup proxy because login-shell PATH
+  rewriting defeated the direct toolchain path; the corrected command used the mounted exact binaries. The first
+  full-repository format check exposed only the ledger's unrelated pre-existing formatting drift plus this slice's
+  one core-main line wrap, which was corrected before all counted checks. Early mutation runs found a stale
+  pre-rustfmt fixture line, then two old fixtures anchored to the deliberately replaced name-based root predicate,
+  and finally a duplicate documentation substring whose mutation needed requirement-local extraction. Each fixture
+  was corrected without removing or weakening a production assertion; the final complete mutation matrix passed. A
+  redundant hash assertion at the end of the final composite check over-escaped an awk positional parameter after
+  every preceding gate had passed; the direct constrained hash check then passed at the recorded value.
+
+  Every code/build/test/verifier command used numeric UID/GID 1000 in the existing local
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, a read-only root/source/toolchain/Cargo input set, all capabilities dropped, no-new-privileges, bounded
+  pids, and executable output only on disposable tmpfs. No image was built or pulled; no Docker socket, host PID or
+  network namespace, published port, host service/config mount, or root identity entered a container. No host
+  RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host networking
+  was inspected or changed. The long release verifier, root service fixtures, and full release build remain
+  excluded. Exact cold final Debian artifact execution remains owned by R-B2/R-S11c-27 and is not inferred from this
+  source proof; publication evidence is recorded after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5299,8 +5385,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4bc75ad3cdd8029873b6eae4d8a6f786dcd26bc180a1d4df220ce49bb5b60d01  requirements.html
+2ab29eb2732b6003e8f4a7aca74b973be35b2dd911e288f08db27db4433927e2  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ae, and Appendix C #153. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11af, and Appendix C #154. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

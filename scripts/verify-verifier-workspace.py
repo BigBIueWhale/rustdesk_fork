@@ -6943,6 +6943,169 @@ def validate_linux_current_image_lifecycle_contract(sources):
     )
 
 
+def validate_linux_privileged_tray_boundary(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    core_main = sources["core_main"]
+    linux_source = sources["linux_source"]
+
+    require_text(
+        verify,
+        "Linux privileged service-to-tray boundary (R-S11af/R-S11e-46)",
+        "privileged service-to-tray source gate",
+    )
+    principal_policy = extract_between(
+        core_main,
+        "fn linux_user_session_ui_allowed(is_root: bool) -> bool {",
+        "\n}",
+        "Linux user-session UI principal policy",
+    )
+    require_text(principal_policy, "!is_root", "non-root-only UI policy")
+
+    root_policy = extract_between(
+        linux_source,
+        "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {",
+        "\npub fn get_pa_monitor()",
+        "Linux numeric effective-UID root policy",
+    )
+    for text, label in (
+        ("effective_uid == 0", "numeric root identity"),
+        ("pub fn is_root() -> bool {", "shared root predicate"),
+        (
+            "effective_uid_is_root(hbb_common::users::get_effective_uid())",
+            "effective UID source",
+        ),
+    ):
+        require_text(root_policy, text, label)
+    if 'crate::username() == "root"' in root_policy:
+        raise VerificationError("account-name root identity remains")
+
+    empty_arg_tray = extract_between(
+        core_main,
+        "if args.is_empty() {",
+        "\n    }",
+        "Linux empty-argument automatic tray launch",
+    )
+    for text, label in (
+        (
+            "linux_user_session_ui_allowed(is_root())",
+            "empty-argument non-root guard",
+        ),
+        ('crate::check_process("--server", false)', "same-user server discovery"),
+    ):
+        require_text(empty_arg_tray, text, label)
+
+    server_tray = extract_between(
+        core_main,
+        '} else if args[0] == "--server" {',
+        '\n            #[cfg(any(target_os = "linux", target_os = "windows"))]',
+        "Linux server tray launch",
+    )
+    for text, label in (
+        (
+            "if linux_user_session_ui_allowed(crate::platform::is_root()) {",
+            "server non-root guard",
+        ),
+        (
+            "hbb_common::allow_err!(crate::platform::check_autostart_config());",
+            "guarded user autostart state",
+        ),
+        (
+            'hbb_common::allow_err!(crate::run_me(vec!["--tray"]));',
+            "guarded exact tray launch",
+        ),
+    ):
+        require_text(server_tray, text, label)
+
+    tray_receiver = extract_between(
+        core_main,
+        'if args[0] == "--tray" {',
+        '\n        } else if args[0] == "--install-service" {',
+        "Linux tray receiver",
+    )
+    for text, label in (
+        (
+            "if !linux_user_session_ui_allowed(crate::platform::is_root()) {",
+            "receiver-side root refusal",
+        ),
+        (
+            'log::error!("Linux --tray is a user-session role and refuses root");',
+            "root refusal diagnostic",
+        ),
+        ("std::process::exit(1);", "non-success root refusal"),
+        ('if !crate::check_process("--tray", true) {', "non-root singleton check"),
+        ("crate::tray::start_tray();", "non-root tray sink"),
+    ):
+        require_text(tray_receiver, text, label)
+    if tray_receiver.index("std::process::exit(1);") > tray_receiver.index(
+        'if !crate::check_process("--tray", true) {'
+    ):
+        raise VerificationError("Linux root tray refusal occurs after process discovery")
+
+    principal_test = extract_between(
+        core_main,
+        "fn r_s11e46_linux_tray_requires_non_root_principal()",
+        "\n    }",
+        "Linux tray principal regression",
+    )
+    for text, label in (
+        (
+            "assert!(linux_user_session_ui_allowed(false));",
+            "non-root preserved assertion",
+        ),
+        (
+            "assert!(!linux_user_session_ui_allowed(true));",
+            "root rejected assertion",
+        ),
+    ):
+        require_text(principal_test, text, label)
+
+    numeric_root_test = extract_between(
+        linux_source,
+        "fn r_s11e46_linux_root_principal_is_numeric_effective_uid()",
+        "\n    }",
+        "Linux numeric root-principal regression",
+    )
+    for text, label in (
+        ("assert!(effective_uid_is_root(0));", "UID zero assertion"),
+        ("assert!(!effective_uid_is_root(1));", "nonzero UID assertion"),
+        ("assert!(!effective_uid_is_root(1_000));", "ordinary UID assertion"),
+    ):
+        require_text(numeric_root_test, text, label)
+
+    privileged_requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11af</span>',
+        '\n\n<h2 id="excise">',
+        "Linux privileged service-to-tray requirement",
+    )
+    require_text(
+        privileged_requirement,
+        "get_effective_uid() == 0",
+        "numeric effective-UID authority clause",
+    )
+
+    for text, label in (
+        ('<span class="id">R-S11af</span>', "privileged tray requirement"),
+        (
+            "Linux privileged service children never create user-session UI",
+            "privileged tray authority clause",
+        ),
+        ("<tr><td>154</td>", "privileged tray Appendix C row"),
+        (
+            "Linux root service child created an independent privileged tray and GUI",
+            "privileged tray Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-46 — Linux privileged service-to-tray boundary",
+        "privileged tray hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -6960,6 +7123,7 @@ def validate_sources(sources):
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
     validate_linux_current_image_lifecycle_contract(sources)
+    validate_linux_privileged_tray_boundary(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -11971,8 +12135,8 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}',
-            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}\n\npub fn run_as_user() {}',
+            'pub fn is_root() -> bool {\n    effective_uid_is_root(hbb_common::users::get_effective_uid())\n}',
+            'pub fn is_root() -> bool {\n    effective_uid_is_root(hbb_common::users::get_effective_uid())\n}\n\npub fn run_as_user() {}',
             "generic root-to-user helper authority remains in linux_source",
         ),
         (
@@ -12976,6 +13140,102 @@ def run_source_mutations(sources):
             "fn r_s11e45_linux_service_child_replacement_uses_owned_state_only()",
             "fn r_s11e45_linux_service_child_replacement_may_use_process_text()",
             "owned-state replacement regression",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9c5) Linux privileged service-to-tray boundary (R-S11af/R-S11e-46) =="',
+            'echo "== (3b-iii-d9c5) Linux privileged service-to-tray compatibility (R-S11af/R-S11e-46) =="',
+            "privileged service-to-tray source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11af</span>',
+            '<span class="id">R-S11zz</span>',
+            "Linux privileged service-to-tray requirement",
+        ),
+        (
+            "requirements",
+            "Linux privileged service children never create user-session UI",
+            "Linux privileged service children may create user-session UI",
+            "privileged tray authority clause",
+        ),
+        (
+            "requirements",
+            "shared Linux root predicate <span class=\"kw\">MUST</span> use <code>get_effective_uid() == 0</code>",
+            "shared Linux root predicate <span class=\"kw\">MUST</span> use <code>get_current_uid() == 0</code>",
+            "numeric effective-UID authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>154</td>",
+            "<tr><td>9154</td>",
+            "privileged tray Appendix C row",
+        ),
+        (
+            "requirements",
+            "Linux root service child created an independent privileged tray and GUI",
+            "Linux root service child retained an independent privileged tray and GUI",
+            "privileged tray Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-46 — Linux privileged service-to-tray boundary",
+            "R-S11e-46 — Linux privileged service-to-tray compatibility",
+            "privileged tray hardening ledger",
+        ),
+        (
+            "core_main",
+            "fn linux_user_session_ui_allowed(is_root: bool) -> bool {\n    !is_root",
+            "fn linux_user_session_ui_allowed(is_root: bool) -> bool {\n    true",
+            "non-root-only UI policy",
+        ),
+        (
+            "linux_source",
+            "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {\n    effective_uid == 0",
+            "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {\n    effective_uid == 1",
+            "numeric root identity",
+        ),
+        (
+            "linux_source",
+            "effective_uid_is_root(hbb_common::users::get_effective_uid())",
+            "effective_uid_is_root(hbb_common::users::get_current_uid())",
+            "effective UID source",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e46_linux_root_principal_is_numeric_effective_uid()",
+            "fn r_s11e46_linux_root_principal_uses_account_name()",
+            "Linux numeric root-principal regression",
+        ),
+        (
+            "core_main",
+            "let should_check_start_tray =\n            linux_user_session_ui_allowed(is_root()) && crate::check_process(\"--server\", false);",
+            "let should_check_start_tray = crate::check_process(\"--server\", false);",
+            "empty-argument non-root guard",
+        ),
+        (
+            "core_main",
+            "if linux_user_session_ui_allowed(crate::platform::is_root()) {\n                hbb_common::allow_err!(crate::platform::check_autostart_config());",
+            "if true {\n                hbb_common::allow_err!(crate::platform::check_autostart_config());",
+            "server non-root guard",
+        ),
+        (
+            "core_main",
+            "if !linux_user_session_ui_allowed(crate::platform::is_root()) {\n                log::error!(\"Linux --tray is a user-session role and refuses root\");",
+            "if false {\n                log::error!(\"Linux --tray is a user-session role and refuses root\");",
+            "receiver-side root refusal",
+        ),
+        (
+            "core_main",
+            "log::error!(\"Linux --tray is a user-session role and refuses root\");\n                std::process::exit(1);",
+            "log::error!(\"Linux --tray is a user-session role and refuses root\");\n                return None;",
+            "non-success root refusal",
+        ),
+        (
+            "core_main",
+            "fn r_s11e46_linux_tray_requires_non_root_principal()",
+            "fn r_s11e46_linux_tray_allows_root_principal()",
+            "Linux tray principal regression",
         ),
         (
             "linux_source",

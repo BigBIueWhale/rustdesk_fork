@@ -3820,6 +3820,59 @@ unreachable and a source/test/AST gate prevents reintroduction.
   read-only source/toolchain/dependency/seed inputs, dropped capabilities, `no-new-privileges`, bounded resources,
   disposable tmpfs output, and no published ports; every container and output tmpfs has been removed. No host
   RustDesk service/process/configuration/listener, firewall, or network policy was inspected or changed.
+- **R-S11e-57 — non-returning graceful-shutdown finalizer ownership — SOURCE, SHARED/APPLE SOURCE GATES,
+  SEMANTIC, AND MUTATION VERIFIED; NATIVE SUPERVISOR/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platforms: the Linux
+  service-owned child, macOS LaunchAgent controlled server and LaunchDaemon protected IPC process, and Windows
+  service-owned child. Endpoint/action: transfer from the four desktop shutdown callers into the one shared
+  authenticated-session/local-IPC/input drain and process-exit edge. Boundary: detached IPC runtime lifetime ↔
+  main server runtime/process lifetime and truthful shutdown completion.
+
+  Proven regression and responsibility: the inherited R-T9 finalizer used
+  `SHUTDOWN_FINALIZER_STARTED.swap(...); return` to make duplicate calls look idempotent. That return was safe only
+  while the old desktop parent parked forever and a detached signal/IPC thread necessarily owned process exit.
+  R-S11e-56 commit `80f2f1d6f18aebb58e5595ed2e0ce177d50a39cc` correctly replaced that detached topology with a
+  retained main-runtime listener/signal owner, but its new final `finish_graceful_shutdown().await` call composed
+  with the older returning API. If main IPC, protected `_service` IPC, or Windows service-main IPC won the atomic,
+  the Linux/Windows main server runtime could lose, return through `start_direct_only` and `start_server`, and let
+  Rust `main` terminate the process while that detached IPC thread was still draining. The older return came from
+  the original R-T9 work; the unsafe composition and resulting regression were introduced by R-S11e-56. This is a
+  deterministic shutdown-finality/service-recovery defect, not a PAKE/authentication bypass, local privilege
+  escalation, remote task-kill primitive, or evidence of host compromise.
+
+  Primary contract and authority model: Rust's native-thread documentation states that when the main thread
+  terminates the entire program shuts down even if other threads remain live
+  (https://doc.rust-lang.org/stable/std/thread/index.html), and `std::process::exit` is explicitly non-returning and
+  does not run other thread-stack destructors (https://doc.rust-lang.org/std/process/fn.exit.html). The shared
+  finalizer therefore has one terminal owner, not an idempotent returning operation. Its atomic claim elects one
+  caller to perform the existing bounded authenticated-session drain, wait for every local IPC listener guard,
+  repair input state, acquire the monotonic fatal latch, and exit with the selected status. A losing caller has no
+  completion value to receive because successful completion is process termination; it must remain alive on a
+  non-polling pending future until the winner exits, without a second drain, second status decision, fallback, or
+  timeout. This wait is deadlock-free only because each caller releases all authority the winner awaits before the
+  call.
+
+  Source closure: crate-private `finish_graceful_shutdown` now returns `!`. The sole atomic winner follows the unchanged drain and
+  `process::exit`; every loser awaits `pending::<Infallible>()` and cannot return a runtime or main thread. The
+  unused returning `begin_graceful_shutdown` entry is deleted rather than retained as a compatibility alias. The
+  caller set is exact: the desktop direct owner invokes it only after direct-listener completion or exact task join;
+  main IPC invokes it only after admitted transactions, the password-mutation ledger, and its listener guard drain;
+  Linux/macOS protected service IPC invokes it after admitted transactions/password admission state and its guard
+  drain; Windows service-main IPC invokes it after its bounded transaction drain and guard drop. Followers therefore
+  retain no listener guard or task handle needed by a winning finalizer's local-IPC barrier. R-S11am's
+  release/acquire failure latch and status selection remain unchanged and winner-owned.
+
+  Evidence boundary and execution accounting: R-S11aq and Appendix C #165 bind this correction. Shared gate
+  `(3b-iii-d9cg)`, Apple gate `(2b-iv-a-0f)`, the independent semantic validator, and its mutation matrix bind the
+  non-returning signature, one-owner/follower-pending order, obsolete-entry absence, exact four-caller set, all
+  pre-call join/guard-release edges, and the existing drain/latch/exit order. The exact follower expression was
+  separately type-checked by pinned `rustc 1.75.0`. Whole-script shell syntax, the exact extracted shared and Apple
+  gates, semantic positive validation, the complete source-mutation matrix, requirements-digest synchronization,
+  native-codec watch, and `git diff --check` passed in the recorded isolated verification run. No application binary,
+  host service, or listener was executed. Native init/launchd/SCM execution and exact-commit artifacts remain
+  R-R2/R-B2 and are not inferred from source checks. Every executable check used an existing image as numeric
+  UID/GID 1000 with networking disabled, read-only source/toolchain/dependency inputs, all capabilities dropped,
+  `no-new-privileges`, bounded resources, disposable outputs, and no published ports; no image was built or pulled.
+  No host RustDesk service/process/configuration/listener, firewall, or network policy was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6165,8 +6218,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-09ef57d02c7f9802b15d06ab099890fa1d7641e73e591cebbe8808de18991eec  requirements.html
+e071adbcde8643d3e772ad46c7c75ef41b95a24f83b01a28d3032e4f10544c19  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ap, and Appendix C #164. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aq, and Appendix C #165. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

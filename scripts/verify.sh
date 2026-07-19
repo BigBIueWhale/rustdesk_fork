@@ -4473,6 +4473,110 @@ grep -qF 'R-S11e-56 — desktop controlled-server signal/listener lifecycle owne
 if [ -n "$r_s11e56" ]; then echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"; rc=1; else
   echo "  ok  R-S11e-56 desktop controlled servers install signals before IPC admission, retain and join the sole public listener, and classify unexpected completion as fatal before the shared drain"; fi
 
+# (3b-iii-d9cg) R-S11aq/R-S11e-57: every desktop caller of the
+# process-terminating finalizer retains its runtime/thread until the sole owner
+# completes the existing drain and exits. A losing main-thread caller cannot
+# return while a detached IPC thread owns finalization.
+echo "== (3b-iii-d9cg) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="
+r_s11e57=
+python3 - src/server.rs src/ipc.rs src/direct_service.rs <<'PY' \
+  || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
+from pathlib import Path
+import sys
+
+server, ipc, direct = (Path(path).read_text(encoding="utf-8") for path in sys.argv[1:])
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+finalizer = region(
+    server,
+    "pub(crate) async fn finish_graceful_shutdown() -> ! {",
+    "\n#[cfg(test)]",
+)
+ordered(
+    finalizer,
+    "SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel)",
+    "match std::future::pending::<std::convert::Infallible>().await {}",
+    "AUTHED_CONNS.lock().unwrap().len()",
+    "crate::ipc::wait_for_local_ipc_shutdown().await;",
+    "crate::server::input_service::fix_key_down_timeout_at_exit();",
+    "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
+    "std::process::exit(exit_code);",
+)
+if "return;" in finalizer or "begin_graceful_shutdown" in server:
+    raise SystemExit(1)
+
+call = "crate::server::finish_graceful_shutdown().await;"
+if ipc.count(call) != 3 or direct.count(call) != 1 or server.count(call) != 0:
+    raise SystemExit(1)
+
+main_ipc = region(
+    ipc,
+    "async fn start_main_ipc() -> ResultType<()> {",
+    "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\nfn sensitive_main_ipc_authority",
+)
+ordered(
+    main_ipc,
+    "while let Some(result) = transactions.join_next().await",
+    "password_mutations().drain().await;",
+    "password_mutations().clear_after_transactions_drain();",
+    "drop(listener_guard);",
+    call,
+)
+
+service_ipc = region(
+    ipc,
+    "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
+    "\n#[cfg(target_os = \"linux\")]\nasync fn handle_sensitive_linux_service_ipc_transaction",
+)
+ordered(
+    service_ipc,
+    "while let Some(result) = transactions.join_next().await",
+    "drop(listener_guard);",
+    call,
+)
+
+windows_service_ipc = region(
+    ipc,
+    "pub async fn start_windows_service_main_ipc() -> ResultType<()> {",
+    "\n#[cfg(target_os = \"windows\")]\nasync fn handle_windows_service_main_transaction",
+)
+ordered(
+    windows_service_ipc,
+    "while let Some(result) = transactions.join_next().await",
+    "drop(listener_guard);",
+    call,
+)
+
+direct_owner = region(
+    direct,
+    "async fn own_controlled_server_lifecycle(",
+    "\n/// Android/iOS receive the exact mobile listener-generation input.",
+)
+ordered(
+    direct_owner,
+    "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+    "direct_listener_outcome = Some(task.await);",
+    call,
+)
+PY
+grep -qF '<span class="id">R-S11aq</span>' requirements.html || r_s11e57="$r_s11e57 normative-requirement-missing"
+grep -qF '<tr><td>165</td>' requirements.html || r_s11e57="$r_s11e57 appendix-row-missing"
+grep -qF 'non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57)' scripts/apple-conform-check.sh \
+  || r_s11e57="$r_s11e57 apple-source-conformance-gate-missing"
+grep -qF 'R-S11e-57 — non-returning graceful-shutdown finalizer ownership' HARDENING_STATUS.md \
+  || r_s11e57="$r_s11e57 hardening-ledger-missing"
+if [ -n "$r_s11e57" ]; then echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"; rc=1; else
+  echo "  ok  R-S11e-57 exactly one desktop caller drains and exits; every loser remains process-owning after releasing its listener/task authority"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -5794,16 +5898,16 @@ echo "$service_shutdown_entry_block" | grep -qF 'ctrlc::set_handler(move || {' |
 echo "$service_shutdown_entry_block" | grep -qF 'signal_running.store(false, Ordering::SeqCst);' || r_s11c27f="$r_s11c27f shutdown-handler-not-atomic"
 echo "$service_shutdown_entry_block" | grep -qF 'Failed to install Linux service shutdown handlers' || r_s11c27f="$r_s11c27f handler-registration-not-fail-closed"
 echo "$service_shutdown_entry_block" | grep -qF 'while running.load(Ordering::SeqCst)' || r_s11c27f="$r_s11c27f service-loop-not-signal-driven"
-[ "$(grep -RhcF 'ctrlc::set_handler' src --include='*.rs' | awk '{n += $1} END {print n + 0}')" = 1 ] || r_s11c27f="$r_s11c27f competing-ctrlc-handler-present"
+[ "$(grep -RhcF 'ctrlc::set_handler' src --include='*.rs' | awk '{n += $1} END {print n + 0}')" = 2 ] || r_s11c27f="$r_s11c27f unexpected-cross-target-ctrlc-handler-set"
 if grep -qF 'fix_key_down_timeout_loop' src/server.rs src/server/input_service.rs; then
   r_s11c27f="$r_s11c27f child-signal-handler-still-competes"
 fi
-server_shutdown_finalizer=$(awk '/pub async fn finish_graceful_shutdown\(\)/,/^}/' src/server.rs)
+server_shutdown_finalizer=$(awk '/pub\(crate\) async fn finish_graceful_shutdown\(\)/,/^}/' src/server.rs)
 echo "$server_shutdown_finalizer" | grep -qF 'crate::server::input_service::fix_key_down_timeout_at_exit();' || r_s11c27f="$r_s11c27f input-release-not-in-graceful-finalizer"
 if ! echo "$server_shutdown_finalizer" | awk '
   /fix_key_down_timeout_at_exit/ { release = NR }
   /graceful shutdown complete/ { complete = NR }
-  /process::exit\(0\)/ { process_exit = NR }
+  /process::exit\(exit_code\)/ { process_exit = NR }
   END { exit !(release && complete && process_exit && release < complete && complete < process_exit) }
 '; then
   r_s11c27f="$r_s11c27f input-release-finalizer-order-regressed"
@@ -9200,7 +9304,8 @@ fi
 # listener failure 1). The unit cgroup's TimeoutStopSec/SIGKILL path stays the backstop.
 # Presence gate across the server primitive, connection drain arm, and retained lifecycle owner.
 r_t9_missing=
-grep -q 'fn begin_graceful_shutdown' src/server.rs         || r_t9_missing="$r_t9_missing begin_graceful_shutdown"
+grep -qF 'pub(crate) async fn finish_graceful_shutdown() -> ! {' src/server.rs || r_t9_missing="$r_t9_missing nonreturning-finalizer"
+grep -qF 'match std::future::pending::<std::convert::Infallible>().await {}' src/server.rs || r_t9_missing="$r_t9_missing finalizer-follower-wait"
 grep -q 'fn is_shutting_down' src/server.rs                || r_t9_missing="$r_t9_missing is_shutting_down"
 grep -q 'SHUTDOWN_TOKEN' src/server.rs                     || r_t9_missing="$r_t9_missing SHUTDOWN_TOKEN"
 grep -q 'shutdown.cancelled()' src/server/connection.rs    || r_t9_missing="$r_t9_missing conn-drain-arm"

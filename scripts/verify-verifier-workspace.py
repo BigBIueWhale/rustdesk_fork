@@ -7625,7 +7625,7 @@ def validate_ipc_listener_failure_outcome_contract(sources):
 
     finalizer = extract_between(
         shutdown_policy,
-        "pub async fn finish_graceful_shutdown() {",
+        "pub(crate) async fn finish_graceful_shutdown() -> ! {",
         "\n#[cfg(test)]",
         "shared graceful-shutdown finalizer",
     )
@@ -7682,16 +7682,16 @@ def validate_ipc_listener_failure_outcome_contract(sources):
 
     clean_entry = extract_between(
         shutdown_policy,
-        "pub async fn begin_graceful_shutdown() {",
+        "pub fn request_graceful_shutdown() {",
         "\n}",
-        "ordinary graceful-shutdown entry",
+        "ordinary graceful-shutdown request",
     )
     require_order(
         clean_entry,
-        ("request_graceful_shutdown();", "finish_graceful_shutdown().await;"),
+        ("SHUTDOWN_TOKEN.is_cancelled()", "SHUTDOWN_TOKEN.cancel();"),
         "ordinary clean shutdown path",
     )
-    if "request_graceful_shutdown_after_listener_failure" in clean_entry:
+    if "SHUTDOWN_FAILURE_LATCHED" in clean_entry:
         raise VerificationError("ordinary graceful shutdown latches listener failure")
 
     requirement = extract_between(
@@ -8322,6 +8322,172 @@ def validate_controlled_server_lifecycle_contract(sources):
         hardening,
         "R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership",
         "desktop controlled-server lifecycle hardening ledger",
+    )
+
+
+def validate_shutdown_finalizer_ownership_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    server_source = sources["server_source"]
+    ipc_source = sources["ipc_source"]
+    direct_service = sources["direct_service"]
+
+    heading = (
+        'echo "== (3b-iii-d9cg) non-returning graceful-shutdown finalizer ownership '
+        '(R-S11aq/R-S11e-57) =="'
+    )
+    gate = extract_between(
+        verify,
+        heading,
+        "\n# (3b-iii-d9d)",
+        "non-returning graceful-shutdown finalizer source gate",
+    )
+    require_text(
+        gate,
+        "shutdown-finalizer-ownership-invalid",
+        "graceful-shutdown finalizer structural gate",
+    )
+    require_text(
+        apple,
+        'echo "== (2b-iv-a-0f) non-returning graceful-shutdown finalizer ownership '
+        '(R-S11aq/R-S11e-57) =="',
+        "graceful-shutdown finalizer Apple gate",
+    )
+
+    shutdown_policy = extract_between(
+        server_source,
+        "static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);",
+        "\npub struct Server",
+        "shared graceful-shutdown policy",
+    )
+    finalizer = extract_between(
+        shutdown_policy,
+        "pub(crate) async fn finish_graceful_shutdown() -> ! {",
+        "\n#[cfg(test)]",
+        "non-returning shared graceful-shutdown finalizer",
+    )
+    require_order(
+        finalizer,
+        (
+            "SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel)",
+            "match std::future::pending::<std::convert::Infallible>().await {}",
+            "AUTHED_CONNS.lock().unwrap().len()",
+            "crate::ipc::wait_for_local_ipc_shutdown().await;",
+            "crate::server::input_service::fix_key_down_timeout_at_exit();",
+            "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
+            "std::process::exit(exit_code);",
+        ),
+        "one-owner/follower-wait before drain and exit",
+    )
+    require_absent(finalizer, "return;", "returning shutdown-finalizer follower")
+    require_absent(
+        server_source,
+        "begin_graceful_shutdown",
+        "obsolete returning graceful-shutdown entry",
+    )
+
+    call = "crate::server::finish_graceful_shutdown().await;"
+    if ipc_source.count(call) != 3 or direct_service.count(call) != 1 or server_source.count(call) != 0:
+        raise VerificationError("exact four graceful-shutdown finalizer callers are absent")
+
+    main_ipc = extract_between(
+        ipc_source,
+        "async fn start_main_ipc() -> ResultType<()> {",
+        '\n#[cfg(any(target_os = "linux", target_os = "macos"))]\nfn sensitive_main_ipc_authority',
+        "main IPC finalizer caller",
+    )
+    require_order(
+        main_ipc,
+        (
+            "while let Some(result) = transactions.join_next().await",
+            "password_mutations().drain().await;",
+            "password_mutations().clear_after_transactions_drain();",
+            "drop(listener_guard);",
+            call,
+        ),
+        "main IPC drain and listener release before finalizer",
+    )
+
+    service_ipc = extract_between(
+        ipc_source,
+        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
+        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+        "protected service IPC finalizer caller",
+    )
+    require_order(
+        service_ipc,
+        (
+            "while let Some(result) = transactions.join_next().await",
+            "drop(listener_guard);",
+            call,
+        ),
+        "protected service IPC drain and listener release before finalizer",
+    )
+
+    windows_service_ipc = extract_between(
+        ipc_source,
+        "pub async fn start_windows_service_main_ipc() -> ResultType<()> {",
+        '\n#[cfg(target_os = "windows")]\nasync fn handle_windows_service_main_transaction',
+        "Windows service-main IPC finalizer caller",
+    )
+    require_order(
+        windows_service_ipc,
+        (
+            "while let Some(result) = transactions.join_next().await",
+            "drop(listener_guard);",
+            call,
+        ),
+        "Windows service-main IPC drain and listener release before finalizer",
+    )
+
+    direct_owner = extract_between(
+        direct_service,
+        "async fn own_controlled_server_lifecycle(",
+        "\n/// Android/iOS receive the exact mobile listener-generation input.",
+        "desktop direct-listener finalizer caller",
+    )
+    require_order(
+        direct_owner,
+        (
+            "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+            "direct_listener_outcome = Some(task.await);",
+            call,
+        ),
+        "desktop direct-listener join before finalizer",
+    )
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11aq</span>',
+        "\n\n<h2 id=\"excise\">",
+        "graceful-shutdown finalizer ownership requirement",
+    )
+    for text, label in (
+        ("remain crate-private and be explicitly non-returning", "crate-private non-returning finalizer requirement"),
+        ("non-polling pending future", "finalizer follower wait requirement"),
+        ("drained admitted transactions and dropped its <code>LocalIpcListenerGuard</code>", "IPC release-before-wait requirement"),
+        ("unused returning <code>begin_graceful_shutdown</code>", "obsolete entry deletion requirement"),
+        ("complete four-caller set", "exact finalizer caller-set requirement"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        (
+            "Every graceful-shutdown caller retains process lifetime until the sole finalizer exits",
+            "graceful-shutdown finalizer ownership requirement title",
+        ),
+        ("<tr><td>165</td>", "graceful-shutdown finalizer Appendix C row"),
+        (
+            "A losing desktop graceful-shutdown caller could terminate the process while the winning detached IPC finalizer was still draining",
+            "graceful-shutdown finalizer Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-57 — non-returning graceful-shutdown finalizer ownership",
+        "graceful-shutdown finalizer hardening ledger",
     )
 
 
@@ -9183,6 +9349,7 @@ def validate_sources(sources):
     validate_linux_service_ipc_lifecycle_contract(sources)
     validate_macos_service_signal_drain_contract(sources)
     validate_controlled_server_lifecycle_contract(sources)
+    validate_shutdown_finalizer_ownership_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -15703,9 +15870,9 @@ def run_source_mutations(sources):
         ),
         (
             "server_source",
-            "pub async fn begin_graceful_shutdown() {\n    request_graceful_shutdown();",
-            "pub async fn begin_graceful_shutdown() {\n    request_graceful_shutdown_after_listener_failure();",
-            "ordinary clean shutdown path",
+            "SHUTDOWN_TOKEN.cancel();",
+            "SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);\n        SHUTDOWN_TOKEN.cancel();",
+            "ordinary graceful shutdown latches listener failure",
         ),
         (
             "requirements",
@@ -16246,6 +16413,90 @@ def run_source_mutations(sources):
             "R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership",
             "R-S11e-56 — detached desktop controlled-server lifecycle",
             "desktop controlled-server lifecycle hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9cg) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="',
+            'echo "== (3b-iii-d9cg) returning graceful-shutdown finalizer (R-S11aq/R-S11e-57) =="',
+            "non-returning graceful-shutdown finalizer source gate",
+        ),
+        (
+            "verify",
+            "shutdown-finalizer-ownership-invalid",
+            "shutdown-finalizer-ownership-unchecked",
+            "graceful-shutdown finalizer structural gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0f) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="',
+            'echo "== (2b-iv-a-0f) returning graceful-shutdown finalizer (R-S11aq/R-S11e-57) =="',
+            "graceful-shutdown finalizer Apple gate",
+        ),
+        (
+            "server_source",
+            "pub(crate) async fn finish_graceful_shutdown() -> ! {",
+            "pub(crate) async fn finish_graceful_shutdown() {",
+            "shared graceful-shutdown finalizer",
+        ),
+        (
+            "server_source",
+            "pub(crate) async fn finish_graceful_shutdown() -> ! {",
+            "pub async fn finish_graceful_shutdown() -> ! {",
+            "shared graceful-shutdown finalizer",
+        ),
+        (
+            "server_source",
+            "match std::future::pending::<std::convert::Infallible>().await {}",
+            "return;",
+            "one-owner/follower-wait before drain and exit",
+        ),
+        (
+            "server_source",
+            "pub(crate) async fn finish_graceful_shutdown() -> ! {",
+            "pub async fn begin_graceful_shutdown() {}\n\npub(crate) async fn finish_graceful_shutdown() -> ! {",
+            "obsolete returning graceful-shutdown entry",
+        ),
+        (
+            "ipc_source",
+            "crate::server::finish_graceful_shutdown().await;",
+            "crate::server::finish_graceful_shutdown_disabled().await;",
+            "exact four graceful-shutdown finalizer callers are absent",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11aq</span>',
+            '<span class="id">R-S11ar</span>',
+            "graceful-shutdown finalizer ownership requirement",
+        ),
+        (
+            "requirements",
+            "Every graceful-shutdown caller retains process lifetime until the sole finalizer exits",
+            "A graceful-shutdown caller may return while another finalizer drains",
+            "graceful-shutdown finalizer ownership requirement title",
+        ),
+        (
+            "requirements",
+            "non-polling pending future",
+            "bounded timeout",
+            "finalizer follower wait requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>165</td>",
+            "<tr><td>9165</td>",
+            "graceful-shutdown finalizer Appendix C row",
+        ),
+        (
+            "requirements",
+            "A losing desktop graceful-shutdown caller could terminate the process while the winning detached IPC finalizer was still draining",
+            "Every desktop graceful-shutdown caller always waited for finalization",
+            "graceful-shutdown finalizer Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-57 — non-returning graceful-shutdown finalizer ownership",
+            "R-S11e-57 — returning graceful-shutdown finalizer",
+            "graceful-shutdown finalizer hardening ledger",
         ),
         (
             "verify",

@@ -1637,6 +1637,110 @@ else
   note "ok  R-S11e-56 macOS LaunchAgent and the shared desktop controlled-server path install signals before IPC admission, retain/join the public listener, and fail nonzero on unexpected completion"
 fi
 
+echo "== (2b-iv-a-0f) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="
+r_s11e57=
+python3 - "$REPO" <<'PY' || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
+from pathlib import Path
+import sys
+
+repo = Path(sys.argv[1])
+server = (repo / "src/server.rs").read_text(encoding="utf-8")
+ipc = (repo / "src/ipc.rs").read_text(encoding="utf-8")
+direct = (repo / "src/direct_service.rs").read_text(encoding="utf-8")
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+finalizer = region(
+    server,
+    "pub(crate) async fn finish_graceful_shutdown() -> ! {",
+    "\n#[cfg(test)]",
+)
+ordered(
+    finalizer,
+    "SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel)",
+    "match std::future::pending::<std::convert::Infallible>().await {}",
+    "AUTHED_CONNS.lock().unwrap().len()",
+    "crate::ipc::wait_for_local_ipc_shutdown().await;",
+    "crate::server::input_service::fix_key_down_timeout_at_exit();",
+    "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
+    "std::process::exit(exit_code);",
+)
+if "return;" in finalizer or "begin_graceful_shutdown" in server:
+    raise SystemExit(1)
+
+call = "crate::server::finish_graceful_shutdown().await;"
+if ipc.count(call) != 3 or direct.count(call) != 1 or server.count(call) != 0:
+    raise SystemExit(1)
+
+main_ipc = region(
+    ipc,
+    "async fn start_main_ipc() -> ResultType<()> {",
+    "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\nfn sensitive_main_ipc_authority",
+)
+ordered(
+    main_ipc,
+    "while let Some(result) = transactions.join_next().await",
+    "password_mutations().drain().await;",
+    "password_mutations().clear_after_transactions_drain();",
+    "drop(listener_guard);",
+    call,
+)
+
+service_ipc = region(
+    ipc,
+    "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
+    "\n#[cfg(target_os = \"linux\")]\nasync fn handle_sensitive_linux_service_ipc_transaction",
+)
+ordered(
+    service_ipc,
+    "while let Some(result) = transactions.join_next().await",
+    "drop(listener_guard);",
+    call,
+)
+
+windows_service_ipc = region(
+    ipc,
+    "pub async fn start_windows_service_main_ipc() -> ResultType<()> {",
+    "\n#[cfg(target_os = \"windows\")]\nasync fn handle_windows_service_main_transaction",
+)
+ordered(
+    windows_service_ipc,
+    "while let Some(result) = transactions.join_next().await",
+    "drop(listener_guard);",
+    call,
+)
+
+direct_owner = region(
+    direct,
+    "async fn own_controlled_server_lifecycle(",
+    "\n/// Android/iOS receive the exact mobile listener-generation input.",
+)
+ordered(
+    direct_owner,
+    "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+    "direct_listener_outcome = Some(task.await);",
+    call,
+)
+PY
+grep -qF '<span class="id">R-S11aq</span>' "$REPO/requirements.html" || r_s11e57="$r_s11e57 normative-requirement-missing"
+grep -qF '<tr><td>165</td>' "$REPO/requirements.html" || r_s11e57="$r_s11e57 appendix-row-missing"
+grep -qF 'R-S11e-57 — non-returning graceful-shutdown finalizer ownership' "$REPO/HARDENING_STATUS.md" \
+  || r_s11e57="$r_s11e57 hardening-ledger-missing"
+if [ -n "$r_s11e57" ]; then
+  echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"
+  rc=1
+else
+  note "ok  R-S11e-57 the macOS/shared desktop finalizer cannot return a losing runtime before the sole drain owner exits"
+fi
+
 echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' "$REPO/libs/hbb_common/src/platform/macos.rs")

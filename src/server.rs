@@ -555,24 +555,22 @@ pub(crate) fn request_graceful_shutdown_after_listener_failure() {
     request_graceful_shutdown();
 }
 
-/// R-T9 (§20): perform a graceful shutdown on SIGTERM/SIGINT. (1) stop accepting — the accept
-/// loop observes the cancelled token and drops the listener (new SYNs RST); (2) signal every live
-/// connection to close gracefully (each run-loop's `cancelled()` arm sends its CloseReason, flushes,
-/// and delivers the CM `Close`); (3) wait up to a BOUNDED deadline — deliberately shorter than the
-/// unit's `TimeoutStopSec` (30 s) so systemd's SIGKILL stays only a backstop — for the
-/// authenticated sessions to finish their cleanup tail (an `AuthedConnID`'s `Drop`, which prunes
-/// `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero means cleanup actually
-/// completed); (4) terminate any still-live connection past the deadline. A normal
-/// requested shutdown exits 0; an unexpected authority-bearing listener loss that
-/// initiated the drain exits 1. Idempotent.
-pub async fn begin_graceful_shutdown() {
-    request_graceful_shutdown();
-    finish_graceful_shutdown().await;
-}
-
-pub async fn finish_graceful_shutdown() {
+/// R-T9 (§20): finish a graceful shutdown after cancellation has stopped admission. (1) stop
+/// accepting — the accept loop observes the cancelled token and drops the listener (new SYNs RST);
+/// (2) signal every live connection to close gracefully (each run-loop's `cancelled()` arm sends
+/// its CloseReason, flushes, and delivers the CM `Close`); (3) wait up to a BOUNDED deadline —
+/// deliberately shorter than the unit's `TimeoutStopSec` (30 s) so systemd's SIGKILL stays only a
+/// backstop — for the authenticated sessions to finish their cleanup tail (an `AuthedConnID`'s
+/// `Drop`, which prunes `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero
+/// means cleanup actually completed); (4) terminate any still-live connection past the deadline.
+/// A normal requested shutdown exits 0; an unexpected authority-bearing listener loss that
+/// initiated the drain exits 1. Exactly one caller performs the drain. Every
+/// concurrent caller remains alive until that owner terminates the process, so
+/// no runtime or main thread can return while the owned drain is still running.
+pub(crate) async fn finish_graceful_shutdown() -> ! {
     if SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel) {
-        return;
+        log::info!("R-T9: graceful shutdown finalizer already owned — waiting for process exit");
+        match std::future::pending::<std::convert::Infallible>().await {}
     }
     let deadline = std::time::Duration::from_secs(8);
     let start = std::time::Instant::now();

@@ -4014,7 +4014,7 @@ def validate_smoke_contract(
         (
             "let runtime = ServiceRuntime::acquire()?;",
             "runtime.recover_previous_child()?;",
-            "ipc::start(crate::POSTFIX_SERVICE)",
+            "ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
         ),
         "hostile-record recovery precedes listener authority",
     )
@@ -7722,6 +7722,224 @@ def validate_ipc_listener_failure_outcome_contract(sources):
     )
 
 
+def validate_linux_service_ipc_lifecycle_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    ipc_source = sources["ipc_source"]
+    linux_source = sources["linux_source"]
+
+    heading = (
+        'echo "== (3b-iii-d9cd) Linux protected service IPC lifecycle ownership '
+        '(R-S11an/R-S11e-54) =="'
+    )
+    gate = extract_between(
+        verify,
+        heading,
+        '\n# (3b-iii-d9d)',
+        "Linux protected service IPC lifecycle source gate",
+    )
+    require_text(
+        gate,
+        'cargo test --offline --locked --lib --features linux-pkg-config r_s11e54_',
+        "Linux protected service IPC focused regression gate",
+    )
+
+    entry = extract_between(
+        ipc_source,
+        "pub(crate) async fn start_linux_service_ipc_with_readiness(",
+        "\nenum SensitiveMainListenerEvent",
+        "Linux protected service IPC readiness entry",
+    )
+    require_order(
+        entry,
+        (
+            "prepare_service_ipc(crate::POSTFIX_SERVICE).await",
+            "startup.send(Ok(()))",
+            "run_service_ipc(crate::POSTFIX_SERVICE, listeners).await",
+        ),
+        "protected listener preparation before readiness",
+    )
+    require_text(
+        entry,
+        "startup.send(Err(err.to_string()))",
+        "protected listener setup failure report",
+    )
+
+    prepared = extract_between(
+        ipc_source,
+        "async fn prepare_service_ipc(",
+        "\nasync fn start_service_ipc(",
+        "protected service IPC listener preparation",
+    )
+    require_order(
+        prepared,
+        (
+            "let incoming = new_listener(postfix).await?;",
+            "let password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;",
+            "let listener_guard = LocalIpcListenerGuard::activate(",
+            "Ok(PreparedServiceIpc {",
+        ),
+        "both protected listeners and guard before prepared state",
+    )
+
+    policy = extract_between(
+        linux_source,
+        "type LinuxServiceIpcThread",
+        "\npub fn get_active_user_id_name",
+        "Linux root service protected IPC ownership policy",
+    )
+    if "allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE))" in linux_source:
+        raise VerificationError("detached allow_err protected service IPC path remains")
+    for text, label in (
+        (
+            "const SERVICE_IPC_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);",
+            "bounded protected IPC readiness",
+        ),
+        (
+            "type LinuxServiceIpcThread = std::thread::JoinHandle<ResultType<()>>;",
+            "retained protected IPC thread owner",
+        ),
+        ("std::thread::Builder::new()", "fallible protected IPC thread creation"),
+        (
+            '.name("rustdesk-service-ipc".to_owned())',
+            "named protected IPC thread",
+        ),
+        (
+            "fn r_s11e54_linux_service_requires_protected_ipc_readiness()",
+            "protected IPC readiness regression",
+        ),
+        (
+            "fn r_s11e54_linux_service_owns_protected_ipc_thread_outcome()",
+            "protected IPC outcome regression",
+        ),
+        (
+            'Ok(Err(err)) => bail!("Protected service IPC failed before readiness: {err}")',
+            "protected IPC setup-error readiness failure",
+        ),
+        (
+            "Err(mpsc::RecvTimeoutError::Timeout) => bail!(",
+            "protected IPC readiness timeout failure",
+        ),
+        (
+            'bail!("Protected service IPC thread ended before reporting readiness")',
+            "protected IPC readiness disconnection failure",
+        ),
+    ):
+        require_text(linux_source, text, label)
+
+    require_order(
+        policy,
+        (
+            "std::thread::Builder::new()",
+            "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
+            "wait_for_linux_service_ipc_startup(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)",
+            'let (mut display, mut xauth): (String, String)',
+        ),
+        "protected IPC readiness before child-selection state",
+    )
+    startup_cleanup = extract_between(
+        policy,
+        "if let Err(startup_err) =",
+        '\n\n    let (mut display, mut xauth): (String, String)',
+        "protected IPC startup failure cleanup",
+    )
+    require_order(
+        startup_cleanup,
+        (
+            "crate::server::request_graceful_shutdown();",
+            "classify_linux_service_ipc_thread_outcome(handle.join(), true)",
+            "return result;",
+        ),
+        "protected IPC startup failure join",
+    )
+    signal = extract_between(
+        policy,
+        "ctrlc::set_handler",
+        "\n    .map_err(|err|",
+        "Linux root service signal handler",
+    )
+    require_order(
+        signal,
+        (
+            "signal_running.store(false, Ordering::SeqCst);",
+            "crate::server::request_graceful_shutdown();",
+        ),
+        "service stop before protected IPC cancellation",
+    )
+    service_loop = extract_between(
+        policy,
+        "let mut result = (|| -> ResultType<()> {",
+        "\n\n    crate::server::request_graceful_shutdown();",
+        "captured Linux service supervisor loop",
+    )
+    require_order(
+        service_loop,
+        (
+            "observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;",
+            "desktop.refresh();",
+        ),
+        "protected IPC liveness before service child decisions",
+    )
+    cleanup = policy[policy.rindex("crate::server::request_graceful_shutdown();") :]
+    require_order(
+        cleanup,
+        (
+            "crate::server::request_graceful_shutdown();",
+            "classify_linux_service_ipc_thread_outcome(handle.join(), true)",
+            'terminate_child(&mut user_server, "--server", &runtime)',
+            'terminate_child(&mut server, "--server", &runtime)',
+        ),
+        "protected IPC join before service-child termination",
+    )
+    for text, label in (
+        ("Ok(Ok(())) if expected_shutdown => Ok(()),", "expected IPC drain outcome"),
+        (
+            'Ok(Ok(())) => bail!("Protected service IPC thread stopped unexpectedly")',
+            "unexpected clean IPC termination failure",
+        ),
+        (
+            'Ok(Err(err)) => Err(anyhow!("Protected service IPC thread failed: {err}"))',
+            "returned IPC failure propagation",
+        ),
+        ("Err(_) => bail!(\"Protected service IPC thread panicked\")", "IPC panic propagation"),
+        ("let mut result = (|| -> ResultType<()> {", "captured supervisor-loop result"),
+        ("merge_linux_service_result(", "complete Linux service cleanup merge"),
+    ):
+        require_text(policy, text, label)
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11an</span>',
+        '\n\n<h2 id="excise">',
+        "Linux protected service IPC lifecycle requirement",
+    )
+    for text, label in (
+        ("fallible <code>thread::Builder::spawn</code>", "fallible thread requirement"),
+        ("Readiness <span class=\"kw\">MUST NOT</span> be sent until", "readiness ordering requirement"),
+        ("join the exact IPC worker without an artificial drain deadline", "complete drain requirement"),
+        ("only after that join attempt terminate", "join-before-child requirement"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        (
+            "The Linux root supervisor owns protected service IPC readiness, failure, and complete drain",
+            "Linux protected IPC lifecycle requirement title",
+        ),
+        ("<tr><td>162</td>", "Linux protected IPC lifecycle Appendix C row"),
+        (
+            "The Linux root service detached protected IPC startup and shutdown from supervisor ownership",
+            "Linux protected IPC lifecycle Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-54 — Linux protected service IPC lifecycle ownership",
+        "Linux protected IPC lifecycle hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -8577,6 +8795,7 @@ def validate_sources(sources):
     validate_windows_scm_service_entry_contract(sources)
     validate_macos_service_storage_root_contract(sources)
     validate_ipc_listener_failure_outcome_contract(sources)
+    validate_linux_service_ipc_lifecycle_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -15142,6 +15361,204 @@ def run_source_mutations(sources):
             "R-S11e-53 — authority-bearing IPC listener failure outcome",
             "R-S11e-53 — successful IPC listener loss",
             "IPC listener failure hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9cd) Linux protected service IPC lifecycle ownership (R-S11an/R-S11e-54) =="',
+            'echo "== (3b-iii-d9cd) detached Linux protected service IPC (R-S11an/R-S11e-54) =="',
+            "Linux protected service IPC lifecycle source gate",
+        ),
+        (
+            "verify",
+            'cargo test --offline --locked --lib --features linux-pkg-config r_s11e54_',
+            'cargo test --offline --locked --lib --features linux-pkg-config detached_r_s11e54_',
+            "Linux protected service IPC focused regression gate",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) async fn start_linux_service_ipc_with_readiness(",
+            "pub(crate) async fn start_detached_linux_service_ipc(",
+            "Linux protected service IPC readiness entry",
+        ),
+        (
+            "ipc_source",
+            "startup.send(Err(err.to_string()))",
+            "startup.send(Ok(()))",
+            "protected listener setup failure report",
+        ),
+        (
+            "ipc_source",
+            "startup.send(Ok(()))",
+            "startup.send_ready_before_listeners(Ok(()))",
+            "protected listener preparation before readiness",
+        ),
+        (
+            "ipc_source",
+            "let password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;",
+            "let password_incoming = incoming.clone();",
+            "both protected listeners and guard before prepared state",
+        ),
+        (
+            "ipc_source",
+            "let listener_guard = LocalIpcListenerGuard::activate(\n        &SERVICE_IPC_LISTENER_STATE,\n        \"protected service IPC listener\",",
+            "let listener_guard = LocalIpcListenerGuard::activate_disabled(\n        &SERVICE_IPC_LISTENER_STATE,\n        \"protected service IPC listener\",",
+            "both protected listeners and guard before prepared state",
+        ),
+        (
+            "linux_source",
+            "const SERVICE_IPC_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);",
+            "const SERVICE_IPC_STARTUP_TIMEOUT_DISABLED: Duration = Duration::from_secs(10);",
+            "bounded protected IPC readiness",
+        ),
+        (
+            "linux_source",
+            "type LinuxServiceIpcThread = std::thread::JoinHandle<ResultType<()>>;",
+            "type DetachedLinuxServiceIpcThread = std::thread::JoinHandle<ResultType<()>>;",
+            "Linux root service protected IPC ownership policy",
+        ),
+        (
+            "linux_source",
+            "std::thread::Builder::new()",
+            "std::thread::BuilderDisabled::new()",
+            "fallible protected IPC thread creation",
+        ),
+        (
+            "linux_source",
+            '.name("rustdesk-service-ipc".to_owned())',
+            '.name("detached-service-ipc".to_owned())',
+            "named protected IPC thread",
+        ),
+        (
+            "linux_source",
+            "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
+            "crate::ipc::start(crate::POSTFIX_SERVICE)",
+            "protected IPC readiness before child-selection state",
+        ),
+        (
+            "linux_source",
+            "wait_for_linux_service_ipc_startup(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)",
+            "wait_for_linux_service_ipc_startup_disabled(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)",
+            "protected IPC readiness before child-selection state",
+        ),
+        (
+            "linux_source",
+            'Ok(Err(err)) => bail!("Protected service IPC failed before readiness: {err}")',
+            "Ok(Err(_err)) => Ok(())",
+            "protected IPC setup-error readiness failure",
+        ),
+        (
+            "linux_source",
+            "Err(mpsc::RecvTimeoutError::Timeout) => bail!(",
+            "Err(mpsc::RecvTimeoutError::Timeout) => return Ok(()) /*",
+            "protected IPC readiness timeout failure",
+        ),
+        (
+            "linux_source",
+            'bail!("Protected service IPC thread ended before reporting readiness")',
+            "return Ok(())",
+            "protected IPC readiness disconnection failure",
+        ),
+        (
+            "linux_source",
+            "signal_running.store(false, Ordering::SeqCst);\n        crate::server::request_graceful_shutdown();",
+            "signal_running.store(false, Ordering::SeqCst);",
+            "service stop before protected IPC cancellation",
+        ),
+        (
+            "linux_source",
+            "observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;",
+            "observe_linux_service_ipc_thread_disabled(&mut ipc_thread, &running)?;",
+            "protected IPC liveness before service child decisions",
+        ),
+        (
+            "linux_source",
+            "classify_linux_service_ipc_thread_outcome(handle.join(), true),\n                \"protected IPC startup cleanup\"",
+            "classify_linux_service_ipc_thread_outcome_disabled(handle.join(), true),\n                \"protected IPC startup cleanup\"",
+            "protected IPC startup failure join",
+        ),
+        (
+            "linux_source",
+            "classify_linux_service_ipc_thread_outcome(handle.join(), true),\n            \"protected IPC drain\"",
+            "classify_linux_service_ipc_thread_outcome_disabled(handle.join(), true),\n            \"protected IPC drain\"",
+            "protected IPC join before service-child termination",
+        ),
+        (
+            "linux_source",
+            "\n    crate::server::request_graceful_shutdown();\n    if let Some(handle) = ipc_thread.take() {",
+            "\n    if let Some(handle) = ipc_thread.take() {",
+            "captured Linux service supervisor loop",
+        ),
+        (
+            "linux_source",
+            "let mut result = (|| -> ResultType<()> {",
+            "let mut detached_result = (|| -> ResultType<()> {",
+            "captured Linux service supervisor loop",
+        ),
+        (
+            "linux_source",
+            "Ok(Ok(())) => bail!(\"Protected service IPC thread stopped unexpectedly\")",
+            "Ok(Ok(())) => Ok(())",
+            "unexpected clean IPC termination failure",
+        ),
+        (
+            "linux_source",
+            "Ok(Err(err)) => Err(anyhow!(\"Protected service IPC thread failed: {err}\"))",
+            "Ok(Err(_err)) => Ok(())",
+            "returned IPC failure propagation",
+        ),
+        (
+            "linux_source",
+            "Err(_) => bail!(\"Protected service IPC thread panicked\")",
+            "Err(_) => Ok(())",
+            "IPC panic propagation",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e54_linux_service_requires_protected_ipc_readiness()",
+            "fn detached_linux_service_ignores_protected_ipc_readiness()",
+            "protected IPC readiness regression",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e54_linux_service_owns_protected_ipc_thread_outcome()",
+            "fn detached_linux_service_ignores_protected_ipc_thread_outcome()",
+            "protected IPC outcome regression",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11an</span>',
+            '<span class="id">R-S11ao</span>',
+            "Linux protected service IPC lifecycle requirement",
+        ),
+        (
+            "requirements",
+            "The Linux root supervisor owns protected service IPC readiness, failure, and complete drain",
+            "The Linux root supervisor detaches protected service IPC",
+            "Linux protected IPC lifecycle requirement title",
+        ),
+        (
+            "requirements",
+            "join the exact IPC worker without an artificial drain deadline",
+            "detach the IPC worker before its drain completes",
+            "complete drain requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>162</td>",
+            "<tr><td>9162</td>",
+            "Linux protected IPC lifecycle Appendix C row",
+        ),
+        (
+            "requirements",
+            "The Linux root service detached protected IPC startup and shutdown from supervisor ownership",
+            "The Linux root service always owned protected IPC",
+            "Linux protected IPC lifecycle Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-54 — Linux protected service IPC lifecycle ownership",
+            "R-S11e-54 — detached Linux protected service IPC",
+            "Linux protected IPC lifecycle hardening ledger",
         ),
         (
             "verify",

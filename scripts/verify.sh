@@ -4114,6 +4114,133 @@ grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' HARDENIN
 if [ -n "$r_s11e53" ]; then echo "  FAIL R-S11e-53 IPC listener failure outcome:$r_s11e53"; rc=1; else
   echo "  ok  R-S11e-53 all six fatal desktop IPC listener endings latch failure before cancellation and the shared finalizer exits 1 only after its existing drain; ordinary shutdown remains status 0"; fi
 
+# (3b-iii-d9cd) R-S11an/R-S11e-54: the Linux root supervisor
+# positively owns protected service IPC readiness, failure, and complete drain
+# instead of detaching a fallible receiver behind allow_err!.
+echo "== (3b-iii-d9cd) Linux protected service IPC lifecycle ownership (R-S11an/R-S11e-54) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e54_ --color never
+r_s11e54=
+for binding in \
+  'pub(crate) async fn start_linux_service_ipc_with_readiness(' \
+  'struct PreparedServiceIpc {' \
+  'async fn prepare_service_ipc(postfix: &str) -> ResultType<PreparedServiceIpc> {' \
+  'async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {' \
+  'const SERVICE_IPC_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);' \
+  'type LinuxServiceIpcThread = std::thread::JoinHandle<ResultType<()>>;' \
+  'fn wait_for_linux_service_ipc_startup(' \
+  'fn classify_linux_service_ipc_thread_outcome(' \
+  'fn observe_linux_service_ipc_thread(' \
+  'std::thread::Builder::new()' \
+  '.name("rustdesk-service-ipc".to_owned())' \
+  'mpsc::sync_channel(1)' \
+  'crate::server::request_graceful_shutdown();' \
+  'fn r_s11e54_linux_service_requires_protected_ipc_readiness()' \
+  'fn r_s11e54_linux_service_owns_protected_ipc_thread_outcome()'; do
+  grep -qF "$binding" src/ipc.rs src/platform/linux.rs || r_s11e54="$r_s11e54 lifecycle-binding-missing"
+done
+python3 - src/ipc.rs src/platform/linux.rs <<'PY' || r_s11e54="$r_s11e54 lifecycle-order-or-ownership-invalid"
+from pathlib import Path
+import sys
+
+ipc = Path(sys.argv[1]).read_text(encoding="utf-8")
+linux = Path(sys.argv[2]).read_text(encoding="utf-8")
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+entry = region(
+    ipc,
+    "pub(crate) async fn start_linux_service_ipc_with_readiness(",
+    "enum SensitiveMainListenerEvent",
+)
+ordered(
+    entry,
+    "prepare_service_ipc(crate::POSTFIX_SERVICE).await",
+    "startup.send(Ok(()))",
+    "run_service_ipc(crate::POSTFIX_SERVICE, listeners).await",
+)
+if "startup.send(Err(err.to_string()))" not in entry:
+    raise SystemExit(1)
+
+prepared = region(ipc, "async fn prepare_service_ipc(", "async fn start_service_ipc(")
+ordered(
+    prepared,
+    "let incoming = new_listener(postfix).await?;",
+    "let password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;",
+    "let listener_guard = LocalIpcListenerGuard::activate(",
+    "Ok(PreparedServiceIpc {",
+)
+
+policy = region(linux, "type LinuxServiceIpcThread", "pub fn get_active_user_id_name")
+if "allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE))" in linux:
+    raise SystemExit(1)
+ordered(
+    policy,
+    "std::thread::Builder::new()",
+    "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
+    "wait_for_linux_service_ipc_startup(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)",
+    'let (mut display, mut xauth): (String, String)',
+)
+startup_cleanup = region(
+    policy,
+    "if let Err(startup_err) =",
+    'let (mut display, mut xauth): (String, String)',
+)
+ordered(
+    startup_cleanup,
+    "crate::server::request_graceful_shutdown();",
+    "classify_linux_service_ipc_thread_outcome(handle.join(), true)",
+    "return result;",
+)
+signal = region(policy, "ctrlc::set_handler", ".map_err(|err|")
+ordered(
+    signal,
+    "signal_running.store(false, Ordering::SeqCst);",
+    "crate::server::request_graceful_shutdown();",
+)
+loop = region(policy, "let mut result = (|| -> ResultType<()> {", "crate::server::request_graceful_shutdown();")
+ordered(
+    loop,
+    "observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;",
+    "desktop.refresh();",
+)
+cleanup = policy[policy.rindex("crate::server::request_graceful_shutdown();"):]
+ordered(
+    cleanup,
+    "crate::server::request_graceful_shutdown();",
+    "classify_linux_service_ipc_thread_outcome(handle.join(), true)",
+    'terminate_child(&mut user_server, "--server", &runtime)',
+    'terminate_child(&mut server, "--server", &runtime)',
+)
+for binding in (
+    "Ok(Ok(())) if expected_shutdown => Ok(()),",
+    'Ok(Ok(())) => bail!("Protected service IPC thread stopped unexpectedly")',
+    'Ok(Err(err)) => Err(anyhow!("Protected service IPC thread failed: {err}"))',
+    'Err(_) => bail!("Protected service IPC thread panicked")',
+    "let mut result = (|| -> ResultType<()> {",
+    'merge_linux_service_result(\n            &mut result,\n            classify_linux_service_ipc_thread_outcome(handle.join(), true),\n            "protected IPC drain",',
+):
+    if binding not in policy:
+        raise SystemExit(1)
+PY
+grep -qF '<span class="id">R-S11an</span>' requirements.html || r_s11e54="$r_s11e54 normative-requirement-missing"
+grep -qF 'The Linux root supervisor owns protected service IPC readiness, failure, and complete drain' requirements.html \
+  || r_s11e54="$r_s11e54 normative-lifecycle-clause-missing"
+grep -qF '<tr><td>162</td>' requirements.html || r_s11e54="$r_s11e54 appendix-row-missing"
+grep -qF 'The Linux root service detached protected IPC startup and shutdown from supervisor ownership' requirements.html \
+  || r_s11e54="$r_s11e54 appendix-disposition-missing"
+grep -qF 'R-S11e-54 — Linux protected service IPC lifecycle ownership' HARDENING_STATUS.md \
+  || r_s11e54="$r_s11e54 hardening-ledger-missing"
+if [ -n "$r_s11e54" ]; then echo "  FAIL R-S11e-54 Linux protected service IPC lifecycle:$r_s11e54"; rc=1; else
+  echo "  ok  R-S11e-54 Linux starts no controlled child before both protected listeners are ready and joins their complete admitted-work drain before child termination"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

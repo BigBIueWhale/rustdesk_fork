@@ -2510,6 +2510,28 @@ pub async fn start(postfix: &str) -> ResultType<()> {
     bail!("unsupported IPC listener postfix: {postfix}");
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::main(flavor = "current_thread")]
+pub(crate) async fn start_linux_service_ipc_with_readiness(
+    startup: std::sync::mpsc::SyncSender<Result<(), String>>,
+) -> ResultType<()> {
+    let listeners = match prepare_service_ipc(crate::POSTFIX_SERVICE).await {
+        Ok(listeners) => listeners,
+        Err(err) => {
+            if startup.send(Err(err.to_string())).is_err() {
+                log::error!(
+                    "Linux service IPC failed before readiness after its supervisor stopped waiting"
+                );
+            }
+            return Err(err);
+        }
+    };
+    startup.send(Ok(())).map_err(|_| {
+        anyhow::anyhow!("Linux service supervisor stopped before protected IPC became ready")
+    })?;
+    run_service_ipc(crate::POSTFIX_SERVICE, listeners).await
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 enum SensitiveMainListenerEvent {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -2753,16 +2775,43 @@ async fn handle_sensitive_main_ipc_transaction(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-async fn start_service_ipc(postfix: &str) -> ResultType<()> {
+struct PreparedServiceIpc {
+    incoming: Incoming,
+    password_incoming: Incoming,
+    listener_guard: LocalIpcListenerGuard,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn prepare_service_ipc(postfix: &str) -> ResultType<PreparedServiceIpc> {
     if postfix != crate::POSTFIX_SERVICE {
         bail!("unsupported service IPC postfix: {postfix}");
     }
-    let mut incoming = new_listener(postfix).await?;
-    let mut password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;
+    let incoming = new_listener(postfix).await?;
+    let password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;
     let listener_guard = LocalIpcListenerGuard::activate(
         &SERVICE_IPC_LISTENER_STATE,
         "protected service IPC listener",
     )?;
+    Ok(PreparedServiceIpc {
+        incoming,
+        password_incoming,
+        listener_guard,
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn start_service_ipc(postfix: &str) -> ResultType<()> {
+    let listeners = prepare_service_ipc(postfix).await?;
+    run_service_ipc(postfix, listeners).await
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {
+    let PreparedServiceIpc {
+        mut incoming,
+        mut password_incoming,
+        listener_guard,
+    } = listeners;
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
     let mut listener_error = None;

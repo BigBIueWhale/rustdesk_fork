@@ -29,7 +29,7 @@ use std::{
     process::{Child, Command},
     string::String,
     sync::atomic::{AtomicBool, Ordering},
-    sync::Arc,
+    sync::{mpsc, Arc},
     time::{Duration, Instant},
 };
 use terminfo::{capability as cap, Database};
@@ -48,6 +48,7 @@ const INVALID_TERM_VALUES: [&str; 3] = ["", "unknown", "dumb"];
 const SHELL_PROCESSES: [&str; 4] = ["bash", "zsh", "fish", "sh"];
 const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);
 const SERVICE_CHILD_FORCED_STOP_TIMEOUT: Duration = Duration::from_secs(8);
+const SERVICE_IPC_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const SERVICE_CHILD_RECORD_MAX_BYTES: usize = 1024;
 const SERVICE_CHILD_RECORD_ROLE: &str = "--server+--service-owned-server";
 const SERVICE_RUNTIME_DIR: &[u8] = b"/run/rustdesk\0";
@@ -2266,11 +2267,74 @@ fn should_start_server(
     Ok(start_new)
 }
 
+type LinuxServiceIpcThread = std::thread::JoinHandle<ResultType<()>>;
+
+fn wait_for_linux_service_ipc_startup(
+    startup: &mpsc::Receiver<Result<(), String>>,
+    timeout: Duration,
+) -> ResultType<()> {
+    match startup.recv_timeout(timeout) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => bail!("Protected service IPC failed before readiness: {err}"),
+        Err(mpsc::RecvTimeoutError::Timeout) => bail!(
+            "Protected service IPC did not become ready within {} ms",
+            timeout.as_millis()
+        ),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            bail!("Protected service IPC thread ended before reporting readiness")
+        }
+    }
+}
+
+fn classify_linux_service_ipc_thread_outcome(
+    outcome: std::thread::Result<ResultType<()>>,
+    expected_shutdown: bool,
+) -> ResultType<()> {
+    match outcome {
+        Ok(Ok(())) if expected_shutdown => Ok(()),
+        Ok(Ok(())) => bail!("Protected service IPC thread stopped unexpectedly"),
+        Ok(Err(err)) => Err(anyhow!("Protected service IPC thread failed: {err}")),
+        Err(_) => bail!("Protected service IPC thread panicked"),
+    }
+}
+
+fn observe_linux_service_ipc_thread(
+    ipc_thread: &mut Option<LinuxServiceIpcThread>,
+    running: &AtomicBool,
+) -> ResultType<()> {
+    let Some(handle) = ipc_thread.as_ref() else {
+        bail!("Protected service IPC thread ownership disappeared");
+    };
+    if !handle.is_finished() {
+        return Ok(());
+    }
+    let expected_shutdown = !running.load(Ordering::SeqCst);
+    let handle = ipc_thread
+        .take()
+        .ok_or_else(|| anyhow!("Protected service IPC thread ownership disappeared"))?;
+    classify_linux_service_ipc_thread_outcome(handle.join(), expected_shutdown)
+}
+
+fn merge_linux_service_result(
+    result: &mut ResultType<()>,
+    next: ResultType<()>,
+    phase: &str,
+) {
+    if let Err(err) = next {
+        if result.is_ok() {
+            *result = Err(anyhow!("{phase}: {err}"));
+        } else {
+            log::error!("Linux service {phase} also failed: {err}");
+        }
+    }
+}
+
 pub fn start_os_service() -> ResultType<()> {
     let running = Arc::new(AtomicBool::new(true));
     let signal_running = running.clone();
     ctrlc::set_handler(move || {
         signal_running.store(false, Ordering::SeqCst);
+        crate::server::request_graceful_shutdown();
     })
     .map_err(|err| anyhow!("Failed to install Linux service shutdown handlers: {err}"))?;
 
@@ -2281,9 +2345,29 @@ pub fn start_os_service() -> ResultType<()> {
     // cross-uid sockets the X11 --server never connects to are absent (shrinking
     // the R-S11a cross-uid socket surface to _service alone).
 
-    std::thread::spawn(|| {
-        allow_err!(crate::ipc::start(crate::POSTFIX_SERVICE));
-    });
+    let (ipc_startup_tx, ipc_startup_rx) = mpsc::sync_channel(1);
+    let mut ipc_thread = Some(
+        std::thread::Builder::new()
+            .name("rustdesk-service-ipc".to_owned())
+            .spawn(move || {
+                crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)
+            })
+            .map_err(|err| anyhow!("Failed to start protected service IPC thread: {err}"))?,
+    );
+    if let Err(startup_err) =
+        wait_for_linux_service_ipc_startup(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)
+    {
+        crate::server::request_graceful_shutdown();
+        let mut result = Err(startup_err);
+        if let Some(handle) = ipc_thread.take() {
+            merge_linux_service_result(
+                &mut result,
+                classify_linux_service_ipc_thread_outcome(handle.join(), true),
+                "protected IPC startup cleanup",
+            );
+        }
+        return result;
+    }
 
     let (mut display, mut xauth): (String, String) = ("".to_owned(), "".to_owned());
     let mut desktop = Desktop::default();
@@ -2291,63 +2375,86 @@ pub fn start_os_service() -> ResultType<()> {
     let mut uid = "".to_owned();
     let mut server: Option<OwnedServiceChild> = None;
     let mut user_server: Option<OwnedServiceChild> = None;
-    while running.load(Ordering::SeqCst) {
-        desktop.refresh();
-        update_active_user_lookup_cache(&desktop);
+    let mut result = (|| -> ResultType<()> {
+        while running.load(Ordering::SeqCst) {
+            observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;
+            if !running.load(Ordering::SeqCst) {
+                break;
+            }
+            desktop.refresh();
+            update_active_user_lookup_cache(&desktop);
 
-        match selected_service_child_principal(&desktop)? {
-            // Login wayland will try to start a headless root --server.
-            Some(ServiceChildPrincipal::RootService) => {
-                // try kill subprocess "--server"
-                stop_server(&mut user_server, &runtime)?;
-                // try start subprocess "--server"
-                // No need to check is_display_changed here.
-                if should_start_server(false, &mut uid, &desktop, &mut server, &runtime)? {
-                    start_server(&desktop, &mut server, &runtime);
+            match selected_service_child_principal(&desktop)? {
+                // Login wayland will try to start a headless root --server.
+                Some(ServiceChildPrincipal::RootService) => {
+                    // try kill subprocess "--server"
+                    stop_server(&mut user_server, &runtime)?;
+                    // try start subprocess "--server"
+                    // No need to check is_display_changed here.
+                    if should_start_server(false, &mut uid, &desktop, &mut server, &runtime)? {
+                        start_server(&desktop, &mut server, &runtime);
+                    }
+                }
+                Some(ServiceChildPrincipal::ActiveDesktopUser) => {
+                    // try kill subprocess "--server"
+                    stop_server(&mut server, &runtime)?;
+
+                    let is_display_changed = desktop.display != display || desktop.xauth != xauth;
+                    display = desktop.display.clone();
+                    xauth = desktop.xauth.clone();
+
+                    // try start subprocess "--server"
+                    if should_start_server(
+                        is_display_changed,
+                        &mut uid,
+                        &desktop,
+                        &mut user_server,
+                        &runtime,
+                    )? {
+                        start_server(&desktop, &mut user_server, &runtime);
+                    }
+                }
+                None => {
+                    stop_server(&mut user_server, &runtime)?;
+                    stop_server(&mut server, &runtime)?;
                 }
             }
-            Some(ServiceChildPrincipal::ActiveDesktopUser) => {
-                // try kill subprocess "--server"
-                stop_server(&mut server, &runtime)?;
 
-                let is_display_changed = desktop.display != display || desktop.xauth != xauth;
-                display = desktop.display.clone();
-                xauth = desktop.xauth.clone();
-
-                // try start subprocess "--server"
-                if should_start_server(
-                    is_display_changed,
-                    &mut uid,
-                    &desktop,
-                    &mut user_server,
-                    &runtime,
-                )? {
-                    start_server(&desktop, &mut user_server, &runtime);
-                }
+            let keeps_headless = sid.is_empty() && desktop.is_headless();
+            let keeps_session = sid == desktop.sid;
+            if keeps_headless || keeps_session {
+                // for fixing https://github.com/rustdesk/rustdesk/issues/3129 to avoid too much dbus calling,
+                sleep_millis(500);
+            } else {
+                sleep_millis(super::SERVICE_INTERVAL);
             }
-            None => {
-                stop_server(&mut user_server, &runtime)?;
-                stop_server(&mut server, &runtime)?;
+            if !desktop.is_headless() {
+                sid = desktop.sid.clone();
             }
         }
+        Ok(())
+    })();
 
-        let keeps_headless = sid.is_empty() && desktop.is_headless();
-        let keeps_session = sid == desktop.sid;
-        if keeps_headless || keeps_session {
-            // for fixing https://github.com/rustdesk/rustdesk/issues/3129 to avoid too much dbus calling,
-            sleep_millis(500);
-        } else {
-            sleep_millis(super::SERVICE_INTERVAL);
-        }
-        if !desktop.is_headless() {
-            sid = desktop.sid.clone();
-        }
+    crate::server::request_graceful_shutdown();
+    if let Some(handle) = ipc_thread.take() {
+        merge_linux_service_result(
+            &mut result,
+            classify_linux_service_ipc_thread_outcome(handle.join(), true),
+            "protected IPC drain",
+        );
     }
-
-    terminate_child(&mut user_server, "--server", &runtime)?;
-    terminate_child(&mut server, "--server", &runtime)?;
+    merge_linux_service_result(
+        &mut result,
+        terminate_child(&mut user_server, "--server", &runtime).map(|_| ()),
+        "active-user service-child termination",
+    );
+    merge_linux_service_result(
+        &mut result,
+        terminate_child(&mut server, "--server", &runtime).map(|_| ()),
+        "root service-child termination",
+    );
     log::info!("Exit");
-    Ok(())
+    result
 }
 
 #[inline]
@@ -2900,6 +3007,42 @@ extern "C" {
 #[cfg(test)]
 mod process_cleanup_tests {
     use super::*;
+
+    #[test]
+    fn r_s11e54_linux_service_requires_protected_ipc_readiness() {
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        ready_tx.send(Ok(())).unwrap();
+        assert!(wait_for_linux_service_ipc_startup(&ready_rx, Duration::ZERO).is_ok());
+
+        let (failed_tx, failed_rx) = mpsc::sync_channel(1);
+        failed_tx
+            .send(Err("listener bind failed".to_owned()))
+            .unwrap();
+        assert!(wait_for_linux_service_ipc_startup(&failed_rx, Duration::ZERO).is_err());
+
+        let (pending_tx, pending_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+        assert!(wait_for_linux_service_ipc_startup(&pending_rx, Duration::ZERO).is_err());
+        drop(pending_tx);
+
+        let (disconnected_tx, disconnected_rx) = mpsc::sync_channel(1);
+        drop(disconnected_tx);
+        assert!(
+            wait_for_linux_service_ipc_startup(&disconnected_rx, Duration::ZERO).is_err()
+        );
+    }
+
+    #[test]
+    fn r_s11e54_linux_service_owns_protected_ipc_thread_outcome() {
+        assert!(classify_linux_service_ipc_thread_outcome(Ok(Ok(())), true).is_ok());
+        assert!(classify_linux_service_ipc_thread_outcome(Ok(Ok(())), false).is_err());
+        assert!(classify_linux_service_ipc_thread_outcome(
+            Ok(Err(anyhow!("listener failed"))),
+            true,
+        )
+        .is_err());
+        let panic: std::thread::Result<ResultType<()>> = Err(Box::new("listener panicked"));
+        assert!(classify_linux_service_ipc_thread_outcome(panic, true).is_err());
+    }
 
     struct ServiceChildTestSupervisor(Child);
 

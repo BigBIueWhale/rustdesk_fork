@@ -3618,6 +3618,74 @@ unreachable and a source/test/AST gate prevents reintroduction.
   setup failures before the successful vendored run and are not counted as evidence. Native Windows/macOS compile
   plus forced listener-loss execution, exact-commit artifact/reproducibility evidence, and external audit remain
   R-R2/R-B2 work; this source closure does not claim them.
+- **R-S11e-54 — Linux protected service IPC lifecycle ownership — SOURCE, FOCUSED RUST, SOURCE GATE, AND
+  MUTATION VERIFIED; NATIVE INSTALLED/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platform: Linux installed/manual
+  root service. Endpoints: generic protected `_service` and
+  raw `_service_password`. Boundary: root supervisor and service-owned controlled-child lifecycle ↔ readiness,
+  failure, and complete ownership of locally admitted privileged administration work.
+
+  Proven old path and history: `start_os_service` used an unconfigured `std::thread::spawn` whose closure wrapped
+  the complete `ipc::start(POSTFIX_SERVICE)` result in `allow_err!` and discarded its `JoinHandle`. `new_listener`
+  can fail while validating/scrubbing the secure parent, creating security attributes, binding either protected
+  socket, applying its required mode, or activating the single process-lifetime listener guard. None of those
+  failures prevented the root loop from selecting a principal and launching a service-owned child. The same root
+  SIGTERM/SIGINT handler only cleared the service-loop boolean; it did not cancel or join protected IPC. Any normal
+  stop or `?`-propagated loop error therefore returned from the process while the detached thread could still own an
+  admitted polkit/password mutation, contradicting R-S11c-26's recorded non-aborting Linux drain. `git blame`
+  attributes the detached `allow_err!` startup to the original upstream import `c2abd3b3`, not a recent hardening
+  slice. This is deterministic privileged-operation finality and fail-open service availability/recovery, not a
+  demonstrated bypass of the separate socket-peer, polkit-action, or replica-parent authorization checks.
+
+  Primary contracts and authority model: Rust's standard-library channel contract makes readiness timeout and
+  sender disconnection explicit outcomes, while `thread::Builder::spawn` returns the OS thread-creation error rather
+  than panicking like the free `thread::spawn` convenience API (https://doc.rust-lang.org/std/sync/mpsc/ and
+  https://doc.rust-lang.org/std/thread/struct.Builder.html). The root supervisor owns this receiver boundary: no
+  controlled child may exist before both protected sockets and their shared listener guard are live, no worker
+  result may be detached, and process return may not destroy admitted irreversible administration work.
+
+  Closure: protected listener construction is factored from serving. The Linux-only entry reports readiness on a
+  capacity-one channel only after generic `_service`, raw `_service_password`, and `LocalIpcListenerGuard` setup all
+  succeed. `start_os_service` creates the named worker with fallible `Builder::spawn`, retains its handle, waits at
+  most ten seconds for ready/error/disconnection before any desktop refresh or child selection, and treats a clean
+  premature return, returned error, or panic as a service error. The signal handler first stops the loop and then
+  cancels protected IPC admission; each live loop iteration observes premature worker completion. All loop errors
+  are captured instead of escaping through `?`. Normal and error results converge on cancellation and exact worker
+  join, without a transaction-drain timeout, before either the active-user or root child is terminated. This keeps
+  the commit target alive for any admitted password transaction, preserves the first process error, still attempts
+  both child cleanups, and reports secondary cleanup failures rather than discarding them. macOS's synchronous
+  listener entry and Windows SCM-owned endpoint supervisors are unchanged.
+
+  Proof/gates: focused pure regressions cover ready, setup-error, timeout, disconnected-sender, expected
+  clean join, unexpected clean return, returned error, and panic classification. The R-S11e-54 source gate binds
+  listener/guard-before-ready order, fallible named thread creation, ready-before-child order, signal cancellation,
+  retained liveness observation, captured loop result, join-before-child termination, R-S11an, Appendix C #162, and
+  this ledger while rejecting the detached `allow_err!` form. The semantic verifier independently interprets those
+  regions and mutation-tests every load-bearing edge. Native installed-service stop/setup-failure injection and
+  exact-commit artifact/reproducibility evidence remain R-R2/R-B2 and are not inferred from focused Linux tests.
+
+  Verification: the focused locked/offline Rust 1.75 root-library run passed both R-S11e-54 regressions (`2 passed`,
+  318 filtered) after compiling the real Linux source against the audited vendored tree. The exact extracted
+  R-S11e-54 source gate passed. Normal semantic workspace verification and the complete source-mutation suite pass;
+  the matrix rejects missing/early readiness, missing setup error/timeout/disconnection failures, either listener or
+  guard removal, detached/generic thread startup, missing signal cancellation or liveness observation, uncaptured
+  loop errors, both missing join sites, accepted unexpected clean/error/panic outcomes, test/gate removal, and
+  normative/Appendix/ledger drift. Bash syntax, in-memory Python syntax, requirements-digest synchronization, and
+  `git diff --check` pass. The native-codec watch and mutation self-test pass, as do dependency inventory and all 103
+  inventory mutations (909 Cargo packages; 855 lexical `unsafe {` blocks across 251 tracked Rust files). The pinned
+  image contains no `rustfmt`, so no formatter result is claimed; the successfully compiled Rust diff was reviewed
+  manually against surrounding style.
+
+  Failure accounting and execution boundary: one initial output tmpfs was root-owned mode 0755 and correctly refused
+  UID 1000 before Cargo started; it is not evidence. The first real compile caught that the child terminator's typed
+  success value needed an explicit local `.map(|_| ())` before cleanup-error merging; the correction is included and
+  the clean rerun passes. Semantic verification caught one old generic-listener call assumption and three mutation
+  fixture diagnostic/uniqueness issues; each was narrowed to the new authority edge without weakening production
+  assertions, and the complete final matrix passes. Every project build/test/verifier command ran as numeric uid/gid
+  1000 in the exact pinned `rd-devcheck` image with no network, read-only source/root/toolchain/vendor inputs, all
+  capabilities dropped, `no-new-privileges`, bounded resources, disposable output, and no published ports. No host
+  RustDesk process/service/configuration, listener, firewall, or network namespace was inspected or changed. Native
+  installed-service setup/stop/failure injection, exact-commit artifact/reproducibility evidence, the wider open
+  release ledger, and external audit remain pending; this source closure does not claim them.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5963,8 +6031,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2b4d2a310ef3d5164f410f46fa707281f651d95908ea654f01274d10fbbab969  requirements.html
+132329dfe6482038a5253d722bbf7f12dcd350f2d4b495659d2b08e5ad0a06e1  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11am, and Appendix C #161. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11an, and Appendix C #162. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

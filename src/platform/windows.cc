@@ -364,10 +364,19 @@ extern "C"
             std::vector<wchar_t> mergedEnvironment;
             if (as_user)
             {
-
-                CreateEnvironmentBlock(&lpEnvironment, // Environment block
-                                       hToken,         // New token
-                                       TRUE);          // Inheritance
+                if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))
+                {
+                    DWORD error = GetLastError();
+                    CloseHandle(hToken);
+                    SetLastError(error);
+                    return hProcess;
+                }
+                if (lpEnvironment == NULL)
+                {
+                    CloseHandle(hToken);
+                    SetLastError(ERROR_INVALID_DATA);
+                    return hProcess;
+                }
             }
             LPVOID processEnvironment = lpEnvironment;
             if (has_extra_environment(extraEnvironment))

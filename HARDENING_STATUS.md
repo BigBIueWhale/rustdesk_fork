@@ -4149,6 +4149,33 @@ unreachable and a source/test/AST gate prevents reintroduction.
   fail-loud launch-policy checks. No container, application binary, host listener, host firewall, or host RustDesk
   service was executed or changed while closing this source slice. Exact runtime-smoke execution and release-artifact
   evidence remain R-B2; external expert review remains R-V3.
+- **R-S11e-65 — Windows token-switched helper environment finality — SOURCE IMPLEMENTED; NATIVE WINDOWS AND
+  EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: Windows installed-service active-session tray,
+  connection-manager, and whiteboard launches. Surfaces: `run_user_helper` →
+  `run_current_exe_in_current_session_with_env` → `launch_process_in_session_with_env` → native
+  `LaunchProcessWin`. Boundary: LocalSystem service launcher environment ↔ target-user helper process.
+  Proven gap: the `as_user=TRUE` path called `CreateEnvironmentBlock(..., TRUE)` and ignored its Boolean result.
+  Microsoft defines that flag as inheritance from the current process, so a successful launch incorporated the
+  LocalSystem caller environment. On failure, CM/whiteboard merged only their two proof variables into an empty
+  block; tray passed null, for which `CreateProcessAsUserW` inherits the calling process environment and does not
+  adjust it for the supplied token. This could disclose service-owned ambient configuration/secrets to a
+  lower-authority process or select the wrong profile/config namespace. It did not change the retained user token,
+  explicit executable, or current directory and is not evidence of a SYSTEM shell, exploitation, or compromise.
+
+  Source closure: every `as_user` launch now calls `CreateEnvironmentBlock` exactly once with inheritance disabled.
+  False construction preserves `GetLastError`, closes the token, and returns before merge, attribute construction,
+  or process creation. A nominally successful null result closes the token and fails as `ERROR_INVALID_DATA` at the
+  same boundary. Only the successfully constructed target-user block reaches the existing case-insensitive merge;
+  CM/whiteboard launcher proof variables still replace same-name profile variables, and the exact Unicode block is
+  passed to `CreateProcessAsUserW`. Null/caller/LocalSystem fallback is therefore absent for user helpers. The
+  distinct `as_user=FALSE` service-owned child remains unchanged and receives only its explicit supervisor PID and
+  creation-time variables. R-S11ay and Appendix C #173 make the authority model normative. The shared semantic
+  validator binds the single construction site, failure/null finality, non-inheritance, merge/launch order, and
+  requirement/ledger/gate presence; its deliberate mutations cover inherited construction, ignored/inverted status,
+  lost error preservation, continued failure, null acceptance, launch-time environment replacement, and document
+  removal. The focused source gate independently rejects inherited construction and missing finality markers. Native
+  Windows multi-session execution and exact signed-artifact proof remain R-R2/R-B2; external expert review remains
+  R-V3.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6495,8 +6522,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-08a5e3571af348ffc46d7b67cc4bc066c0899d2573b09cebdddf8cb6f914aa6d  requirements.html
+0987d7dc79223643010efc6aa9a7777bb3ef8948efd4816cf46da477414b78ef  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ax, and Appendix C #172. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ay, and Appendix C #173. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -4544,6 +4544,32 @@ grep -qF 'R-S11e-64 — smoke container image, network, and dependency authority
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64 smoke container image/network authority:$r_s11e64"; rc=1; else
   echo "  ok  R-S11e-64 all smoke launches use one local immutable image ID, network none, no pull or port publication, and locked/offline build inputs"; fi
 
+# (3b-iii-d9co) R-S11ay/R-S11e-65: a LocalSystem-to-user helper
+# launch must receive a successfully created environment for the exact
+# target-user token and may never inherit or fall back to the service environment.
+echo "== (3b-iii-d9co) Windows token-switched helper environment finality (R-S11ay/R-S11e-65) =="
+r_s11e65=
+grep -qF 'if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 non-inherited-user-environment-missing"
+grep -qF 'if (lpEnvironment == NULL)' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 null-user-environment-rejection-missing"
+grep -qF 'SetLastError(ERROR_INVALID_DATA);' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 null-user-environment-error-missing"
+grep -qF 'LPVOID processEnvironment = lpEnvironment;' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 exact-user-environment-selection-missing"
+grep -qF 'dwCreationFlags, processEnvironment, currentDirectory,' src/platform/windows.cc \
+  || r_s11e65="$r_s11e65 exact-user-environment-launch-use-missing"
+windows_native_flat=$(tr '\n' ' ' < src/platform/windows.cc)
+if grep -Eq 'CreateEnvironmentBlock\([^;]*TRUE\)' <<<"$windows_native_flat"; then
+  r_s11e65="$r_s11e65 inherited-caller-environment-present"
+fi
+grep -qF '<span class="id">R-S11ay</span>' requirements.html || r_s11e65="$r_s11e65 normative-requirement-missing"
+grep -qF '<tr><td>173</td>' requirements.html || r_s11e65="$r_s11e65 appendix-row-missing"
+grep -qF 'R-S11e-65 — Windows token-switched helper environment finality' HARDENING_STATUS.md \
+  || r_s11e65="$r_s11e65 hardening-ledger-missing"
+if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched helper environment finality:$r_s11e65"; rc=1; else
+  echo "  ok  R-S11e-65 token-switched helpers require a non-inherited target-user environment and abort before launch if its construction fails"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

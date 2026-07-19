@@ -6316,6 +6316,42 @@ def validate_windows_helper_launch_contract(sources):
         "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,",
         "Windows token launch disables handle inheritance",
     )
+    native_launch = extract_between(
+        native,
+        "HANDLE LaunchProcessWin(",
+        "\n    // Switch the current thread to the specified desktop",
+        "Windows token-switched process launcher",
+    )
+    require_exact_count(
+        native_launch,
+        "CreateEnvironmentBlock(",
+        1,
+        "Windows target-user environment has one construction site",
+    )
+    require_order(
+        native_launch,
+        (
+            "if (as_user)",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
+            "DWORD error = GetLastError();",
+            "CloseHandle(hToken);",
+            "SetLastError(error);",
+            "return hProcess;",
+            "if (lpEnvironment == NULL)",
+            "CloseHandle(hToken);",
+            "SetLastError(ERROR_INVALID_DATA);",
+            "return hProcess;",
+            "LPVOID processEnvironment = lpEnvironment;",
+            "merge_environment_blocks(lpEnvironment, extraEnvironment)",
+            "dwCreationFlags, processEnvironment, currentDirectory,",
+        ),
+        "Windows target-user environment creation, validation, merge, and launch order",
+    )
+    require_absent(
+        native_launch,
+        "CreateEnvironmentBlock(&lpEnvironment, hToken, TRUE)",
+        "Windows inherited LocalSystem helper environment",
+    )
     require_text(
         platform,
         "fn windows_user_helper_launch_shape_is_typed_and_exact()",
@@ -6333,6 +6369,26 @@ def validate_windows_helper_launch_contract(sources):
             "hardening",
             "R-S11e-35 — Windows dormant generic process-launch authority",
             "Windows helper launch hardening ledger",
+        ),
+        (
+            "verify",
+            "Windows token-switched helper environment finality (R-S11ay/R-S11e-65)",
+            "Windows target-user environment source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ay</span>',
+            "Windows target-user environment normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>173</td>",
+            "Windows target-user environment Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-65 — Windows token-switched helper environment finality",
+            "Windows target-user environment hardening ledger",
         ),
     ):
         require_text(sources[source_key], text, label)
@@ -16082,6 +16138,42 @@ def run_source_mutations(sources):
             "Windows token launch disables handle inheritance",
         ),
         (
+            "windows_native",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, TRUE))",
+            "Windows target-user environment creation, validation, merge, and launch order",
+        ),
+        (
+            "windows_native",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
+            "if (CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
+            "Windows target-user environment creation, validation, merge, and launch order",
+        ),
+        (
+            "windows_native",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = GetLastError();",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = ERROR_SUCCESS;",
+            "Windows target-user environment creation, validation, merge, and launch order",
+        ),
+        (
+            "windows_native",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = GetLastError();\n                    CloseHandle(hToken);\n                    SetLastError(error);\n                    return hProcess;",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = GetLastError();\n                    CloseHandle(hToken);\n                    SetLastError(error);",
+            "Windows target-user environment creation, validation, merge, and launch order",
+        ),
+        (
+            "windows_native",
+            "if (lpEnvironment == NULL)",
+            "if (lpEnvironment != NULL)",
+            "Windows target-user environment creation, validation, merge, and launch order",
+        ),
+        (
+            "windows_native",
+            "dwCreationFlags, processEnvironment, currentDirectory,",
+            "dwCreationFlags, NULL, currentDirectory,",
+            "Windows target-user environment creation, validation, merge, and launch order",
+        ),
+        (
             "windows_source",
             "fn windows_user_helper_launch_shape_is_typed_and_exact()",
             "fn windows_user_helper_launch_shape_is_open()",
@@ -16110,6 +16202,30 @@ def run_source_mutations(sources):
             "R-S11e-35 — Windows dormant generic process-launch authority",
             "R-S11e-35 — Windows generic process-launch compatibility",
             "Windows helper launch hardening ledger",
+        ),
+        (
+            "verify",
+            "Windows token-switched helper environment finality (R-S11ay/R-S11e-65)",
+            "Windows token-switched helper environment compatibility (R-S11ay/R-S11e-65)",
+            "Windows target-user environment source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ay</span>',
+            '<span class="id">R-S11ay-disabled</span>',
+            "Windows target-user environment normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>173</td>",
+            "<tr><td>173-disabled</td>",
+            "Windows target-user environment Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-65 — Windows token-switched helper environment finality",
+            "R-S11e-65 — Windows token-switched helper environment deferred",
+            "Windows target-user environment hardening ledger",
         ),
         (
             "macos_source",
@@ -19198,7 +19314,7 @@ def run_source_mutations(sources):
             "smoke",
             'docker run -d --name "$SIBLING_NAME" --network none',
             'docker run -d --name "$SIBLING_NAME"',
-            "sibling Docker network isolation",
+            "smoke sibling network isolation",
         ),
         (
             "smoke",

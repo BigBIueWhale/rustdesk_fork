@@ -4536,13 +4536,13 @@ pub fn is_win_10_or_greater() -> bool {
 }
 
 pub fn bootstrap() -> bool {
-    let service_owned_role = std::env::args_os().any(|arg| {
-        arg == OsStr::new("--service") || arg == OsStr::new(crate::common::SERVICE_OWNED_SERVER_ARG)
-    });
+    let service_supervisor_role =
+        std::env::args_os().nth(1).as_deref() == Some(OsStr::new("--service"));
+    let service_owned_role =
+        service_supervisor_role || crate::common::is_service_owned_server_process();
     if service_owned_role {
-        let write_authority = std::env::args_os().any(|arg| arg == OsStr::new("--service"));
         let root = program_data_dir().and_then(|program_data| {
-            Config::initialize_windows_service_owned_root(&program_data, write_authority)
+            Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)
         });
         if let Err(err) = root {
             eprintln!("Failed to initialize Windows service-owned config root: {err}");

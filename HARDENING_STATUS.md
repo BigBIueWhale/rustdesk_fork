@@ -3207,6 +3207,90 @@ unreachable and a source/test/AST gate prevents reintroduction.
   networking was inspected or changed. The long release verifier, root service fixtures, full release build, and
   exact installed Debian artifact execution remain excluded and owned by R-B2/R-S11c-27. Publication evidence is
   recorded after commit and push.
+- **R-S11e-49 — exact service-owned server process role — SOURCE-GATED 2026-07-19;
+  NATIVE WINDOWS/MACOS AND EXACT INSTALLED-ARTIFACT EVIDENCE REMAIN WITH R-R2/R-B2.** Platforms: Linux, Windows,
+  and macOS desktop process entry plus Windows machine-configuration
+  bootstrap. Endpoint/action: classifying the internal service-owned `--server` child before selecting service
+  configuration, IPC, credential-replica, SAS, terminal, or helper policy. Boundary: caller-supplied process
+  arguments ↔ the role that an installed service actually created and protected receivers later authenticate.
+
+  Proven old path and history: every supported launcher emits exactly `--server --service-owned-server`: Linux uses
+  two fixed `Command::arg` calls, Windows passes that exact two-element slice to its fixed-image session launcher,
+  and the macOS LaunchAgent plist carries the same two role tokens after the executable. Linux, Windows, and macOS
+  protected peer authenticators independently require the complete shape. The shared
+  `is_service_owned_server_process()`, however, used `std::env::args_os().any(...)` and returned true when the marker
+  occurred anywhere. Windows `bootstrap()` repeated a whole-vector search for either `--service` or the child
+  marker. A reordered, duplicated, unrelated-command, or extra-argument marker could therefore select in-process
+  service-owned policy despite not matching any owning launch or receiver proof. Git history traces the broad helper
+  to the original R-S11b service-password separation commit `32ad1353`; later exact peer proofs did not tighten the
+  current-process half. The protected Windows `_service` listener itself was re-audited in this slice and remains a
+  closed receiver: its ordinary channel admits only `Test` and typed `RequestServiceOwnedShareRdp`, while SAS has a
+  separate one-message listener and authorization path. No broad Windows service message was found.
+
+  Authority model and closure: one platform-independent `ServiceOwnedServerRole` parser consumes only arguments
+  after `argv[0]`. It returns `Exact` only for the two tokens `--server`, `--service-owned-server` and no third token;
+  any other occurrence of the internal marker is `Malformed`; marker-free invocations are `Absent`. Every existing
+  service-child role consumer retains the shared boolean helper, which now means only `Exact`. `core_main()` checks
+  the three-state result at its first statement and exits 1 for `Malformed`, before `global_init`, Linux config-root
+  selection, Windows bootstrap, or command dispatch. Thus malformed marker text cannot silently downgrade to an
+  ordinary `--server`. Windows bootstrap now recognizes only argument-one `--service` or the shared exact child
+  predicate, and passes write authority only for the supervisor role. Executable identity, numeric OS principal,
+  service parent/generation, fixed installed root, and protected-peer credentials remain separate proofs; none is
+  inferred from `argv[0]` or marker text.
+
+  Primary contracts and classification: Rust documents that the first `std::env::args` element may be arbitrary and
+  must not be used as security identity, and directs callers to `args_os` when arguments may not be Unicode
+  (https://doc.rust-lang.org/std/env/fn.args.html and https://doc.rust-lang.org/std/env/fn.args_os.html). Apple's
+  launchd documentation defines `ProgramArguments` as a tokenized array containing the program and arguments
+  (https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+  Microsoft's `CreateProcessW` contract defines the child command line and its `argc`/`argv` parsing boundary
+  (https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw).
+  This closes deterministic role/configuration confusion and conceptual privileged-process policy ambiguity. It is
+  not evidence of promptless privilege escalation or compromise: marker text never supplied the independent service
+  principal, installed executable, owning parent, or receiver-authenticated peer identity.
+
+  Proof and gates: `r_s11e49_service_owned_server_role_requires_exact_arguments` binds the exact positive case and
+  marker-only, reordered, prefixed, suffixed, and duplicated malformed cases.
+  `r_s11e49_unowned_roles_cannot_become_service_owned` binds empty, ordinary server, supervisor, and unrelated
+  marker-free arguments to `Absent`. `scripts/verify.sh` extracts the parser, exact count/positions, marker
+  classification, `argv[0]` skip, boolean consumer, early malformed exit/order, Windows exact consumer/write
+  authority, both regressions, R-S11ai, Appendix C #157, and this entry. The semantic workspace verifier separately
+  interprets the same regions and carries independent mutations for each authority and documentation edge.
+
+  Verification: Rust/Cargo 1.75 completed the locked/offline Linux library-test target in 5 minutes 49 seconds; both
+  selected regressions passed, zero failed, and 313 tests were filtered out. The extracted R-S11e-49 shell gate
+  passes. The normal semantic workspace audit and its complete source-mutation matrix pass; the new independent
+  mutations reject weakened argument-one/argument-two matching, extra-argument admission, count widening, missing
+  malformed detection, wrong `argv[0]` skip, inverted boolean consumption, early-exit weakening, Windows exact-role
+  or write-authority bypass, regression removal, gate deletion, requirement/title/clauses, Appendix C row/disposition,
+  and ledger removal. Bash syntax and in-memory Python compilation pass. Rustfmt 1.75 reports no diff in
+  `src/common.rs` or `src/core_main.rs`; its Windows output remains limited to four pre-existing unrelated hunks at
+  lines 85, 5251, 5295, and 5704, with no hunk in the edited bootstrap region. `git diff --check` and synchronized
+  requirements/native-watch/ledger identity pass at
+  `d960425d27e0106747f79ab265ea9638c6b1482085238c65dcbfe15ce7075c8f`.
+
+  Failure/setup accounting: the first pinned offline test attempt made no compilation progress because the read-only
+  image prevented rustup metadata refresh; selecting the installed exact 1.75 toolchain fixed that without network or
+  a writable toolchain. Two cache setup attempts then failed before compilation because one omitted the host's
+  cached Git inputs and one remounted absolute cached Git metadata at a different path; mounting the same read-only
+  cache at its recorded path fixed resolution. A 4 GiB run compiled the full library-test graph but was SIGKILLed at
+  final rustc linking by the deliberate memory ceiling and is not counted as evidence. The successful rerun retained
+  every isolation control, selected one compiler job and disabled test-profile debug information, and raised only the
+  explicit memory/swap ceiling to 8 GiB. The first mutation run exposed one expected-diagnostic label mismatch; the
+  label was corrected without weakening a validator or production assertion, and the complete rerun passed. One
+  final source-bundle attempt used unavailable `rg` inside a shell conditional and therefore could not prove its
+  legacy-pattern absence scan; that attempt is not counted. The complete rerun used the image's available recursive
+  `grep` fallback and passed without diagnostic output.
+
+  Execution boundary: every project code/build/test/verifier command used numeric UID/GID 1000 in the existing local
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, read-only root/source/toolchain/Cargo inputs, all capabilities dropped, no-new-privileges, bounded pids,
+  bounded CPU/memory, and outputs only on disposable tmpfs. No image was built or pulled; no Docker socket, host
+  PID/network namespace, published port, host service/config mount, or root container identity was used. No host
+  RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or networking was
+  inspected or changed. The long release verifier, service fixtures, full release build, native Apple/Windows runs,
+  and exact installed-artifact execution remain excluded. Publication evidence is recorded in the private audit
+  journal after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5552,8 +5636,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8cab215a43b2693a63f62b216570831b483ed9bae64f87f0a8e883cbf351367a  requirements.html
+d960425d27e0106747f79ab265ea9638c6b1482085238c65dcbfe15ce7075c8f  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ah, and Appendix C #156. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ai, and Appendix C #157. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

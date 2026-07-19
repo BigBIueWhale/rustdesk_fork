@@ -3641,6 +3641,84 @@ grep -qF 'R-S11e-48 — Linux numeric selected-session service-child authority' 
 if [ -n "$r_s11e48" ]; then echo "  FAIL R-S11e-48 Linux numeric selected-session service-child authority:$r_s11e48"; rc=1; else
   echo "  ok  R-S11e-48 Linux service-child root privilege is derived from the selected canonical UID inside both supervisor and launcher; account-name root authority is absent"; fi
 
+# (3b-iii-d9c8) R-S11ai/R-S11e-49: the internal service-owned server
+# marker is a closed process-entry protocol, not a capability-bearing substring.
+# Malformed marker-bearing argv is rejected before configuration initialization.
+echo "== (3b-iii-d9c8) exact service-owned server process role (R-S11ai/R-S11e-49) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e49_ --color never
+r_s11e49=
+service_owned_role_policy=$(awk '/enum ServiceOwnedServerRole/,/^pub struct SimpleCallOnReturn/' src/common.rs)
+service_owned_role_tests=$(awk '/fn r_s11e49_service_owned_server_role_requires_exact_arguments\(\)/,/fn custom_client_app_name_identifier_contract\(\)/' src/common.rs)
+core_service_role_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/if !crate::common::global_init\(\)/' src/core_main.rs)
+windows_bootstrap=$(awk '/pub fn bootstrap\(\) -> bool {/,/^}/' src/platform/windows.rs)
+for binding in \
+  'enum ServiceOwnedServerRole {' \
+  'Absent,' \
+  'Exact,' \
+  'Malformed,' \
+  'for (index, arg) in args.into_iter().enumerate() {' \
+  'marker_present |= arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG);' \
+  '0 => arg == std::ffi::OsStr::new("--server"),' \
+  '1 => arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG),' \
+  '_ => false,' \
+  'if exact && count == 2 {' \
+  'ServiceOwnedServerRole::Exact' \
+  '} else if marker_present {' \
+  'ServiceOwnedServerRole::Malformed' \
+  'service_owned_server_role_from_args(std::env::args_os().skip(1))' \
+  'current_service_owned_server_role() == ServiceOwnedServerRole::Exact'; do
+  grep -qF "$binding" <<<"$service_owned_role_policy" || r_s11e49="$r_s11e49 exact-role-policy-missing"
+done
+for binding in \
+  '== crate::common::ServiceOwnedServerRole::Malformed' \
+  'Rejected malformed internal service-owned server role' \
+  'std::process::exit(1);'; do
+  grep -qF "$binding" <<<"$core_service_role_entry" || r_s11e49="$r_s11e49 malformed-entry-rejection-missing"
+done
+role_reject_line=$(grep -nF 'current_service_owned_server_role()' <<<"$core_service_role_entry" | head -n1 | cut -d: -f1 || true)
+global_init_line=$(grep -nF 'if !crate::common::global_init()' <<<"$core_service_role_entry" | head -n1 | cut -d: -f1 || true)
+if [ -z "$role_reject_line" ] || [ -z "$global_init_line" ] || [ "$role_reject_line" -ge "$global_init_line" ]; then
+  r_s11e49="$r_s11e49 malformed-role-not-rejected-before-global-init"
+fi
+for binding in \
+  'std::env::args_os().nth(1).as_deref() == Some(OsStr::new("--service"))' \
+  'service_supervisor_role || crate::common::is_service_owned_server_process()' \
+  'Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)'; do
+  grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e49="$r_s11e49 windows-bootstrap-exact-role-consumer-missing"
+done
+if grep -qF 'SERVICE_OWNED_SERVER_ARG)' <<<"$windows_bootstrap"; then
+  r_s11e49="$r_s11e49 windows-bootstrap-marker-search-present"
+fi
+for binding in \
+  'fn r_s11e49_service_owned_server_role_requires_exact_arguments()' \
+  'service_owned_server_role_from_args(["--server", SERVICE_OWNED_SERVER_ARG])' \
+  'vec![SERVICE_OWNED_SERVER_ARG]' \
+  'vec![SERVICE_OWNED_SERVER_ARG, "--server"]' \
+  'vec!["--server", SERVICE_OWNED_SERVER_ARG, "--extra"]' \
+  'vec!["--extra", "--server", SERVICE_OWNED_SERVER_ARG]' \
+  'vec![
+                "--server",
+                SERVICE_OWNED_SERVER_ARG,
+                SERVICE_OWNED_SERVER_ARG,
+            ]' \
+  'fn r_s11e49_unowned_roles_cannot_become_service_owned()' \
+  'Vec::<&str>::new()' \
+  'vec!["--server"]' \
+  'vec!["--server", "--tray"]' \
+  'ServiceOwnedServerRole::Absent'; do
+  grep -qF "$binding" <<<"$service_owned_role_tests" || r_s11e49="$r_s11e49 focused-regression-missing"
+done
+grep -qF '<span class="id">R-S11ai</span>' requirements.html || r_s11e49="$r_s11e49 normative-requirement-missing"
+grep -qF 'Service-owned server process role is one exact fail-closed argument protocol' requirements.html \
+  || r_s11e49="$r_s11e49 normative-exact-role-clause-missing"
+grep -qF '<tr><td>157</td>' requirements.html || r_s11e49="$r_s11e49 appendix-row-missing"
+grep -qF 'Service-owned server role admission searched for an internal marker anywhere in process arguments' requirements.html \
+  || r_s11e49="$r_s11e49 appendix-disposition-missing"
+grep -qF 'R-S11e-49 — exact service-owned server process role' HARDENING_STATUS.md \
+  || r_s11e49="$r_s11e49 hardening-ledger-missing"
+if [ -n "$r_s11e49" ]; then echo "  FAIL R-S11e-49 exact service-owned server process role:$r_s11e49"; rc=1; else
+  echo "  ok  R-S11e-49 service-owned process policy accepts only exact --server + marker argv, rejects malformed marker-bearing entry before initialization, and keeps Windows bootstrap on that shared classifier"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

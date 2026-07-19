@@ -7486,6 +7486,181 @@ def validate_linux_service_child_principal_contract(sources):
     )
 
 
+def validate_service_owned_server_role_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    common = sources["common_source"]
+    core_main = sources["core_main"]
+    windows = sources["windows_source"]
+
+    require_text(
+        verify,
+        'echo "== (3b-iii-d9c8) exact service-owned server process role (R-S11ai/R-S11e-49) =="',
+        "exact service-owned role source gate",
+    )
+
+    role_policy = extract_between(
+        common,
+        "enum ServiceOwnedServerRole {",
+        "\npub struct SimpleCallOnReturn",
+        "service-owned process-role policy",
+    )
+    for text, label in (
+        ("Absent,", "marker-absent role"),
+        ("Exact,", "exact service-owned role"),
+        ("Malformed,", "malformed marker role"),
+        (
+            "for (index, arg) in args.into_iter().enumerate() {",
+            "complete role-argument iteration",
+        ),
+        (
+            "marker_present |= arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG);",
+            "malformed marker detection",
+        ),
+        (
+            '0 => arg == std::ffi::OsStr::new("--server"),',
+            "exact argument-one server role",
+        ),
+        (
+            "1 => arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG),",
+            "exact argument-two internal marker",
+        ),
+        ("_ => false,", "extra-argument rejection"),
+        ("if exact && count == 2 {", "exact argument count"),
+        (
+            "} else if marker_present {\n        ServiceOwnedServerRole::Malformed",
+            "malformed marker classification",
+        ),
+        (
+            "service_owned_server_role_from_args(std::env::args_os().skip(1))",
+            "caller-selectable argv-zero exclusion",
+        ),
+        (
+            "current_service_owned_server_role() == ServiceOwnedServerRole::Exact",
+            "exact-only boolean role consumer",
+        ),
+    ):
+        require_text(role_policy, text, label)
+    if ".any(|arg|" in role_policy:
+        raise VerificationError("service-owned process role still uses marker-search admission")
+
+    core_entry = extract_between(
+        core_main,
+        "pub fn core_main() -> Option<Vec<String>> {",
+        "\n    #[cfg(target_os = \"linux\")]\n    let linux_service_owned_config_role",
+        "service-owned role process entry",
+    )
+    require_order(
+        core_entry,
+        (
+            "current_service_owned_server_role()",
+            "ServiceOwnedServerRole::Malformed",
+            "Rejected malformed internal service-owned server role",
+            "std::process::exit(1);",
+        ),
+        "malformed service-owned role rejection",
+    )
+    if core_main.index("current_service_owned_server_role()") >= core_main.index(
+        "if !crate::common::global_init()"
+    ):
+        raise VerificationError("malformed service-owned role is not rejected before global init")
+
+    windows_bootstrap = extract_between(
+        windows,
+        "pub fn bootstrap() -> bool {",
+        "\n}\n\n#[cfg(not(debug_assertions))]",
+        "Windows service-owned configuration bootstrap",
+    )
+    require_order(
+        windows_bootstrap,
+        (
+            'std::env::args_os().nth(1).as_deref() == Some(OsStr::new("--service"))',
+            "service_supervisor_role || crate::common::is_service_owned_server_process()",
+            "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
+        ),
+        "Windows exact service-role configuration authority",
+    )
+    if "SERVICE_OWNED_SERVER_ARG" in windows_bootstrap or ".any(|arg|" in windows_bootstrap:
+        raise VerificationError("Windows bootstrap still searches process arguments for a role marker")
+
+    role_tests = extract_between(
+        common,
+        "fn r_s11e49_service_owned_server_role_requires_exact_arguments()",
+        "\n    #[test]\n    fn custom_client_app_name_identifier_contract()",
+        "service-owned process-role regressions",
+    )
+    for text, label in (
+        (
+            'service_owned_server_role_from_args(["--server", SERVICE_OWNED_SERVER_ARG])',
+            "exact service-owned role assertion",
+        ),
+        ("vec![SERVICE_OWNED_SERVER_ARG]", "marker-only malformed fixture"),
+        ('vec![SERVICE_OWNED_SERVER_ARG, "--server"]', "reordered marker fixture"),
+        (
+            'vec!["--server", SERVICE_OWNED_SERVER_ARG, "--extra"]',
+            "suffix argument fixture",
+        ),
+        (
+            'vec!["--extra", "--server", SERVICE_OWNED_SERVER_ARG]',
+            "prefix argument fixture",
+        ),
+        (
+            "vec![\n                \"--server\",\n                SERVICE_OWNED_SERVER_ARG,\n                SERVICE_OWNED_SERVER_ARG,\n            ]",
+            "duplicate marker fixture",
+        ),
+        (
+            "fn r_s11e49_unowned_roles_cannot_become_service_owned()",
+            "absent-role regression",
+        ),
+        ("Vec::<&str>::new()", "empty argument fixture"),
+        ('vec!["--service"]', "supervisor-is-not-child fixture"),
+        ('vec!["--server", "--tray"]', "marker-free unrelated-role fixture"),
+        ("ServiceOwnedServerRole::Absent", "absent-role assertion"),
+    ):
+        require_text(role_tests, text, label)
+
+    role_requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11ai</span>',
+        '\n\n<h2 id="excise">',
+        "exact service-owned process-role requirement",
+    )
+    for text, label in (
+        (
+            "classify only the remaining tokens as <code>Exact</code>",
+            "exact role classification clause",
+        ),
+        (
+            "terminate unsuccessfully on <code>Malformed</code> before global initialization",
+            "early malformed-role rejection clause",
+        ),
+        (
+            "only the supervisor may receive write authority",
+            "Windows supervisor write-authority clause",
+        ),
+    ):
+        require_text(role_requirement, text, label)
+    for text, label in (
+        ('<span class="id">R-S11ai</span>', "exact process-role requirement"),
+        (
+            "Service-owned server process role is one exact fail-closed argument protocol",
+            "exact process-role authority clause",
+        ),
+        ("<tr><td>157</td>", "exact process-role Appendix C row"),
+        (
+            "Service-owned server role admission searched for an internal marker anywhere in process arguments",
+            "exact process-role Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-49 — exact service-owned server process role",
+        "exact process-role hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -7501,6 +7676,7 @@ def validate_sources(sources):
     validate_cross_platform_user_helper_contract(sources)
     validate_macos_service_principal_contract(sources)
     validate_linux_service_child_principal_contract(sources)
+    validate_service_owned_server_role_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -13912,6 +14088,162 @@ def run_source_mutations(sources):
             "assert!(selected_service_child_principal(&invalid).is_err());",
             "assert!(selected_service_child_principal(&invalid).is_ok());",
             "invalid-identity rejection assertion",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9c8) exact service-owned server process role (R-S11ai/R-S11e-49) =="',
+            'echo "== (3b-iii-d9c8) marker-search service-owned server role (R-S11ai/R-S11e-49) =="',
+            "exact service-owned role source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ai</span>',
+            '<span class="id">R-S11aj</span>',
+            "exact service-owned process-role requirement",
+        ),
+        (
+            "requirements",
+            "Service-owned server process role is one exact fail-closed argument protocol",
+            "Service-owned server process role accepts a compatible marker substring",
+            "exact process-role authority clause",
+        ),
+        (
+            "requirements",
+            "classify only the remaining tokens as <code>Exact</code>",
+            "classify any marker-bearing remaining tokens as <code>Exact</code>",
+            "exact role classification clause",
+        ),
+        (
+            "requirements",
+            "terminate unsuccessfully on <code>Malformed</code> before global initialization",
+            "continue on <code>Malformed</code> after global initialization",
+            "early malformed-role rejection clause",
+        ),
+        (
+            "requirements",
+            "only the supervisor may receive write authority",
+            "the service child may receive write authority",
+            "Windows supervisor write-authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>157</td>",
+            "<tr><td>9157</td>",
+            "exact process-role Appendix C row",
+        ),
+        (
+            "requirements",
+            "Service-owned server role admission searched for an internal marker anywhere in process arguments",
+            "Service-owned server role admission always required its exact process arguments",
+            "exact process-role Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-49 — exact service-owned server process role",
+            "R-S11e-49 — marker-search service-owned server compatibility",
+            "exact process-role hardening ledger",
+        ),
+        (
+            "common_source",
+            "    Malformed,\n}\n\npub(crate) fn service_owned_server_role_from_args",
+            "    Invalid,\n}\n\npub(crate) fn service_owned_server_role_from_args",
+            "malformed marker role",
+        ),
+        (
+            "common_source",
+            '            0 => arg == std::ffi::OsStr::new("--server"),',
+            '            0 => arg == std::ffi::OsStr::new("--tray"),',
+            "exact argument-one server role",
+        ),
+        (
+            "common_source",
+            "            1 => arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG),",
+            '            1 => arg == std::ffi::OsStr::new("--server"),',
+            "exact argument-two internal marker",
+        ),
+        (
+            "common_source",
+            "            1 => arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG),\n            _ => false,",
+            "            1 => arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG),\n            _ => true,",
+            "extra-argument rejection",
+        ),
+        (
+            "common_source",
+            "    if exact && count == 2 {",
+            "    if exact && count >= 2 {",
+            "exact argument count",
+        ),
+        (
+            "common_source",
+            "    } else if marker_present {\n        ServiceOwnedServerRole::Malformed",
+            "    } else if false {\n        ServiceOwnedServerRole::Malformed",
+            "malformed marker classification",
+        ),
+        (
+            "common_source",
+            "service_owned_server_role_from_args(std::env::args_os().skip(1))",
+            "service_owned_server_role_from_args(std::env::args_os().skip(2))",
+            "caller-selectable argv-zero exclusion",
+        ),
+        (
+            "common_source",
+            "current_service_owned_server_role() == ServiceOwnedServerRole::Exact",
+            "current_service_owned_server_role() != ServiceOwnedServerRole::Exact",
+            "exact-only boolean role consumer",
+        ),
+        (
+            "core_main",
+            "        == crate::common::ServiceOwnedServerRole::Malformed\n    {",
+            "        == crate::common::ServiceOwnedServerRole::Absent\n    {",
+            "malformed service-owned role rejection",
+        ),
+        (
+            "core_main",
+            "            crate::common::SERVICE_OWNED_SERVER_ARG\n        );\n        std::process::exit(1);",
+            "            crate::common::SERVICE_OWNED_SERVER_ARG\n        );\n        return None;",
+            "malformed service-owned role rejection",
+        ),
+        (
+            "windows_source",
+            "    let service_owned_role =\n        service_supervisor_role || crate::common::is_service_owned_server_process();",
+            "    let service_owned_role =\n        service_supervisor_role || true;",
+            "Windows exact service-role configuration authority",
+        ),
+        (
+            "windows_source",
+            "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
+            "Config::initialize_windows_service_owned_root(&program_data, true)",
+            "Windows exact service-role configuration authority",
+        ),
+        (
+            "common_source",
+            "fn r_s11e49_service_owned_server_role_requires_exact_arguments()",
+            "fn r_s11e49_service_owned_server_role_accepts_marker_substrings()",
+            "service-owned process-role regressions",
+        ),
+        (
+            "common_source",
+            "            vec![SERVICE_OWNED_SERVER_ARG],",
+            '            vec!["--server"],',
+            "marker-only malformed fixture",
+        ),
+        (
+            "common_source",
+            "            vec![\n                \"--server\",\n                SERVICE_OWNED_SERVER_ARG,\n                SERVICE_OWNED_SERVER_ARG,\n            ],",
+            "            vec![\n                \"--server\",\n                SERVICE_OWNED_SERVER_ARG,\n            ],",
+            "duplicate marker fixture",
+        ),
+        (
+            "common_source",
+            "fn r_s11e49_unowned_roles_cannot_become_service_owned()",
+            "fn r_s11e49_unowned_roles_may_become_service_owned()",
+            "absent-role regression",
+        ),
+        (
+            "common_source",
+            '            vec!["--server", "--tray"],',
+            '            vec!["--server", SERVICE_OWNED_SERVER_ARG],',
+            "marker-free unrelated-role fixture",
         ),
         (
             "linux_source",

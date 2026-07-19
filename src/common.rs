@@ -111,8 +111,48 @@ pub const WHITEBOARD_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_WHITEBOARD_LAUNCH_TOKEN"
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub const WHITEBOARD_LAUNCH_PARENT_ENV: &str = "RUSTDESK_WHITEBOARD_LAUNCH_PARENT";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ServiceOwnedServerRole {
+    Absent,
+    Exact,
+    Malformed,
+}
+
+pub(crate) fn service_owned_server_role_from_args<I, S>(args: I) -> ServiceOwnedServerRole
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut marker_present = false;
+    let mut exact = true;
+    let mut count = 0;
+    for (index, arg) in args.into_iter().enumerate() {
+        let arg = arg.as_ref();
+        marker_present |= arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG);
+        exact &= match index {
+            0 => arg == std::ffi::OsStr::new("--server"),
+            1 => arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG),
+            _ => false,
+        };
+        count += 1;
+    }
+    if exact && count == 2 {
+        ServiceOwnedServerRole::Exact
+    } else if marker_present {
+        ServiceOwnedServerRole::Malformed
+    } else {
+        ServiceOwnedServerRole::Absent
+    }
+}
+
+pub(crate) fn current_service_owned_server_role() -> ServiceOwnedServerRole {
+    // argv[0] is not process identity and may be caller-selected on Unix. Role
+    // authority begins at argv[1]; executable identity is proved separately.
+    service_owned_server_role_from_args(std::env::args_os().skip(1))
+}
+
 pub fn is_service_owned_server_process() -> bool {
-    std::env::args_os().any(|arg| arg == std::ffi::OsStr::new(SERVICE_OWNED_SERVER_ARG))
+    current_service_owned_server_role() == ServiceOwnedServerRole::Exact
 }
 
 pub struct SimpleCallOnReturn {
@@ -1447,6 +1487,44 @@ mod tests {
     };
     use std::collections::HashSet;
 
+    #[test]
+    fn r_s11e49_service_owned_server_role_requires_exact_arguments() {
+        assert_eq!(
+            service_owned_server_role_from_args(["--server", SERVICE_OWNED_SERVER_ARG]),
+            ServiceOwnedServerRole::Exact
+        );
+        for args in [
+            vec![SERVICE_OWNED_SERVER_ARG],
+            vec![SERVICE_OWNED_SERVER_ARG, "--server"],
+            vec!["--server", SERVICE_OWNED_SERVER_ARG, "--extra"],
+            vec!["--extra", "--server", SERVICE_OWNED_SERVER_ARG],
+            vec![
+                "--server",
+                SERVICE_OWNED_SERVER_ARG,
+                SERVICE_OWNED_SERVER_ARG,
+            ],
+        ] {
+            assert_eq!(
+                service_owned_server_role_from_args(args),
+                ServiceOwnedServerRole::Malformed
+            );
+        }
+    }
+
+    #[test]
+    fn r_s11e49_unowned_roles_cannot_become_service_owned() {
+        for args in [
+            Vec::<&str>::new(),
+            vec!["--server"],
+            vec!["--service"],
+            vec!["--server", "--tray"],
+        ] {
+            assert_eq!(
+                service_owned_server_role_from_args(args),
+                ServiceOwnedServerRole::Absent
+            );
+        }
+    }
     #[cfg(target_os = "linux")]
     #[test]
     fn linux_run_me_child_excludes_inherited_nonstdio_descriptors() {

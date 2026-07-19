@@ -127,6 +127,15 @@ fn set_cli_permanent_password(
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<Vec<String>> {
+    if crate::common::current_service_owned_server_role()
+        == crate::common::ServiceOwnedServerRole::Malformed
+    {
+        eprintln!(
+            "Rejected malformed internal service-owned server role; expected exact arguments: --server {}",
+            crate::common::SERVICE_OWNED_SERVER_ARG
+        );
+        std::process::exit(1);
+    }
     #[cfg(target_os = "linux")]
     let linux_service_owned_config_role = std::env::args_os().nth(1).as_deref()
         == Some(std::ffi::OsStr::new("--service"))

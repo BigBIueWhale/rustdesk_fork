@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 854 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 855 lexical `unsafe {`
 blocks across 251 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -3557,6 +3557,67 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Linux source validation and remain mandatory R-R2/R-B2 evidence. The long release verifier, root service fixtures,
   full release build, and exact installed-artifact execution remain excluded. Publication evidence is recorded in the
   private audit journal after commit and push.
+- **R-S11e-53 — authority-bearing IPC listener failure outcome — SOURCE, FOCUSED RUST, SOURCE GATES, AND
+  MUTATION VERIFIED; NATIVE/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platforms: Linux, macOS, and Windows
+  desktop process-lifetime IPC receivers. Endpoints:
+  the desktop main listener and its password listener, the Linux/macOS protected `_service` listener and its
+  password listener, and the Windows service-owned main control and credential listeners. Boundary: an unexpected
+  terminal loss of a local authority-bearing listener ↔ process-manager recovery and operator-visible service
+  outcome.
+
+  Proven old path and history: all three listener loops already separated ordinary process-wide cancellation from
+  an unexpected stream `None`. Each unexpected branch stored a specific error, requested graceful shutdown, stopped
+  accepting, drained admitted transaction tasks and password state, dropped its local listener guard, and called
+  `finish_graceful_shutdown`. That sole finalizer nevertheless logged `exiting 0` and unconditionally called
+  `process::exit(0)`. The protected Linux service listener additionally runs in a detached thread whose returned
+  result is wrapped in `allow_err!`, so merely returning `Err` from the IPC future would still leave the supervisor
+  process running without its protected control/credential receiver. `git blame` attributes the false-success
+  finalization and listener-error flow to the earlier privileged-IPC consolidation `57bcb529`, not to R-S11e-52.
+  The preceding adjacent hypothesis—that R-S11e-52's early macOS service entry accidentally skipped mandatory
+  `global_init` policy—was disproved before this change: `global_init` has behavior only for Linux Wayland, while the
+  R-S16 managed-store assertions remain at direct-listener startup on every platform.
+
+  Primary contracts and authority model: pinned systemd 252 defines status zero as a clean exit and
+  `Restart=on-failure` as recovery after a nonzero exit, and recommends that restart policy for long-running
+  services (https://www.freedesktop.org/software/systemd/man/252/systemd.service.html). The shipped systemd unit uses
+  that exact policy. Apple's launchd daemon guide defines `KeepAlive=true` as a continuously running job which
+  launchd should keep trying to run
+  (https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+  Although the shipped macOS daemon restarts regardless of exit status, failure must remain distinguishable for
+  diagnostics and any future conditional service-manager policy. The receiver-owned outcome is therefore a
+  monotonic process-lifetime failure bit set at the listener-loss producer before cancellation, not a return value
+  that can be discarded by a detached thread or overwritten by a later clean shutdown path.
+
+  Closure: `request_graceful_shutdown_after_listener_failure` stores the failure latch with Release ordering and
+  then invokes the unchanged cancellation request. All six unexpected listener-end branches use that helper; normal
+  cancellation, SIGINT/SIGTERM, and service-manager stop paths continue to call the ordinary request and never set
+  the latch. The one idempotent finalizer still waits for authenticated connection cleanup and every active local IPC
+  listener guard, then loads the monotonic latch with Acquire ordering and selects status 1 for failure or 0 for a
+  normal request. It does not introduce a second finalizer, an early process exit, or an error-return dependency on
+  the Linux detached thread. A later clean request cannot clear or downgrade the latched failure.
+
+  Proof/gates: the focused Rust regression binds clean and failure status selection. The R-S11e-53 source
+  and Apple gates bind the static latch, Release-before-cancellation producer ordering, exact six error producers,
+  Acquire-at-the-final-sink selection, process exit using the selected value, unchanged drain-before-exit ordering,
+  R-S11am, Appendix C #161, and this ledger. The semantic workspace verifier independently interprets those regions
+  and mutation-tests every producer, memory-order weakening, hardcoded-success restoration, regression/gate removal,
+  and requirement/Appendix/ledger drift. Native Windows/macOS compilation and forced listener-loss execution remain
+  R-R2/R-B2 evidence and are not inferred from the Linux source/test environment.
+
+  Verification: the focused Rust regression passed (`1 passed`, 317 filtered) after compiling the root library with
+  the audited vendored dependency tree. The R-S11e-53 shared and Apple source gates passed. The semantic workspace
+  verifier passed normally and its complete source-mutation suite rejected gate deletion, each of the six producer
+  downgrades, latch/removal/order weakening, drain removal, hardcoded-success restoration, clean-path
+  misclassification, and normative/ledger drift. Shell syntax, in-memory Python syntax, and `git diff --check`
+  passed; the pinned image does not contain `rustfmt`, so no formatter result is claimed and the two Rust edits were
+  reviewed manually for local style after their successful Rust 1.75 compile. The native-codec source watch and its
+  mutation self-test pass, as do the dependency inventory and all 103 inventory mutations (909 Cargo packages; 855
+  lexical `unsafe {` blocks across 251 tracked Rust files). Every project check ran as numeric uid/gid 1000 in the
+  exact pinned `rd-devcheck` image with no network, a read-only root/source tree, all capabilities dropped,
+  `no-new-privileges`, and bounded resources; failed read-only Rustup/cache setup attempts were discarded as harness
+  setup failures before the successful vendored run and are not counted as evidence. Native Windows/macOS compile
+  plus forced listener-loss execution, exact-commit artifact/reproducibility evidence, and external audit remain
+  R-R2/R-B2 work; this source closure does not claim them.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5902,8 +5963,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-dd54f94705df4fcc38edc0f2c4bf504cdec4b66d12cbe27de6beffd3e8491e95  requirements.html
+2b4d2a310ef3d5164f410f46fa707281f651d95908ea654f01274d10fbbab969  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11al, and Appendix C #160. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11am, and Appendix C #161. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

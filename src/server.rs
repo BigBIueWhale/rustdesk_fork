@@ -530,12 +530,29 @@ pub fn is_shutting_down() -> bool {
 }
 
 static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);
+static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);
+
+fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {
+    if failure_latched {
+        1
+    } else {
+        0
+    }
+}
 
 pub fn request_graceful_shutdown() {
     if !SHUTDOWN_TOKEN.is_cancelled() {
         log::info!("R-T9: graceful shutdown initiated — stop accepting, drain live sessions");
         SHUTDOWN_TOKEN.cancel();
     }
+}
+
+/// Preserve a fatal listener failure across the shared asynchronous drain. The
+/// finalizer may already be running on another task, so the failure outcome must
+/// be latched before cancellation makes the listener guards disappear.
+pub(crate) fn request_graceful_shutdown_after_listener_failure() {
+    SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);
+    request_graceful_shutdown();
 }
 
 /// R-T9 (§20): perform a graceful shutdown on SIGTERM/SIGINT. (1) stop accepting — the accept
@@ -545,7 +562,9 @@ pub fn request_graceful_shutdown() {
 /// unit's `TimeoutStopSec` (30 s) so systemd's SIGKILL stays only a backstop — for the
 /// authenticated sessions to finish their cleanup tail (an `AuthedConnID`'s `Drop`, which prunes
 /// `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero means cleanup actually
-/// completed); (4) force-exit 0, terminating any still-live connection past the deadline. Idempotent.
+/// completed); (4) terminate any still-live connection past the deadline. A normal
+/// requested shutdown exits 0; an unexpected authority-bearing listener loss that
+/// initiated the drain exits 1. Idempotent.
 pub async fn begin_graceful_shutdown() {
     request_graceful_shutdown();
     finish_graceful_shutdown().await;
@@ -575,8 +594,20 @@ pub async fn finish_graceful_shutdown() {
     crate::ipc::wait_for_local_ipc_shutdown().await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     crate::server::input_service::fix_key_down_timeout_at_exit();
-    log::info!("R-T9: graceful shutdown complete — exiting 0");
-    std::process::exit(0);
+    let exit_code = graceful_shutdown_exit_code(SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire));
+    log::info!("R-T9: graceful shutdown complete — exiting {exit_code}");
+    std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod graceful_shutdown_tests {
+    use super::graceful_shutdown_exit_code;
+
+    #[test]
+    fn r_s11e53_listener_failure_selects_nonzero_process_status() {
+        assert_eq!(graceful_shutdown_exit_code(false), 0);
+        assert_eq!(graceful_shutdown_exit_code(true), 1);
+    }
 }
 
 pub struct Server {

@@ -1375,6 +1375,47 @@ else
   note "ok  R-S11e-52 macOS source centralizes both service entries and binds config/log storage to the protected passwd-derived UID-0 home before logging or listener startup; native Apple evidence remains pending R-R2/R-B2"
 fi
 
+echo "== (2b-iv-a-0c) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="
+r_s11e53=
+server_shutdown=$(awk '/static SHUTDOWN_FINALIZER_STARTED/,/pub struct Server/' "$REPO/src/server.rs")
+ipc_source=$(cat "$REPO/src/ipc.rs")
+for binding in \
+  'static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);' \
+  'pub(crate) fn request_graceful_shutdown_after_listener_failure() {' \
+  'SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);' \
+  'request_graceful_shutdown();' \
+  'SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)' \
+  'std::process::exit(exit_code);' \
+  'fn r_s11e53_listener_failure_selects_nonzero_process_status()'; do
+  grep -qF "$binding" <<<"$server_shutdown" || r_s11e53="$r_s11e53 shutdown-outcome-binding-missing"
+done
+if grep -qF 'std::process::exit(0);' <<<"$server_shutdown"; then
+  r_s11e53="$r_s11e53 hardcoded-success-finalizer-present"
+fi
+[ "$(grep -cF 'listener ended unexpectedly' <<<"$ipc_source")" -eq 6 ] \
+  || r_s11e53="$r_s11e53 exact-listener-failure-set-missing"
+[ "$(grep -cF 'crate::server::request_graceful_shutdown_after_listener_failure();' <<<"$ipc_source")" -eq 6 ] \
+  || r_s11e53="$r_s11e53 exact-failure-latch-producer-set-missing"
+for message in \
+  'main password IPC listener ended unexpectedly' \
+  'main IPC listener ended unexpectedly' \
+  'protected service password IPC listener ended unexpectedly' \
+  'protected _service IPC listener ended unexpectedly' \
+  'Windows service-main control IPC listener ended unexpectedly' \
+  'Windows service credential IPC listener ended unexpectedly'; do
+  grep -qF "$message" <<<"$ipc_source" || r_s11e53="$r_s11e53 listener-failure-producer-missing"
+done
+grep -qF '<span class="id">R-S11am</span>' "$REPO/requirements.html" || r_s11e53="$r_s11e53 normative-requirement-missing"
+grep -qF '<tr><td>161</td>' "$REPO/requirements.html" || r_s11e53="$r_s11e53 appendix-disposition-missing"
+grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' "$REPO/HARDENING_STATUS.md" \
+  || r_s11e53="$r_s11e53 hardening-ledger-missing"
+if [ -n "$r_s11e53" ]; then
+  echo "  FAIL R-S11e-53 authority-bearing IPC listener failure outcome:$r_s11e53"
+  rc=1
+else
+  note "ok  R-S11e-53 every fatal desktop IPC listener ending, including both macOS protected service channels, latches nonzero outcome before the shared graceful drain"
+fi
+
 echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' "$REPO/libs/hbb_common/src/platform/macos.rs")

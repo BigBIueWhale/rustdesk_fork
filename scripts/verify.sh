@@ -4039,6 +4039,81 @@ grep -qF 'R-S11e-52 — macOS service-owned configuration/log root' HARDENING_ST
 if [ -n "$r_s11e52" ]; then echo "  FAIL R-S11e-52 macOS service-owned config/log root:$r_s11e52"; rc=1; else
   echo "  ok  R-S11e-52 both macOS service entries prove UID 0, bind config/log paths to its protected passwd home, and only then initialize logging and the service listener"; fi
 
+# (3b-iii-d9cc) R-S11am/R-S11e-53: an unexpected end of any
+# process-lifetime desktop IPC listener is a fatal outcome after the existing
+# bounded drain, never a false-success exit that suppresses manager recovery.
+echo "== (3b-iii-d9cc) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e53_ --color never
+r_s11e53=
+shutdown_policy=$(awk '/static SHUTDOWN_FINALIZER_STARTED/,/pub struct Server/' src/server.rs)
+for binding in \
+  'static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);' \
+  'fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {' \
+  'pub(crate) fn request_graceful_shutdown_after_listener_failure() {' \
+  'SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);' \
+  'request_graceful_shutdown();' \
+  'SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)' \
+  'std::process::exit(exit_code);' \
+  'fn r_s11e53_listener_failure_selects_nonzero_process_status()' \
+  'assert_eq!(graceful_shutdown_exit_code(false), 0);' \
+  'assert_eq!(graceful_shutdown_exit_code(true), 1);'; do
+  grep -qF "$binding" <<<"$shutdown_policy" || r_s11e53="$r_s11e53 shutdown-outcome-binding-missing"
+done
+store_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);' <<<"$shutdown_policy" | cut -d: -f1 || true)
+cancel_line=$(grep -nF 'request_graceful_shutdown();' <<<"$shutdown_policy" | head -n1 | cut -d: -f1 || true)
+ipc_drain_line=$(grep -nF 'crate::ipc::wait_for_local_ipc_shutdown().await;' <<<"$shutdown_policy" | cut -d: -f1 || true)
+load_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)' <<<"$shutdown_policy" | cut -d: -f1 || true)
+exit_line=$(grep -nF 'std::process::exit(exit_code);' <<<"$shutdown_policy" | cut -d: -f1 || true)
+if [ -z "$store_line" ] || [ -z "$cancel_line" ] || [ -z "$ipc_drain_line" ] \
+  || [ -z "$load_line" ] || [ -z "$exit_line" ] \
+  || [ "$store_line" -ge "$cancel_line" ] || [ "$ipc_drain_line" -ge "$load_line" ] \
+  || [ "$load_line" -ge "$exit_line" ]; then
+  r_s11e53="$r_s11e53 failure-latch-or-finalizer-order-invalid"
+fi
+if grep -qF 'std::process::exit(0);' <<<"$shutdown_policy"; then
+  r_s11e53="$r_s11e53 hardcoded-success-finalizer-present"
+fi
+python3 - src/ipc.rs <<'PY' || r_s11e53="$r_s11e53 listener-producer-set-invalid"
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+messages = (
+    "main password IPC listener ended unexpectedly",
+    "main IPC listener ended unexpectedly",
+    "protected service password IPC listener ended unexpectedly",
+    "protected _service IPC listener ended unexpectedly",
+    "Windows service-main control IPC listener ended unexpectedly",
+    "Windows service credential IPC listener ended unexpectedly",
+)
+helper = "crate::server::request_graceful_shutdown_after_listener_failure();"
+if source.count(helper) != len(messages):
+    raise SystemExit(1)
+for message in messages:
+    anchor = f'listener_error = Some("{message}".to_owned());'
+    if source.count(anchor) != 1:
+        raise SystemExit(1)
+    start = source.index(anchor) + len(anchor)
+    end = source.find("break;", start)
+    if end < 0:
+        raise SystemExit(1)
+    branch = source[start:end]
+    if branch.count(helper) != 1 or "crate::server::request_graceful_shutdown();" in branch:
+        raise SystemExit(1)
+PY
+grep -qF '<span class="id">R-S11am</span>' requirements.html || r_s11e53="$r_s11e53 normative-requirement-missing"
+grep -qF 'Authority-bearing desktop IPC listener loss remains a fatal process outcome after graceful drain' requirements.html \
+  || r_s11e53="$r_s11e53 normative-outcome-clause-missing"
+grep -qF '<tr><td>161</td>' requirements.html || r_s11e53="$r_s11e53 appendix-row-missing"
+grep -qF 'Unexpected desktop IPC listener loss was reported as a successful process shutdown' requirements.html \
+  || r_s11e53="$r_s11e53 appendix-disposition-missing"
+grep -qF 'authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53)' scripts/apple-conform-check.sh \
+  || r_s11e53="$r_s11e53 apple-source-conformance-gate-missing"
+grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' HARDENING_STATUS.md \
+  || r_s11e53="$r_s11e53 hardening-ledger-missing"
+if [ -n "$r_s11e53" ]; then echo "  FAIL R-S11e-53 IPC listener failure outcome:$r_s11e53"; rc=1; else
+  echo "  ok  R-S11e-53 all six fatal desktop IPC listener endings latch failure before cancellation and the shared finalizer exits 1 only after its existing drain; ordinary shutdown remains status 0"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

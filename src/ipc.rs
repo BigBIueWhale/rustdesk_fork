@@ -2615,7 +2615,7 @@ async fn start_main_ipc() -> ResultType<()> {
                     }
                     SensitiveMainListenerEvent::Ended => {
                         listener_error = Some("main password IPC listener ended unexpectedly".to_owned());
-                        crate::server::request_graceful_shutdown();
+                        crate::server::request_graceful_shutdown_after_listener_failure();
                         break;
                     }
                 }
@@ -2623,7 +2623,7 @@ async fn start_main_ipc() -> ResultType<()> {
             result = incoming.next() => {
                 let Some(result) = result else {
                     listener_error = Some("main IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown();
+                    crate::server::request_graceful_shutdown_after_listener_failure();
                     break;
                 };
                 let stream = match result {
@@ -2778,7 +2778,7 @@ async fn start_service_ipc(postfix: &str) -> ResultType<()> {
             result = password_incoming.next() => {
                 let Some(result) = result else {
                     listener_error = Some("protected service password IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown();
+                    crate::server::request_graceful_shutdown_after_listener_failure();
                     break;
                 };
                 let stream = match result {
@@ -2843,7 +2843,7 @@ async fn start_service_ipc(postfix: &str) -> ResultType<()> {
             result = incoming.next() => {
                 let Some(result) = result else {
                     listener_error = Some("protected _service IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown();
+                    crate::server::request_graceful_shutdown_after_listener_failure();
                     break;
                 };
                 let stream = match result {
@@ -3320,7 +3320,7 @@ pub async fn start_windows_service_main_ipc() -> ResultType<()> {
             result = control_incoming.next() => {
                 let Some(result) = result else {
                     listener_error = Some("Windows service-main control IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown();
+                    crate::server::request_graceful_shutdown_after_listener_failure();
                     break;
                 };
                 let stream = match result {
@@ -3353,7 +3353,7 @@ pub async fn start_windows_service_main_ipc() -> ResultType<()> {
             result = credential_incoming.next() => {
                 let Some(result) = result else {
                     listener_error = Some("Windows service credential IPC listener ended unexpectedly".to_owned());
-                    crate::server::request_graceful_shutdown();
+                    crate::server::request_graceful_shutdown_after_listener_failure();
                     break;
                 };
                 let stream = match result {

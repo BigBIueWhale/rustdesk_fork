@@ -7570,6 +7570,158 @@ def validate_macos_service_storage_root_contract(sources):
     )
 
 
+def validate_ipc_listener_failure_outcome_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    ipc_source = sources["ipc_source"]
+    server_source = sources["server_source"]
+
+    for source, heading, label in (
+        (
+            verify,
+            'echo "== (3b-iii-d9cc) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="',
+            "IPC listener failure source gate",
+        ),
+        (
+            apple,
+            'echo "== (2b-iv-a-0c) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="',
+            "IPC listener failure Apple gate",
+        ),
+    ):
+        require_text(source, heading, label)
+
+    shutdown_policy = extract_between(
+        server_source,
+        "static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);",
+        "\npub struct Server",
+        "shared graceful-shutdown outcome policy",
+    )
+    require_text(
+        shutdown_policy,
+        "static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);",
+        "monotonic shutdown failure latch",
+    )
+    failure_request = extract_between(
+        shutdown_policy,
+        "pub(crate) fn request_graceful_shutdown_after_listener_failure() {",
+        "\n}",
+        "listener-failure shutdown producer",
+    )
+    require_order(
+        failure_request,
+        (
+            "SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);",
+            "request_graceful_shutdown();",
+        ),
+        "failure latch before process cancellation",
+    )
+
+    finalizer = extract_between(
+        shutdown_policy,
+        "pub async fn finish_graceful_shutdown() {",
+        "\n#[cfg(test)]",
+        "shared graceful-shutdown finalizer",
+    )
+    require_order(
+        finalizer,
+        (
+            "crate::ipc::wait_for_local_ipc_shutdown().await;",
+            "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
+            "std::process::exit(exit_code);",
+        ),
+        "drain before acquire-selected process outcome",
+    )
+    if "std::process::exit(0);" in finalizer:
+        raise VerificationError("shared graceful-shutdown finalizer retains hardcoded success")
+
+    status_test = extract_between(
+        shutdown_policy,
+        "fn r_s11e53_listener_failure_selects_nonzero_process_status()",
+        "\n    }",
+        "IPC listener failure status regression",
+    )
+    for text, label in (
+        ("assert_eq!(graceful_shutdown_exit_code(false), 0);", "clean exit assertion"),
+        ("assert_eq!(graceful_shutdown_exit_code(true), 1);", "failure exit assertion"),
+    ):
+        require_text(status_test, text, label)
+
+    messages = (
+        "main password IPC listener ended unexpectedly",
+        "main IPC listener ended unexpectedly",
+        "protected service password IPC listener ended unexpectedly",
+        "protected _service IPC listener ended unexpectedly",
+        "Windows service-main control IPC listener ended unexpectedly",
+        "Windows service credential IPC listener ended unexpectedly",
+    )
+    failure_helper = "crate::server::request_graceful_shutdown_after_listener_failure();"
+    if ipc_source.count(failure_helper) != len(messages):
+        raise VerificationError("exact six listener-failure latch producers are absent")
+    if ipc_source.count("listener ended unexpectedly") != len(messages):
+        raise VerificationError("exact six authority-bearing listener failures are absent")
+    for message in messages:
+        anchor = f'listener_error = Some("{message}".to_owned());'
+        if ipc_source.count(anchor) != 1:
+            raise VerificationError(f"listener failure producer is not unique: {message}")
+        start = ipc_source.index(anchor) + len(anchor)
+        end = ipc_source.find("break;", start)
+        if end < 0:
+            raise VerificationError(f"listener failure producer does not terminate: {message}")
+        branch = ipc_source[start:end]
+        if branch.count(failure_helper) != 1:
+            raise VerificationError(f"listener failure does not latch before cancellation: {message}")
+        if "crate::server::request_graceful_shutdown();" in branch:
+            raise VerificationError(f"listener failure retains clean cancellation path: {message}")
+
+    clean_entry = extract_between(
+        shutdown_policy,
+        "pub async fn begin_graceful_shutdown() {",
+        "\n}",
+        "ordinary graceful-shutdown entry",
+    )
+    require_order(
+        clean_entry,
+        ("request_graceful_shutdown();", "finish_graceful_shutdown().await;"),
+        "ordinary clean shutdown path",
+    )
+    if "request_graceful_shutdown_after_listener_failure" in clean_entry:
+        raise VerificationError("ordinary graceful shutdown latches listener failure")
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11am</span>',
+        '\n\n<h2 id="excise">',
+        "IPC listener failure outcome requirement",
+    )
+    for text, label in (
+        ("those six listener streams", "six-listener authority set"),
+        ("release/acquire synchronization", "cross-task failure synchronization"),
+        ("status 1 when the failure latch is set", "failure process status"),
+        ("status 0 only for an ordinary requested shutdown", "clean process status"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        ('<span class="id">R-S11am</span>', "IPC listener failure requirement"),
+        (
+            "Authority-bearing desktop IPC listener loss remains a fatal process outcome after graceful drain",
+            "IPC listener failure requirement title",
+        ),
+        ("<tr><td>161</td>", "IPC listener failure Appendix C row"),
+        (
+            "Unexpected desktop IPC listener loss was reported as a successful process shutdown",
+            "IPC listener failure Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-53 — authority-bearing IPC listener failure outcome",
+        "IPC listener failure hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -8424,6 +8576,7 @@ def validate_sources(sources):
     validate_service_supervisor_role_contract(sources)
     validate_windows_scm_service_entry_contract(sources)
     validate_macos_service_storage_root_contract(sources)
+    validate_ipc_listener_failure_outcome_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -14875,6 +15028,120 @@ def run_source_mutations(sources):
             "R-S11e-52 — macOS service-owned configuration/log root",
             "R-S11e-52 — macOS ambient-HOME service storage",
             "macOS service storage-root hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9cc) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="',
+            'echo "== (3b-iii-d9cc) successful IPC listener loss (R-S11am/R-S11e-53) =="',
+            "IPC listener failure source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0c) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="',
+            'echo "== (2b-iv-a-0c) successful IPC listener loss (R-S11am/R-S11e-53) =="',
+            "IPC listener failure Apple gate",
+        ),
+        (
+            "server_source",
+            "static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);",
+            "static SHUTDOWN_FAILURE_LATCHED_DISABLED: AtomicBool = AtomicBool::new(false);",
+            "monotonic shutdown failure latch",
+        ),
+        (
+            "server_source",
+            "SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);",
+            "SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Relaxed);",
+            "failure latch before process cancellation",
+        ),
+        (
+            "server_source",
+            "pub(crate) fn request_graceful_shutdown_after_listener_failure() {\n    SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);\n    request_graceful_shutdown();\n}",
+            "pub(crate) fn request_graceful_shutdown_after_listener_failure() {\n    request_graceful_shutdown();\n}",
+            "failure latch before process cancellation",
+        ),
+        (
+            "server_source",
+            "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
+            "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Relaxed)",
+            "drain before acquire-selected process outcome",
+        ),
+        (
+            "server_source",
+            "crate::ipc::wait_for_local_ipc_shutdown().await;",
+            "crate::ipc::wait_for_local_ipc_shutdown_disabled().await;",
+            "drain before acquire-selected process outcome",
+        ),
+        (
+            "server_source",
+            "std::process::exit(exit_code);",
+            "std::process::exit(0);",
+            "drain before acquire-selected process outcome",
+        ),
+        (
+            "server_source",
+            "fn r_s11e53_listener_failure_selects_nonzero_process_status()",
+            "fn listener_failure_selects_success_process_status()",
+            "IPC listener failure status regression",
+        ),
+        (
+            "server_source",
+            "assert_eq!(graceful_shutdown_exit_code(true), 1);",
+            "assert_eq!(graceful_shutdown_exit_code(true), 0);",
+            "failure exit assertion",
+        ),
+        (
+            "ipc_source",
+            "crate::server::request_graceful_shutdown_after_listener_failure();",
+            "crate::server::request_graceful_shutdown();",
+            "exact six listener-failure latch producers are absent",
+        ),
+        (
+            "server_source",
+            "pub async fn begin_graceful_shutdown() {\n    request_graceful_shutdown();",
+            "pub async fn begin_graceful_shutdown() {\n    request_graceful_shutdown_after_listener_failure();",
+            "ordinary clean shutdown path",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11am</span>',
+            '<span class="id">R-S11an</span>',
+            "IPC listener failure outcome requirement",
+        ),
+        (
+            "requirements",
+            "Authority-bearing desktop IPC listener loss remains a fatal process outcome after graceful drain",
+            "Authority-bearing desktop IPC listener loss remains a successful process outcome",
+            "IPC listener failure requirement title",
+        ),
+        (
+            "requirements",
+            "release/acquire synchronization",
+            "relaxed synchronization",
+            "cross-task failure synchronization",
+        ),
+        (
+            "requirements",
+            "status 1 when the failure latch is set",
+            "status 0 when the failure latch is set",
+            "failure process status",
+        ),
+        (
+            "requirements",
+            "<tr><td>161</td>",
+            "<tr><td>9161</td>",
+            "IPC listener failure Appendix C row",
+        ),
+        (
+            "requirements",
+            "Unexpected desktop IPC listener loss was reported as a successful process shutdown",
+            "Unexpected desktop IPC listener loss was always reported as failure",
+            "IPC listener failure Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-53 — authority-bearing IPC listener failure outcome",
+            "R-S11e-53 — successful IPC listener loss",
+            "IPC listener failure hardening ledger",
         ),
         (
             "verify",

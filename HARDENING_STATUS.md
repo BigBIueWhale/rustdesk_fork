@@ -4213,10 +4213,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   added. The available immutable images have no installed Rustfmt component, so no formatter pass is claimed. A
   non-root offline Apple-target root-library check progressed after readable crate archives were re-extracted into
   disposable storage, then stopped in third-party Objective-C/C build scripts because the image has no macOS SDK
-  headers. That is not a source failure or a green Apple build. Every verifier/build/test command used an
-  already-present immutable image as UID/GID 1000 with network and image pulls disabled, read-only repository and
-  inputs, disposable outputs, no published ports/capabilities, and no-new-privileges. No host RustDesk, service,
-  configuration, listener, firewall, or host-network state was inspected or changed.
+  headers. That is not a source failure or a green Apple build. All substantive and final verifier/build/test runs
+  used an already-present immutable image as UID/GID 1000 with network and image pulls disabled, read-only repository
+  and inputs, disposable outputs, no published ports/capabilities, and no-new-privileges. Before those runs, three
+  parser-only checks (`python -m py_compile` and two `bash -n` invocations) and one inventory `--help` invocation were
+  mistakenly run as the unprivileged host user. They did not execute RustDesk, build an artifact, access a network,
+  or use root; the generated ignored verifier bytecode was removed. This was still a process-boundary violation and
+  is recorded rather than hidden. No host RustDesk, service, configuration, listener, firewall, or host-network state
+  was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff

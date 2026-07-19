@@ -5367,7 +5367,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -5819,6 +5819,116 @@ def validate_windows_privacy_broker_contract(sources):
         require_text(sources[source_key], text, label)
 
 
+def validate_windows_process_state_contract(sources):
+    platform = sources["windows_source"]
+    for source_key, token in (
+        ("windows_source", "pids_by_exact_process_name"),
+        ("windows_source", "terminate_processes_by_exact_process_name"),
+        ("windows_source", "try_kill_broker"),
+        ("windows_source", "fn get_pids"),
+        ("windows_source", "is_logon_ui"),
+        ("windows_source", "LogonUI.exe"),
+        ("portable_source", "taskkill"),
+        ("portable_source", "copy_runtime_broker"),
+    ):
+        if token in sources[source_key]:
+            raise VerificationError(
+                f"Windows ambient process-state authority remains in {source_key}: {token}"
+            )
+
+    process_path = extract_between(
+        platform,
+        "fn open_process_executable_path(process_id: DWORD)",
+        "\npub fn get_process_executable_path",
+        "Windows retained-handle process-image query",
+    )
+    require_order(
+        process_path,
+        (
+            "WinHandleGuard::new(",
+            "WinOpenProcess(WIN_PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)",
+            "WinQueryFullProcessImageNameW(",
+            "process.get()",
+            "Ok((process, PathBuf::from(OsString::from_wide(&buffer))))",
+        ),
+        "Windows process image is queried and returned with its retained process handle",
+    )
+
+    consent = extract_between(
+        platform,
+        'const WINDOWS_CONSENT_IMAGE_NAME: &str = "consent.exe";',
+        "\npub struct WakeLock",
+        "Windows UAC consent process authority",
+    )
+    require_order(
+        consent,
+        (
+            "let expected_session_id = get_current_process_session_id()",
+            "let expected_path = trusted_system_tool_path(WINDOWS_CONSENT_IMAGE_NAME)?;",
+            "CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)",
+            ".eq_ignore_ascii_case(WINDOWS_CONSENT_IMAGE_NAME)",
+            "get_session_id_of_process(process_id)",
+            "if candidate_session_id == expected_session_id",
+            "let (process, candidate_path) = open_process_executable_path(process_id)",
+            "let pinned_session_id = get_session_id_of_process(process_id)",
+            "trusted_system_process_candidate_matches(",
+            "drop(process);",
+            "return Ok(true);",
+        ),
+        "Windows UAC candidate discovery before exact image/session admission",
+    )
+    candidate_policy = extract_between(
+        consent,
+        "fn trusted_system_process_candidate_matches(",
+        "\npub fn is_process_consent_running",
+        "Windows UAC candidate image/session policy",
+    )
+    for text, label in (
+        (
+            "candidate_session_id == expected_session_id",
+            "Windows UAC current-session equality",
+        ),
+        (
+            "normalized_windows_path_text(candidate_path)",
+            "Windows UAC observed full-image path",
+        ),
+        (
+            "normalized_windows_path_text(expected_path)",
+            "Windows UAC expected System32 image path",
+        ),
+    ):
+        require_text(candidate_policy, text, label)
+    require_text(
+        platform,
+        "fn consent_candidate_requires_exact_system_image_and_current_session()",
+        "Windows UAC exact-image/current-session regression",
+    )
+
+    for source_key, text, label in (
+        (
+            "verify",
+            'echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="',
+            "Windows UAC process-state source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11w</span>',
+            "Windows UAC process-state normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>145</td>",
+            "Windows UAC process-state Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-37 — Windows residual process-state authority",
+            "Windows UAC process-state hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -5832,6 +5942,7 @@ def validate_sources(sources):
     validate_macos_descriptor_contract(sources)
     validate_windows_helper_launch_contract(sources)
     validate_windows_privacy_broker_contract(sources)
+    validate_windows_process_state_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
     validate_systemd_smoke_contract(
         sources["systemd_smoke_host"],
@@ -11316,7 +11427,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "851 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -11553,6 +11664,90 @@ def run_source_mutations(sources):
             "R-S11e-36 — Windows privacy-broker process and window authority",
             "R-S11e-36 — Windows privacy-broker title compatibility",
             "Windows privacy-broker hardening ledger",
+        ),
+        (
+            "windows_source",
+            "Ok((process, PathBuf::from(OsString::from_wide(&buffer))))",
+            "Ok((WinHandleGuard::new(WinHANDLE::default())?, PathBuf::from(OsString::from_wide(&buffer))))",
+            "Windows process image is queried and returned with its retained process handle",
+        ),
+        (
+            "windows_source",
+            "let expected_session_id = get_current_process_session_id()",
+            "let expected_session_id = Some(0)",
+            "Windows UAC candidate discovery before exact image/session admission",
+        ),
+        (
+            "windows_source",
+            "let expected_path = trusted_system_tool_path(WINDOWS_CONSENT_IMAGE_NAME)?;",
+            "let expected_path = PathBuf::from(WINDOWS_CONSENT_IMAGE_NAME);",
+            "Windows UAC candidate discovery before exact image/session admission",
+        ),
+        (
+            "windows_source",
+            ".eq_ignore_ascii_case(WINDOWS_CONSENT_IMAGE_NAME)",
+            ".contains(WINDOWS_CONSENT_IMAGE_NAME)",
+            "Windows UAC candidate discovery before exact image/session admission",
+        ),
+        (
+            "windows_source",
+            "candidate_session_id == expected_session_id\n        && normalized_windows_path_text(candidate_path)",
+            "true\n        && normalized_windows_path_text(candidate_path)",
+            "Windows UAC current-session equality",
+        ),
+        (
+            "windows_source",
+            "normalized_windows_path_text(expected_path)",
+            "normalized_windows_path_text(candidate_path)",
+            "Windows UAC expected System32 image path",
+        ),
+        (
+            "windows_source",
+            "let (process, candidate_path) = open_process_executable_path(process_id)",
+            "let candidate_path = get_process_executable_path(process_id)",
+            "Windows UAC candidate discovery before exact image/session admission",
+        ),
+        (
+            "windows_source",
+            "let pinned_session_id = get_session_id_of_process(process_id)",
+            "let pinned_session_id = Some(expected_session_id)",
+            "Windows UAC candidate discovery before exact image/session admission",
+        ),
+        (
+            "windows_source",
+            "drop(process);",
+            "drop(candidate_path.clone());",
+            "Windows UAC candidate discovery before exact image/session admission",
+        ),
+        (
+            "windows_source",
+            "fn consent_candidate_requires_exact_system_image_and_current_session()",
+            "fn consent_candidate_accepts_any_image_and_session()",
+            "Windows UAC exact-image/current-session regression",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="',
+            'echo "== (3b-iii-a6) Windows UAC process state is basename-owned (R-S11d-3/R-S11w/R-S11e-37) =="',
+            "Windows UAC process-state source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11w</span>',
+            '<span class="id">R-S11z</span>',
+            "Windows UAC process-state normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>145</td>",
+            "<tr><td>9145</td>",
+            "Windows UAC process-state Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-37 — Windows residual process-state authority",
+            "R-S11e-37 — Windows ambient process-state compatibility",
+            "Windows UAC process-state hardening ledger",
         ),
         (
             "core_main",

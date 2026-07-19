@@ -82,9 +82,10 @@ use windows::{
     Win32::{
         Foundation::{
             CloseHandle as WinCloseHandle, LocalFree as WinLocalFree, ERROR_IO_INCOMPLETE,
-            ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_NOT_FOUND, ERROR_OPERATION_ABORTED,
-            ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, GENERIC_READ,
-            HANDLE as WinHANDLE, HLOCAL as WinHLOCAL, RPC_E_CHANGED_MODE,
+            ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_NOT_FOUND, ERROR_NO_MORE_FILES,
+            ERROR_OPERATION_ABORTED, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED,
+            ERROR_PIPE_NOT_CONNECTED, GENERIC_READ, HANDLE as WinHANDLE, HLOCAL as WinHLOCAL,
+            RPC_E_CHANGED_MODE,
             WAIT_TIMEOUT as WINDOWS_WAIT_TIMEOUT, WIN32_ERROR,
         },
         Security::{
@@ -4168,17 +4169,6 @@ pub fn is_locked() -> bool {
     unsafe { is_session_locked(session_id) == TRUE }
 }
 
-#[inline]
-pub fn is_logon_ui() -> ResultType<bool> {
-    let Some(current_sid) = get_current_process_session_id() else {
-        return Ok(false);
-    };
-    let pids = get_pids("LogonUI.exe")?;
-    Ok(pids
-        .into_iter()
-        .any(|pid| get_session_id_of_process(pid) == Some(current_sid)))
-}
-
 pub fn is_root() -> bool {
     // https://stackoverflow.com/questions/4023586/correct-way-to-find-out-if-a-service-is-running-as-the-system-user
     unsafe { is_local_system() == TRUE }
@@ -4967,35 +4957,36 @@ pub fn is_process_running_as_system(process_id: DWORD) -> ResultType<bool> {
     }
 }
 
-pub fn get_process_executable_path(process_id: DWORD) -> ResultType<PathBuf> {
+fn open_process_executable_path(process_id: DWORD) -> ResultType<(WinHandleGuard, PathBuf)> {
     const PROCESS_IMAGE_PATH_BUFFER_LEN: usize = 32 * 1024;
     unsafe {
-        let process = WinOpenProcess(WIN_PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
-            .map_err(|e| anyhow!("Failed to open process {}: {}", process_id, e))?;
-
-        let result = (|| -> ResultType<PathBuf> {
-            let mut buffer = vec![0u16; PROCESS_IMAGE_PATH_BUFFER_LEN];
-            let mut length = PROCESS_IMAGE_PATH_BUFFER_LEN as u32;
-            WinQueryFullProcessImageNameW(
-                process,
-                windows::Win32::System::Threading::PROCESS_NAME_FORMAT(0),
-                windows::core::PWSTR(buffer.as_mut_ptr()),
-                &mut length,
-            )
-            .map_err(|e| anyhow!("Failed to query process {} image path: {}", process_id, e))?;
-            if length == 0 {
-                bail!(
-                    "Failed to query process {} image path: empty result",
-                    process_id
-                );
-            }
-            buffer.truncate(length as usize);
-            Ok(PathBuf::from(OsString::from_wide(&buffer)))
-        })();
-
-        let _ = WinCloseHandle(process);
-        result
+        let process = WinHandleGuard::new(
+            WinOpenProcess(WIN_PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
+                .map_err(|e| anyhow!("Failed to open process {}: {}", process_id, e))?,
+        )?;
+        let mut buffer = vec![0u16; PROCESS_IMAGE_PATH_BUFFER_LEN];
+        let mut length = PROCESS_IMAGE_PATH_BUFFER_LEN as u32;
+        WinQueryFullProcessImageNameW(
+            process.get(),
+            windows::Win32::System::Threading::PROCESS_NAME_FORMAT(0),
+            windows::core::PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+        .map_err(|e| anyhow!("Failed to query process {} image path: {}", process_id, e))?;
+        if length == 0 {
+            bail!(
+                "Failed to query process {} image path: empty result",
+                process_id
+            );
+        }
+        buffer.truncate(length as usize);
+        Ok((process, PathBuf::from(OsString::from_wide(&buffer))))
     }
+}
+
+pub fn get_process_executable_path(process_id: DWORD) -> ResultType<PathBuf> {
+    let (_process, path) = open_process_executable_path(process_id)?;
+    Ok(path)
 }
 
 pub fn is_foreground_window_elevated() -> ResultType<bool> {
@@ -5224,12 +5215,23 @@ fn process_entry_image_name(entry: &PROCESSENTRY32W) -> String {
         .into_owned()
 }
 
-fn pids_by_exact_process_name(name: &str) -> ResultType<Vec<u32>> {
-    if name.is_empty() {
-        bail!("empty process name");
-    }
+const WINDOWS_CONSENT_IMAGE_NAME: &str = "consent.exe";
 
-    let mut pids = Vec::new();
+fn trusted_system_process_candidate_matches(
+    expected_path: &Path,
+    expected_session_id: u32,
+    candidate_path: &Path,
+    candidate_session_id: u32,
+) -> bool {
+    candidate_session_id == expected_session_id
+        && normalized_windows_path_text(candidate_path)
+            == normalized_windows_path_text(expected_path)
+}
+
+pub fn is_process_consent_running() -> ResultType<bool> {
+    let expected_session_id = get_current_process_session_id()
+        .ok_or_else(|| anyhow!("Failed to resolve current session for UAC consent detection"))?;
+    let expected_path = trusted_system_tool_path(WINDOWS_CONSENT_IMAGE_NAME)?;
     unsafe {
         let snapshot = WinHandleGuard::new(
             CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
@@ -5239,23 +5241,63 @@ fn pids_by_exact_process_name(name: &str) -> ResultType<Vec<u32>> {
         let mut entry: PROCESSENTRY32W = std::mem::zeroed();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
-        if Process32FirstW(snapshot.get(), &mut entry).is_ok() {
-            loop {
-                if process_entry_image_name(&entry).eq_ignore_ascii_case(name) {
-                    pids.push(entry.th32ProcessID);
+        Process32FirstW(snapshot.get(), &mut entry)
+            .map_err(|e| anyhow!("Failed to read first process snapshot entry: {}", e))?;
+        loop {
+            if process_entry_image_name(&entry)
+                .eq_ignore_ascii_case(WINDOWS_CONSENT_IMAGE_NAME)
+            {
+                let process_id = entry.th32ProcessID;
+                match get_session_id_of_process(process_id) {
+                    Some(candidate_session_id) if candidate_session_id == expected_session_id => {
+                        let (process, candidate_path) = open_process_executable_path(process_id)
+                            .map_err(|e| {
+                                anyhow!(
+                                    "Failed to authenticate current-session UAC consent candidate {}: {}",
+                                    process_id,
+                                    e
+                                )
+                            })?;
+                        let pinned_session_id = get_session_id_of_process(process_id).ok_or_else(|| {
+                            anyhow!(
+                                "Failed to revalidate current-session UAC consent candidate {} while its process handle is retained",
+                                process_id
+                            )
+                        })?;
+                        let is_trusted_candidate = trusted_system_process_candidate_matches(
+                            &expected_path,
+                            expected_session_id,
+                            &candidate_path,
+                            pinned_session_id,
+                        );
+                        drop(process);
+                        if is_trusted_candidate {
+                            return Ok(true);
+                        }
+                        log::debug!(
+                            "Ignoring current-session consent.exe candidate {} with untrusted image {}",
+                            process_id,
+                            candidate_path.display()
+                        );
+                    }
+                    Some(_) => {}
+                    None => log::debug!(
+                        "Ignoring consent.exe candidate {} whose session cannot be authenticated",
+                        process_id
+                    ),
                 }
-                if !Process32NextW(snapshot.get(), &mut entry).is_ok() {
-                    break;
+            }
+            if let Err(error) = Process32NextW(snapshot.get(), &mut entry) {
+                if error.code()
+                    != windows::core::HRESULT::from_win32(ERROR_NO_MORE_FILES.0)
+                {
+                    bail!("Failed to advance process snapshot: {}", error);
                 }
+                break;
             }
         }
     }
-
-    Ok(pids)
-}
-
-pub fn is_process_consent_running() -> ResultType<bool> {
-    Ok(!pids_by_exact_process_name("consent.exe")?.is_empty())
+    Ok(false)
 }
 
 pub struct WakeLock(u32);
@@ -5571,41 +5613,6 @@ pub(crate) mod reg_display_settings {
     }
 }
 
-fn get_pids<S: AsRef<str>>(name: S) -> ResultType<Vec<u32>> {
-    let name = name.as_ref().to_lowercase();
-    let mut pids = Vec::new();
-
-    unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
-        if snapshot == WinHANDLE::default() {
-            return Ok(pids);
-        }
-
-        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-        if Process32FirstW(snapshot, &mut entry).is_ok() {
-            loop {
-                let proc_name = OsString::from_wide(&entry.szExeFile)
-                    .to_string_lossy()
-                    .to_lowercase();
-
-                if proc_name.contains(&name) {
-                    pids.push(entry.th32ProcessID);
-                }
-
-                if !Process32NextW(snapshot, &mut entry).is_ok() {
-                    break;
-                }
-            }
-        }
-
-        let _ = WinCloseHandle(snapshot);
-    }
-
-    Ok(pids)
-}
-
 pub fn is_cur_exe_the_installed() -> bool {
     is_installed() && require_current_exe_is_fixed_service_runtime().is_ok()
 }
@@ -5672,6 +5679,29 @@ mod tests {
         };
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn consent_candidate_requires_exact_system_image_and_current_session() {
+        let expected = Path::new(r"C:\Windows\System32\consent.exe");
+        assert!(trusted_system_process_candidate_matches(
+            expected,
+            7,
+            Path::new(r"c:\WINDOWS\system32\CONSENT.EXE"),
+            7,
+        ));
+        assert!(!trusted_system_process_candidate_matches(
+            expected,
+            7,
+            Path::new(r"C:\Users\alice\consent.exe"),
+            7,
+        ));
+        assert!(!trusted_system_process_candidate_matches(
+            expected,
+            7,
+            expected,
+            8,
+        ));
     }
 
     #[test]

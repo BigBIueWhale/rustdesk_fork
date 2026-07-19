@@ -1545,7 +1545,7 @@ grep -Fq 'R-S11d-27 — Windows custom-client public staging deletion' HARDENING
 if [ -n "$r_s11d27" ]; then echo "  FAIL R-S11d-27 Windows custom-client public staging deletion:$r_s11d27"; rc=1; else
   echo "  ok  R-S11d-27 Windows custom-client updates have no public staging directory or executable-dir custom.txt copy loader"; fi
 
-echo "== (3b-iii-a5d4g) Retained Windows process/helper provenance invariants (R-S11d-1/8/9/10/25/38) =="
+echo "== (3b-iii-a5d4g) Retained Windows process/helper provenance invariants (R-S11d-1/8/9/25/38) =="
 r_s11d_retained=
 grep -Fq 'trusted_system_tool_path("mstsc.exe")' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:mstsc-not-system32-bound"
 grep -Fq 'format!("/v:localhost:{}", port)' src/port_forward.rs || r_s11d_retained="$r_s11d_retained rdp:loopback-endpoint-argument-missing"
@@ -1571,10 +1571,8 @@ if grep -Fq 'COMSPEC' src/server/terminal_helper.rs src/server/terminal_service.
   r_s11d_retained="$r_s11d_retained terminal-shell:ambient-fallback-leftover"
 fi
 
-grep -Fq 'trusted_system_tool_path("taskkill.exe")' libs/portable/src/main.rs || r_s11d_retained="$r_s11d_retained portable:taskkill-not-system32-bound"
-grep -Fq 'RuntimeBroker cleanup failed' libs/portable/src/main.rs || r_s11d_retained="$r_s11d_retained portable:cleanup-error-not-reported"
-if grep -Fq 'Command::new("taskkill")' libs/portable/src/main.rs || grep -Fq 'Command::new("taskkill.exe")' libs/portable/src/main.rs; then
-  r_s11d_retained="$r_s11d_retained portable:bare-taskkill-leftover"
+if grep -Eq 'taskkill|RuntimeBroker_rustdesk|copy_runtime_broker' libs/portable/src/main.rs; then
+  r_s11d_retained="$r_s11d_retained portable:obsolete-broker-cleanup-leftover"
 fi
 
 grep -Fq 'fn trusted_install_dir() -> ResultType<PathBuf>' src/virtual_display_manager.rs || r_s11d_retained="$r_s11d_retained amyuni:fixed-root-proof-missing"
@@ -1788,38 +1786,35 @@ if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machin
   echo "  ok  R-S11e-20 setup elevates only an exact one-file MSI transaction; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
 fi
 
-echo "== (3b-iii-a6) Windows runtime process probes avoid shell tasklist/taskkill (R-S11d-3) =="
+echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="
 r_s11d3=
 grep -q 'struct WinHandleGuard(WinHANDLE)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-windows-handle-guard"
 grep -q 'fn process_entry_image_name(entry: &PROCESSENTRY32W) -> String' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process-entry-name-helper"
-grep -q 'fn pids_by_exact_process_name(name: &str) -> ResultType<Vec<u32>>' src/platform/windows.rs || r_s11d3="$r_s11d3 no-exact-process-enumerator"
+grep -q 'const WINDOWS_CONSENT_IMAGE_NAME: &str = "consent.exe";' src/platform/windows.rs || r_s11d3="$r_s11d3 no-fixed-consent-image-name"
 grep -q 'CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-toolhelp-snapshot"
 grep -q 'Process32FirstW(snapshot.get(), &mut entry)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process32first"
 grep -q 'Process32NextW(snapshot.get(), &mut entry)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process32next"
-grep -q 'process_entry_image_name(&entry).eq_ignore_ascii_case(name)' src/platform/windows.rs || r_s11d3="$r_s11d3 process-match-not-exact"
-grep -q 'fn terminate_processes_by_exact_process_name(name: &str) -> ResultType<usize>' src/platform/windows.rs || r_s11d3="$r_s11d3 no-native-terminate-helper"
-grep -q 'WinOpenProcess(WIN_PROCESS_TERMINATE, false, pid)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-process-terminate-open"
-grep -q 'WinTerminateProcess(process.get(), 0)' src/platform/windows.rs || r_s11d3="$r_s11d3 no-native-terminate"
-grep -q 'pids_by_exact_process_name("consent.exe")' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-not-toolhelp-backed"
-grep -q 'terminate_processes_by_exact_process_name(WIN_TOPMOST_INJECTED_PROCESS_EXE)' src/platform/windows.rs || r_s11d3="$r_s11d3 broker-not-native-terminate-backed"
+grep -Fq '.eq_ignore_ascii_case(WINDOWS_CONSENT_IMAGE_NAME)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-candidate-name-not-exact"
+grep -Fq 'let expected_session_id = get_current_process_session_id()' src/platform/windows.rs || r_s11d3="$r_s11d3 current-session-proof-missing"
+grep -Fq 'let expected_path = trusted_system_tool_path(WINDOWS_CONSENT_IMAGE_NAME)?;' src/platform/windows.rs || r_s11d3="$r_s11d3 system32-consent-path-proof-missing"
+grep -Fq 'let (process, candidate_path) = open_process_executable_path(process_id)' src/platform/windows.rs || r_s11d3="$r_s11d3 retained-process-handle-proof-missing"
+grep -Fq 'let pinned_session_id = get_session_id_of_process(process_id)' src/platform/windows.rs || r_s11d3="$r_s11d3 pinned-process-session-revalidation-missing"
+grep -Fq 'drop(process);' src/platform/windows.rs || r_s11d3="$r_s11d3 retained-process-handle-release-missing"
+grep -Fq 'candidate_session_id == expected_session_id' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-session-comparison-missing"
+grep -Fq 'normalized_windows_path_text(candidate_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-candidate-path-comparison-missing"
+grep -Fq 'normalized_windows_path_text(expected_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-system-path-comparison-missing"
+grep -Fq 'fn consent_candidate_requires_exact_system_image_and_current_session()' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-authority-regression-test-missing"
 grep -q 'Windows runtime process command provenance' requirements.html || r_s11d3="$r_s11d3 requirements-disposition-missing"
 grep -q 'R-S11d-3 — Windows runtime process command provenance' HARDENING_STATUS.md || r_s11d3="$r_s11d3 hardening-ledger-missing"
-windows_runtime_process_blocks=$(
-  awk '/pub fn is_process_consent_running/,/pub struct WakeLock/' src/platform/windows.rs
-  awk '/pub fn try_kill_broker/,/pub fn alloc_console/' src/platform/windows.rs
-)
-if echo "$windows_runtime_process_blocks" | grep -Eq 'Command::new\("cmd"\)|tasklist|findstr|taskkill /F /IM|/c"\)|/C"'; then
-  r_s11d3="$r_s11d3 runtime-process-shell-regressed"
-fi
-if grep -RInE 'stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it' src/server.rs src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d3_process_kill"; then
-  r_s11d3="$r_s11d3 main-window-process-kill-fallback-leftover:$(cat "$VERIFY_TMP/rd_verify_r_s11d3_process_kill")"
-fi
-if grep -RInE 'Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/platform/windows.rs >"$VERIFY_TMP/rd_verify_r_s11d3"; then
+grep -Fq '<span class="id">R-S11w</span>' requirements.html || r_s11d3="$r_s11d3 normative-requirement-missing"
+grep -Fq '<tr><td>145</td>' requirements.html || r_s11d3="$r_s11d3 appendix-disposition-missing"
+grep -Fq 'R-S11e-37 — Windows residual process-state authority' HARDENING_STATUS.md || r_s11d3="$r_s11d3 process-state-ledger-missing"
+if grep -RInE 'pids_by_exact_process_name|terminate_processes_by_exact_process_name|try_kill_broker|taskkill|fn get_pids|is_logon_ui|LogonUI\.exe|stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it|Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/server.rs src/platform/windows.rs libs/portable/src/main.rs >"$VERIFY_TMP/rd_verify_r_s11d3"; then
   cat "$VERIFY_TMP/rd_verify_r_s11d3"
-  r_s11d3="$r_s11d3 stale-service-adjacent-cmd"
+  r_s11d3="$r_s11d3 ambient-or-obsolete-process-authority-leftover"
 fi
 if [ -n "$r_s11d3" ]; then echo "  FAIL R-S11d-3 Windows runtime process command provenance:$r_s11d3"; rc=1; else
-  echo "  ok  R-S11d-3 Windows service-adjacent process probes use ToolHelp/OpenProcess/TerminateProcess, not cmd tasklist/taskkill; IPC bind failure has no process-kill fallback"; fi
+  echo "  ok  R-S11d-3/R-S11w Windows UAC detection admits only a handle-pinned System32 consent image in the current process session; global broker termination and unused LogonUI heuristics are absent"; fi
 
 echo "== (3b-iii-a6b) Windows dormant diagnostic message-box side effects are absent (R-S11d-28) =="
 r_s11d28=

@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 851 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 850 lexical `unsafe {`
 blocks across 251 tracked Rust files, 73 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -1190,21 +1190,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   contract, HRESULT propagation, complete-enumeration/not-present branch, MultiSZ hardware-ID scan, reboot
   signaling, explicit-uninstall commit scheduling, absence of installed-helper/caller-data dependencies,
   `RemoveAmyuniIdd` `Return="check"`, and this ledger/requirements disposition.
-- **R-S11d-3 — Windows runtime process command provenance — CLOSED 2026-07-10.** Platform:
-  Windows runtime service-adjacent process probes in `src/platform/windows.rs`. Endpoint/action:
-  non-installed UAC `consent.exe` detection used by capture/privacy-mode decisions, and startup cleanup for the
-  topmost-window `RuntimeBroker_rustdesk.exe` helper. Boundary: service/runtime control flow ↔ ambient shell and
-  executable lookup. Attack surface closed: these paths no longer launch bare `cmd`, `tasklist | findstr`, or
-  shell `taskkill`; they enumerate exact image names with a ToolHelp process snapshot, close snapshot/process
-  handles through a local RAII guard, and terminate stale broker processes through `OpenProcess(PROCESS_TERMINATE)`
-  plus `TerminateProcess`. Cleanup remains best-effort for service startup, but enumeration and per-process
-  failures are logged instead of hidden behind a spawned shell. The service-start IPC bind-failure path no longer
-  tries to close an unknown IPC occupant or terminate a basename/argv-matched "main window" process through
-  `NtTerminateProcess` / `PROCESS_ALL_ACCESS`; it reports the occupied IPC endpoint and exits fail-closed.
-  Verification closure: `scripts/verify.sh` asserts the exact-name ToolHelp enumerator, RAII handle guard, native
-  termination helper, the `consent.exe` and broker call sites, absence of shell probes in the runtime blocks,
-  absence of `Command::new("cmd")` in `src/platform/windows.rs`, absence of the main-window process-kill fallback,
-  and this ledger/requirements disposition.
+- **R-S11d-3 — Windows runtime process command provenance — CLOSED 2026-07-10; AUTHORITY MODEL SUPERSEDED BY
+  R-S11e-36/R-S11e-37 ON 2026-07-19.** Platform: Windows runtime process probes in
+  `src/platform/windows.rs`. The original slice removed `cmd`/`tasklist`/`taskkill` shell selection and deleted the
+  service-start IPC-occupant `NtTerminateProcess`/`PROCESS_ALL_ACCESS` fallback. Its intermediate native design still
+  treated a basename as process authority: it terminated every matching privacy broker and treated every matching
+  `consent.exe` as UAC state. R-S11e-36 deletes broker basename termination and makes privacy instances exact-job/PID
+  owned. R-S11e-37 makes ToolHelp only a fixed `consent.exe` candidate source and admits state only after current-session,
+  retained-process-handle, and exact no-reparse System32 image proof; it also deletes the unused substring-based
+  LogonUI detector. Verification now forbids the superseded termination helpers and binds that final receiver-owned
+  process-state model. The IPC bind failure continues to report the occupied endpoint and exit fail-closed.
 - **R-S11d-4 — Windows MSI runtime-generated executable cleanup completion authority — CLOSED 2026-07-10.**
   Platform: Windows MSI deferred non-impersonated uninstall/update custom action. Endpoint/action:
   `RemoveRuntimeGeneratedFiles` removing `RuntimeBroker_rustdesk.exe` from the installed Program Files
@@ -1241,17 +1236,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   present. Verification closure: `scripts/verify.sh` asserts fallible shell selection, `GetSystemDirectoryW`
   use, the absolute trusted candidate set, fail-closed propagation in both helper and direct terminal paths,
   absence of `COMSPEC`/bare `pwsh.exe`/bare `cmd.exe` fallback, and this ledger/requirements disposition.
-- **R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance — CLOSED 2026-07-10.**
-  Platform: Windows portable launcher/installer. Endpoint/action: best-effort termination of stale
-  `RuntimeBroker_rustdesk.exe` before copying the runtime broker payload. Boundary: local same-user portable
-  launch/install flow; if a user deliberately starts the portable installer elevated, the launched cleanup tool
-  inherits that approved local elevation, but the action is not remote-triggered and not service-owned. Attack
-  surface closed: the portable launcher no longer starts `taskkill` through current-directory/PATH search.
-  `taskkill.exe` is resolved from `GetSystemDirectoryW`, checked as a file, and used without any ambient fallback.
-  Cleanup remains best-effort because an absent stale broker process is an acceptable state; spawn-resolution
-  errors are reported rather than hidden. Verification closure: `scripts/verify.sh` asserts trusted
-  `taskkill.exe` resolution, `GetSystemDirectoryW` use, absence of bare taskkill launch, reported spawn errors,
-  and this ledger/requirements disposition.
+- **R-S11d-10 — Windows portable RuntimeBroker cleanup command provenance — CLOSED 2026-07-10; IMPLEMENTATION
+  EXCISED BY R-S11e-36 ON 2026-07-19.** The original intermediate closure resolved `taskkill.exe` through
+  `GetSystemDirectoryW`, but a trusted executable did not make machine-wide basename termination an owned action.
+  The portable wrapper does not own installed-service privacy mode, so R-S11e-36 deletes broker copying and cleanup
+  rather than retaining that compatibility surface. No `taskkill`, broker-copy path, or portable basename cleanup
+  remains; current verification forbids all three and this entry records the superseded history without requiring
+  deleted code.
 - **R-S11d-11 — Windows unsupported 32-bit WMIC process-probe deletion — CLOSED 2026-07-10.**
   Platform: unsupported Windows non-x64 source branches. Endpoint/action: process command-line probes used by
   `check_process` and the shared platform process helpers. Boundary: release matrix is Windows x86_64; the
@@ -2419,6 +2410,58 @@ unreachable and a source/test/AST gate prevents reintroduction.
   This slice adds one reviewed lexical `unsafe {` block in the Windows-only PID/liveness wrappers, leaving 851
   blocks across 251 tracked Rust files/73 nonzero files with digest
   `9fca7dae635a8c456a8da3ccfd0d8b150936f2ef1c3d80ce687eb84f5ae450bc`.
+- **R-S11e-37 — Windows residual process-state authority — SOURCE, RUST 1.75 PARSE + EXACT-SOURCE POLICY TEST,
+  AND SOURCE-MUTATION VERIFIED 2026-07-19; NATIVE WINDOWS EVIDENCE REMAINS WITH R-B2.** Platform: non-installed Windows controlled
+  side, plus one unused Windows platform probe. Endpoint/action: magnification-privacy capture switching while UAC
+  is active, portable-client UAC status reporting, and the dormant LogonUI process query. Boundary: host-wide process
+  enumeration text ↔ current RustDesk session capture state. Proven old path: `is_process_consent_running` returned
+  true for any ToolHelp entry whose basename was `consent.exe`, without checking process session or full image path.
+  A real consent process in another RDP session or a same-user executable renamed to that basename could therefore
+  switch this process's capture behavior and reported UAC state. Separately, the module retained an unused generic
+  `get_pids` helper that used substring matching for `LogonUI.exe`. These were cross-session/same-user state confusion
+  and availability/privacy-correctness defects, not process-control authority or a demonstrated privilege escalation.
+
+  Closure: the basename is now only a fixed, exact candidate filter. The receiver first derives its own process
+  session and the no-reparse trusted `GetSystemDirectoryW` path for `consent.exe`. A same-session candidate is opened
+  with `PROCESS_QUERY_LIMITED_INFORMATION`; the RAII process handle remains owned while
+  `QueryFullProcessImageNameW` obtains the Win32 path and the candidate session is observed a second time, and the
+  candidate is admitted only when normalized full path and pinned session both equal the receiver-derived
+  expectations. Wrong-session candidates are ignored before open,
+  wrong-image candidates are logged and ignored, and failure to open/authenticate a current-session candidate is an
+  error so capture fails closed. The process query conveys no termination, token, window, or launch authority. The
+  unused `get_pids`/`is_logon_ui` surface is deleted. `get_process_executable_path` now reuses the retained-handle
+  primitive rather than opening and manually closing a second process handle shape.
+
+  Microsoft's `ProcessIdToSessionId` and `QueryFullProcessImageNameW` contracts are the primary platform basis:
+  https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-processidtosessionid and
+  https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-queryfullprocessimagenamew. The native
+  Windows regression pins case-insensitive exact System32 image equality and rejects a same-basename user path and
+  another session. `scripts/verify.sh` and the semantic workspace verifier bind fixed candidate selection,
+  receiver-session derivation, System32/no-reparse target, retained-handle full-image query, exact policy, obsolete
+  heuristic absence, R-S11w, Appendix C #145, and this ledger entry. Their mutation matrix independently removes or
+  weakens every proof edge and documentation/gate anchor. This slice also reconciles stale R-S11d-3/R-S11d-10 and
+  Appendix C #38/#45 text that still required the broker basename-kill implementation deleted by R-S11e-36.
+
+  Verification: in the existing non-root `rd-devcheck` image with source read-only, network disabled, all
+  capabilities dropped, no-new-privileges, and tmpfs-only outputs, the exact shell gate, Python parse, normal
+  semantic workspace audit, complete independently invoked source-mutation matrix, dependency inventory and its
+  103-check self-test, requirements-hash equality, diff hygiene, and native-codec normal/mutation checks pass.
+  Rust 1.75 parses the complete Windows platform source as edition 2021. A generated harness compiles the exact two
+  production policy functions extracted from the read-only source and passes the three exact path/session cases
+  (1/1). Cached `windows` 0.61.1 source signatures were directly checked for ToolHelp result shapes,
+  query-only `OpenProcess`, `QueryFullProcessImageNameW`, and typed `ERROR_NO_MORE_FILES`. The correctly invoked
+  broad verifier self-test still stops at its pre-existing scratch-replacement fixture (`descriptor-owned directory`
+  missed; retained scratch state) before source mutations; that failure was not weakened or counted, while the full
+  source-mutation stage passes independently. The top-level verifier was not run because it builds a Docker image,
+  creates volumes, and executes root test containers.
+
+  Exact native Windows compilation/execution and final artifact evidence remain with R-B2; no such evidence is
+  inferred from source conformance. The existing image has no Windows Rust standard library and no Rust 1.75
+  rustfmt component, so no Windows type-check, native runtime, or formatter-tool result is claimed. Consolidating the
+  process-image query behind one retained-handle primitive and
+  deleting the unused LogonUI snapshot removes one lexical `unsafe {` block. The current inventory is 850 blocks
+  across 251 tracked Rust files/73 nonzero files with per-file digest
+  `3e6b6efdea22e9dc967553eb7999340a6335efcda2e48f7109ddd6592d1628eb`.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4728,8 +4771,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8441f7aa49ec9375e013776120b6cc452ffbf4882af160bd80f102634197f7e8  requirements.html
+7a237cfab1ffd20cb58caaee98aa515379db0eb6fea0eda0d26cafd1e4137f83  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11v, and Appendix C #144. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11w, and Appendix C #145. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

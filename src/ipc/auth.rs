@@ -2172,6 +2172,37 @@ fn active_uid_fresh() -> Option<u32> {
     None
 }
 
+#[cfg(target_os = "linux")]
+#[inline]
+fn active_uid_cached() -> Option<u32> {
+    let reported_uid_raw = crate::platform::linux::get_active_userid_cached()?;
+    let trimmed = reported_uid_raw.trim();
+    if let Ok(uid) = trimmed.parse::<u32>() {
+        return Some(uid);
+    }
+    if trimmed.is_empty() {
+        log::debug!("R-S11at: cached active uid is empty");
+    } else {
+        log::warn!(
+            "R-S11at: failed to parse cached active uid: '{}'",
+            trimmed
+        );
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+#[inline]
+fn linux_service_peer_requires_fresh_active_uid_lookup(
+    peer_uid: Option<u32>,
+    cached_active_uid: Option<u32>,
+) -> bool {
+    matches!(
+        (peer_uid, cached_active_uid),
+        (Some(peer_uid), Some(active_uid)) if peer_uid != 0 && peer_uid == active_uid
+    )
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[inline]
 pub(crate) fn peer_uid_from_fd(fd: RawFd) -> Option<u32> {
@@ -3273,7 +3304,22 @@ where
         _ => None,
     };
     let peer_uid = peer_uid_from_fd(fd);
+    #[cfg(target_os = "macos")]
     let active_uid = active_uid_fresh();
+    #[cfg(target_os = "linux")]
+    let active_uid = if peer_uid == Some(0) {
+        // Root does not need an active-session lookup to pass the UID gate.
+        None
+    } else {
+        // The service-loop cache is only a negative prefilter. A match merely permits the
+        // bounded caller to perform the fresh lookup that remains the final authority.
+        let cached_active_uid = active_uid_cached();
+        if linux_service_peer_requires_fresh_active_uid_lookup(peer_uid, cached_active_uid) {
+            active_uid_fresh()
+        } else {
+            cached_active_uid
+        }
+    };
     let uid_authorized = peer_uid.is_some_and(|uid| is_allowed_service_peer_uid(uid, active_uid));
     ServiceScopedIpcAuthorization {
         postfix: postfix.to_owned(),
@@ -3814,18 +3860,6 @@ where
         peer_uid_from_fd(self.inner.get_ref().as_raw_fd())
     }
 
-    fn service_authorization_status(&self) -> (bool, Option<u32>, Option<u32>) {
-        let peer_uid = self.peer_uid();
-        // R-S11a(a): authorize against a FRESH active-user lookup, NOT the service-loop cache —
-        // otherwise a just-switched-out user could pass this `_service` UID gate in the cache-lag
-        // window. Matches the `_uinput_*` authorizer's fresh lookup. (The cached active_uid() stays
-        // for stable config-sync routing elsewhere; that is not authorization.) Fail-closed: if the
-        // live lookup yields None, only root (uid 0) is admitted until it resolves.
-        let active_uid = active_uid_fresh();
-        let authorized = peer_uid.is_some_and(|uid| is_allowed_service_peer_uid(uid, active_uid));
-        (authorized, peer_uid, active_uid)
-    }
-
     pub(crate) fn peer_pid(&self) -> Option<u32> {
         peer_pid_from_fd(self.inner.get_ref().as_raw_fd())
     }
@@ -3980,6 +4014,31 @@ mod tests {
         assert!(super::is_allowed_service_peer_uid(501, Some(501)));
         assert!(!super::is_allowed_service_peer_uid(502, Some(501)));
         assert!(!super::is_allowed_service_peer_uid(501, None));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn r_s11e60_linux_service_active_uid_lookup_prefilter_is_negative_only() {
+        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
+            Some(0),
+            Some(501),
+        ));
+        assert!(super::linux_service_peer_requires_fresh_active_uid_lookup(
+            Some(501),
+            Some(501),
+        ));
+        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
+            Some(502),
+            Some(501),
+        ));
+        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
+            Some(501),
+            None,
+        ));
+        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
+            None,
+            Some(501),
+        ));
     }
 
     #[test]

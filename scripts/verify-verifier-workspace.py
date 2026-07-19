@@ -8838,6 +8838,175 @@ def validate_desktop_ipc_retained_owner_contract(sources):
     )
 
 
+def validate_linux_service_admission_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    validator = sources["linux_service_admission_validator"]
+    ipc_source = sources["ipc_source"]
+    auth_source = sources["ipc_auth_source"]
+    linux_source = sources["linux_source"]
+
+    heading = (
+        'echo "== (3b-iii-d9cj) Linux protected-service bounded identity admission '
+        '(R-S11at/R-S11e-60) =="'
+    )
+    gate = extract_between(
+        verify,
+        heading,
+        "\n# (3b-iii-d9d)",
+        "Linux protected-service bounded admission source gate",
+    )
+    for text, label in (
+        ("verify-linux-service-admission.py --repo .", "focused semantic validator"),
+        ("verify-linux-service-admission.py --repo . --self-test", "focused mutation suite"),
+        ("cargo test --offline --locked --lib --features linux-pkg-config r_s11e60_", "focused Rust regression"),
+    ):
+        require_text(gate, text, label)
+    for text, label in (
+        ("def validate(sources", "focused validator semantic entry"),
+        ("def run_mutations(sources", "focused validator mutation entry"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "focused validator mutation inventory"),
+        ("mutation was not rejected", "focused validator mutation rejection"),
+    ):
+        require_text(validator, text, label)
+
+    cached_accessor = extract_between(
+        linux_source,
+        "pub fn get_active_userid_cached() -> Option<String> {",
+        "\n#[inline]\n/// Returns the active uid from a fresh seat0 lookup",
+        "Linux cached-only active UID accessor",
+    )
+    require_text(
+        cached_accessor,
+        "get_active_user_id_name_from_cache().map(|(uid, _)| uid)",
+        "Linux cached-only active UID read",
+    )
+    for forbidden in ("get_values_of_seat0", "get_active_userid_fresh", "Command::"):
+        require_absent(cached_accessor, forbidden, "live lookup in cached-only accessor")
+
+    prefilter = extract_between(
+        auth_source,
+        "fn linux_service_peer_requires_fresh_active_uid_lookup(",
+        '\n#[cfg(any(target_os = "linux", target_os = "macos"))]\n#[inline]\npub(crate) fn peer_uid_from_fd',
+        "Linux active UID negative prefilter",
+    )
+    for text, label in (
+        ("(peer_uid, cached_active_uid)", "peer/cache tuple proof"),
+        ("peer_uid != 0", "root fresh-lookup exclusion"),
+        ("peer_uid == active_uid", "cached UID equality prefilter"),
+    ):
+        require_text(prefilter, text, label)
+    require_text(
+        prefilter,
+        "(Some(peer_uid), Some(active_uid)) if peer_uid != 0 && peer_uid == active_uid",
+        "exact non-root cached-UID match prefilter",
+    )
+
+    snapshot = extract_between(
+        auth_source,
+        "pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream<T>(",
+        '\n#[cfg(any(target_os = "linux", target_os = "macos"))]\npub(crate) fn authorize_service_scoped_ipc_authorization_snapshot',
+        "Linux service-scoped authorization snapshot",
+    )
+    require_order(
+        snapshot,
+        (
+            "let peer_uid = peer_uid_from_fd(fd);",
+            '#[cfg(target_os = "macos")]\n    let active_uid = active_uid_fresh();',
+            '#[cfg(target_os = "linux")]\n    let active_uid = if peer_uid == Some(0) {',
+            "let cached_active_uid = active_uid_cached();",
+            "linux_service_peer_requires_fresh_active_uid_lookup(peer_uid, cached_active_uid)",
+            "active_uid_fresh()",
+            "cached_active_uid",
+            "is_allowed_service_peer_uid(uid, active_uid)",
+        ),
+        "root/cache/fresh/final Linux authorization order",
+    )
+    require_text(
+        snapshot,
+        "if linux_service_peer_requires_fresh_active_uid_lookup(peer_uid, cached_active_uid) {\n            active_uid_fresh()\n        } else {\n            cached_active_uid\n        }",
+        "fresh lookup only after cached non-root match",
+    )
+    require_absent(
+        auth_source,
+        "fn service_authorization_status(&self)",
+        "unowned alternate fresh-lookup path",
+    )
+    require_text(
+        auth_source,
+        "fn r_s11e60_linux_service_active_uid_lookup_prefilter_is_negative_only()",
+        "focused Rust prefilter regression",
+    )
+
+    worker = extract_between(
+        ipc_source,
+        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc)",
+        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+        "protected service IPC worker",
+    )
+    password = extract_between(
+        worker,
+        "result = password_incoming.next() => {",
+        "\n            result = incoming.next() => {",
+        "protected password admission branch",
+    )
+    require_order(
+        password,
+        (
+            "try_acquire_service_password_ipc_transaction_slot()",
+            "service_scoped_ipc_authorization_snapshot_from_stream(",
+            "peer_process_identity_from_stream(",
+            "handle_sensitive_linux_service_ipc_transaction(\n                        stream,\n                        identity,\n                        permit,",
+        ),
+        "password permit before identity work and retained dispatch",
+    )
+    generic = extract_between(
+        worker,
+        "result = incoming.next() => {",
+        '\n        }\n    }\n    #[cfg(target_os = "macos")]',
+        "protected generic admission branch",
+    )
+    require_order(
+        generic,
+        (
+            "Connection::new_protected_service(stream)",
+            "try_acquire_service_ipc_transaction_slot()",
+            "authorize_service_scoped_ipc_connection(&stream, postfix)",
+            "transactions.spawn(async move",
+            "let _permit = permit;",
+            "handle_service_ipc_transaction(stream, &postfix).await;",
+        ),
+        "generic permit before identity work and retained dispatch",
+    )
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11at</span>',
+        '\n\n<h2 id="excise">',
+        "Linux protected-service bounded admission requirement",
+    )
+    for text, label in (
+        ("acquire its endpoint's existing fixed transaction permit before any active-session or executable-identity work", "permit-before-identity requirement"),
+        ("cache is a negative-only availability prefilter", "negative-only cache requirement"),
+        ("existing fresh seat lookup", "fresh final-authority requirement"),
+        ("just-switched-out user still fails closed", "stale cache safety requirement"),
+        ("cached-only accessor", "no-live-fallback requirement"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        ("Linux protected-service identity work is permit-owned and cache-prefiltered", "R-S11at title"),
+        ("<tr><td>168</td>", "Linux protected-service Appendix C row"),
+        ("World-connectable Linux protected sockets performed root active-session work before bounded admission", "Linux protected-service Appendix C disposition"),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-60 — Linux protected-service admission owns active-session identity work",
+        "Linux protected-service admission hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -9699,6 +9868,7 @@ def validate_sources(sources):
     validate_shutdown_finalizer_ownership_contract(sources)
     validate_protected_service_outcome_ownership_contract(sources)
     validate_desktop_ipc_retained_owner_contract(sources)
+    validate_linux_service_admission_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -17011,6 +17181,90 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
+            'echo "== (3b-iii-d9cj) Linux protected-service bounded identity admission (R-S11at/R-S11e-60) =="',
+            'echo "== (3b-iii-d9cj) Linux protected-service unbounded identity admission (R-S11at/R-S11e-60) =="',
+            "Linux protected-service bounded admission source gate",
+        ),
+        (
+            "linux_service_admission_validator",
+            "def run_mutations(sources",
+            "def skip_mutations(sources",
+            "focused validator mutation entry",
+        ),
+        (
+            "linux_source",
+            "get_active_user_id_name_from_cache().map(|(uid, _)| uid)",
+            "Some(get_values_of_seat0(&[1])[0].clone())",
+            "Linux cached-only active UID read",
+        ),
+        (
+            "ipc_auth_source",
+            "peer_uid != 0 && peer_uid == active_uid",
+            "peer_uid == active_uid",
+            "root fresh-lookup exclusion",
+        ),
+        (
+            "ipc_auth_source",
+            "peer_uid != 0 && peer_uid == active_uid",
+            "peer_uid != 0 || peer_uid == active_uid",
+            "exact non-root cached-UID match prefilter",
+        ),
+        (
+            "ipc_auth_source",
+            "let active_uid = if peer_uid == Some(0) {",
+            "let active_uid = if peer_uid == Some(u32::MAX) {",
+            "root/cache/fresh/final Linux authorization order",
+        ),
+        (
+            "ipc_auth_source",
+            "        } else {\n            cached_active_uid\n        }\n    };",
+            "        } else {\n            active_uid_fresh()\n        }\n    };",
+            "root/cache/fresh/final Linux authorization order",
+        ),
+        (
+            "ipc_source",
+            "                let Some(permit) = try_acquire_service_password_ipc_transaction_slot() else {\n                    continue;\n                };\n                #[cfg(target_os = \"linux\")]",
+            "                #[cfg(target_os = \"linux\")]",
+            "password permit before identity work and retained dispatch",
+        ),
+        (
+            "ipc_source",
+            "                let Some(permit) = try_acquire_service_ipc_transaction_slot() else {\n                    continue;\n                };\n                #[cfg(target_os = \"linux\")]",
+            "                #[cfg(target_os = \"linux\")]",
+            "generic permit before identity work and retained dispatch",
+        ),
+        (
+            "ipc_source",
+            "                    let _permit = permit;",
+            "                    drop(permit);",
+            "generic permit before identity work and retained dispatch",
+        ),
+        (
+            "ipc_auth_source",
+            "fn r_s11e60_linux_service_active_uid_lookup_prefilter_is_negative_only()",
+            "fn linux_service_prefilter_is_untested()",
+            "focused Rust prefilter regression",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11at</span>',
+            '<span class="id">R-S11az</span>',
+            "Linux protected-service bounded admission requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>168</td>",
+            "<tr><td>9168</td>",
+            "Linux protected-service Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-60 — Linux protected-service admission owns active-session identity work",
+            "R-S11e-60 — unbounded Linux identity admission",
+            "Linux protected-service admission hardening ledger",
+        ),
+        (
+            "verify",
             'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
             'echo "== (3b-iii-d9c7) Linux account-name service-child compatibility (R-S11ah/R-S11e-48) =="',
             "Linux selected-session principal source gate",
@@ -19952,6 +20206,10 @@ def main():
             "desktop_ipc_validator": (
                 repo / "scripts/verify-desktop-ipc-lifecycle.py"
             ).read_text(encoding="utf-8"),
+            "linux_service_admission_validator": (
+                repo / "scripts/verify-linux-service-admission.py"
+            ).read_text(encoding="utf-8"),
+            "ipc_auth_source": (repo / "src/ipc/auth.rs").read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
             "closure": (repo / "scripts/verify-private-tree-closure.py").read_text(encoding="utf-8"),
             "finalizer": (repo / "scripts/finalize-release-set.py").read_text(encoding="utf-8"),

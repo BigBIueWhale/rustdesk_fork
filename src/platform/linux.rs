@@ -2479,6 +2479,12 @@ pub fn get_active_userid() -> String {
 }
 
 #[inline]
+/// Returns only the service loop's cached active uid, without performing a seat0 lookup.
+pub fn get_active_userid_cached() -> Option<String> {
+    get_active_user_id_name_from_cache().map(|(uid, _)| uid)
+}
+
+#[inline]
 /// Returns the active uid from a fresh seat0 lookup, bypassing the service-loop cache.
 pub fn get_active_userid_fresh() -> String {
     get_values_of_seat0(&[1])[0].clone()

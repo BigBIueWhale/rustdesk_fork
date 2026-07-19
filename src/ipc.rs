@@ -2955,6 +2955,9 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                         continue;
                     }
                 };
+                let Some(permit) = try_acquire_service_password_ipc_transaction_slot() else {
+                    continue;
+                };
                 #[cfg(target_os = "linux")]
                 if !ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(
                     ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
@@ -2964,7 +2967,6 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                 ) {
                     continue;
                 }
-                let Some(permit) = try_acquire_service_password_ipc_transaction_slot() else { continue; };
                 #[cfg(target_os = "linux")]
                 {
                     let identity = match peer_process_identity_from_stream(
@@ -3021,11 +3023,13 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     }
                 };
                 let stream = Connection::new_protected_service(stream);
+                let Some(permit) = try_acquire_service_ipc_transaction_slot() else {
+                    continue;
+                };
                 #[cfg(target_os = "linux")]
                 if !authorize_service_scoped_ipc_connection(&stream, postfix) {
                     continue;
                 }
-                let Some(permit) = try_acquire_service_ipc_transaction_slot() else { continue; };
                 #[cfg(target_os = "macos")]
                 let Some(authorization_permit) = try_acquire_macos_service_ipc_authorization_slot() else { continue; };
                 let postfix = postfix.to_owned();

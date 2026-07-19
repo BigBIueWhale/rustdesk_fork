@@ -3982,7 +3982,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   deliberate source/normative mutations. The repository-wide semantic verifier passed its positive run and its
   complete in-memory source-mutation inventory, including the new R-S11e-59 mutations. Bash/Python syntax, the
   shared and Apple gate bindings, synchronized requirements SHA-256
-  `4b81759790d2e8c387381b504d9028e8e2c0659c6d1d686277bce7680456c67b`, native-codec watch normal/self-test,
+  `8b7fb24f98ba3fb2d92da7aac02f7aeb2b862706ee4f28057d1facb958889695`, native-codec watch normal/self-test,
   and dependency inventory normal plus all 103 mutations passed (909 Cargo packages; 855 lexical `unsafe {`
   blocks across 251 tracked Rust files). Final diff hygiene passed. The repository-wide executable fixture self-test
   was attempted only in an isolated no-network container; its managed-scope fixtures require the real current-user
@@ -3990,6 +3990,46 @@ unreachable and a source/test/AST gate prevents reintroduction.
   container-local socket was correctly rejected, and the host user bus was deliberately not mounted, so that
   executable fixture is unavailable and is not claimed. Native init/launchd/SCM failure injection and exact
   artifacts remain R-R2/R-B2; external expert audit remains R-V3.
+- **R-S11e-60 — Linux protected-service admission owns active-session identity work — SOURCE, PINNED LINUX
+  MAIN-CRATE COMPILE, FOCUSED/REPOSITORY SEMANTIC MUTATIONS, AND SYNCHRONIZATION VERIFIED;
+  NATIVE INSTALLED-SERVICE/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platform: installed Linux root supervisor.
+  Endpoints: world-connectable generic `_service` and raw `_service_password` Unix sockets. Boundary: arbitrary
+  local socket admission ↔ root active-session/executable identity work and the fixed protected-transaction budgets.
+
+  Proven old path and responsibility: after accepting either socket, `run_service_ipc` called the Linux
+  service-scoped authorization snapshot before `try_acquire_service_ipc_transaction_slot` or
+  `try_acquire_service_password_ipc_transaction_slot`. The snapshot resolved kernel peer credentials and then
+  unconditionally called `active_uid_fresh`; on Linux that bypasses the service-loop cache and synchronously runs
+  the fixed `loginctl`/login1 lookup as root. Only afterward did the branch acquire its four-slot semaphore and
+  perform the executable/action-specific proof. Because the sockets deliberately admit local connection attempts,
+  an arbitrary local principal could repeatedly induce root subprocess/D-Bus identity work outside either budget.
+  `git blame` traces both orderings to the privileged-IPC hardening introduction (`57bcb529`), so this slice closes
+  an availability edge in that implementation rather than an inherited host/runtime change. This was a concrete
+  local resource-exhaustion/service-availability defect, not an authorization bypass, privilege escalation, remote
+  trigger, public network listener, host compromise, or evidence that any service was altered outside this source
+  tree.
+
+  Authority model and source closure: each branch now acquires its existing fixed transaction permit immediately
+  after accept (and generic connection wrapping) and before active-session or executable-identity work. The exact
+  permit is transferred into the tracked transaction and remains held through authorization/dispatch; saturation
+  rejects before identity work. UID 0 skips the irrelevant active-session lookup. For non-root peers, the root
+  supervisor's already-maintained active-UID cache is exposed through a cached-only accessor with no live fallback.
+  A missing or nonmatching cache rejects without `loginctl`. A match is negative-prefilter passage only and still
+  invokes the existing fresh lookup as the final authority: stale just-switched-out users fail the fresh comparison,
+  while just-switched-in users can only fail closed until the service loop refreshes the cache. The unused alternate
+  `ConnectionTmpl::service_authorization_status` fresh-lookup path is deleted. macOS retains its independent
+  console-owner/audit-token/code-signature plus authorization- and transaction-permit model unchanged.
+
+  Proof and execution boundary: R-S11at and Appendix C #168 bind the receiver model. The focused Rust regression
+  executes root, matching, nonmatching, missing-peer, and missing-cache prefilter cases. The standalone semantic
+  validator binds both permit-before-authorization orders, cached-only access, root short-circuit, fresh final
+  authority, exact permit transfer/lifetime, stale-path deletion, normative/ledger/gate synchronization, and rejects
+  all 15 deliberate mutations. The repository-wide verifier independently owns the same source/normative contract
+  and mutation anchors. A pinned Rust 1.75 offline main-crate check and the focused test passed under the existing
+  constrained UID-1000 container policy; no application binary, listener, service, socket, host RustDesk state,
+  firewall, or host network state was executed, inspected, or changed. Native installed-service contention,
+  exact-commit artifact/reproducibility evidence, and external expert audit remain R-R2/R-B2/R-V3 and are not
+  claimed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6335,8 +6375,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4b81759790d2e8c387381b504d9028e8e2c0659c6d1d686277bce7680456c67b  requirements.html
+8b7fb24f98ba3fb2d92da7aac02f7aeb2b862706ee4f28057d1facb958889695  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11as, and Appendix C #167. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11at, and Appendix C #168. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

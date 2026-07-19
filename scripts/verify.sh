@@ -3537,6 +3537,110 @@ grep -qF 'R-S11e-47 — macOS numeric service-principal authority' HARDENING_STA
 if [ -n "$r_s11e47" ]; then echo "  FAIL R-S11e-47 macOS numeric service-principal authority:$r_s11e47"; rc=1; else
   echo "  ok  R-S11e-47 macOS source binds the protected service listener to numeric effective UID 0 and propagates rejection at both entries; native Apple evidence remains pending R-R2/R-B2"; fi
 
+# (3b-iii-d9c7) R-S11ah/R-S11e-48: the Linux root supervisor
+# derives service-child privilege from the selected canonical numeric UID.
+# Callers cannot select the launcher's root/no-drop path by passing an enum.
+echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e48_ --color never
+r_s11e48=
+linux_selected_principal=$(awk '/fn selected_service_child_principal\(/,/^}/' src/platform/linux.rs)
+linux_child_credentials=$(awk '/impl ServiceChildCredentials/,/^}/' src/platform/linux.rs)
+linux_child_launcher=$(awk '/fn try_start_server_\(/,/^}/' src/platform/linux.rs)
+linux_child_pre_exec=$(awk '/fn configure_service_child_pre_exec\(/,/^}/' src/platform/linux.rs)
+linux_start_wrapper=$(awk '/fn start_server\(/,/^}/' src/platform/linux.rs)
+linux_service_supervisor=$(awk '/pub fn start_os_service\(\) -> ResultType/,/    terminate_child\(&mut user_server/' src/platform/linux.rs)
+linux_selected_principal_test=$(awk '/fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid\(\)/,/^    }/' src/platform/linux.rs)
+for binding in \
+  'if desktop.uid.is_empty() && desktop.username.is_empty() {' \
+  'return Ok(None);' \
+  'if desktop.uid.is_empty() || desktop.username.is_empty() {' \
+  '.parse::<hbb_common::libc::uid_t>()' \
+  'if uid.to_string() != desktop.uid {' \
+  'if uid == 0 || desktop.is_login_wayland() {' \
+  'Ok(Some(ServiceChildPrincipal::RootService))' \
+  'Ok(Some(ServiceChildPrincipal::ActiveDesktopUser))'; do
+  grep -qF "$binding" <<<"$linux_selected_principal" || r_s11e48="$r_s11e48 selected-principal-derivation-missing"
+done
+if grep -qF 'desktop.username == "root"' src/platform/linux.rs; then
+  r_s11e48="$r_s11e48 account-name-root-branch-present"
+fi
+for binding in \
+  'fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime)' \
+  'let principal = selected_service_child_principal(desktop)?' \
+  'Cannot start a service child without a selected desktop'; do
+  grep -qF "$binding" <<<"$linux_child_launcher" || r_s11e48="$r_s11e48 launcher-owned-principal-missing"
+done
+launcher_header=$(grep -F 'fn try_start_server_' <<<"$linux_child_launcher" | head -n1)
+if grep -qF 'principal:' <<<"$launcher_header"; then
+  r_s11e48="$r_s11e48 caller-selected-launcher-principal-present"
+fi
+for binding in \
+  'fn start_server(' \
+  'match try_start_server_(desktop, runtime) {'; do
+  grep -qF "$binding" <<<"$linux_start_wrapper" || r_s11e48="$r_s11e48 start-wrapper-principal-derivation-missing"
+done
+if grep -qF 'principal: ServiceChildPrincipal' <<<"$linux_start_wrapper"; then
+  r_s11e48="$r_s11e48 caller-selected-wrapper-principal-present"
+fi
+for binding in \
+  'match selected_service_child_principal(&desktop)? {' \
+  'Some(ServiceChildPrincipal::RootService) => {' \
+  'Some(ServiceChildPrincipal::ActiveDesktopUser) => {' \
+  'start_server(&desktop, &mut server, &runtime);' \
+  'start_server(&desktop, &mut user_server, &runtime);' \
+  'None => {'; do
+  grep -qF "$binding" <<<"$linux_service_supervisor" || r_s11e48="$r_s11e48 supervisor-principal-match-missing"
+done
+for binding in \
+  'if expected_uid == 0 || username.is_empty() {' \
+  'if user.uid() != expected_uid || user.name() != OsStr::new(username) {' \
+  'hbb_common::users::get_user_groups(username, gid)'; do
+  grep -qF "$binding" <<<"$linux_child_credentials" || r_s11e48="$r_s11e48 active-user-credential-resolution-missing"
+done
+for binding in \
+  'hbb_common::libc::SYS_setgroups' \
+  'hbb_common::libc::SYS_setresgid' \
+  'hbb_common::libc::SYS_setresuid' \
+  'hbb_common::libc::PR_SET_NO_NEW_PRIVS'; do
+  grep -qF "$binding" <<<"$linux_child_pre_exec" || r_s11e48="$r_s11e48 active-user-credential-drop-binding-missing"
+done
+setgroups_line=$(grep -nF 'hbb_common::libc::SYS_setgroups' <<<"$linux_child_pre_exec" | cut -d: -f1 || true)
+setresgid_line=$(grep -nF 'hbb_common::libc::SYS_setresgid' <<<"$linux_child_pre_exec" | cut -d: -f1 || true)
+setresuid_line=$(grep -nF 'hbb_common::libc::SYS_setresuid' <<<"$linux_child_pre_exec" | cut -d: -f1 || true)
+no_new_privs_line=$(grep -nF 'hbb_common::libc::PR_SET_NO_NEW_PRIVS' <<<"$linux_child_pre_exec" | cut -d: -f1 || true)
+if [ -z "$setgroups_line" ] || [ -z "$setresgid_line" ] || [ -z "$setresuid_line" ] || [ -z "$no_new_privs_line" ] \
+  || [ "$setgroups_line" -ge "$setresgid_line" ] || [ "$setresgid_line" -ge "$setresuid_line" ] \
+  || [ "$setresuid_line" -ge "$no_new_privs_line" ]; then
+  r_s11e48="$r_s11e48 active-user-credential-drop-order-invalid"
+fi
+for binding in \
+  'fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid()' \
+  'username: "renamed-admin".to_owned()' \
+  'username: "root".to_owned()' \
+  'Some(ServiceChildPrincipal::ActiveDesktopUser)' \
+  'username: "gdm".to_owned()' \
+  'protocol: DISPLAY_SERVER_WAYLAND.to_owned()' \
+  'selected_service_child_principal(&Desktop::default()).unwrap()' \
+  'let noncanonical_uid = Desktop {' \
+  'uid: "01000".to_owned()' \
+  'let malformed_uid = Desktop {' \
+  'uid: "not-a-uid".to_owned()' \
+  'let missing_username = Desktop {' \
+  'let missing_uid = Desktop {' \
+  'assert!(selected_service_child_principal(&invalid).is_err());'; do
+  grep -qF "$binding" <<<"$linux_selected_principal_test" || r_s11e48="$r_s11e48 focused-regression-missing"
+done
+grep -qF '<span class="id">R-S11ah</span>' requirements.html || r_s11e48="$r_s11e48 normative-requirement-missing"
+grep -qF 'Linux service-child principal selection is numeric, receiver-owned, and fail-closed' requirements.html \
+  || r_s11e48="$r_s11e48 normative-principal-clause-missing"
+grep -qF '<tr><td>156</td>' requirements.html || r_s11e48="$r_s11e48 appendix-row-missing"
+grep -qF 'Linux service-child root authority depended on the selected account name' requirements.html \
+  || r_s11e48="$r_s11e48 appendix-disposition-missing"
+grep -qF 'R-S11e-48 — Linux numeric selected-session service-child authority' HARDENING_STATUS.md \
+  || r_s11e48="$r_s11e48 hardening-ledger-missing"
+if [ -n "$r_s11e48" ]; then echo "  FAIL R-S11e-48 Linux numeric selected-session service-child authority:$r_s11e48"; rc=1; else
+  echo "  ok  R-S11e-48 Linux service-child root privilege is derived from the selected canonical UID inside both supervisor and launcher; account-name root authority is absent"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

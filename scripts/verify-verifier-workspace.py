@@ -7223,7 +7223,7 @@ def validate_macos_service_principal_contract(sources):
     principal_requirement = extract_between(
         requirements,
         '<div class="req"><span class="id">R-S11ag</span>',
-        '\n\n<h2 id="excise">',
+        '\n\n<div class="req"><span class="id">R-S11ah</span>',
         "macOS service-principal requirement",
     )
     for text, label in (
@@ -7258,6 +7258,234 @@ def validate_macos_service_principal_contract(sources):
     )
 
 
+def validate_linux_service_child_principal_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    linux_source = sources["linux_source"]
+
+    require_text(
+        verify,
+        'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
+        "Linux selected-session principal source gate",
+    )
+
+    principal_policy = extract_between(
+        linux_source,
+        "fn selected_service_child_principal(",
+        "\nimpl ServiceChildCredentials",
+        "Linux selected-session service-child principal policy",
+    )
+    for text, label in (
+        (
+            "if desktop.uid.is_empty() && desktop.username.is_empty() {",
+            "empty selected-desktop state",
+        ),
+        ("return Ok(None);", "no-child result"),
+        (
+            "if desktop.uid.is_empty() || desktop.username.is_empty() {",
+            "partial identity rejection",
+        ),
+        (
+            ".parse::<hbb_common::libc::uid_t>()",
+            "numeric selected-session UID parser",
+        ),
+        ("if uid.to_string() != desktop.uid {", "canonical decimal UID check"),
+        (
+            "if uid == 0 || desktop.is_login_wayland() {",
+            "numeric root and selected login-screen policy",
+        ),
+        (
+            "Ok(Some(ServiceChildPrincipal::RootService))",
+            "root-service result",
+        ),
+        (
+            "Ok(Some(ServiceChildPrincipal::ActiveDesktopUser))",
+            "active-user result",
+        ),
+    ):
+        require_text(principal_policy, text, label)
+    if 'desktop.username == "root"' in linux_source:
+        raise VerificationError("Linux service-child privilege still uses account-name root authority")
+
+    launcher = extract_between(
+        linux_source,
+        "fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime)",
+        "\nfn stop_unregistered_service_child",
+        "Linux service-child launcher principal boundary",
+    )
+    require_order(
+        launcher,
+        (
+            "fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime)",
+            "let principal = selected_service_child_principal(desktop)?",
+            'Cannot start a service child without a selected desktop',
+            "let credentials = match principal {",
+        ),
+        "Linux launcher-owned principal derivation",
+    )
+    launcher_header = launcher.split("{", 1)[0]
+    if "principal:" in launcher_header:
+        raise VerificationError("Linux service-child launcher accepts a caller-selected principal")
+
+    start_wrapper = extract_between(
+        linux_source,
+        "fn start_server(",
+        "\nfn child_pid(",
+        "Linux service-child start wrapper",
+    )
+    require_text(
+        start_wrapper,
+        "match try_start_server_(desktop, runtime) {",
+        "principal-free launcher call",
+    )
+    if "principal: ServiceChildPrincipal" in start_wrapper:
+        raise VerificationError("Linux service-child wrapper accepts a caller-selected principal")
+
+    supervisor = extract_between(
+        linux_source,
+        "pub fn start_os_service() -> ResultType<()> {",
+        "\n#[inline]\n/// Returns the cached active",
+        "Linux service supervisor principal dispatch",
+    )
+    for text, label in (
+        (
+            "match selected_service_child_principal(&desktop)? {",
+            "receiver-owned principal match",
+        ),
+        (
+            "Some(ServiceChildPrincipal::RootService) => {",
+            "root child branch",
+        ),
+        (
+            "Some(ServiceChildPrincipal::ActiveDesktopUser) => {",
+            "active-user child branch",
+        ),
+        ("start_server(&desktop, &mut server, &runtime);", "root owned-child call"),
+        (
+            "start_server(&desktop, &mut user_server, &runtime);",
+            "active-user owned-child call",
+        ),
+        ("None => {", "no-selected-desktop branch"),
+    ):
+        require_text(supervisor, text, label)
+
+    credentials = extract_between(
+        linux_source,
+        "impl ServiceChildCredentials {",
+        "\n// Linux service-child authority",
+        "Linux active-user credential resolution",
+    )
+    for text, label in (
+        (
+            "if expected_uid == 0 || username.is_empty() {",
+            "active-user UID-zero refusal",
+        ),
+        (
+            "if user.uid() != expected_uid || user.name() != OsStr::new(username) {",
+            "passwd UID/name binding",
+        ),
+        (
+            "hbb_common::users::get_user_groups(username, gid)",
+            "supplementary-group resolution",
+        ),
+    ):
+        require_text(credentials, text, label)
+
+    credential_drop = extract_between(
+        linux_source,
+        "fn configure_service_child_pre_exec(",
+        "\nfn insert_nonempty_env(",
+        "Linux active-user credential-drop ordering",
+    )
+    require_order(
+        credential_drop,
+        (
+            "hbb_common::libc::SYS_setgroups",
+            "hbb_common::libc::SYS_setresgid",
+            "hbb_common::libc::SYS_setresuid",
+            "hbb_common::libc::PR_SET_NO_NEW_PRIVS",
+        ),
+        "Linux active-user credential-drop ordering",
+    )
+
+    principal_test = extract_between(
+        linux_source,
+        "fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid()",
+        "\n    }",
+        "Linux selected-session principal regression",
+    )
+    for text, label in (
+        ('username: "renamed-admin".to_owned()', "renamed UID-zero fixture"),
+        ('username: "root".to_owned()', "misleading root-name fixture"),
+        (
+            "Some(ServiceChildPrincipal::ActiveDesktopUser)",
+            "misleading-name non-root assertion",
+        ),
+        ('username: "gdm".to_owned()', "login-screen fixture"),
+        (
+            "protocol: DISPLAY_SERVER_WAYLAND.to_owned()",
+            "Wayland login-screen fixture",
+        ),
+        (
+            "selected_service_child_principal(&Desktop::default()).unwrap()",
+            "empty-selection assertion",
+        ),
+        ("let noncanonical_uid = Desktop {", "noncanonical UID fixture"),
+        ('uid: "01000".to_owned()', "noncanonical UID fixture"),
+        ("let malformed_uid = Desktop {", "malformed UID fixture"),
+        ('uid: "not-a-uid".to_owned()', "nondecimal UID fixture"),
+        ("let missing_username = Desktop {", "missing-username fixture"),
+        ("let missing_uid = Desktop {", "missing-UID fixture"),
+        (
+            "assert!(selected_service_child_principal(&invalid).is_err());",
+            "invalid-identity rejection assertion",
+        ),
+    ):
+        require_text(principal_test, text, label)
+
+    principal_requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11ah</span>',
+        '\n\n<h2 id="excise">',
+        "Linux selected-session principal requirement",
+    )
+    for text, label in (
+        (
+            "Account-name text therefore <span class=\"kw\">MUST NOT</span> classify",
+            "account-name authority prohibition",
+        ),
+        (
+            "UID 0 selects <code>RootService</code>",
+            "numeric root classification clause",
+        ),
+        (
+            "MUST NOT</span> accept a caller-selected principal argument",
+            "launcher-owned principal clause",
+        ),
+    ):
+        require_text(principal_requirement, text, label)
+
+    for text, label in (
+        ('<span class="id">R-S11ah</span>', "Linux principal requirement"),
+        (
+            "Linux service-child principal selection is numeric, receiver-owned, and fail-closed",
+            "Linux principal authority clause",
+        ),
+        ("<tr><td>156</td>", "Linux principal Appendix C row"),
+        (
+            "Linux service-child root authority depended on the selected account name",
+            "Linux principal Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-48 — Linux numeric selected-session service-child authority",
+        "Linux selected-session principal hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -7272,6 +7500,7 @@ def validate_sources(sources):
     validate_windows_helper_launch_contract(sources)
     validate_cross_platform_user_helper_contract(sources)
     validate_macos_service_principal_contract(sources)
+    validate_linux_service_child_principal_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -13515,6 +13744,174 @@ def run_source_mutations(sources):
             "assert!(!effective_uid_is_root(501));",
             "assert!(effective_uid_is_root(501));",
             "macOS ordinary-UID assertion",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
+            'echo "== (3b-iii-d9c7) Linux account-name service-child compatibility (R-S11ah/R-S11e-48) =="',
+            "Linux selected-session principal source gate",
+        ),
+        (
+            "requirements",
+            '<h2 id="excise"><span class="n">8.</span> Paths to EXCISE',
+            '<h2 id="excise-disabled"><span class="n">8.</span> Paths to EXCISE',
+            "Linux selected-session principal requirement",
+        ),
+        (
+            "requirements",
+            "Linux service-child principal selection is numeric, receiver-owned, and fail-closed",
+            "Linux service-child principal selection follows account-name compatibility",
+            "Linux principal authority clause",
+        ),
+        (
+            "requirements",
+            "Account-name text therefore <span class=\"kw\">MUST NOT</span> classify",
+            "Account-name text therefore <span class=\"kw\">MAY</span> classify",
+            "account-name authority prohibition",
+        ),
+        (
+            "requirements",
+            "UID 0 selects <code>RootService</code>",
+            "The name root selects <code>RootService</code>",
+            "numeric root classification clause",
+        ),
+        (
+            "requirements",
+            "MUST NOT</span> accept a caller-selected principal argument",
+            "MAY</span> accept a caller-selected principal argument",
+            "launcher-owned principal clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>156</td>",
+            "<tr><td>9156</td>",
+            "Linux principal Appendix C row",
+        ),
+        (
+            "requirements",
+            "Linux service-child root authority depended on the selected account name",
+            "Linux service-child root authority was always numeric",
+            "Linux principal Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-48 — Linux numeric selected-session service-child authority",
+            "R-S11e-48 — Linux account-name selected-session compatibility",
+            "Linux selected-session principal hardening ledger",
+        ),
+        (
+            "linux_source",
+            "if desktop.uid.is_empty() && desktop.username.is_empty() {",
+            "if desktop.uid.is_empty() || desktop.username.is_empty() {",
+            "empty selected-desktop state",
+        ),
+        (
+            "linux_source",
+            "if desktop.uid.is_empty() || desktop.username.is_empty() {\n        bail!(\"Selected desktop has an incomplete user identity\");",
+            "if desktop.uid.is_empty() && desktop.username.is_empty() {\n        bail!(\"Selected desktop has an incomplete user identity\");",
+            "partial identity rejection",
+        ),
+        (
+            "linux_source",
+            ".parse::<hbb_common::libc::uid_t>()\n        .map_err(|err| anyhow!(\"Invalid selected desktop uid {}: {err}\", desktop.uid))?;",
+            ".parse::<u16>()\n        .map_err(|err| anyhow!(\"Invalid selected desktop uid {}: {err}\", desktop.uid))?;",
+            "numeric selected-session UID parser",
+        ),
+        (
+            "linux_source",
+            "if uid.to_string() != desktop.uid {",
+            "if false {",
+            "canonical decimal UID check",
+        ),
+        (
+            "linux_source",
+            "if uid == 0 || desktop.is_login_wayland() {",
+            "if desktop.username == \"root\" || desktop.is_login_wayland() {",
+            "numeric root and selected login-screen policy",
+        ),
+        (
+            "linux_source",
+            "if uid == 0 || desktop.is_login_wayland() {",
+            "if uid == 0 {",
+            "numeric root and selected login-screen policy",
+        ),
+        (
+            "linux_source",
+            "if uid == 0 || desktop.is_login_wayland() {\n        Ok(Some(ServiceChildPrincipal::RootService))",
+            "if uid == 0 || desktop.is_login_wayland() {\n        Ok(Some(ServiceChildPrincipal::ActiveDesktopUser))",
+            "root-service result",
+        ),
+        (
+            "linux_source",
+            "fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<OwnedServiceChild> {",
+            "fn try_start_server_(desktop: &Desktop, principal: ServiceChildPrincipal, runtime: &ServiceRuntime) -> ResultType<OwnedServiceChild> {",
+            "Linux service-child launcher principal boundary",
+        ),
+        (
+            "linux_source",
+            "let principal = selected_service_child_principal(desktop)?",
+            "let principal = Ok(ServiceChildPrincipal::RootService)?",
+            "Linux launcher-owned principal derivation",
+        ),
+        (
+            "linux_source",
+            "Cannot start a service child without a selected desktop",
+            "Missing desktop ignored",
+            "Linux launcher-owned principal derivation",
+        ),
+        (
+            "linux_source",
+            "fn start_server(\n    desktop: &Desktop,\n    server: &mut Option<OwnedServiceChild>,",
+            "fn start_server(\n    desktop: &Desktop,\n    principal: ServiceChildPrincipal,\n    server: &mut Option<OwnedServiceChild>,",
+            "Linux service-child wrapper accepts a caller-selected principal",
+        ),
+        (
+            "linux_source",
+            "match try_start_server_(desktop, runtime) {",
+            "match try_start_server_(desktop, ServiceChildPrincipal::RootService, runtime) {",
+            "principal-free launcher call",
+        ),
+        (
+            "linux_source",
+            "match selected_service_child_principal(&desktop)? {",
+            "match Some(ServiceChildPrincipal::RootService) {",
+            "receiver-owned principal match",
+        ),
+        (
+            "linux_source",
+            "if user.uid() != expected_uid || user.name() != OsStr::new(username) {",
+            "if user.uid() != expected_uid && user.name() != OsStr::new(username) {",
+            "passwd UID/name binding",
+        ),
+        (
+            "linux_source",
+            "if expected_uid == 0 || username.is_empty() {",
+            "if username.is_empty() {",
+            "active-user UID-zero refusal",
+        ),
+        (
+            "linux_source",
+            "hbb_common::users::get_user_groups(username, gid)",
+            "Some(Vec::new())",
+            "supplementary-group resolution",
+        ),
+        (
+            "linux_source",
+            "hbb_common::libc::SYS_setgroups",
+            "hbb_common::libc::SYS_getgroups",
+            "Linux active-user credential-drop ordering",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid()",
+            "fn r_s11e48_linux_service_child_principal_uses_account_name()",
+            "Linux selected-session principal regression",
+        ),
+        (
+            "linux_source",
+            "assert!(selected_service_child_principal(&invalid).is_err());",
+            "assert!(selected_service_child_principal(&invalid).is_ok());",
+            "invalid-identity rejection assertion",
         ),
         (
             "linux_source",

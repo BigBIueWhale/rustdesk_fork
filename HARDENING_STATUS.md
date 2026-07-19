@@ -3120,6 +3120,84 @@ unreachable and a source/test/AST gate prevents reintroduction.
   host PID/network namespace, published port, host service/config mount, or root identity was used. No host RustDesk
   process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or networking was inspected or
   changed. Publication evidence is recorded only after commit and push.
+- **R-S11e-48 — Linux numeric selected-session service-child authority — SOURCE-GATED 2026-07-19;
+  EXACT INSTALLED DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: the installed Linux root
+  supervisor and its service-owned root or active-user `--server` child. Endpoint/action: selecting whether the
+  child retains the supervisor's root credentials or executes the complete passwd-validated credential drop.
+  Boundary: the typed active logind session's numeric UID and presentation username ↔ root child-launch authority.
+
+  Proven old path and history: R-S11z already made list-sessions parsing strict UTF-8, fixed-field, and canonical for
+  the numeric UID, but `start_os_service()` discarded that numeric authority and selected the root branch with
+  `desktop.username == "root"`. `try_start_server_()` separately accepted a caller-supplied
+  `ServiceChildPrincipal`. A renamed UID-0 account therefore entered `ActiveDesktopUser` and was deterministically
+  rejected by `ServiceChildCredentials::resolve()`'s existing UID-0 refusal. Conversely, an internally inconsistent
+  selected record carrying username `root` and a nonzero UID chose the no-drop root child. Git blame attributes the
+  literal-name branch to upstream import `c2abd3b3`, not a recent fork hardening change.
+
+  Authority model and closure: `selected_service_child_principal()` is the single receiver-owned derivation. Both
+  UID and username empty is the no-selected-desktop state. Partial identity, nondecimal UID, and noncanonical decimal
+  UID fail closed. Canonical UID 0 selects `RootService` regardless of account-name presentation; every nonzero
+  selected user selects `ActiveDesktopUser`, except the deliberate existing selected GDM/SDDM Wayland login-screen root
+  service path. The supervisor matches on that result to choose its retained owned-child slot. The launcher no
+  longer accepts a principal argument: it derives the result again from the same immutable desktop snapshot and
+  refuses launch without a selection. The active-user path still resolves the exact username through the password
+  database, requires returned UID/name equality, resolves supplementary groups, and orders
+  `setgroups`/`setresgid`/`setresuid` before `PR_SET_NO_NEW_PRIVS` and exec.
+
+  Primary contracts and classification: systemd 252 login1 defines `ListSessions()` records as separate session ID,
+  numeric user ID, user name, seat ID, and object path, and defines a session's `User` property as its Unix UID
+  (https://www.freedesktop.org/software/systemd/man/252/org.freedesktop.login1.html). Linux `credentials(7)` defines
+  user identities as integers and the effective IDs as kernel permission authority
+  (https://www.man7.org/linux/man-pages/man7/credentials.7.html). This closes a concrete deterministic UID-0 service
+  availability defect and conceptual privileged child-principal confusion. It does not demonstrate ordinary-user
+  promptless privilege escalation: the input is a trusted local logind result, and forging an inconsistent pair
+  requires prior root or OS-service integrity failure.
+
+  Proof and gates: `r_s11e48_linux_service_child_principal_uses_selected_numeric_uid` binds a renamed UID-0 account,
+  misleading `root` name with UID 1000, the retained GDM Wayland exception, empty selection, noncanonical UID, and
+  partial identity. `scripts/verify.sh` extracts the derivation, launcher and supervisor call graph, credential-drop
+  validation, regression, R-S11ah, Appendix C #156, and this entry; the semantic workspace verifier independently
+  interprets the same regions and carries source mutations for every authority and documentation edge.
+
+  Verification: the final Rust/Cargo 1.75 locked/offline Linux library gate compiled the complete library-test target
+  in 1 minute 56 seconds; the selected regression passed with zero failures and 312 tests filtered out. The extracted
+  R-S11e-45, R-S11e-46, R-S11e-47, and R-S11e-48 source gates all pass, proving that this dispatch change preserves
+  the adjacent owned-lifecycle, root-to-tray, and macOS numeric-principal contracts. The normal semantic workspace
+  audit and its complete independently executed source-mutation matrix pass. The matrix rejects the new gate,
+  normative ID/title/name-prohibition/numeric-UID/launcher clauses, Appendix row/disposition, ledger, empty/partial/
+  malformed/noncanonical policies, numeric root and login-screen classification, root/active results,
+  caller-selected launcher/wrapper authority, launcher-without-selection acceptance, supervisor bypass, passwd
+  UID/name and supplementary-group weakening, credential-drop ordering, regression deletion, and invalid-input proof
+  reversal.
+
+  Bash syntax and in-memory Python compilation pass for both edited verifiers. Rustfmt 1.75 reports no diff in any
+  slice-owned Rust region; its remaining output starts in unrelated pre-existing service-lifecycle tests and the
+  pre-existing SELinux test, which this slice does not reformat. `git diff --check` passes. Dependency inventory and
+  all 103 inventory mutations pass unchanged: 909 Cargo packages and 854 lexical `unsafe {` blocks across 251 tracked
+  Rust files/74 nonzero files, with per-file digest
+  `da946df73ff7346ff79a8c1ba6b0ecef0f4486de14ac9437fca96aefac247644`. Native-codec normal/self-test and the
+  synchronized requirements identity pass at
+  `8cab215a43b2693a63f62b216570831b483ed9bae64f87f0a8e883cbf351367a`.
+
+  Failure/setup accounting: the initial formatter run found the new launcher signature's one wrap along with the
+  repository's unrelated recorded drift; that slice-owned wrap was corrected before the final inspection. The source
+  mutation runner then found two overly short mutation needles that also matched unrelated Linux code, followed by
+  one expected-diagnostic mismatch; each fixture was narrowed or corrected without weakening a production assertion,
+  and the complete final matrix passed. Two attempts to run the verifier's broader process/cgroup transaction
+  self-test inside the deliberately isolated container stopped at its protected user-systemd-bus prerequisite: first
+  `/run/user/1000` and then its required Unix bus socket were absent. No host bus/service socket was mounted to bypass
+  that isolation, and those attempts are not counted as evidence; the relevant normal semantic audit and complete
+  in-memory source-mutation matrix are green.
+
+  Execution boundary: every project code/build/test/verifier command used numeric UID/GID 1000 in the existing local
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, read-only root/source/toolchain/vendor inputs, all capabilities dropped, no-new-privileges, bounded pids,
+  and outputs only on disposable tmpfs. No image was built or pulled; no Docker socket was mounted into a container;
+  no host PID/network namespace, published port, host service/config/user-bus mount, or root container identity was
+  used. No host RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host
+  networking was inspected or changed. The long release verifier, root service fixtures, full release build, and
+  exact installed Debian artifact execution remain excluded and owned by R-B2/R-S11c-27. Publication evidence is
+  recorded after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5465,8 +5543,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bf12999747458d36a204e7358a2d591a2d5f7ac452e492fb580cdcb7477af50e  requirements.html
+8cab215a43b2693a63f62b216570831b483ed9bae64f87f0a8e883cbf351367a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ag, and Appendix C #155. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ah, and Appendix C #156. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -585,6 +585,29 @@ enum ServiceChildPrincipal {
     ActiveDesktopUser,
 }
 
+fn selected_service_child_principal(
+    desktop: &Desktop,
+) -> ResultType<Option<ServiceChildPrincipal>> {
+    if desktop.uid.is_empty() && desktop.username.is_empty() {
+        return Ok(None);
+    }
+    if desktop.uid.is_empty() || desktop.username.is_empty() {
+        bail!("Selected desktop has an incomplete user identity");
+    }
+    let uid = desktop
+        .uid
+        .parse::<hbb_common::libc::uid_t>()
+        .map_err(|err| anyhow!("Invalid selected desktop uid {}: {err}", desktop.uid))?;
+    if uid.to_string() != desktop.uid {
+        bail!("Selected desktop uid is not canonical decimal");
+    }
+    if uid == 0 || desktop.is_login_wayland() {
+        Ok(Some(ServiceChildPrincipal::RootService))
+    } else {
+        Ok(Some(ServiceChildPrincipal::ActiveDesktopUser))
+    }
+}
+
 impl ServiceChildCredentials {
     fn resolve(uid: &str, username: &str) -> ResultType<Self> {
         let expected_uid = uid
@@ -1869,11 +1892,9 @@ fn insert_nonempty_env(command: &mut Command, key: &str, value: &str) {
     }
 }
 
-fn try_start_server_(
-    desktop: &Desktop,
-    principal: ServiceChildPrincipal,
-    runtime: &ServiceRuntime,
-) -> ResultType<OwnedServiceChild> {
+fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<OwnedServiceChild> {
+    let principal = selected_service_child_principal(desktop)?
+        .ok_or_else(|| anyhow!("Cannot start a service child without a selected desktop"))?;
     let parent_pid = hbb_common::libc::pid_t::try_from(std::process::id())
         .map_err(|_| anyhow!("Service supervisor pid does not fit pid_t"))?;
     let credentials = match principal {
@@ -2045,11 +2066,10 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
 #[inline]
 fn start_server(
     desktop: &Desktop,
-    principal: ServiceChildPrincipal,
     server: &mut Option<OwnedServiceChild>,
     runtime: &ServiceRuntime,
 ) {
-    match try_start_server_(desktop, principal, runtime) {
+    match try_start_server_(desktop, runtime) {
         Ok(ps) => *server = Some(ps),
         Err(err) => {
             log::error!("Failed to start server: {}", err);
@@ -2275,47 +2295,40 @@ pub fn start_os_service() -> ResultType<()> {
         desktop.refresh();
         update_active_user_lookup_cache(&desktop);
 
-        // Duplicate logic here with should_start_server
-        // Login wayland will try to start a headless --server.
-        if desktop.username == "root" || desktop.is_login_wayland() {
-            // try kill subprocess "--server"
-            stop_server(&mut user_server, &runtime)?;
-            // try start subprocess "--server"
-            // No need to check is_display_changed here.
-            if should_start_server(false, &mut uid, &desktop, &mut server, &runtime)? {
-                start_server(
-                    &desktop,
-                    ServiceChildPrincipal::RootService,
-                    &mut server,
-                    &runtime,
-                );
+        match selected_service_child_principal(&desktop)? {
+            // Login wayland will try to start a headless root --server.
+            Some(ServiceChildPrincipal::RootService) => {
+                // try kill subprocess "--server"
+                stop_server(&mut user_server, &runtime)?;
+                // try start subprocess "--server"
+                // No need to check is_display_changed here.
+                if should_start_server(false, &mut uid, &desktop, &mut server, &runtime)? {
+                    start_server(&desktop, &mut server, &runtime);
+                }
             }
-        } else if desktop.username != "" {
-            // try kill subprocess "--server"
-            stop_server(&mut server, &runtime)?;
+            Some(ServiceChildPrincipal::ActiveDesktopUser) => {
+                // try kill subprocess "--server"
+                stop_server(&mut server, &runtime)?;
 
-            let is_display_changed = desktop.display != display || desktop.xauth != xauth;
-            display = desktop.display.clone();
-            xauth = desktop.xauth.clone();
+                let is_display_changed = desktop.display != display || desktop.xauth != xauth;
+                display = desktop.display.clone();
+                xauth = desktop.xauth.clone();
 
-            // try start subprocess "--server"
-            if should_start_server(
-                is_display_changed,
-                &mut uid,
-                &desktop,
-                &mut user_server,
-                &runtime,
-            )? {
-                start_server(
+                // try start subprocess "--server"
+                if should_start_server(
+                    is_display_changed,
+                    &mut uid,
                     &desktop,
-                    ServiceChildPrincipal::ActiveDesktopUser,
                     &mut user_server,
                     &runtime,
-                );
+                )? {
+                    start_server(&desktop, &mut user_server, &runtime);
+                }
             }
-        } else {
-            stop_server(&mut user_server, &runtime)?;
-            stop_server(&mut server, &runtime)?;
+            None => {
+                stop_server(&mut user_server, &runtime)?;
+                stop_server(&mut server, &runtime)?;
+            }
         }
 
         let keeps_headless = sid.is_empty() && desktop.is_headless();
@@ -3736,6 +3749,71 @@ mod process_cleanup_tests {
         assert!(effective_uid_is_root(0));
         assert!(!effective_uid_is_root(1));
         assert!(!effective_uid_is_root(1_000));
+    }
+
+    #[test]
+    fn r_s11e48_linux_service_child_principal_uses_selected_numeric_uid() {
+        let renamed_root = Desktop {
+            uid: "0".to_owned(),
+            username: "renamed-admin".to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            selected_service_child_principal(&renamed_root).unwrap(),
+            Some(ServiceChildPrincipal::RootService)
+        );
+
+        let misleading_name = Desktop {
+            uid: "1000".to_owned(),
+            username: "root".to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            selected_service_child_principal(&misleading_name).unwrap(),
+            Some(ServiceChildPrincipal::ActiveDesktopUser)
+        );
+
+        let login_wayland = Desktop {
+            uid: "120".to_owned(),
+            username: "gdm".to_owned(),
+            protocol: DISPLAY_SERVER_WAYLAND.to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            selected_service_child_principal(&login_wayland).unwrap(),
+            Some(ServiceChildPrincipal::RootService)
+        );
+
+        assert_eq!(
+            selected_service_child_principal(&Desktop::default()).unwrap(),
+            None
+        );
+        let noncanonical_uid = Desktop {
+            uid: "01000".to_owned(),
+            username: "owner".to_owned(),
+            ..Default::default()
+        };
+        let malformed_uid = Desktop {
+            uid: "not-a-uid".to_owned(),
+            username: "owner".to_owned(),
+            ..Default::default()
+        };
+        let missing_username = Desktop {
+            uid: "1000".to_owned(),
+            ..Default::default()
+        };
+        let missing_uid = Desktop {
+            username: "owner".to_owned(),
+            ..Default::default()
+        };
+        for invalid in [
+            noncanonical_uid,
+            malformed_uid,
+            missing_username,
+            missing_uid,
+        ] {
+            assert!(selected_service_child_principal(&invalid).is_err());
+        }
     }
 
     #[test]

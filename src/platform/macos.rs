@@ -29,7 +29,7 @@ use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
 use std::{
     collections::HashMap,
-    ffi::{CStr, OsStr, OsString},
+    ffi::{CStr, OsString},
     os::unix::{ffi::OsStringExt, fs::MetadataExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -900,46 +900,6 @@ pub fn declare_remote_user_activity() {
 
 pub fn is_root() -> bool {
     crate::username() == "root"
-}
-
-pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
-    run_as_user_with_env(arg, std::iter::empty::<(&str, &str)>())
-}
-
-pub fn run_as_user_with_env<I, K, V>(
-    arg: Vec<&str>,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    let uid = get_active_userid();
-    if uid.is_empty() {
-        bail!("No valid active console uid");
-    }
-    let cmd = std::env::current_exe()?;
-    let mut command = std::process::Command::new(MACOS_LAUNCHCTL);
-    command.arg("asuser").arg(uid.as_str()).arg(cmd);
-    for (key, value) in envs {
-        let key = key.as_ref();
-        if !macos_launch_env_key_is_allowed(key) {
-            bail!("Refusing unsupported macOS launch environment key: {key:?}");
-        }
-        command.env(key, value.as_ref());
-    }
-    command.args(arg);
-    hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)?;
-    let task = command.spawn()?;
-    Ok(Some(task))
-}
-
-fn macos_launch_env_key_is_allowed(key: &OsStr) -> bool {
-    key == OsStr::new(crate::common::CM_LAUNCH_TOKEN_ENV)
-        || key == OsStr::new(crate::common::CM_LAUNCH_PARENT_ENV)
-        || key == OsStr::new(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
-        || key == OsStr::new(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV)
 }
 
 pub fn lock_screen() {

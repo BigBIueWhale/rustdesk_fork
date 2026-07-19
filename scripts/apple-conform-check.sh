@@ -907,8 +907,10 @@ if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)'
   r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
 fi
 grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
-grep -q 'run_as_user_with_env(args.clone(), cm_launch_env())' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-run-as-user-token-env-not-wired"
-grep -q 'pub fn run_as_user_with_env' "$REPO/src/platform/macos.rs" || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
+grep -q 'Refusing root-to-user connection-manager launch; the user-context service must own it' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-root-to-user-cm-not-fail-closed"
+if grep -q 'fn run_as_user' "$REPO/src/platform/macos.rs"; then
+  r_s11c11="$r_s11c11 macos-root-to-user-launcher-present"
+fi
 cm_listener_auth_block=$(awk '/authorize_cm_ipc_connection\(&stream\)/,/tokio::spawn/' "$REPO/src/ui_cm_interface.rs")
 cm_listener_proof_line=$(echo "$cm_listener_auth_block" | grep -n 'answer_cm_endpoint_challenge(&mut stream).await' | head -1 | cut -d: -f1 || true)
 cm_listener_spawn_line=$(echo "$cm_listener_auth_block" | grep -n 'tokio::spawn' | head -1 | cut -d: -f1 || true)
@@ -967,8 +969,10 @@ grep -q 'super::client::get_key_cursor(conn_id)' "$REPO/src/whiteboard/server.rs
 grep -q 'register_whiteboard(self.inner.id)' "$REPO/src/server/connection.rs" || r_s11c8="$r_s11c8 connection-register-not-id-based"
 whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' "$REPO/src/server/connection.rs" || true)
 echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
-grep -q 'run_as_user_with_env(' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 macos-whiteboard-launch-env-not-wired"
-grep -q 'pub fn run_as_user_with_env' "$REPO/src/platform/macos.rs" || r_s11c8="$r_s11c8 macos-env-launcher-missing"
+grep -q 'Refusing root-to-user whiteboard launch; the user-context service must own it' "$REPO/src/whiteboard/client.rs" || r_s11c8="$r_s11c8 macos-root-to-user-whiteboard-not-fail-closed"
+if grep -q 'fn run_as_user' "$REPO/src/platform/macos.rs"; then
+  r_s11c8="$r_s11c8 macos-root-to-user-launcher-present"
+fi
 if grep -RIn 'Whiteboard((String' "$REPO/src/ipc.rs" "$REPO/src/whiteboard" 2>/dev/null >"$APPLE_CHECK_TMP/rd_apple_whiteboard_tuple"; then
   r_s11c8="$r_s11c8 legacy-whiteboard-tuple-message-present"
 fi
@@ -1029,11 +1033,11 @@ grep -Fq 'crate::platform::declare_remote_user_activity();' "$REPO/src/server.rs
 if grep -Fq 'caffeinate' "$REPO/src/server.rs" "$REPO/src/platform/macos.rs"; then
   r_s11c5="$r_s11c5 macos-caffeinate-subprocess-present"
 fi
-grep -Fq 'fn macos_launch_env_key_is_allowed(key: &OsStr) -> bool' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-env-key-allowlist-missing"
-grep -Fq 'command.env(key, value.as_ref())' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-env-command-env-missing"
-if grep -Fq '/usr/bin/env' "$macos_rs"; then
-  r_s11c5="$r_s11c5 macos-run-as-user-env-helper-present"
-fi
+for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed' '/usr/bin/env'; do
+  if grep -Fq "$obsolete" "$macos_rs"; then
+    r_s11c5="$r_s11c5 macos-root-to-user-launcher-present:$obsolete"
+  fi
+done
 grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' "$macos_rs" || r_s11c5="$r_s11c5 macos-open-absolute-missing"
 grep -Fq 'Command::new(MACOS_OPEN)' "$macos_rs" || r_s11c5="$r_s11c5 macos-reopen-not-absolute"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
@@ -1121,7 +1125,6 @@ fi
 grep -q 'pub(crate) fn console_owner_uid' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-uid-missing"
 grep -Fq 'std::fs::metadata("/dev/console")' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-not-dev-console-backed"
 grep -q 'hbb_common::libc::getpwuid_r' "$macos_rs" || r_s11c5="$r_s11c5 macos-active-user-not-passwd-r-backed"
-grep -Fq 'bail!("No valid active console uid")' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-asuser-no-empty-uid-gate"
 if grep -q 'fn get_active_user(t: &str)' "$macos_rs" || grep -q 'split_whitespace().nth(2)' "$macos_rs"; then
   r_s11c5="$r_s11c5 macos-active-user-ls-parser-present"
 fi
@@ -1201,7 +1204,26 @@ else
   note "ok  R-S11c-5 LaunchDaemon uses a signed root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"
 fi
 
-echo "== (2b-iv-a) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
+echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="
+r_s11e38=
+for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed'; do
+  if grep -Fq "$obsolete" "$macos_rs"; then
+    r_s11e38="$r_s11e38 macos-generic-root-to-user-launch-present:$obsolete"
+  fi
+done
+grep -Fq 'Refusing root-to-user connection-manager launch; the user-context service must own it' "$REPO/src/server/connection.rs" || r_s11e38="$r_s11e38 cm-root-transition-not-fail-closed"
+grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must own it' "$REPO/src/whiteboard/client.rs" || r_s11e38="$r_s11e38 whiteboard-root-transition-not-fail-closed"
+grep -Fq '<span class="id">R-S11x</span>' "$REPO/requirements.html" || r_s11e38="$r_s11e38 normative-requirement-missing"
+grep -Fq '<tr><td>146</td>' "$REPO/requirements.html" || r_s11e38="$r_s11e38 appendix-disposition-missing"
+grep -Fq 'R-S11e-38 — cross-platform root-to-user helper launch authority' "$REPO/HARDENING_STATUS.md" || r_s11e38="$r_s11e38 hardening-ledger-missing"
+if [ -n "$r_s11e38" ]; then
+  echo "  FAIL R-S11e-38 cross-platform root-to-user helper authority:$r_s11e38"
+  rc=1
+else
+  note "ok  R-S11e-38 macOS carries no generic root-to-user CM/whiteboard launcher and unexpected root transitions fail closed"
+fi
+
+echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' "$REPO/libs/hbb_common/src/platform/macos.rs")
 macos_platform_source=$(cat "$REPO/src/platform/macos.rs")
@@ -1209,7 +1231,6 @@ macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_label_loaded
 macos_launchctl_query=$(awk '/fn launchctl_label_loaded/,/fn ensure_launchctl_label_removed/' "$REPO/src/platform/macos.rs")
 macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' "$REPO/src/platform/macos.rs")
 macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' "$REPO/src/platform/macos.rs")
-macos_run_as_user=$(awk '/pub fn run_as_user_with_env/,/fn macos_launch_env_key_is_allowed/' "$REPO/src/platform/macos.rs")
 macos_lock_screen=$(awk '/pub fn lock_screen/,/pub fn start_os_service/' "$REPO/src/platform/macos.rs")
 macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' "$REPO/src/ipc.rs")
 macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' "$REPO/src/common.rs")
@@ -1255,14 +1276,13 @@ check_apple_r_s11e34_helper_contract "$macos_checked_command" 'configure_command
 check_apple_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_apple_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 check_apple_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
-check_apple_r_s11e34_helper_contract "$macos_run_as_user" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
 check_apple_r_s11e34_helper_contract "$macos_lock_screen" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
 check_apple_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_apple_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 check_apple_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 [ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
-[ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 2 ] \
+[ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
 [ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"

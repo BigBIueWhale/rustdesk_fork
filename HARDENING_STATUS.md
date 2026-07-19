@@ -1561,22 +1561,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `LOCAL_PEEREPID`, legacy `LOCAL_PEERPID` absence, audit-token identity capture, native strict validation, Rust
   `MACOS_CODESIGN` absence, service-client/server/snapshot wiring, exactly owned proof-thread joins, and this
   requirements/ledger disposition.
-- **R-S11e-10 — macOS residual process launch provenance — CLOSED 2026-07-11.**
+- **R-S11e-10 — macOS residual process launch provenance — CLOSED 2026-07-11; ROOT-TO-USER
+  LAUNCH CLAIM SUPERSEDED BY R-S11e-38 ON 2026-07-19.**
   Platform: macOS desktop/server source. Endpoint/action: post-keying wake/user-activity notification and
   root-capable `launchctl asuser` helper launch for CM/whiteboard bootstrap. Boundary: authenticated Remote
   connection or service-owned server helper launch ↔ local process creation/provenance. Attack surface closed:
   the connected-session wake path no longer spawns `/usr/bin/caffeinate -u -t 5`; it calls the native
   `MacDeclareRemoteUserActivity` bridge, which invokes
-  `IOPMAssertionDeclareUserActivity(..., kIOPMUserActiveRemote, ...)` through IOKit. The macOS bootstrap launcher
-  no longer inserts `/usr/bin/env KEY=VALUE ...` as an argv bridge. `run_as_user_with_env` now executes
-  `/bin/launchctl asuser <uid> <current_exe> ...`, applies the launcher-owned token variables through
-  `Command::env`, and rejects every environment key except the CM and whiteboard launch-token/parent keys. This was
-  not a newly proven ordinary-user-to-root path: the installed macOS service-owned server is the LaunchAgent user
-  process, and the old helper paths did not accept peer-chosen executable text. It closes residual subprocess and
-  future-call-site authority ambiguity so the macOS helper surfaces remain typed and source-gated. Verification
-  closure: `scripts/verify.sh` and `scripts/apple-conform-check.sh` gate the explicit IOKit link, native
-  user-activity helper, remote-user activity type, server wiring, absence of `caffeinate`, absence of the
-  `/usr/bin/env` bridge, the environment-key allowlist, and this requirements/ledger disposition.
+  `IOPMAssertionDeclareUserActivity(..., kIOPMUserActiveRemote, ...)` through IOKit. The first closure also removed
+  the `/usr/bin/env KEY=VALUE ...` argv bridge. Later platform-contract review established that the remaining
+  `/bin/launchctl asuser <uid> <current_exe> ...` path was not a credential drop: Apple's `launchctl(1)` contract
+  says `asuser` adopts bootstrap/audit context but does not modify UID/GID. Its environment-key allowlist therefore
+  did not make the abstraction correct. R-S11x/R-S11e-38 deletes that generic launcher and makes unexpected root
+  CM/whiteboard bootstrap fail before spawn; the installed service-owned server is already the per-user LaunchAgent.
+  No ordinary-user-to-root path was proved in the old fixed call sites. Verification now gates the explicit IOKit
+  link/native activity path, both subprocess deletions, the fail-closed service topology, and the superseding
+  requirements/ledger disposition.
 - **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS
   WORKTREE VALIDATED VIA R-S11b-2d; EXACT-COMMIT R-B2 EVIDENCE PENDING.** Mutation terminates directly in the
   stable LocalSystem SCM service on raw `_service_password`. The client authenticates the fixed service image, LocalSystem token, exact service role,
@@ -2315,12 +2315,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `bInheritHandles=TRUE`, so a direct privileged use would also inherit every independently created inheritable
   handle.
 
-  Closure: all four generic launcher families and the `ShellExecuteW` import/call are deleted. The remaining
-  cross-platform `run_as_user_with_env` surface collects environment state before launch and accepts only three
-  current-image shapes: exact `--tray` with no added environment, exact `--cm` with the nonempty CM launch-token and
-  launch-parent pair, or exact `--whiteboard` with the nonempty whiteboard pair. Unknown/extra/duplicate/empty and
-  cross-role state fails before process creation. A LocalSystem caller derives its own current session and
-  `current_exe()` at the receiver, then uses the existing explicit-application/current-directory
+  Closure: all four generic launcher families and the `ShellExecuteW` import/call are deleted. The remaining Windows
+  user-helper API is a typed current-image request: `Tray` carries no value, while `ConnectionManager` and
+  `Whiteboard` carry only a base64 token that must decode to exactly 32 bytes and whose decoded buffer is zeroed.
+  The receiver derives the exact argv role, environment keys, parent PID, current executable, and current session;
+  an extra role, environment key/value, parent, executable, or session is not representable. A LocalSystem caller
+  then uses the existing explicit-application/current-directory
   `CreateProcessAsUserW` path whose native call has `bInheritHandles=FALSE`; a non-System caller can start only the
   same current image under its current principal. The independent SCM child path remains fixed to the proved Program
   Files service image, creation-time job-owned, and unaffected.
@@ -2330,8 +2330,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys/windows/process.rs,
   https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw, and
   https://learn.microsoft.com/en-us/windows/win32/procthread/inheritance.
-  A pure Windows unit regression pins the exact role/environment allowlist and rejects wrong role,
-  extra/duplicate/wrong/empty environment state, and cross-role environment reuse. `scripts/verify.sh` and the
+  A pure Windows unit regression pins all typed variants and rejects empty/wrong-length token state. `scripts/verify.sh` and the
   semantic workspace verifier bind
   the current-image/current-session call graph, receiver-side role/environment policy, native handle-inheritance
   denial, obsolete symbol absence, R-S11u, Appendix C #143, and this entry.
@@ -2462,6 +2461,65 @@ unreachable and a source/test/AST gate prevents reintroduction.
   deleting the unused LogonUI snapshot removes one lexical `unsafe {` block. The current inventory is 850 blocks
   across 251 tracked Rust files/73 nonzero files with per-file digest
   `3e6b6efdea22e9dc967553eb7999340a6335efcda2e48f7109ddd6592d1628eb`.
+- **R-S11e-38 — cross-platform root-to-user helper launch authority — SOURCE IMPLEMENTED AND SOURCE-GATED
+  2026-07-19; NATIVE WINDOWS/macOS EVIDENCE REMAINS WITH R-B2.** Platforms: Linux, macOS, and Windows desktop
+  controlled-side helper launch. Endpoint/action: starting the connection manager, whiteboard, or tray from a
+  server process. Boundary: a root/LocalSystem server's process/session authority ↔ a user-context helper selected
+  through caller-supplied role, environment, and user identity. Proven old path: Linux exported `run_as_user` with
+  arbitrary argv, arbitrary syntactically valid environment names/values, and an optional caller-provided
+  UID/username tuple. It probed whether `sudo -E` preserved an injected sentinel and selected either that path or
+  `sudo -u ... env`; the effective environment therefore depended partly on sudoers/PAM/site policy. macOS exported
+  arbitrary argv and a four-key environment union through `launchctl asuser`. The allowlist prevented current
+  callers from adding other environment names, but Apple documents that `asuser` changes bootstrap, exception-server,
+  and audit-session context without modifying UID/GID, so it was not the credential transition the abstraction
+  claimed. Repository callers supplied fixed CM/whiteboard shapes, and source/history inspection found no untrusted
+  ordinary-user path selecting those raw parameters; this is conceptual/future privileged-launch authority, not a
+  demonstrated promptless local privilege escalation.
+
+  Closure: both Unix generic launchers are deleted. Linux also deletes its sudo/environment candidates, `sudo -E`
+  probe, arbitrary environment filtering, and UID/username launch tuple. Its installed root supervisor already
+  owns the exact credential transition by dropping the supervised service-server child before exec; its deliberate
+  headless-root mode and ordinary user server continue same-principal `run_me_with_env` helper launches. The macOS
+  service-owned server is already the per-user LaunchAgent, so an unexpected root Linux/macOS server now returns a
+  clear error before starting CM or whiteboard instead of inventing another transition. Windows remains the only
+  necessary cross-session exception: `WindowsUserHelperLaunch` has exactly `Tray`, `ConnectionManager`, and
+  `Whiteboard` variants. CM/whiteboard callers can supply only a token that base64-decodes to exactly 32 bytes;
+  the receiver zeroes the decoded validation buffer and derives role argv, environment keys, parent PID, current
+  image, and current session before the existing `CreateProcessAsUserW(..., bInheritHandles=FALSE, ...)` path.
+  Same-principal launches use the same typed API and current image. The R-S11u/R-S11e-35 ledger and Appendix C #93
+  are corrected rather than left claiming that raw environment allowlists or `launchctl asuser` formed the right
+  abstraction.
+
+  Primary contracts: Apple's `launchctl(1)` manual at
+  https://keith.github.io/xcode-man-pages/launchctl.1.html and the sudoers environment manual at
+  https://www.sudo.ws/docs/man/1.9.14/sudoers.man.pdf. `scripts/verify.sh`, `scripts/apple-conform-check.sh`, and the
+  semantic workspace verifier bind the two Unix abstraction deletions, both fail-closed call sites, intended
+  same-user paths, typed Windows roles/token validation/receiver-derived values, R-S11x, Appendix C #146, and this
+  entry. Exact native Windows/macOS release behavior and artifacts remain owned by the final clean R-B2 transaction;
+  source conformance does not substitute for them.
+
+  Verification: the normal semantic workspace audit and its complete independently invocable in-memory source-
+  mutation matrix pass; the latter includes the Unix abstraction reintroductions, both fail-closed call sites,
+  typed Windows role/token/parent policy, both shell gates, R-S11x, Appendix C #146, and this entry. The verifier now
+  exposes `--source-mutations-only` so this exact stage can run without pretending the unrelated pre-existing
+  descriptor-owned scratch-replacement fixture passed. Extracted `verify.sh` R-S11e-35/R-S11e-38/R-S11e-29 gates
+  and the Apple R-S11c-11/R-S11c-8/R-S11c-5/R-S11e-38/R-S11e-34 source slice pass. Rust 1.75 parses all five edited
+  Rust files, and `cargo check --offline --locked --lib --features linux-pkg-config` completes under Linux using the
+  host Cargo cache read-only and a container-tmpfs target. A harness compiled and executed the exact production
+  Windows typed policy (all roles, exact receiver parent, short/malformed-token rejection), and the same policy
+  metadata-compiles for `x86_64-pc-windows-msvc`. The three smaller edited Rust files are Rust 1.75 rustfmt-clean;
+  edited hunks in the two large platform files match rustfmt, while unrelated pre-existing formatting differences
+  remain untouched. Dependency inventory plus all 103 behavioral checks, native-codec normal/self-test, Bash/Python
+  syntax, diff hygiene, and requirements-hash synchronization pass.
+
+  Checks ran as an unprivileged UID in local containers with networking disabled, all capabilities dropped,
+  no-new-privileges, source read-only, and tmpfs-only outputs. The existing Apple image was used for the extracted
+  gate; a full wrapper attempt was stopped and is not counted when it began rebuilding that already-present image,
+  and the existing image identity remained unchanged. No Docker socket was mounted into a test container. No host
+  RustDesk process/service/configuration, listener, firewall, or network namespace was inspected or changed. The
+  top-level verifier/full release build was not run because it deliberately builds images and executes root service
+  fixtures, and the controlling prompt forbids the long full release build. Native Darwin/Windows execution and
+  exact release-artifact evidence therefore remain explicitly pending under R-B2.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4801,8 +4859,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7a237cfab1ffd20cb58caaee98aa515379db0eb6fea0eda0d26cafd1e4137f83  requirements.html
+8109ed42b15edc90ac2d65f6838239aa8d847508b75e40169f352a45cdb7c92e  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11w, and Appendix C #145. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11x, and Appendix C #146. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -15,7 +15,7 @@ use hbb_common::{
 use libxdo_sys::{self, xdo_t, Window};
 use std::{
     cell::RefCell,
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     fs::{self, File},
     io::{Read as _, Write as _},
     os::{
@@ -54,8 +54,6 @@ const SERVICE_RUNTIME_DIR: &[u8] = b"/run/rustdesk\0";
 const SERVICE_RUNTIME_LOCK: &[u8] = b"service-supervisor.lock\0";
 const SERVICE_CHILD_RECORD: &[u8] = b"service-child.record\0";
 const SERVICE_CHILD_RECORD_TMP: &[u8] = b"service-child.record.tmp\0";
-const SUDO_PATHS: [&str; 2] = ["/usr/bin/sudo", "/bin/sudo"];
-const ENV_PATHS: [&str; 2] = ["/usr/bin/env", "/bin/env"];
 const W_PATHS: [&str; 2] = ["/usr/bin/w", "/bin/w"];
 const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
 const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
@@ -80,60 +78,6 @@ lazy_static::lazy_static! {
     };
     static ref ACTIVE_USER_LOOKUP_CACHE: std::sync::Mutex<Option<ActiveUserLookupCache>> =
         std::sync::Mutex::new(None);
-    // https://github.com/rustdesk/rustdesk/issues/13705
-    // Check if `sudo -E` actually preserves environment.
-    //
-    // This flag is only used by `run_as_user()` (root service -> user session). If the current process is not
-    // running as `root`, this check is meaningless (and `sudo -n` may fail), so we return `false` directly.
-    //
-    // On Ubuntu 25.10, `sudo -E` may still succeed but effectively ignores `-E`. Some versions print a warning
-    // to stderr (wording may vary by locale), so we verify behavior instead:
-    // - Inject a sentinel environment variable into the `sudo` process
-    // - Run `sudo -n -E env` and check whether the sentinel is present in stdout
-    static ref SUDO_E_PRESERVES_ENV: bool = {
-        if !is_root() {
-            log::warn!("Not running as root, SUDO_E_PRESERVES_ENV check skipped");
-            false
-        } else {
-            let key = format!("__RUSTDESK_SUDO_E_TEST_{}", std::process::id());
-            let val = "1";
-            let expected = format!("{key}={val}");
-            match (sudo_path(), env_path()) {
-                (Some(sudo), Some(env)) => {
-                    let mut command = Command::new(&sudo);
-                    command
-                        // -n for non-interactive to avoid password prompt
-                        .env(&key, val)
-                        .args(["-n", "-E"])
-                        .arg(&env);
-                    if let Err(err) =
-                        configure_command_close_nonstdio_on_exec(&mut command)
-                    {
-                        log::warn!(
-                            "Failed to constrain sudo environment probe descriptors: {err}"
-                        );
-                        false
-                    } else {
-                        match command.output() {
-                            Ok(output) => {
-                                output.status.success()
-                                    && String::from_utf8_lossy(&output.stdout)
-                                        .contains(expected.as_str())
-                            }
-                            Err(err) => {
-                                log::warn!("sudo -E environment probe failed: {err}");
-                                false
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    log::warn!("Trusted sudo/env path not found, SUDO_E_PRESERVES_ENV check skipped");
-                    false
-                }
-            }
-        }
-    };
 }
 
 #[inline]
@@ -2582,105 +2526,6 @@ pub fn is_root() -> bool {
     crate::username() == "root"
 }
 
-fn is_valid_sudo_env_key(key: &OsStr) -> bool {
-    let Some(key) = key.to_str() else {
-        return false;
-    };
-    let mut it = key.chars();
-    match it.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return false,
-    }
-    it.all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-fn valid_sudo_envs<I, K, V>(envs: I) -> Vec<(OsString, OsString)>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    let mut valid = Vec::new();
-    for (k, v) in envs {
-        let key = k.as_ref();
-        if !is_valid_sudo_env_key(key) {
-            log::warn!(
-                "Skipping environment variable with invalid key: '{}'. Only [A-Za-z_][A-Za-z0-9_]* are allowed in sudo context.",
-                key.to_string_lossy()
-            );
-            continue;
-        }
-        valid.push((key.to_os_string(), v.as_ref().to_os_string()));
-    }
-    valid
-}
-
-pub fn run_as_user<I, K, V>(
-    arg: Vec<&str>,
-    user: Option<(String, String)>,
-    envs: I,
-) -> ResultType<Option<Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    let (uid, username) = match user {
-        Some(id_name) => id_name,
-        None => get_active_user_id_name(),
-    };
-    let cmd = std::env::current_exe()?;
-    if uid.is_empty() {
-        bail!("No valid uid");
-    }
-
-    let Some(sudo_path) = sudo_path() else {
-        bail!("sudo was not found at a trusted fixed path");
-    };
-    let valid_envs = valid_sudo_envs(envs);
-    let xdg_runtime_dir = format!("/run/user/{uid}");
-    if *SUDO_E_PRESERVES_ENV {
-        let mut sudo = Command::new(&sudo_path);
-        sudo.env("XDG_RUNTIME_DIR", &xdg_runtime_dir)
-            .envs(
-                valid_envs
-                    .iter()
-                    .map(|(k, v)| (k.as_os_str(), v.as_os_str())),
-            )
-            .arg("-E")
-            .arg("-u")
-            .arg(&username)
-            .arg("--")
-            .arg(&cmd)
-            .args(arg);
-        configure_command_close_nonstdio_on_exec(&mut sudo)?;
-        let task = sudo.spawn()?;
-        Ok(Some(task))
-    } else {
-        let Some(env_path) = env_path() else {
-            bail!("env was not found at a trusted fixed path");
-        };
-        let mut sudo = Command::new(&sudo_path);
-        sudo.arg("-u")
-            .arg(&username)
-            .arg("--")
-            .arg(&env_path)
-            .arg(format!("XDG_RUNTIME_DIR={xdg_runtime_dir}"));
-
-        for (k, v) in valid_envs {
-            let mut assignment = k;
-            assignment.push("=");
-            assignment.push(v);
-            sudo.arg(assignment);
-        }
-
-        sudo.arg(&cmd).args(arg);
-        configure_command_close_nonstdio_on_exec(&mut sudo)?;
-        let task = sudo.spawn()?;
-        Ok(Some(task))
-    }
-}
-
 pub fn get_pa_monitor() -> String {
     get_pa_sources()
         .drain(..)
@@ -4842,14 +4687,6 @@ fn trusted_command_path(paths: &'static [&'static str]) -> Option<PathBuf> {
         .find_map(|path| trusted_fixed_executable_path(Path::new(path)))
 }
 
-fn sudo_path() -> Option<PathBuf> {
-    trusted_command_path(&SUDO_PATHS)
-}
-
-fn env_path() -> Option<PathBuf> {
-    trusted_command_path(&ENV_PATHS)
-}
-
 fn w_path() -> Option<PathBuf> {
     trusted_command_path(&W_PATHS)
 }
@@ -4941,9 +4778,7 @@ mod service_lifecycle_tests {
 
     #[test]
     fn r_s11c10_privileged_command_candidates_are_fixed_system_paths() {
-        let command_sets: [&[&str]; 6] = [
-            &SUDO_PATHS,
-            &ENV_PATHS,
+        let command_sets: [&[&str]; 4] = [
             &W_PATHS,
             &XRANDR_PATHS,
             &XDG_SCREENSAVER_PATHS,
@@ -4976,21 +4811,6 @@ mod service_lifecycle_tests {
         assert!(!trusted_command_parent_metadata(false, 0, 0o755));
         assert!(!trusted_command_parent_metadata(true, 1, 0o755));
         assert!(!trusted_command_parent_metadata(true, 0, 0o775));
-    }
-
-    #[test]
-    fn r_s11c10_sudo_env_validation_is_portable_key_only() {
-        assert!(is_valid_sudo_env_key(OsStr::new("DISPLAY")));
-        assert!(is_valid_sudo_env_key(OsStr::new("_RUSTDESK_TEST")));
-        assert!(!is_valid_sudo_env_key(OsStr::new("1BAD")));
-        assert!(!is_valid_sudo_env_key(OsStr::new("BAD-NAME")));
-
-        let envs = valid_sudo_envs([
-            (OsString::from("DISPLAY"), OsString::from(":1")),
-            (OsString::from("BAD-NAME"), OsString::from("ignored")),
-        ]);
-        assert_eq!(envs.len(), 1);
-        assert_eq!(envs[0].0, OsString::from("DISPLAY"));
     }
 }
 

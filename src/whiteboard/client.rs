@@ -239,56 +239,34 @@ async fn start_whiteboard_() -> ResultType<()> {
     let mut stream = None;
     let launch_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     let postfix = ipc::whiteboard_endpoint_postfix(&launch_token)?;
-    #[allow(unused_mut)]
-    #[allow(unused_assignments)]
-    let mut args = vec!["--whiteboard"];
-    #[allow(unused_mut)]
-    #[cfg(target_os = "linux")]
-    let mut user = None;
+    let args = vec!["--whiteboard"];
 
-    let run_done;
     if crate::platform::is_root() && !headless_service_user {
-        let mut res = Ok(None);
-        for _ in 0..10 {
-            #[cfg(target_os = "windows")]
-            {
+        #[cfg(target_os = "windows")]
+        {
+            let mut res = Ok(None);
+            for _ in 0..10 {
                 log::debug!("Start whiteboard");
-                res = crate::platform::run_as_user_with_env(
-                    args.clone(),
-                    whiteboard_launch_env(&launch_token),
+                res = crate::platform::run_user_helper(
+                    crate::platform::WindowsUserHelperLaunch::Whiteboard {
+                        launch_token: &launch_token,
+                    },
                 );
+                if res.is_ok() {
+                    break;
+                }
+                log::error!("Failed to run whiteboard: {res:?}");
+                sleep(1.).await;
             }
-            #[cfg(target_os = "macos")]
-            {
-                log::debug!("Start whiteboard");
-                res = crate::platform::run_as_user_with_env(
-                    args.clone(),
-                    whiteboard_launch_env(&launch_token),
-                );
+            if let Some(task) = res? {
+                CHILD_PROCESS.lock().unwrap().push(task);
             }
-            #[cfg(target_os = "linux")]
-            {
-                log::debug!("Start whiteboard");
-                res = crate::platform::run_as_user(
-                    args.clone(),
-                    user.clone(),
-                    whiteboard_launch_env(&launch_token),
-                );
-            }
-            if res.is_ok() {
-                break;
-            }
-            log::error!("Failed to run whiteboard: {res:?}");
-            sleep(1.).await;
         }
-        if let Some(task) = res? {
-            CHILD_PROCESS.lock().unwrap().push(task);
-        }
-        run_done = true;
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        bail!("Refusing root-to-user whiteboard launch; the user-context service must own it");
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        bail!("Refusing unsupported root-to-user whiteboard launch");
     } else {
-        run_done = false;
-    }
-    if !run_done {
         log::debug!("Start whiteboard");
         CHILD_PROCESS.lock().unwrap().push(crate::run_me_with_env(
             args,

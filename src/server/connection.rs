@@ -4303,7 +4303,10 @@ impl Connection {
             #[cfg(all(windows, feature = "flutter"))]
             std::thread::spawn(move || {
                 if crate::is_server() && !crate::check_process("--tray", false) {
-                    crate::platform::run_as_user(vec!["--tray"]).ok();
+                    crate::platform::run_user_helper(
+                        crate::platform::WindowsUserHelperLaunch::Tray,
+                    )
+                    .ok();
                 }
             });
         }
@@ -8303,7 +8306,8 @@ async fn start_ipc(
     // would never start. In that case run the CM as the `--server` process owner — the service user,
     // the same process owner the terminal and screen-capture already use (R-S8/R-F1) — instead of
     // waiting. `headless_service_user` records which case we took so the spawn below picks the
-    // matching launcher (service-user `run_me` vs. console-user `run_as_user`).
+    // matching same-user launch. An installed Linux service or macOS LaunchAgent owns the exact
+    // user-context server; an unexpected root server must not invent a second privilege transition.
     let headless_service_user = loop {
         if crate::platform::is_headless_no_console_user() {
             break true;
@@ -8409,49 +8413,37 @@ async fn start_ipc(
             }
         }
         if stream.is_none() {
-            let run_done;
-            // A root `--server` normally launches the CM into the console user's session via
-            // `run_as_user`. On a headless box there is no such user, so `run_as_user(None)` would
-            // bail "No valid uid" (`linux.rs`). Take the same-user `run_me(["--cm"])` path instead
-            // (the `!run_done` branch below), so the CM runs as the `--server` owner — root, at the
-            // service privilege the authenticated owner already commands (R-S8/R-F1). Its browsing
-            // root then resolves to that owner's real home (`Config::get_home()` → `$HOME`/getpwuid).
+            // The headless path and ordinary user-owned server start the CM without crossing a
+            // credential boundary. Windows is the sole exception: its installed LocalSystem server
+            // needs the typed current-image helper transition into the active desktop session.
             if crate::platform::is_root() && !headless_service_user {
-                let mut res = Ok(None);
-                for _ in 0..10 {
-                    #[cfg(target_os = "windows")]
-                    {
+                #[cfg(target_os = "windows")]
+                {
+                    let mut res = Ok(None);
+                    for _ in 0..10 {
                         log::debug!("Start cm");
-                        res = crate::platform::run_as_user_with_env(args.clone(), cm_launch_env());
-                    }
-                    #[cfg(target_os = "macos")]
-                    {
-                        log::debug!("Start cm");
-                        res = crate::platform::run_as_user_with_env(args.clone(), cm_launch_env());
-                    }
-                    #[cfg(target_os = "linux")]
-                    {
-                        log::debug!("Start cm");
-                        res = crate::platform::run_as_user(
-                            args.clone(),
-                            user.clone(),
-                            cm_launch_env(),
+                        res = crate::platform::run_user_helper(
+                            crate::platform::WindowsUserHelperLaunch::ConnectionManager {
+                                launch_token: cm_launch_token(),
+                            },
                         );
+                        if res.is_ok() {
+                            break;
+                        }
+                        log::error!("Failed to run cm: {res:?}");
+                        sleep(1.).await;
                     }
-                    if res.is_ok() {
-                        break;
+                    if let Some(task) = res? {
+                        super::CHILD_PROCESS.lock().unwrap().push(task);
                     }
-                    log::error!("Failed to run cm: {res:?}");
-                    sleep(1.).await;
                 }
-                if let Some(task) = res? {
-                    super::CHILD_PROCESS.lock().unwrap().push(task);
-                }
-                run_done = true;
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                bail!(
+                    "Refusing root-to-user connection-manager launch; the user-context service must own it"
+                );
+                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                bail!("Refusing unsupported root-to-user connection-manager launch");
             } else {
-                run_done = false;
-            }
-            if !run_done {
                 log::debug!("Start cm");
                 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                 super::CHILD_PROCESS

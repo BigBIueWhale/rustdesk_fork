@@ -1364,31 +1364,37 @@ if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token
 
 echo "== (3b-iii-a5d2b) Windows helper launch API is role-confined (R-S11u/R-S11e-35) =="
 r_s11e35=
-windows_run_as_user=$(awk '/^pub fn run_as_user_with_env/,/^fn windows_env_block/' src/platform/windows.rs)
-grep -Fq 'fn windows_user_helper_launch_is_allowed(' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-role-policy-missing"
-grep -Fq '["--tray"] => envs.is_empty()' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-exact-role-missing"
-grep -Fq '["--cm"] => has_exact_environment([' src/platform/windows.rs || r_s11e35="$r_s11e35 cm-exact-role-missing"
-grep -Fq '["--whiteboard"] => has_exact_environment([' src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-exact-role-missing"
-grep -Fq 'envs.len() == expected.len()' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-cardinality-not-exact"
-grep -Fq 'envs.iter().all(|(_, value)| !value.is_empty())' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-empty-value-accepted"
-grep -Fq 'envs.iter().any(|(key, _)| key == expected)' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-key-membership-not-exact"
+windows_run_user_helper=$(awk '/^pub\(crate\) fn run_user_helper\(/,/^fn windows_env_block/' src/platform/windows.rs)
+grep -Fq "pub(crate) enum WindowsUserHelperLaunch<'a>" src/platform/windows.rs || r_s11e35="$r_s11e35 typed-helper-role-policy-missing"
+grep -Fq 'Tray,' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-typed-role-missing"
+grep -Fq "ConnectionManager { launch_token: &'a str }" src/platform/windows.rs || r_s11e35="$r_s11e35 cm-typed-role-missing"
+grep -Fq "Whiteboard { launch_token: &'a str }" src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-typed-role-missing"
+grep -Fq 'let mut decoded = crate::decode64(launch_token)' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-token-base64-validation-missing"
+grep -Fq '== hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-token-length-validation-missing"
+grep -Fq 'decoded.fill(0);' src/platform/windows.rs || r_s11e35="$r_s11e35 decoded-helper-token-not-zeroed"
+grep -Fq 'let parent = OsString::from(std::process::id().to_string());' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-parent-not-receiver-derived"
+grep -Fq 'WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new()))' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-exact-role-missing"
+grep -Fq 'WindowsUserHelperLaunch::ConnectionManager { launch_token } =>' src/platform/windows.rs || r_s11e35="$r_s11e35 cm-exact-role-missing"
+grep -Fq 'WindowsUserHelperLaunch::Whiteboard { launch_token } =>' src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-exact-role-missing"
 for key in CM_LAUNCH_TOKEN_ENV CM_LAUNCH_PARENT_ENV WHITEBOARD_LAUNCH_TOKEN_ENV WHITEBOARD_LAUNCH_PARENT_ENV; do
   grep -Fq "crate::common::$key" src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-key-missing:$key"
 done
-echo "$windows_run_as_user" | grep -Fq 'windows_user_helper_launch_is_allowed(&arg, &envs)' || r_s11e35="$r_s11e35 helper-policy-not-enforced"
-echo "$windows_run_as_user" | grep -Fq 'return run_current_exe_in_current_session_with_env(' || r_s11e35="$r_s11e35 localsystem-current-image-route-missing"
-echo "$windows_run_as_user" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11e35="$r_s11e35 non-system-current-image-route-missing"
-echo "$windows_run_as_user" | grep -Fq 'std::process::Command::new(exe)' || r_s11e35="$r_s11e35 non-system-current-image-spawn-missing"
-grep -Fq 'fn windows_user_helper_launch_shape_is_closed()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
+echo "$windows_run_user_helper" | grep -Fq 'windows_user_helper_launch_parts(&launch)?' || r_s11e35="$r_s11e35 typed-helper-policy-not-enforced"
+echo "$windows_run_user_helper" | grep -Fq 'return run_current_exe_in_current_session_with_env(' || r_s11e35="$r_s11e35 localsystem-current-image-route-missing"
+echo "$windows_run_user_helper" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11e35="$r_s11e35 non-system-current-image-route-missing"
+echo "$windows_run_user_helper" | grep -Fq 'std::process::Command::new(exe)' || r_s11e35="$r_s11e35 non-system-current-image-spawn-missing"
+grep -Fq 'fn windows_user_helper_launch_shape_is_typed_and_exact()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 token-launch-handle-inheritance-not-disabled"
 for obsolete in \
-  'pub fn run_exe_direct' \
-  'pub fn run_exe_in_cur_session' \
-  'pub fn run_exe_in_session' \
-  'pub fn run_background' \
+  'fn run_exe_direct' \
+  'fn run_exe_in_cur_session' \
+  'fn run_exe_in_session' \
+  'fn run_background' \
   'run_exe_path_direct_with_env' \
   'run_exe_path_in_cur_session_with_env' \
   'run_exe_path_in_session_with_env' \
+  'fn run_as_user' \
+  'fn run_as_user_with_env' \
   'shellapi::ShellExecuteW' \
   'ShellExecuteW('; do
   if grep -Fq "$obsolete" src/platform/windows.rs; then
@@ -1401,7 +1407,33 @@ grep -Fq 'R-S11e-35 — Windows dormant generic process-launch authority' HARDEN
 if [ -n "$r_s11e35" ]; then echo "  FAIL R-S11e-35 Windows helper launch authority:$r_s11e35"; rc=1; else
   echo "  ok  R-S11e-35 Windows user helpers launch only the current RustDesk image in the receiver-selected session under exact CM/tray/whiteboard role and environment shapes; generic executable/session/ShellExecute surfaces are absent"; fi
 
-echo "== (3b-iii-a5d2c) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="
+echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="
+r_s11e38=
+for obsolete in SUDO_E_PRESERVES_ENV SUDO_PATHS ENV_PATHS 'fn run_as_user' 'sudo_path()' 'env_path()'; do
+  if grep -Fq "$obsolete" src/platform/linux.rs; then
+    r_s11e38="$r_s11e38 linux-generic-root-to-user-launch-present:$obsolete"
+  fi
+done
+for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed'; do
+  if grep -Fq "$obsolete" src/platform/macos.rs; then
+    r_s11e38="$r_s11e38 macos-generic-root-to-user-launch-present:$obsolete"
+  fi
+done
+grep -Fq 'Refusing root-to-user connection-manager launch; the user-context service must own it' src/server/connection.rs || r_s11e38="$r_s11e38 cm-root-transition-not-fail-closed"
+grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must own it' src/whiteboard/client.rs || r_s11e38="$r_s11e38 whiteboard-root-transition-not-fail-closed"
+grep -Fq 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-cm-launch-missing"
+grep -Fq 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11e38="$r_s11e38 typed-windows-whiteboard-launch-missing"
+grep -Fq 'WindowsUserHelperLaunch::Tray' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-tray-launch-missing"
+grep -Fq '.push(crate::run_me_with_env(args, cm_launch_env())?);' src/server/connection.rs || r_s11e38="$r_s11e38 same-user-cm-launch-missing"
+grep -Fq 'whiteboard_launch_env(&launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
+grep -Fq '<span class="id">R-S11x</span>' requirements.html || r_s11e38="$r_s11e38 normative-requirement-missing"
+grep -Fq '<tr><td>146</td>' requirements.html || r_s11e38="$r_s11e38 appendix-disposition-missing"
+grep -Fq 'R-S11e-38 — cross-platform root-to-user helper launch authority' HARDENING_STATUS.md || r_s11e38="$r_s11e38 hardening-ledger-missing"
+grep -Fq 'Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38)' scripts/apple-conform-check.sh || r_s11e38="$r_s11e38 apple-source-conformance-gate-missing"
+if [ -n "$r_s11e38" ]; then echo "  FAIL R-S11e-38 cross-platform root-to-user helper authority:$r_s11e38"; rc=1; else
+  echo "  ok  R-S11e-38 Linux/macOS carry no generic root-to-user CM/whiteboard launcher; Windows uses typed current-image roles and same-user launches retain exact proof environments"; fi
+
+echo "== (3b-iii-a5d2d) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="
 r_s11e36=
 privacy_broker_source=src/privacy_mode/win_topmost_window.rs
 privacy_broker_launch=$(awk '/let create_res = CreateProcessAsUserW\(/,/let create_error =/' "$privacy_broker_source")
@@ -2890,15 +2922,12 @@ if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited
   echo "  ok  R-S11e-28 Linux service supervisor and child exclude ambient non-stdio descriptors while preserving only stdio and the forked child's temporary exact-executable handoff"; fi
 
 # (3b-iii-d8) R-S11o/R-S11e-29: Linux service-originated helper
-# commands do not rely on sudo or shell policy to discard privileged
-# non-stdio descriptors. The parent resolves the descriptor bound and
-# the post-fork/pre-exec hook marks every descriptor above stderr
-# close-on-exec before sudo/env/reopen helper images run.
+# commands do not rely on helper policy to discard privileged non-stdio
+# descriptors. The generic sudo/env root-to-user path is absent; the
+# retained reopen helpers apply the shared close-on-exec policy.
 echo "== (3b-iii-d8) Linux service helper inherited descriptor authority (R-S11o/R-S11e-29) =="
 r_s11e29=
 linux_helper_pre_exec=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
-sudo_env_probe=$(awk '/static ref SUDO_E_PRESERVES_ENV: bool = {/,/^    };/' src/platform/linux.rs)
-run_as_user_block=$(awk '/pub fn run_as_user</,/^}/' src/platform/linux.rs)
 reopen_helper_block=$(awk '/pub fn schedule_reopen_after_service_stop/,/fn linux_helper_path_is_clean_absolute/' src/platform/linux.rs)
 for helper_binding in \
   'fn linux_descriptor_upper_bound() -> io::Result<RawFd>' \
@@ -2911,31 +2940,11 @@ for helper_binding in \
   'mark_nonstdio_descriptors_close_on_exec(last_fd)?;'; do
   grep -qF "$helper_binding" <<<"$linux_helper_pre_exec" || r_s11e29="$r_s11e29 helper-pre-exec-binding-missing"
 done
-for sudo_probe_binding in \
-  'let mut command = Command::new(&sudo);' \
-  'configure_command_close_nonstdio_on_exec(&mut command)' \
-  'command.output()' \
-  'Failed to constrain sudo environment probe descriptors'; do
-  grep -qF "$sudo_probe_binding" <<<"$sudo_env_probe" || r_s11e29="$r_s11e29 sudo-env-probe-descriptor-policy-missing"
+for obsolete in SUDO_E_PRESERVES_ENV SUDO_PATHS ENV_PATHS 'fn run_as_user' 'sudo_path()' 'env_path()'; do
+  if grep -qF "$obsolete" src/platform/linux.rs; then
+    r_s11e29="$r_s11e29 obsolete-root-to-user-helper-present:$obsolete"
+  fi
 done
-grep -qF 'let mut sudo = Command::new(&sudo_path);' <<<"$run_as_user_block" || r_s11e29="$r_s11e29 run-as-user-mutable-command-missing"
-[ "$(grep -cF 'configure_command_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block")" = 2 ] \
-  || r_s11e29="$r_s11e29 run-as-user-descriptor-policy-not-on-both-branches"
-[ "$(grep -cF 'let task = sudo.spawn()?;' <<<"$run_as_user_block")" = 2 ] \
-  || r_s11e29="$r_s11e29 run-as-user-spawn-shape-unexpected"
-first_run_as_user_helper_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
-first_run_as_user_spawn_line=$(grep -nF 'let task = sudo.spawn()?;' <<<"$run_as_user_block" | head -n1 | cut -d: -f1)
-last_run_as_user_helper_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut sudo)?' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
-last_run_as_user_spawn_line=$(grep -nF 'let task = sudo.spawn()?;' <<<"$run_as_user_block" | tail -n1 | cut -d: -f1)
-if [ -z "$first_run_as_user_helper_line" ] || [ -z "$first_run_as_user_spawn_line" ] \
-  || [ -z "$last_run_as_user_helper_line" ] || [ -z "$last_run_as_user_spawn_line" ] \
-  || [ "$first_run_as_user_helper_line" -ge "$first_run_as_user_spawn_line" ] \
-  || [ "$last_run_as_user_helper_line" -ge "$last_run_as_user_spawn_line" ]; then
-  r_s11e29="$r_s11e29 run-as-user-descriptor-policy-after-spawn"
-fi
-if grep -Eq '^[[:space:]]*let task = Command::new\(&sudo_path\)' <<<"$run_as_user_block"; then
-  r_s11e29="$r_s11e29 run-as-user-direct-spawn-without-descriptor-policy"
-fi
 [ "$(grep -cF 'configure_command_close_nonstdio_on_exec(&mut command)' <<<"$reopen_helper_block")" = 2 ] \
   || r_s11e29="$r_s11e29 reopen-helper-descriptor-policy-missing"
 if grep -Eq 'Command::new\(&exe\)[[:space:]]*$|Command::new\(exe\)\.spawn\(\)' <<<"$reopen_helper_block"; then
@@ -2946,7 +2955,7 @@ grep -qF 'Linux service-originated helper launch inherited descriptor authority'
 grep -qF '<tr><td>137</td>' requirements.html                                       || r_s11e29="$r_s11e29 appendix-row-missing"
 grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md || r_s11e29="$r_s11e29 hardening-ledger-missing"
 if [ -n "$r_s11e29" ]; then echo "  FAIL R-S11e-29 Linux service helper inherited descriptor authority:$r_s11e29"; rc=1; else
-  echo "  ok  R-S11e-29 Linux sudo/env, run-as-user, and reopen helpers mark non-stdio descriptors close-on-exec before helper exec"; fi
+  echo "  ok  R-S11e-29 Linux generic sudo/env run-as-user launch is absent and retained reopen helpers mark non-stdio descriptors close-on-exec before helper exec"; fi
 
 # (3b-iii-d9) R-S11p/R-S11e-30: Linux service-owned polkit
 # authorization helpers do not inherit root-service non-stdio
@@ -2987,7 +2996,7 @@ echo "== (3b-iii-d10) Linux same-executable child inherited descriptor authority
 r_s11e31=
 run_me_with_env_block=$(awk '/pub fn run_me_with_env</,/pub fn username\(\)/' src/common.rs)
 run_me_descriptor_test=$(awk '/fn linux_run_me_child_excludes_inherited_nonstdio_descriptors\(\)/,/R-SV6\(d\)/' src/common.rs)
-headless_cm_launch=$(awk '/A root `--server` normally launches the CM/,/for _ in 0\.\.20/' src/server/connection.rs)
+headless_cm_launch=$(awk '/The headless path and ordinary user-owned server start the CM/,/for _ in 0\.\.20/' src/server/connection.rs)
 for run_me_binding in \
   '#[cfg(target_os = "linux")]' \
   'hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)' \
@@ -3154,7 +3163,7 @@ if [ -n "$r_s11e33" ]; then echo "  FAIL R-S11e-33 desktop fatal-signal default-
 # (3b-iii-d13) R-S11t/R-S11e-34: Darwin preserves descriptors across exec
 # unless close-on-exec is set. Every production macOS Command launch therefore
 # uses one shared stdio-only pre-exec policy, including the LaunchDaemon's
-# launchctl authorization query and root-to-user helper transition.
+# launchctl authorization query and other retained production helpers.
 echo "== (3b-iii-d13) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' libs/hbb_common/src/platform/macos.rs)
@@ -3163,7 +3172,6 @@ macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_label_loaded
 macos_launchctl_query=$(awk '/fn launchctl_label_loaded/,/fn ensure_launchctl_label_removed/' src/platform/macos.rs)
 macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/platform/macos.rs)
 macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' src/platform/macos.rs)
-macos_run_as_user=$(awk '/pub fn run_as_user_with_env/,/fn macos_launch_env_key_is_allowed/' src/platform/macos.rs)
 macos_lock_screen=$(awk '/pub fn lock_screen/,/pub fn start_os_service/' src/platform/macos.rs)
 macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' src/ipc.rs)
 macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' src/common.rs)
@@ -3209,14 +3217,13 @@ check_r_s11e34_helper_contract "$macos_checked_command" 'configure_command_close
 check_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 check_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
-check_r_s11e34_helper_contract "$macos_run_as_user" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
 check_r_s11e34_helper_contract "$macos_lock_screen" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
 check_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 [ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
-[ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 2 ] \
+[ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
 [ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
@@ -3581,12 +3588,9 @@ if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)'
   r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
 fi
 grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
-grep -q 'run_as_user_with_env(args.clone(), cm_launch_env())' src/server/connection.rs || r_s11c11="$r_s11c11 macos-run-as-user-token-env-not-wired"
-if grep -q 'crate::platform::run_as_user(args.clone())' src/server/connection.rs; then
-  r_s11c11="$r_s11c11 windows-cm-launch-without-token-env"
-fi
-grep -q 'pub fn run_as_user_with_env' src/platform/macos.rs || r_s11c11="$r_s11c11 macos-token-env-launcher-missing"
-grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-token-env-launcher-missing"
+grep -q 'Refusing root-to-user connection-manager launch; the user-context service must own it' src/server/connection.rs || r_s11c11="$r_s11c11 unix-root-to-user-cm-not-fail-closed"
+grep -q 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11c11="$r_s11c11 windows-typed-cm-launch-missing"
+grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-typed-helper-launcher-missing"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c11="$r_s11c11 cm-launch-token-env-constant-missing"
 cm_launch_token_cfg=$(awk '/pub const CM_LAUNCH_TOKEN_ENV/ { print prev; exit } { prev=$0 }' src/common.rs)
 cm_launch_parent_cfg=$(awk '/pub const CM_LAUNCH_PARENT_ENV/ { print prev; exit } { prev=$0 }' src/common.rs)
@@ -3675,8 +3679,9 @@ grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helpe
 grep -q 'super::client::get_key_cursor(conn_id)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
 grep -q 'register_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-register-not-id-based"
 grep -q 'unregister_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-unregister-not-id-based"
-grep -q 'run_as_user_with_env' src/whiteboard/client.rs || r_s11c8="$r_s11c8 whiteboard-launch-env-not-wired"
-grep -q 'pub fn run_as_user_with_env' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-env-launcher-missing"
+grep -q 'Refusing root-to-user whiteboard launch; the user-context service must own it' src/whiteboard/client.rs || r_s11c8="$r_s11c8 unix-root-to-user-whiteboard-not-fail-closed"
+grep -q 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11c8="$r_s11c8 windows-typed-whiteboard-launch-missing"
+grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-typed-helper-launcher-missing"
 grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
 grep -q 'environment_entry_key' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-helper-missing"
 grep -q 'environment_keys_equal' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-key-compare-missing"
@@ -3753,11 +3758,11 @@ grep -Fq 'crate::platform::declare_remote_user_activity();' src/server.rs || r_s
 if grep -Fq 'caffeinate' src/server.rs src/platform/macos.rs; then
   r_s11c5="$r_s11c5 macos-caffeinate-subprocess-present"
 fi
-grep -Fq 'fn macos_launch_env_key_is_allowed(key: &OsStr) -> bool' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-env-key-allowlist-missing"
-grep -Fq 'command.env(key, value.as_ref())' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-env-command-env-missing"
-if grep -Fq '/usr/bin/env' "$macos_rs"; then
-  r_s11c5="$r_s11c5 macos-run-as-user-env-helper-present"
-fi
+for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed' '/usr/bin/env'; do
+  if grep -Fq "$obsolete" "$macos_rs"; then
+    r_s11c5="$r_s11c5 macos-root-to-user-launcher-present:$obsolete"
+  fi
+done
 grep -Fq 'const MACOS_OPEN: &str = "/usr/bin/open";' src/platform/macos.rs || r_s11c5="$r_s11c5 macos-ipc-open-absolute-missing"
 grep -Fq 'Command::new(MACOS_OPEN)' src/platform/macos.rs || r_s11c5="$r_s11c5 macos-ipc-reopen-not-absolute"
 grep -Fq 'const MACOS_PRIVILEGED_HELPER_EXEC: &str =' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-const-missing"
@@ -3845,7 +3850,6 @@ fi
 grep -q 'pub(crate) fn console_owner_uid' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-uid-missing"
 grep -Fq 'std::fs::metadata("/dev/console")' "$macos_rs" || r_s11c5="$r_s11c5 macos-console-owner-not-dev-console-backed"
 grep -q 'hbb_common::libc::getpwuid_r' "$macos_rs" || r_s11c5="$r_s11c5 macos-active-user-not-passwd-r-backed"
-grep -Fq 'bail!("No valid active console uid")' "$macos_rs" || r_s11c5="$r_s11c5 macos-launch-asuser-no-empty-uid-gate"
 if grep -q 'fn get_active_user(t: &str)' "$macos_rs" || grep -q 'split_whitespace().nth(2)' "$macos_rs"; then
   r_s11c5="$r_s11c5 macos-active-user-ls-parser-present"
 fi

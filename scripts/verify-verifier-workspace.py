@@ -4044,61 +4044,19 @@ def validate_smoke_contract(
         ("pub fn configure_command_close_nonstdio_on_exec(command: &mut Command)", "stdio-only helper policy"),
     ):
         require_text(linux_helper_pre_exec, text, label)
-    sudo_env_probe = extract_between(
-        linux_source,
-        "static ref SUDO_E_PRESERVES_ENV: bool = {",
-        "\n#[inline]\nfn update_active_user_lookup_cache",
-        "sudo -E environment preservation probe",
-    )
-    for text, label in (
-        ("let mut command = Command::new(&sudo);", "sudo probe mutable command"),
-        ("configure_command_close_nonstdio_on_exec(&mut command)", "sudo probe descriptor policy"),
-        ("command.output()", "sudo probe execution after descriptor policy"),
-        ("Failed to constrain sudo environment probe descriptors", "sudo probe descriptor failure diagnostic"),
+    for token in (
+        "SUDO_E_PRESERVES_ENV",
+        "SUDO_PATHS",
+        "ENV_PATHS",
+        "fn run_as_user",
+        "fn sudo_path()",
+        "fn env_path()",
+        "valid_sudo_envs",
     ):
-        require_text(sudo_env_probe, text, label)
-    require_order(
-        sudo_env_probe,
-        (
-            "let mut command = Command::new(&sudo);",
-            "configure_command_close_nonstdio_on_exec(&mut command)",
-            "command.output()",
-        ),
-        "sudo probe descriptor policy before execution",
-    )
-    run_as_user = extract_between(
-        linux_source,
-        "pub fn run_as_user<",
-        "\npub fn get_pa_monitor",
-        "Linux run_as_user helper launch",
-    )
-    require_exact_count(
-        run_as_user,
-        "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
-        2,
-        "run_as_user descriptor policy on both sudo branches",
-    )
-    require_exact_count(
-        run_as_user,
-        "let task = sudo.spawn()?;",
-        2,
-        "run_as_user controlled sudo spawn points",
-    )
-    require_order(
-        run_as_user,
-        (
-            "let mut sudo = Command::new(&sudo_path);",
-            "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
-            "let task = sudo.spawn()?;",
-            "let Some(env_path) = env_path()",
-            "let mut sudo = Command::new(&sudo_path);",
-            "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
-            "let task = sudo.spawn()?;",
-        ),
-        "run_as_user descriptor policy before both sudo spawns",
-    )
-    if re.search(r"(?m)^\s*let task = Command::new\(&sudo_path\)", run_as_user):
-        raise VerificationError("run_as_user retains a chained sudo spawn without descriptor policy")
+        if token in linux_source:
+            raise VerificationError(
+                f"Linux generic root-to-user helper authority remains: {token}"
+            )
     reopen_helpers = extract_between(
         linux_source,
         "pub fn schedule_reopen_after_service_stop(secs: u32) {",
@@ -5452,7 +5410,7 @@ def validate_macos_descriptor_contract(sources):
     platform = sources["macos_source"]
     for text, expected, label in (
         ("command.status()", 2, "macOS platform status execution inventory"),
-        ("command.spawn()", 2, "macOS platform spawn execution inventory"),
+        ("command.spawn()", 1, "macOS platform spawn execution inventory"),
         ("command.output()", 2, "macOS platform output execution inventory"),
         ("run_checked_command(", 5, "macOS checked-command inventory"),
     ):
@@ -5489,14 +5447,6 @@ def validate_macos_descriptor_contract(sources):
             "macOS lock-state query descriptor policy",
             "configure_command_close_nonstdio_on_exec(",
             "command.output()",
-        ),
-        (
-            platform,
-            "pub fn run_as_user_with_env<I, K, V>(",
-            "\nfn macos_launch_env_key_is_allowed",
-            "macOS root-to-user helper descriptor policy",
-            "configure_command_close_nonstdio_on_exec(&mut command)?;",
-            "command.spawn()?",
         ),
         (
             platform,
@@ -5542,7 +5492,7 @@ def validate_macos_descriptor_contract(sources):
         ),
         (
             "apple",
-            'echo "== (2b-iv-a) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
+            'echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
             "macOS Apple-conformance gate",
         ),
         ("requirements", '<span class="id">R-S11t</span>', "macOS descriptor normative requirement"),
@@ -5566,13 +5516,15 @@ def validate_windows_helper_launch_contract(sources):
     platform = sources["windows_source"]
     native = sources["windows_native"]
     for token in (
-        "pub fn run_exe_direct",
-        "pub fn run_exe_in_cur_session",
-        "pub fn run_exe_in_session",
-        "pub fn run_background",
+        "fn run_exe_direct",
+        "fn run_exe_in_cur_session",
+        "fn run_exe_in_session",
+        "fn run_background",
         "run_exe_path_direct_with_env",
         "run_exe_path_in_cur_session_with_env",
         "run_exe_path_in_session_with_env",
+        "fn run_as_user",
+        "fn run_as_user_with_env",
         "shellapi::ShellExecuteW",
         "ShellExecuteW(",
     ):
@@ -5583,25 +5535,44 @@ def validate_windows_helper_launch_contract(sources):
 
     policy = extract_between(
         platform,
-        "fn windows_user_helper_launch_is_allowed(",
+        "pub(crate) enum WindowsUserHelperLaunch<'a> {",
         "\n#[cfg(test)]",
-        "Windows helper exact role/environment policy",
+        "Windows typed helper role/environment policy",
     )
     for text, label in (
-        ('["--tray"] => envs.is_empty()', "Windows tray exact launch shape"),
-        ('["--cm"] => has_exact_environment([', "Windows CM exact launch shape"),
+        ("Tray,", "Windows tray typed launch shape"),
         (
-            '["--whiteboard"] => has_exact_environment([',
-            "Windows whiteboard exact launch shape",
-        ),
-        ("envs.len() == expected.len()", "Windows helper environment exact cardinality"),
-        (
-            "envs.iter().all(|(_, value)| !value.is_empty())",
-            "Windows helper nonempty environment values",
+            "ConnectionManager { launch_token: &'a str }",
+            "Windows CM typed launch shape",
         ),
         (
-            "envs.iter().any(|(key, _)| key == expected)",
-            "Windows helper environment exact key membership",
+            "Whiteboard { launch_token: &'a str }",
+            "Windows whiteboard typed launch shape",
+        ),
+        (
+            "let mut decoded = crate::decode64(launch_token)",
+            "Windows helper token base64 validation",
+        ),
+        (
+            "== hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;",
+            "Windows helper exact token length",
+        ),
+        ("decoded.fill(0);", "Windows decoded helper token clearing"),
+        (
+            "let parent = OsString::from(std::process::id().to_string());",
+            "Windows helper receiver-derived parent",
+        ),
+        (
+            'WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new()))',
+            "Windows tray exact role generation",
+        ),
+        (
+            "WindowsUserHelperLaunch::ConnectionManager { launch_token } =>",
+            "Windows CM exact role generation",
+        ),
+        (
+            "WindowsUserHelperLaunch::Whiteboard { launch_token } =>",
+            "Windows whiteboard exact role generation",
         ),
         ("CM_LAUNCH_TOKEN_ENV", "Windows CM launch token environment"),
         ("CM_LAUNCH_PARENT_ENV", "Windows CM launch parent environment"),
@@ -5610,30 +5581,30 @@ def validate_windows_helper_launch_contract(sources):
     ):
         require_text(policy, text, label)
 
-    run_as_user = extract_between(
+    run_user_helper = extract_between(
         platform,
-        "pub fn run_as_user_with_env<I, K, V>(",
+        "pub(crate) fn run_user_helper(",
         "\nfn windows_env_block",
-        "Windows current-image helper launcher",
+        "Windows typed current-image helper launcher",
     )
     require_order(
-        run_as_user,
+        run_user_helper,
         (
-            "windows_user_helper_launch_is_allowed(&arg, &envs)",
+            "windows_user_helper_launch_parts(&launch)?",
             "if is_root()",
             "run_current_exe_in_current_session_with_env(",
         ),
-        "Windows helper policy before LocalSystem launch",
+        "Windows typed helper policy before LocalSystem launch",
     )
     require_order(
-        run_as_user,
+        run_user_helper,
         (
-            "windows_user_helper_launch_is_allowed(&arg, &envs)",
+            "windows_user_helper_launch_parts(&launch)?",
             "let exe = std::env::current_exe()?;",
             "std::process::Command::new(exe)",
             ".spawn()",
         ),
-        "Windows helper policy before same-principal current-image launch",
+        "Windows typed helper policy before same-principal current-image launch",
     )
 
     system_launch = extract_between(
@@ -5661,8 +5632,8 @@ def validate_windows_helper_launch_contract(sources):
     )
     require_text(
         platform,
-        "fn windows_user_helper_launch_shape_is_closed()",
-        "Windows closed helper launch-shape regression",
+        "fn windows_user_helper_launch_shape_is_typed_and_exact()",
+        "Windows typed helper launch-shape regression",
     )
     for source_key, text, label in (
         (
@@ -5676,6 +5647,95 @@ def validate_windows_helper_launch_contract(sources):
             "hardening",
             "R-S11e-35 — Windows dormant generic process-launch authority",
             "Windows helper launch hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+
+def validate_cross_platform_user_helper_contract(sources):
+    for source_key, tokens in (
+        (
+            "linux_source",
+            (
+                "SUDO_E_PRESERVES_ENV",
+                "SUDO_PATHS",
+                "ENV_PATHS",
+                "fn run_as_user",
+                "fn sudo_path()",
+                "fn env_path()",
+                "valid_sudo_envs",
+            ),
+        ),
+        (
+            "macos_source",
+            (
+                "fn run_as_user",
+                "fn run_as_user_with_env",
+                'command.arg("asuser")',
+                "macos_launch_env_key_is_allowed",
+            ),
+        ),
+    ):
+        for token in tokens:
+            if token in sources[source_key]:
+                raise VerificationError(
+                    f"generic root-to-user helper authority remains in {source_key}: {token}"
+                )
+
+    connection = sources["connection_source"]
+    require_order(
+        connection,
+        (
+            "if crate::platform::is_root() && !headless_service_user {",
+            "WindowsUserHelperLaunch::ConnectionManager {",
+            "Refusing root-to-user connection-manager launch; the user-context service must own it",
+            ".push(crate::run_me_with_env(args, cm_launch_env())?);",
+        ),
+        "connection-manager typed/fail-closed/same-user launch topology",
+    )
+    require_text(
+        connection,
+        "WindowsUserHelperLaunch::Tray",
+        "typed Windows tray helper launch",
+    )
+
+    whiteboard = sources["whiteboard_client"]
+    require_order(
+        whiteboard,
+        (
+            "if crate::platform::is_root() && !headless_service_user {",
+            "WindowsUserHelperLaunch::Whiteboard {",
+            "Refusing root-to-user whiteboard launch; the user-context service must own it",
+            "whiteboard_launch_env(&launch_token)",
+        ),
+        "whiteboard typed/fail-closed/same-user launch topology",
+    )
+
+    for source_key, text, label in (
+        (
+            "verify",
+            'echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="',
+            "cross-platform helper source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="',
+            "cross-platform helper Apple gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11x</span>',
+            "cross-platform helper normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>146</td>",
+            "cross-platform helper Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-38 — cross-platform root-to-user helper launch authority",
+            "cross-platform helper hardening ledger",
         ),
     ):
         require_text(sources[source_key], text, label)
@@ -5832,7 +5892,7 @@ def validate_windows_privacy_broker_contract(sources):
     for source_key, text, label in (
         (
             "verify",
-            'echo "== (3b-iii-a5d2c) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="',
+            'echo "== (3b-iii-a5d2d) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="',
             "Windows privacy-broker source gate",
         ),
         ("requirements", '<span class="id">R-S11v</span>', "Windows privacy-broker requirement"),
@@ -5968,6 +6028,7 @@ def validate_sources(sources):
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
     validate_windows_helper_launch_contract(sources)
+    validate_cross_platform_user_helper_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_scan_contract(sources["scan"], sources["verify"], sources["apple"], sources["release"])
@@ -10980,9 +11041,9 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "configure_command_close_nonstdio_on_exec(&mut sudo)?;",
-            "configure_command_close_nonstdio_on_exec_disabled(&mut sudo)?;",
-            "run_as_user descriptor policy on both sudo branches",
+            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}',
+            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}\n\npub fn run_as_user() {}',
+            "generic root-to-user helper authority remains in linux_source",
         ),
         (
             "ipc_source",
@@ -11502,8 +11563,8 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            'echo "== (2b-iv-a) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
-            'echo "== (2b-iv-a) macOS child inherited descriptor compatibility (R-S11t/R-S11e-34) =="',
+            'echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
+            'echo "== (2b-iv-a-1) macOS child inherited descriptor compatibility (R-S11t/R-S11e-34) =="',
             "macOS Apple-conformance gate",
         ),
         (
@@ -11538,39 +11599,39 @@ def run_source_mutations(sources):
         ),
         (
             "windows_source",
-            "fn windows_user_helper_launch_is_allowed(arg:",
-            "pub fn run_background() {}\n\nfn windows_user_helper_launch_is_allowed(arg:",
+            "pub(crate) enum WindowsUserHelperLaunch<'a> {",
+            "pub fn run_background() {}\n\npub(crate) enum WindowsUserHelperLaunch<'a> {",
             "Windows dormant generic process-launch surface remains",
         ),
         (
             "windows_source",
-            '["--tray"] => envs.is_empty()',
-            '["--server"] => envs.is_empty()',
-            "Windows tray exact launch shape",
+            "    Tray,",
+            "    Server,",
+            "Windows tray typed launch shape",
         ),
         (
             "windows_source",
-            "envs.len() == expected.len()",
-            "envs.len() >= expected.len()",
-            "Windows helper environment exact cardinality",
+            "let mut decoded = crate::decode64(launch_token)",
+            "let mut decoded = Ok(Vec::new())",
+            "Windows helper token base64 validation",
         ),
         (
             "windows_source",
-            "envs.iter().any(|(key, _)| key == expected)",
-            "envs.iter().any(|(_, _)| true)",
-            "Windows helper environment exact key membership",
+            "== hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;",
+            ">= hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;",
+            "Windows helper exact token length",
         ),
         (
             "windows_source",
-            "envs.iter().all(|(_, value)| !value.is_empty())",
-            "envs.iter().all(|(_, _)| true)",
-            "Windows helper nonempty environment values",
+            ") -> ResultType<(&'static str, Vec<(OsString, OsString)>)> {\n    let parent = OsString::from(std::process::id().to_string());",
+            ") -> ResultType<(&'static str, Vec<(OsString, OsString)>)> {\n    let parent = OsString::from(\"1\");",
+            "Windows helper receiver-derived parent",
         ),
         (
             "windows_source",
-            "if !windows_user_helper_launch_is_allowed(&arg, &envs) {",
-            "if false { // helper role/environment policy removed",
-            "Windows helper policy before LocalSystem launch",
+            "windows_user_helper_launch_parts(&launch)?",
+            '("--tray", Vec::new())',
+            "Windows typed helper policy before LocalSystem launch",
         ),
         (
             "windows_source",
@@ -11586,9 +11647,9 @@ def run_source_mutations(sources):
         ),
         (
             "windows_source",
-            "fn windows_user_helper_launch_shape_is_closed()",
+            "fn windows_user_helper_launch_shape_is_typed_and_exact()",
             "fn windows_user_helper_launch_shape_is_open()",
-            "Windows closed helper launch-shape regression",
+            "Windows typed helper launch-shape regression",
         ),
         (
             "verify",
@@ -11613,6 +11674,60 @@ def run_source_mutations(sources):
             "R-S11e-35 — Windows dormant generic process-launch authority",
             "R-S11e-35 — Windows generic process-launch compatibility",
             "Windows helper launch hardening ledger",
+        ),
+        (
+            "macos_source",
+            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}',
+            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}\n\npub fn run_as_user() {}',
+            "generic root-to-user helper authority remains in macos_source",
+        ),
+        (
+            "connection_source",
+            "WindowsUserHelperLaunch::ConnectionManager {",
+            "WindowsUserHelperLaunch::Tray {",
+            "connection-manager typed/fail-closed/same-user launch topology",
+        ),
+        (
+            "connection_source",
+            "Refusing root-to-user connection-manager launch; the user-context service must own it",
+            "Attempting root-to-user connection-manager launch",
+            "connection-manager typed/fail-closed/same-user launch topology",
+        ),
+        (
+            "whiteboard_client",
+            "Refusing root-to-user whiteboard launch; the user-context service must own it",
+            "Attempting root-to-user whiteboard launch",
+            "whiteboard typed/fail-closed/same-user launch topology",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="',
+            'echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper compatibility (R-S11x/R-S11e-38) =="',
+            "cross-platform helper source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="',
+            'echo "== (2b-iv-a) Cross-platform root-to-user helper compatibility (R-S11x/R-S11e-38) =="',
+            "cross-platform helper Apple gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11x</span>',
+            '<span class="id">R-S11z</span>',
+            "cross-platform helper normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>146</td>",
+            "<tr><td>9146</td>",
+            "cross-platform helper Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-38 — cross-platform root-to-user helper launch authority",
+            "R-S11e-38 — cross-platform root-to-user helper compatibility",
+            "cross-platform helper hardening ledger",
         ),
         (
             "server_source",
@@ -11676,8 +11791,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== (3b-iii-a5d2c) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="',
-            'echo "== (3b-iii-a5d2c) Windows privacy broker is title-owned (R-S11v/R-S11e-36) =="',
+            'echo "== (3b-iii-a5d2d) Windows privacy broker is exact-job/PID owned (R-S11v/R-S11e-36) =="',
+            'echo "== (3b-iii-a5d2d) Windows privacy broker is title-owned (R-S11v/R-S11e-36) =="',
             "Windows privacy-broker source gate",
         ),
         (
@@ -13571,12 +13686,17 @@ def main():
     parser = argparse.ArgumentParser(description="Verify private workspace and release transactions.")
     parser.add_argument("--repo", default=".", help="repository root")
     parser.add_argument("--self-test", action="store_true", help="run executable and mutation fixtures")
+    parser.add_argument(
+        "--source-mutations-only",
+        action="store_true",
+        help="run the complete in-memory semantic source-mutation matrix",
+    )
     parser.add_argument("--scratch", help="preallocated private fixture scratch directory")
     parser.add_argument("--publication-worker-fd", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--publication-worker-gate-fd", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.publication_worker_fd is not None:
-        if args.self_test or args.scratch is not None or args.repo != ".":
+        if args.self_test or args.source_mutations_only or args.scratch is not None or args.repo != ".":
             parser.error("publication worker mode cannot be combined with verifier options")
         return run_publication_snapshot_worker(
             args.publication_worker_fd, args.publication_worker_gate_fd
@@ -13590,6 +13710,8 @@ def main():
         repo = Path(args.repo).resolve()
         verifier_program_source, verifier_program_fd = acquire_verifier_program(repo)
         _VERIFIER_PROGRAM_FD = verifier_program_fd
+        if args.self_test and args.source_mutations_only:
+            parser.error("--self-test and --source-mutations-only are mutually exclusive")
         if args.self_test:
             if args.scratch is None:
                 raise VerificationError("verifier self-test requires an owned --scratch directory")
@@ -13652,6 +13774,8 @@ def main():
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
             "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
+            "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
+            "whiteboard_client": (repo / "src/whiteboard/client.rs").read_text(encoding="utf-8"),
             "portable_source": (repo / "libs/portable/src/main.rs").read_text(encoding="utf-8"),
             "privacy_broker_source": (
                 repo / "src/privacy_mode/win_topmost_window.rs"
@@ -13704,7 +13828,9 @@ def main():
             run_fixture_stage("scratch replacement fixture", exercise_scratch_path_replacement, scratch)
             run_fixture_stage("publication snapshot fixture", exercise_canonical_publication_snapshot, scratch)
             run_fixture_stage("workspace mutation fixture", run_workspace_mutations, lines, positions)
+        if args.self_test or args.source_mutations_only:
             run_fixture_stage("source mutation fixture", run_source_mutations, sources)
+        if args.self_test:
             run_fixture_stage("version fixture", run_version_fixtures, sources["version"], scratch)
             run_fixture_stage("target-contract fixture", run_target_contract_fixtures, sources, scratch)
             run_fixture_stage("managed lifecycle fixture", run_stateful_timeout_fixtures, repo, scratch)

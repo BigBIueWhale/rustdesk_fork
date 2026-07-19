@@ -3537,25 +3537,58 @@ fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>> {
     Ok(command_line)
 }
 
-fn windows_user_helper_launch_is_allowed(arg: &[&str], envs: &[(OsString, OsString)]) -> bool {
-    let has_exact_environment = |expected: [&OsStr; 2]| {
-        envs.len() == expected.len()
-            && envs.iter().all(|(_, value)| !value.is_empty())
-            && expected
-                .iter()
-                .all(|expected| envs.iter().any(|(key, _)| key == expected))
-    };
-    match arg {
-        ["--tray"] => envs.is_empty(),
-        ["--cm"] => has_exact_environment([
-            OsStr::new(crate::common::CM_LAUNCH_TOKEN_ENV),
-            OsStr::new(crate::common::CM_LAUNCH_PARENT_ENV),
-        ]),
-        ["--whiteboard"] => has_exact_environment([
-            OsStr::new(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
-            OsStr::new(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
-        ]),
-        _ => false,
+pub(crate) enum WindowsUserHelperLaunch<'a> {
+    Tray,
+    ConnectionManager { launch_token: &'a str },
+    Whiteboard { launch_token: &'a str },
+}
+
+fn validate_windows_user_helper_launch_token(role: &str, launch_token: &str) -> ResultType<()> {
+    let mut decoded = crate::decode64(launch_token)
+        .map_err(|err| anyhow!("Invalid {role} launch token: {err}"))?;
+    let valid = decoded.len() == hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;
+    decoded.fill(0);
+    if !valid {
+        bail!("Invalid {role} launch token length");
+    }
+    Ok(())
+}
+
+fn windows_user_helper_launch_parts(
+    launch: &WindowsUserHelperLaunch<'_>,
+) -> ResultType<(&'static str, Vec<(OsString, OsString)>)> {
+    let parent = OsString::from(std::process::id().to_string());
+    match launch {
+        WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new())),
+        WindowsUserHelperLaunch::ConnectionManager { launch_token } => {
+            validate_windows_user_helper_launch_token("connection-manager", launch_token)?;
+            Ok((
+                "--cm",
+                vec![
+                    (
+                        OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
+                        OsString::from(launch_token),
+                    ),
+                    (OsString::from(crate::common::CM_LAUNCH_PARENT_ENV), parent),
+                ],
+            ))
+        }
+        WindowsUserHelperLaunch::Whiteboard { launch_token } => {
+            validate_windows_user_helper_launch_token("whiteboard", launch_token)?;
+            Ok((
+                "--whiteboard",
+                vec![
+                    (
+                        OsString::from(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
+                        OsString::from(launch_token),
+                    ),
+                    (
+                        OsString::from(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
+                        parent,
+                    ),
+                ],
+            ))
+        }
     }
 }
 
@@ -3599,77 +3632,66 @@ mod process_launch_tests {
     }
 
     #[test]
-    fn windows_user_helper_launch_shape_is_closed() {
-        let cm_environment = vec![
-            (
-                OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
-                OsString::from("token"),
-            ),
-            (
-                OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
-                OsString::from("42"),
-            ),
-        ];
-        assert!(windows_user_helper_launch_is_allowed(
-            &["--cm"],
-            &cm_environment
-        ));
-        assert!(windows_user_helper_launch_is_allowed(&["--tray"], &[]));
-        let whiteboard_environment = vec![
-            (
-                OsString::from(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
-                OsString::from("token"),
-            ),
-            (
-                OsString::from(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
-                OsString::from("42"),
-            ),
-        ];
-        assert!(windows_user_helper_launch_is_allowed(
-            &["--whiteboard"],
-            &whiteboard_environment
-        ));
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--cm"],
-            &whiteboard_environment
-        ));
+    fn windows_user_helper_launch_shape_is_typed_and_exact() {
+        let launch_token = crate::encode64([7u8; 32]);
+        let parent = OsString::from(std::process::id().to_string());
 
-        let mut extra_environment = cm_environment.clone();
-        extra_environment.push((OsString::from("PATH"), OsString::from("C:\\untrusted")));
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--cm"],
-            &extra_environment
-        ));
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--server"],
-            &cm_environment
-        ));
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--tray"],
-            &cm_environment
-        ));
-        let wrong_environment = vec![
-            (OsString::from("PATH"), OsString::from("C:\\untrusted")),
-            (
-                OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
-                OsString::from("42"),
-            ),
-        ];
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--cm"],
-            &wrong_environment
-        ));
-        let duplicate_environment = vec![cm_environment[0].clone(), cm_environment[0].clone()];
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--cm"],
-            &duplicate_environment
-        ));
-        let mut empty_environment = cm_environment;
-        empty_environment[0].1.clear();
-        assert!(!windows_user_helper_launch_is_allowed(
-            &["--cm"],
-            &empty_environment
-        ));
+        let (role, environment) =
+            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::ConnectionManager {
+                launch_token: &launch_token,
+            })
+            .unwrap();
+        assert_eq!(role, "--cm");
+        assert_eq!(
+            environment,
+            vec![
+                (
+                    OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
+                    OsString::from(&launch_token),
+                ),
+                (
+                    OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
+                    parent.clone(),
+                ),
+            ]
+        );
+
+        let (role, environment) =
+            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Whiteboard {
+                launch_token: &launch_token,
+            })
+            .unwrap();
+        assert_eq!(role, "--whiteboard");
+        assert_eq!(
+            environment,
+            vec![
+                (
+                    OsString::from(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV),
+                    OsString::from(&launch_token),
+                ),
+                (
+                    OsString::from(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV),
+                    parent,
+                ),
+            ]
+        );
+
+        assert_eq!(
+            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Tray).unwrap(),
+            ("--tray", Vec::new())
+        );
+        assert!(
+            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::ConnectionManager {
+                launch_token: ""
+            })
+            .is_err()
+        );
+        assert!(
+            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Whiteboard {
+                launch_token: &crate::encode64([0u8; 31]),
+            })
+            .is_err()
+        );
     }
 }
 
@@ -3729,26 +3751,11 @@ where
     })
 }
 
-pub fn run_as_user(arg: Vec<&str>) -> ResultType<Option<std::process::Child>> {
-    run_as_user_with_env(arg, std::iter::empty::<(&str, &str)>())
-}
-
-pub fn run_as_user_with_env<I, K, V>(
-    arg: Vec<&str>,
-    envs: I,
-) -> ResultType<Option<std::process::Child>>
-where
-    I: IntoIterator<Item = (K, V)>,
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-{
-    let envs = envs
-        .into_iter()
-        .map(|(key, value)| (OsString::from(key.as_ref()), OsString::from(value.as_ref())))
-        .collect::<Vec<_>>();
-    if !windows_user_helper_launch_is_allowed(&arg, &envs) {
-        bail!("Refusing unsupported Windows user-helper launch shape");
-    }
+pub(crate) fn run_user_helper(
+    launch: WindowsUserHelperLaunch<'_>,
+) -> ResultType<Option<std::process::Child>> {
+    let (arg, envs) = windows_user_helper_launch_parts(&launch)?;
+    let arg = vec![arg];
     if is_root() {
         return run_current_exe_in_current_session_with_env(
             arg,

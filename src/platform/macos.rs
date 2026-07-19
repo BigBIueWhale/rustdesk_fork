@@ -43,6 +43,7 @@ const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 const MACOS_OPEN: &str = "/usr/bin/open";
 const MACOS_OSASCRIPT: &str = "/usr/bin/osascript";
 const MACOS_IOREG: &str = "/usr/sbin/ioreg";
+const MACOS_PRIVILEGED_SCRIPT_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const MACOS_PRIVILEGED_HELPER_EXEC: &str =
     "/Library/PrivilegedHelperTools/com.carriez.rustdesk_service";
 const MACOS_PRIVILEGED_HELPER_TEMP: &str =
@@ -378,6 +379,21 @@ fn run_checked_command(command: &mut Command, description: &str) -> bool {
     }
 }
 
+fn configure_macos_privileged_script_command(command: &mut Command) {
+    command
+        .env_clear()
+        .env("PATH", MACOS_PRIVILEGED_SCRIPT_PATH)
+        .env("LANG", "C")
+        .env("LC_ALL", "C")
+        .current_dir("/");
+}
+
+fn macos_privileged_service_script_command() -> Command {
+    let mut command = Command::new(MACOS_OSASCRIPT);
+    configure_macos_privileged_script_command(&mut command);
+    command
+}
+
 fn launchctl_label_loaded(label: &str) -> Option<bool> {
     let mut command = Command::new(MACOS_LAUNCHCTL);
     command.args(&["list", label]);
@@ -439,15 +455,14 @@ fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool {
 }
 
 fn run_service_install(context: ServiceInstallContext) -> bool {
-    if !run_checked_command(
-        Command::new(MACOS_OSASCRIPT)
-            .arg("-e")
-            .arg(context.install_script_body)
-            .arg(context.daemon_plist_body)
-            .arg(context.agent_plist_body)
-            .arg(&context.bundled_service_exec),
-        "run macOS service install AppleScript",
-    ) {
+    let mut command = macos_privileged_service_script_command();
+    command
+        .arg("-e")
+        .arg(context.install_script_body)
+        .arg(context.daemon_plist_body)
+        .arg(context.agent_plist_body)
+        .arg(&context.bundled_service_exec);
+    if !run_checked_command(&mut command, "run macOS service install AppleScript") {
         return false;
     }
 
@@ -520,12 +535,9 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
     };
 
     let func = move || -> bool {
-        if !run_checked_command(
-            std::process::Command::new(MACOS_OSASCRIPT)
-                .arg("-e")
-                .arg(script_body),
-            "run macOS service uninstall AppleScript",
-        ) {
+        let mut command = macos_privileged_service_script_command();
+        command.arg("-e").arg(script_body);
+        if !run_checked_command(&mut command, "run macOS service uninstall AppleScript") {
             return false;
         }
         let uninstalled = !std::path::Path::new(&daemon_plist_file).exists()
@@ -1018,6 +1030,29 @@ pub fn start_os_service() -> ResultType<()> {
 #[cfg(test)]
 mod root_principal_tests {
     use super::*;
+
+    #[test]
+    fn r_s11e66_macos_privileged_script_environment_is_exact() {
+        let mut command = Command::new("/usr/bin/env");
+        configure_macos_privileged_script_command(&mut command);
+        assert_eq!(command.get_current_dir(), Some(Path::new("/")));
+
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        let environment = String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .map(|entry| entry.split_once('=').unwrap())
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(
+            environment,
+            std::collections::BTreeMap::from([
+                ("LANG", "C"),
+                ("LC_ALL", "C"),
+                ("PATH", MACOS_PRIVILEGED_SCRIPT_PATH),
+            ])
+        );
+    }
 
     #[test]
     fn r_s11e47_macos_root_principal_is_numeric_effective_uid() {

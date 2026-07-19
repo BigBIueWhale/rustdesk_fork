@@ -4570,6 +4570,55 @@ grep -qF 'R-S11e-65 — Windows token-switched helper environment finality' HARD
 if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched helper environment finality:$r_s11e65"; rc=1; else
   echo "  ok  R-S11e-65 token-switched helpers require a non-inherited target-user environment and abort before launch if its construction fails"; fi
 
+# (3b-iii-d9cp) R-S11az/R-S11e-66: the only two macOS service
+# lifecycle scripts that request administrator privileges use one closed
+# osascript constructor, never the caller environment or working directory.
+echo "== (3b-iii-d9cp) macOS administrator-script environment finality (R-S11az/R-S11e-66) =="
+r_s11e66=
+macos_privileged_policy=$(awk '/fn configure_macos_privileged_script_command/,/fn macos_privileged_service_script_command/' src/platform/macos.rs)
+macos_privileged_creator=$(awk '/fn macos_privileged_service_script_command/,/fn launchctl_label_loaded/' src/platform/macos.rs)
+macos_privileged_install=$(awk '/fn run_service_install/,/fn render_macos_service_template/' src/platform/macos.rs)
+macos_privileged_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/platform/macos.rs)
+for binding in \
+  '.env_clear()' \
+  '.env("PATH", MACOS_PRIVILEGED_SCRIPT_PATH)' \
+  '.env("LANG", "C")' \
+  '.env("LC_ALL", "C")' \
+  '.current_dir("/")'; do
+  grep -qF "$binding" <<<"$macos_privileged_policy" \
+    || r_s11e66="$r_s11e66 closed-environment-binding-missing"
+done
+grep -qF 'const MACOS_PRIVILEGED_SCRIPT_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";' src/platform/macos.rs \
+  || r_s11e66="$r_s11e66 fixed-system-path-missing"
+[ "$(grep -cF 'Command::new(MACOS_OSASCRIPT)' src/platform/macos.rs)" = 1 ] \
+  || r_s11e66="$r_s11e66 osascript-construction-inventory-drift"
+grep -qF 'let mut command = Command::new(MACOS_OSASCRIPT);' <<<"$macos_privileged_creator" \
+  || r_s11e66="$r_s11e66 closed-constructor-missing"
+grep -qF 'configure_macos_privileged_script_command(&mut command);' <<<"$macos_privileged_creator" \
+  || r_s11e66="$r_s11e66 constructor-policy-call-missing"
+for caller in "$macos_privileged_install" "$macos_privileged_uninstall"; do
+  [ "$(grep -cF 'macos_privileged_service_script_command()' <<<"$caller")" = 1 ] \
+    || r_s11e66="$r_s11e66 privileged-caller-topology-invalid"
+  if grep -qF 'Command::new(MACOS_OSASCRIPT)' <<<"$caller"; then
+    r_s11e66="$r_s11e66 direct-privileged-constructor-present"
+  fi
+  if grep -Eq '[.]env(_clear|_remove)?[(]|[.]current_dir[(]' <<<"$caller"; then
+    r_s11e66="$r_s11e66 post-construction-ambient-mutation-present"
+  fi
+done
+[ "$(grep -cF '.env(' <<<"$macos_privileged_policy")" = 3 ] \
+  || r_s11e66="$r_s11e66 replacement-environment-inventory-drift"
+[ "$(grep -cF '.current_dir(' <<<"$macos_privileged_policy")" = 1 ] \
+  || r_s11e66="$r_s11e66 working-directory-inventory-drift"
+grep -qF 'fn r_s11e66_macos_privileged_script_environment_is_exact()' src/platform/macos.rs \
+  || r_s11e66="$r_s11e66 actual-child-environment-regression-missing"
+grep -qF '<span class="id">R-S11az</span>' requirements.html || r_s11e66="$r_s11e66 normative-requirement-missing"
+grep -qF '<tr><td>174</td>' requirements.html || r_s11e66="$r_s11e66 appendix-row-missing"
+grep -qF 'R-S11e-66 — macOS administrator-script environment finality' HARDENING_STATUS.md \
+  || r_s11e66="$r_s11e66 hardening-ledger-missing"
+if [ -n "$r_s11e66" ]; then echo "  FAIL R-S11e-66 macOS administrator-script environment finality:$r_s11e66"; rc=1; else
+  echo "  ok  R-S11e-66 administrator-authorized service scripts receive only the fixed system PATH/C locale and root working directory"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -4889,7 +4938,7 @@ check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configur
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
 [ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
-[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
+[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 3 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
 [ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 5 ] \
   || r_s11e34="$r_s11e34 macos-checked-command-inventory-drift"

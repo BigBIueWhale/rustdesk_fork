@@ -4176,6 +4176,47 @@ unreachable and a source/test/AST gate prevents reintroduction.
   removal. The focused source gate independently rejects inherited construction and missing finality markers. Native
   Windows multi-session execution and exact signed-artifact proof remain R-R2/R-B2; external expert review remains
   R-V3.
+- **R-S11e-66 — macOS administrator-script environment finality — SOURCE IMPLEMENTED; NATIVE macOS AND
+  EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: macOS desktop service install and uninstall. Surfaces:
+  `run_service_install` and `uninstall_service` → embedded `install.scpt`/`uninstall.scpt` →
+  `/usr/bin/osascript` → `do shell script ... with administrator privileges`. Boundary: unprivileged RustDesk
+  launcher process context ↔ administrator-authorized shell and child utilities. Proven gap: both callers directly
+  constructed `MACOS_OSASCRIPT` without clearing the launch environment or selecting a working directory. Apple's
+  `do shell script` contract says `osascript` inherits its launcher environment/CWD and the shell inherits them from
+  `osascript`; Apple's secure-coding guidance treats inherited environment variables as an input to privileged
+  programs. Thus caller-controlled ambient variables and CWD crossed into the privileged execution context. The
+  generated shell bodies already select absolute system executables and retained embedded script bytes, quoted
+  arguments, fixed installed-app/helper destinations, strict outer-app/helper signature checks, deployed/bundled byte
+  equality, non-stdio descriptor closure, checked status, launchd state validation, and file postconditions. This was
+  an ambient privilege-boundary integrity defect, not a caller-selected executable/script, proof of a working root
+  exploit, evidence of compromise, or reason to weaken those existing checks.
+
+  Source closure: `macos_privileged_service_script_command` now owns the one and only
+  `Command::new(MACOS_OSASCRIPT)` site. Its narrow policy clears the complete inherited environment before adding the
+  exact replacement set `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LANG=C`, and `LC_ALL=C`, and fixes the working
+  directory at `/`. Both install and uninstall obtain their command from that constructor before attaching the
+  embedded script or arguments; there is no selective-preservation or compatibility fallback. The generic checked
+  command helper remains responsible for fail-closed non-stdio descriptor setup and status, while all script,
+  provenance, launchd, and postcondition behavior remains unchanged. R-S11az and Appendix C #174 make the model
+  normative. A native-only actual-child unit regression proves that the policy emits exactly those three environment
+  entries and `/` CWD. The workspace semantic validator binds complete reset, exact values/order, sole-constructor
+  inventory, both callers, focused shared/Apple gates, requirement, Appendix row, and ledger; deliberate mutations
+  cover partial clearing, each replacement variable/value, CWD, constructor/caller topology, regression removal, and
+  documentary bindings. Native administrator-dialog/service-lifecycle execution and exact signed-artifact evidence
+  remain R-R2/R-B2; external expert review remains R-V3.
+
+  Verification: the final shared and Apple focused gates pass; workspace semantic verification passes normally and
+  with its complete source-mutation matrix. Bash syntax, the native-codec watch and mutation self-test, dependency
+  inventory and all 103 inventory mutations, requirements-digest synchronization, and `git diff --check` pass. The
+  machine inventory exposed and this slice corrected stale requirement/verifier text from 850/73 to the already
+  current 855 lexical unsafe blocks across 251 tracked Rust files, 74 containing at least one; no unsafe code was
+  added. The available immutable images have no installed Rustfmt component, so no formatter pass is claimed. A
+  non-root offline Apple-target root-library check progressed after readable crate archives were re-extracted into
+  disposable storage, then stopped in third-party Objective-C/C build scripts because the image has no macOS SDK
+  headers. That is not a source failure or a green Apple build. Every verifier/build/test command used an
+  already-present immutable image as UID/GID 1000 with network and image pulls disabled, read-only repository and
+  inputs, disposable outputs, no published ports/capabilities, and no-new-privileges. No host RustDesk, service,
+  configuration, listener, firewall, or host-network state was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6522,8 +6563,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-0987d7dc79223643010efc6aa9a7777bb3ef8948efd4816cf46da477414b78ef  requirements.html
+c4bd7c481d80e663bbd330146ddc30f79f2fb1160eeb1be4d3677fe9adf57e6c  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ay, and Appendix C #173. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11az, and Appendix C #174. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

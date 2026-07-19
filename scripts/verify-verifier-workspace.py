@@ -6038,7 +6038,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "855 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 74 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -6097,7 +6097,7 @@ def validate_macos_descriptor_contract(sources):
     for text, expected, label in (
         ("command.status()", 2, "macOS platform status execution inventory"),
         ("command.spawn()", 1, "macOS platform spawn execution inventory"),
-        ("command.output()", 2, "macOS platform output execution inventory"),
+        ("command.output()", 3, "macOS platform output execution inventory"),
         ("run_checked_command(", 5, "macOS checked-command inventory"),
     ):
         require_exact_count(platform, text, expected, label)
@@ -6194,6 +6194,150 @@ def validate_macos_descriptor_contract(sources):
             "macOS terminal PTY Appendix C disposition",
         ),
         ("hardening", "R-S11e-34 — macOS child inherited descriptor authority", "macOS descriptor hardening ledger"),
+    ):
+        require_text(sources[source_key], text, label)
+
+
+def validate_macos_privileged_script_environment_contract(sources):
+    platform = sources["macos_source"]
+    require_text(
+        platform,
+        'const MACOS_PRIVILEGED_SCRIPT_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";',
+        "macOS privileged-script fixed path",
+    )
+    policy = extract_between(
+        platform,
+        "fn configure_macos_privileged_script_command(command: &mut Command) {",
+        "\nfn macos_privileged_service_script_command",
+        "macOS privileged-script environment policy",
+    )
+    require_exact_count(
+        policy, ".env_clear()", 1, "macOS privileged-script complete environment reset"
+    )
+    require_exact_count(
+        policy, ".env(", 3, "macOS privileged-script exact replacement environment"
+    )
+    require_exact_count(
+        policy, ".current_dir(", 1, "macOS privileged-script fixed working directory"
+    )
+    require_order(
+        policy,
+        (
+            ".env_clear()",
+            '.env("PATH", MACOS_PRIVILEGED_SCRIPT_PATH)',
+            '.env("LANG", "C")',
+            '.env("LC_ALL", "C")',
+            '.current_dir("/")',
+        ),
+        "macOS privileged-script closed environment and working directory",
+    )
+    creator = extract_between(
+        platform,
+        "fn macos_privileged_service_script_command() -> Command {",
+        "\nfn launchctl_label_loaded",
+        "macOS privileged service-script command constructor",
+    )
+    require_exact_count(
+        platform,
+        "Command::new(MACOS_OSASCRIPT)",
+        1,
+        "macOS privileged osascript construction inventory",
+    )
+    require_order(
+        creator,
+        (
+            "let mut command = Command::new(MACOS_OSASCRIPT);",
+            "configure_macos_privileged_script_command(&mut command);",
+            "command",
+        ),
+        "macOS privileged osascript construction before return",
+    )
+    for start, end, label in (
+        (
+            "fn run_service_install(context: ServiceInstallContext) -> bool {",
+            "\nfn render_macos_service_template",
+            "macOS administrator service install",
+        ),
+        (
+            "pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {",
+            "\npub fn get_cursor_pos",
+            "macOS administrator service uninstall",
+        ),
+    ):
+        caller = extract_between(platform, start, end, label)
+        require_exact_count(
+            caller,
+            "macos_privileged_service_script_command()",
+            1,
+            f"{label} closed command construction",
+        )
+        require_absent(
+            caller,
+            "Command::new(MACOS_OSASCRIPT)",
+            f"{label} direct osascript construction",
+        )
+        for ambient_mutator in (".env(", ".env_clear(", ".env_remove(", ".current_dir("):
+            require_absent(
+                caller,
+                ambient_mutator,
+                f"{label} post-construction ambient-context mutation",
+            )
+        require_order(
+            caller,
+            (
+                "macos_privileged_service_script_command()",
+                '.arg("-e")',
+                "run_checked_command(&mut command",
+            ),
+            f"{label} policy before arguments and execution",
+        )
+    actual_child = extract_between(
+        platform,
+        "fn r_s11e66_macos_privileged_script_environment_is_exact() {",
+        "\n    #[test]\n    fn r_s11e47_",
+        "macOS actual-child privileged environment regression",
+    )
+    require_order(
+        actual_child,
+        (
+            'let mut command = Command::new("/usr/bin/env");',
+            "configure_macos_privileged_script_command(&mut command);",
+            'assert_eq!(command.get_current_dir(), Some(Path::new("/")));',
+            "let output = command.output().unwrap();",
+            "assert!(output.status.success());",
+            ".collect::<std::collections::BTreeMap<_, _>>();",
+            '("LANG", "C")',
+            '("LC_ALL", "C")',
+            '("PATH", MACOS_PRIVILEGED_SCRIPT_PATH)',
+        ),
+        "macOS actual-child exact privileged environment proof",
+    )
+    for source_key, text, label in (
+        (
+            "verify",
+            "macOS administrator-script environment finality (R-S11az/R-S11e-66)",
+            "macOS privileged-script source gate",
+        ),
+        (
+            "apple",
+            "macOS administrator-script environment finality (R-S11az/R-S11e-66)",
+            "macOS privileged-script Apple-conformance gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11az</span>',
+            "macOS privileged-script normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>174</td>",
+            "macOS privileged-script Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-66 — macOS administrator-script environment finality",
+            "macOS privileged-script hardening ledger",
+        ),
     ):
         require_text(sources[source_key], text, label)
 
@@ -10293,6 +10437,7 @@ def validate_sources(sources):
     validate_docs(sources)
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
+    validate_macos_privileged_script_environment_contract(sources)
     validate_windows_helper_launch_contract(sources)
     validate_cross_platform_user_helper_contract(sources)
     validate_macos_service_principal_contract(sources)
@@ -16013,7 +16158,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "850 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 73 files",
+            "855 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 74 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -16226,6 +16371,102 @@ def run_source_mutations(sources):
             "R-S11e-65 — Windows token-switched helper environment finality",
             "R-S11e-65 — Windows token-switched helper environment deferred",
             "Windows target-user environment hardening ledger",
+        ),
+        (
+            "macos_source",
+            'const MACOS_PRIVILEGED_SCRIPT_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";',
+            'const MACOS_PRIVILEGED_SCRIPT_PATH: &str = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";',
+            "macOS privileged-script fixed path",
+        ),
+        (
+            "macos_source",
+            ".env_clear()",
+            '.env_remove("BASH_ENV")',
+            "macOS privileged-script complete environment reset",
+        ),
+        (
+            "macos_source",
+            '.env("PATH", MACOS_PRIVILEGED_SCRIPT_PATH)',
+            '.env("PATH", "/usr/local/bin:/usr/bin:/bin")',
+            "macOS privileged-script closed environment and working directory",
+        ),
+        (
+            "macos_source",
+            '.env("LANG", "C")',
+            '.env("LANG", "")',
+            "macOS privileged-script closed environment and working directory",
+        ),
+        (
+            "macos_source",
+            '.env("LC_ALL", "C")',
+            '.env("LC_ALL", "en_US.UTF-8")',
+            "macOS privileged-script closed environment and working directory",
+        ),
+        (
+            "macos_source",
+            '.env("LC_ALL", "C")',
+            '.env("LC_ALL", "C").env("HOME", "/tmp")',
+            "macOS privileged-script exact replacement environment",
+        ),
+        (
+            "macos_source",
+            '.current_dir("/")',
+            '.current_dir("/tmp")',
+            "macOS privileged-script closed environment and working directory",
+        ),
+        (
+            "macos_source",
+            "let mut command = Command::new(MACOS_OSASCRIPT);",
+            "let mut command = Command::new(MACOS_OPEN);",
+            "macOS privileged osascript construction inventory",
+        ),
+        (
+            "macos_source",
+            "fn macos_privileged_service_script_command() -> Command {\n    let mut command = Command::new(MACOS_OSASCRIPT);\n    configure_macos_privileged_script_command(&mut command);",
+            "fn macos_privileged_service_script_command() -> Command {\n    let mut command = Command::new(MACOS_OSASCRIPT);\n    let _ = &mut command;",
+            "macOS privileged osascript construction before return",
+        ),
+        (
+            "macos_source",
+            "let mut command = macos_privileged_service_script_command();",
+            "let mut command = Command::new(MACOS_OSASCRIPT);",
+            "macOS privileged osascript construction inventory",
+        ),
+        (
+            "macos_source",
+            "fn r_s11e66_macos_privileged_script_environment_is_exact()",
+            "fn r_s11e66_macos_privileged_script_environment_is_ambient()",
+            "macOS actual-child privileged environment regression",
+        ),
+        (
+            "verify",
+            "macOS administrator-script environment finality (R-S11az/R-S11e-66)",
+            "macOS administrator-script environment compatibility (R-S11az/R-S11e-66)",
+            "macOS privileged-script source gate",
+        ),
+        (
+            "apple",
+            "macOS administrator-script environment finality (R-S11az/R-S11e-66)",
+            "macOS administrator-script environment compatibility (R-S11az/R-S11e-66)",
+            "macOS privileged-script Apple-conformance gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11az</span>',
+            '<span class="id">R-S11az-disabled</span>',
+            "macOS privileged-script normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>174</td>",
+            "<tr><td>174-disabled</td>",
+            "macOS privileged-script Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-66 — macOS administrator-script environment finality",
+            "R-S11e-66 — macOS administrator-script environment deferred",
+            "macOS privileged-script hardening ledger",
         ),
         (
             "macos_source",

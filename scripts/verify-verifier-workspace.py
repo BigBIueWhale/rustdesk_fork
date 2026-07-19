@@ -7197,25 +7197,21 @@ def validate_macos_service_principal_contract(sources):
     if "if let Err" in service_entry or "allow_err!" in service_entry:
         raise VerificationError("macOS service IPC errors are swallowed")
 
-    core_service_dispatch = extract_between(
-        core_main,
-        'log::info!("start --service");',
-        "\n            return None;",
-        "common service dispatch",
-    )
     core_macos_entry = extract_between(
-        core_service_dispatch,
-        '#[cfg(target_os = "macos")]',
-        "\n            }",
+        core_main,
+        '#[cfg(target_os = "macos")]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {',
+        '\n    #[cfg(target_os = "linux")]',
         "common macOS service entry",
     )
     require_order(
         core_macos_entry,
         (
             '#[cfg(target_os = "macos")]',
-            "if let Err(err) = crate::start_os_service() {",
-            'log::error!("macOS service principal authority failed closed: {err}");',
+            "if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {",
+            "if let Err(err) = crate::platform::macos::run_service() {",
+            'eprintln!("macOS service bootstrap authority failed closed: {err}");',
             "std::process::exit(1);",
+            "return None;",
         ),
         "common macOS service entry error propagation",
     )
@@ -7224,8 +7220,8 @@ def validate_macos_service_principal_contract(sources):
         (
             '#[cfg(target_os = "macos")]',
             "fn main() {",
-            "if let Err(err) = crate::start_os_service() {",
-            'hbb_common::log::error!("macOS service principal authority failed closed: {err}");',
+            "if let Err(err) = crate::platform::macos::run_service() {",
+            'eprintln!("macOS service bootstrap authority failed closed: {err}");',
             "std::process::exit(1);",
         ),
         "dedicated macOS service entry error propagation",
@@ -7279,6 +7275,298 @@ def validate_macos_service_principal_contract(sources):
         hardening,
         "R-S11e-47 — macOS numeric service-principal authority",
         "macOS service-principal hardening ledger",
+    )
+
+
+def validate_macos_service_storage_root_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    macos_source = sources["macos_source"]
+    config = sources["config_source"]
+    core_main = sources["core_main"]
+    service_source = sources["service_source"]
+
+    for source, text, label, log_label, path_scope_label, identity_test_label in (
+        (
+            verify,
+            'echo "== (3b-iii-d9cb) macOS service-owned config/log root (R-S11al/R-S11e-52) =="',
+            "macOS service storage-root source gate",
+            "macOS service log directory source gate",
+            "macOS service config-path source-gate scope",
+            "macOS parent-identity source-gate regression",
+        ),
+        (
+            apple,
+            'echo "== (2b-iv-a-0b) macOS service-owned config/log root (R-S11al/R-S11e-52) =="',
+            "macOS service storage-root Apple gate",
+            "macOS service log directory Apple gate",
+            "macOS service config-path Apple-gate scope",
+            "macOS parent-identity Apple-gate regression",
+        ),
+    ):
+        require_text(source, text, label)
+        require_text(source, '.join("Logs").join(app_name)', log_label)
+        require_text(
+            source,
+            'in_path && /#\\[cfg\\(target_os = "macos"\\)\\]/{capture=1}',
+            path_scope_label,
+        )
+        require_text(source, '  \'".."\'', identity_test_label)
+
+    principal_home = extract_between(
+        macos_source,
+        "fn service_principal_home() -> ResultType<PathBuf> {",
+        "\npub fn run_service() -> ResultType<()> {",
+        "macOS service password-database home proof",
+    )
+    require_order(
+        principal_home,
+        (
+            "let effective_uid = unsafe { hbb_common::libc::geteuid() };",
+            "if !effective_uid_is_root(effective_uid) {",
+            'bail!("macOS --service requires effective UID 0");',
+            "passwd_entry_for_uid(effective_uid)",
+            "if !home.is_absolute()",
+            "let metadata = std::fs::metadata(&home)",
+            "if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {",
+            "Ok(home)",
+        ),
+        "macOS service principal-home validation order",
+    )
+    for forbidden in ("dirs_next::home_dir", "std::env::var", "std::env::home_dir"):
+        if forbidden in principal_home:
+            raise VerificationError(
+                f"macOS service principal home retains ambient lookup: {forbidden}"
+            )
+
+    bootstrap = extract_between(
+        macos_source,
+        "pub fn run_service() -> ResultType<()> {",
+        "\npub fn lock_screen()",
+        "central macOS service bootstrap",
+    )
+    require_order(
+        bootstrap,
+        (
+            "let home = service_principal_home()?;",
+            "crate::common::load_custom_client();",
+            "hbb_common::config::Config::initialize_macos_service_owned_root(home)?;",
+            'hbb_common::init_log(false, "service");',
+            "start_os_service()",
+        ),
+        "macOS principal-identity-config-log-listener bootstrap order",
+    )
+
+    root_definition = extract_between(
+        config,
+        "struct MacosServiceOwnedConfigRoot {",
+        '\n#[cfg(target_os = "linux")]\n#[derive(Clone, Debug, Eq, PartialEq)]',
+        "macOS immutable service config/log root definition",
+    )
+    for text, label in (
+        ("home: PathBuf,", "stored service home"),
+        ("path: PathBuf,", "stored service config path"),
+        ("log_path: PathBuf,", "stored service log path"),
+        (
+            "static MACOS_SERVICE_OWNED_CONFIG_ROOT: OnceLock<MacosServiceOwnedConfigRoot>",
+            "immutable process-local service root",
+        ),
+        ("fn macos_service_owned_config_root_from(", "pure service root derivation"),
+        ("if !home.is_absolute()", "absolute home validation"),
+        ('organization.replace(\' \', "-")', "directories-next organization mapping"),
+        ('app_name.replace(\' \', "-")', "directories-next app mapping"),
+        ('.join("Application Support")', "macOS config directory"),
+        ('.join("Logs").join(app_name)', "macOS log directory"),
+    ):
+        require_text(root_definition, text, label)
+    identity_component = extract_between(
+        root_definition,
+        "let identity_component_is_valid = |value: &str| {",
+        "\n    if !identity_component_is_valid(organization)",
+        "macOS service identity component validation",
+    )
+    require_order(
+        identity_component,
+        (
+            "let mut components = Path::new(value).components();",
+            "!value.is_empty()",
+            "character.is_control() || matches!(character, '/' | '\\\\')",
+            "matches!(components.next(), Some(std::path::Component::Normal(_)))",
+            "components.next().is_none()",
+        ),
+        "macOS service identity component validation",
+    )
+    require_text(
+        root_definition,
+        "if !identity_component_is_valid(organization) || !identity_component_is_valid(app_name) {",
+        "macOS service identity component validation",
+    )
+
+    initializer = extract_between(
+        config,
+        "pub fn initialize_macos_service_owned_root(home: PathBuf) -> Result<PathBuf> {",
+        '\n    #[cfg(target_os = "linux")]',
+        "macOS immutable service-root initializer",
+    )
+    require_order(
+        initializer,
+        (
+            "let organization = ORG.read().unwrap().clone();",
+            "let app_name = APP_NAME.read().unwrap().clone();",
+            "macos_service_owned_config_root_from(&home, &organization, &app_name)?;",
+            "MACOS_SERVICE_OWNED_CONFIG_ROOT.set(candidate.clone())",
+            "if existing == &candidate {",
+            "macOS service-owned config root was initialized inconsistently",
+        ),
+        "macOS immutable service-root initialization",
+    )
+
+    get_home = extract_between(
+        config,
+        "pub fn get_home() -> PathBuf {",
+        '\n    #[cfg(windows)]\n    pub fn initialize_windows_service_owned_root(',
+        "Config get_home service-root consumer",
+    )
+    require_order(
+        get_home,
+        (
+            '#[cfg(target_os = "macos")]',
+            "if let Some(root) = macos_service_owned_config_root() {",
+            "return root.home.clone();",
+            "dirs_next::home_dir()",
+        ),
+        "macOS service home before ordinary ambient fallback",
+    )
+
+    config_path = extract_between(
+        config,
+        "pub fn path<P: AsRef<Path>>(p: P) -> PathBuf {",
+        "\n    /// Get the log directory path.",
+        "Config path service-root consumer",
+    )
+    macos_config_path = extract_between(
+        config_path,
+        '#[cfg(target_os = "macos")]\n            if let Some(root) = macos_service_owned_config_root() {',
+        '\n            #[cfg(target_os = "linux")]',
+        "macOS service config root before ordinary ProjectDirs fallback",
+    )
+    require_order(
+        macos_config_path,
+        (
+            "if let Some(root) = macos_service_owned_config_root() {",
+            "let mut path = root.path.clone();",
+            "path.push(p);",
+            "return path;",
+        ),
+        "macOS service config root before ordinary ProjectDirs fallback",
+    )
+    require_order(
+        config_path,
+        (
+            '#[cfg(target_os = "macos")]',
+            "if let Some(root) = macos_service_owned_config_root() {",
+            "let mut path = root.path.clone();",
+            "path.push(p);",
+            "directories_next::ProjectDirs::from",
+        ),
+        "macOS service config root before ordinary ProjectDirs fallback",
+    )
+
+    log_path = extract_between(
+        config,
+        "pub fn log_path() -> PathBuf {",
+        "\n    pub fn ipc_path(postfix: &str) -> String {",
+        "Config log_path service-root consumer",
+    )
+    require_order(
+        log_path,
+        (
+            '#[cfg(target_os = "macos")]',
+            "if let Some(root) = macos_service_owned_config_root() {",
+            "return root.log_path.clone();",
+            "dirs_next::home_dir()",
+        ),
+        "macOS service log root before ordinary ambient fallback",
+    )
+
+    core_entry = extract_between(
+        core_main,
+        '#[cfg(target_os = "macos")]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {',
+        '\n    #[cfg(target_os = "linux")]',
+        "shared-image centralized macOS service entry",
+    )
+    for entry, label in (
+        (core_entry, "shared-image macOS service entry"),
+        (service_source, "dedicated macOS service entry"),
+    ):
+        require_order(
+            entry,
+            (
+                "crate::platform::macos::run_service()",
+                'eprintln!("macOS service bootstrap authority failed closed: {err}");',
+                "std::process::exit(1);",
+            ),
+            label,
+        )
+        for forbidden in ("load_custom_client()", "init_log("):
+            if forbidden in entry:
+                raise VerificationError(f"{label} initializes {forbidden} outside bootstrap")
+
+    root_test = extract_between(
+        config,
+        "fn r_s11e52_macos_service_owned_paths_ignore_ambient_home()",
+        "\n    }",
+        "macOS service storage-root regression",
+    )
+    for text, label in (
+        (
+            'Path::new("/var/root/Library/Application Support/com.carriez.RustDesk")',
+            "expected config path assertion",
+        ),
+        (
+            'Path::new("/var/root/Library/Logs/RustDesk")',
+            "expected log path assertion",
+        ),
+        ('Path::new("relative/root")', "relative home rejection"),
+        ('"../RustDesk"', "path-injecting identity rejection"),
+        ('".."', "parent identity rejection"),
+    ):
+        require_text(root_test, text, label)
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11al</span>',
+        "</div></div>",
+        "macOS service storage-root requirement",
+    )
+    for text, label in (
+        ("resolve that same UID through <code>getpwuid_r</code>", "passwd lookup clause"),
+        ("initialize one immutable process-local service root", "immutable root clause"),
+        (
+            "principal-home-before-identity-before-config-before-log-before-listener ordering",
+            "complete bootstrap ordering clause",
+        ),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        ('<span class="id">R-S11al</span>', "macOS service storage-root requirement"),
+        (
+            "macOS service configuration and logging have one password-database-owned root before initialization",
+            "macOS storage-root title",
+        ),
+        ("<tr><td>160</td>", "macOS storage-root Appendix C row"),
+        (
+            "macOS root service configuration and rotating logs followed inherited",
+            "macOS storage-root Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-52 — macOS service-owned configuration/log root",
+        "macOS service storage-root hardening ledger",
     )
 
 
@@ -7950,7 +8238,7 @@ def validate_windows_scm_service_entry_contract(sources):
     exact_entry = extract_between(
         core_entry,
         '#[cfg(windows)]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {',
-        "\n    #[cfg(target_os = \"linux\")]",
+        "\n    #[cfg(target_os = \"macos\")]",
         "Windows exact service-supervisor entry",
     )
     require_order(
@@ -8135,6 +8423,7 @@ def validate_sources(sources):
     validate_service_owned_server_role_contract(sources)
     validate_service_supervisor_role_contract(sources)
     validate_windows_scm_service_entry_contract(sources)
+    validate_macos_service_storage_root_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -14351,14 +14640,14 @@ def run_source_mutations(sources):
         ),
         (
             "core_main",
-            '            #[cfg(target_os = "macos")]\n            if let Err(err) = crate::start_os_service() {\n                log::error!("macOS service principal authority failed closed: {err}");\n                std::process::exit(1);\n            }',
-            '            #[cfg(target_os = "macos")]\n            crate::start_os_service();',
+            '    #[cfg(target_os = "macos")]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {\n        if let Err(err) = crate::platform::macos::run_service() {\n            eprintln!("macOS service bootstrap authority failed closed: {err}");\n            std::process::exit(1);\n        }\n        return None;\n    }',
+            '    #[cfg(target_os = "macos")]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {\n        crate::platform::macos::run_service();\n        return None;\n    }',
             "common macOS service entry",
         ),
         (
             "service_source",
-            '    if let Err(err) = crate::start_os_service() {\n        hbb_common::log::error!("macOS service principal authority failed closed: {err}");\n        std::process::exit(1);\n    }',
-            "    crate::start_os_service();",
+            '    if let Err(err) = crate::platform::macos::run_service() {\n        eprintln!("macOS service bootstrap authority failed closed: {err}");\n        std::process::exit(1);\n    }',
+            "    crate::platform::macos::run_service();",
             "dedicated macOS service entry error propagation",
         ),
         (
@@ -14378,6 +14667,214 @@ def run_source_mutations(sources):
             "assert!(!effective_uid_is_root(501));",
             "assert!(effective_uid_is_root(501));",
             "macOS ordinary-UID assertion",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9cb) macOS service-owned config/log root (R-S11al/R-S11e-52) =="',
+            'echo "== (3b-iii-d9cb) macOS ambient-HOME service storage (R-S11al/R-S11e-52) =="',
+            "macOS service storage-root source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0b) macOS service-owned config/log root (R-S11al/R-S11e-52) =="',
+            'echo "== (2b-iv-a-0b) macOS ambient-HOME service storage (R-S11al/R-S11e-52) =="',
+            "macOS service storage-root Apple gate",
+        ),
+        (
+            "verify",
+            '\'.join("Logs").join(app_name)\'',
+            '\'.join("Logs")\'',
+            "macOS service log directory source gate",
+        ),
+        (
+            "apple",
+            '\'.join("Logs").join(app_name)\'',
+            '\'.join("Logs")\'',
+            "macOS service log directory Apple gate",
+        ),
+        (
+            "verify",
+            'in_path && /#\\[cfg\\(target_os = "macos"\\)\\]/{capture=1}',
+            'in_path || /#\\[cfg\\(target_os = "macos"\\)\\]/{capture=1}',
+            "macOS service config-path source-gate scope",
+        ),
+        (
+            "apple",
+            'in_path && /#\\[cfg\\(target_os = "macos"\\)\\]/{capture=1}',
+            'in_path || /#\\[cfg\\(target_os = "macos"\\)\\]/{capture=1}',
+            "macOS service config-path Apple-gate scope",
+        ),
+        (
+            "verify",
+            '  \'".."\'; do',
+            '  \'"RustDesk"\'; do',
+            "macOS parent-identity source-gate regression",
+        ),
+        (
+            "apple",
+            '  \'".."\'; do',
+            '  \'"RustDesk"\'; do',
+            "macOS parent-identity Apple-gate regression",
+        ),
+        (
+            "macos_source",
+            "let effective_uid = unsafe { hbb_common::libc::geteuid() };",
+            "let effective_uid = unsafe { hbb_common::libc::getuid() };",
+            "macOS service principal-home validation order",
+        ),
+        (
+            "macos_source",
+            "if !effective_uid_is_root(effective_uid) {",
+            "if false {",
+            "macOS service principal-home validation order",
+        ),
+        (
+            "macos_source",
+            "let (_, home) = passwd_entry_for_uid(effective_uid)",
+            "let (_, home) = passwd_entry_for_uid(501)",
+            "macOS service principal-home validation order",
+        ),
+        (
+            "macos_source",
+            "if !home.is_absolute()",
+            "if false",
+            "macOS service principal-home validation order",
+        ),
+        (
+            "macos_source",
+            "if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {",
+            "if !metadata.is_dir() {",
+            "macOS service principal-home validation order",
+        ),
+        (
+            "macos_source",
+            "    let home = service_principal_home()?;\n    crate::common::load_custom_client();\n    hbb_common::config::Config::initialize_macos_service_owned_root(home)?;\n    hbb_common::init_log(false, \"service\");\n    start_os_service()",
+            "    crate::common::load_custom_client();\n    hbb_common::init_log(false, \"service\");\n    let home = service_principal_home()?;\n    hbb_common::config::Config::initialize_macos_service_owned_root(home)?;\n    start_os_service()",
+            "macOS principal-identity-config-log-listener bootstrap order",
+        ),
+        (
+            "config_source",
+            "static MACOS_SERVICE_OWNED_CONFIG_ROOT: OnceLock<MacosServiceOwnedConfigRoot>",
+            "static MACOS_SERVICE_OWNED_CONFIG_ROOT: Mutex<Option<MacosServiceOwnedConfigRoot>>",
+            "immutable process-local service root",
+        ),
+        (
+            "config_source",
+            "            && matches!(components.next(), Some(std::path::Component::Normal(_)))\n"
+            "            && components.next().is_none()\n"
+            "    };\n"
+            "    if !identity_component_is_valid(organization) || !identity_component_is_valid(app_name) {",
+            "            && true\n"
+            "            && components.next().is_none()\n"
+            "    };\n"
+            "    if !identity_component_is_valid(organization) || !identity_component_is_valid(app_name) {",
+            "macOS service identity component validation",
+        ),
+        (
+            "config_source",
+            '.join("Application Support")',
+            '.join("Preferences")',
+            "macOS config directory",
+        ),
+        (
+            "config_source",
+            '.join("Logs").join(app_name)',
+            '.join("Logs").join("RustDesk")',
+            "macOS log directory",
+        ),
+        (
+            "config_source",
+            "MACOS_SERVICE_OWNED_CONFIG_ROOT.set(candidate.clone())",
+            "MACOS_SERVICE_OWNED_CONFIG_ROOT.get()",
+            "macOS immutable service-root initialization",
+        ),
+        (
+            "config_source",
+            'anyhow!("macOS service-owned config root initialization was lost")\n'
+            "                })?;\n"
+            "                if existing == &candidate {",
+            'anyhow!("macOS service-owned config root initialization was lost")\n'
+            "                })?;\n"
+            "                if true {",
+            "macOS immutable service-root initialization",
+        ),
+        (
+            "config_source",
+            "            #[cfg(target_os = \"macos\")]\n            if let Some(root) = macos_service_owned_config_root() {\n                return root.home.clone();\n            }",
+            "            #[cfg(target_os = \"macos\")]\n            if let Some(path) = dirs_next::home_dir() {\n                return path;\n            }",
+            "macOS service home before ordinary ambient fallback",
+        ),
+        (
+            "config_source",
+            "            #[cfg(target_os = \"macos\")]\n            if let Some(root) = macos_service_owned_config_root() {\n                let mut path = root.path.clone();\n                path.push(p);\n                return path;\n            }",
+            "            #[cfg(target_os = \"macos\")]\n            if let Some(root) = macos_service_owned_config_root() {\n                let mut path = root.home.clone();\n                path.push(p);\n                return path;\n            }",
+            "macOS service config root before ordinary ProjectDirs fallback",
+        ),
+        (
+            "config_source",
+            "            if let Some(root) = macos_service_owned_config_root() {\n                return root.log_path.clone();\n            }",
+            "            if let Some(path) = dirs_next::home_dir() {\n                return path;\n            }",
+            "macOS service log root before ordinary ambient fallback",
+        ),
+        (
+            "config_source",
+            "fn r_s11e52_macos_service_owned_paths_ignore_ambient_home()",
+            "fn macos_service_owned_paths_follow_ambient_home()",
+            "macOS service storage-root regression",
+        ),
+        (
+            "config_source",
+            'Path::new("/var/root"), "com.carriez", "..")',
+            'Path::new("/var/root"), "com.carriez", "RustDesk")',
+            "parent identity rejection",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11al</span>',
+            '<span class="id">R-S11am</span>',
+            "macOS service storage-root requirement",
+        ),
+        (
+            "requirements",
+            "macOS service configuration and logging have one password-database-owned root before initialization",
+            "macOS service configuration and logging follow inherited HOME",
+            "macOS storage-root title",
+        ),
+        (
+            "requirements",
+            "resolve that same UID through <code>getpwuid_r</code>",
+            "resolve a caller-selected user through environment text",
+            "passwd lookup clause",
+        ),
+        (
+            "requirements",
+            "initialize one immutable process-local service root",
+            "recompute a mutable service root for every access",
+            "immutable root clause",
+        ),
+        (
+            "requirements",
+            "principal-home-before-identity-before-config-before-log-before-listener ordering",
+            "identity-before-log-before-principal ordering",
+            "complete bootstrap ordering clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>160</td>",
+            "<tr><td>9160</td>",
+            "macOS storage-root Appendix C row",
+        ),
+        (
+            "requirements",
+            "macOS root service configuration and rotating logs followed inherited",
+            "macOS root service storage never followed inherited",
+            "macOS storage-root Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-52 — macOS service-owned configuration/log root",
+            "R-S11e-52 — macOS ambient-HOME service storage",
+            "macOS service storage-root hardening ledger",
         ),
         (
             "verify",

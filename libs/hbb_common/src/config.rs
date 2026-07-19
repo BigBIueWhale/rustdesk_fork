@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Result};
@@ -60,6 +60,75 @@ const SERIAL: i32 = 3;
 #[cfg(target_os = "macos")]
 lazy_static::lazy_static! {
     pub static ref ORG: RwLock<String> = RwLock::new("com.carriez".to_owned());
+}
+
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MacosServiceOwnedConfigRoot {
+    home: PathBuf,
+    path: PathBuf,
+    log_path: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+static MACOS_SERVICE_OWNED_CONFIG_ROOT: OnceLock<MacosServiceOwnedConfigRoot> = OnceLock::new();
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_service_owned_config_root_from(
+    home: &Path,
+    organization: &str,
+    app_name: &str,
+) -> Result<MacosServiceOwnedConfigRoot> {
+    if !home.is_absolute()
+        || !home.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+    {
+        return Err(anyhow!("invalid macOS service-owned home directory"));
+    }
+    let identity_component_is_valid = |value: &str| {
+        let mut components = Path::new(value).components();
+        !value.is_empty()
+            && !value
+                .chars()
+                .any(|character| character.is_control() || matches!(character, '/' | '\\'))
+            && matches!(components.next(), Some(std::path::Component::Normal(_)))
+            && components.next().is_none()
+    };
+    if !identity_component_is_valid(organization) || !identity_component_is_valid(app_name) {
+        return Err(anyhow!("invalid macOS service-owned config identity"));
+    }
+
+    // Match directories-next 2.0's macOS project-name mapping while replacing
+    // its ambient HOME base with the effective principal's passwd-owned home.
+    let project_name = format!(
+        "{}.{}",
+        organization.replace(' ', "-"),
+        app_name.replace(' ', "-")
+    );
+    let mut components = Path::new(&project_name).components();
+    if !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+    {
+        return Err(anyhow!("invalid macOS service-owned config project name"));
+    }
+
+    Ok(MacosServiceOwnedConfigRoot {
+        home: home.to_path_buf(),
+        path: home
+            .join("Library")
+            .join("Application Support")
+            .join(project_name),
+        log_path: home.join("Library").join("Logs").join(app_name),
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_service_owned_config_root() -> Option<&'static MacosServiceOwnedConfigRoot> {
+    MACOS_SERVICE_OWNED_CONFIG_ROOT.get()
 }
 
 #[cfg(target_os = "linux")]
@@ -2769,6 +2838,10 @@ impl Config {
         return PathBuf::from(APP_HOME_DIR.read().unwrap().as_str());
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
+            #[cfg(target_os = "macos")]
+            if let Some(root) = macos_service_owned_config_root() {
+                return root.home.clone();
+            }
             #[cfg(target_os = "linux")]
             if let Some(root) = linux_service_owned_config_root() {
                 return root.home.clone();
@@ -2796,6 +2869,28 @@ impl Config {
         let app_name = APP_NAME.read().unwrap().clone();
         let root = windows_service_owned_config_root_from(program_data, &app_name)?;
         windows_machine_config::initialize(root, write_authority)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn initialize_macos_service_owned_root(home: PathBuf) -> Result<PathBuf> {
+        let organization = ORG.read().unwrap().clone();
+        let app_name = APP_NAME.read().unwrap().clone();
+        let candidate = macos_service_owned_config_root_from(&home, &organization, &app_name)?;
+        match MACOS_SERVICE_OWNED_CONFIG_ROOT.set(candidate.clone()) {
+            Ok(()) => Ok(candidate.path),
+            Err(_) => {
+                let existing = MACOS_SERVICE_OWNED_CONFIG_ROOT.get().ok_or_else(|| {
+                    anyhow!("macOS service-owned config root initialization was lost")
+                })?;
+                if existing == &candidate {
+                    Ok(existing.path.clone())
+                } else {
+                    Err(anyhow!(
+                        "macOS service-owned config root was initialized inconsistently"
+                    ))
+                }
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -2838,6 +2933,12 @@ impl Config {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
+            #[cfg(target_os = "macos")]
+            if let Some(root) = macos_service_owned_config_root() {
+                let mut path = root.path.clone();
+                path.push(p);
+                return path;
+            }
             #[cfg(target_os = "linux")]
             if let Some(root) = linux_service_owned_config_root() {
                 let mut path = root.path.clone();
@@ -2876,6 +2977,9 @@ impl Config {
     pub fn log_path() -> PathBuf {
         #[cfg(target_os = "macos")]
         {
+            if let Some(root) = macos_service_owned_config_root() {
+                return root.log_path.clone();
+            }
             if let Some(path) = dirs_next::home_dir().as_mut() {
                 path.push(format!("Library/Logs/{}", *APP_NAME.read().unwrap()));
                 return path.clone();
@@ -5344,6 +5448,36 @@ mod tests {
         let patched = patch(PathBuf::from("/root"));
 
         assert_eq!(patched, expected);
+    }
+
+    #[test]
+    fn r_s11e52_macos_service_owned_paths_ignore_ambient_home() {
+        let root =
+            macos_service_owned_config_root_from(Path::new("/var/root"), "com.carriez", "RustDesk")
+                .unwrap();
+
+        assert_eq!(root.home, Path::new("/var/root"));
+        assert_eq!(
+            root.path,
+            Path::new("/var/root/Library/Application Support/com.carriez.RustDesk")
+        );
+        assert_eq!(root.log_path, Path::new("/var/root/Library/Logs/RustDesk"));
+        assert!(macos_service_owned_config_root_from(
+            Path::new("relative/root"),
+            "com.carriez",
+            "RustDesk"
+        )
+        .is_err());
+        assert!(macos_service_owned_config_root_from(
+            Path::new("/var/root"),
+            "com.carriez",
+            "../RustDesk"
+        )
+        .is_err());
+        assert!(
+            macos_service_owned_config_root_from(Path::new("/var/root"), "com.carriez", "..")
+                .is_err()
+        );
     }
 
     #[cfg(target_os = "linux")]

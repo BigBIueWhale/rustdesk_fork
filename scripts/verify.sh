@@ -3473,7 +3473,7 @@ r_s11e47=
 macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn lock_screen\(/' src/platform/macos.rs)
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
 macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' src/platform/macos.rs)
-macos_core_service_entry=$(awk '/else if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact/,/return None;/' src/core_main.rs)
+macos_core_service_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' src/core_main.rs)
 macos_service_binary=$(cat src/service.rs)
 for binding in \
   'fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {' \
@@ -3502,15 +3502,16 @@ if [ -z "$service_guard_line" ] || [ -z "$service_log_line" ] || [ -z "$service_
 fi
 for binding in \
   '#[cfg(target_os = "macos")]' \
-  'if let Err(err) = crate::start_os_service() {' \
-  'log::error!("macOS service principal authority failed closed: {err}");' \
+  'if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {' \
+  'if let Err(err) = crate::platform::macos::run_service() {' \
+  'eprintln!("macOS service bootstrap authority failed closed: {err}");' \
   'std::process::exit(1);'; do
   grep -qF "$binding" <<<"$macos_core_service_entry" || r_s11e47="$r_s11e47 common-service-entry-error-propagation-missing"
 done
 for binding in \
   '#[cfg(target_os = "macos")]' \
-  'if let Err(err) = crate::start_os_service() {' \
-  'hbb_common::log::error!("macOS service principal authority failed closed: {err}");' \
+  'if let Err(err) = crate::platform::macos::run_service() {' \
+  'eprintln!("macOS service bootstrap authority failed closed: {err}");' \
   'std::process::exit(1);'; do
   grep -qF "$binding" <<<"$macos_service_binary" || r_s11e47="$r_s11e47 dedicated-service-entry-error-propagation-missing"
 done
@@ -3927,6 +3928,116 @@ grep -qF 'R-S11e-51 — Windows SCM-owned service entry authority' HARDENING_STA
   || r_s11e51="$r_s11e51 hardening-ledger-missing"
 if [ -n "$r_s11e51" ]; then echo "  FAIL R-S11e-51 Windows SCM-owned service entry authority:$r_s11e51"; rc=1; else
   echo "  ok  R-S11e-51 exact Windows service entry proves SCM ownership before service-specific authority, keeps LocalSystem as an independent receiver check, reports initialization failure, and leaves child bootstrap read-only"; fi
+
+# (3b-iii-d9cb) R-S11al/R-S11e-52: every macOS root-service entry
+# binds configuration and rotating logs to the password-database-owned UID-0
+# home before any ordinary config/log initialization can consume ambient HOME.
+echo "== (3b-iii-d9cb) macOS service-owned config/log root (R-S11al/R-S11e-52) =="
+r_s11e52=
+macos_service_home=$(awk '/fn service_principal_home\(\)/,/pub fn run_service\(\)/' src/platform/macos.rs)
+macos_service_bootstrap=$(awk '/pub fn run_service\(\)/,/pub fn lock_screen\(\)/' src/platform/macos.rs)
+macos_config_root=$(awk '/struct MacosServiceOwnedConfigRoot/,/#\[cfg\(target_os = "linux"\)\]/{print}' libs/hbb_common/src/config.rs)
+macos_config_get_home=$(awk '/pub fn get_home\(\)/,/^    }/' libs/hbb_common/src/config.rs)
+macos_config_initialize=$(awk '/pub fn initialize_macos_service_owned_root\(/,/#\[cfg\(target_os = "linux"\)\]/{print}' libs/hbb_common/src/config.rs)
+macos_config_path=$(awk '/pub fn path<P: AsRef<Path>>\(p: P\)/{in_path=1} in_path && /#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' libs/hbb_common/src/config.rs)
+macos_config_log_path=$(awk '/pub fn log_path\(\)/,/pub fn ipc_path\(postfix/' libs/hbb_common/src/config.rs)
+macos_config_test=$(awk '/fn r_s11e52_macos_service_owned_paths_ignore_ambient_home\(\)/,/^    }/' libs/hbb_common/src/config.rs)
+macos_core_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' src/core_main.rs)
+macos_service_binary=$(cat src/service.rs)
+for binding in \
+  'let effective_uid = unsafe { hbb_common::libc::geteuid() };' \
+  'if !effective_uid_is_root(effective_uid) {' \
+  'passwd_entry_for_uid(effective_uid)' \
+  '!home.is_absolute()' \
+  'std::path::Component::RootDir | std::path::Component::Normal(_)' \
+  'let metadata = std::fs::metadata(&home)' \
+  '!metadata.is_dir()' \
+  'metadata.uid() != 0' \
+  'metadata.mode() & 0o022 != 0'; do
+  grep -qF "$binding" <<<"$macos_service_home" || r_s11e52="$r_s11e52 service-home-principal-proof-missing"
+done
+for binding in \
+  'let home = service_principal_home()?;' \
+  'crate::common::load_custom_client();' \
+  'hbb_common::config::Config::initialize_macos_service_owned_root(home)?;' \
+  'hbb_common::init_log(false, "service");' \
+  'start_os_service()'; do
+  grep -qF "$binding" <<<"$macos_service_bootstrap" || r_s11e52="$r_s11e52 centralized-bootstrap-binding-missing"
+done
+home_line=$(grep -nF 'let home = service_principal_home()?;' <<<"$macos_service_bootstrap" | cut -d: -f1 || true)
+identity_line=$(grep -nF 'crate::common::load_custom_client();' <<<"$macos_service_bootstrap" | cut -d: -f1 || true)
+config_line=$(grep -nF 'Config::initialize_macos_service_owned_root(home)?;' <<<"$macos_service_bootstrap" | cut -d: -f1 || true)
+log_line=$(grep -nF 'hbb_common::init_log(false, "service");' <<<"$macos_service_bootstrap" | cut -d: -f1 || true)
+listener_line=$(grep -nF 'start_os_service()' <<<"$macos_service_bootstrap" | tail -n1 | cut -d: -f1 || true)
+if [ -z "$home_line" ] || [ -z "$identity_line" ] || [ -z "$config_line" ] \
+  || [ -z "$log_line" ] || [ -z "$listener_line" ] \
+  || [ "$home_line" -ge "$identity_line" ] || [ "$identity_line" -ge "$config_line" ] \
+  || [ "$config_line" -ge "$log_line" ] || [ "$log_line" -ge "$listener_line" ]; then
+  r_s11e52="$r_s11e52 centralized-bootstrap-order-invalid"
+fi
+for binding in \
+  'struct MacosServiceOwnedConfigRoot {' \
+  'home: PathBuf,' \
+  'path: PathBuf,' \
+  'log_path: PathBuf,' \
+  'static MACOS_SERVICE_OWNED_CONFIG_ROOT: OnceLock<MacosServiceOwnedConfigRoot>' \
+  'fn macos_service_owned_config_root_from(' \
+  'organization.replace(' \
+  'app_name.replace(' \
+  '.join("Application Support")' \
+  '.join("Logs").join(app_name)'; do
+  grep -qF "$binding" <<<"$macos_config_root" || r_s11e52="$r_s11e52 immutable-config-root-derivation-missing"
+done
+for binding in \
+  'if let Some(root) = macos_service_owned_config_root() {' \
+  'return root.home.clone();'; do
+  grep -qF "$binding" <<<"$macos_config_get_home" || r_s11e52="$r_s11e52 service-get-home-consumer-missing"
+done
+for binding in \
+  'pub fn initialize_macos_service_owned_root(home: PathBuf)' \
+  'MACOS_SERVICE_OWNED_CONFIG_ROOT.set(candidate.clone())' \
+  'existing == &candidate' \
+  'macOS service-owned config root was initialized inconsistently'; do
+  grep -qF "$binding" <<<"$macos_config_initialize" || r_s11e52="$r_s11e52 immutable-root-initializer-missing"
+done
+for binding in \
+  'if let Some(root) = macos_service_owned_config_root() {' \
+  'let mut path = root.path.clone();'; do
+  grep -qF "$binding" <<<"$macos_config_path" || r_s11e52="$r_s11e52 service-config-path-consumer-missing"
+done
+for binding in \
+  'if let Some(root) = macos_service_owned_config_root() {' \
+  'return root.log_path.clone();'; do
+  grep -qF "$binding" <<<"$macos_config_log_path" || r_s11e52="$r_s11e52 service-log-path-consumer-missing"
+done
+for entry in "$macos_core_entry" "$macos_service_binary"; do
+  grep -qF 'crate::platform::macos::run_service()' <<<"$entry" || r_s11e52="$r_s11e52 service-entry-not-centralized"
+  grep -qF 'std::process::exit(1);' <<<"$entry" || r_s11e52="$r_s11e52 service-entry-failure-not-propagated"
+  if grep -qF 'load_custom_client()' <<<"$entry" || grep -qF 'init_log(' <<<"$entry"; then
+    r_s11e52="$r_s11e52 service-entry-prebootstrap-config-or-log-present"
+  fi
+done
+for binding in \
+  'fn r_s11e52_macos_service_owned_paths_ignore_ambient_home()' \
+  'Path::new("/var/root/Library/Application Support/com.carriez.RustDesk")' \
+  'Path::new("/var/root/Library/Logs/RustDesk")' \
+  'Path::new("relative/root")' \
+  '"../RustDesk"' \
+  '".."'; do
+  grep -qF "$binding" <<<"$macos_config_test" || r_s11e52="$r_s11e52 path-derivation-regression-missing"
+done
+grep -qF '<span class="id">R-S11al</span>' requirements.html || r_s11e52="$r_s11e52 normative-requirement-missing"
+grep -qF 'macOS service configuration and logging have one password-database-owned root before initialization' requirements.html \
+  || r_s11e52="$r_s11e52 normative-authority-clause-missing"
+grep -qF '<tr><td>160</td>' requirements.html || r_s11e52="$r_s11e52 appendix-row-missing"
+grep -qF 'macOS root service configuration and rotating logs followed inherited' requirements.html \
+  || r_s11e52="$r_s11e52 appendix-disposition-missing"
+grep -qF 'macOS service-owned config/log root (R-S11al/R-S11e-52)' scripts/apple-conform-check.sh \
+  || r_s11e52="$r_s11e52 apple-source-conformance-gate-missing"
+grep -qF 'R-S11e-52 — macOS service-owned configuration/log root' HARDENING_STATUS.md \
+  || r_s11e52="$r_s11e52 hardening-ledger-missing"
+if [ -n "$r_s11e52" ]; then echo "  FAIL R-S11e-52 macOS service-owned config/log root:$r_s11e52"; rc=1; else
+  echo "  ok  R-S11e-52 both macOS service entries prove UID 0, bind config/log paths to its protected passwd home, and only then initialize logging and the service listener"; fi
 
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and

@@ -158,6 +158,14 @@ pub fn core_main() -> Option<Vec<String>> {
         }
         return None;
     }
+    #[cfg(target_os = "macos")]
+    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {
+        if let Err(err) = crate::platform::macos::run_service() {
+            eprintln!("macOS service bootstrap authority failed closed: {err}");
+            std::process::exit(1);
+        }
+        return None;
+    }
     #[cfg(target_os = "linux")]
     let linux_service_owned_config_role = service_supervisor_role
         == crate::common::ServiceSupervisorRole::Exact
@@ -409,11 +417,6 @@ pub fn core_main() -> Option<Vec<String>> {
             #[cfg(target_os = "linux")]
             if let Err(err) = crate::start_os_service() {
                 log::error!("Linux service lifecycle authority failed closed: {err}");
-                std::process::exit(1);
-            }
-            #[cfg(target_os = "macos")]
-            if let Err(err) = crate::start_os_service() {
-                log::error!("macOS service principal authority failed closed: {err}");
                 std::process::exit(1);
             }
             return None;

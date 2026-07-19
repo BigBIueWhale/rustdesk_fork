@@ -906,6 +906,40 @@ pub fn is_root() -> bool {
     effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })
 }
 
+fn service_principal_home() -> ResultType<PathBuf> {
+    let effective_uid = unsafe { hbb_common::libc::geteuid() };
+    if !effective_uid_is_root(effective_uid) {
+        bail!("macOS --service requires effective UID 0");
+    }
+    let (_, home) = passwd_entry_for_uid(effective_uid)
+        .ok_or_else(|| anyhow!("macOS service principal has no password-database home"))?;
+    if !home.is_absolute()
+        || !home.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+    {
+        bail!("macOS service principal home is not a clean absolute path");
+    }
+    let metadata = std::fs::metadata(&home)
+        .map_err(|err| anyhow!("Failed to inspect macOS service principal home: {err}"))?;
+    if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
+        bail!("macOS service principal home is not a protected root-owned directory");
+    }
+    Ok(home)
+}
+
+pub fn run_service() -> ResultType<()> {
+    // Establish the kernel principal before reading even the signed custom identity.
+    let home = service_principal_home()?;
+    crate::common::load_custom_client();
+    hbb_common::config::Config::initialize_macos_service_owned_root(home)?;
+    hbb_common::init_log(false, "service");
+    start_os_service()
+}
+
 pub fn lock_screen() {
     let mut command = std::process::Command::new(
         "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",

@@ -3459,6 +3459,104 @@ unreachable and a source/test/AST gate prevents reintroduction.
   inspected or changed. The long release verifier, root service fixtures, full release build, native Apple/Windows
   runs, and exact installed-artifact execution remain excluded. Publication evidence is recorded in the private
   audit journal after commit and push.
+- **R-S11e-52 — macOS service-owned configuration/log root — SOURCE-GATED 2026-07-19; NATIVE MACOS AND EXACT
+  SIGNED-ARTIFACT EVIDENCE REMAIN WITH R-R2/R-B2.** Platform:
+  macOS root LaunchDaemon/PrivilegedHelperTools receiver through both its dedicated no-argument executable and the
+  shared application's exact `--service` entry. Endpoint/action: selecting the unattended credential/configuration
+  namespace and rotating-file log directory before binding the protected service listener. Boundary: an inherited
+  process environment and caller-selected `HOME` ↔ durable state read or written with effective UID 0.
+
+  Proven old path and history: `src/service.rs` loaded custom identity and called `init_log(false, "service")`
+  before `start_os_service()` checked effective UID. The shared macOS `--service` branch passed through the common
+  `global_init`/custom-client/config/log path before reaching the same receiver check. On macOS,
+  `Config::get_home()` and `Config::path()` ultimately used `directories-next` while `Config::log_path()` used
+  `dirs-next`; their shared Unix substrate first reads inherited `HOME`. `Config::path()` then applies the vendored
+  `directories-next 2.0.0` macOS `ProjectDirs::config_dir()` mapping under `Library/Application Support`. A UID-0
+  manual, diagnostic, recovery, or future launcher invocation
+  outside the installed LaunchDaemon's controlled environment could therefore select an ordinary-user-writable
+  `~/Library/Application Support/<organization>.<application>` credential/config directory and
+  `~/Library/Logs/<application>` rotating-log directory before the late principal gate. The installed plist itself
+  is root-owned and `launchd` normally supplies a controlled environment, so this is not evidence that an ordinary
+  user modified the installed service or obtained UID 0. `git blame` attributes the entry ordering and ambient path
+  selection to upstream import `c2abd3b3`, not to this hardening continuation.
+
+  Primary contracts and authority model: Apple's Secure Coding Guide identifies inherited environment variables as
+  privileged-process attack input, recommends `launchd` for a controlled privileged-helper environment, requires
+  privileged behavior not to depend on user-controllable environment/preferences, and says a helper must treat
+  user-writable preference files as untrusted
+  (https://developer.apple.com/library/archive/documentation/Security/Conceptual/SecureCodingGuide/Articles/AccessControl.html,
+  https://developer.apple.com/library/archive/documentation/Security/Conceptual/SecureCodingGuide/DesigningSecureHelpers/DesigningSecureHelpers.html,
+  and https://developer.apple.com/library/archive/documentation/Security/Conceptual/SecureCodingGuide/SecurityDevelopmentChecklists/SecurityDevelopmentChecklists.html).
+  Apple's `getpwuid_r(3)` contract supplies the numeric principal's password-database record independently of
+  `HOME` (https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/getpwuid_r.3.html).
+  The service storage authority is therefore one immutable process-local root derived from the already-required
+  effective UID 0 password-database home, not from a launcher's environment.
+
+  Closure: both service executables now call one `platform::macos::run_service()` bootstrap. Before reading even the
+  signature-verified optional custom identity, it obtains numeric effective UID, rejects every nonzero value, resolves
+  the same UID through the existing reentrant `getpwuid_r` helper, requires a clean absolute existing directory owned
+  by UID 0 and not group/world writable, and otherwise returns an error. Only then may the custom identity establish
+  the constrained application name. `Config::initialize_macos_service_owned_root` derives the exact existing macOS
+  mapping—`<home>/Library/Application Support/<organization>.<application>` plus
+  `<home>/Library/Logs/<application>`—and publishes it through `OnceLock`; an inconsistent second initialization is
+  fatal. `Config::get_home`, `Config::path`, and `Config::log_path` consult that immutable root before their ordinary
+  user-space ambient fallbacks. The bootstrap initializes the service logger only after publication and enters the
+  independently numeric-UID-gated `start_os_service` listener last. Both callers emit a pre-logger diagnostic and
+  exit 1 on any failure. Ordinary viewer, user-server, and per-user LaunchAgent path behavior is unchanged.
+
+  Proof/gates: `r_s11e52_macos_service_owned_paths_ignore_ambient_home` binds the exact standard root config/log
+  derivation and rejects a relative home, a slash-bearing identity, and a parent-directory identity. The R-S11e-52
+  shell and Apple source gates extract the password-database principal proof, metadata checks, immutable derivation,
+  all three config consumers, both centralized callers, complete principal/home → signed identity → config root → logger → listener
+  ordering, R-S11al, Appendix C #160, and this ledger. The semantic workspace verifier independently interprets the
+  same regions and carries source mutations for both gate identities, real-vs-effective UID, missing principal and
+  metadata checks, constant/caller-selected UID lookup, bootstrap reordering, mutable root substitution, config/log
+  path drift, inconsistent-reinitialization admission, all three consumer fallbacks, regression deletion,
+  requirement clauses, Appendix disposition, and ledger drift.
+
+  Verification: both final extracted R-S11e-52 shell/Apple gates pass. Bash syntax and in-memory Python compilation
+  pass for every edited verifier, Rustfmt 1.75 reports no diff in all four edited Rust files, and the normal semantic
+  workspace audit plus its complete independently invoked source-mutation matrix pass. The matrix rejects gate
+  deletion or scope broadening, an application-independent log directory, principal/home/metadata weakening,
+  real-for-effective UID substitution, caller-selected passwd lookup, bootstrap reordering, mutable or inconsistent
+  root initialization, config/log derivation drift, any of the three ambient consumer fallbacks, either caller's
+  failure-propagation removal, regression removal, normative/Appendix drift, and ledger deletion. The focused
+  Rust/Cargo 1.75 locked/offline `hbb_common` regression completed in 1 minute 4 seconds: 1 passed, 0 failed, 151
+  filtered. The final complete locked/offline Linux library `cargo check --features linux-pkg-config` completed in
+  2 minutes 58 seconds with only the repository's existing warning set. That is shared-source Linux compatibility,
+  not native macOS compilation.
+
+  Independent inventories: dependency inventory and all 103 inventory mutations pass at 909 Cargo packages and 855
+  lexical `unsafe {` blocks across 251 tracked Rust files/74 nonzero files, per-file digest
+  `38d6395da84ce3ca90e8eb593c61006b6216c23e97149fa3e4f44cdb9a6590de`; the one-block increase is the reviewed,
+  expression-scoped macOS `geteuid()` call. Native-codec normal/self-test, final `git diff --check`, Bash/Python/Rust
+  syntax/format checks, and the synchronized requirements identity pass at
+  `dd54f94705df4fcc38edc0f2c4bf504cdec4b66d12cbe27de6beffd3e8491e95`.
+
+  Failure/review accounting: an initial semantic pass correctly rejected the stale derived requirements digest. The
+  first broad root-package library-test attempt reached final linking but was killed by the 6 GiB container ceiling;
+  it is not counted, and the corrected package-scoped regression is green. One first extracted Apple-gate command had
+  a shell-quoting error and was replaced by the successful exact extraction. The mutation matrix exposed and caused
+  correction of ambiguous log, adjacent Linux config-block, adjacent macOS/Windows entry-block, and requirement
+  boundary assertions before its complete final pass. A human diff review then caught that the first derivation used
+  `Library/Preferences`; inspection of the exact vendored `directories-next 2.0.0` source proved the compatibility
+  path is `Library/Application Support`, and implementation, requirement, regression, gates, mutations, hashes, and
+  every final check were corrected and rerun. One formatter container placed its read-only toolchain mount after the
+  image name and therefore never started; the corrected invocation passed. One focused-test command named the
+  non-installed `1.75` channel and stopped at the read-only Rustup boundary before compilation; the rerun selected the
+  exact already-installed `1.75.0-x86_64-unknown-linux-gnu` toolchain and passed. No failed attempt is counted as
+  evidence.
+
+  Execution boundary: every project code/build/test/verifier command used numeric UID/GID 1000 in the existing pinned
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, read-only root/source/toolchain/vendor inputs, all capabilities dropped, no-new-privileges, bounded pids,
+  CPU, and memory, and disposable tmpfs output only. No image was built or pulled; no Docker socket, host PID/network
+  namespace, published port, host service/config/user-bus mount, or root container identity was used. No host RustDesk
+  process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host networking was inspected
+  or changed. Native macOS compilation/execution and exact installed signed-artifact evidence are not inferred from
+  Linux source validation and remain mandatory R-R2/R-B2 evidence. The long release verifier, root service fixtures,
+  full release build, and exact installed-artifact execution remain excluded. Publication evidence is recorded in the
+  private audit journal after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5804,8 +5902,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d3326fbc4ad4fdc118ec37e7fb63235c9c3608c16ad48c2a530ba2cca0a65798  requirements.html
+dd54f94705df4fcc38edc0f2c4bf504cdec4b66d12cbe27de6beffd3e8491e95  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ak, and Appendix C #159. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11al, and Appendix C #160. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

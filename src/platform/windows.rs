@@ -572,12 +572,12 @@ fn service_main(arguments: Vec<OsString>) {
     }
 }
 
-pub fn start_os_service() {
-    if let Err(e) =
-        windows_service::service_dispatcher::start(crate::get_app_name(), ffi_service_main)
-    {
-        log::error!("start_service failed: {}", e);
-    }
+pub fn start_os_service() -> ResultType<()> {
+    // This is an OWN_PROCESS service, so Windows ignores the table's service
+    // name. The signed custom identity is deliberately loaded later, inside
+    // ServiceMain, after this call has proved the SCM-owned entry.
+    windows_service::service_dispatcher::start(crate::get_app_name(), ffi_service_main)
+        .map_err(|err| anyhow!("Failed to connect the Windows service process to the SCM: {err}"))
 }
 
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
@@ -2729,7 +2729,7 @@ async fn retire_exact_windows_service_process(
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
+async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {
     let (stop_tx, mut stop_rx) = mpsc::unbounded_channel();
     let stop_latched = Arc::new(AtomicBool::new(false));
     let stop_apply = Arc::new(Mutex::new(ipc::WindowsCredentialStopApplyModel::new()));
@@ -2770,7 +2770,14 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
         }
     };
 
-    let status_handle = service_control_handler::register(crate::get_app_name(), event_handler)?;
+    // The SCM guarantees that ServiceMain argument zero is the registered
+    // service name. Use that dispatcher-owned value instead of depending on
+    // custom identity initialization that intentionally occurs below.
+    let service_name = arguments
+        .first()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| anyhow!("SCM did not supply the Windows service name"))?;
+    let status_handle = service_control_handler::register(service_name, event_handler)?;
     if status_slot.set(status_handle).is_err() {
         bail!("Windows service status handle was initialized more than once");
     }
@@ -2788,6 +2795,33 @@ async fn run_service(_arguments: Vec<OsString>) -> ResultType<()> {
             1,
             WINDOWS_SERVICE_STOP_WAIT_HINT,
         ))?;
+    }
+
+    // StartServiceCtrlDispatcher has established SCM ownership and the status
+    // handle above makes initialization failure observable to the SCM. Only
+    // now select the signed application identity, durable machine-config
+    // writer, and service log namespace. Config independently requires the
+    // LocalSystem token, so SCM ownership and OS principal remain separate
+    // receiver proofs.
+    let initialization = (|| -> ResultType<()> {
+        if !crate::common::global_init() {
+            bail!("Windows service global initialization failed");
+        }
+        crate::load_custom_client();
+        let program_data = program_data_dir()?;
+        Config::initialize_windows_service_owned_root(&program_data, true)?;
+        hbb_common::init_log(false, "service");
+        Ok(())
+    })();
+    if let Err(err) = initialization {
+        status_handle.set_service_status(windows_service_status(
+            ServiceState::Stopped,
+            ServiceControlAccept::empty(),
+            ServiceExitCode::ServiceSpecific(1),
+            0,
+            Duration::default(),
+        ))?;
+        return Err(err);
     }
 
     let (credential_request_tx, mut credential_request_rx) =
@@ -4536,12 +4570,9 @@ pub fn is_win_10_or_greater() -> bool {
 }
 
 pub fn bootstrap() -> bool {
-    let service_supervisor_role = crate::common::is_service_supervisor_process();
-    let service_owned_role =
-        service_supervisor_role || crate::common::is_service_owned_server_process();
-    if service_owned_role {
+    if crate::common::is_service_owned_server_process() {
         let root = program_data_dir().and_then(|program_data| {
-            Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)
+            Config::initialize_windows_service_owned_root(&program_data, false)
         });
         if let Err(err) = root {
             eprintln!("Failed to initialize Windows service-owned config root: {err}");

@@ -143,6 +143,21 @@ pub fn core_main() -> Option<Vec<String>> {
         );
         std::process::exit(1);
     }
+    #[cfg(windows)]
+    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {
+        // A SERVICE_WIN32_OWN_PROCESS image must connect its main thread to the
+        // SCM before service-specific initialization. Keep only the mandatory
+        // process-wide DLL-loader policy ahead of that receiver proof.
+        if !crate::platform::windows::bootstrap() {
+            eprintln!("Windows service process bootstrap failed closed");
+            std::process::exit(1);
+        }
+        if let Err(err) = crate::start_os_service() {
+            eprintln!("Windows service-control dispatcher authority failed closed: {err}");
+            std::process::exit(1);
+        }
+        return None;
+    }
     #[cfg(target_os = "linux")]
     let linux_service_owned_config_role = service_supervisor_role
         == crate::common::ServiceSupervisorRole::Exact
@@ -401,8 +416,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 log::error!("macOS service principal authority failed closed: {err}");
                 std::process::exit(1);
             }
-            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-            crate::start_os_service();
             return None;
         } else if args[0] == "--server" {
             log::info!("start --server with user {}", crate::username());

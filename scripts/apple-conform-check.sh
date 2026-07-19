@@ -1228,7 +1228,7 @@ r_s11e47=
 macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn lock_screen\(/' "$macos_rs")
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' "$macos_rs")
 macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' "$macos_rs")
-macos_core_service_entry=$(awk '/else if args\[0\] == "--service"/,/return None;/' "$REPO/src/core_main.rs")
+macos_core_service_entry=$(awk '/else if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact/,/return None;/' "$REPO/src/core_main.rs")
 macos_service_binary=$(cat "$REPO/src/service.rs")
 for binding in \
   'fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {' \
@@ -1258,8 +1258,7 @@ for binding in \
   '#[cfg(target_os = "macos")]' \
   'if let Err(err) = crate::start_os_service() {' \
   'log::error!("macOS service principal authority failed closed: {err}");' \
-  'std::process::exit(1);' \
-  '#[cfg(not(any(target_os = "linux", target_os = "macos")))]'; do
+  'std::process::exit(1);'; do
   grep -qF "$binding" <<<"$macos_core_service_entry" || r_s11e47="$r_s11e47 common-service-entry-error-propagation-missing"
 done
 for binding in \

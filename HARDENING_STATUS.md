@@ -3316,11 +3316,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `argv[0]`. It returns `Exact` only for the singleton `--service` vector, `Malformed` whenever the reserved marker
   occurs in any other vector, and `Absent` for marker-free roles. `core_main()` derives that state before any global
   initialization and exits 1 on `Malformed`; it cannot silently downgrade or accept a trailing-argument service
-  role. Linux service-root selection and common service dispatch consume only `Exact`. Windows bootstrap consumes
-  the shared exact-only boolean and supplies machine-config write authority only for that exact supervisor. The
-  exact service-owned child role remains independently classified by R-S11ai/R-S11e-49. Numeric root/LocalSystem
-  authority, installed-image provenance, service-manager ownership, parent/generation proof, and protected IPC peer
-  authentication remain separate requirements; argument text supplies none of them.
+  role. Linux service-root selection and common service dispatch consume only `Exact`. On Windows the same exact
+  state selects the early SCM-dispatch branch; only its SCM-created `ServiceMain` receives machine-config write
+  authority, while ordinary bootstrap recognizes the independently exact R-S11ai/R-S11e-49 child and initializes
+  only its read-only replica. Numeric root/LocalSystem authority, installed-image provenance, service-manager
+  ownership, parent/generation proof, and protected IPC peer authentication remain separate requirements; argument
+  text supplies none of them.
 
   Primary contracts and classification: Rust documents that `argv[0]` can be arbitrary, must not be security
   identity, and that `args_os` is required to preserve non-Unicode arguments
@@ -3339,7 +3340,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `r_s11e50_marker_free_roles_cannot_become_service_supervisor` binds empty, ordinary server, exact service-owned
   child, tray, and unrelated marker-free roles to `Absent`. `scripts/verify.sh` extracts the parser states,
   full-iteration/position/count policy, malformed classification, `argv[0]` skip, exact-only boolean, pre-init
-  rejection, Linux selection, common dispatch, Windows selection/write authority, all launcher definitions,
+  rejection, Linux selection, common dispatch, Windows early SCM selection/SCM-owned write authority/read-only child
+  bootstrap, all launcher definitions,
   regressions, R-S11aj, Appendix C #158, and this ledger. The semantic workspace verifier independently interprets
   those source/documentation/launcher regions and carries source mutations for every authority edge.
 
@@ -3371,6 +3373,87 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
   disabled, read-only root/source/toolchain/Cargo inputs, all capabilities dropped, no-new-privileges, bounded pids,
   CPU, and memory, and output only on disposable tmpfs. No image was built or pulled; no Docker socket, host PID or
+  network namespace, published port, host service/config mount, or root container identity was used. No host
+  RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or networking was
+  inspected or changed. The long release verifier, root service fixtures, full release build, native Apple/Windows
+  runs, and exact installed-artifact execution remain excluded. Publication evidence is recorded in the private
+  audit journal after commit and push.
+- **R-S11e-51 — Windows SCM-owned service entry authority — SOURCE-GATED 2026-07-19; NATIVE WINDOWS AND EXACT
+  SIGNED-ARTIFACT EVIDENCE REMAIN WITH R-R2/R-B2.** Platform: Windows installed `SERVICE_WIN32_OWN_PROCESS`
+  supervisor. Endpoint/action: selecting the
+  durable machine-config writer, service log namespace, protected listeners, and supervised child runtime.
+  Boundary: caller-selected exact `--service` role and Windows process principal ↔ SCM-owned service entry and
+  status channel.
+
+  Proven old path and history: after R-S11e-50 made the role vector exact, `core_main()` still ran `global_init()`,
+  loaded the signed `custom.txt` identity, called `bootstrap()` with machine-config write authority, and initialized
+  the `service` log before `start_os_service()` called `windows_service::service_dispatcher::start`. The wrapper
+  caught that result, logged it, and returned `()`. Microsoft documents `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT`
+  when the image is run as a console application; the old exact-role console path could therefore perform
+  service-specific setup before proving SCM ownership and then return through the ordinary successful `None` exit.
+  Git blame attributes the swallowed dispatcher result and late common dispatch to the upstream import `c2abd3b3`;
+  the machine-config receiver's independent LocalSystem-token rejection was added by the later fork hardening and
+  already prevented a non-System caller from writing the durable store.
+
+  Primary contracts and classification: Microsoft says an own-process service main thread should immediately call
+  `StartServiceCtrlDispatcherW`, with initialization performed in the SCM-created `ServiceMain`; the call connects
+  the main thread to SCM, returns `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT` for a console launch, and otherwise does
+  not return until the services have stopped
+  (https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-startservicectrldispatcherw and
+  https://learn.microsoft.com/en-us/windows/win32/services/service-entry-point). Microsoft separately requires
+  `ServiceMain` to register its control handler, report pending state, perform initialization, and report
+  `SERVICE_STOPPED` with an error when initialization fails
+  (https://learn.microsoft.com/en-us/windows/win32/services/service-servicemain-function and
+  https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-setservicestatus). This was deterministic
+  service-manager ownership/initialization-order confusion and false-success process status under an already
+  privileged role. It was not an ordinary-user-to-LocalSystem escalation: argument text grants no token, and
+  `Config::initialize_windows_service_owned_root` already rejects every token whose user is not LocalSystem before
+  selecting or writing the machine store.
+
+  Authority model and closure: after both protected-role classifiers reject malformed input, the Windows exact
+  supervisor branch performs only the mandatory process-wide safe-DLL bootstrap and immediately calls a
+  result-bearing `start_os_service()`. Dispatcher failure is printed and exits 1; no global/custom/config/log/listener
+  initialization has occurred. A real SCM connection invokes `service_main`/`run_service`. That receiver registers
+  its handler under the nonempty service name supplied as SCM `ServiceMain` argument zero and reports
+  `SERVICE_START_PENDING` before global initialization, signed custom identity loading,
+  ProgramData resolution, `initialize_windows_service_owned_root(..., true)`, and service-log initialization. Only
+  after those steps succeed are the protected listener channels and child runtime created. An initialization error
+  reports `SERVICE_STOPPED` with `ServiceSpecific(1)` before returning. The configuration initializer retains its
+  independent LocalSystem-token check, so SCM ownership and principal are conjunctive receiver proofs. Ordinary
+  Windows `bootstrap()` now selects only the exact service-owned child and passes write authority `false`; it cannot
+  grant supervisor writer authority before dispatcher proof. Runtime errors after handler registration remain
+  truthfully reported through the existing SCM status paths, so the dispatcher thread's eventual successful return
+  is not misrepresented as their status channel.
+
+  Verification: the extracted R-S11e-51 shell gate passes over the exact early core branch, result-bearing
+  dispatcher, SCM-supplied nonempty service name, handler/pending/config/log/listener order,
+  initialization-failure status, read-only child bootstrap, and LocalSystem receiver check. The independent
+  semantic workspace audit and its complete source-mutation matrix pass. The matrix rejects pre-dispatch custom
+  initialization, swallowed dispatcher errors, a successful dispatcher-failure return, empty-name admission,
+  replacement of the SCM name with custom identity, pending-status reordering, writer movement or narrowing,
+  initialization-failure status removal, child write widening, LocalSystem-check deletion, and requirement,
+  Appendix C, gate, or ledger drift. Bash syntax and in-memory Python compilation pass. Rustfmt 1.75 reports no diff
+  in `src/core_main.rs`; its Windows output remains limited to four pre-existing unrelated hunks at lines 85, 5281,
+  5325, and 5734, with no hunk in either edited region. The focused R-S11e-49/R-S11e-50 shared process-role
+  regressions completed earlier in this same slice with four selected tests passing and zero failing; the final
+  source adjustment is Windows-gated and does not change those shared classifiers. Native-codec normal/self-test
+  and synchronized requirements/native-watch/ledger identity pass at
+  `d3326fbc4ad4fdc118ec37e7fb63235c9c3608c16ad48c2a530ba2cca0a65798`.
+
+  Failure/setup accounting: the first final semantic run rejected an ordering window that began at handler
+  registration and therefore could not see the newly added SCM-name derivation; the shell gate independently
+  exposed the same stale boundary. Both windows now begin at `let service_name = arguments`, and the complete final
+  semantic mutation matrix and extracted shell gate pass. The initial focused Cargo target used a no-exec tmpfs and
+  failed before any test ran; the rerun used an executable disposable build tmpfs and passed. A full Apple wrapper
+  attempt inside the isolated image stopped at its expected `docker not found` setup prerequisite because no Docker
+  socket was mounted; it is not counted as an Apple result. Native Windows compilation/execution and a real SCM
+  console-vs-service behavioral proof cannot be claimed from this constrained Linux source environment and remain
+  exact-commit R-R2/R-B2 evidence.
+
+  Execution boundary: every project build/test/verifier command used numeric UID/GID 1000 in the existing pinned
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, read-only root/source/toolchain/Cargo inputs, all capabilities dropped, no-new-privileges, bounded pids,
+  CPU, and memory, and disposable tmpfs output only. No image was built or pulled; no Docker socket, host PID or
   network namespace, published port, host service/config mount, or root container identity was used. No host
   RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or networking was
   inspected or changed. The long release verifier, root service fixtures, full release build, native Apple/Windows
@@ -5721,8 +5804,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4d1478a7624e76e30c0f08a27537609fff07cef143cfe8ad1557d3925472d857  requirements.html
+d3326fbc4ad4fdc118ec37e7fb63235c9c3608c16ad48c2a530ba2cca0a65798  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aj, and Appendix C #158. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ak, and Appendix C #159. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -7206,7 +7206,7 @@ def validate_macos_service_principal_contract(sources):
     core_macos_entry = extract_between(
         core_service_dispatch,
         '#[cfg(target_os = "macos")]',
-        '\n            #[cfg(not(any(target_os = "linux", target_os = "macos")))]',
+        "\n            }",
         "common macOS service entry",
     )
     require_order(
@@ -7219,12 +7219,6 @@ def validate_macos_service_principal_contract(sources):
         ),
         "common macOS service entry error propagation",
     )
-    require_text(
-        core_service_dispatch,
-        '#[cfg(not(any(target_os = "linux", target_os = "macos")))]',
-        "non-Apple/non-Linux service dispatch",
-    )
-
     require_order(
         service_source,
         (
@@ -7581,8 +7575,14 @@ def validate_service_owned_server_role_contract(sources):
         "\n    #[cfg(target_os = \"linux\")]\n    let linux_service_owned_config_role",
         "service-owned role process entry",
     )
-    require_order(
+    service_owned_rejection = extract_between(
         core_entry,
+        "if crate::common::current_service_owned_server_role()",
+        "\n    #[cfg(windows)]",
+        "malformed service-owned role rejection",
+    )
+    require_order(
+        service_owned_rejection,
         (
             "current_service_owned_server_role()",
             "ServiceOwnedServerRole::Malformed",
@@ -7605,13 +7605,17 @@ def validate_service_owned_server_role_contract(sources):
     require_order(
         windows_bootstrap,
         (
-            "let service_supervisor_role = crate::common::is_service_supervisor_process();",
-            "service_supervisor_role || crate::common::is_service_owned_server_process()",
-            "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
+            "if crate::common::is_service_owned_server_process() {",
+            "Config::initialize_windows_service_owned_root(&program_data, false)",
         ),
-        "Windows exact service-role configuration authority",
+        "Windows exact service-child configuration authority",
     )
-    if "SERVICE_OWNED_SERVER_ARG" in windows_bootstrap or ".any(|arg|" in windows_bootstrap:
+    if (
+        "SERVICE_OWNED_SERVER_ARG" in windows_bootstrap
+        or ".any(|arg|" in windows_bootstrap
+        or "is_service_supervisor_process()" in windows_bootstrap
+        or "initialize_windows_service_owned_root(&program_data, true)" in windows_bootstrap
+    ):
         raise VerificationError("Windows bootstrap still searches process arguments for a role marker")
 
     role_tests = extract_rust_test_group(
@@ -7806,17 +7810,43 @@ def validate_service_supervisor_role_contract(sources):
         "\n}\n\n#[cfg(not(debug_assertions))]",
         "Windows service-owned configuration bootstrap",
     )
+    windows_service_initialization = extract_between(
+        windows,
+        "let status_handle = service_control_handler::register",
+        "\n    let (credential_request_tx, mut credential_request_rx)",
+        "Windows SCM-owned service initialization",
+    )
+    require_order(
+        core_entry,
+        (
+            "if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {",
+            "if !crate::platform::windows::bootstrap() {",
+            "if let Err(err) = crate::start_os_service() {",
+            "Windows service-control dispatcher authority failed closed",
+            "return None;",
+        ),
+        "Windows exact supervisor SCM selection",
+    )
+    require_text(
+        windows_service_initialization,
+        "Config::initialize_windows_service_owned_root(&program_data, true)?;",
+        "Windows SCM-owned supervisor write authority",
+    )
     require_order(
         windows_bootstrap,
         (
-            "let service_supervisor_role = crate::common::is_service_supervisor_process();",
-            "service_supervisor_role || crate::common::is_service_owned_server_process()",
-            "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
+            "if crate::common::is_service_owned_server_process() {",
+            "Config::initialize_windows_service_owned_root(&program_data, false)",
         ),
-        "Windows exact supervisor configuration authority",
+        "Windows exact service-child read-only configuration authority",
     )
-    if "args_os().nth(1)" in windows_bootstrap or ".any(|arg|" in windows_bootstrap:
-        raise VerificationError("Windows bootstrap still uses prefix/search supervisor admission")
+    if (
+        "args_os().nth(1)" in windows_bootstrap
+        or ".any(|arg|" in windows_bootstrap
+        or "is_service_supervisor_process()" in windows_bootstrap
+        or "initialize_windows_service_owned_root(&program_data, true)" in windows_bootstrap
+    ):
+        raise VerificationError("Windows bootstrap retains supervisor or prefix/search authority")
 
     role_tests = extract_between(
         common,
@@ -7897,6 +7927,196 @@ def validate_service_supervisor_role_contract(sources):
     )
 
 
+def validate_windows_scm_service_entry_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    core_main = sources["core_main"]
+    windows = sources["windows_source"]
+    config = sources["config_source"]
+
+    require_text(
+        verify,
+        'echo "== (3b-iii-d9ca) Windows SCM-owned service entry authority (R-S11ak/R-S11e-51) =="',
+        "Windows SCM service-entry source gate",
+    )
+
+    core_entry = extract_between(
+        core_main,
+        "pub fn core_main() -> Option<Vec<String>> {",
+        '\n    if !crate::common::global_init()',
+        "Windows early SCM process entry",
+    )
+    exact_entry = extract_between(
+        core_entry,
+        '#[cfg(windows)]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {',
+        "\n    #[cfg(target_os = \"linux\")]",
+        "Windows exact service-supervisor entry",
+    )
+    require_order(
+        exact_entry,
+        (
+            "if !crate::platform::windows::bootstrap() {",
+            "Windows service process bootstrap failed closed",
+            "std::process::exit(1);",
+            "if let Err(err) = crate::start_os_service() {",
+            "Windows service-control dispatcher authority failed closed",
+            "std::process::exit(1);",
+            "return None;",
+        ),
+        "Windows dispatcher-before-service-initialization authority",
+    )
+    if core_main.index("if let Err(err) = crate::start_os_service()") >= core_main.index(
+        "if !crate::common::global_init()"
+    ):
+        raise VerificationError("Windows service dispatcher does not precede global initialization")
+    for forbidden, label in (
+        ("crate::common::global_init()", "global initialization"),
+        ("crate::load_custom_client()", "custom-client initialization"),
+        ("initialize_windows_service_owned_root", "machine-config initialization"),
+        ("hbb_common::init_log", "service log initialization"),
+    ):
+        if forbidden in exact_entry:
+            raise VerificationError(f"Windows exact pre-dispatch entry retains {label}")
+
+    dispatcher = extract_between(
+        windows,
+        "pub fn start_os_service() -> ResultType<()> {",
+        "\n}\n\nconst SERVICE_TYPE",
+        "Windows result-bearing SCM dispatcher",
+    )
+    require_order(
+        dispatcher,
+        (
+            "windows_service::service_dispatcher::start(crate::get_app_name(), ffi_service_main)",
+            '.map_err(|err| anyhow!("Failed to connect the Windows service process to the SCM: {err}"))',
+        ),
+        "Windows result-bearing SCM dispatcher",
+    )
+    if "if let Err" in dispatcher or "log::error!" in dispatcher:
+        raise VerificationError("Windows SCM dispatcher still swallows its error")
+
+    service_preamble = extract_between(
+        windows,
+        'async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {',
+        "\n    let status_handle = service_control_handler::register",
+        "Windows SCM service-entry preamble",
+    )
+    for forbidden, label in (
+        ("crate::common::global_init()", "global initialization"),
+        ("crate::load_custom_client()", "custom-client initialization"),
+        ("initialize_windows_service_owned_root", "machine-config initialization"),
+        ("hbb_common::init_log", "service log initialization"),
+    ):
+        if forbidden in service_preamble:
+            raise VerificationError(f"Windows ServiceMain performs {label} before handler registration")
+
+    service_initialization = extract_between(
+        windows,
+        "let service_name = arguments",
+        "\n    let (credential_request_tx, mut credential_request_rx)",
+        "Windows SCM-owned service initialization",
+    )
+    require_order(
+        service_initialization,
+        (
+            "let service_name = arguments",
+            ".first()",
+            ".filter(|name| !name.is_empty())",
+            'ok_or_else(|| anyhow!("SCM did not supply the Windows service name"))?;',
+            "let status_handle = service_control_handler::register(service_name, event_handler)?;",
+            "ServiceState::StartPending",
+            "if !crate::common::global_init() {",
+            "crate::load_custom_client();",
+            "let program_data = program_data_dir()?;",
+            "Config::initialize_windows_service_owned_root(&program_data, true)?;",
+            'hbb_common::init_log(false, "service");',
+            "if let Err(err) = initialization {",
+            "ServiceState::Stopped",
+            "ServiceExitCode::ServiceSpecific(1)",
+            "return Err(err);",
+        ),
+        "Windows handler-status-config-listener initialization order",
+    )
+
+    bootstrap = extract_between(
+        windows,
+        "pub fn bootstrap() -> bool {",
+        "\n}\n\n#[cfg(not(debug_assertions))]",
+        "Windows ordinary process bootstrap",
+    )
+    require_order(
+        bootstrap,
+        (
+            "if crate::common::is_service_owned_server_process() {",
+            "Config::initialize_windows_service_owned_root(&program_data, false)",
+        ),
+        "Windows exact child read-only config bootstrap",
+    )
+    if (
+        "is_service_supervisor_process()" in bootstrap
+        or "initialize_windows_service_owned_root(&program_data, true)" in bootstrap
+    ):
+        raise VerificationError("Windows pre-dispatch bootstrap retains supervisor write authority")
+
+    writer = extract_between(
+        config,
+        "pub fn initialize_windows_service_owned_root(",
+        "\n    #[cfg(target_os = \"linux\")]",
+        "Windows machine-config writer receiver",
+    )
+    require_order(
+        writer,
+        (
+            "if !windows_config_acl::current_process_is_local_system()? {",
+            "Windows service-owned config root requires the LocalSystem token",
+            "windows_machine_config::initialize(root, write_authority)",
+        ),
+        "Windows independent LocalSystem writer proof",
+    )
+
+    requirement = extract_html_requirement(
+        requirements, "R-S11ak", "Windows SCM service-entry requirement"
+    )
+    for text, label in (
+        (
+            "run only the mandatory process-wide safe-DLL loader bootstrap and then call a result-bearing service dispatcher",
+            "early result-bearing dispatcher clause",
+        ),
+        (
+            "Only the SCM-invoked service entry may initialize the durable machine-config writer",
+            "SCM-only config writer clause",
+        ),
+        (
+            "derive a nonempty registration name from SCM's first <code>ServiceMain</code> argument",
+            "SCM-owned service-name clause",
+        ),
+        (
+            "making SCM ownership and OS principal two distinct proofs",
+            "conjunctive SCM/principal authority clause",
+        ),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        ('<span class="id">R-S11ak</span>', "Windows SCM service-entry requirement"),
+        (
+            "Windows service authority begins only after the own-process image connects to SCM",
+            "Windows SCM service-entry authority clause",
+        ),
+        ("<tr><td>159</td>", "Windows SCM service-entry Appendix C row"),
+        (
+            "Windows service-specific authority preceded SCM ownership and dispatcher failure returned success",
+            "Windows SCM service-entry Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-51 — Windows SCM-owned service entry authority",
+        "Windows SCM service-entry hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -7914,6 +8134,7 @@ def validate_sources(sources):
     validate_linux_service_child_principal_contract(sources)
     validate_service_owned_server_role_contract(sources)
     validate_service_supervisor_role_contract(sources)
+    validate_windows_scm_service_entry_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -14132,7 +14353,7 @@ def run_source_mutations(sources):
             "core_main",
             '            #[cfg(target_os = "macos")]\n            if let Err(err) = crate::start_os_service() {\n                log::error!("macOS service principal authority failed closed: {err}");\n                std::process::exit(1);\n            }',
             '            #[cfg(target_os = "macos")]\n            crate::start_os_service();',
-            "common macOS service entry error propagation",
+            "common macOS service entry",
         ),
         (
             "service_source",
@@ -14442,15 +14663,15 @@ def run_source_mutations(sources):
         ),
         (
             "windows_source",
-            "    let service_owned_role =\n        service_supervisor_role || crate::common::is_service_owned_server_process();",
-            "    let service_owned_role =\n        service_supervisor_role || true;",
-            "Windows exact service-role configuration authority",
+            "if crate::common::is_service_owned_server_process() {",
+            "if true {",
+            "Windows exact service-child configuration authority",
         ),
         (
             "windows_source",
-            "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
+            "Config::initialize_windows_service_owned_root(&program_data, false)",
             "Config::initialize_windows_service_owned_root(&program_data, true)",
-            "Windows exact service-role configuration authority",
+            "Windows exact service-child configuration authority",
         ),
         (
             "common_source",
@@ -14673,10 +14894,10 @@ def run_source_mutations(sources):
             "exact supervisor dispatch",
         ),
         (
-            "windows_source",
-            "let service_supervisor_role = crate::common::is_service_supervisor_process();",
-            "let service_supervisor_role = true;",
-            "Windows exact service-role configuration authority",
+            "core_main",
+            "    #[cfg(windows)]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {",
+            "    #[cfg(windows)]\n    if service_supervisor_role == crate::common::ServiceSupervisorRole::Absent {",
+            "Windows exact supervisor SCM selection",
         ),
         (
             "common_source",
@@ -14737,6 +14958,138 @@ def run_source_mutations(sources):
             'Arguments="--service"',
             'Arguments="--service --extra"',
             "Windows MSI exact supervisor role",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9ca) Windows SCM-owned service entry authority (R-S11ak/R-S11e-51) =="',
+            'echo "== (3b-iii-d9ca) Windows console-compatible service entry (R-S11ak/R-S11e-51) =="',
+            "Windows SCM service-entry source gate",
+        ),
+        (
+            "core_main",
+            "        if !crate::platform::windows::bootstrap() {",
+            "        crate::load_custom_client();\n        if !crate::platform::windows::bootstrap() {",
+            "Windows exact pre-dispatch entry retains custom-client initialization",
+        ),
+        (
+            "core_main",
+            '            eprintln!("Windows service-control dispatcher authority failed closed: {err}");\n            std::process::exit(1);',
+            '            eprintln!("Windows service-control dispatcher authority failed closed: {err}");\n            return None;',
+            "Windows dispatcher-before-service-initialization authority",
+        ),
+        (
+            "windows_source",
+            "pub fn start_os_service() -> ResultType<()> {",
+            "pub fn start_os_service() {",
+            "Windows result-bearing SCM dispatcher",
+        ),
+        (
+            "windows_source",
+            '.map_err(|err| anyhow!("Failed to connect the Windows service process to the SCM: {err}"))',
+            ".map(|_| ())",
+            "Windows result-bearing SCM dispatcher",
+        ),
+        (
+            "windows_source",
+            'async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {',
+            'async fn run_service(arguments: Vec<OsString>) -> ResultType<()> {\n    crate::load_custom_client();',
+            "Windows ServiceMain performs custom-client initialization before handler registration",
+        ),
+        (
+            "windows_source",
+            ".filter(|name| !name.is_empty())",
+            ".filter(|_| true)",
+            "Windows handler-status-config-listener initialization order",
+        ),
+        (
+            "windows_source",
+            "let status_handle = service_control_handler::register(service_name, event_handler)?;",
+            "let status_handle = service_control_handler::register(crate::get_app_name(), event_handler)?;",
+            "Windows handler-status-config-listener initialization order",
+        ),
+        (
+            "windows_source",
+            "            ServiceState::StartPending\n",
+            "            ServiceState::Running\n",
+            "Windows handler-status-config-listener initialization order",
+        ),
+        (
+            "windows_source",
+            "Config::initialize_windows_service_owned_root(&program_data, true)?;",
+            "Config::initialize_windows_service_owned_root(&program_data, false)?;",
+            "Windows SCM-owned supervisor write authority",
+        ),
+        (
+            "windows_source",
+            '        hbb_common::init_log(false, "service");',
+            "        // service logger initialization removed",
+            "Windows handler-status-config-listener initialization order",
+        ),
+        (
+            "windows_source",
+            "    if let Err(err) = initialization {",
+            "    if false {",
+            "Windows handler-status-config-listener initialization order",
+        ),
+        (
+            "config_source",
+            "if !windows_config_acl::current_process_is_local_system()? {",
+            "if false {",
+            "Windows independent LocalSystem writer proof",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ak</span>',
+            '<span class="id">R-S11al</span>',
+            "Windows SCM service-entry requirement",
+        ),
+        (
+            "requirements",
+            "Windows service authority begins only after the own-process image connects to SCM",
+            "Windows service authority may begin before the own-process image connects to SCM",
+            "Windows SCM service-entry authority clause",
+        ),
+        (
+            "requirements",
+            "run only the mandatory process-wide safe-DLL loader bootstrap and then call a result-bearing service dispatcher",
+            "run service-specific initialization and then call a result-bearing service dispatcher",
+            "early result-bearing dispatcher clause",
+        ),
+        (
+            "requirements",
+            "Only the SCM-invoked service entry may initialize the durable machine-config writer",
+            "Any exact-role process may initialize the durable machine-config writer",
+            "SCM-only config writer clause",
+        ),
+        (
+            "requirements",
+            "derive a nonempty registration name from SCM's first <code>ServiceMain</code> argument",
+            "derive the registration name from caller-selected custom identity",
+            "SCM-owned service-name clause",
+        ),
+        (
+            "requirements",
+            "making SCM ownership and OS principal two distinct proofs",
+            "making the process argument the sole proof",
+            "conjunctive SCM/principal authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>159</td>",
+            "<tr><td>9159</td>",
+            "Windows SCM service-entry Appendix C row",
+        ),
+        (
+            "requirements",
+            "Windows service-specific authority preceded SCM ownership and dispatcher failure returned success",
+            "Windows service-specific authority always followed SCM ownership",
+            "Windows SCM service-entry Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-51 — Windows SCM-owned service entry authority",
+            "R-S11e-51 — Windows console-compatible service entry",
+            "Windows SCM service-entry hardening ledger",
         ),
         (
             "linux_source",
@@ -16976,6 +17329,7 @@ def main():
             "cargo_lock": (repo / "Cargo.lock").read_text(encoding="utf-8"),
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
             "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
+            "config_source": (repo / "libs/hbb_common/src/config.rs").read_text(encoding="utf-8"),
             "hbb_common_cargo": (repo / "libs/hbb_common/Cargo.toml").read_text(encoding="utf-8"),
             "hbb_common_platform": (repo / "libs/hbb_common/src/platform/mod.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),

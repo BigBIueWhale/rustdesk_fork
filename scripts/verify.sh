@@ -3473,7 +3473,7 @@ r_s11e47=
 macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn lock_screen\(/' src/platform/macos.rs)
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
 macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' src/platform/macos.rs)
-macos_core_service_entry=$(awk '/else if args\[0\] == "--service"/,/return None;/' src/core_main.rs)
+macos_core_service_entry=$(awk '/else if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact/,/return None;/' src/core_main.rs)
 macos_service_binary=$(cat src/service.rs)
 for binding in \
   'fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {' \
@@ -3504,8 +3504,7 @@ for binding in \
   '#[cfg(target_os = "macos")]' \
   'if let Err(err) = crate::start_os_service() {' \
   'log::error!("macOS service principal authority failed closed: {err}");' \
-  'std::process::exit(1);' \
-  '#[cfg(not(any(target_os = "linux", target_os = "macos")))]'; do
+  'std::process::exit(1);'; do
   grep -qF "$binding" <<<"$macos_core_service_entry" || r_s11e47="$r_s11e47 common-service-entry-error-propagation-missing"
 done
 for binding in \
@@ -3650,6 +3649,7 @@ r_s11e49=
 service_owned_role_policy=$(awk '/enum ServiceOwnedServerRole/,/^pub struct SimpleCallOnReturn/' src/common.rs)
 service_owned_role_tests=$(awk '/fn r_s11e49_service_owned_server_role_requires_exact_arguments\(\)/,/fn custom_client_app_name_identifier_contract\(\)/' src/common.rs)
 core_service_role_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/if !crate::common::global_init\(\)/' src/core_main.rs)
+core_service_owned_rejection=$(awk '/if crate::common::current_service_owned_server_role\(\)/,/#\[cfg\(windows\)\]/' src/core_main.rs)
 windows_bootstrap=$(awk '/pub fn bootstrap\(\) -> bool {/,/^}/' src/platform/windows.rs)
 for binding in \
   'enum ServiceOwnedServerRole {' \
@@ -3673,7 +3673,7 @@ for binding in \
   '== crate::common::ServiceOwnedServerRole::Malformed' \
   'Rejected malformed internal service-owned server role' \
   'std::process::exit(1);'; do
-  grep -qF "$binding" <<<"$core_service_role_entry" || r_s11e49="$r_s11e49 malformed-entry-rejection-missing"
+  grep -qF "$binding" <<<"$core_service_owned_rejection" || r_s11e49="$r_s11e49 malformed-entry-rejection-missing"
 done
 role_reject_line=$(grep -nF 'current_service_owned_server_role()' <<<"$core_service_role_entry" | head -n1 | cut -d: -f1 || true)
 global_init_line=$(grep -nF 'if !crate::common::global_init()' <<<"$core_service_role_entry" | head -n1 | cut -d: -f1 || true)
@@ -3681,12 +3681,13 @@ if [ -z "$role_reject_line" ] || [ -z "$global_init_line" ] || [ "$role_reject_l
   r_s11e49="$r_s11e49 malformed-role-not-rejected-before-global-init"
 fi
 for binding in \
-  'let service_supervisor_role = crate::common::is_service_supervisor_process();' \
-  'service_supervisor_role || crate::common::is_service_owned_server_process()' \
-  'Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)'; do
+  'if crate::common::is_service_owned_server_process() {' \
+  'Config::initialize_windows_service_owned_root(&program_data, false)'; do
   grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e49="$r_s11e49 windows-bootstrap-exact-role-consumer-missing"
 done
-if grep -qF 'SERVICE_OWNED_SERVER_ARG)' <<<"$windows_bootstrap"; then
+if grep -qF 'SERVICE_OWNED_SERVER_ARG)' <<<"$windows_bootstrap" \
+  || grep -qF 'is_service_supervisor_process()' <<<"$windows_bootstrap" \
+  || grep -qF 'initialize_windows_service_owned_root(&program_data, true)' <<<"$windows_bootstrap"; then
   r_s11e49="$r_s11e49 windows-bootstrap-marker-search-present"
 fi
 for binding in \
@@ -3717,7 +3718,7 @@ grep -qF 'Service-owned server role admission searched for an internal marker an
 grep -qF 'R-S11e-49 — exact service-owned server process role' HARDENING_STATUS.md \
   || r_s11e49="$r_s11e49 hardening-ledger-missing"
 if [ -n "$r_s11e49" ]; then echo "  FAIL R-S11e-49 exact service-owned server process role:$r_s11e49"; rc=1; else
-  echo "  ok  R-S11e-49 service-owned process policy accepts only exact --server + marker argv, rejects malformed marker-bearing entry before initialization, and keeps Windows bootstrap on that shared classifier"; fi
+  echo "  ok  R-S11e-49 service-owned process policy accepts only exact --server + marker argv, rejects malformed marker-bearing entry before initialization, and keeps Windows child bootstrap read-only on that shared classifier"; fi
 
 # (3b-iii-d9c9) R-S11aj/R-S11e-50: the privileged desktop service
 # supervisor is one exact singleton role, not a first-argument prefix.
@@ -3730,6 +3731,7 @@ core_service_supervisor_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>
 core_service_supervisor_rejection=$(awk '/if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {/,/if crate::common::current_service_owned_server_role\(\)/' src/core_main.rs)
 core_service_supervisor_dispatch=$(awk '/args\[0\] == "--uninstall-service"/,/args\[0\] == "--server"/' src/core_main.rs)
 windows_bootstrap=$(awk '/pub fn bootstrap\(\) -> bool {/,/^}/' src/platform/windows.rs)
+windows_service_initialization=$(awk '/let service_name = arguments/,/let \(credential_request_tx, mut credential_request_rx\)/' src/platform/windows.rs)
 for binding in \
   'enum ServiceSupervisorRole {' \
   'Absent,' \
@@ -3773,11 +3775,23 @@ if [ -z "$supervisor_reject_line" ] || [ -z "$global_init_line" ] || [ "$supervi
   r_s11e50="$r_s11e50 malformed-supervisor-not-rejected-before-global-init"
 fi
 for binding in \
-  'let service_supervisor_role = crate::common::is_service_supervisor_process();' \
-  'service_supervisor_role || crate::common::is_service_owned_server_process()' \
-  'Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)'; do
-  grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e50="$r_s11e50 windows-bootstrap-exact-supervisor-consumer-missing"
+  'if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {' \
+  'if !crate::platform::windows::bootstrap() {' \
+  'if let Err(err) = crate::start_os_service() {' \
+  'Windows service-control dispatcher authority failed closed' \
+  'Config::initialize_windows_service_owned_root(&program_data, true)?;'; do
+  grep -qF "$binding" <<<"$core_service_supervisor_entry$windows_service_initialization" \
+    || r_s11e50="$r_s11e50 windows-exact-supervisor-consumer-missing"
 done
+for binding in \
+  'if crate::common::is_service_owned_server_process() {' \
+  'Config::initialize_windows_service_owned_root(&program_data, false)'; do
+  grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e50="$r_s11e50 windows-child-bootstrap-role-consumer-missing"
+done
+if grep -qF 'is_service_supervisor_process()' <<<"$windows_bootstrap" \
+  || grep -qF 'initialize_windows_service_owned_root(&program_data, true)' <<<"$windows_bootstrap"; then
+  r_s11e50="$r_s11e50 windows-bootstrap-retains-supervisor-write-authority"
+fi
 if grep -qF 'std::env::args_os().nth(1).as_deref()' src/core_main.rs src/platform/windows.rs \
   || grep -qF 'args[0] == "--service"' src/core_main.rs; then
   r_s11e50="$r_s11e50 first-argument-only-supervisor-admission-present"
@@ -3812,7 +3826,107 @@ grep -qF 'Desktop service-supervisor role admission ignored every argument after
 grep -qF 'R-S11e-50 — exact desktop service-supervisor process role' HARDENING_STATUS.md \
   || r_s11e50="$r_s11e50 hardening-ledger-missing"
 if [ -n "$r_s11e50" ]; then echo "  FAIL R-S11e-50 exact desktop service-supervisor process role:$r_s11e50"; rc=1; else
-  echo "  ok  R-S11e-50 supervisor policy accepts only singleton --service, rejects malformed marker-bearing entry before initialization, and binds Linux config, common dispatch, and Windows write authority to the shared exact classifier"; fi
+  echo "  ok  R-S11e-50 supervisor policy accepts only singleton --service, rejects malformed marker-bearing entry before initialization, and binds Linux config/common dispatch plus the Windows SCM-owned writer path to the shared exact classifier"; fi
+
+# (3b-iii-d9ca) R-S11ak/R-S11e-51: a Windows own-process service
+# proves SCM ownership before service-specific initialization and propagates
+# dispatcher failure instead of returning a false success.
+echo "== (3b-iii-d9ca) Windows SCM-owned service entry authority (R-S11ak/R-S11e-51) =="
+r_s11e51=
+windows_core_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/if !crate::common::global_init\(\)/' src/core_main.rs)
+windows_exact_entry=$(awk '/#\[cfg\(windows\)\]/{seen=1} seen && /if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {/{capture=1} capture{print} capture && /^    }$/{exit}' src/core_main.rs)
+windows_dispatcher=$(awk '/pub fn start_os_service/,/^}/' src/platform/windows.rs)
+windows_service_preamble=$(awk '/async fn run_service/,/let status_handle = service_control_handler::register/' src/platform/windows.rs)
+windows_service_initialization=$(awk '/let service_name = arguments/,/let \(credential_request_tx, mut credential_request_rx\)/' src/platform/windows.rs)
+windows_bootstrap=$(awk '/pub fn bootstrap\(\) -> bool {/,/^}/' src/platform/windows.rs)
+windows_config_writer=$(awk '/pub fn initialize_windows_service_owned_root\(/,/^    }/' libs/hbb_common/src/config.rs)
+for binding in \
+  'if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {' \
+  'if !crate::platform::windows::bootstrap() {' \
+  'Windows service process bootstrap failed closed' \
+  'if let Err(err) = crate::start_os_service() {' \
+  'Windows service-control dispatcher authority failed closed' \
+  'std::process::exit(1);' \
+  'return None;'; do
+  grep -qF "$binding" <<<"$windows_exact_entry" || r_s11e51="$r_s11e51 early-scm-dispatch-binding-missing"
+done
+exact_entry_line=$(grep -nF 'if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {' <<<"$windows_core_entry" | head -n1 | cut -d: -f1 || true)
+dispatcher_line=$(grep -nF 'if let Err(err) = crate::start_os_service() {' <<<"$windows_core_entry" | head -n1 | cut -d: -f1 || true)
+global_init_line=$(grep -nF 'if !crate::common::global_init()' <<<"$windows_core_entry" | head -n1 | cut -d: -f1 || true)
+if [ -z "$exact_entry_line" ] || [ -z "$dispatcher_line" ] || [ -z "$global_init_line" ] \
+  || [ "$exact_entry_line" -ge "$dispatcher_line" ] || [ "$dispatcher_line" -ge "$global_init_line" ]; then
+  r_s11e51="$r_s11e51 scm-dispatch-not-before-global-init"
+fi
+for binding in \
+  'pub fn start_os_service() -> ResultType<()> {' \
+  'windows_service::service_dispatcher::start(crate::get_app_name(), ffi_service_main)' \
+  '.map_err(|err| anyhow!("Failed to connect the Windows service process to the SCM: {err}"))'; do
+  grep -qF "$binding" <<<"$windows_dispatcher" || r_s11e51="$r_s11e51 result-bearing-dispatcher-missing"
+done
+if grep -qF 'if let Err' <<<"$windows_dispatcher" || grep -qF 'log::error!' <<<"$windows_dispatcher"; then
+  r_s11e51="$r_s11e51 dispatcher-error-still-swallowed"
+fi
+for forbidden in \
+  'crate::common::global_init()' \
+  'crate::load_custom_client()' \
+  'initialize_windows_service_owned_root' \
+  'hbb_common::init_log'; do
+  if grep -qF "$forbidden" <<<"$windows_service_preamble"; then
+    r_s11e51="$r_s11e51 service-specific-initialization-before-handler"
+  fi
+done
+for binding in \
+  'let service_name = arguments' \
+  '.filter(|name| !name.is_empty())' \
+  'SCM did not supply the Windows service name' \
+  'let status_handle = service_control_handler::register(service_name, event_handler)?;' \
+  'ServiceState::StartPending' \
+  'if !crate::common::global_init() {' \
+  'crate::load_custom_client();' \
+  'let program_data = program_data_dir()?;' \
+  'Config::initialize_windows_service_owned_root(&program_data, true)?;' \
+  'hbb_common::init_log(false, "service");' \
+  'ServiceState::Stopped' \
+  'ServiceExitCode::ServiceSpecific(1)' \
+  'return Err(err);'; do
+  grep -qF "$binding" <<<"$windows_service_initialization" || r_s11e51="$r_s11e51 scm-service-initialization-binding-missing"
+done
+register_line=$(grep -nF 'let status_handle = service_control_handler::register' <<<"$windows_service_initialization" | head -n1 | cut -d: -f1 || true)
+pending_line=$(grep -nF 'ServiceState::StartPending' <<<"$windows_service_initialization" | head -n1 | cut -d: -f1 || true)
+service_global_line=$(grep -nF 'if !crate::common::global_init()' <<<"$windows_service_initialization" | head -n1 | cut -d: -f1 || true)
+writer_line=$(grep -nF 'Config::initialize_windows_service_owned_root(&program_data, true)?;' <<<"$windows_service_initialization" | head -n1 | cut -d: -f1 || true)
+listener_line=$(grep -nF 'let (credential_request_tx, mut credential_request_rx)' <<<"$windows_service_initialization" | head -n1 | cut -d: -f1 || true)
+if [ -z "$register_line" ] || [ -z "$pending_line" ] || [ -z "$service_global_line" ] \
+  || [ -z "$writer_line" ] || [ -z "$listener_line" ] \
+  || [ "$register_line" -ge "$pending_line" ] || [ "$pending_line" -ge "$service_global_line" ] \
+  || [ "$service_global_line" -ge "$writer_line" ] || [ "$writer_line" -ge "$listener_line" ]; then
+  r_s11e51="$r_s11e51 scm-service-initialization-order-invalid"
+fi
+for binding in \
+  'if crate::common::is_service_owned_server_process() {' \
+  'Config::initialize_windows_service_owned_root(&program_data, false)'; do
+  grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e51="$r_s11e51 read-only-child-bootstrap-missing"
+done
+if grep -qF 'is_service_supervisor_process()' <<<"$windows_bootstrap" \
+  || grep -qF 'initialize_windows_service_owned_root(&program_data, true)' <<<"$windows_bootstrap"; then
+  r_s11e51="$r_s11e51 pre-dispatch-writer-authority-present"
+fi
+for binding in \
+  'if !windows_config_acl::current_process_is_local_system()? {' \
+  'Windows service-owned config root requires the LocalSystem token' \
+  'windows_machine_config::initialize(root, write_authority)'; do
+  grep -qF "$binding" <<<"$windows_config_writer" || r_s11e51="$r_s11e51 local-system-writer-receiver-check-missing"
+done
+grep -qF '<span class="id">R-S11ak</span>' requirements.html || r_s11e51="$r_s11e51 normative-requirement-missing"
+grep -qF 'Windows service authority begins only after the own-process image connects to SCM' requirements.html \
+  || r_s11e51="$r_s11e51 normative-scm-entry-clause-missing"
+grep -qF '<tr><td>159</td>' requirements.html || r_s11e51="$r_s11e51 appendix-row-missing"
+grep -qF 'Windows service-specific authority preceded SCM ownership and dispatcher failure returned success' requirements.html \
+  || r_s11e51="$r_s11e51 appendix-disposition-missing"
+grep -qF 'R-S11e-51 — Windows SCM-owned service entry authority' HARDENING_STATUS.md \
+  || r_s11e51="$r_s11e51 hardening-ledger-missing"
+if [ -n "$r_s11e51" ]; then echo "  FAIL R-S11e-51 Windows SCM-owned service entry authority:$r_s11e51"; rc=1; else
+  echo "  ok  R-S11e-51 exact Windows service entry proves SCM ownership before service-specific authority, keeps LocalSystem as an independent receiver check, reports initialization failure, and leaves child bootstrap read-only"; fi
 
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and

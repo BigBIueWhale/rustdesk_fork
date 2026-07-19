@@ -7077,7 +7077,7 @@ def validate_linux_privileged_tray_boundary(sources):
     privileged_requirement = extract_between(
         requirements,
         '<div class="req"><span class="id">R-S11af</span>',
-        '\n\n<h2 id="excise">',
+        '\n\n<div class="req"><span class="id">R-S11ag</span>',
         "Linux privileged service-to-tray requirement",
     )
     require_text(
@@ -7106,6 +7106,158 @@ def validate_linux_privileged_tray_boundary(sources):
     )
 
 
+def validate_macos_service_principal_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    macos_source = sources["macos_source"]
+    core_main = sources["core_main"]
+    service_source = sources["service_source"]
+
+    for source, text, label in (
+        (
+            verify,
+            'echo "== (3b-iii-d9c6) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="',
+            "macOS service-principal source gate",
+        ),
+        (
+            apple,
+            'echo "== (2b-iv-a-0a) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="',
+            "macOS service-principal Apple source gate",
+        ),
+    ):
+        require_text(source, text, label)
+
+    root_policy = extract_between(
+        macos_source,
+        "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {",
+        "\npub fn lock_screen()",
+        "macOS numeric effective-UID root policy",
+    )
+    if 'crate::username() == "root"' in root_policy:
+        raise VerificationError("account-name macOS root identity remains")
+    for text, label in (
+        ("effective_uid == 0", "numeric root identity"),
+        ("pub fn is_root() -> bool {", "shared macOS root predicate"),
+        (
+            "effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })",
+            "macOS effective UID source",
+        ),
+    ):
+        require_text(root_policy, text, label)
+
+    service_entry = extract_between(
+        macos_source,
+        "pub fn start_os_service() -> ResultType<()> {",
+        "\n#[cfg(test)]",
+        "macOS service receiver principal boundary",
+    )
+    require_order(
+        service_entry,
+        (
+            "pub fn start_os_service() -> ResultType<()> {",
+            "if !is_root() {",
+            'bail!("macOS --service requires effective UID 0");',
+            'log::info!("Username: {}", crate::username());',
+            "crate::ipc::start(crate::POSTFIX_SERVICE)",
+        ),
+        "macOS service receiver principal ordering",
+    )
+    if "if let Err" in service_entry or "allow_err!" in service_entry:
+        raise VerificationError("macOS service IPC errors are swallowed")
+
+    core_service_dispatch = extract_between(
+        core_main,
+        '} else if args[0] == "--service" {',
+        "\n            return None;",
+        "common service dispatch",
+    )
+    core_macos_entry = extract_between(
+        core_service_dispatch,
+        '#[cfg(target_os = "macos")]',
+        '\n            #[cfg(not(any(target_os = "linux", target_os = "macos")))]',
+        "common macOS service entry",
+    )
+    require_order(
+        core_macos_entry,
+        (
+            '#[cfg(target_os = "macos")]',
+            "if let Err(err) = crate::start_os_service() {",
+            'log::error!("macOS service principal authority failed closed: {err}");',
+            "std::process::exit(1);",
+        ),
+        "common macOS service entry error propagation",
+    )
+    require_text(
+        core_service_dispatch,
+        '#[cfg(not(any(target_os = "linux", target_os = "macos")))]',
+        "non-Apple/non-Linux service dispatch",
+    )
+
+    require_order(
+        service_source,
+        (
+            '#[cfg(target_os = "macos")]',
+            "fn main() {",
+            "if let Err(err) = crate::start_os_service() {",
+            'hbb_common::log::error!("macOS service principal authority failed closed: {err}");',
+            "std::process::exit(1);",
+        ),
+        "dedicated macOS service entry error propagation",
+    )
+
+    root_test = extract_between(
+        macos_source,
+        "fn r_s11e47_macos_root_principal_is_numeric_effective_uid()",
+        "\n    }",
+        "macOS numeric root-principal regression",
+    )
+    for text, label in (
+        ("assert!(effective_uid_is_root(0));", "macOS UID-zero assertion"),
+        ("assert!(!effective_uid_is_root(1));", "macOS nonzero-UID assertion"),
+        ("assert!(!effective_uid_is_root(501));", "macOS ordinary-UID assertion"),
+    ):
+        require_text(root_test, text, label)
+
+    principal_requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11ag</span>',
+        '\n\n<h2 id="excise">',
+        "macOS service-principal requirement",
+    )
+    for text, label in (
+        (
+            "unsafe { hbb_common::libc::geteuid() }",
+            "macOS numeric effective-UID authority clause",
+        ),
+        (
+            "before logging the service principal or calling the service IPC listener",
+            "macOS check-before-listener authority clause",
+        ),
+    ):
+        require_text(principal_requirement, text, label)
+
+    for text, label in (
+        ('<span class="id">R-S11ag</span>', "macOS service-principal requirement"),
+        (
+            "macOS privileged service authority is numeric and enforced at every service entry",
+            "macOS service-principal authority clause",
+        ),
+        ("<tr><td>155</td>", "macOS service-principal Appendix C row"),
+        (
+            "macOS service/root authority depended on account-name text and lacked an entry-point principal gate",
+            "macOS service-principal Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-47 — macOS numeric service-principal authority",
+        "macOS service-principal hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -7119,6 +7271,7 @@ def validate_sources(sources):
     validate_macos_descriptor_contract(sources)
     validate_windows_helper_launch_contract(sources)
     validate_cross_platform_user_helper_contract(sources)
+    validate_macos_service_principal_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -12849,8 +13002,8 @@ def run_source_mutations(sources):
         ),
         (
             "macos_source",
-            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}',
-            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}\n\npub fn run_as_user() {}',
+            "pub fn is_root() -> bool {\n    effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })\n}",
+            "pub fn is_root() -> bool {\n    effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })\n}\n\npub fn run_as_user() {}",
             "generic root-to-user helper authority remains in macos_source",
         ),
         (
@@ -13236,6 +13389,132 @@ def run_source_mutations(sources):
             "fn r_s11e46_linux_tray_requires_non_root_principal()",
             "fn r_s11e46_linux_tray_allows_root_principal()",
             "Linux tray principal regression",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9c6) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="',
+            'echo "== (3b-iii-d9c6) macOS account-name service-principal compatibility (R-S11ag/R-S11e-47) =="',
+            "macOS service-principal source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0a) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="',
+            'echo "== (2b-iv-a-0a) macOS account-name service-principal compatibility (R-S11ag/R-S11e-47) =="',
+            "macOS service-principal Apple source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ag</span>',
+            '<span class="id">R-S11ah</span>',
+            "macOS service-principal requirement",
+        ),
+        (
+            "requirements",
+            "macOS privileged service authority is numeric and enforced at every service entry",
+            "macOS privileged service authority follows resolved account names",
+            "macOS service-principal authority clause",
+        ),
+        (
+            "requirements",
+            "unsafe { hbb_common::libc::geteuid() }",
+            "unsafe { hbb_common::libc::getuid() }",
+            "macOS numeric effective-UID authority clause",
+        ),
+        (
+            "requirements",
+            "before logging the service principal or calling the service IPC listener",
+            "after logging the service principal or calling the service IPC listener",
+            "macOS check-before-listener authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>155</td>",
+            "<tr><td>9155</td>",
+            "macOS service-principal Appendix C row",
+        ),
+        (
+            "requirements",
+            "macOS service/root authority depended on account-name text and lacked an entry-point principal gate",
+            "macOS service/root authority used numeric credentials and every entry had a principal gate",
+            "macOS service-principal Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-47 — macOS numeric service-principal authority",
+            "R-S11e-47 — macOS account-name service-principal compatibility",
+            "macOS service-principal hardening ledger",
+        ),
+        (
+            "macos_source",
+            "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {\n    effective_uid == 0",
+            "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {\n    effective_uid == 1",
+            "numeric root identity",
+        ),
+        (
+            "macos_source",
+            "effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })",
+            "effective_uid_is_root(unsafe { hbb_common::libc::getuid() })",
+            "macOS effective UID source",
+        ),
+        (
+            "macos_source",
+            "pub fn is_root() -> bool {\n    effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })\n}",
+            'pub fn is_root() -> bool {\n    crate::username() == "root"\n}',
+            "account-name macOS root identity remains",
+        ),
+        (
+            "macos_source",
+            "pub fn start_os_service() -> ResultType<()> {",
+            "pub fn start_os_service() {",
+            "macOS service receiver principal boundary",
+        ),
+        (
+            "macos_source",
+            '    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }',
+            '    if false {\n        bail!("macOS --service requires effective UID 0");\n    }',
+            "macOS service receiver principal ordering",
+        ),
+        (
+            "macos_source",
+            '    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }\n    log::info!("Username: {}", crate::username());',
+            '    log::info!("Username: {}", crate::username());\n    if !is_root() {\n        bail!("macOS --service requires effective UID 0");\n    }',
+            "macOS service receiver principal ordering",
+        ),
+        (
+            "macos_source",
+            "    crate::ipc::start(crate::POSTFIX_SERVICE)\n}",
+            "    if let Err(err) = crate::ipc::start(crate::POSTFIX_SERVICE) {\n        log::error!(\"Failed to start ipc_service: {err}\");\n    }\n    Ok(())\n}",
+            "macOS service IPC errors are swallowed",
+        ),
+        (
+            "core_main",
+            '            #[cfg(target_os = "macos")]\n            if let Err(err) = crate::start_os_service() {\n                log::error!("macOS service principal authority failed closed: {err}");\n                std::process::exit(1);\n            }',
+            '            #[cfg(target_os = "macos")]\n            crate::start_os_service();',
+            "common macOS service entry error propagation",
+        ),
+        (
+            "service_source",
+            '    if let Err(err) = crate::start_os_service() {\n        hbb_common::log::error!("macOS service principal authority failed closed: {err}");\n        std::process::exit(1);\n    }',
+            "    crate::start_os_service();",
+            "dedicated macOS service entry error propagation",
+        ),
+        (
+            "macos_source",
+            "fn r_s11e47_macos_root_principal_is_numeric_effective_uid()",
+            "fn r_s11e47_macos_root_principal_uses_account_name()",
+            "macOS numeric root-principal regression",
+        ),
+        (
+            "macos_source",
+            "assert!(effective_uid_is_root(0));",
+            "assert!(!effective_uid_is_root(0));",
+            "macOS UID-zero assertion",
+        ),
+        (
+            "macos_source",
+            "assert!(!effective_uid_is_root(501));",
+            "assert!(effective_uid_is_root(501));",
+            "macOS ordinary-UID assertion",
         ),
         (
             "linux_source",
@@ -15478,6 +15757,7 @@ def main():
             "hbb_common_cargo": (repo / "libs/hbb_common/Cargo.toml").read_text(encoding="utf-8"),
             "hbb_common_platform": (repo / "libs/hbb_common/src/platform/mod.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
+            "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),

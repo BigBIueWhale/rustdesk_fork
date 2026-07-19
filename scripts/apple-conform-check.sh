@@ -1223,6 +1223,69 @@ else
   note "ok  R-S11e-38 macOS carries no generic root-to-user CM/whiteboard launcher and unexpected root transitions fail closed"
 fi
 
+echo "== (2b-iv-a-0a) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="
+r_s11e47=
+macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn lock_screen\(/' "$macos_rs")
+macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' "$macos_rs")
+macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' "$macos_rs")
+macos_core_service_entry=$(awk '/else if args\[0\] == "--service"/,/return None;/' "$REPO/src/core_main.rs")
+macos_service_binary=$(cat "$REPO/src/service.rs")
+for binding in \
+  'fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {' \
+  'effective_uid == 0' \
+  'effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })'; do
+  grep -qF "$binding" <<<"$macos_root_policy" || r_s11e47="$r_s11e47 numeric-effective-uid-policy-missing"
+done
+if grep -qF 'crate::username() == "root"' <<<"$macos_root_policy"; then
+  r_s11e47="$r_s11e47 account-name-root-policy-present"
+fi
+for binding in \
+  'pub fn start_os_service() -> ResultType<()> {' \
+  'if !is_root() {' \
+  'bail!("macOS --service requires effective UID 0");' \
+  'log::info!("Username: {}", crate::username());' \
+  'crate::ipc::start(crate::POSTFIX_SERVICE)'; do
+  grep -qF "$binding" <<<"$macos_service_entry" || r_s11e47="$r_s11e47 service-receiver-principal-boundary-missing"
+done
+service_guard_line=$(grep -nF 'if !is_root() {' <<<"$macos_service_entry" | cut -d: -f1 || true)
+service_log_line=$(grep -nF 'log::info!("Username: {}", crate::username());' <<<"$macos_service_entry" | cut -d: -f1 || true)
+service_listener_line=$(grep -nF 'crate::ipc::start(crate::POSTFIX_SERVICE)' <<<"$macos_service_entry" | cut -d: -f1 || true)
+if [ -z "$service_guard_line" ] || [ -z "$service_log_line" ] || [ -z "$service_listener_line" ] \
+  || [ "$service_guard_line" -ge "$service_log_line" ] || [ "$service_log_line" -ge "$service_listener_line" ]; then
+  r_s11e47="$r_s11e47 service-principal-check-order-invalid"
+fi
+for binding in \
+  '#[cfg(target_os = "macos")]' \
+  'if let Err(err) = crate::start_os_service() {' \
+  'log::error!("macOS service principal authority failed closed: {err}");' \
+  'std::process::exit(1);' \
+  '#[cfg(not(any(target_os = "linux", target_os = "macos")))]'; do
+  grep -qF "$binding" <<<"$macos_core_service_entry" || r_s11e47="$r_s11e47 common-service-entry-error-propagation-missing"
+done
+for binding in \
+  '#[cfg(target_os = "macos")]' \
+  'if let Err(err) = crate::start_os_service() {' \
+  'hbb_common::log::error!("macOS service principal authority failed closed: {err}");' \
+  'std::process::exit(1);'; do
+  grep -qF "$binding" <<<"$macos_service_binary" || r_s11e47="$r_s11e47 dedicated-service-entry-error-propagation-missing"
+done
+for binding in \
+  'fn r_s11e47_macos_root_principal_is_numeric_effective_uid()' \
+  'assert!(effective_uid_is_root(0));' \
+  'assert!(!effective_uid_is_root(1));' \
+  'assert!(!effective_uid_is_root(501));'; do
+  grep -qF "$binding" <<<"$macos_root_test" || r_s11e47="$r_s11e47 numeric-root-regression-missing"
+done
+grep -qF '<span class="id">R-S11ag</span>' "$REPO/requirements.html" || r_s11e47="$r_s11e47 normative-requirement-missing"
+grep -qF '<tr><td>155</td>' "$REPO/requirements.html" || r_s11e47="$r_s11e47 appendix-disposition-missing"
+grep -qF 'R-S11e-47 — macOS numeric service-principal authority' "$REPO/HARDENING_STATUS.md" || r_s11e47="$r_s11e47 hardening-ledger-missing"
+if [ -n "$r_s11e47" ]; then
+  echo "  FAIL R-S11e-47 macOS numeric service-principal authority:$r_s11e47"
+  rc=1
+else
+  note "ok  R-S11e-47 macOS source binds the protected service listener to numeric effective UID 0 and propagates rejection at both entries; native Apple evidence remains pending R-R2/R-B2"
+fi
+
 echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' "$REPO/libs/hbb_common/src/platform/macos.rs")

@@ -3040,6 +3040,86 @@ unreachable and a source/test/AST gate prevents reintroduction.
   was inspected or changed. The long release verifier, root service fixtures, and full release build remain
   excluded. Exact cold final Debian artifact execution remains owned by R-B2/R-S11c-27 and is not inferred from this
   source proof; publication evidence is recorded after commit and push.
+- **R-S11e-47 — macOS numeric service-principal authority — SOURCE-GATED 2026-07-19;
+  NATIVE MACOS COMPILATION/EXECUTION AND EXACT SIGNED-ARTIFACT EVIDENCE REMAIN WITH R-R2/R-B2.** Platform: macOS
+  common application dispatch, the dedicated service executable, and the root LaunchDaemon/PrivilegedHelperTools
+  service listener. Endpoint/action: entering the protected `--service` role and binding its shared IPC endpoint.
+  Boundary: an arbitrary local process principal and presentation-layer account lookup ↔ the UID-0 service receiver
+  that supplies credential snapshots and coordinates the per-user LaunchAgent-owned controlled-side server.
+
+  Proven old path and history: `src/platform/macos.rs::is_root()` implemented privilege classification as
+  `crate::username() == "root"`; `crate::username()` resolves a presentation name through `whoami`, rather than
+  returning the kernel credential itself. `start_os_service()` returned no result, performed no principal check,
+  and swallowed `ipc::start` failure after logging it. The common `src/core_main.rs` `--service` arm and dedicated
+  `src/service.rs` binary both invoked that receiver without a UID gate or non-success propagation. A non-root local
+  process could therefore attempt to occupy the shared endpoint when the real LaunchDaemon was absent, and a UID-0
+  process whose account-name resolution was unexpected could be misclassified by connection-manager/whiteboard
+  root-transition guards. `git blame` attributes both the name predicate and direct service entry to upstream import
+  `c2abd3b3`, not to a recent hardening slice.
+
+  Authority model and closure: the macOS protected service role is exactly numeric effective UID 0. The shared
+  predicate now delegates to a pure `effective_uid_is_root(uid)` comparison and obtains its live value through the
+  narrow `unsafe { hbb_common::libc::geteuid() }` FFI call. Account names remain presentation-only.
+  `start_os_service()` is now result-bearing, rejects every nonzero effective UID before logging the service principal or entering
+  `ipc::start(POSTFIX_SERVICE)`, and returns listener errors rather than swallowing them. Both the common macOS
+  `--service` branch and dedicated service executable log that failure and exit 1. The existing connection-manager
+  and whiteboard fail-closed root-transition branches automatically consume the corrected shared predicate. The
+  normal non-root per-user LaunchAgent server is intentionally unchanged. Independent service-client audit-token,
+  UID-0, trusted PrivilegedHelperTools code-signature, receiver peer-credential, and installed-plist checks remain
+  mandatory; this entry gate does not replace them.
+
+  Primary contracts and classification: Apple's `getuid(2)`/`geteuid(2)` manual defines the effective UID as the
+  process credential carrying additional permissions in set-ID execution
+  (https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getuid.2.html),
+  and Apple's `intro(2)` manual states that filesystem access is governed by effective UID/group state and that a
+  process with effective UID 0 is superuser
+  (https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/intro.2.html).
+  This closes a concrete ordinary-user endpoint-occupancy/availability path and conceptual privileged-helper
+  principal confusion. It does not claim credential disclosure, promptless privilege escalation, or host compromise:
+  the independent client and receiver identity checks still reject an untrusted service peer.
+
+  Proof and gates: `r_s11e47_macos_root_principal_is_numeric_effective_uid` binds UID 0 plus representative nonzero
+  UIDs. `scripts/verify.sh` and `scripts/apple-conform-check.sh` extract the numeric predicate, effective-UID source,
+  account-name absence, result-bearing receiver, check/log/listener ordering, both error-propagating executable
+  entries, regression, R-S11ag, Appendix C #155, and this entry. The semantic workspace verifier independently
+  interprets the same authority regions and carries complete mutations for both shell gates, requirement ID/title and
+  numeric/order clauses, Appendix row/disposition, ledger, numeric comparison, effective-UID source, account-name
+  reintroduction, result/guard/order/error handling, both callers, and the pure regression.
+
+  Verification: both extracted R-S11e-47 gates pass. Rust 1.75 formatting/parser checks pass for all three edited Rust
+  files; Bash syntax and in-memory Python compilation pass for every edited verifier. The normal semantic workspace
+  audit and its complete independently executed source-mutation matrix pass. The latter rejects both gate deletions,
+  normative ID/title/effective-UID/order clauses, Appendix row/disposition, ledger removal, numeric-comparison or
+  effective-to-real-UID substitution, account-name reintroduction, missing result/guard/order/error propagation, both
+  caller regressions, and proof deletion. The locked/offline Linux library
+  `cargo check --features linux-pkg-config` completed in 38.46 seconds using the complete read-only cargo-vendor source
+  map, with only the repository's existing warning set; this proves the shared dispatch remains Linux-compatible but
+  is not counted as macOS compilation. Dependency inventory and all 103 inventory mutations pass: 909 Cargo packages
+  and 854 lexical `unsafe {` blocks across 251 tracked Rust files/74 nonzero files, per-file digest
+  `da946df73ff7346ff79a8c1ba6b0ecef0f4486de14ac9437fca96aefac247644`. The one-block increase is the reviewed,
+  expression-scoped macOS `geteuid()` FFI call. Native-codec normal/self-test, `git diff --check`, and the synchronized
+  requirements identity pass at `bf12999747458d36a204e7358a2d591a2d5f7ac452e492fb580cdcb7477af50e`.
+
+  Failure accounting: the first Docker metadata query named an absent optional `Config.User` field and failed before
+  starting a container. The first Python bytecode syntax command then tried to create `__pycache__` on the deliberately
+  read-only source mount and was replaced by in-memory compilation; no source write occurred. The mutation suite found
+  and caused correction of a substring-ambiguous gate assertion and then a diagnostic-order mismatch, without
+  weakening a production assertion. A first Cargo attempt reached dependency compilation but found one pre-existing
+  named-cache source unreadable by UID 1000; no ownership or permission was changed, and the successful rerun used the
+  repository's complete read-only `online/cargo-vendor` source map. The image lacked its optional Rust 1.75 rustfmt
+  component, so the already-installed host-owned 1.75 toolchain was mounted read-only and its formatter passed. A final
+  cross-target availability audit caught that `hbb_common::users` is Linux-only before commit; the macOS source was
+  corrected to the existing `libc::geteuid()` binding, requirements/gates/mutations/inventory were synchronized, and
+  the entire final verification set then passed. No native Apple or signed-artifact result is inferred from Linux
+  source conformance. The long release verifier and release builds stayed excluded by the active task instructions.
+
+  Execution boundary: every project code/build/test/verifier command in this slice used numeric UID/GID 1000 in
+  the existing local `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`,
+  with networking disabled, a read-only root/source/toolchain/Cargo input set, all capabilities dropped,
+  no-new-privileges, bounded pids, and outputs only on disposable container tmpfs. No image build/pull, Docker socket,
+  host PID/network namespace, published port, host service/config mount, or root identity was used. No host RustDesk
+  process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or networking was inspected or
+  changed. Publication evidence is recorded only after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5385,8 +5465,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2ab29eb2732b6003e8f4a7aca74b973be35b2dd911e288f08db27db4433927e2  requirements.html
+bf12999747458d36a204e7358a2d591a2d5f7ac452e492fb580cdcb7477af50e  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11af, and Appendix C #154. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ag, and Appendix C #155. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

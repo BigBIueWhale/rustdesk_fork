@@ -898,8 +898,12 @@ pub fn declare_remote_user_activity() {
     }
 }
 
+fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {
+    effective_uid == 0
+}
+
 pub fn is_root() -> bool {
-    crate::username() == "root"
+    effective_uid_is_root(unsafe { hbb_common::libc::geteuid() })
 }
 
 pub fn lock_screen() {
@@ -917,10 +921,23 @@ pub fn lock_screen() {
     }
 }
 
-pub fn start_os_service() {
+pub fn start_os_service() -> ResultType<()> {
+    if !is_root() {
+        bail!("macOS --service requires effective UID 0");
+    }
     log::info!("Username: {}", crate::username());
-    if let Err(err) = crate::ipc::start(crate::POSTFIX_SERVICE) {
-        log::error!("Failed to start ipc_service: {}", err);
+    crate::ipc::start(crate::POSTFIX_SERVICE)
+}
+
+#[cfg(test)]
+mod root_principal_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11e47_macos_root_principal_is_numeric_effective_uid() {
+        assert!(effective_uid_is_root(0));
+        assert!(!effective_uid_is_root(1));
+        assert!(!effective_uid_is_root(501));
     }
 }
 

@@ -380,7 +380,12 @@ pub fn core_main() -> Option<Vec<String>> {
                 log::error!("Linux service lifecycle authority failed closed: {err}");
                 std::process::exit(1);
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "macos")]
+            if let Err(err) = crate::start_os_service() {
+                log::error!("macOS service principal authority failed closed: {err}");
+                std::process::exit(1);
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             crate::start_os_service();
             return None;
         } else if args[0] == "--server" {

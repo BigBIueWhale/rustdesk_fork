@@ -407,6 +407,7 @@ class ScratchRoot:
         child_fd = None
         child_identity = None
         child_owned = False
+        primary_error = None
         try:
             edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
             if (
@@ -429,30 +430,52 @@ class ScratchRoot:
                 raise VerificationError("fixture directory was created across a mount boundary")
             child_owned = True
             yield ScratchDirectory(self, child_fd, child_name, child_identity)
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
+            failures = []
             cleanup_complete = False
-            try:
-                if child_owned:
-                    edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
-                    if filesystem_identity(edge) != child_identity:
-                        raise VerificationError("fixture directory edge changed before cleanup")
-                    if child_fd is not None:
-                        self._assert_inode_closure(child_fd)
-                        self._remove_contents(child_fd, [131072])
-                        if not directory_is_empty(child_fd):
-                            raise VerificationError("fixture directory remains nonempty after cleanup")
-                    edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
-                    if filesystem_identity(edge) != child_identity:
-                        raise VerificationError("fixture directory edge changed before root removal")
-                    os.rmdir(child_name, dir_fd=self.fd)
-                    if os.fstat(child_fd).st_nlink != 0:
-                        raise VerificationError("fixture root removal did not consume its edge")
-                    cleanup_complete = True
-            finally:
+            def remove_owned_child():
+                edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
+                if filesystem_identity(edge) != child_identity:
+                    raise VerificationError("fixture directory edge changed before cleanup")
                 if child_fd is not None:
-                    os.close(child_fd)
+                    self._assert_inode_closure(child_fd)
+                    self._remove_contents(child_fd, [131072])
+                    if not directory_is_empty(child_fd):
+                        raise VerificationError("fixture directory remains nonempty after cleanup")
+                edge = os.stat(child_name, dir_fd=self.fd, follow_symlinks=False)
+                if filesystem_identity(edge) != child_identity:
+                    raise VerificationError("fixture directory edge changed before root removal")
+                os.rmdir(child_name, dir_fd=self.fd)
+                if os.fstat(child_fd).st_nlink != 0:
+                    raise VerificationError("fixture root removal did not consume its edge")
+
+            if child_owned:
+                cleanup_complete = attempt_cleanup(
+                    failures,
+                    "fixture directory tree",
+                    remove_owned_child,
+                )
+            if child_fd is not None:
+                attempt_cleanup(
+                    failures,
+                    "fixture directory descriptor",
+                    os.close,
+                    child_fd,
+                )
             if cleanup_complete:
-                self.assert_bound()
+                attempt_cleanup(
+                    failures,
+                    "fixture scratch authority",
+                    self.assert_bound,
+                )
+            report_cleanup_failures(
+                primary_error,
+                "fixture directory cleanup failed",
+                failures,
+            )
 
     def close(self):
         if self.closed:
@@ -2926,6 +2949,7 @@ def validate_docs(sources):
         "Same-host release-smoke coexistence with an operational older RustDesk service",
         "This is a current-release harness defect",
         "The separate Linux service-child lifecycle redesign remains open for upcoming releases",
+        "preserves the original failure and every cleanup failure",
     ):
         require_text(requirements, text, "requirements release authority")
     for forbidden in (
@@ -2959,6 +2983,9 @@ def validate_docs(sources):
         "The invoking UID must keep the namespace",
         "Implemented current-release closure",
         "does not close or advance the upcoming-release",
+        "R-B2 verifier fixture primary-error preservation — CLOSED / GATED",
+        "the body exception remains primary",
+        "exact managed-scope execution remains an environment prerequisite",
     ):
         require_text(hardening, text, "hardening-status current release authority")
     if "`f_fsid` must be nonzero" in hardening:
@@ -6645,8 +6672,14 @@ def systemd_control_environment():
     bus_metadata = bus.stat()
     if not stat.S_ISSOCK(bus_metadata.st_mode) or bus_metadata.st_uid != os.geteuid():
         raise VerificationError("systemd user bus is not current-UID socket authority")
+    try:
+        home = pwd.getpwuid(os.geteuid()).pw_dir
+    except KeyError as exc:
+        raise VerificationError(
+            "managed-command current principal has no passwd entry"
+        ) from exc
     return {
-        "HOME": pwd.getpwuid(os.geteuid()).pw_dir,
+        "HOME": home,
         "PATH": "/usr/bin:/bin",
         "LC_ALL": "C",
         "LANG": "C",
@@ -12562,6 +12595,12 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
+            "except KeyError as exc:\n        raise VerificationError(\n            \"managed-command current principal has no passwd entry\"\n        ) from exc",
+            "except KeyError:\n        home = os.environ.get(\"HOME\", \"/\") # ambient principal authority accepted",
+            "missing current-principal passwd classification",
+        ),
+        (
+            "workspace_verifier",
             "metadata.st_blocks,\n        metadata.st_rdev,\n        metadata.st_mtime_ns,\n        metadata.st_ctime_ns,",
             "metadata.st_blocks,\n        metadata.st_rdev,\n        metadata.st_mtime_ns,\n        metadata.st_mtime_ns, # publication ctime omitted",
             "publication ctime metadata",
@@ -12688,9 +12727,27 @@ def run_source_mutations(sources):
         ),
         (
             "workspace_verifier",
-            "if filesystem_identity(edge) != child_identity:\n                        raise VerificationError(\"fixture directory edge changed before cleanup\")",
-            "if False:\n                        raise VerificationError(\"fixture directory edge changed before cleanup\")",
+            "if filesystem_identity(edge) != child_identity:\n                    raise VerificationError(\"fixture directory edge changed before cleanup\")",
+            "if False:\n                    raise VerificationError(\"fixture directory edge changed before cleanup\")",
             "live fixture edge cleanup gate",
+        ),
+        (
+            "workspace_verifier",
+            "child_owned = True\n            yield ScratchDirectory(self, child_fd, child_name, child_identity)\n        except BaseException as error:\n            primary_error = error\n            raise\n        finally:\n            failures = []",
+            "child_owned = True\n            yield ScratchDirectory(self, child_fd, child_name, child_identity)\n        except BaseException as error:\n            primary_error = None # primary fixture failure discarded\n            raise\n        finally:\n            failures = []",
+            "fixture directory primary-error retention",
+        ),
+        (
+            "workspace_verifier",
+            "report_cleanup_failures(\n                primary_error,\n                \"fixture directory cleanup failed\",",
+            "report_cleanup_failures(\n                None, # primary fixture failure discarded\n                \"fixture directory cleanup failed\",",
+            "fixture directory primary-error cleanup preservation",
+        ),
+        (
+            "workspace_verifier",
+            'if getattr(exc, "__notes__", []) != [expected_note]:',
+            "if False: # cleanup-note behavioral proof removed",
+            "scratch cleanup-note preservation proof",
         ),
         (
             "workspace_verifier",
@@ -12788,6 +12845,12 @@ def run_source_mutations(sources):
             'run_fixture_stage("scratch acquisition fixture", exercise_scratch_acquisition_failures, scratch)',
             'run_fixture_stage("scratch acquisition fixture", lambda ignored: None, scratch)',
             "scratch acquisition fixture dispatch",
+        ),
+        (
+            "workspace_verifier",
+            '"scratch primary-error fixture",\n                exercise_scratch_primary_error_preservation,',
+            '"scratch primary-error fixture",\n                lambda ignored: None,',
+            "scratch primary-error fixture dispatch",
         ),
         (
             "workspace_verifier",
@@ -13036,9 +13099,21 @@ def run_source_mutations(sources):
             "requirements release authority",
         ),
         (
+            "requirements",
+            "preserves the original failure and every cleanup failure",
+            "replaces the original failure with a cleanup failure",
+            "requirements release authority",
+        ),
+        (
             "hardening",
             "does not close or advance the upcoming-release",
             "also closes the upcoming-release",
+            "hardening-status current release authority",
+        ),
+        (
+            "hardening",
+            "R-B2 verifier fixture primary-error preservation — CLOSED / GATED",
+            "R-B2 verifier fixture primary-error preservation — OPEN",
             "hardening-status current release authority",
         ),
         (
@@ -13197,6 +13272,92 @@ def exercise_scratch_acquisition_failures(scratch):
     finally:
         os.close(child)
     os.rmdir(name, dir_fd=scratch.fd)
+    scratch.assert_bound()
+
+
+def exercise_scratch_primary_error_preservation(scratch):
+    scratch.assert_bound()
+    suffix = os.urandom(16).hex()
+    child_name = None
+    displaced_name = None
+    child_identity = None
+    replacement_identity = None
+    expected_error = "injected fixture body failure"
+    expected_note = (
+        "fixture directory cleanup failed: fixture directory tree: "
+        "fixture directory edge changed before cleanup"
+    )
+
+    try:
+        with scratch.directory("primary-error-") as directory:
+            child_name = directory.name
+            displaced_name = f".{child_name}.moved-{suffix}"
+            os.rename(
+                child_name,
+                displaced_name,
+                src_dir_fd=scratch.fd,
+                dst_dir_fd=scratch.fd,
+            )
+            child_identity = filesystem_identity(
+                os.stat(displaced_name, dir_fd=scratch.fd, follow_symlinks=False)
+            )
+            os.mkdir(child_name, 0o700, dir_fd=scratch.fd)
+            replacement_identity = filesystem_identity(
+                os.stat(child_name, dir_fd=scratch.fd, follow_symlinks=False)
+            )
+            raise VerificationError(expected_error)
+    except VerificationError as exc:
+        if str(exc) != expected_error:
+            raise VerificationError(
+                "fixture cleanup replaced its primary body failure"
+            ) from exc
+        if getattr(exc, "__notes__", []) != [expected_note]:
+            raise VerificationError(
+                "fixture cleanup did not retain its secondary failure on the primary error"
+            ) from exc
+    else:
+        raise VerificationError("fixture primary-error preservation case unexpectedly succeeded")
+
+    if (
+        child_name is None
+        or displaced_name is None
+        or child_identity is None
+        or replacement_identity is None
+    ):
+        raise VerificationError("fixture primary-error preservation case is incomplete")
+    replacement = os.stat(child_name, dir_fd=scratch.fd, follow_symlinks=False)
+    displaced = os.stat(displaced_name, dir_fd=scratch.fd, follow_symlinks=False)
+    if (
+        filesystem_identity(replacement) != replacement_identity
+        or filesystem_identity(displaced) != child_identity
+    ):
+        raise VerificationError("fixture primary-error preservation changed an ambiguous edge")
+    replacement_fd = os.open(
+        child_name,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        dir_fd=scratch.fd,
+    )
+    displaced_fd = os.open(
+        displaced_name,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        dir_fd=scratch.fd,
+    )
+    try:
+        if os.listdir(replacement_fd) or os.listdir(displaced_fd):
+            raise VerificationError(
+                "fixture primary-error preservation mutated an ambiguous directory"
+            )
+    finally:
+        os.close(displaced_fd)
+        os.close(replacement_fd)
+    os.rmdir(child_name, dir_fd=scratch.fd)
+    os.rename(
+        displaced_name,
+        child_name,
+        src_dir_fd=scratch.fd,
+        dst_dir_fd=scratch.fd,
+    )
+    os.rmdir(child_name, dir_fd=scratch.fd)
     scratch.assert_bound()
 
 
@@ -13534,6 +13695,11 @@ def main():
         validate_sources(sources)
         if args.self_test:
             run_fixture_stage("scratch acquisition fixture", exercise_scratch_acquisition_failures, scratch)
+            run_fixture_stage(
+                "scratch primary-error fixture",
+                exercise_scratch_primary_error_preservation,
+                scratch,
+            )
             run_fixture_stage("scratch hardlink fixture", exercise_scratch_external_link_rejection, scratch)
             run_fixture_stage("scratch replacement fixture", exercise_scratch_path_replacement, scratch)
             run_fixture_stage("publication snapshot fixture", exercise_canonical_publication_snapshot, scratch)
@@ -13765,6 +13931,12 @@ def validate_workspace_verifier_self_contract(source):
         module,
         "exercise_scratch_acquisition_failures",
         "scratch acquisition behavioral fixtures",
+    )
+    scratch_primary_error_fixtures = extract_python_definition(
+        source,
+        module,
+        "exercise_scratch_primary_error_preservation",
+        "scratch primary-error behavioral fixtures",
     )
     scratch_replacement_fixtures = extract_python_definition(
         source,
@@ -14006,6 +14178,8 @@ def validate_workspace_verifier_self_contract(source):
         ('parse_systemd_second_duration(properties["TimeoutStopUSec"]) != stop_limit', "exact stop-duration policy"),
         ('parse_systemd_second_duration(properties["RuntimeMaxUSec"]) != runtime_limit', "exact runtime-duration policy"),
         ('pwd.getpwuid(os.geteuid()).pw_dir', "fixed current-principal control HOME"),
+        ('except KeyError as exc:', "missing current-principal passwd classification"),
+        ('"managed-command current principal has no passwd entry"', "missing current-principal passwd rejection"),
         ('os.O_DIRECTORY | os.O_NOFOLLOW', "descriptor cgroup walk"),
         ('os.open("cgroup.events"', "retained cgroup population authority"),
         ('os.open("cgroup.kill"', "retained cgroup kill authority"),
@@ -14031,6 +14205,18 @@ def validate_workspace_verifier_self_contract(source):
         ('control_socket.sendmsg([frame], controls)', "managed descriptor handoff"),
     ):
         require_text(managed_contract, text, label)
+    require_order(
+        managed_contract,
+        (
+            "try:",
+            "home = pwd.getpwuid(os.geteuid()).pw_dir",
+            "except KeyError as exc:",
+            '"managed-command current principal has no passwd entry"',
+            ") from exc",
+            '"HOME": home,',
+        ),
+        "managed-command current-principal passwd authority",
+    )
     require_text(managed, "if len(inherited_fds) > 64:", "managed descriptor count bound")
     require_text(managed, "or descriptor > 1048575", "managed descriptor number bound")
     private_descriptor_acquisition = extract_python_definition(
@@ -14303,6 +14489,7 @@ def validate_workspace_verifier_self_contract(source):
         ('elif args.scratch is not None:', "verifier non-self-test scratch rejection"),
         ('run_fixture_stage("publication snapshot fixture", exercise_canonical_publication_snapshot, scratch)', "canonical publication snapshot fixture dispatch"),
         ('run_fixture_stage("scratch acquisition fixture", exercise_scratch_acquisition_failures, scratch)', "scratch acquisition fixture dispatch"),
+        ('"scratch primary-error fixture",\n                exercise_scratch_primary_error_preservation,', "scratch primary-error fixture dispatch"),
         ('run_fixture_stage("scratch replacement fixture", exercise_scratch_path_replacement, scratch)', "scratch replacement fixture dispatch"),
         ('run_fixture_stage("managed lifecycle fixture", run_stateful_timeout_fixtures, repo, scratch)', "stateful timeout fixture dispatch"),
         ('run_fixture_stage("version fixture", run_version_fixtures, sources["version"], scratch)', "fork-version fixture dispatch"),
@@ -14330,6 +14517,12 @@ def validate_workspace_verifier_self_contract(source):
         ("os.mkdir(child_name, 0o700, dir_fd=self.fd)", "descriptor-relative fixture creation"),
         ("descriptor_mount_id(child_fd) != self.mount_id", "fixture child mount authority"),
         ("yield ScratchDirectory(self, child_fd, child_name, child_identity)", "fixture child authority handoff"),
+        ("except BaseException as error:", "fixture directory primary-error capture"),
+        ("primary_error = error", "fixture directory primary-error retention"),
+        ('"fixture directory tree",', "fixture directory cleanup accumulation"),
+        ('"fixture directory descriptor",', "fixture directory descriptor cleanup accumulation"),
+        ('"fixture scratch authority",', "fixture post-cleanup authority accumulation"),
+        ('"fixture directory cleanup failed",', "fixture directory cleanup failure reporting"),
         ("os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC", "fixture cleanup entry authority"),
         ("descriptor_mount_id(authority_fd) != self.mount_id", "fixture cleanup mount-boundary proof"),
         ("os.rmdir(child_name, dir_fd=self.fd)", "descriptor-relative fixture removal"),
@@ -14352,6 +14545,15 @@ def validate_workspace_verifier_self_contract(source):
         ("preserved scratch child acquisition state is not exact", "scratch preserved-edge metadata proof"),
     ):
         require_text(scratch_acquisition_fixtures, text, label)
+    for text, label in (
+        ("raise VerificationError(expected_error)", "scratch injected primary body failure"),
+        ('getattr(exc, "__notes__", []) != [expected_note]', "scratch cleanup-note preservation proof"),
+        ("fixture cleanup replaced its primary body failure", "scratch primary-error identity proof"),
+        ("fixture cleanup did not retain its secondary failure", "scratch secondary-error note proof"),
+        ("fixture primary-error preservation changed an ambiguous edge", "scratch ambiguous-edge identity proof"),
+        ("fixture primary-error preservation mutated an ambiguous directory", "scratch ambiguous-directory preservation proof"),
+    ):
+        require_text(scratch_primary_error_fixtures, text, label)
     for text, label in (
         ("wrote through the replacement symlink", "scratch replacement non-traversal proof"),
         ("modified the replacement directory", "live fixture replacement preservation proof"),
@@ -14399,6 +14601,24 @@ def validate_workspace_verifier_self_contract(source):
             "self._remove_contents(child_fd, [131072])",
         ),
         "live fixture edge cleanup gate",
+    )
+    require_order(
+        scratch_validator,
+        (
+            "primary_error = None",
+            "yield ScratchDirectory(self, child_fd, child_name, child_identity)",
+            "except BaseException as error:",
+            "primary_error = error",
+            "raise",
+            "failures = []",
+            '"fixture directory tree",',
+            '"fixture directory descriptor",',
+            '"fixture scratch authority",',
+            "report_cleanup_failures(",
+            "primary_error,",
+            '"fixture directory cleanup failed",',
+        ),
+        "fixture directory primary-error cleanup preservation",
     )
     for text, label in (
         ("os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW", "publication snapshot no-follow directory descriptors"),

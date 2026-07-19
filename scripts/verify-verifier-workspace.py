@@ -3339,6 +3339,8 @@ def validate_smoke_contract(
         ('Linux selected X11 session display authority (R-S11ab/R-S11e-42)', "selected X11 display authority source gate"),
         ("if grep -Eq 'const W_PATHS|fn w_path\\(|get_display_by_user|display_from_x11_socket|x11_socket_(display_name|owner_matches_user)|get_xauth_from_xorg|/tmp/\\.X11-unix' src/platform/linux.rs; then", "legacy X11 display fallback absence gate"),
         ("grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md", "selected X11 display hardening ledger gate"),
+        ('Linux obsolete Xorg process authority (R-S11ac/R-S11e-43)', "obsolete Xorg process authority source gate"),
+        ("grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md", "obsolete Xorg process hardening ledger gate"),
         ('Linux systemctl service-lifecycle authority (R-S11aa/R-S11e-41)', "systemctl lifecycle authority source gate"),
         ('if grep -Eq \'action: *&str|\\.envs?[[:space:]]*\\(\' <<<"$systemctl_authority"; then', "systemctl generic action/environment source gate"),
         ("grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md", "systemctl lifecycle hardening ledger gate"),
@@ -3969,7 +3971,7 @@ def validate_smoke_contract(
         (
             "let runtime = ServiceRuntime::acquire()?;",
             "runtime.recover_previous_child()?;",
-            "stop_subprocess();",
+            "stop_headless_connection_manager_processes();",
             "ipc::start(crate::POSTFIX_SERVICE)",
         ),
         "hostile-record recovery precedes signal and listener authority",
@@ -4389,7 +4391,7 @@ def validate_smoke_contract(
     x11_desktop_authority = extract_between(
         linux_source,
         "fn get_display_x11",
-        "\n        fn set_is_subprocess",
+        "\n        pub fn refresh",
         "Linux desktop X11 display authority",
     )
     x11_refresh_authority = extract_between(
@@ -4547,6 +4549,81 @@ def validate_smoke_contract(
         x11_desktop_authority,
     ):
         raise VerificationError("Linux desktop X11 selection retains heuristic endpoint authority")
+
+    xorg_cleanup_authority = extract_between(
+        linux_source,
+        "fn stop_headless_connection_manager_processes() {",
+        "\nfn should_start_server(",
+        "Linux headless connection-manager cleanup",
+    )
+    cleanup_compact = re.sub(r"\s+", "", xorg_cleanup_authority)
+    if cleanup_compact != (
+        'fnstop_headless_connection_manager_processes(){'
+        'kill_current_exe_processes_with_arg("--cm-no-ui","--cm-no-ui");}'
+    ):
+        raise VerificationError(
+            "Linux Xorg cleanup is not scoped to the headless connection manager"
+        )
+    require_exact_count(
+        linux_source,
+        "stop_headless_connection_manager_processes();",
+        3,
+        "Linux headless connection-manager cleanup call count",
+    )
+    xorg_headless_authority = extract_between(
+        linux_source,
+        "pub fn is_headless(&self) -> bool {",
+        "\n        fn get_display_xauth_wayland",
+        "Linux selected-session headless authority",
+    )
+    if re.sub(r"\s+", "", xorg_headless_authority) != (
+        "pubfnis_headless(&self)->bool{self.sid.is_empty()}"
+    ):
+        raise VerificationError("Linux headless state is not selected-session-only")
+    xorg_headless_test = extract_between(
+        linux_source,
+        "fn r_s11e43_headless_state_is_derived_from_the_selected_session()",
+        "\n        #[test]\n        fn test_desktop_env",
+        "Linux selected-session headless regression",
+    )
+    for text, label in (
+        ("let mut desktop = Desktop::default();", "default headless-state regression"),
+        ("assert!(desktop.is_headless());", "absent-session headless assertion"),
+        ('desktop.sid = "selected-session".to_owned();', "selected-session fixture"),
+        ("assert!(!desktop.is_headless());", "selected-session non-headless assertion"),
+    ):
+        require_text(xorg_headless_test, text, label)
+    for forbidden in (
+        "process_is_xorg_with_config",
+        "kill_xorg_processes_with_config",
+        "is_rustdesk_subprocess",
+        "set_is_subprocess",
+        "any_process_cmdline_contains",
+        "stop_subprocess",
+        'format!("/etc/{}/xorg.conf"',
+    ):
+        if forbidden in linux_source:
+            raise VerificationError(
+                f"obsolete Linux Xorg process authority remains: {forbidden}"
+            )
+    for text, label in (
+        ('<span class="id">R-S11ac</span>', "obsolete Xorg process normative requirement"),
+        (
+            "Linux service lifecycle never infers Xorg process authority from the global process table",
+            "obsolete Xorg process normative authority clause",
+        ),
+        ("<tr><td>151</td>", "obsolete Xorg process Appendix C row"),
+        (
+            "Obsolete Linux root-service Xorg process authority",
+            "obsolete Xorg process Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-43 — Linux obsolete Xorg process authority",
+        "obsolete Xorg process hardening ledger",
+    )
 
     systemctl_authority = extract_between(
         linux_source,
@@ -12491,6 +12568,90 @@ def run_source_mutations(sources):
             "R-S11e-42 — Linux selected X11 session display authority",
             "R-S11e-42 — Linux selected X11 session display compatibility",
             "selected X11 display hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9c2) Linux obsolete Xorg process authority (R-S11ac/R-S11e-43) =="',
+            'echo "== (3b-iii-d9c2) Linux obsolete Xorg process compatibility (R-S11ac/R-S11e-43) =="',
+            "obsolete Xorg process authority source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ac</span>',
+            '<span class="id">R-S11zz</span>',
+            "obsolete Xorg process normative requirement",
+        ),
+        (
+            "requirements",
+            "Linux service lifecycle never infers Xorg process authority from the global process table",
+            "Linux service lifecycle may infer Xorg ownership from process text",
+            "obsolete Xorg process normative authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>151</td>",
+            "<tr><td>9151</td>",
+            "obsolete Xorg process Appendix C row",
+        ),
+        (
+            "requirements",
+            "Obsolete Linux root-service Xorg process authority",
+            "Supported Linux root-service Xorg process authority",
+            "obsolete Xorg process Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-43 — Linux obsolete Xorg process authority",
+            "R-S11e-43 — Linux supported Xorg process compatibility",
+            "obsolete Xorg process hardening ledger",
+        ),
+        (
+            "linux_source",
+            "            self.sid.is_empty()\n        }",
+            "            self.sid.is_empty() || self.username.is_empty()\n        }",
+            "Linux headless state is not selected-session-only",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e43_headless_state_is_derived_from_the_selected_session()",
+            "fn r_s11e43_headless_state_may_use_process_text()",
+            "Linux selected-session headless regression",
+        ),
+        (
+            "linux_source",
+            "fn stop_headless_connection_manager_processes() {",
+            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn stop_headless_connection_manager_processes() {",
+            "obsolete Linux Xorg process authority remains",
+        ),
+        (
+            "linux_source",
+            "        pub sid: String,",
+            "        pub is_rustdesk_subprocess: bool,\n        pub sid: String,",
+            "obsolete Linux Xorg process authority remains",
+        ),
+        (
+            "linux_source",
+            "fn stop_headless_connection_manager_processes() {",
+            "fn stop_subprocess() {}\n\nfn stop_headless_connection_manager_processes() {",
+            "obsolete Linux Xorg process authority remains",
+        ),
+        (
+            "linux_source",
+            '    kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui");',
+            '    kill_current_exe_processes_with_arg("Xorg", "Xorg");',
+            "Linux Xorg cleanup is not scoped to the headless connection manager",
+        ),
+        (
+            "linux_source",
+            "                stop_headless_connection_manager_processes();\n"
+            "                start_server(\n"
+            "                    &desktop,\n"
+            "                    ServiceChildPrincipal::ActiveDesktopUser,",
+            "                // headless connection-manager cleanup removed\n"
+            "                start_server(\n"
+            "                    &desktop,\n"
+            "                    ServiceChildPrincipal::ActiveDesktopUser,",
+            "Linux headless connection-manager cleanup call count",
         ),
         (
             "hbb_common_linux",

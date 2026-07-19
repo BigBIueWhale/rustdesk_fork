@@ -3134,7 +3134,7 @@ r_s11e42=
 x11_logind_authority=$(awk '/fn parse_local_x_display_name/,/pub fn get_values_of_seat0/' libs/hbb_common/src/platform/linux.rs)
 x11_loginctl_vocabulary=$(awk '/enum LoginctlProperty/,/enum LoginctlQuery/' libs/hbb_common/src/platform/linux.rs)
 x11_environment_authority=$(awk '/fn xauthority_from_environ_for_display/,/fn get_env\(/' src/platform/linux.rs)
-x11_desktop_authority=$(awk '/fn get_display_x11/,/fn set_is_subprocess/' src/platform/linux.rs)
+x11_desktop_authority=$(awk '/fn get_display_x11/,/pub fn refresh/' src/platform/linux.rs)
 x11_refresh_authority=$(awk '/pub fn refresh\(&mut self\)/,/    #\[cfg\(test\)\]/' src/platform/linux.rs)
 x11_shared_tests=$(awk '/fn r_s11e42_x11_display_names_are_local_and_canonical/,/fn r_s11e40_session_display_fallback_is_binary_owned/' libs/hbb_common/src/platform/linux.rs)
 x11_root_tests=$(awk '/fn r_s11e42_xauthority_is_bound_to_the_selected_display/,/^}/' src/platform/linux.rs)
@@ -3211,6 +3211,51 @@ grep -qF 'Linux selected X11 session lost endpoint authority' requirements.html 
 grep -qF 'R-S11e-42 — Linux selected X11 session display authority' HARDENING_STATUS.md || r_s11e42="$r_s11e42 hardening-ledger-missing"
 if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session display authority:$r_s11e42"; rc=1; else
   echo "  ok  R-S11e-42 X11 DISPLAY comes only from the exact selected logind session and process Xauthority hints must describe that endpoint"; fi
+
+# (3b-iii-d9c2) R-S11ac/R-S11e-43: RustDesk no longer owns an
+# Xorg child, so process-table text cannot mint root signal authority or
+# override the exact selected logind session's headless classification.
+echo "== (3b-iii-d9c2) Linux obsolete Xorg process authority (R-S11ac/R-S11e-43) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e43_ --color never
+r_s11e43=
+xorg_cleanup_authority=$(awk '/fn stop_headless_connection_manager_processes/,/fn should_start_server/' src/platform/linux.rs)
+xorg_headless_authority=$(awk '/pub fn is_headless\(&self\)/,/fn get_display_xauth_wayland/' src/platform/linux.rs)
+xorg_headless_test=$(awk '/fn r_s11e43_headless_state_is_derived_from_the_selected_session/,/fn test_desktop_env/' src/platform/linux.rs)
+xorg_launcher_history=$(awk '/R-X14 \/ R-S18/,/lazy_static::lazy_static/' src/platform/linux_desktop_manager.rs)
+xorg_cleanup_compact=$(printf '%s' "$xorg_cleanup_authority" | tr -d '[:space:]')
+xorg_headless_compact=$(printf '%s' "$xorg_headless_authority" | tr -d '[:space:]')
+[ "$xorg_cleanup_compact" = 'fnstop_headless_connection_manager_processes(){kill_current_exe_processes_with_arg("--cm-no-ui","--cm-no-ui");}fnshould_start_server(' ] \
+  || r_s11e43="$r_s11e43 cleanup-not-exactly-headless-cm"
+[ "$(grep -cF 'stop_headless_connection_manager_processes();' src/platform/linux.rs)" -eq 3 ] \
+  || r_s11e43="$r_s11e43 cleanup-call-count-not-three"
+[ "$xorg_headless_compact" = 'pubfnis_headless(&self)->bool{self.sid.is_empty()}fnget_display_xauth_wayland(&mutself){' ] \
+  || r_s11e43="$r_s11e43 headless-not-selected-session-only"
+for test_binding in \
+  'fn r_s11e43_headless_state_is_derived_from_the_selected_session()' \
+  'let mut desktop = Desktop::default();' \
+  'assert!(desktop.is_headless());' \
+  'desktop.sid = "selected-session".to_owned();' \
+  'assert!(!desktop.is_headless());'; do
+  grep -qF "$test_binding" <<<"$xorg_headless_test" || r_s11e43="$r_s11e43 focused-regression-missing"
+done
+grep -qF 'existing-session DISCOVERY only' <<<"$xorg_launcher_history" \
+  || r_s11e43="$r_s11e43 launcher-deletion-record-missing"
+if grep -Eq 'pam::|std::process::Command|Command::new|try_start_x_session|start_x11|start_xorg' src/platform/linux_desktop_manager.rs; then
+  r_s11e43="$r_s11e43 xorg-launch-authority-regressed"
+fi
+if grep -Eq 'process_is_xorg_with_config|kill_xorg_processes_with_config|is_rustdesk_subprocess|set_is_subprocess|any_process_cmdline_contains|stop_subprocess|format!\("/etc/\{\}/xorg\.conf"' src/platform/linux.rs; then
+  r_s11e43="$r_s11e43 obsolete-xorg-process-authority-present"
+fi
+grep -qF '<span class="id">R-S11ac</span>' requirements.html || r_s11e43="$r_s11e43 normative-requirement-missing"
+grep -qF 'Linux service lifecycle never infers Xorg process authority from the global process table' requirements.html \
+  || r_s11e43="$r_s11e43 normative-authority-clause-missing"
+grep -qF '<tr><td>151</td>' requirements.html || r_s11e43="$r_s11e43 appendix-row-missing"
+grep -qF 'Obsolete Linux root-service Xorg process authority' requirements.html \
+  || r_s11e43="$r_s11e43 appendix-disposition-missing"
+grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md \
+  || r_s11e43="$r_s11e43 hardening-ledger-missing"
+if [ -n "$r_s11e43" ]; then echo "  FAIL R-S11e-43 Linux obsolete Xorg process authority:$r_s11e43"; rc=1; else
+  echo "  ok  R-S11e-43 no Xorg process text can mint root signal or desktop-state authority; headless state is absence of the exact selected logind session"; fi
 
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
@@ -4293,7 +4338,7 @@ if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle com
   echo "  ok  R-S11c-16 service lifecycle wrappers propagate CLI failure, Linux service install does not import user config, and macOS AppleScript/launchctl/plist completion is checked"; fi
 
 # (3b-iii-h) R-S11c-10a: Linux root-context desktop discovery must not build passwd/proc
-# lookups through a shell. This is a narrow sub-slice: env/home/subprocess discovery
+# lookups through a shell. This is a narrow sub-slice: env/home discovery
 # only. Lifecycle kill/service commands and display-tool invocations remain separate R-S11c-10 work.
 echo "== (3b-iii-h) Linux desktop discovery avoids root shell interpolation (R-S11c-10a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_ --color never
@@ -4301,18 +4346,16 @@ r_s11c10a=
 grep -q 'fn matching_process_cmdlines' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-cmdline-helper"
 grep -q 'fn proc_environ_value' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-environ-parser"
 grep -q 'is_non_login_shell(user.shell())' src/platform/linux.rs || r_s11c10a="$r_s11c10a prelogin-not-passwd-api-backed"
-grep -q 'any_process_cmdline_contains(&format!' src/platform/linux.rs || r_s11c10a="$r_s11c10a subprocess-discovery-not-proc-backed"
 linux_discovery_blocks=$(
   awk '/pub fn is_prelogin/,/fn is_non_login_shell/' src/platform/linux.rs
   awk '/fn get_envs/,/#\[link/' src/platform/linux.rs
-  awk '/fn get_home\(&mut self\)/,/fn set_is_subprocess/' src/platform/linux.rs
-  awk '/fn set_is_subprocess/,/pub fn refresh/' src/platform/linux.rs
+  awk '/fn get_home\(&mut self\)/,/pub fn refresh/' src/platform/linux.rs
 )
 if echo "$linux_discovery_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|getent passwd|ps -[uef]|cat /proc|grep |awk |sed |xargs|CMD_SH'; then
   r_s11c10a="$r_s11c10a shell-shaped-discovery-regressed"
 fi
 if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery shell interpolation:$r_s11c10a"; rc=1; else
-  echo "  ok  R-S11c-10a Linux prelogin/home/env/subprocess discovery uses users+/proc helpers, not shell pipelines"; fi
+  echo "  ok  R-S11c-10a Linux prelogin/home/env discovery uses users+/proc helpers, not shell pipelines"; fi
 
 echo "== (3b-iii-h2) Linux service lifecycle process cleanup avoids shell pipelines (R-S11c-10b) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_process_kill --color never
@@ -4326,8 +4369,8 @@ grep -q 'hbb_common::libc::kill' src/platform/linux.rs || r_s11c10b="$r_s11c10b 
 if grep -qF 'kill_current_exe_processes_with_arg("--server"' src/platform/linux.rs; then
   r_s11c10b="$r_s11c10b global-server-sweep-regressed"
 fi
-grep -q 'kill_xorg_processes_with_config(&xorg_config)' src/platform/linux.rs || r_s11c10b="$r_s11c10b xorg-cleanup-not-argv-backed"
 grep -q 'kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui")' src/platform/linux.rs || r_s11c10b="$r_s11c10b cm-cleanup-not-argv-backed"
+grep -q 'fn stop_headless_connection_manager_processes' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-scoped-cm-cleanup-helper"
 grep -q 'fn signal_current_exe_processes_with_arg' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-direct-signal-helper"
 grep -q 'pub fn stop_tray_processes()' src/platform/linux.rs || r_s11c10b="$r_s11c10b no-tray-cleanup-helper"
 grep -q 'crate::platform::stop_tray_processes();' src/core_main.rs || r_s11c10b="$r_s11c10b core-server-not-using-tray-cleanup-helper"
@@ -4343,8 +4386,8 @@ if ! echo "$tray_cleanup_compact" | grep -qE 'signal_current_exe_processes_with_
   r_s11c10b="$r_s11c10b tray-cleanup-not-exact-tray-argv"
 fi
 linux_process_cleanup_blocks=$(
-  awk '/fn stop_subprocess/,/fn should_start_server/' src/platform/linux.rs
-  awk '/fn all_process_cmdlines/,/fn any_process_cmdline_contains/' src/platform/linux.rs
+  awk '/fn stop_headless_connection_manager_processes/,/fn should_start_server/' src/platform/linux.rs
+  awk '/fn all_process_cmdlines/,/fn proc_env_name_is_valid/' src/platform/linux.rs
 )
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
   r_s11c10b="$r_s11c10b shell-shaped-process-cleanup-regressed"
@@ -4354,7 +4397,7 @@ if grep -RInE 'Command::new\("pkill"\)|pkill -f' src/core_main.rs src/platform/l
   r_s11c10b="$r_s11c10b pkill-tray-cleanup-regressed"
 fi
 if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle process cleanup:$r_s11c10b"; rc=1; else
-  echo "  ok  R-S11c-10b Linux CM/Xorg/tray cleanup verifies process identity and exact argv, while server lifecycle has no global process sweep"; fi
+  echo "  ok  R-S11c-10b Linux CM/tray cleanup verifies current executable identity and exact argv, while server and Xorg lifecycle have no global process sweep"; fi
 
 echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27a_linux_service_child_parent_death --color never
@@ -4454,11 +4497,11 @@ echo "$service_recovery_block" | grep -qF 'service_child_cmdline_has_exact_role'
 echo "$service_recovery_block" | grep -qF 'service_child_environment_has_generation' || r_s11c27b="$r_s11c27b generation-revalidation-missing"
 echo "$service_recovery_block" | grep -qF 'final identity-check-to-kill race cannot be eliminated' || r_s11c27b="$r_s11c27b pre-pidfd-residual-race-not-explicit"
 echo "$service_recovery_block" | grep -qF 'send_revalidated_service_child_pid_signal' || r_s11c27b="$r_s11c27b pre-pidfd-revalidated-fallback-missing"
-service_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/stop_subprocess\(\);/' src/platform/linux.rs)
+service_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/stop_headless_connection_manager_processes\(\);/' src/platform/linux.rs)
 if ! echo "$service_entry_block" | awk '
   /ServiceRuntime::acquire/ { lease = NR }
   /recover_previous_child/ { recovery = NR }
-  /stop_subprocess/ { loop_start = NR }
+  /stop_headless_connection_manager_processes/ { loop_start = NR }
   END { exit !(lease && recovery && loop_start && lease < recovery && recovery < loop_start) }
 '; then
   r_s11c27b="$r_s11c27b recovery-not-before-service-loop"
@@ -5803,7 +5846,7 @@ grep -qF 'fn terminate_child(' src/platform/linux.rs || r_s11c10j="$r_s11c10j li
 grep -q 'hbb_common::libc::SIGTERM' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-child-sigterm"
 grep -qF 'SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT,' src/platform/linux.rs || r_s11c10j="$r_s11c10j linux:no-bounded-child-wait"
 linux_child_stop_block=$(
-  awk '/fn stop_server/,/fn stop_subprocess/' src/platform/linux.rs
+  awk '/fn stop_server/,/fn stop_headless_connection_manager_processes/' src/platform/linux.rs
   awk '/if should_kill/,/if let Some\(ps\) = server.as_mut/' src/platform/linux.rs
   awk '/if let Some\(ps\) = user_server.take/,/log::info!\("Exit"\)/' src/platform/linux.rs
 )

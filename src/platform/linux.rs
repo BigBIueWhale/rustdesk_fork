@@ -2168,9 +2168,7 @@ fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime)
     terminate_child(server, "--server", runtime).map(|_| ())
 }
 
-fn stop_subprocess() {
-    let xorg_config = format!("/etc/{}/xorg.conf", crate::get_app_name().to_lowercase());
-    kill_xorg_processes_with_config(&xorg_config);
+fn stop_headless_connection_manager_processes() {
     kill_current_exe_processes_with_arg("--cm-no-ui", "--cm-no-ui");
 }
 
@@ -2262,7 +2260,7 @@ pub fn start_os_service() -> ResultType<()> {
 
     let runtime = ServiceRuntime::acquire()?;
     runtime.recover_previous_child()?;
-    stop_subprocess();
+    stop_headless_connection_manager_processes();
     // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
     // fork XTEST/enigo is the sole injection backend, so the world-mode _uinput_*
     // cross-uid sockets the X11 --server never connects to are absent (shrinking
@@ -2300,7 +2298,7 @@ pub fn start_os_service() -> ResultType<()> {
                 &mut server,
                 &runtime,
             )? {
-                stop_subprocess();
+                stop_headless_connection_manager_processes();
                 start_server(
                     &desktop,
                     ServiceChildPrincipal::RootService,
@@ -2326,7 +2324,7 @@ pub fn start_os_service() -> ResultType<()> {
                 &mut user_server,
                 &runtime,
             )? {
-                stop_subprocess();
+                stop_headless_connection_manager_processes();
                 start_server(
                     &desktop,
                     ServiceChildPrincipal::ActiveDesktopUser,
@@ -2774,16 +2772,6 @@ fn process_basename_eq(args: &[String], expected: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn process_basename_eq_ignore_ascii_case(args: &[String], expected: &str) -> bool {
-    process_basename(args)
-        .map(|name| name.eq_ignore_ascii_case(expected))
-        .unwrap_or(false)
-}
-
-fn process_is_xorg_with_config(args: &[String], xorg_config: &str) -> bool {
-    process_basename_eq_ignore_ascii_case(args, "Xorg") && process_has_exact_arg(args, xorg_config)
-}
-
 fn process_is_xwayland(args: &[String]) -> bool {
     process_basename_eq(args, "Xwayland")
 }
@@ -2853,35 +2841,6 @@ pub fn stop_tray_processes() {
         "--tray",
         hbb_common::libc::SIGTERM,
     );
-}
-
-fn kill_xorg_processes_with_config(xorg_config: &str) {
-    for process in all_process_cmdlines() {
-        if process_is_xorg_with_config(&process.args, xorg_config) {
-            kill_process(process.pid, "Xorg");
-        }
-    }
-}
-
-fn any_process_cmdline_contains(needle: &str) -> bool {
-    if needle.is_empty() {
-        return false;
-    }
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return false;
-    };
-    for entry in entries.flatten() {
-        let Some(_) = proc_entry_pid(&entry) else {
-            continue;
-        };
-        let Some(args) = read_proc_cmdline_args(&entry.path()) else {
-            continue;
-        };
-        if proc_cmdline_string(&args).contains(needle) {
-            return true;
-        }
-    }
-    false
 }
 
 fn proc_env_name_is_valid(name: &str) -> bool {
@@ -3862,23 +3821,6 @@ mod process_cleanup_tests {
         assert!(current_processes
             .iter()
             .any(|process| process.pid == std::process::id()));
-
-        let xorg_config = "/etc/rustdesk/xorg.conf";
-        let xorg = vec![
-            "/usr/lib/xorg/Xorg".to_owned(),
-            "-config".to_owned(),
-            xorg_config.to_owned(),
-        ];
-        assert!(process_is_xorg_with_config(&xorg, xorg_config));
-
-        let other_process = vec!["/bin/grep".to_owned(), xorg_config.to_owned()];
-        assert!(!process_is_xorg_with_config(&other_process, xorg_config));
-
-        let partial = vec![
-            "/usr/lib/xorg/Xorg".to_owned(),
-            format!("{xorg_config}.old"),
-        ];
-        assert!(!process_is_xorg_with_config(&partial, xorg_config));
     }
 
     #[test]
@@ -4189,7 +4131,6 @@ mod desktop {
         pub xauth: String,
         pub home: String,
         pub dbus: String,
-        pub is_rustdesk_subprocess: bool,
         pub wl_display: String,
     }
 
@@ -4206,7 +4147,7 @@ mod desktop {
 
         #[inline]
         pub fn is_headless(&self) -> bool {
-            self.sid.is_empty() || self.is_rustdesk_subprocess
+            self.sid.is_empty()
         }
 
         fn get_display_xauth_wayland(&mut self) {
@@ -4303,20 +4244,12 @@ mod desktop {
             }
         }
 
-        fn set_is_subprocess(&mut self) {
-            self.is_rustdesk_subprocess = any_process_cmdline_contains(&format!(
-                "/etc/{}/xorg.conf",
-                crate::get_app_name().to_lowercase()
-            ));
-        }
-
         pub fn refresh(&mut self) {
             if !self.sid.is_empty() && is_active_and_seat0(&self.sid) {
                 // Xwayland display and xauth may not be available in a short time after login.
                 if self.is_wayland() {
                     if is_xwayland_running() && !self.is_login_wayland() {
                         self.get_display_xauth_xwayland();
-                        self.is_rustdesk_subprocess = false;
                     } else {
                         self.get_display_xauth_wayland();
                     }
@@ -4330,7 +4263,6 @@ mod desktop {
             let seat0_values = get_values_of_seat0_with_gdm_wayland(&[0, 1, 2]);
             if seat0_values[0].is_empty() {
                 *self = Self::default();
-                self.is_rustdesk_subprocess = false;
                 return;
             }
 
@@ -4341,7 +4273,6 @@ mod desktop {
             if self.is_login_wayland() {
                 self.display = "".to_owned();
                 self.xauth = "".to_owned();
-                self.is_rustdesk_subprocess = false;
                 return;
             }
 
@@ -4352,11 +4283,9 @@ mod desktop {
                 } else {
                     self.get_display_xauth_wayland();
                 }
-                self.is_rustdesk_subprocess = false;
             } else {
                 self.get_display_x11();
                 self.get_xauth_x11();
-                self.set_is_subprocess();
             }
         }
     }
@@ -4364,6 +4293,15 @@ mod desktop {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn r_s11e43_headless_state_is_derived_from_the_selected_session() {
+            let mut desktop = Desktop::default();
+            assert!(desktop.is_headless());
+
+            desktop.sid = "selected-session".to_owned();
+            assert!(!desktop.is_headless());
+        }
 
         #[test]
         fn test_desktop_env() {

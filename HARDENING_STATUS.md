@@ -976,16 +976,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   bodies contain no shell-shaped passwd/proc/process pipeline.
 - **R-S11c-10b — Linux helper/tray process cleanup shell pipelines — CLOSED 2026-07-09;
   server authority superseded 2026-07-16.** Platform: Linux installed-service helper and tray cleanup.
-  Surfaces: `stop_subprocess()` and `stop_tray_processes()` in `src/platform/linux.rs`. Boundary: root service
-  helper cleanup ↔ local process table. Attack surface closed: root-context cleanup no longer interpolates the
+  Historical surface: `stop_subprocess()`; residual surfaces: `stop_headless_connection_manager_processes()` and
+  `stop_tray_processes()` in `src/platform/linux.rs`. Boundary: root service helper cleanup ↔ local process table.
+  Attack surface closed: root-context cleanup no longer interpolates the
   app name into `ps | grep | awk | xargs kill -9` shell pipelines. It enumerates `/proc/<pid>/cmdline`
-  directly, matches RustDesk `--cm-no-ui` and `--tray` helpers by `/proc/<pid>/exe` equality to the current
-  executable plus exact argv, matches Xorg cleanup by basename `Xorg` plus the exact
-  `/etc/<app>/xorg.conf` argv, and signals only positive, non-current pids. R-S11c-27a subsequently deletes
+  directly and matches RustDesk `--cm-no-ui` and `--tray` helpers by `/proc/<pid>/exe` equality to the current
+  executable plus exact argv before signaling positive, non-current pids. R-S11c-27a subsequently deletes
   the analogous global `--server` sweep entirely: process-table discovery is no longer service-child
-  lifecycle authority. Verification closure: `scripts/verify.sh` runs the `r_s11c10_process_kill_*` unit test
-  and asserts the remaining helper cleanup block uses the `/proc` argv helpers and direct signals, contains no
-  shell-shaped cleanup path, and cannot regress a global `--server` sweep.
+  lifecycle authority. R-S11e-43 later deletes the Xorg basename/argv kill and config-path classification
+  residue because R-X14 removed RustDesk's Xorg launcher, leaving no owned Xorg identity to clean up.
+  Verification closure: `scripts/verify.sh` runs the focused process tests and asserts the remaining CM/tray
+  blocks use the `/proc` argv helpers and direct signals, contain no shell-shaped cleanup path, cannot regress
+  a global `--server` sweep, and contain no Xorg process authority.
 - **R-S11c-10c — Linux xrandr resolution discovery shell pipeline — CLOSED 2026-07-09.**
   Platform: Linux installed service/display helper path. Surfaces: supported-resolution discovery and current
   resolution lookup in `src/platform/linux.rs`. Boundary: display metadata lookup ↔ root-context process
@@ -2772,7 +2774,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   behavioral checks pass with 909 Cargo packages and 849 lexical `unsafe {` blocks across 251 tracked Rust files; the
   count falls by one because deleting the obsolete socket regression deletes its test-only `geteuid` unsafe block.
   Native-codec normal and mutation checks pass against synchronized requirements SHA-256
-  `ca2c2d398194eeede5136b1cabb2b664379e065b517402be531342ba65323d1d`. Publication evidence is recorded after commit
+  `057d8f0b17bbd921ab7d0e98de3cbf1f0c6d7dc4f613c4b5ca63281c67eec627`. Publication evidence is recorded after commit
   and push.
 
   All project code/test execution for this slice is constrained to the invoking non-root UID in the existing local
@@ -2781,6 +2783,55 @@ unreachable and a source/test/AST gate prevents reintroduction.
   published port, service/config path, or host root identity enters a container. No host RustDesk process/service/
   configuration, listener, firewall, or networking state is inspected or changed. The long full release verifier and
   root service fixtures remain excluded. Exact clean Debian artifact execution remains owned by R-B2/R-S11c-27.
+- **R-S11e-43 — Linux obsolete Xorg process authority — SOURCE IMPLEMENTED AND SOURCE-GATED 2026-07-19;
+  EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux installed supervisor and
+  selected-desktop lifecycle. Endpoint/action: service startup/replacement cleanup plus the selected desktop's
+  headless classification. Boundary: root supervisor signal/lifecycle authority ↔ global process-table command-line
+  presentation and an externally owned X server.
+
+  Proven old path: `stop_subprocess()` constructed `/etc/<app>/xorg.conf`, enumerated every visible process, and
+  sent SIGKILL when argv zero's displayed basename compared case-insensitively to `Xorg` and any argument equaled
+  that path. `Desktop::set_is_subprocess()` separately treated any process command line containing the same path as
+  proof that the receiver-selected logind desktop was a RustDesk-created headless session. Neither path checked an
+  owned parent/child generation, executable object, process start identity, UID, or selected logind session. Linux's
+  `proc_pid_cmdline(5)` contract explicitly describes this file as the command line the process wants the observer
+  to see and permits the process to rewrite its displayed argv; `execve(2)` receives the caller-supplied argument
+  vector. The root service could therefore be induced by an ordinary process to terminate a selected process or to
+  change service headless/restart state.
+
+  The abstraction had also become obsolete. R-X14 commit `62177b1` deleted RustDesk's PAM authentication, Xorg and
+  window-manager launchers, xauth writer, and child tracking from `linux_desktop_manager.rs`; current source retains
+  existing-session discovery only. The supported headless model requires the administrator to pre-start an X
+  server, which makes that external lifecycle specifically not a RustDesk-owned child. The packaged
+  `startwm.sh`/`xorg.conf` conffiles remain root-trust administrator resources under R-X14/R-S11c-10t, but their
+  pathname cannot mint process ownership.
+
+  Closure: the Xorg basename matcher, global Xorg kill sweep, arbitrary config-path command-line scan,
+  `is_rustdesk_subprocess` field, setter, and positive matcher test are deleted. The residual cleanup function is
+  named only for the separately supported `--cm-no-ui` role; this slice does not silently adjudicate that current-
+  image helper lifecycle. `Desktop::is_headless()` now means exactly that the typed logind selection produced no
+  session ID. Service startup and both replacement branches call only the scoped headless-CM cleanup before
+  starting an owned server child. R-S11ac and Appendix C #151 bind this authority deletion.
+
+  Verification: the focused headless-state regression and retained exact-argv matcher regression each pass with
+  one selected test and 308 filtered out. The full locked/offline Linux library check passes with only the existing
+  warning set. The extracted dedicated R-S11e-43 shell gate, normal semantic workspace audit, and complete
+  independent source-mutation matrix pass; mutations independently reject gate/requirement/Appendix/ledger drift,
+  non-session headless state, removal of the focused regression or any of the three scoped CM cleanup calls, a
+  broadened cleanup body, and restored Xorg kill/classification/generic-cleanup symbols. Rust 1.75 reports no
+  formatting change on any of the 14 edited current lines in the large platform source (unrelated pre-existing
+  whole-file drift remains). Bash/Python syntax, requirements SHA-256 equality, `git diff --check`, dependency
+  inventory plus its complete behavioral self-test, and native-codec normal/self-test all pass. The inventory remains
+  909 Cargo packages and 849 lexical `unsafe {` blocks across 251 tracked Rust files; the synchronized requirements
+  SHA-256 is `057d8f0b17bbd921ab7d0e98de3cbf1f0c6d7dc4f613c4b5ca63281c67eec627`.
+
+  Every code/build/test execution is constrained to the
+  invoking non-root UID in the existing local devcheck image with networking disabled, all capabilities dropped,
+  no-new-privileges, read-only source/tool inputs, and disposable tmpfs outputs. No image build/pull, Docker socket,
+  host PID/network namespace, published port, service/config mount, host root identity, or host RustDesk/network/
+  firewall inspection is authorized. The long release verifier and root service fixtures remain excluded. Exact
+  clean Debian artifact execution remains owned by R-B2/R-S11c-27; publication evidence is recorded after commit
+  and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -2842,9 +2893,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   strings. Boundary: discovered local names/metadata ↔ root shell. Current impact: lower probability than the
   primary IPC findings because the main spawn path is argv-based and inputs are mostly OS-discovered, but root
   shell strings are not acceptable. Current state: R-S11c-10a closes the prelogin/home/env/Xorg/subprocess
-  desktop-discovery cluster with `users` + direct `/proc` reads and a source gate; R-S11c-10b closes the
-  remaining CM/Xorg/tray shell cleanup pipelines with direct `/proc` parsing and signals. Its historical
-  `/proc`-selected global server cleanup is deleted, not retained as authority, by R-S11c-27a.
+  desktop-discovery cluster with `users` + direct `/proc` reads and a source gate; later R-S11e-42/R-S11e-43 delete
+  its obsolete Xorg endpoint/credential and subprocess-classification paths. R-S11c-10b closes the remaining
+  CM/Xorg/tray shell cleanup pipelines with direct `/proc` parsing and signals; R-S11e-43 subsequently deletes the
+  Xorg signal path rather than treating process text as ownership. Its historical `/proc`-selected global server
+  cleanup is likewise deleted, not retained as authority, by R-S11c-27a.
   R-S11c-10e closes Linux distro metadata parsing: `Distro::new()` now reads `/etc/os-release` or
   `/usr/lib/os-release` directly and parses shell-compatible assignments as data; the dormant OpenSUSE
   elevation helper that used `cat /etc/os-release | grep opensuse` is deleted with the commented elevation
@@ -5122,8 +5175,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ca2c2d398194eeede5136b1cabb2b664379e065b517402be531342ba65323d1d  requirements.html
+057d8f0b17bbd921ab7d0e98de3cbf1f0c6d7dc4f613c4b5ca63281c67eec627  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ab, and Appendix C #150. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ac, and Appendix C #151. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

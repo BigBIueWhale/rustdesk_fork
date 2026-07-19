@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     future::Future,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
     task::Poll,
 };
 
@@ -87,8 +87,6 @@ lazy_static::lazy_static! {
 lazy_static::lazy_static! {
     // Is server process, with "--server" args
     static ref IS_SERVER: bool = std::env::args().nth(1) == Some("--server".to_owned());
-    // Is server logic running. The server code can invoked to run by the main process if --server is not running.
-    static ref SERVER_RUNNING: Arc<RwLock<bool>> = Default::default();
     static ref IS_MAIN: bool = std::env::args().nth(1).map_or(true, |arg| !arg.starts_with("--"));
     static ref IS_CM: bool = std::env::args().nth(1) == Some("--cm".to_owned()) || std::env::args().nth(1) == Some("--cm-no-ui".to_owned());
 }
@@ -219,11 +217,6 @@ pub fn global_init() -> bool {
 pub fn global_clean() {}
 
 #[inline]
-pub fn set_server_running(b: bool) {
-    *SERVER_RUNNING.write().unwrap() = b;
-}
-
-#[inline]
 pub fn is_support_multi_ui_session(ver: &str) -> bool {
     is_support_multi_ui_session_num(hbb_common::get_version_number(ver))
 }
@@ -309,12 +302,6 @@ pub fn is_main() -> bool {
 #[inline]
 pub fn is_cm() -> bool {
     *IS_CM
-}
-
-// Is server logic running.
-#[inline]
-pub fn is_server_running() -> bool {
-    *SERVER_RUNNING.read().unwrap()
 }
 
 #[inline]

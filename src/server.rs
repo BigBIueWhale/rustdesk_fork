@@ -529,7 +529,6 @@ pub fn is_shutting_down() -> bool {
     SHUTDOWN_TOKEN.is_cancelled()
 }
 
-static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);
 static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);
 
 fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {
@@ -564,14 +563,9 @@ pub(crate) fn request_graceful_shutdown_after_listener_failure() {
 /// `Drop`, which prunes `AUTHED_CONNS`, runs only AFTER that tail, so the count draining to zero
 /// means cleanup actually completed); (4) terminate any still-live connection past the deadline.
 /// A normal requested shutdown exits 0; an unexpected authority-bearing listener loss that
-/// initiated the drain exits 1. Exactly one caller performs the drain. Every
-/// concurrent caller remains alive until that owner terminates the process, so
-/// no runtime or main thread can return while the owned drain is still running.
+/// initiated the drain exits 1. The retained desktop lifecycle owner is the sole caller, after it
+/// has joined both the exact public-listener task and the exact native local-IPC worker.
 pub(crate) async fn finish_graceful_shutdown() -> ! {
-    if SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel) {
-        log::info!("R-T9: graceful shutdown finalizer already owned — waiting for process exit");
-        match std::future::pending::<std::convert::Infallible>().await {}
-    }
     let deadline = std::time::Duration::from_secs(8);
     let start = std::time::Instant::now();
     loop {
@@ -588,8 +582,6 @@ pub(crate) async fn finish_graceful_shutdown() -> ! {
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    crate::ipc::wait_for_local_ipc_shutdown().await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     crate::server::input_service::fix_key_down_timeout_at_exit();
     let exit_code = graceful_shutdown_exit_code(SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire));
@@ -1045,6 +1037,12 @@ pub async fn start_server(is_server: bool) {
     });
 
     if is_server {
+        // R-A4 is a pre-admission invariant on desktop: prove it before any authority-bearing
+        // local IPC listener or the public direct listener is created.
+        if let Err(err) = crate::direct_service::assert_startup_invariants() {
+            log::error!("Controlled-server startup invariants failed closed: {err}");
+            std::process::exit(1);
+        }
         // Signal registration is part of controlled-server admission. Install it before the main
         // IPC, Windows service-control IPC, or public direct listener can accept work.
         let shutdown_signals =
@@ -1055,29 +1053,10 @@ pub async fn start_server(is_server: bool) {
                     std::process::exit(1);
                 }
             };
-        crate::common::set_server_running(true);
-        #[cfg(target_os = "windows")]
-        if crate::common::is_service_owned_server_process() {
-            std::thread::spawn(|| {
-                if let Err(err) = crate::ipc::start_windows_service_main_ipc() {
-                    log::error!("Failed to start Windows service-main IPC: {err}");
-                    std::process::exit(1);
-                }
-            });
-        }
-        std::thread::spawn(move || {
-            if let Err(err) = crate::ipc::start("") {
-                log::error!("Failed to start ipc: {}", err);
-                if crate::is_server() {
-                    log::error!("ipc is occupied by another process");
-                }
-                std::process::exit(-1);
-            }
-        });
         // R-D4 / §17: direct-only service entry — no rendezvous mediator (the inherited
         // start_all and its register/STUN/KCP/LAN protocol are bypassed, removal pending).
-        // Desktop listener/signal completion stays owned by this server runtime; Android uses its
-        // separate foreground-service generation entry above.
+        // Desktop signal, local-IPC, and public-listener completion stay owned by this server
+        // runtime; Android uses its separate foreground-service generation entry above.
         crate::direct_service::start_direct_only(shutdown_signals).await;
     } else {
         match crate::ipc::get_main_status_snapshot(1000).await {

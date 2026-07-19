@@ -149,10 +149,9 @@ fn android_generation_current(generation: u64) -> bool {
 /// invariants hold. Defense-in-depth over the R-S16 funnel — confirm the policy
 /// reads back pinned (verification-method/approve-mode) through Config::get_option
 /// and that the empty BUILTIN/HARD override funnels carry no managed value. A
-/// violation is fail-closed: on the desktop --service the process EXITS (systemd
-/// restarts it, never serving insecure); on Android/iOS the Rust core shares the
-/// interactive app process, so it returns Err instead of exiting (finding D) and
-/// `start_direct_only` surfaces the reason + refuses to bind. The permanent-password
+/// violation returns an error before admission: the desktop entry turns it into a
+/// nonzero process outcome before starting local IPC, while Android/iOS share the
+/// interactive app process and surface the reason without exiting. The permanent-password
 /// credential is deliberately NOT checked here (finding D): an empty password fails
 /// closed at RUNTIME via the `direct_server` park (nothing bound) + the per-connection
 /// R-S9 bail (server.rs), so the old startup exit for that case — redundant with the
@@ -162,7 +161,7 @@ fn android_generation_current(generation: u64) -> bool {
 /// listener up first, so it lives at the bind site rather than here.
 // R-A4 is UNCONDITIONAL (R-R2b): every shipped binary refuses to listen unless the
 // pinned policy + the one-TCP/zero-UDP surface verify — never behind a feature flag.
-fn assert_startup_invariants() -> Result<(), String> {
+pub(crate) fn assert_startup_invariants() -> Result<(), String> {
     let mut ok = true;
     if Config::get_option(hbb_common::config::keys::OPTION_VERIFICATION_METHOD)
         != "use-permanent-password"
@@ -212,25 +211,11 @@ fn assert_startup_invariants() -> Result<(), String> {
         ok = false;
     }
     if !ok {
-        // Fail-closed. These are build-integrity invariants that never fire on a correct
-        // build. On the desktop --service a violation must never serve insecure, so it
-        // exits and systemd restarts it. On Android/iOS the Rust core shares the
-        // interactive app process, so process::exit would crash the whole app (finding
-        // D): return the reason instead so `start_direct_only` refuses to bind and
-        // surfaces it to the Dart UI — never exiting on mobile.
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            log::error!("R-A4: startup invariants violated — the box refuses to run insecure");
-            std::process::exit(1);
-        }
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        {
-            let reason =
-                "server startup security invariants violated (misconfiguration) — refusing to start"
-                    .to_string();
-            log::error!("R-A4: {reason} (mobile: refusing to bind, not exiting the app process)");
-            return Err(reason);
-        }
+        let reason =
+            "server startup security invariants violated (misconfiguration) — refusing to start"
+                .to_string();
+        log::error!("R-A4: {reason}");
+        return Err(reason);
     }
     Ok(())
 }
@@ -451,17 +436,130 @@ enum ControlledServerLifecycleEvent {
     ShutdownRequested,
     Signal(ResultType<&'static str>),
     DirectListener(Result<(), tokio::task::JoinError>),
+    DesktopIpc(Result<(), String>),
 }
 
-/// Own the complete desktop controlled-side listener lifetime. A normal signal or authenticated
-/// service-control request closes admission, joins the exact listener task, and only then enters
-/// the existing session/IPC drain. An unexpected clean return, cancellation, or panic is fatal.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+enum ControlledServerStartupEvent {
+    ShutdownRequested,
+    Signal(ResultType<&'static str>),
+    DesktopIpcReady(Result<(), String>),
+    DesktopIpc(Result<(), String>),
+}
+
+/// Complete the one desktop ownership chain. Cancellation first stops admission; the exact public
+/// listener task and native IPC worker are then observed and joined before the sole process
+/// finalizer runs. Native thread joining is delegated to Tokio's blocking pool.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn finish_owned_controlled_server_lifecycle(
+    mut direct_listener: Option<tokio::task::JoinHandle<()>>,
+    direct_listener_outcome: Option<Result<(), tokio::task::JoinError>>,
+    mut ipc_worker: Option<crate::ipc::DesktopIpcWorker>,
+    ipc_outcome: Option<Result<(), String>>,
+) -> ! {
+    let direct_listener_outcome = match direct_listener_outcome {
+        Some(outcome) => Some(outcome),
+        None => match direct_listener.take() {
+            Some(task) => Some(task.await),
+            None => None,
+        },
+    };
+    if let Some(Err(err)) = direct_listener_outcome {
+        log::error!("Controlled-server direct listener task failed during shutdown: {err}");
+        crate::server::request_graceful_shutdown_after_listener_failure();
+    }
+
+    if let Some(worker) = ipc_worker.as_mut() {
+        let ipc_outcome = match ipc_outcome {
+            Some(outcome) => outcome,
+            None => worker.wait_for_completion().await,
+        };
+        if let Err(err) = ipc_outcome {
+            log::error!("Controlled-server IPC worker failed: {err}");
+            crate::server::request_graceful_shutdown_after_listener_failure();
+        }
+    }
+    if let Some(worker) = ipc_worker {
+        if let Err(err) = worker.join().await {
+            log::error!("Controlled-server IPC worker join failed: {err}");
+            crate::server::request_graceful_shutdown_after_listener_failure();
+        }
+    }
+
+    crate::server::finish_graceful_shutdown().await
+}
+
+/// Own the complete desktop controlled-side lifetime. Readiness is observed before the public
+/// listener may start. Normal signal/service cancellation and every unexpected listener/worker
+/// completion converge on exact task/thread join before the one finalizer.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn own_controlled_server_lifecycle(
-    mut direct_listener: Option<tokio::task::JoinHandle<()>>,
+    server: Option<ServerPtr>,
+    mut ipc_worker: crate::ipc::DesktopIpcWorker,
     mut signals: ControlledServerShutdownSignals,
-) {
+) -> ! {
     let shutdown = crate::server::shutdown_token();
+    let (ipc_readiness, ipc_completion) = ipc_worker.startup_receivers();
+    let startup_event = tokio::select! {
+        biased;
+        _ = shutdown.cancelled() => ControlledServerStartupEvent::ShutdownRequested,
+        signal = signals.recv() => ControlledServerStartupEvent::Signal(signal),
+        readiness = ipc_readiness => {
+            ControlledServerStartupEvent::DesktopIpcReady(readiness.unwrap_or_else(|_| {
+                Err("desktop IPC worker ended before reporting readiness".to_owned())
+            }))
+        }
+        outcome = ipc_completion => {
+            ControlledServerStartupEvent::DesktopIpc(outcome.unwrap_or_else(|_| {
+                Err("desktop IPC worker ended without reporting an outcome".to_owned())
+            }))
+        }
+    };
+
+    match startup_event {
+        ControlledServerStartupEvent::DesktopIpcReady(Ok(())) => {}
+        ControlledServerStartupEvent::ShutdownRequested => {
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None).await;
+        }
+        ControlledServerStartupEvent::Signal(Ok(name)) => {
+            log::info!("R-T9: {name} received during controlled-server startup");
+            crate::server::request_graceful_shutdown();
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None).await;
+        }
+        ControlledServerStartupEvent::Signal(Err(err)) => {
+            log::error!("Controlled-server shutdown receiver failed during startup: {err}");
+            crate::server::request_graceful_shutdown_after_listener_failure();
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None).await;
+        }
+        ControlledServerStartupEvent::DesktopIpcReady(Err(err)) => {
+            log::error!("Controlled-server IPC readiness failed: {err}");
+            crate::server::request_graceful_shutdown_after_listener_failure();
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None).await;
+        }
+        ControlledServerStartupEvent::DesktopIpc(outcome) => {
+            match &outcome {
+                Ok(()) => log::error!("Controlled-server IPC worker returned before readiness"),
+                Err(err) => {
+                    log::error!("Controlled-server IPC worker failed before readiness: {err}")
+                }
+            }
+            crate::server::request_graceful_shutdown_after_listener_failure();
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), Some(outcome))
+                .await;
+        }
+    }
+
+    let mut direct_listener = server.map(|server| {
+        tokio::spawn(async move {
+            direct_server(server, None).await;
+        })
+    });
+    // It is ok to run xdesktop manager when the headless function is not allowed.
+    #[cfg(target_os = "linux")]
+    if direct_listener.is_some() && crate::is_server() {
+        crate::platform::linux_desktop_manager::start_xdesktop();
+    }
+
     let event = tokio::select! {
         biased;
         _ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested,
@@ -469,9 +567,13 @@ async fn own_controlled_server_lifecycle(
         outcome = wait_for_direct_listener_task(&mut direct_listener) => {
             ControlledServerLifecycleEvent::DirectListener(outcome)
         }
+        outcome = ipc_worker.wait_for_completion() => {
+            ControlledServerLifecycleEvent::DesktopIpc(outcome)
+        }
     };
 
     let mut direct_listener_outcome = None;
+    let mut ipc_outcome = None;
     match event {
         ControlledServerLifecycleEvent::ShutdownRequested => {}
         ControlledServerLifecycleEvent::Signal(Ok(name)) => {
@@ -484,27 +586,22 @@ async fn own_controlled_server_lifecycle(
         }
         ControlledServerLifecycleEvent::DirectListener(outcome) => {
             direct_listener_outcome = Some(outcome);
+            log::error!("Controlled-server direct listener completed without a shutdown request");
+            crate::server::request_graceful_shutdown_after_listener_failure();
         }
-    }
-
-    if direct_listener_outcome.is_none() {
-        if let Some(task) = direct_listener.take() {
-            direct_listener_outcome = Some(task.await);
-        }
-    }
-    if let Some(outcome) = direct_listener_outcome {
-        let failure = match outcome {
-            Ok(()) if crate::server::is_shutting_down() => None,
-            Ok(()) => Some("direct listener returned without a shutdown request".to_owned()),
-            Err(err) => Some(format!("direct listener task failed: {err}")),
-        };
-        if let Some(failure) = failure {
-            log::error!("Controlled-server lifecycle failure: {failure}");
+        ControlledServerLifecycleEvent::DesktopIpc(outcome) => {
+            ipc_outcome = Some(outcome);
+            log::error!("Controlled-server IPC worker completed without a shutdown request");
             crate::server::request_graceful_shutdown_after_listener_failure();
         }
     }
-
-    crate::server::finish_graceful_shutdown().await;
+    finish_owned_controlled_server_lifecycle(
+        direct_listener,
+        direct_listener_outcome,
+        Some(ipc_worker),
+        ipc_outcome,
+    )
+    .await
 }
 
 /// Android/iOS receive the exact mobile listener-generation input. Desktop receives an already
@@ -515,9 +612,10 @@ pub async fn start_direct_only(
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     shutdown_signals: ControlledServerShutdownSignals,
 ) {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     if let Err(_reason) = assert_startup_invariants() {
-        // Reached ONLY on Android/iOS — the desktop --service exits inside the assert and
-        // never returns Err. The Rust core shares the interactive app process here, so we
+        // Reached ONLY on Android/iOS — the desktop --service checks this before entering
+        // start_direct_only. The Rust core shares the interactive app process here, so we
         // must not exit (finding D): surface the failure to the Dart UI (best-effort
         // msgbox on the main event channel) and refuse to bind — fail closed, no listener.
         #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -536,79 +634,87 @@ pub async fn start_direct_only(
         return;
     }
     self_enforce_resource_limits();
-    if config::is_outgoing_only() {
-        // A viewer-only box binds no inbound listener (R-SV5), but a desktop controlled process
-        // still owns truthful signal/service-control completion rather than parking past it.
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            own_controlled_server_lifecycle(None, shutdown_signals).await;
-            return;
-        }
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        loop {
-            sleep(1.).await;
-        }
-    }
-    // R-D7a: check_zombie reaps `--cm` child processes, a desktop `--service` concern; the Android
-    // cdylib spawns none (its connection-manager is in-process), so on Android it would be a no-op
-    // reaper thread that outlives each service-owned run — skip it so no idle thread leaks per
-    // MainService start/stop cycle. The direct listener's own teardown is the generation edge above.
-    #[cfg(not(target_os = "android"))]
-    check_zombie();
-    let server = new_server();
-    let server_cloned = server.clone();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let android_generation = None;
-    let direct_listener = tokio::spawn(async move {
-        direct_server(server_cloned, android_generation).await;
-    });
-    // It is ok to run xdesktop manager when the headless function is not allowed.
-    #[cfg(target_os = "linux")]
-    if crate::is_server() {
-        crate::platform::linux_desktop_manager::start_xdesktop();
-    }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;
-        return;
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    let _direct_listener = direct_listener;
-    #[cfg(target_os = "ios")]
-    loop {
-        sleep(3600.).await;
-    }
-    // Android (R-D7a): the listener is OWNED by `MainService` and shares its lifetime. Poll the
-    // service-owned-listener generation this server thread runs under; when `MainService.onDestroy`
-    // -> `stopServer` supersedes it, return so this `#[tokio::main]` runtime (the JNI-spawned
-    // thread) unwinds — dropping the runtime aborts the live `direct_server` accept task, closing
-    // the listening socket. A graceful "Stop service" closes the socket via this teardown; an
-    // OS/OEM/battery kill closes it by process death (onStartCommand is START_NOT_STICKY, so no
-    // zombie auto-restart rebinds a listener the user stopped — R-S14).
-    #[cfg(target_os = "android")]
-    {
-        // R-D7a (N1/F1 fix): compare against the generation CAPTURED at service start and passed
-        // in by value — NOT a late `ANDROID_SERVER_GENERATION.load()`, which could adopt a
-        // generation a concurrent `stopServer`/`startServer` already superseded and so keep this
-        // (stopped) service's thread alive. On the legitimate Android path this is always `Some`
-        // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
-        let my_generation = match android_generation {
-            Some(g) => g,
-            None => {
-                log::error!(
-                    "R-D7a: start_direct_only reached on Android with no service generation — fail closed (no listener)"
-                );
-                return;
+        let server = if config::is_outgoing_only() {
+            None
+        } else {
+            #[cfg(not(target_os = "android"))]
+            check_zombie();
+            Some(new_server())
+        };
+        let ipc_worker = match crate::ipc::spawn_desktop_ipc_worker() {
+            Ok(worker) => worker,
+            Err(err) => {
+                log::error!("Controlled-server IPC worker spawn failed: {err}");
+                crate::server::request_graceful_shutdown_after_listener_failure();
+                finish_owned_controlled_server_lifecycle(None, None, None, None).await
             }
         };
-        loop {
-            if !android_generation_current(my_generation) {
-                log::info!(
-                    "R-D7a: Android service stopped — start_direct_only returns so the server thread + tokio runtime unwind (listener socket closed)"
-                );
-                return;
+        own_controlled_server_lifecycle(server, ipc_worker, shutdown_signals).await;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        if config::is_outgoing_only() {
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            loop {
+                sleep(1.).await;
             }
-            sleep(1.).await;
+        }
+        // R-D7a: check_zombie reaps `--cm` child processes, a desktop `--service` concern; the Android
+        // cdylib spawns none (its connection-manager is in-process), so on Android it would be a no-op
+        // reaper thread that outlives each service-owned run — skip it so no idle thread leaks per
+        // MainService start/stop cycle. The direct listener's own teardown is the generation edge above.
+        #[cfg(not(target_os = "android"))]
+        check_zombie();
+        let server = new_server();
+        let server_cloned = server.clone();
+        let direct_listener = tokio::spawn(async move {
+            direct_server(server_cloned, android_generation).await;
+        });
+        // It is ok to run xdesktop manager when the headless function is not allowed.
+        #[cfg(target_os = "linux")]
+        if crate::is_server() {
+            crate::platform::linux_desktop_manager::start_xdesktop();
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        let _direct_listener = direct_listener;
+        #[cfg(target_os = "ios")]
+        loop {
+            sleep(3600.).await;
+        }
+        // Android (R-D7a): the listener is OWNED by `MainService` and shares its lifetime. Poll the
+        // service-owned-listener generation this server thread runs under; when `MainService.onDestroy`
+        // -> `stopServer` supersedes it, return so this `#[tokio::main]` runtime (the JNI-spawned
+        // thread) unwinds — dropping the runtime aborts the live `direct_server` accept task, closing
+        // the listening socket. A graceful "Stop service" closes the socket via this teardown; an
+        // OS/OEM/battery kill closes it by process death (onStartCommand is START_NOT_STICKY, so no
+        // zombie auto-restart rebinds a listener the user stopped — R-S14).
+        #[cfg(target_os = "android")]
+        {
+            // R-D7a (N1/F1 fix): compare against the generation CAPTURED at service start and passed
+            // in by value — NOT a late `ANDROID_SERVER_GENERATION.load()`, which could adopt a
+            // generation a concurrent `stopServer`/`startServer` already superseded and so keep this
+            // (stopped) service's thread alive. On the legitimate Android path this is always `Some`
+            // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
+            let my_generation = match android_generation {
+                Some(g) => g,
+                None => {
+                    log::error!(
+                        "R-D7a: start_direct_only reached on Android with no service generation — fail closed (no listener)"
+                    );
+                    return;
+                }
+            };
+            loop {
+                if !android_generation_current(my_generation) {
+                    log::info!(
+                        "R-D7a: Android service stopped — start_direct_only returns so the server thread + tokio runtime unwind (listener socket closed)"
+                    );
+                    return;
+                }
+                sleep(1.).await;
+            }
         }
     }
 }

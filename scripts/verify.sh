@@ -4356,114 +4356,12 @@ grep -qF 'R-S11e-55 — macOS LaunchDaemon protected IPC signal drain' HARDENING
 if [ -n "$r_s11e55" ]; then echo "  FAIL R-S11e-55 macOS protected IPC signal drain:$r_s11e55"; rc=1; else
   echo "  ok  R-S11e-55 every macOS root service entry installs fallible cancellation-only termination handling before protected listeners, whose existing owner drains accepted work and password state"; fi
 
-# (3b-iii-d9cf) R-S11ap/R-S11e-56: the desktop controlled process owns signal
-# registration, its sole public-listener task, and listener destruction before final drain.
+# (3b-iii-d9cf) R-S11ap/R-S11e-56: signal receipt and the public listener remain
+# part of the one retained desktop lifecycle owner refined by R-S11as.
 echo "== (3b-iii-d9cf) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="
 r_s11e56=
-python3 - src/server.rs src/direct_service.rs <<'PY' \
+python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
-from pathlib import Path
-import sys
-
-server, direct = (Path(path).read_text(encoding="utf-8") for path in sys.argv[1:])
-
-def region(source, start, end):
-    begin = source.index(start)
-    finish = source.index(end, begin)
-    return source[begin:finish]
-
-def ordered(source, *needles):
-    position = -1
-    for needle in needles:
-        position = source.index(needle, position + 1)
-
-desktop_entry = region(
-    server,
-    '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n#[tokio::main]\npub async fn start_server(is_server: bool)',
-    '\n#[cfg(any(target_os = "windows", target_os = "macos"))]\n#[tokio::main(flavor = "current_thread")]',
-)
-ordered(
-    desktop_entry,
-    "install_controlled_server_shutdown_signals()",
-    "crate::common::set_server_running(true);",
-    "crate::ipc::start_windows_service_main_ipc()",
-    'crate::ipc::start("")',
-    "crate::direct_service::start_direct_only(shutdown_signals).await;",
-)
-registration_failure = region(
-    desktop_entry,
-    "match crate::direct_service::install_controlled_server_shutdown_signals()",
-    "crate::common::set_server_running(true);",
-)
-if 'std::process::exit(1);' not in registration_failure:
-    raise SystemExit(1)
-
-installer = region(
-    direct,
-    "pub(crate) fn install_controlled_server_shutdown_signals(",
-    '\n#[cfg(all(not(any(target_os = "android", target_os = "ios")), unix))]\nimpl ControlledServerShutdownSignals',
-)
-ordered(
-    installer,
-    "signal(SignalKind::terminate())",
-    "Failed to install controlled-server SIGTERM receiver",
-    "signal(SignalKind::interrupt())",
-    "Failed to install controlled-server SIGINT receiver",
-    "tokio::signal::windows::ctrl_c()",
-    "Failed to install controlled-server Ctrl-C receiver",
-)
-
-owner = region(
-    direct,
-    "async fn own_controlled_server_lifecycle(",
-    "\n/// Android/iOS receive the exact mobile listener-generation input.",
-)
-ordered(
-    owner,
-    "let shutdown = crate::server::shutdown_token();",
-    "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
-    "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
-    "outcome = wait_for_direct_listener_task(&mut direct_listener)",
-    "crate::server::request_graceful_shutdown();",
-    "crate::server::request_graceful_shutdown_after_listener_failure();",
-    "if direct_listener_outcome.is_none()",
-    "direct_listener_outcome = Some(task.await);",
-    "Ok(()) if crate::server::is_shutting_down() => None",
-    'Ok(()) => Some("direct listener returned without a shutdown request".to_owned())',
-    'Err(err) => Some(format!("direct listener task failed: {err}"))',
-    "crate::server::request_graceful_shutdown_after_listener_failure();",
-    "crate::server::finish_graceful_shutdown().await;",
-)
-if owner.count("request_graceful_shutdown_after_listener_failure();") != 2:
-    raise SystemExit(1)
-if "tokio::spawn" in owner or "sleep(" in owner or "process::exit" in owner:
-    raise SystemExit(1)
-
-start = region(
-    direct,
-    "pub async fn start_direct_only(",
-    '\n#[cfg_attr(not(target_os = "android"), allow(unused_variables))]',
-)
-ordered(
-    start,
-    "own_controlled_server_lifecycle(None, shutdown_signals).await;",
-    "let direct_listener = tokio::spawn(async move {",
-    "direct_server(server_cloned, android_generation).await;",
-    "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
-)
-if start.count("let direct_listener = tokio::spawn") != 1:
-    raise SystemExit(1)
-if "tokio::signal::ctrl_c().await" in direct:
-    raise SystemExit(1)
-if "tokio::spawn(async {\n        // The drain is initiated" in direct:
-    raise SystemExit(1)
-if start.count('#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;') != 1:
-    raise SystemExit(1)
-if "start_direct_only(Some(generation)).await;" not in server:
-    raise SystemExit(1)
-if "android_generation_current(my_generation)" not in start:
-    raise SystemExit(1)
-PY
 grep -qF '<span class="id">R-S11ap</span>' requirements.html || r_s11e56="$r_s11e56 normative-requirement-missing"
 grep -qF '<tr><td>164</td>' requirements.html || r_s11e56="$r_s11e56 appendix-row-missing"
 grep -qF 'desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56)' scripts/apple-conform-check.sh \
@@ -4471,91 +4369,14 @@ grep -qF 'desktop controlled-server signal/listener lifecycle ownership (R-S11ap
 grep -qF 'R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership' HARDENING_STATUS.md \
   || r_s11e56="$r_s11e56 hardening-ledger-missing"
 if [ -n "$r_s11e56" ]; then echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"; rc=1; else
-  echo "  ok  R-S11e-56 desktop controlled servers install signals before IPC admission, retain and join the sole public listener, and classify unexpected completion as fatal before the shared drain"; fi
+  echo "  ok  R-S11e-56 desktop controlled servers install signals before admission and retain the public listener under the R-S11as owner"; fi
 
-# (3b-iii-d9cg) R-S11aq/R-S11e-57: every desktop caller of the
-# process-terminating finalizer retains its runtime/thread until the sole owner
-# completes the existing drain and exits. A losing main-thread caller cannot
-# return while a detached IPC thread owns finalization.
+# (3b-iii-d9cg) R-S11aq/R-S11e-57: the non-returning finalizer now has one
+# retained desktop caller after exact public-task and native-IPC-worker joins.
 echo "== (3b-iii-d9cg) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="
 r_s11e57=
-python3 - src/server.rs src/ipc.rs src/direct_service.rs <<'PY' \
+python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
-from pathlib import Path
-import sys
-
-server, ipc, direct = (Path(path).read_text(encoding="utf-8") for path in sys.argv[1:])
-
-def region(source, start, end):
-    begin = source.index(start)
-    finish = source.index(end, begin)
-    return source[begin:finish]
-
-def ordered(source, *needles):
-    position = -1
-    for needle in needles:
-        position = source.index(needle, position + 1)
-
-finalizer = region(
-    server,
-    "pub(crate) async fn finish_graceful_shutdown() -> ! {",
-    "\n#[cfg(test)]",
-)
-ordered(
-    finalizer,
-    "SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel)",
-    "match std::future::pending::<std::convert::Infallible>().await {}",
-    "AUTHED_CONNS.lock().unwrap().len()",
-    "crate::ipc::wait_for_local_ipc_shutdown().await;",
-    "crate::server::input_service::fix_key_down_timeout_at_exit();",
-    "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
-    "std::process::exit(exit_code);",
-)
-if "return;" in finalizer or "begin_graceful_shutdown" in server:
-    raise SystemExit(1)
-
-call = "crate::server::finish_graceful_shutdown().await;"
-if ipc.count(call) != 2 or direct.count(call) != 1 or server.count(call) != 0:
-    raise SystemExit(1)
-
-main_ipc = region(
-    ipc,
-    "async fn start_main_ipc() -> ResultType<()> {",
-    "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\nfn sensitive_main_ipc_authority",
-)
-ordered(
-    main_ipc,
-    "while let Some(result) = transactions.join_next().await",
-    "password_mutations().drain().await;",
-    "password_mutations().clear_after_transactions_drain();",
-    "drop(listener_guard);",
-    call,
-)
-
-windows_service_ipc = region(
-    ipc,
-    "pub async fn start_windows_service_main_ipc() -> ResultType<()> {",
-    "\n#[cfg(target_os = \"windows\")]\nasync fn handle_windows_service_main_transaction",
-)
-ordered(
-    windows_service_ipc,
-    "while let Some(result) = transactions.join_next().await",
-    "drop(listener_guard);",
-    call,
-)
-
-direct_owner = region(
-    direct,
-    "async fn own_controlled_server_lifecycle(",
-    "\n/// Android/iOS receive the exact mobile listener-generation input.",
-)
-ordered(
-    direct_owner,
-    "outcome = wait_for_direct_listener_task(&mut direct_listener)",
-    "direct_listener_outcome = Some(task.await);",
-    call,
-)
-PY
 grep -qF '<span class="id">R-S11aq</span>' requirements.html || r_s11e57="$r_s11e57 normative-requirement-missing"
 grep -qF '<tr><td>165</td>' requirements.html || r_s11e57="$r_s11e57 appendix-row-missing"
 grep -qF 'non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57)' scripts/apple-conform-check.sh \
@@ -4563,112 +4384,44 @@ grep -qF 'non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57
 grep -qF 'R-S11e-57 — non-returning graceful-shutdown finalizer ownership' HARDENING_STATUS.md \
   || r_s11e57="$r_s11e57 hardening-ledger-missing"
 if [ -n "$r_s11e57" ]; then echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"; rc=1; else
-  echo "  ok  R-S11e-57 exactly one desktop caller drains and exits; every loser remains process-owning after releasing its listener/task authority"; fi
+  echo "  ok  R-S11e-57 the crate-private non-returning finalizer has one post-join desktop caller and no obsolete election/follower path"; fi
 
-# (3b-iii-d9ch) R-S11ar/R-S11e-58: protected Unix service IPC
-# returns its post-drain outcome to the foreground lifecycle owner. The
-# retained Linux worker must not terminate the process before its supervisor
-# joins it and cleans up the exact controlled children.
+# (3b-iii-d9ch) R-S11ar/R-S11e-58: protected Unix service IPC remains
+# result-returning and excluded from the sole desktop process finalizer.
 echo "== (3b-iii-d9ch) protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e58_ --color never
 r_s11e58=
-python3 - src/ipc.rs src/platform/linux.rs src/platform/macos.rs src/core_main.rs src/service.rs src/direct_service.rs src/server.rs <<'PY' \
+python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e58="$r_s11e58 protected-service-outcome-ownership-invalid"
-from pathlib import Path
-import sys
-
-ipc, linux, macos, core_main, service, direct, server = (
-    Path(path).read_text(encoding="utf-8") for path in sys.argv[1:]
-)
-
-def region(source, start, end):
-    begin = source.index(start)
-    finish = source.index(end, begin)
-    return source[begin:finish]
-
-def ordered(source, *needles):
-    position = -1
-    for needle in needles:
-        position = source.index(needle, position + 1)
-
-classifier = region(
-    ipc,
-    "fn protected_service_ipc_result(listener_error: Option<String>) -> ResultType<()> {",
-    "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\nasync fn run_service_ipc",
-)
-ordered(
-    classifier,
-    "Some(err) => Err(anyhow::anyhow!(err)),",
-    "None => Ok(()),",
-)
-
-worker = region(
-    ipc,
-    "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
-    "\n#[cfg(target_os = \"linux\")]\nasync fn handle_sensitive_linux_service_ipc_transaction",
-)
-ordered(
-    worker,
-    "_ = shutdown.cancelled() => break,",
-    "while let Some(result) = transactions.join_next().await",
-    "password_mutations().drain().await;",
-    "password_mutations().clear_after_transactions_drain();",
-    "linux_password_admissions().clear_after_transactions_drain();",
-    "drop(listener_guard);",
-    "protected_service_ipc_result(listener_error)",
-)
-for forbidden in ("finish_graceful_shutdown", "process::exit", "tokio::spawn", "std::thread::spawn"):
-    if forbidden in worker:
-        raise SystemExit(1)
-
-linux_entry = region(linux, "type LinuxServiceIpcThread", "pub fn get_active_user_id_name")
-ordered(
-    linux_entry,
-    "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
-    "observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;",
-    "crate::server::request_graceful_shutdown();",
-    "classify_linux_service_ipc_thread_outcome(handle.join(), true)",
-    'terminate_child(&mut user_server, "--server", &runtime)',
-    'terminate_child(&mut server, "--server", &runtime)',
-)
-for binding in (
-    'Ok(Err(err)) => Err(anyhow!("Protected service IPC thread failed: {err}"))',
-    "let mut result = (|| -> ResultType<()> {",
-    'merge_linux_service_result(\n            &mut result,\n            classify_linux_service_ipc_thread_outcome(handle.join(), true),\n            "protected IPC drain",',
-):
-    if binding not in linux_entry:
-        raise SystemExit(1)
-
-macos_entry = region(macos, "pub fn start_os_service()", "\n#[cfg(test)]")
-ordered(
-    macos_entry,
-    "install_macos_service_shutdown_handler()?;",
-    "crate::ipc::start(crate::POSTFIX_SERVICE)",
-)
-if core_main.count("crate::platform::macos::run_service()") != 1:
-    raise SystemExit(1)
-if service.count("crate::platform::macos::run_service()") != 1:
-    raise SystemExit(1)
-
-call = "crate::server::finish_graceful_shutdown().await;"
-if ipc.count(call) != 2 or direct.count(call) != 1 or server.count(call) != 0:
-    raise SystemExit(1)
-if "fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()" not in ipc:
-    raise SystemExit(1)
-PY
+grep -qF 'fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()' src/ipc.rs \
+  || r_s11e58="$r_s11e58 focused-regression-missing"
 grep -qF '<span class="id">R-S11ar</span>' requirements.html || r_s11e58="$r_s11e58 normative-requirement-missing"
-grep -qF 'Protected Unix service IPC returns failure to its foreground lifecycle owner after complete drain' requirements.html \
-  || r_s11e58="$r_s11e58 normative-owner-clause-missing"
 grep -qF '<tr><td>166</td>' requirements.html || r_s11e58="$r_s11e58 appendix-row-missing"
-grep -qF 'Protected Unix service IPC bypassed its retained lifecycle owner after listener failure' requirements.html \
-  || r_s11e58="$r_s11e58 appendix-disposition-missing"
 grep -qF 'protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58)' scripts/apple-conform-check.sh \
   || r_s11e58="$r_s11e58 apple-source-conformance-gate-missing"
 grep -qF 'R-S11e-58 — protected Unix service IPC foreground lifecycle ownership' HARDENING_STATUS.md \
   || r_s11e58="$r_s11e58 hardening-ledger-missing"
 if [ -n "$r_s11e58" ]; then echo "  FAIL R-S11e-58 protected service IPC lifecycle ownership:$r_s11e58"; rc=1; else
-  echo "  ok  R-S11e-58 protected Unix service IPC drains and returns its outcome to the foreground owner; the worker no longer exits around supervisor cleanup"; fi
+  echo "  ok  R-S11e-58 protected Unix IPC drains and returns to its foreground owner, outside the desktop finalizer"; fi
 
+# (3b-iii-d9ci) R-S11as/R-S11e-59: desktop local IPC has pre-admission
+# readiness, retained completion, exact native join, and sole finalizer ownership.
+echo "== (3b-iii-d9ci) desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59) =="
+r_s11e59=
+python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
+  || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-semantic-invalid"
+python3 scripts/verify-desktop-ipc-lifecycle.py --repo . --self-test \
+  || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-mutations-invalid"
+python3 -m py_compile scripts/verify-desktop-ipc-lifecycle.py \
+  || r_s11e59="$r_s11e59 validator-python-syntax-invalid"
+grep -qF '<span class="id">R-S11as</span>' requirements.html || r_s11e59="$r_s11e59 normative-requirement-missing"
+grep -qF '<tr><td>167</td>' requirements.html || r_s11e59="$r_s11e59 appendix-row-missing"
+grep -qF 'desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59)' scripts/apple-conform-check.sh \
+  || r_s11e59="$r_s11e59 apple-source-conformance-gate-missing"
+grep -qF 'R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership' HARDENING_STATUS.md \
+  || r_s11e59="$r_s11e59 hardening-ledger-missing"
+if [ -n "$r_s11e59" ]; then echo "  FAIL R-S11e-59 desktop IPC lifecycle ownership:$r_s11e59"; rc=1; else
+  echo "  ok  R-S11e-59 all desktop IPC is ready before public admission and returns through one retained, exactly joined native worker before the sole finalizer"; fi
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.

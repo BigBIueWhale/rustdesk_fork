@@ -94,7 +94,7 @@ pub(crate) fn authorize_url_ipc_sender(stream: &Connection) -> bool {
 use hbb_common::tokio::sync::mpsc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::{
-    sync::{Notify, OwnedSemaphorePermit, Semaphore},
+    sync::{oneshot, Notify, OwnedSemaphorePermit, Semaphore},
     task::JoinSet,
 };
 #[cfg(target_os = "linux")]
@@ -192,8 +192,66 @@ static MAIN_IPC_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
 static SERVICE_IPC_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
 #[cfg(target_os = "windows")]
 static WINDOWS_SERVICE_MAIN_LISTENER_STATE: AtomicU8 = AtomicU8::new(0);
+
+/// The desktop controlled-server's one native local-IPC worker. The worker owns its
+/// current-thread Tokio runtime; the async controlled-server owner retains readiness,
+/// completion, and the exact native thread until shutdown is complete.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-static LOCAL_IPC_DRAIN_CHANGED: OnceLock<Notify> = OnceLock::new();
+pub(crate) struct DesktopIpcWorker {
+    readiness: oneshot::Receiver<Result<(), String>>,
+    completion: oneshot::Receiver<Result<(), String>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl DesktopIpcWorker {
+    pub(crate) fn startup_receivers(
+        &mut self,
+    ) -> (
+        &mut oneshot::Receiver<Result<(), String>>,
+        &mut oneshot::Receiver<Result<(), String>>,
+    ) {
+        (&mut self.readiness, &mut self.completion)
+    }
+
+    pub(crate) async fn wait_for_completion(&mut self) -> Result<(), String> {
+        (&mut self.completion)
+            .await
+            .map_err(|_| "desktop IPC worker ended without reporting an outcome".to_owned())?
+    }
+
+    pub(crate) async fn join(mut self) -> Result<(), String> {
+        let thread = self
+            .thread
+            .take()
+            .ok_or_else(|| "desktop IPC worker ownership was already consumed".to_owned())?;
+        tokio::task::spawn_blocking(move || thread.join())
+            .await
+            .map_err(|err| format!("desktop IPC join task failed: {err}"))?
+            .map_err(|_| "desktop IPC worker panicked".to_owned())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn spawn_desktop_ipc_worker() -> ResultType<DesktopIpcWorker> {
+    let (readiness_tx, readiness) = oneshot::channel();
+    let (completion_tx, completion) = oneshot::channel();
+    let thread = std::thread::Builder::new()
+        .name("rustdesk-desktop-ipc".to_owned())
+        .spawn(move || {
+            let outcome = run_desktop_ipc(readiness_tx).map_err(|err| err.to_string());
+            if completion_tx.send(outcome).is_err() {
+                log::error!("Desktop IPC worker completed after its lifecycle owner was lost");
+            }
+        })
+        .map_err(|err| hbb_common::anyhow::anyhow!("failed to spawn desktop IPC worker: {err}"))?;
+    Ok(DesktopIpcWorker {
+        readiness,
+        completion,
+        thread: Some(thread),
+    })
+}
+
 #[cfg(target_os = "windows")]
 const WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_BUDGET: usize = 6;
 #[cfg(target_os = "windows")]
@@ -480,30 +538,6 @@ impl LocalIpcListenerGuard {
 impl Drop for LocalIpcListenerGuard {
     fn drop(&mut self) {
         self.state.store(2, AtomicOrdering::Release);
-        LOCAL_IPC_DRAIN_CHANGED
-            .get_or_init(Notify::new)
-            .notify_waiters();
-    }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) async fn wait_for_local_ipc_shutdown() {
-    loop {
-        let notified = LOCAL_IPC_DRAIN_CHANGED.get_or_init(Notify::new).notified();
-        let main_draining = MAIN_IPC_LISTENER_STATE.load(AtomicOrdering::Acquire) == 1;
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        let service_draining = SERVICE_IPC_LISTENER_STATE.load(AtomicOrdering::Acquire) == 1;
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        let service_draining = false;
-        #[cfg(target_os = "windows")]
-        let service_main_draining =
-            WINDOWS_SERVICE_MAIN_LISTENER_STATE.load(AtomicOrdering::Acquire) == 1;
-        #[cfg(not(target_os = "windows"))]
-        let service_main_draining = false;
-        if !main_draining && !service_draining && !service_main_draining {
-            return;
-        }
-        notified.await;
     }
 }
 
@@ -2499,7 +2533,10 @@ pub async fn start(postfix: &str) -> ResultType<()> {
     if postfix.is_empty() {
         Config::ensure_loaded();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        return start_main_ipc().await;
+        {
+            let listeners = prepare_main_ipc().await?;
+            return run_main_ipc(listeners).await;
+        }
         #[cfg(any(target_os = "android", target_os = "ios"))]
         bail!("desktop main IPC is unavailable on mobile");
     }
@@ -2508,6 +2545,50 @@ pub async fn start(postfix: &str) -> ResultType<()> {
     return start_service_ipc(postfix).await;
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     bail!("unsupported IPC listener postfix: {postfix}");
+}
+
+/// Construct every desktop local listener on one new native thread, report readiness only after
+/// every required listener guard is active, and return the complete post-drain outcome to the
+/// retained controlled-server owner. This function is called only from that new thread, so its
+/// current-thread runtime is never nested inside the server's existing Tokio runtime.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tokio::main(flavor = "current_thread")]
+async fn run_desktop_ipc(readiness: oneshot::Sender<Result<(), String>>) -> ResultType<()> {
+    Config::ensure_loaded();
+    let main = match prepare_main_ipc().await {
+        Ok(main) => main,
+        Err(err) => {
+            let _ = readiness.send(Err(err.to_string()));
+            return Err(err);
+        }
+    };
+    #[cfg(target_os = "windows")]
+    let service_main = if is_service_owned_server_process() {
+        match prepare_windows_service_main_ipc().await {
+            Ok(service_main) => Some(service_main),
+            Err(err) => {
+                let _ = readiness.send(Err(err.to_string()));
+                return Err(err);
+            }
+        }
+    } else {
+        None
+    };
+
+    readiness.send(Ok(())).map_err(|_| {
+        hbb_common::anyhow::anyhow!("desktop IPC lifecycle owner stopped before readiness")
+    })?;
+
+    #[cfg(target_os = "windows")]
+    if let Some(service_main) = service_main {
+        let (main_outcome, service_main_outcome) = tokio::join!(
+            run_main_ipc(main),
+            run_windows_service_main_ipc(service_main),
+        );
+        main_outcome?;
+        return service_main_outcome;
+    }
+    run_main_ipc(main).await
 }
 
 #[cfg(target_os = "linux")]
@@ -2569,25 +2650,55 @@ async fn next_sensitive_main_listener_event(
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn start_main_ipc() -> ResultType<()> {
-    let mut incoming = new_listener("").await?;
+struct PreparedMainIpc {
+    incoming: Incoming,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    let mut password_events = new_listener(password::USER_PASSWORD_IPC_POSTFIX).await?;
+    password_events: Incoming,
     #[cfg(target_os = "windows")]
-    let (mut password_events, password_listener) =
-        if crate::common::is_service_owned_server_process() {
-            (None, None)
-        } else {
-            let (password_request_tx, password_events) = mpsc::channel(MAIN_IPC_TRANSACTION_BUDGET);
-            let password_listener =
-                crate::platform::windows::start_windows_sensitive_password_listener(
-                    password::USER_PASSWORD_IPC_POSTFIX,
-                    password_request_tx,
-                )?;
-            (Some(password_events), Some(password_listener))
-        };
+    password_events:
+        Option<mpsc::Receiver<crate::platform::windows::WindowsSensitivePasswordRequest>>,
+    #[cfg(target_os = "windows")]
+    password_listener: Option<crate::platform::windows::WindowsSensitivePasswordListener>,
+    listener_guard: LocalIpcListenerGuard,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn prepare_main_ipc() -> ResultType<PreparedMainIpc> {
+    let incoming = new_listener("").await?;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let password_events = new_listener(password::USER_PASSWORD_IPC_POSTFIX).await?;
+    #[cfg(target_os = "windows")]
+    let (password_events, password_listener) = if crate::common::is_service_owned_server_process() {
+        (None, None)
+    } else {
+        let (password_request_tx, password_events) = mpsc::channel(MAIN_IPC_TRANSACTION_BUDGET);
+        let password_listener =
+            crate::platform::windows::start_windows_sensitive_password_listener(
+                password::USER_PASSWORD_IPC_POSTFIX,
+                password_request_tx,
+            )?;
+        (Some(password_events), Some(password_listener))
+    };
     let listener_guard =
         LocalIpcListenerGuard::activate(&MAIN_IPC_LISTENER_STATE, "main IPC listener")?;
+    Ok(PreparedMainIpc {
+        incoming,
+        password_events,
+        #[cfg(target_os = "windows")]
+        password_listener,
+        listener_guard,
+    })
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn run_main_ipc(listeners: PreparedMainIpc) -> ResultType<()> {
+    let PreparedMainIpc {
+        mut incoming,
+        mut password_events,
+        #[cfg(target_os = "windows")]
+        password_listener,
+        listener_guard,
+    } = listeners;
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
     let mut listener_error = None;
@@ -2689,11 +2800,10 @@ async fn start_main_ipc() -> ResultType<()> {
     password_mutations().drain().await;
     password_mutations().clear_after_transactions_drain();
     drop(listener_guard);
-    if let Some(err) = listener_error {
-        log::error!("{err}");
-        crate::server::finish_graceful_shutdown().await;
+    match listener_error {
+        Some(err) => Err(hbb_common::anyhow::anyhow!(err)),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -3352,17 +3462,37 @@ async fn handle_service_ipc_transaction(mut stream: Connection, postfix: &str) {
 }
 
 #[cfg(target_os = "windows")]
-#[tokio::main(flavor = "current_thread")]
-pub async fn start_windows_service_main_ipc() -> ResultType<()> {
+struct PreparedWindowsServiceMainIpc {
+    credential_incoming: Incoming,
+    control_incoming: Incoming,
+    listener_guard: LocalIpcListenerGuard,
+}
+
+#[cfg(target_os = "windows")]
+async fn prepare_windows_service_main_ipc() -> ResultType<PreparedWindowsServiceMainIpc> {
     if !is_service_owned_server_process() || !crate::platform::is_root() {
         bail!("Windows service-main IPC requires the service-owned LocalSystem server role");
     }
-    let mut credential_incoming = new_listener(WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX).await?;
-    let mut control_incoming = new_listener(WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX).await?;
+    let credential_incoming = new_listener(WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX).await?;
+    let control_incoming = new_listener(WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX).await?;
     let listener_guard = LocalIpcListenerGuard::activate(
         &WINDOWS_SERVICE_MAIN_LISTENER_STATE,
         "Windows service-main listeners",
     )?;
+    Ok(PreparedWindowsServiceMainIpc {
+        credential_incoming,
+        control_incoming,
+        listener_guard,
+    })
+}
+
+#[cfg(target_os = "windows")]
+async fn run_windows_service_main_ipc(listeners: PreparedWindowsServiceMainIpc) -> ResultType<()> {
+    let PreparedWindowsServiceMainIpc {
+        mut credential_incoming,
+        mut control_incoming,
+        listener_guard,
+    } = listeners;
     let mut transactions = JoinSet::new();
     let shutdown = crate::server::shutdown_token();
     let mut listener_error = None;
@@ -3452,13 +3582,10 @@ pub async fn start_windows_service_main_ipc() -> ResultType<()> {
         while transactions.join_next().await.is_some() {}
     }
     drop(listener_guard);
-    if shutdown.is_cancelled() || listener_error.is_some() {
-        if let Some(err) = listener_error {
-            log::error!("{err}");
-        }
-        crate::server::finish_graceful_shutdown().await;
+    match listener_error {
+        Some(err) => Err(hbb_common::anyhow::anyhow!(err)),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 #[cfg(target_os = "windows")]

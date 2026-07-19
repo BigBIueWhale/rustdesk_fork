@@ -7599,7 +7599,7 @@ def validate_ipc_listener_failure_outcome_contract(sources):
 
     shutdown_policy = extract_between(
         server_source,
-        "static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);",
+        "pub fn is_shutting_down() -> bool {",
         "\npub struct Server",
         "shared graceful-shutdown outcome policy",
     )
@@ -7632,11 +7632,12 @@ def validate_ipc_listener_failure_outcome_contract(sources):
     require_order(
         finalizer,
         (
-            "crate::ipc::wait_for_local_ipc_shutdown().await;",
+            "AUTHED_CONNS.lock().unwrap().len()",
+            "crate::server::input_service::fix_key_down_timeout_at_exit();",
             "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
             "std::process::exit(exit_code);",
         ),
-        "drain before acquire-selected process outcome",
+        "authenticated drain before acquire-selected process outcome",
     )
     if "std::process::exit(0);" in finalizer:
         raise VerificationError("shared graceful-shutdown finalizer retains hardcoded success")
@@ -7702,7 +7703,7 @@ def validate_ipc_listener_failure_outcome_contract(sources):
         ("those six listener streams", "six-listener authority set"),
         ("release/acquire synchronization", "cross-task failure synchronization"),
         ("status 1 when the failure latch is set", "failure process status"),
-        ("status 0 only for an ordinary requested shutdown", "clean process status"),
+        ("status 0 only for ordinary requested shutdown", "clean process status"),
     ):
         require_text(requirement, text, label)
     for text, label in (
@@ -8138,7 +8139,7 @@ def validate_controlled_server_lifecycle_contract(sources):
     gate = extract_between(
         verify,
         heading,
-        "\n# (3b-iii-d9d)",
+        "\n# (3b-iii-d9cg)",
         "desktop controlled-server lifecycle source gate",
     )
     require_text(
@@ -8161,21 +8162,31 @@ def validate_controlled_server_lifecycle_contract(sources):
         '#[tokio::main(flavor = "current_thread")]',
         "desktop controlled-server entry",
     )
-    require_order(
+    controlled_entry = extract_between(
         desktop_entry,
+        "    if is_server {",
+        "\n    } else {",
+        "controlled desktop server branch",
+    )
+    require_order(
+        controlled_entry,
         (
+            "crate::direct_service::assert_startup_invariants()",
             "install_controlled_server_shutdown_signals()",
-            "crate::common::set_server_running(true);",
-            "crate::ipc::start_windows_service_main_ipc()",
-            'crate::ipc::start("")',
             "crate::direct_service::start_direct_only(shutdown_signals).await;",
         ),
-        "controlled-server signal proof before IPC/listener admission",
+        "controlled-server invariant and signal proof before IPC/listener admission",
     )
-    registration_failure = extract_between(
-        desktop_entry,
-        "match crate::direct_service::install_controlled_server_shutdown_signals()",
+    for forbidden in (
         "crate::common::set_server_running(true);",
+        "crate::ipc::start_windows_service_main_ipc()",
+        'crate::ipc::start("")',
+    ):
+        require_absent(controlled_entry, forbidden, "detached desktop IPC admission")
+    registration_failure = extract_between(
+        controlled_entry,
+        "match crate::direct_service::install_controlled_server_shutdown_signals()",
+        "crate::direct_service::start_direct_only(shutdown_signals).await;",
         "controlled-server signal registration failure",
     )
     require_text(
@@ -8214,32 +8225,30 @@ def validate_controlled_server_lifecycle_contract(sources):
         owner,
         (
             "let shutdown = crate::server::shutdown_token();",
+            "ipc_worker.startup_receivers();",
+            "_ = shutdown.cancelled() => ControlledServerStartupEvent::ShutdownRequested",
+            "signal = signals.recv() => ControlledServerStartupEvent::Signal(signal)",
+            "readiness = ipc_readiness",
+            "outcome = ipc_completion",
+            "ControlledServerStartupEvent::DesktopIpcReady(Ok(()))",
+            "let mut direct_listener = server.map(|server|",
+            "tokio::spawn(async move",
             "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
             "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
             "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+            "outcome = ipc_worker.wait_for_completion()",
             "crate::server::request_graceful_shutdown();",
             "crate::server::request_graceful_shutdown_after_listener_failure();",
-            "if direct_listener_outcome.is_none()",
-            "direct_listener_outcome = Some(task.await);",
-            "Ok(()) if crate::server::is_shutting_down() => None",
-            'Ok(()) => Some("direct listener returned without a shutdown request".to_owned())',
-            'Err(err) => Some(format!("direct listener task failed: {err}"))',
-            "crate::server::request_graceful_shutdown_after_listener_failure();",
-            "crate::server::finish_graceful_shutdown().await;",
+            "finish_owned_controlled_server_lifecycle(",
         ),
-        "controlled-server cancel/signal/listener join and failure finalization",
+        "controlled-server signal-aware readiness and retained listener/IPC selection",
     )
-    require_exact_count(
-        owner,
-        "request_graceful_shutdown_after_listener_failure();",
-        2,
-        "controlled-server signal/listener fatal producers",
-    )
-    for forbidden in ("tokio::spawn", "sleep(", "process::exit"):
+    for forbidden in ("sleep(", "process::exit"):
         if forbidden in owner:
             raise VerificationError(
                 "controlled-server lifecycle owner retains detached/blocking/exit authority"
             )
+    require_exact_count(owner, "tokio::spawn(async move", 1, "sole retained public-listener task")
 
     start = extract_between(
         direct_service,
@@ -8250,18 +8259,10 @@ def validate_controlled_server_lifecycle_contract(sources):
     require_order(
         start,
         (
-            "own_controlled_server_lifecycle(None, shutdown_signals).await;",
-            "let direct_listener = tokio::spawn(async move {",
-            "direct_server(server_cloned, android_generation).await;",
-            "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
+            "crate::ipc::spawn_desktop_ipc_worker()",
+            "own_controlled_server_lifecycle(server, ipc_worker, shutdown_signals).await;",
         ),
-        "retained controlled-server direct-listener ownership",
-    )
-    require_exact_count(
-        start,
-        "let direct_listener = tokio::spawn",
-        1,
-        "sole retained direct-listener task",
+        "desktop IPC/public lifecycle ownership transfer",
     )
     require_absent(
         direct_service,
@@ -8275,7 +8276,7 @@ def validate_controlled_server_lifecycle_contract(sources):
     )
     require_exact_count(
         start,
-        '#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;',
+        '#[cfg(target_os = "ios")]\n        loop {\n            sleep(3600.).await;',
         1,
         "iOS-only retained mobile parking loop",
     )
@@ -8339,7 +8340,7 @@ def validate_shutdown_finalizer_ownership_contract(sources):
     gate = extract_between(
         verify,
         heading,
-        "\n# (3b-iii-d9d)",
+        "\n# (3b-iii-d9ch)",
         "non-returning graceful-shutdown finalizer source gate",
     )
     require_text(
@@ -8356,7 +8357,7 @@ def validate_shutdown_finalizer_ownership_contract(sources):
 
     shutdown_policy = extract_between(
         server_source,
-        "static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);",
+        "static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);",
         "\npub struct Server",
         "shared graceful-shutdown policy",
     )
@@ -8369,75 +8370,43 @@ def validate_shutdown_finalizer_ownership_contract(sources):
     require_order(
         finalizer,
         (
-            "SHUTDOWN_FINALIZER_STARTED.swap(true, Ordering::AcqRel)",
-            "match std::future::pending::<std::convert::Infallible>().await {}",
             "AUTHED_CONNS.lock().unwrap().len()",
-            "crate::ipc::wait_for_local_ipc_shutdown().await;",
             "crate::server::input_service::fix_key_down_timeout_at_exit();",
             "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
             "std::process::exit(exit_code);",
         ),
-        "one-owner/follower-wait before drain and exit",
+        "sole-owner authenticated drain and exit",
     )
     require_absent(finalizer, "return;", "returning shutdown-finalizer follower")
-    require_absent(
-        server_source,
-        "begin_graceful_shutdown",
-        "obsolete returning graceful-shutdown entry",
-    )
+    for source, forbidden, label in (
+        (server_source, "SHUTDOWN_FINALIZER_STARTED", "obsolete finalizer election"),
+        (server_source, "pending::<std::convert::Infallible>", "obsolete follower wait"),
+        (server_source, "wait_for_local_ipc_shutdown", "obsolete local-IPC polling barrier call"),
+        (ipc_source, "wait_for_local_ipc_shutdown", "obsolete local-IPC polling barrier"),
+        (ipc_source, "LOCAL_IPC_DRAIN_CHANGED", "obsolete local-IPC polling notification"),
+        (server_source, "begin_graceful_shutdown", "obsolete returning graceful-shutdown entry"),
+    ):
+        require_absent(source, forbidden, label)
 
-    call = "crate::server::finish_graceful_shutdown().await;"
-    if ipc_source.count(call) != 2 or direct_service.count(call) != 1 or server_source.count(call) != 0:
-        raise VerificationError("exact three graceful-shutdown finalizer callers are absent")
+    call = "crate::server::finish_graceful_shutdown().await"
+    if ipc_source.count(call) != 0 or direct_service.count(call) != 1 or server_source.count(call) != 0:
+        raise VerificationError("sole retained desktop finalizer caller is absent")
 
-    main_ipc = extract_between(
-        ipc_source,
-        "async fn start_main_ipc() -> ResultType<()> {",
-        '\n#[cfg(any(target_os = "linux", target_os = "macos"))]\nfn sensitive_main_ipc_authority',
-        "main IPC finalizer caller",
-    )
-    require_order(
-        main_ipc,
-        (
-            "while let Some(result) = transactions.join_next().await",
-            "password_mutations().drain().await;",
-            "password_mutations().clear_after_transactions_drain();",
-            "drop(listener_guard);",
-            call,
-        ),
-        "main IPC drain and listener release before finalizer",
-    )
-
-    windows_service_ipc = extract_between(
-        ipc_source,
-        "pub async fn start_windows_service_main_ipc() -> ResultType<()> {",
-        '\n#[cfg(target_os = "windows")]\nasync fn handle_windows_service_main_transaction',
-        "Windows service-main IPC finalizer caller",
-    )
-    require_order(
-        windows_service_ipc,
-        (
-            "while let Some(result) = transactions.join_next().await",
-            "drop(listener_guard);",
-            call,
-        ),
-        "Windows service-main IPC drain and listener release before finalizer",
-    )
-
-    direct_owner = extract_between(
+    completion_owner = extract_between(
         direct_service,
-        "async fn own_controlled_server_lifecycle(",
-        "\n/// Android/iOS receive the exact mobile listener-generation input.",
-        "desktop direct-listener finalizer caller",
+        "async fn finish_owned_controlled_server_lifecycle(",
+        "\n/// Own the complete desktop controlled-side lifetime.",
+        "desktop lifecycle finalizer caller",
     )
     require_order(
-        direct_owner,
+        completion_owner,
         (
-            "outcome = wait_for_direct_listener_task(&mut direct_listener)",
-            "direct_listener_outcome = Some(task.await);",
+            "Some(task) => Some(task.await)",
+            "worker.wait_for_completion().await",
+            "worker.join().await",
             call,
         ),
-        "desktop direct-listener join before finalizer",
+        "desktop public-task and native-worker join before finalizer",
     )
 
     requirement = extract_between(
@@ -8447,16 +8416,16 @@ def validate_shutdown_finalizer_ownership_contract(sources):
         "graceful-shutdown finalizer ownership requirement",
     )
     for text, label in (
-        ("remain crate-private and be explicitly non-returning", "crate-private non-returning finalizer requirement"),
-        ("non-polling pending future", "finalizer follower wait requirement"),
-        ("drained admitted transactions and dropped its <code>LocalIpcListenerGuard</code>", "IPC release-before-wait requirement"),
-        ("unused returning <code>begin_graceful_shutdown</code>", "obsolete entry deletion requirement"),
-        ("complete three-caller set", "exact finalizer caller-set requirement"),
+        ("remain crate-private and explicitly non-returning", "crate-private non-returning finalizer requirement"),
+        ("exactly one source caller", "sole finalizer caller requirement"),
+        ("exact public-listener task and native IPC worker", "exact join requirement"),
+        ("obsolete atomic finalizer election", "stale election deletion requirement"),
+        ("local-IPC polling barrier", "stale barrier deletion requirement"),
     ):
         require_text(requirement, text, label)
     for text, label in (
         (
-            "Every graceful-shutdown caller retains process lifetime until the sole finalizer exits",
+            "The graceful-shutdown finalizer is non-returning and reachable only after retained lifecycle ownership is released",
             "graceful-shutdown finalizer ownership requirement title",
         ),
         ("<tr><td>165</td>", "graceful-shutdown finalizer Appendix C row"),
@@ -8493,7 +8462,7 @@ def validate_protected_service_outcome_ownership_contract(sources):
     gate = extract_between(
         verify,
         heading,
-        "\n# (3b-iii-d9d)",
+        "\n# (3b-iii-d9ci)",
         "protected service outcome ownership source gate",
     )
     require_text(
@@ -8613,13 +8582,13 @@ def validate_protected_service_outcome_ownership_contract(sources):
         "dedicated macOS service error propagation",
     )
 
-    call = "crate::server::finish_graceful_shutdown().await;"
+    call = "crate::server::finish_graceful_shutdown().await"
     if (
-        ipc_source.count(call) != 2
+        ipc_source.count(call) != 0
         or direct_service.count(call) != 1
         or server_source.count(call) != 0
     ):
-        raise VerificationError("protected service worker is not excluded from the exact three finalizer callers")
+        raise VerificationError("protected service worker is not excluded from the sole desktop finalizer caller")
     require_text(
         ipc_source,
         "fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()",
@@ -8637,7 +8606,7 @@ def validate_protected_service_outcome_ownership_contract(sources):
         ("return success", "ordinary cancellation success requirement"),
         ("still attempt both exact child terminations", "Linux child cleanup requirement"),
         ("synchronous service entry", "macOS result owner requirement"),
-        ("complete three-caller process-finalizer set", "corrected finalizer caller set requirement"),
+        ("desktop process finalizer has one retained desktop-owner caller", "corrected finalizer caller set requirement"),
     ):
         require_text(requirement, text, label)
     for text, label in (
@@ -8656,6 +8625,216 @@ def validate_protected_service_outcome_ownership_contract(sources):
         hardening,
         "R-S11e-58 — protected Unix service IPC foreground lifecycle ownership",
         "protected service outcome hardening ledger",
+    )
+
+
+def validate_desktop_ipc_retained_owner_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    validator = sources["desktop_ipc_validator"]
+    server_source = sources["server_source"]
+    direct_service = sources["direct_service"]
+    ipc_source = sources["ipc_source"]
+    common_source = sources["common_source"]
+
+    for source, heading, label in (
+        (
+            verify,
+            'echo "== (3b-iii-d9ci) desktop local-IPC readiness and retained native-worker '
+            'ownership (R-S11as/R-S11e-59) =="',
+            "desktop IPC shared gate",
+        ),
+        (
+            apple,
+            'echo "== (2b-iv-a-0h) desktop local-IPC readiness and retained native-worker '
+            'ownership (R-S11as/R-S11e-59) =="',
+            "desktop IPC Apple gate",
+        ),
+    ):
+        require_text(source, heading, label)
+        require_text(
+            source,
+            "verify-desktop-ipc-lifecycle.py",
+            f"{label} focused semantic validator",
+        )
+        require_text(source, "--self-test", f"{label} validator mutation suite")
+
+    for text, label in (
+        ("def validate(sources", "focused validator semantic entry"),
+        ("def run_mutations(sources", "focused validator mutation entry"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "focused validator mutation inventory"),
+        ("mutation was not rejected", "focused validator mutation rejection"),
+    ):
+        require_text(validator, text, label)
+
+    desktop_entry = extract_between(
+        server_source,
+        '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n'
+        '#[tokio::main]\npub async fn start_server(is_server: bool)',
+        '\n#[cfg(any(target_os = "windows", target_os = "macos"))]\n'
+        '#[tokio::main(flavor = "current_thread")]',
+        "desktop controlled-server entry",
+    )
+    controlled_entry = extract_between(
+        desktop_entry,
+        "    if is_server {",
+        "\n    } else {",
+        "controlled desktop server branch",
+    )
+    require_order(
+        controlled_entry,
+        (
+            "crate::direct_service::assert_startup_invariants()",
+            "install_controlled_server_shutdown_signals()",
+            "crate::direct_service::start_direct_only(shutdown_signals).await;",
+        ),
+        "desktop invariant/signal proof before retained lifecycle entry",
+    )
+    for forbidden in (
+        "std::thread::spawn",
+        'crate::ipc::start("")',
+        "start_windows_service_main_ipc",
+        "set_server_running",
+    ):
+        require_absent(controlled_entry, forbidden, "detached pre-owner desktop IPC")
+
+    for forbidden in ("SERVER_RUNNING", "set_server_running", "is_server_running"):
+        require_absent(common_source, forbidden, "obsolete optimistic server-running state")
+
+    worker = extract_between(
+        ipc_source,
+        "pub(crate) struct DesktopIpcWorker",
+        '\n#[cfg(target_os = "windows")]\nconst WINDOWS_SERVICE_CREDENTIAL_TRANSACTION_BUDGET',
+        "desktop IPC native worker",
+    )
+    for text, label in (
+        ("readiness: oneshot::Receiver<Result<(), String>>", "desktop IPC readiness receiver"),
+        ("completion: oneshot::Receiver<Result<(), String>>", "desktop IPC completion receiver"),
+        ("thread: Option<std::thread::JoinHandle<()>>", "desktop IPC native join handle"),
+        ("let thread = std::thread::Builder::new()", "fallible desktop IPC thread builder"),
+        ('.name("rustdesk-desktop-ipc".to_owned())', "named desktop IPC worker"),
+        ("run_desktop_ipc(readiness_tx)", "single desktop IPC runtime entry"),
+        ("completion_tx.send(outcome)", "desktop IPC outcome channel"),
+        ("tokio::task::spawn_blocking(move || thread.join())", "runtime-safe native join"),
+    ):
+        require_text(worker, text, label)
+    require_absent(worker, "std::thread::spawn", "infallible desktop IPC spawn")
+
+    runtime = extract_between(
+        ipc_source,
+        '#[tokio::main(flavor = "current_thread")]\nasync fn run_desktop_ipc(',
+        '\n#[cfg(target_os = "linux")]\n#[tokio::main(flavor = "current_thread")]',
+        "single desktop IPC runtime",
+    )
+    require_order(
+        runtime,
+        (
+            "Config::ensure_loaded();",
+            "prepare_main_ipc().await",
+            "prepare_windows_service_main_ipc().await",
+            "readiness.send(Ok(()))",
+            "tokio::join!(",
+            "run_main_ipc(main)",
+            "run_windows_service_main_ipc(service_main)",
+        ),
+        "all desktop IPC listeners before readiness on one runtime",
+    )
+    require_exact_count(
+        runtime,
+        "readiness.send(Err(err.to_string()))",
+        2,
+        "desktop IPC setup failure readiness reports",
+    )
+    for forbidden in ("std::thread", "Runtime::", "process::exit", "finish_graceful_shutdown"):
+        require_absent(runtime, forbidden, "nested runtime or worker-owned finalization")
+
+    owner = extract_between(
+        direct_service,
+        "async fn own_controlled_server_lifecycle(",
+        "\n/// Android/iOS receive the exact mobile listener-generation input.",
+        "retained desktop lifecycle owner",
+    )
+    require_order(
+        owner,
+        (
+            "ipc_worker.startup_receivers();",
+            "readiness = ipc_readiness",
+            "outcome = ipc_completion",
+            "ControlledServerStartupEvent::DesktopIpcReady(Ok(()))",
+            "let mut direct_listener = server.map(|server|",
+            "outcome = wait_for_direct_listener_task(&mut direct_listener)",
+            "outcome = ipc_worker.wait_for_completion()",
+            "finish_owned_controlled_server_lifecycle(",
+        ),
+        "IPC readiness before public listener and complete steady-state ownership",
+    )
+    completion = extract_between(
+        direct_service,
+        "async fn finish_owned_controlled_server_lifecycle(",
+        "\n/// Own the complete desktop controlled-side lifetime.",
+        "desktop lifecycle completion owner",
+    )
+    require_order(
+        completion,
+        (
+            "Some(task) => Some(task.await)",
+            "worker.wait_for_completion().await",
+            "worker.join().await",
+            "crate::server::finish_graceful_shutdown().await",
+        ),
+        "exact public/native joins before sole finalizer",
+    )
+    call = "crate::server::finish_graceful_shutdown().await"
+    if direct_service.count(call) != 1 or ipc_source.count(call) != 0 or server_source.count(call) != 0:
+        raise VerificationError("desktop finalizer does not have exactly one retained-owner caller")
+
+    for source, forbidden, label in (
+        (server_source, "SHUTDOWN_FINALIZER_STARTED", "obsolete finalizer election"),
+        (server_source, "pending::<std::convert::Infallible>", "obsolete finalizer follower"),
+        (server_source, "wait_for_local_ipc_shutdown", "obsolete polling IPC barrier call"),
+        (ipc_source, "wait_for_local_ipc_shutdown", "obsolete polling IPC barrier"),
+        (ipc_source, "LOCAL_IPC_DRAIN_CHANGED", "obsolete polling IPC notification"),
+    ):
+        require_absent(source, forbidden, label)
+
+    require_text(server_source, "start_direct_only(Some(generation)).await;", "Android generation transfer")
+    require_text(direct_service, "android_generation_current(my_generation)", "Android generation ownership")
+    protected = extract_between(
+        ipc_source,
+        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc)",
+        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+        "protected Unix IPC worker",
+    )
+    require_absent(protected, "finish_graceful_shutdown", "protected IPC desktop finalizer authority")
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11as</span>',
+        '\n\n<h2 id="excise">',
+        "desktop IPC retained-owner requirement",
+    )
+    for text, label in (
+        ("before signal or IPC admission", "pre-admission invariant requirement"),
+        ("one named <code>thread::Builder::spawn</code> worker", "fallible named worker requirement"),
+        ("single current-thread Tokio runtime", "single runtime requirement"),
+        ("readiness <span class=\"kw\">MUST NOT</span> be sent", "all-listener readiness requirement"),
+        ("join the exact native thread", "exact native join requirement"),
+        ("sole non-returning finalizer call", "sole finalizer requirement"),
+        ("Android retains foreground-service generation teardown", "Android lifecycle boundary"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        ("Desktop local IPC readiness, completion, and native-thread lifetime have one retained owner", "R-S11as title"),
+        ("<tr><td>167</td>", "desktop IPC Appendix C row"),
+        ("Desktop authority-bearing IPC started before mandatory invariants", "desktop IPC Appendix C disposition"),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership",
+        "desktop IPC retained-owner hardening ledger",
     )
 
 
@@ -9519,6 +9698,7 @@ def validate_sources(sources):
     validate_controlled_server_lifecycle_contract(sources)
     validate_shutdown_finalizer_ownership_contract(sources)
     validate_protected_service_outcome_ownership_contract(sources)
+    validate_desktop_ipc_retained_owner_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -16005,19 +16185,13 @@ def run_source_mutations(sources):
             "server_source",
             "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)",
             "SHUTDOWN_FAILURE_LATCHED.load(Ordering::Relaxed)",
-            "drain before acquire-selected process outcome",
-        ),
-        (
-            "server_source",
-            "crate::ipc::wait_for_local_ipc_shutdown().await;",
-            "crate::ipc::wait_for_local_ipc_shutdown_disabled().await;",
-            "drain before acquire-selected process outcome",
+            "authenticated drain before acquire-selected process outcome",
         ),
         (
             "server_source",
             "std::process::exit(exit_code);",
             "std::process::exit(0);",
-            "drain before acquire-selected process outcome",
+            "authenticated drain before acquire-selected process outcome",
         ),
         (
             "server_source",
@@ -16425,7 +16599,7 @@ def run_source_mutations(sources):
             "server_source",
             "install_controlled_server_shutdown_signals()",
             "install_controlled_server_shutdown_signals_after_admission()",
-            "controlled-server signal proof before IPC/listener admission",
+            "controlled-server invariant and signal proof before IPC/listener admission",
         ),
         (
             "server_source",
@@ -16449,61 +16623,31 @@ def run_source_mutations(sources):
             "direct_service",
             "_ = shutdown.cancelled() => ControlledServerLifecycleEvent::ShutdownRequested",
             "_ = std::future::pending::<()>() => ControlledServerLifecycleEvent::ShutdownRequested",
-            "controlled-server cancel/signal/listener join and failure finalization",
+            "controlled-server signal-aware readiness and retained listener/IPC selection",
         ),
         (
             "direct_service",
             "signal = signals.recv() => ControlledServerLifecycleEvent::Signal(signal)",
             "signal = std::future::pending() => ControlledServerLifecycleEvent::Signal(signal)",
-            "controlled-server cancel/signal/listener join and failure finalization",
+            "controlled-server signal-aware readiness and retained listener/IPC selection",
         ),
         (
             "direct_service",
             "outcome = wait_for_direct_listener_task(&mut direct_listener)",
             "outcome = std::future::pending()",
-            "controlled-server cancel/signal/listener join and failure finalization",
+            "controlled-server signal-aware readiness and retained listener/IPC selection",
         ),
         (
             "direct_service",
-            "request_graceful_shutdown_after_listener_failure();",
-            "request_graceful_shutdown();",
-            "controlled-server cancel/signal/listener join and failure finalization",
+            "let mut direct_listener = server.map(|server| {",
+            "let mut direct_listener = None; // detached public listener\n    server.map(|server| {",
+            "controlled-server signal-aware readiness and retained listener/IPC selection",
         ),
         (
             "direct_service",
-            "direct_listener_outcome = Some(task.await);",
-            "task.abort();",
-            "controlled-server cancel/signal/listener join and failure finalization",
-        ),
-        (
-            "direct_service",
-            "Ok(()) if crate::server::is_shutting_down() => None",
-            "Ok(()) => None",
-            "controlled-server cancel/signal/listener join and failure finalization",
-        ),
-        (
-            "direct_service",
-            'Err(err) => Some(format!("direct listener task failed: {err}"))',
-            "Err(_) => None",
-            "controlled-server cancel/signal/listener join and failure finalization",
-        ),
-        (
-            "direct_service",
-            "crate::server::finish_graceful_shutdown().await;",
-            "crate::server::begin_graceful_shutdown().await;",
-            "controlled-server cancel/signal/listener join and failure finalization",
-        ),
-        (
-            "direct_service",
-            "let direct_listener = tokio::spawn(async move {",
-            "let _detached_listener = tokio::spawn(async move {",
-            "retained controlled-server direct-listener ownership",
-        ),
-        (
-            "direct_service",
-            "own_controlled_server_lifecycle(Some(direct_listener), shutdown_signals).await;",
-            "own_controlled_server_lifecycle(None, shutdown_signals).await;",
-            "retained controlled-server direct-listener ownership",
+            "own_controlled_server_lifecycle(server, ipc_worker, shutdown_signals).await;",
+            "drop(ipc_worker);\n        own_controlled_server_lifecycle(server, detached_worker, shutdown_signals).await;",
+            "desktop IPC/public lifecycle ownership transfer",
         ),
         (
             "direct_service",
@@ -16513,14 +16657,8 @@ def run_source_mutations(sources):
         ),
         (
             "direct_service",
-            'log::info!("R-T9: {name} received");',
-            'log::info!("tokio::spawn(async {\\n        // The drain is initiated");',
-            "controlled-server lifecycle owner retains detached/blocking/exit authority",
-        ),
-        (
-            "direct_service",
-            '#[cfg(target_os = "ios")]\n    loop {\n        sleep(3600.).await;',
-            '#[cfg(not(target_os = "android"))]\n    loop {\n        sleep(3600.).await;',
+            '#[cfg(target_os = "ios")]\n        loop {\n            sleep(3600.).await;',
+            '#[cfg(not(target_os = "android"))]\n        loop {\n            sleep(3600.).await;',
             "iOS-only retained mobile parking loop",
         ),
         (
@@ -16615,9 +16753,9 @@ def run_source_mutations(sources):
         ),
         (
             "server_source",
-            "match std::future::pending::<std::convert::Infallible>().await {}",
-            "return;",
-            "one-owner/follower-wait before drain and exit",
+            "static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);",
+            "static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);\nstatic SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);",
+            "obsolete finalizer election",
         ),
         (
             "server_source",
@@ -16626,10 +16764,10 @@ def run_source_mutations(sources):
             "obsolete returning graceful-shutdown entry",
         ),
         (
-            "ipc_source",
-            "crate::server::finish_graceful_shutdown().await;",
-            "crate::server::finish_graceful_shutdown_disabled().await;",
-            "exact three graceful-shutdown finalizer callers are absent",
+            "direct_service",
+            "crate::server::finish_graceful_shutdown().await",
+            "crate::server::finish_graceful_shutdown_disabled().await",
+            "sole retained desktop finalizer caller is absent",
         ),
         (
             "requirements",
@@ -16639,15 +16777,15 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "Every graceful-shutdown caller retains process lifetime until the sole finalizer exits",
-            "A graceful-shutdown caller may return while another finalizer drains",
+            "The graceful-shutdown finalizer is non-returning and reachable only after retained lifecycle ownership is released",
+            "The graceful-shutdown finalizer may race detached lifecycle owners",
             "graceful-shutdown finalizer ownership requirement title",
         ),
         (
             "requirements",
-            "non-polling pending future",
-            "bounded timeout",
-            "finalizer follower wait requirement",
+            "obsolete atomic finalizer election",
+            "required atomic finalizer election",
+            "stale election deletion requirement",
         ),
         (
             "requirements",
@@ -16729,8 +16867,8 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "complete three-caller process-finalizer set",
-            "complete four-caller process-finalizer set",
+            "desktop process finalizer has one retained desktop-owner caller",
+            "desktop process finalizer has several detached callers",
             "corrected finalizer caller set requirement",
         ),
         (
@@ -16750,6 +16888,126 @@ def run_source_mutations(sources):
             "R-S11e-58 — protected Unix service IPC foreground lifecycle ownership",
             "R-S11e-58 — protected service IPC worker-owned exit",
             "protected service outcome hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9ci) desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59) =="',
+            'echo "== (3b-iii-d9ci) detached desktop IPC lifecycle (R-S11as/R-S11e-59) =="',
+            "desktop IPC shared gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0h) desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59) =="',
+            'echo "== (2b-iv-a-0h) detached desktop IPC lifecycle (R-S11as/R-S11e-59) =="',
+            "desktop IPC Apple gate",
+        ),
+        (
+            "desktop_ipc_validator",
+            "def run_mutations(sources",
+            "def skip_mutations(sources",
+            "focused validator mutation entry",
+        ),
+        (
+            "server_source",
+            "crate::direct_service::assert_startup_invariants()",
+            "crate::direct_service::assert_startup_invariants_after_admission()",
+            "controlled-server invariant and signal proof before IPC/listener admission",
+        ),
+        (
+            "server_source",
+            "crate::direct_service::start_direct_only(shutdown_signals).await;",
+            "std::thread::spawn(|| crate::ipc::start(\"\"));\n        crate::direct_service::start_direct_only(shutdown_signals).await;",
+            "detached desktop IPC admission",
+        ),
+        (
+            "common_source",
+            "static ref IS_SERVER:",
+            "static ref SERVER_RUNNING: bool = false;\n    static ref IS_SERVER:",
+            "obsolete optimistic server-running state",
+        ),
+        (
+            "ipc_source",
+            "let thread = std::thread::Builder::new()",
+            "let thread = std::thread::spawn(move || {}); //",
+            "fallible desktop IPC thread builder",
+        ),
+        (
+            "ipc_source",
+            '.name("rustdesk-desktop-ipc".to_owned())',
+            '.name("detached-ipc".to_owned())',
+            "named desktop IPC worker",
+        ),
+        (
+            "ipc_source",
+            '#[tokio::main(flavor = "current_thread")]\nasync fn run_desktop_ipc(',
+            '#[tokio::main]\nasync fn run_desktop_ipc(',
+            "single desktop IPC runtime",
+        ),
+        (
+            "ipc_source",
+            "readiness.send(Ok(()))",
+            "readiness.send(Err(\"not ready\".to_owned()))",
+            "all desktop IPC listeners before readiness on one runtime",
+        ),
+        (
+            "ipc_source",
+            "completion_tx.send(outcome)",
+            "drop(outcome)",
+            "desktop IPC outcome channel",
+        ),
+        (
+            "ipc_source",
+            "tokio::task::spawn_blocking(move || thread.join())",
+            "thread.join()",
+            "runtime-safe native join",
+        ),
+        (
+            "direct_service",
+            "readiness = ipc_readiness",
+            "readiness = std::future::pending()",
+            "controlled-server signal-aware readiness and retained listener/IPC selection",
+        ),
+        (
+            "direct_service",
+            "outcome = ipc_worker.wait_for_completion()",
+            "outcome = std::future::pending()",
+            "controlled-server signal-aware readiness and retained listener/IPC selection",
+        ),
+        (
+            "direct_service",
+            "worker.join().await",
+            "Ok(())",
+            "desktop public-task and native-worker join before finalizer",
+        ),
+        (
+            "direct_service",
+            "crate::server::finish_graceful_shutdown().await",
+            "crate::server::finish_graceful_shutdown_disabled().await",
+            "sole retained desktop finalizer caller is absent",
+        ),
+        (
+            "server_source",
+            "crate::server::input_service::fix_key_down_timeout_at_exit();",
+            "crate::ipc::wait_for_local_ipc_shutdown().await;\n    crate::server::input_service::fix_key_down_timeout_at_exit();",
+            "obsolete local-IPC polling barrier call",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11as</span>',
+            '<span class="id">R-S11az</span>',
+            "desktop IPC retained-owner requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>167</td>",
+            "<tr><td>9167</td>",
+            "desktop IPC Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership",
+            "R-S11e-59 — detached desktop IPC lifecycle",
+            "desktop IPC retained-owner hardening ledger",
         ),
         (
             "verify",
@@ -17666,8 +17924,8 @@ def run_source_mutations(sources):
         ),
         (
             "server_source",
-            "        };\n        crate::common::set_server_running(true);",
-            "        };\n        crate::platform::try_kill_broker();\n        crate::common::set_server_running(true);",
+            "        crate::direct_service::start_direct_only(shutdown_signals).await;",
+            "        crate::platform::try_kill_broker();\n        crate::direct_service::start_direct_only(shutdown_signals).await;",
             "Windows ambient privacy-broker authority remains in server_source: try_kill_broker",
         ),
         (
@@ -19691,6 +19949,9 @@ def main():
             "smoke_typed_probe": (repo / "examples/smoke_readiness.rs").read_text(encoding="utf-8"),
             "session_probe": (repo / "examples/probe_client.rs").read_text(encoding="utf-8"),
             "ipc_source": (repo / "src/ipc.rs").read_text(encoding="utf-8"),
+            "desktop_ipc_validator": (
+                repo / "scripts/verify-desktop-ipc-lifecycle.py"
+            ).read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),
             "closure": (repo / "scripts/verify-private-tree-closure.py").read_text(encoding="utf-8"),
             "finalizer": (repo / "scripts/finalize-release-set.py").read_text(encoding="utf-8"),

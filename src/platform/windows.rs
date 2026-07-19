@@ -4536,8 +4536,7 @@ pub fn is_win_10_or_greater() -> bool {
 }
 
 pub fn bootstrap() -> bool {
-    let service_supervisor_role =
-        std::env::args_os().nth(1).as_deref() == Some(OsStr::new("--service"));
+    let service_supervisor_role = crate::common::is_service_supervisor_process();
     let service_owned_role =
         service_supervisor_role || crate::common::is_service_owned_server_process();
     if service_owned_role {

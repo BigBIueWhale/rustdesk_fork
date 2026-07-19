@@ -556,6 +556,36 @@ def extract_through(source, start_token, end_token, label):
     return source[start : end + len(end_token)]
 
 
+def extract_html_requirement(source, requirement_id, label):
+    start_token = f'<div class="req"><span class="id">{requirement_id}</span>'
+    start = source.find(start_token)
+    if start < 0:
+        raise VerificationError(f"{label}: opening token is absent")
+    content_start = start + len(start_token)
+    end_candidates = (
+        source.find('\n\n<div class="req"', content_start),
+        source.find('\n\n<h2 ', content_start),
+    )
+    ends = [end for end in end_candidates if end >= 0]
+    if not ends:
+        raise VerificationError(f"{label}: closing token is absent")
+    return source[start : min(ends)]
+
+
+def extract_rust_test_group(source, first_test, test_count, label):
+    start = source.find(first_test)
+    if start < 0:
+        raise VerificationError(f"{label}: opening token is absent")
+    cursor = start + len(first_test)
+    next_test = '\n    #[test]\n    fn '
+    for _ in range(test_count):
+        end = source.find(next_test, cursor)
+        if end < 0:
+            raise VerificationError(f"{label}: closing token is absent")
+        cursor = end + len(next_test)
+    return source[start:end]
+
+
 def python_ast_span(source, node):
     lines = source.splitlines(keepends=True)
     line_offsets = [0]
@@ -7169,7 +7199,7 @@ def validate_macos_service_principal_contract(sources):
 
     core_service_dispatch = extract_between(
         core_main,
-        '} else if args[0] == "--service" {',
+        'log::info!("start --service");',
         "\n            return None;",
         "common service dispatch",
     )
@@ -7503,7 +7533,7 @@ def validate_service_owned_server_role_contract(sources):
     role_policy = extract_between(
         common,
         "enum ServiceOwnedServerRole {",
-        "\npub struct SimpleCallOnReturn",
+        "\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub(crate) enum ServiceSupervisorRole",
         "service-owned process-role policy",
     )
     for text, label in (
@@ -7575,7 +7605,7 @@ def validate_service_owned_server_role_contract(sources):
     require_order(
         windows_bootstrap,
         (
-            'std::env::args_os().nth(1).as_deref() == Some(OsStr::new("--service"))',
+            "let service_supervisor_role = crate::common::is_service_supervisor_process();",
             "service_supervisor_role || crate::common::is_service_owned_server_process()",
             "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
         ),
@@ -7584,10 +7614,10 @@ def validate_service_owned_server_role_contract(sources):
     if "SERVICE_OWNED_SERVER_ARG" in windows_bootstrap or ".any(|arg|" in windows_bootstrap:
         raise VerificationError("Windows bootstrap still searches process arguments for a role marker")
 
-    role_tests = extract_between(
+    role_tests = extract_rust_test_group(
         common,
         "fn r_s11e49_service_owned_server_role_requires_exact_arguments()",
-        "\n    #[test]\n    fn custom_client_app_name_identifier_contract()",
+        2,
         "service-owned process-role regressions",
     )
     for text, label in (
@@ -7620,11 +7650,8 @@ def validate_service_owned_server_role_contract(sources):
     ):
         require_text(role_tests, text, label)
 
-    role_requirement = extract_between(
-        requirements,
-        '<div class="req"><span class="id">R-S11ai</span>',
-        '\n\n<h2 id="excise">',
-        "exact service-owned process-role requirement",
+    role_requirement = extract_html_requirement(
+        requirements, "R-S11ai", "exact service-owned process-role requirement"
     )
     for text, label in (
         (
@@ -7661,6 +7688,215 @@ def validate_service_owned_server_role_contract(sources):
     )
 
 
+def validate_service_supervisor_role_contract(sources):
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    common = sources["common_source"]
+    core_main = sources["core_main"]
+    windows = sources["windows_source"]
+
+    require_text(
+        verify,
+        'echo "== (3b-iii-d9c9) exact desktop service-supervisor process role (R-S11aj/R-S11e-50) =="',
+        "exact service-supervisor role source gate",
+    )
+
+    role_policy = extract_between(
+        common,
+        "enum ServiceSupervisorRole {",
+        "\npub struct SimpleCallOnReturn",
+        "service-supervisor process-role policy",
+    )
+    for text, label in (
+        ("Absent,", "marker-absent supervisor role"),
+        ("Exact,", "exact supervisor role"),
+        ("Malformed,", "malformed supervisor role"),
+        ("let mut marker_present = false;", "marker-absent supervisor state initialization"),
+        ("let mut exact = true;", "exact supervisor state initialization"),
+        ("let mut count = 0;", "supervisor argument count initialization"),
+        (
+            "for (index, arg) in args.into_iter().enumerate() {",
+            "complete supervisor-role argument iteration",
+        ),
+        (
+            'marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "malformed supervisor marker detection",
+        ),
+        (
+            'exact &= index == 0 && arg == std::ffi::OsStr::new("--service");',
+            "singleton supervisor argument position",
+        ),
+        ("count += 1;", "complete supervisor argument count"),
+        ("if exact && count == 1 {", "singleton supervisor argument count"),
+        (
+            "} else if marker_present {\n        ServiceSupervisorRole::Malformed",
+            "malformed supervisor marker classification",
+        ),
+        (
+            "service_supervisor_role_from_args(std::env::args_os().skip(1))",
+            "supervisor argv-zero exclusion",
+        ),
+        (
+            "current_service_supervisor_role() == ServiceSupervisorRole::Exact",
+            "exact-only supervisor boolean consumer",
+        ),
+    ):
+        require_text(role_policy, text, label)
+    if ".any(|arg|" in role_policy or ".nth(1)" in role_policy:
+        raise VerificationError("service-supervisor role still uses prefix/search admission")
+
+    core_entry = extract_between(
+        core_main,
+        "pub fn core_main() -> Option<Vec<String>> {",
+        '\n    if !crate::common::global_init()',
+        "service-supervisor role process entry",
+    )
+    supervisor_rejection = extract_between(
+        core_entry,
+        "if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {",
+        "\n    if crate::common::current_service_owned_server_role()",
+        "malformed supervisor rejection and Linux exact-role consumption",
+    )
+    require_order(
+        supervisor_rejection,
+        (
+            "Rejected malformed service supervisor role",
+            "std::process::exit(1);",
+        ),
+        "malformed supervisor rejection and Linux exact-role consumption",
+    )
+    if "return None;" in supervisor_rejection:
+        raise VerificationError(
+            "malformed supervisor rejection and Linux exact-role consumption: "
+            "malformed supervisor role may return successfully"
+        )
+    require_order(
+        core_entry,
+        (
+            "current_service_supervisor_role()",
+            "ServiceSupervisorRole::Malformed",
+            "Rejected malformed service supervisor role",
+            "service_supervisor_role\n        == crate::common::ServiceSupervisorRole::Exact",
+            "|| crate::common::is_service_owned_server_process();",
+        ),
+        "malformed supervisor rejection and Linux exact-role consumption",
+    )
+    if core_main.index("current_service_supervisor_role()") >= core_main.index(
+        "if !crate::common::global_init()"
+    ):
+        raise VerificationError("malformed service-supervisor role is not rejected before global init")
+    service_dispatch = extract_between(
+        core_main,
+        '} else if args[0] == "--uninstall-service" {',
+        '} else if args[0] == "--server" {',
+        "desktop service-supervisor dispatch",
+    )
+    require_text(
+        service_dispatch,
+        "} else if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {",
+        "exact supervisor dispatch",
+    )
+    if 'args[0] == "--service"' in core_main or "args_os().nth(1)" in core_main:
+        raise VerificationError("core process entry still admits a first-argument-only supervisor role")
+
+    windows_bootstrap = extract_between(
+        windows,
+        "pub fn bootstrap() -> bool {",
+        "\n}\n\n#[cfg(not(debug_assertions))]",
+        "Windows service-owned configuration bootstrap",
+    )
+    require_order(
+        windows_bootstrap,
+        (
+            "let service_supervisor_role = crate::common::is_service_supervisor_process();",
+            "service_supervisor_role || crate::common::is_service_owned_server_process()",
+            "Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)",
+        ),
+        "Windows exact supervisor configuration authority",
+    )
+    if "args_os().nth(1)" in windows_bootstrap or ".any(|arg|" in windows_bootstrap:
+        raise VerificationError("Windows bootstrap still uses prefix/search supervisor admission")
+
+    role_tests = extract_between(
+        common,
+        "fn r_s11e50_service_supervisor_role_requires_exact_arguments()",
+        '\n    #[cfg(target_os = "linux")]\n    #[test]',
+        "service-supervisor process-role regressions",
+    )
+    for text, label in (
+        ('service_supervisor_role_from_args(["--service"])', "exact singleton supervisor fixture"),
+        ('vec!["--service", "--extra"]', "supervisor suffix fixture"),
+        ('vec!["--extra", "--service"]', "supervisor prefix fixture"),
+        ('vec!["--service", "--service"]', "duplicate supervisor marker fixture"),
+        ('vec!["--server", "--service"]', "other-command supervisor marker fixture"),
+        (
+            'vec!["--service", SERVICE_OWNED_SERVER_ARG]',
+            "mixed protected-role fixture",
+        ),
+        (
+            "fn r_s11e50_marker_free_roles_cannot_become_service_supervisor()",
+            "marker-free supervisor regression",
+        ),
+        ("Vec::<&str>::new()", "empty supervisor-role fixture"),
+        (
+            'vec!["--server", SERVICE_OWNED_SERVER_ARG]',
+            "service-owned child is not supervisor fixture",
+        ),
+        ('vec!["--tray"]', "unrelated marker-free role fixture"),
+        ("ServiceSupervisorRole::Absent", "absent supervisor-role assertion"),
+    ):
+        require_text(role_tests, text, label)
+
+    for key, text, label in (
+        ("service_systemd", "ExecStart=/usr/bin/rustdesk --service\n", "systemd exact supervisor role"),
+        ("service_sysv", "DAEMON_ARGS=--service\n", "SysV exact supervisor role"),
+        ("service_openrc", 'command_args="--service"\n', "OpenRC exact supervisor role"),
+        ("service_runit", "exec /usr/bin/rustdesk --service\n", "runit exact supervisor role"),
+        ("service_manual", "exec /usr/bin/rustdesk --service\n", "manual exact supervisor role"),
+        ("windows_service_wxs", 'Arguments="--service"', "Windows MSI exact supervisor role"),
+    ):
+        require_text(sources[key], text, label)
+
+    role_requirement = extract_html_requirement(
+        requirements, "R-S11aj", "exact service-supervisor process-role requirement"
+    )
+    for text, label in (
+        (
+            "return <code>Exact</code> only for the singleton vector <code>[--service]</code>",
+            "exact singleton supervisor clause",
+        ),
+        (
+            "reject <code>Malformed</code> before global initialization",
+            "early malformed supervisor rejection clause",
+        ),
+        ("There is no trailing-argument compatibility mode", "no supervisor compatibility fallback"),
+        (
+            "Windows machine-configuration selection and its write-authority bit",
+            "Windows supervisor write-authority clause",
+        ),
+    ):
+        require_text(role_requirement, text, label)
+    for text, label in (
+        ('<span class="id">R-S11aj</span>', "exact supervisor process-role requirement"),
+        (
+            "Desktop service-supervisor role is the exact singleton",
+            "exact supervisor process-role authority clause",
+        ),
+        ("<tr><td>158</td>", "exact supervisor process-role Appendix C row"),
+        (
+            "Desktop service-supervisor role admission ignored every argument after",
+            "exact supervisor process-role Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-50 — exact desktop service-supervisor process role",
+        "exact supervisor process-role hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -7677,6 +7913,7 @@ def validate_sources(sources):
     validate_macos_service_principal_contract(sources)
     validate_linux_service_child_principal_contract(sources)
     validate_service_owned_server_role_contract(sources)
+    validate_service_supervisor_role_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -14246,6 +14483,262 @@ def run_source_mutations(sources):
             "marker-free unrelated-role fixture",
         ),
         (
+            "verify",
+            'echo "== (3b-iii-d9c9) exact desktop service-supervisor process role (R-S11aj/R-S11e-50) =="',
+            'echo "== (3b-iii-d9c9) prefix desktop service-supervisor process role (R-S11aj/R-S11e-50) =="',
+            "exact service-supervisor role source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11aj</span>',
+            '<span class="id">R-S11ak</span>',
+            "exact service-supervisor process-role requirement",
+        ),
+        (
+            "requirements",
+            "Desktop service-supervisor role is the exact singleton",
+            "Desktop service-supervisor role is a compatible argument prefix",
+            "exact supervisor process-role authority clause",
+        ),
+        (
+            "requirements",
+            "return <code>Exact</code> only for the singleton vector <code>[--service]</code>",
+            "return <code>Exact</code> for every vector beginning with <code>[--service]</code>",
+            "exact singleton supervisor clause",
+        ),
+        (
+            "requirements",
+            "reject <code>Malformed</code> before global initialization",
+            "reject <code>Malformed</code> after global initialization",
+            "early malformed supervisor rejection clause",
+        ),
+        (
+            "requirements",
+            "There is no trailing-argument compatibility mode",
+            "A trailing-argument compatibility mode remains supported",
+            "no supervisor compatibility fallback",
+        ),
+        (
+            "requirements",
+            "Windows machine-configuration selection and its write-authority bit",
+            "Windows user-configuration selection and its write-authority bit",
+            "Windows supervisor write-authority clause",
+        ),
+        (
+            "requirements",
+            "<tr><td>158</td>",
+            "<tr><td>9158</td>",
+            "exact supervisor process-role Appendix C row",
+        ),
+        (
+            "requirements",
+            "Desktop service-supervisor role admission ignored every argument after",
+            "Desktop service-supervisor role admission always validated every argument after",
+            "exact supervisor process-role Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-50 — exact desktop service-supervisor process role",
+            "R-S11e-50 — prefix-compatible desktop service-supervisor process role",
+            "exact supervisor process-role hardening ledger",
+        ),
+        (
+            "common_source",
+            "    Malformed,\n}\n\npub(crate) fn service_supervisor_role_from_args",
+            "    Invalid,\n}\n\npub(crate) fn service_supervisor_role_from_args",
+            "malformed supervisor role",
+        ),
+        (
+            "common_source",
+            "    let mut marker_present = false;\n"
+            "    let mut exact = true;\n"
+            "    let mut count = 0;\n"
+            "    for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "    let mut marker_present = true;\n"
+            "    let mut exact = true;\n"
+            "    let mut count = 0;\n"
+            "    for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "marker-absent supervisor state initialization",
+        ),
+        (
+            "common_source",
+            "    let mut marker_present = false;\n"
+            "    let mut exact = true;\n"
+            "    let mut count = 0;\n"
+            "    for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "    let mut marker_present = false;\n"
+            "    let mut exact = false;\n"
+            "    let mut count = 0;\n"
+            "    for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "exact supervisor state initialization",
+        ),
+        (
+            "common_source",
+            "    let mut marker_present = false;\n"
+            "    let mut exact = true;\n"
+            "    let mut count = 0;\n"
+            "    for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "    let mut marker_present = false;\n"
+            "    let mut exact = true;\n"
+            "    let mut count = 1;\n"
+            "    for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "supervisor argument count initialization",
+        ),
+        (
+            "common_source",
+            "for (index, arg) in args.into_iter().enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "for (index, arg) in args.into_iter().take(1).enumerate() {\n"
+            "        let arg = arg.as_ref();\n"
+            '        marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "complete supervisor-role argument iteration",
+        ),
+        (
+            "common_source",
+            'marker_present |= arg == std::ffi::OsStr::new("--service");',
+            "marker_present |= false;",
+            "malformed supervisor marker detection",
+        ),
+        (
+            "common_source",
+            '        exact &= index == 0 && arg == std::ffi::OsStr::new("--service");',
+            '        exact &= index <= 1 && arg == std::ffi::OsStr::new("--service");',
+            "singleton supervisor argument position",
+        ),
+        (
+            "common_source",
+            "        count += 1;\n    }\n    if exact && count == 1 {",
+            "        count += 0;\n    }\n    if exact && count == 1 {",
+            "complete supervisor argument count",
+        ),
+        (
+            "common_source",
+            "    if exact && count == 1 {\n        ServiceSupervisorRole::Exact",
+            "    if exact && count >= 1 {\n        ServiceSupervisorRole::Exact",
+            "singleton supervisor argument count",
+        ),
+        (
+            "common_source",
+            "    } else if marker_present {\n        ServiceSupervisorRole::Malformed",
+            "    } else if false {\n        ServiceSupervisorRole::Malformed",
+            "malformed supervisor marker classification",
+        ),
+        (
+            "common_source",
+            "service_supervisor_role_from_args(std::env::args_os().skip(1))",
+            "service_supervisor_role_from_args(std::env::args_os().skip(2))",
+            "supervisor argv-zero exclusion",
+        ),
+        (
+            "common_source",
+            "current_service_supervisor_role() == ServiceSupervisorRole::Exact",
+            "current_service_supervisor_role() != ServiceSupervisorRole::Exact",
+            "exact-only supervisor boolean consumer",
+        ),
+        (
+            "core_main",
+            "if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {",
+            "if service_supervisor_role == crate::common::ServiceSupervisorRole::Absent {",
+            "malformed supervisor rejection and Linux exact-role consumption",
+        ),
+        (
+            "core_main",
+            '        eprintln!(\n            "Rejected malformed service supervisor role; expected exact arguments: --service"\n        );\n        std::process::exit(1);',
+            '        eprintln!(\n            "Rejected malformed service supervisor role; expected exact arguments: --service"\n        );\n        return None;',
+            "malformed supervisor rejection and Linux exact-role consumption",
+        ),
+        (
+            "core_main",
+            "    let linux_service_owned_config_role = service_supervisor_role\n        == crate::common::ServiceSupervisorRole::Exact\n        ||",
+            "    let linux_service_owned_config_role = service_supervisor_role\n        != crate::common::ServiceSupervisorRole::Exact\n        ||",
+            "malformed supervisor rejection and Linux exact-role consumption",
+        ),
+        (
+            "core_main",
+            "} else if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {",
+            "} else if service_supervisor_role != crate::common::ServiceSupervisorRole::Exact {",
+            "exact supervisor dispatch",
+        ),
+        (
+            "windows_source",
+            "let service_supervisor_role = crate::common::is_service_supervisor_process();",
+            "let service_supervisor_role = true;",
+            "Windows exact service-role configuration authority",
+        ),
+        (
+            "common_source",
+            "fn r_s11e50_service_supervisor_role_requires_exact_arguments()",
+            "fn r_s11e50_service_supervisor_role_accepts_argument_prefixes()",
+            "service-supervisor process-role regressions",
+        ),
+        (
+            "common_source",
+            '            vec!["--service", "--extra"],',
+            '            vec!["--server", "--extra"],',
+            "supervisor suffix fixture",
+        ),
+        (
+            "common_source",
+            "fn r_s11e50_marker_free_roles_cannot_become_service_supervisor()",
+            "fn r_s11e50_marker_free_roles_may_become_service_supervisor()",
+            "marker-free supervisor regression",
+        ),
+        (
+            "common_source",
+            '            vec!["--server", SERVICE_OWNED_SERVER_ARG],',
+            '            vec!["--service", SERVICE_OWNED_SERVER_ARG],',
+            "service-owned child is not supervisor fixture",
+        ),
+        (
+            "service_systemd",
+            "ExecStart=/usr/bin/rustdesk --service\n",
+            "ExecStart=/usr/bin/rustdesk --service --extra\n",
+            "systemd exact supervisor role",
+        ),
+        (
+            "service_sysv",
+            "DAEMON_ARGS=--service\n",
+            "DAEMON_ARGS='--service --extra'\n",
+            "SysV exact supervisor role",
+        ),
+        (
+            "service_openrc",
+            'command_args="--service"\n',
+            'command_args="--service --extra"\n',
+            "OpenRC exact supervisor role",
+        ),
+        (
+            "service_runit",
+            "exec /usr/bin/rustdesk --service\n",
+            "exec /usr/bin/rustdesk --service --extra\n",
+            "runit exact supervisor role",
+        ),
+        (
+            "service_manual",
+            "exec /usr/bin/rustdesk --service\n",
+            "exec /usr/bin/rustdesk --service --extra\n",
+            "manual exact supervisor role",
+        ),
+        (
+            "windows_service_wxs",
+            'Arguments="--service"',
+            'Arguments="--service --extra"',
+            "Windows MSI exact supervisor role",
+        ),
+        (
             "linux_source",
             "hbb_common::libc::PR_SET_PDEATHSIG,",
             "hbb_common::libc::PR_GET_PDEATHSIG,",
@@ -14894,13 +15387,13 @@ def run_source_mutations(sources):
             "service_runit",
             "exec /usr/bin/rustdesk --service",
             "exec /usr/bin/rustdesk --server",
-            "runit foreground supervisor wrapper differs",
+            "runit exact supervisor role",
         ),
         (
             "service_manual",
             "exec /usr/bin/rustdesk --service",
             "exec /usr/bin/rustdesk --server",
-            "manual foreground supervisor wrapper differs",
+            "manual exact supervisor role",
         ),
         (
             "verify",
@@ -16518,12 +17011,15 @@ def main():
             "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),
             "version_metadata_checker_mode": os.lstat(repo / "scripts/version-metadata-check.sh").st_mode,
             "debian": (repo / "scripts/build-debian.sh").read_text(encoding="utf-8"),
+            "service_systemd": (repo / "res/rustdesk.service").read_text(encoding="utf-8"),
+            "service_sysv": (repo / "res/rustdesk.init").read_text(encoding="utf-8"),
             "service_openrc": (repo / "res/service-managers/openrc/rustdesk").read_text(encoding="utf-8"),
             "service_openrc_mode": os.lstat(repo / "res/service-managers/openrc/rustdesk").st_mode,
             "service_runit": (repo / "res/service-managers/runit/run").read_text(encoding="utf-8"),
             "service_runit_mode": os.lstat(repo / "res/service-managers/runit/run").st_mode,
             "service_manual": (repo / "res/service-managers/manual/rustdesk-service").read_text(encoding="utf-8"),
             "service_manual_mode": os.lstat(repo / "res/service-managers/manual/rustdesk-service").st_mode,
+            "windows_service_wxs": (repo / "res/msi/Package/Components/RustDesk.wxs").read_text(encoding="utf-8"),
             "android": (repo / "scripts/build-android.sh").read_text(encoding="utf-8"),
             "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
             "docs": (repo / "docs/VERSIONING.md").read_text(encoding="utf-8"),

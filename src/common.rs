@@ -155,6 +155,44 @@ pub fn is_service_owned_server_process() -> bool {
     current_service_owned_server_role() == ServiceOwnedServerRole::Exact
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ServiceSupervisorRole {
+    Absent,
+    Exact,
+    Malformed,
+}
+
+pub(crate) fn service_supervisor_role_from_args<I, S>(args: I) -> ServiceSupervisorRole
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut marker_present = false;
+    let mut exact = true;
+    let mut count = 0;
+    for (index, arg) in args.into_iter().enumerate() {
+        let arg = arg.as_ref();
+        marker_present |= arg == std::ffi::OsStr::new("--service");
+        exact &= index == 0 && arg == std::ffi::OsStr::new("--service");
+        count += 1;
+    }
+    if exact && count == 1 {
+        ServiceSupervisorRole::Exact
+    } else if marker_present {
+        ServiceSupervisorRole::Malformed
+    } else {
+        ServiceSupervisorRole::Absent
+    }
+}
+
+pub(crate) fn current_service_supervisor_role() -> ServiceSupervisorRole {
+    service_supervisor_role_from_args(std::env::args_os().skip(1))
+}
+
+pub(crate) fn is_service_supervisor_process() -> bool {
+    current_service_supervisor_role() == ServiceSupervisorRole::Exact
+}
+
 pub struct SimpleCallOnReturn {
     pub b: bool,
     pub f: Box<dyn Fn() + Send + 'static>,
@@ -1525,6 +1563,43 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn r_s11e50_service_supervisor_role_requires_exact_arguments() {
+        assert_eq!(
+            service_supervisor_role_from_args(["--service"]),
+            ServiceSupervisorRole::Exact
+        );
+        for args in [
+            vec!["--service", "--extra"],
+            vec!["--extra", "--service"],
+            vec!["--service", "--service"],
+            vec!["--server", "--service"],
+            vec!["--service", SERVICE_OWNED_SERVER_ARG],
+        ] {
+            assert_eq!(
+                service_supervisor_role_from_args(args),
+                ServiceSupervisorRole::Malformed
+            );
+        }
+    }
+
+    #[test]
+    fn r_s11e50_marker_free_roles_cannot_become_service_supervisor() {
+        for args in [
+            Vec::<&str>::new(),
+            vec!["--server"],
+            vec!["--server", SERVICE_OWNED_SERVER_ARG],
+            vec!["--tray"],
+            vec!["--server", "--extra"],
+        ] {
+            assert_eq!(
+                service_supervisor_role_from_args(args),
+                ServiceSupervisorRole::Absent
+            );
+        }
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn linux_run_me_child_excludes_inherited_nonstdio_descriptors() {

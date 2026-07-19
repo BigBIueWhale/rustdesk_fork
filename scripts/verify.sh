@@ -3681,7 +3681,7 @@ if [ -z "$role_reject_line" ] || [ -z "$global_init_line" ] || [ "$role_reject_l
   r_s11e49="$r_s11e49 malformed-role-not-rejected-before-global-init"
 fi
 for binding in \
-  'std::env::args_os().nth(1).as_deref() == Some(OsStr::new("--service"))' \
+  'let service_supervisor_role = crate::common::is_service_supervisor_process();' \
   'service_supervisor_role || crate::common::is_service_owned_server_process()' \
   'Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)'; do
   grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e49="$r_s11e49 windows-bootstrap-exact-role-consumer-missing"
@@ -3718,6 +3718,101 @@ grep -qF 'R-S11e-49 — exact service-owned server process role' HARDENING_STATU
   || r_s11e49="$r_s11e49 hardening-ledger-missing"
 if [ -n "$r_s11e49" ]; then echo "  FAIL R-S11e-49 exact service-owned server process role:$r_s11e49"; rc=1; else
   echo "  ok  R-S11e-49 service-owned process policy accepts only exact --server + marker argv, rejects malformed marker-bearing entry before initialization, and keeps Windows bootstrap on that shared classifier"; fi
+
+# (3b-iii-d9c9) R-S11aj/R-S11e-50: the privileged desktop service
+# supervisor is one exact singleton role, not a first-argument prefix.
+echo "== (3b-iii-d9c9) exact desktop service-supervisor process role (R-S11aj/R-S11e-50) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e50_ --color never
+r_s11e50=
+service_supervisor_role_policy=$(awk '/enum ServiceSupervisorRole/,/^pub struct SimpleCallOnReturn/' src/common.rs)
+service_supervisor_role_tests=$(awk '/fn r_s11e50_service_supervisor_role_requires_exact_arguments\(\)/,/^    #\[cfg\(target_os = "linux"\)\]/' src/common.rs)
+core_service_supervisor_entry=$(awk '/pub fn core_main\(\) -> Option<Vec<String>> {/,/if !crate::common::global_init\(\)/' src/core_main.rs)
+core_service_supervisor_rejection=$(awk '/if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {/,/if crate::common::current_service_owned_server_role\(\)/' src/core_main.rs)
+core_service_supervisor_dispatch=$(awk '/args\[0\] == "--uninstall-service"/,/args\[0\] == "--server"/' src/core_main.rs)
+windows_bootstrap=$(awk '/pub fn bootstrap\(\) -> bool {/,/^}/' src/platform/windows.rs)
+for binding in \
+  'enum ServiceSupervisorRole {' \
+  'Absent,' \
+  'Exact,' \
+  'Malformed,' \
+  'let mut marker_present = false;' \
+  'let mut exact = true;' \
+  'let mut count = 0;' \
+  'for (index, arg) in args.into_iter().enumerate() {' \
+  'marker_present |= arg == std::ffi::OsStr::new("--service");' \
+  'exact &= index == 0 && arg == std::ffi::OsStr::new("--service");' \
+  'count += 1;' \
+  'if exact && count == 1 {' \
+  'ServiceSupervisorRole::Exact' \
+  '} else if marker_present {' \
+  'ServiceSupervisorRole::Malformed' \
+  'service_supervisor_role_from_args(std::env::args_os().skip(1))' \
+  'current_service_supervisor_role() == ServiceSupervisorRole::Exact'; do
+  grep -qF "$binding" <<<"$service_supervisor_role_policy" || r_s11e50="$r_s11e50 exact-supervisor-policy-missing"
+done
+for binding in \
+  'let service_supervisor_role = crate::common::current_service_supervisor_role();' \
+  'service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed' \
+  '== crate::common::ServiceSupervisorRole::Exact' \
+  '|| crate::common::is_service_owned_server_process();'; do
+  grep -qF "$binding" <<<"$core_service_supervisor_entry" || r_s11e50="$r_s11e50 core-entry-exact-supervisor-consumer-missing"
+done
+for binding in \
+  'Rejected malformed service supervisor role' \
+  'std::process::exit(1);'; do
+  grep -qF "$binding" <<<"$core_service_supervisor_rejection" || r_s11e50="$r_s11e50 malformed-supervisor-rejection-missing"
+done
+if grep -qF 'return None;' <<<"$core_service_supervisor_rejection"; then
+  r_s11e50="$r_s11e50 malformed-supervisor-may-return-successfully"
+fi
+grep -qF 'service_supervisor_role == crate::common::ServiceSupervisorRole::Exact' <<<"$core_service_supervisor_dispatch" \
+  || r_s11e50="$r_s11e50 service-dispatch-exact-supervisor-consumer-missing"
+supervisor_reject_line=$(grep -nF 'current_service_supervisor_role()' <<<"$core_service_supervisor_entry" | head -n1 | cut -d: -f1 || true)
+global_init_line=$(grep -nF 'if !crate::common::global_init()' <<<"$core_service_supervisor_entry" | head -n1 | cut -d: -f1 || true)
+if [ -z "$supervisor_reject_line" ] || [ -z "$global_init_line" ] || [ "$supervisor_reject_line" -ge "$global_init_line" ]; then
+  r_s11e50="$r_s11e50 malformed-supervisor-not-rejected-before-global-init"
+fi
+for binding in \
+  'let service_supervisor_role = crate::common::is_service_supervisor_process();' \
+  'service_supervisor_role || crate::common::is_service_owned_server_process()' \
+  'Config::initialize_windows_service_owned_root(&program_data, service_supervisor_role)'; do
+  grep -qF "$binding" <<<"$windows_bootstrap" || r_s11e50="$r_s11e50 windows-bootstrap-exact-supervisor-consumer-missing"
+done
+if grep -qF 'std::env::args_os().nth(1).as_deref()' src/core_main.rs src/platform/windows.rs \
+  || grep -qF 'args[0] == "--service"' src/core_main.rs; then
+  r_s11e50="$r_s11e50 first-argument-only-supervisor-admission-present"
+fi
+for binding in \
+  'fn r_s11e50_service_supervisor_role_requires_exact_arguments()' \
+  'service_supervisor_role_from_args(["--service"])' \
+  'vec!["--service", "--extra"]' \
+  'vec!["--extra", "--service"]' \
+  'vec!["--service", "--service"]' \
+  'vec!["--server", "--service"]' \
+  'vec!["--service", SERVICE_OWNED_SERVER_ARG]' \
+  'fn r_s11e50_marker_free_roles_cannot_become_service_supervisor()' \
+  'Vec::<&str>::new()' \
+  'vec!["--server", SERVICE_OWNED_SERVER_ARG]' \
+  'vec!["--tray"]' \
+  'ServiceSupervisorRole::Absent'; do
+  grep -qF "$binding" <<<"$service_supervisor_role_tests" || r_s11e50="$r_s11e50 focused-regression-missing"
+done
+grep -qFx 'ExecStart=/usr/bin/rustdesk --service' res/rustdesk.service || r_s11e50="$r_s11e50 systemd-exact-role-missing"
+grep -qFx 'DAEMON_ARGS=--service' res/rustdesk.init || r_s11e50="$r_s11e50 sysv-exact-role-missing"
+grep -qF 'command_args="--service"' res/service-managers/openrc/rustdesk || r_s11e50="$r_s11e50 openrc-exact-role-missing"
+grep -qFx 'exec /usr/bin/rustdesk --service' res/service-managers/runit/run || r_s11e50="$r_s11e50 runit-exact-role-missing"
+grep -qFx 'exec /usr/bin/rustdesk --service' res/service-managers/manual/rustdesk-service || r_s11e50="$r_s11e50 manual-exact-role-missing"
+grep -qF 'Arguments="--service"' res/msi/Package/Components/RustDesk.wxs || r_s11e50="$r_s11e50 windows-msi-exact-role-missing"
+grep -qF '<span class="id">R-S11aj</span>' requirements.html || r_s11e50="$r_s11e50 normative-requirement-missing"
+grep -qF 'Desktop service-supervisor role is the exact singleton' requirements.html \
+  || r_s11e50="$r_s11e50 normative-exact-supervisor-clause-missing"
+grep -qF '<tr><td>158</td>' requirements.html || r_s11e50="$r_s11e50 appendix-row-missing"
+grep -qF 'Desktop service-supervisor role admission ignored every argument after' requirements.html \
+  || r_s11e50="$r_s11e50 appendix-disposition-missing"
+grep -qF 'R-S11e-50 — exact desktop service-supervisor process role' HARDENING_STATUS.md \
+  || r_s11e50="$r_s11e50 hardening-ledger-missing"
+if [ -n "$r_s11e50" ]; then echo "  FAIL R-S11e-50 exact desktop service-supervisor process role:$r_s11e50"; rc=1; else
+  echo "  ok  R-S11e-50 supervisor policy accepts only singleton --service, rejects malformed marker-bearing entry before initialization, and binds Linux config, common dispatch, and Windows write authority to the shared exact classifier"; fi
 
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and

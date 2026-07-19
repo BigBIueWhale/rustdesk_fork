@@ -3233,10 +3233,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   service-child role consumer retains the shared boolean helper, which now means only `Exact`. `core_main()` checks
   the three-state result at its first statement and exits 1 for `Malformed`, before `global_init`, Linux config-root
   selection, Windows bootstrap, or command dispatch. Thus malformed marker text cannot silently downgrade to an
-  ordinary `--server`. Windows bootstrap now recognizes only argument-one `--service` or the shared exact child
-  predicate, and passes write authority only for the supervisor role. Executable identity, numeric OS principal,
-  service parent/generation, fixed installed root, and protected-peer credentials remain separate proofs; none is
-  inferred from `argv[0]` or marker text.
+  ordinary `--server`. Windows bootstrap now recognizes only the shared exact `--service` supervisor predicate or
+  the exact child predicate, and passes write authority only for the supervisor role. Executable identity, numeric
+  OS principal, service parent/generation, fixed installed root, and protected-peer credentials remain separate
+  proofs; none is inferred from `argv[0]` or marker text.
 
   Primary contracts and classification: Rust documents that the first `std::env::args` element may be arbitrary and
   must not be used as security identity, and directs callers to `args_os` when arguments may not be Unicode
@@ -3291,6 +3291,91 @@ unreachable and a source/test/AST gate prevents reintroduction.
   inspected or changed. The long release verifier, service fixtures, full release build, native Apple/Windows runs,
   and exact installed-artifact execution remain excluded. Publication evidence is recorded in the private audit
   journal after commit and push.
+- **R-S11e-50 — exact desktop service-supervisor process role — SOURCE-GATED 2026-07-19;
+  NATIVE WINDOWS/MACOS AND EXACT INSTALLED-ARTIFACT EVIDENCE REMAIN WITH R-R2/R-B2.** Platforms: Linux and Windows
+  installed service supervisors, plus the shared Linux/Windows/macOS desktop process entry. The installed macOS
+  LaunchDaemon uses the separate dedicated no-argument `service` binary and is unchanged. Endpoint/action: selecting
+  the root/LocalSystem service supervisor, Linux service-owned
+  descriptor/working-directory/config-root policy, Windows machine-config write authority, and common service
+  dispatch. Boundary: caller-supplied process arguments ↔ the exact supervisor role emitted by an installed service
+  manager.
+
+  Proven old path and history: every supported shared-image launcher is already exact. The systemd unit executes
+  `/usr/bin/rustdesk --service`; the Debian SysV, OpenRC, runit, and manual definitions emit the same singleton role;
+  and the Windows MSI installs the LocalSystem service with `Arguments="--service"`. The common dispatcher still
+  selected service behavior from `args[0] == "--service"` without checking the count. Linux selected its
+  service-owned descriptor, working-directory, and root config policy from only `args_os().nth(1)`. Windows
+  `bootstrap()` likewise set the machine-config writer bit from only argument one. A suffix, prefix, duplicate, or
+  mixed protected role therefore selected supervisor policy despite matching no shipped launcher. Git history
+  attributes the prefix dispatcher to upstream import `c2abd3b3` and the Linux config-root prefix to `87b15905`.
+  The preceding R-S11e-49 change correctly deleted Windows' whole-vector child-marker search, but its replacement
+  narrowed `--service` only to argument one and still did not validate the complete supervisor vector; this slice
+  closes that remaining defect explicitly.
+
+  Authority model and closure: a platform-independent `ServiceSupervisorRole` parser consumes only arguments after
+  `argv[0]`. It returns `Exact` only for the singleton `--service` vector, `Malformed` whenever the reserved marker
+  occurs in any other vector, and `Absent` for marker-free roles. `core_main()` derives that state before any global
+  initialization and exits 1 on `Malformed`; it cannot silently downgrade or accept a trailing-argument service
+  role. Linux service-root selection and common service dispatch consume only `Exact`. Windows bootstrap consumes
+  the shared exact-only boolean and supplies machine-config write authority only for that exact supervisor. The
+  exact service-owned child role remains independently classified by R-S11ai/R-S11e-49. Numeric root/LocalSystem
+  authority, installed-image provenance, service-manager ownership, parent/generation proof, and protected IPC peer
+  authentication remain separate requirements; argument text supplies none of them.
+
+  Primary contracts and classification: Rust documents that `argv[0]` can be arbitrary, must not be security
+  identity, and that `args_os` is required to preserve non-Unicode arguments
+  (https://doc.rust-lang.org/std/env/fn.args.html and https://doc.rust-lang.org/std/env/fn.args_os.html). Microsoft's
+  `CreateServiceW` contract states that a service binary path may contain arguments and those arguments are passed to
+  the service entry point
+  (https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-createservicew). Apple's launchd
+  `ProgramArguments` contract defines a tokenized program-and-argument array
+  (https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+  This is deterministic supervisor/configuration-role confusion and conceptual privileged-process policy ambiguity,
+  not evidence of promptless privilege escalation, compromise, or an OS-principal bypass: malformed argument text
+  does not grant UID 0, LocalSystem, a trusted installed executable, or authenticated service IPC access.
+
+  Proof and gates: `r_s11e50_service_supervisor_role_requires_exact_arguments` binds the singleton positive and
+  suffix, prefix, duplicate, other-command, and mixed-protected-role negatives.
+  `r_s11e50_marker_free_roles_cannot_become_service_supervisor` binds empty, ordinary server, exact service-owned
+  child, tray, and unrelated marker-free roles to `Absent`. `scripts/verify.sh` extracts the parser states,
+  full-iteration/position/count policy, malformed classification, `argv[0]` skip, exact-only boolean, pre-init
+  rejection, Linux selection, common dispatch, Windows selection/write authority, all launcher definitions,
+  regressions, R-S11aj, Appendix C #158, and this ledger. The semantic workspace verifier independently interprets
+  those source/documentation/launcher regions and carries source mutations for every authority edge.
+
+  Verification: Rust/Cargo 1.75 completed the locked/offline Linux library-test target in 5 minutes 49 seconds; both
+  selected regressions passed, zero failed, and 315 tests were filtered out. The extracted R-S11e-50 shell gate
+  passes. The normal semantic workspace audit and its complete source-mutation matrix pass. The matrix rejects
+  position/count widening, missing marker or malformed classification, wrong `argv[0]` skip, inverted boolean
+  consumption, a successful malformed-role return, weakened Linux selection or common dispatch, Windows exact-role
+  bypass, regression removal, drift in each of the six supported shared-image launchers, gate deletion,
+  requirement/title/clauses, Appendix C row/disposition, and ledger removal. Bash syntax and in-memory Python
+  compilation pass. Rustfmt 1.75 reports no diff in `src/common.rs` or `src/core_main.rs`; its Windows output remains
+  limited to four pre-existing unrelated hunks at lines 85, 5251, 5295, and 5704, with no hunk in the edited
+  bootstrap region. Native-codec normal/self-test, `git diff --check`, and synchronized requirements/native-watch/
+  ledger identity pass at `4d1478a7624e76e30c0f08a27537609fff07cef143cfe8ad1557d3925472d857`.
+
+  Failure/setup accounting: the first focused test command used a login shell that reset `PATH`, so `cargo` was not
+  found and no compilation occurred; the successful run invoked the installed exact Cargo/toolchain directly. The
+  image's system Rust 1.75 toolchain lacks its rustfmt component, so the already-installed user-owned Rust 1.75
+  toolchain was mounted read-only for formatting only. The initial semantic passes correctly rejected the stale
+  requirements hash, an older macOS validator's dependency on the replaced dispatch spelling, and one
+  formatting-sensitive exact token. Successive mutation runs then exposed overly broad adjacent-classifier/test
+  extraction, a requirement boundary dependent on the next requirement's mutable ID, a later child-role exit that
+  could mask removal of the supervisor exit, and shared launcher/Windows checks whose earlier diagnostic labels did
+  not match the mutated authority. The affected verifier regions were narrowed to exact policy blocks or given
+  mutation-independent structural boundaries; no production assertion was removed or weakened, and the complete
+  final matrix passed.
+
+  Execution boundary: every project code/build/test/verifier command used numeric UID/GID 1000 in the existing local
+  `rd-devcheck@sha256:b2b892936a87b2fcd6aff35f709d025947b4d6f1de735d04ed1fc413f9b7bb58`, with networking
+  disabled, read-only root/source/toolchain/Cargo inputs, all capabilities dropped, no-new-privileges, bounded pids,
+  CPU, and memory, and output only on disposable tmpfs. No image was built or pulled; no Docker socket, host PID or
+  network namespace, published port, host service/config mount, or root container identity was used. No host
+  RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or networking was
+  inspected or changed. The long release verifier, root service fixtures, full release build, native Apple/Windows
+  runs, and exact installed-artifact execution remain excluded. Publication evidence is recorded in the private
+  audit journal after commit and push.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -5636,8 +5721,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d960425d27e0106747f79ab265ea9638c6b1482085238c65dcbfe15ce7075c8f  requirements.html
+4d1478a7624e76e30c0f08a27537609fff07cef143cfe8ad1557d3925472d857  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ai, and Appendix C #157. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aj, and Appendix C #158. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

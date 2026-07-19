@@ -127,6 +127,13 @@ fn set_cli_permanent_password(
 /// If it returns [`Some`], then the process will continue, and flutter gui will be started.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<Vec<String>> {
+    let service_supervisor_role = crate::common::current_service_supervisor_role();
+    if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {
+        eprintln!(
+            "Rejected malformed service supervisor role; expected exact arguments: --service"
+        );
+        std::process::exit(1);
+    }
     if crate::common::current_service_owned_server_role()
         == crate::common::ServiceOwnedServerRole::Malformed
     {
@@ -137,8 +144,8 @@ pub fn core_main() -> Option<Vec<String>> {
         std::process::exit(1);
     }
     #[cfg(target_os = "linux")]
-    let linux_service_owned_config_role = std::env::args_os().nth(1).as_deref()
-        == Some(std::ffi::OsStr::new("--service"))
+    let linux_service_owned_config_role = service_supervisor_role
+        == crate::common::ServiceSupervisorRole::Exact
         || crate::common::is_service_owned_server_process();
     #[cfg(target_os = "linux")]
     if crate::common::is_service_owned_server_process() {
@@ -382,7 +389,7 @@ pub fn core_main() -> Option<Vec<String>> {
                 }
             }
             return None;
-        } else if args[0] == "--service" {
+        } else if service_supervisor_role == crate::common::ServiceSupervisorRole::Exact {
             log::info!("start --service");
             #[cfg(target_os = "linux")]
             if let Err(err) = crate::start_os_service() {

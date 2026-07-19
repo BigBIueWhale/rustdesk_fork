@@ -7664,8 +7664,6 @@ def validate_ipc_listener_failure_outcome_contract(sources):
     failure_helper = "crate::server::request_graceful_shutdown_after_listener_failure();"
     if ipc_source.count(failure_helper) != len(messages):
         raise VerificationError("exact six listener-failure latch producers are absent")
-    if ipc_source.count("listener ended unexpectedly") != len(messages):
-        raise VerificationError("exact six authority-bearing listener failures are absent")
     for message in messages:
         anchor = f'listener_error = Some("{message}".to_owned());'
         if ipc_source.count(anchor) != 1:
@@ -8389,8 +8387,8 @@ def validate_shutdown_finalizer_ownership_contract(sources):
     )
 
     call = "crate::server::finish_graceful_shutdown().await;"
-    if ipc_source.count(call) != 3 or direct_service.count(call) != 1 or server_source.count(call) != 0:
-        raise VerificationError("exact four graceful-shutdown finalizer callers are absent")
+    if ipc_source.count(call) != 2 or direct_service.count(call) != 1 or server_source.count(call) != 0:
+        raise VerificationError("exact three graceful-shutdown finalizer callers are absent")
 
     main_ipc = extract_between(
         ipc_source,
@@ -8408,22 +8406,6 @@ def validate_shutdown_finalizer_ownership_contract(sources):
             call,
         ),
         "main IPC drain and listener release before finalizer",
-    )
-
-    service_ipc = extract_between(
-        ipc_source,
-        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
-        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
-        "protected service IPC finalizer caller",
-    )
-    require_order(
-        service_ipc,
-        (
-            "while let Some(result) = transactions.join_next().await",
-            "drop(listener_guard);",
-            call,
-        ),
-        "protected service IPC drain and listener release before finalizer",
     )
 
     windows_service_ipc = extract_between(
@@ -8469,7 +8451,7 @@ def validate_shutdown_finalizer_ownership_contract(sources):
         ("non-polling pending future", "finalizer follower wait requirement"),
         ("drained admitted transactions and dropped its <code>LocalIpcListenerGuard</code>", "IPC release-before-wait requirement"),
         ("unused returning <code>begin_graceful_shutdown</code>", "obsolete entry deletion requirement"),
-        ("complete four-caller set", "exact finalizer caller-set requirement"),
+        ("complete three-caller set", "exact finalizer caller-set requirement"),
     ):
         require_text(requirement, text, label)
     for text, label in (
@@ -8488,6 +8470,192 @@ def validate_shutdown_finalizer_ownership_contract(sources):
         hardening,
         "R-S11e-57 — non-returning graceful-shutdown finalizer ownership",
         "graceful-shutdown finalizer hardening ledger",
+    )
+
+
+def validate_protected_service_outcome_ownership_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    ipc_source = sources["ipc_source"]
+    linux_source = sources["linux_source"]
+    macos_source = sources["macos_source"]
+    core_main = sources["core_main"]
+    service_source = sources["service_source"]
+    direct_service = sources["direct_service"]
+    server_source = sources["server_source"]
+
+    heading = (
+        'echo "== (3b-iii-d9ch) protected Unix service IPC foreground lifecycle '
+        'ownership (R-S11ar/R-S11e-58) =="'
+    )
+    gate = extract_between(
+        verify,
+        heading,
+        "\n# (3b-iii-d9d)",
+        "protected service outcome ownership source gate",
+    )
+    require_text(
+        gate,
+        "protected-service-outcome-ownership-invalid",
+        "protected service outcome structural gate",
+    )
+    require_text(
+        apple,
+        'echo "== (2b-iv-a-0g) protected Unix service IPC foreground lifecycle '
+        'ownership (R-S11ar/R-S11e-58) =="',
+        "protected service outcome Apple gate",
+    )
+
+    classifier = extract_between(
+        ipc_source,
+        "fn protected_service_ipc_result(listener_error: Option<String>) -> ResultType<()> {",
+        '\n#[cfg(any(target_os = "linux", target_os = "macos"))]\nasync fn run_service_ipc',
+        "protected service IPC outcome classifier",
+    )
+    require_order(
+        classifier,
+        (
+            "Some(err) => Err(anyhow::anyhow!(err)),",
+            "None => Ok(()),",
+        ),
+        "protected service listener error classification",
+    )
+
+    worker = extract_between(
+        ipc_source,
+        "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
+        '\n#[cfg(target_os = "linux")]\nasync fn handle_sensitive_linux_service_ipc_transaction',
+        "protected service IPC worker",
+    )
+    require_order(
+        worker,
+        (
+            "_ = shutdown.cancelled() => break,",
+            "while let Some(result) = transactions.join_next().await",
+            "password_mutations().drain().await;",
+            "password_mutations().clear_after_transactions_drain();",
+            "linux_password_admissions().clear_after_transactions_drain();",
+            "drop(listener_guard);",
+            "protected_service_ipc_result(listener_error)",
+        ),
+        "protected service drain before owner outcome return",
+    )
+    for forbidden in (
+        "finish_graceful_shutdown",
+        "process::exit",
+        "tokio::spawn",
+        "std::thread::spawn",
+    ):
+        require_absent(
+            worker,
+            forbidden,
+            "protected service worker terminal/detached authority",
+        )
+
+    linux_entry = extract_between(
+        linux_source,
+        "type LinuxServiceIpcThread",
+        "pub fn get_active_user_id_name",
+        "Linux protected service IPC lifecycle owner",
+    )
+    require_order(
+        linux_entry,
+        (
+            "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
+            "observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;",
+            "crate::server::request_graceful_shutdown();",
+            "classify_linux_service_ipc_thread_outcome(handle.join(), true)",
+            'terminate_child(&mut user_server, "--server", &runtime)',
+            'terminate_child(&mut server, "--server", &runtime)',
+        ),
+        "Linux worker outcome before exact child cleanup",
+    )
+    for binding, label in (
+        (
+            'Ok(Err(err)) => Err(anyhow!("Protected service IPC thread failed: {err}"))',
+            "Linux returned IPC error propagation",
+        ),
+        (
+            'merge_linux_service_result(\n            &mut result,\n            '
+            'classify_linux_service_ipc_thread_outcome(handle.join(), true),\n            '
+            '"protected IPC drain",',
+            "Linux final worker join result preservation",
+        ),
+    ):
+        require_text(linux_entry, binding, label)
+
+    macos_entry = extract_between(
+        macos_source,
+        "pub fn start_os_service()",
+        "\n#[cfg(test)]",
+        "macOS protected service entry",
+    )
+    require_order(
+        macos_entry,
+        (
+            "install_macos_service_shutdown_handler()?;",
+            "crate::ipc::start(crate::POSTFIX_SERVICE)",
+        ),
+        "macOS protected IPC result propagation",
+    )
+    require_exact_count(
+        core_main,
+        "crate::platform::macos::run_service()",
+        1,
+        "common macOS service error propagation",
+    )
+    require_exact_count(
+        service_source,
+        "crate::platform::macos::run_service()",
+        1,
+        "dedicated macOS service error propagation",
+    )
+
+    call = "crate::server::finish_graceful_shutdown().await;"
+    if (
+        ipc_source.count(call) != 2
+        or direct_service.count(call) != 1
+        or server_source.count(call) != 0
+    ):
+        raise VerificationError("protected service worker is not excluded from the exact three finalizer callers")
+    require_text(
+        ipc_source,
+        "fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()",
+        "protected service outcome regression",
+    )
+
+    requirement = extract_between(
+        requirements,
+        '<div class="req"><span class="id">R-S11ar</span>',
+        '\n\n<h2 id="excise">',
+        "protected service outcome ownership requirement",
+    )
+    for text, label in (
+        ("return the recorded listener error", "post-drain listener error return requirement"),
+        ("return success", "ordinary cancellation success requirement"),
+        ("still attempt both exact child terminations", "Linux child cleanup requirement"),
+        ("synchronous service entry", "macOS result owner requirement"),
+        ("complete three-caller process-finalizer set", "corrected finalizer caller set requirement"),
+    ):
+        require_text(requirement, text, label)
+    for text, label in (
+        (
+            "Protected Unix service IPC returns failure to its foreground lifecycle owner after complete drain",
+            "protected service outcome ownership requirement title",
+        ),
+        ("<tr><td>166</td>", "protected service outcome Appendix C row"),
+        (
+            "Protected Unix service IPC bypassed its retained lifecycle owner after listener failure",
+            "protected service outcome Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-58 — protected Unix service IPC foreground lifecycle ownership",
+        "protected service outcome hardening ledger",
     )
 
 
@@ -9350,6 +9518,7 @@ def validate_sources(sources):
     validate_macos_service_signal_drain_contract(sources)
     validate_controlled_server_lifecycle_contract(sources)
     validate_shutdown_finalizer_ownership_contract(sources)
+    validate_protected_service_outcome_ownership_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -16460,7 +16629,7 @@ def run_source_mutations(sources):
             "ipc_source",
             "crate::server::finish_graceful_shutdown().await;",
             "crate::server::finish_graceful_shutdown_disabled().await;",
-            "exact four graceful-shutdown finalizer callers are absent",
+            "exact three graceful-shutdown finalizer callers are absent",
         ),
         (
             "requirements",
@@ -16497,6 +16666,90 @@ def run_source_mutations(sources):
             "R-S11e-57 — non-returning graceful-shutdown finalizer ownership",
             "R-S11e-57 — returning graceful-shutdown finalizer",
             "graceful-shutdown finalizer hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9ch) protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58) =="',
+            'echo "== (3b-iii-d9ch) protected Unix service IPC worker-owned exit (R-S11ar/R-S11e-58) =="',
+            "protected service outcome ownership source gate",
+        ),
+        (
+            "verify",
+            "protected-service-outcome-ownership-invalid",
+            "protected-service-outcome-ownership-unchecked",
+            "protected service outcome structural gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-0g) protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58) =="',
+            'echo "== (2b-iv-a-0g) protected Unix service IPC worker-owned exit (R-S11ar/R-S11e-58) =="',
+            "protected service outcome Apple gate",
+        ),
+        (
+            "ipc_source",
+            "Some(err) => Err(anyhow::anyhow!(err)),",
+            "Some(_err) => Ok(()),",
+            "protected service listener error classification",
+        ),
+        (
+            "ipc_source",
+            "    drop(listener_guard);\n    protected_service_ipc_result(listener_error)",
+            "    protected_service_ipc_result(listener_error)?;\n    drop(listener_guard);\n    Ok(())",
+            "protected service drain before owner outcome return",
+        ),
+        (
+            "ipc_source",
+            "    protected_service_ipc_result(listener_error)\n}",
+            "    std::process::exit(1);\n    protected_service_ipc_result(listener_error)\n}",
+            "protected service worker terminal/detached authority",
+        ),
+        (
+            "ipc_source",
+            "fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()",
+            "fn protected_service_ipc_exits_inside_worker_after_listener_failure()",
+            "protected service outcome regression",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ar</span>',
+            '<span class="id">R-S11as</span>',
+            "protected service outcome ownership requirement",
+        ),
+        (
+            "requirements",
+            "Protected Unix service IPC returns failure to its foreground lifecycle owner after complete drain",
+            "Protected Unix service IPC exits from its worker after listener failure",
+            "protected service outcome ownership requirement title",
+        ),
+        (
+            "requirements",
+            "return the recorded listener error",
+            "discard the recorded listener error",
+            "post-drain listener error return requirement",
+        ),
+        (
+            "requirements",
+            "complete three-caller process-finalizer set",
+            "complete four-caller process-finalizer set",
+            "corrected finalizer caller set requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>166</td>",
+            "<tr><td>9166</td>",
+            "protected service outcome Appendix C row",
+        ),
+        (
+            "requirements",
+            "Protected Unix service IPC bypassed its retained lifecycle owner after listener failure",
+            "Protected Unix service IPC always returned to its lifecycle owner",
+            "protected service outcome Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-58 — protected Unix service IPC foreground lifecycle ownership",
+            "R-S11e-58 — protected service IPC worker-owned exit",
+            "protected service outcome hardening ledger",
         ),
         (
             "verify",

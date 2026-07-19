@@ -2806,6 +2806,14 @@ async fn start_service_ipc(postfix: &str) -> ResultType<()> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+fn protected_service_ipc_result(listener_error: Option<String>) -> ResultType<()> {
+    match listener_error {
+        Some(err) => Err(anyhow::anyhow!(err)),
+        None => Ok(()),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {
     let PreparedServiceIpc {
         mut incoming,
@@ -2950,11 +2958,7 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
     #[cfg(target_os = "linux")]
     linux_password_admissions().clear_after_transactions_drain();
     drop(listener_guard);
-    if let Some(err) = listener_error {
-        log::error!("{err}");
-        crate::server::finish_graceful_shutdown().await;
-    }
-    Ok(())
+    protected_service_ipc_result(listener_error)
 }
 
 #[cfg(target_os = "linux")]
@@ -6983,6 +6987,21 @@ pub async fn get_terminal_session_count() -> ResultType<usize> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner() {
+        assert!(protected_service_ipc_result(None).is_ok());
+
+        let failure = protected_service_ipc_result(Some(
+            "protected service IPC listener ended unexpectedly".to_owned(),
+        ))
+        .unwrap_err();
+        assert_eq!(
+            failure.to_string(),
+            "protected service IPC listener ended unexpectedly"
+        );
+    }
 
     #[test]
     fn windows_credential_ledger_replays_lost_ack_without_password_retention() {

@@ -1392,19 +1392,34 @@ done
 if grep -qF 'std::process::exit(0);' <<<"$server_shutdown"; then
   r_s11e53="$r_s11e53 hardcoded-success-finalizer-present"
 fi
-[ "$(grep -cF 'listener ended unexpectedly' <<<"$ipc_source")" -eq 6 ] \
-  || r_s11e53="$r_s11e53 exact-listener-failure-set-missing"
-[ "$(grep -cF 'crate::server::request_graceful_shutdown_after_listener_failure();' <<<"$ipc_source")" -eq 6 ] \
-  || r_s11e53="$r_s11e53 exact-failure-latch-producer-set-missing"
-for message in \
-  'main password IPC listener ended unexpectedly' \
-  'main IPC listener ended unexpectedly' \
-  'protected service password IPC listener ended unexpectedly' \
-  'protected _service IPC listener ended unexpectedly' \
-  'Windows service-main control IPC listener ended unexpectedly' \
-  'Windows service credential IPC listener ended unexpectedly'; do
-  grep -qF "$message" <<<"$ipc_source" || r_s11e53="$r_s11e53 listener-failure-producer-missing"
-done
+python3 - "$REPO/src/ipc.rs" <<'PY' || r_s11e53="$r_s11e53 listener-producer-set-invalid"
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+messages = (
+    "main password IPC listener ended unexpectedly",
+    "main IPC listener ended unexpectedly",
+    "protected service password IPC listener ended unexpectedly",
+    "protected _service IPC listener ended unexpectedly",
+    "Windows service-main control IPC listener ended unexpectedly",
+    "Windows service credential IPC listener ended unexpectedly",
+)
+helper = "crate::server::request_graceful_shutdown_after_listener_failure();"
+if source.count(helper) != len(messages):
+    raise SystemExit(1)
+for message in messages:
+    anchor = f'listener_error = Some("{message}".to_owned());'
+    if source.count(anchor) != 1:
+        raise SystemExit(1)
+    start = source.index(anchor) + len(anchor)
+    end = source.find("break;", start)
+    if end < 0:
+        raise SystemExit(1)
+    branch = source[start:end]
+    if branch.count(helper) != 1 or "crate::server::request_graceful_shutdown();" in branch:
+        raise SystemExit(1)
+PY
 grep -qF '<span class="id">R-S11am</span>' "$REPO/requirements.html" || r_s11e53="$r_s11e53 normative-requirement-missing"
 grep -qF '<tr><td>161</td>' "$REPO/requirements.html" || r_s11e53="$r_s11e53 appendix-disposition-missing"
 grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' "$REPO/HARDENING_STATUS.md" \
@@ -1413,7 +1428,7 @@ if [ -n "$r_s11e53" ]; then
   echo "  FAIL R-S11e-53 authority-bearing IPC listener failure outcome:$r_s11e53"
   rc=1
 else
-  note "ok  R-S11e-53 every fatal desktop IPC listener ending, including both macOS protected service channels, latches nonzero outcome before the shared graceful drain"
+  note "ok  R-S11e-53 every fatal desktop IPC listener ending latches nonzero outcome before drain; protected macOS service channels return that post-drain error to their foreground entry"
 fi
 
 echo "== (2b-iv-a-0d) macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55) =="
@@ -1677,7 +1692,7 @@ if "return;" in finalizer or "begin_graceful_shutdown" in server:
     raise SystemExit(1)
 
 call = "crate::server::finish_graceful_shutdown().await;"
-if ipc.count(call) != 3 or direct.count(call) != 1 or server.count(call) != 0:
+if ipc.count(call) != 2 or direct.count(call) != 1 or server.count(call) != 0:
     raise SystemExit(1)
 
 main_ipc = region(
@@ -1690,18 +1705,6 @@ ordered(
     "while let Some(result) = transactions.join_next().await",
     "password_mutations().drain().await;",
     "password_mutations().clear_after_transactions_drain();",
-    "drop(listener_guard);",
-    call,
-)
-
-service_ipc = region(
-    ipc,
-    "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
-    "\n#[cfg(target_os = \"linux\")]\nasync fn handle_sensitive_linux_service_ipc_transaction",
-)
-ordered(
-    service_ipc,
-    "while let Some(result) = transactions.join_next().await",
     "drop(listener_guard);",
     call,
 )
@@ -1739,6 +1742,87 @@ if [ -n "$r_s11e57" ]; then
   rc=1
 else
   note "ok  R-S11e-57 the macOS/shared desktop finalizer cannot return a losing runtime before the sole drain owner exits"
+fi
+
+echo "== (2b-iv-a-0g) protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58) =="
+r_s11e58=
+python3 - "$REPO" <<'PY' || r_s11e58="$r_s11e58 protected-service-outcome-ownership-invalid"
+from pathlib import Path
+import sys
+
+repo = Path(sys.argv[1])
+ipc = (repo / "src/ipc.rs").read_text(encoding="utf-8")
+macos = (repo / "src/platform/macos.rs").read_text(encoding="utf-8")
+core_main = (repo / "src/core_main.rs").read_text(encoding="utf-8")
+service = (repo / "src/service.rs").read_text(encoding="utf-8")
+direct = (repo / "src/direct_service.rs").read_text(encoding="utf-8")
+server = (repo / "src/server.rs").read_text(encoding="utf-8")
+
+def region(source, start, end):
+    begin = source.index(start)
+    finish = source.index(end, begin)
+    return source[begin:finish]
+
+def ordered(source, *needles):
+    position = -1
+    for needle in needles:
+        position = source.index(needle, position + 1)
+
+classifier = region(
+    ipc,
+    "fn protected_service_ipc_result(listener_error: Option<String>) -> ResultType<()> {",
+    "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\nasync fn run_service_ipc",
+)
+ordered(
+    classifier,
+    "Some(err) => Err(anyhow::anyhow!(err)),",
+    "None => Ok(()),",
+)
+
+worker = region(
+    ipc,
+    "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> ResultType<()> {",
+    "\n#[cfg(target_os = \"linux\")]\nasync fn handle_sensitive_linux_service_ipc_transaction",
+)
+ordered(
+    worker,
+    "_ = shutdown.cancelled() => break,",
+    "while let Some(result) = transactions.join_next().await",
+    "password_mutations().drain().await;",
+    "password_mutations().clear_after_transactions_drain();",
+    "drop(listener_guard);",
+    "protected_service_ipc_result(listener_error)",
+)
+for forbidden in ("finish_graceful_shutdown", "process::exit", "tokio::spawn", "std::thread::spawn"):
+    if forbidden in worker:
+        raise SystemExit(1)
+
+macos_entry = region(macos, "pub fn start_os_service()", "\n#[cfg(test)]")
+ordered(
+    macos_entry,
+    "install_macos_service_shutdown_handler()?;",
+    "crate::ipc::start(crate::POSTFIX_SERVICE)",
+)
+if core_main.count("crate::platform::macos::run_service()") != 1:
+    raise SystemExit(1)
+if service.count("crate::platform::macos::run_service()") != 1:
+    raise SystemExit(1)
+
+call = "crate::server::finish_graceful_shutdown().await;"
+if ipc.count(call) != 2 or direct.count(call) != 1 or server.count(call) != 0:
+    raise SystemExit(1)
+if "fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()" not in ipc:
+    raise SystemExit(1)
+PY
+grep -qF '<span class="id">R-S11ar</span>' "$REPO/requirements.html" || r_s11e58="$r_s11e58 normative-requirement-missing"
+grep -qF '<tr><td>166</td>' "$REPO/requirements.html" || r_s11e58="$r_s11e58 appendix-row-missing"
+grep -qF 'R-S11e-58 — protected Unix service IPC foreground lifecycle ownership' "$REPO/HARDENING_STATUS.md" \
+  || r_s11e58="$r_s11e58 hardening-ledger-missing"
+if [ -n "$r_s11e58" ]; then
+  echo "  FAIL R-S11e-58 protected service IPC lifecycle ownership:$r_s11e58"
+  rc=1
+else
+  note "ok  R-S11e-58 macOS protected service IPC returns listener failure after its complete drain to the synchronous service entry"
 fi
 
 echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="

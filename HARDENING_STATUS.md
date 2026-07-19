@@ -3591,15 +3591,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Closure: `request_graceful_shutdown_after_listener_failure` stores the failure latch with Release ordering and
   then invokes the unchanged cancellation request. All six unexpected listener-end branches use that helper; normal
   cancellation, SIGINT/SIGTERM, and service-manager stop paths continue to call the ordinary request and never set
-  the latch. The one idempotent finalizer still waits for authenticated connection cleanup and every active local IPC
-  listener guard, then loads the monotonic latch with Acquire ordering and selects status 1 for failure or 0 for a
-  normal request. It does not introduce a second finalizer, an early process exit, or an error-return dependency on
-  the Linux detached thread. A later clean request cannot clear or downgrade the latched failure.
+  the latch. For its three R-S11aq callers, the one idempotent finalizer still waits for authenticated connection
+  cleanup and every active local IPC listener guard, then loads the monotonic latch with Acquire ordering and selects
+  status 1 for failure or 0 for a normal request. R-S11e-58 makes protected Linux/macOS service IPC return the same
+  post-drain failure to its foreground lifecycle owner instead of calling that process finalizer. Neither form
+  introduces a second drain or an early pre-drain process exit. A later clean request cannot clear or downgrade the
+  latched failure.
 
   Proof/gates: the focused Rust regression binds clean and failure status selection. The R-S11e-53 source
   and Apple gates bind the static latch, Release-before-cancellation producer ordering, exact six error producers,
-  Acquire-at-the-final-sink selection, process exit using the selected value, unchanged drain-before-exit ordering,
-  R-S11am, Appendix C #161, and this ledger. The semantic workspace verifier independently interprets those regions
+  Acquire-at-the-finalizer sink selection, process exit using the selected value, protected-service error return,
+  unchanged drain-before-terminal-outcome ordering, R-S11am, Appendix C #161, and this ledger. The semantic workspace verifier independently interprets those regions
   and mutation-tests every producer, memory-order weakening, hardcoded-success restoration, regression/gate removal,
   and requirement/Appendix/ledger drift. Native Windows/macOS compilation and forced listener-loss execution remain
   R-R2/R-B2 evidence and are not inferred from the Linux source/test environment.
@@ -3822,8 +3824,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   RustDesk service/process/configuration/listener, firewall, or network policy was inspected or changed.
 - **R-S11e-57 — non-returning graceful-shutdown finalizer ownership — SOURCE, SHARED/APPLE SOURCE GATES,
   SEMANTIC, AND MUTATION VERIFIED; NATIVE SUPERVISOR/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platforms: the Linux
-  service-owned child, macOS LaunchAgent controlled server and LaunchDaemon protected IPC process, and Windows
-  service-owned child. Endpoint/action: transfer from the four desktop shutdown callers into the one shared
+  service-owned child, macOS LaunchAgent controlled server, and Windows service-owned child. Endpoint/action:
+  transfer from the three controlled-server shutdown callers into the one shared
   authenticated-session/local-IPC/input drain and process-exit edge. Boundary: detached IPC runtime lifetime ↔
   main server runtime/process lifetime and truthful shutdown completion.
 
@@ -3856,14 +3858,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   unused returning `begin_graceful_shutdown` entry is deleted rather than retained as a compatibility alias. The
   caller set is exact: the desktop direct owner invokes it only after direct-listener completion or exact task join;
   main IPC invokes it only after admitted transactions, the password-mutation ledger, and its listener guard drain;
-  Linux/macOS protected service IPC invokes it after admitted transactions/password admission state and its guard
-  drain; Windows service-main IPC invokes it after its bounded transaction drain and guard drop. Followers therefore
+  Windows service-main IPC invokes it after its bounded transaction drain and guard drop. Protected Linux/macOS
+  service IPC returns its post-drain outcome to the foreground lifecycle owner under R-S11e-58. Followers therefore
   retain no listener guard or task handle needed by a winning finalizer's local-IPC barrier. R-S11am's
   release/acquire failure latch and status selection remain unchanged and winner-owned.
 
   Evidence boundary and execution accounting: R-S11aq and Appendix C #165 bind this correction. Shared gate
   `(3b-iii-d9cg)`, Apple gate `(2b-iv-a-0f)`, the independent semantic validator, and its mutation matrix bind the
-  non-returning signature, one-owner/follower-pending order, obsolete-entry absence, exact four-caller set, all
+  non-returning signature, one-owner/follower-pending order, obsolete-entry absence, exact three-caller set, all
   pre-call join/guard-release edges, and the existing drain/latch/exit order. The exact follower expression was
   separately type-checked by pinned `rustc 1.75.0`. Whole-script shell syntax, the exact extracted shared and Apple
   gates, semantic positive validation, the complete source-mutation matrix, requirements-digest synchronization,
@@ -3873,6 +3875,55 @@ unreachable and a source/test/AST gate prevents reintroduction.
   UID/GID 1000 with networking disabled, read-only source/toolchain/dependency inputs, all capabilities dropped,
   `no-new-privileges`, bounded resources, disposable outputs, and no published ports; no image was built or pulled.
   No host RustDesk service/process/configuration/listener, firewall, or network policy was inspected or changed.
+- **R-S11e-58 — protected Unix service IPC foreground lifecycle ownership — SOURCE, PINNED RUST POLICY TYPECHECK,
+  SHARED/APPLE SOURCE GATES, SEMANTIC, AND MUTATION VERIFIED; NATIVE SUPERVISOR/ARTIFACT EVIDENCE PENDING
+  2026-07-19.** Platforms: Linux root service supervisor and both macOS root LaunchDaemon entries. Endpoints:
+  protected generic `_service` and raw `_service_password`. Boundary: receiver-owned socket/transaction drain ↔
+  foreground-owner process outcome and exact subordinate cleanup.
+
+  Proven composition defect and history: R-S11e-54 made Linux `start_os_service` retain the named protected-IPC
+  worker, wait for both listeners and their process-lifetime guard, observe premature completion, classify a returned
+  error or panic, cancel and join the exact worker, and only then terminate its active-user and root controlled
+  children. The shared Linux/macOS `run_service_ipc` nevertheless still called the non-returning process finalizer
+  after an unexpected listener end. On Linux, that call ran inside the retained worker, so its `JoinHandle` never
+  returned and the supervisor's recorded join/error/child-cleanup path could not execute. On macOS, the same call
+  bypassed the synchronous `start_os_service`/`run_service` result path used by both supported service entries.
+  `git blame` traces the protected receiver's finalizer call to R-S11e-53 listener-outcome hardening and the retained
+  Linux ownership to R-S11e-54; their composition was inconsistent and R-S11e-57 then preserved the worker as one
+  of four finalizer callers. This is deterministic cleanup, service-recovery, and lifecycle-authority correctness,
+  not an IPC authorization bypass, local privilege escalation, remote listener-loss primitive, or evidence of host
+  compromise.
+
+  Authority model and source closure: the protected receiver owns only listener admission, admitted transaction
+  join, platform password-ledger drain/clear, and `LocalIpcListenerGuard` release. After those releases it now passes
+  `listener_error` through `protected_service_ipc_result`: ordinary signal cancellation returns `Ok(())`, while an
+  unexpected generic/password listener end returns the exact recorded error. The worker contains no finalizer,
+  process exit, new runtime, detached task/thread, timeout, or fallback. Linux receives that `Err` through its
+  already-retained native thread join, preserves it as the service result, and still attempts termination of both
+  exact controlled children. macOS returns the same error through the synchronous service entry; the common exact
+  `--service` receiver and dedicated PrivilegedHelperTools executable already convert `run_service` failure to
+  non-success. The shared non-returning process finalizer remains unchanged and now has the truthful complete
+  three-caller set: main IPC, Windows service-main IPC, and the retained direct-listener owner.
+
+  Proof and execution boundary: the focused R-S11e-58 regression source binds normal success and exact error
+  preservation, while a standalone pinned Rust 1.75 policy typecheck executes the same owned-`String`
+  success/error classification without launching RustDesk.
+  Shared gate `(3b-iii-d9ch)`, Apple gate `(2b-iv-a-0g)`, the independent semantic validator, and its mutation matrix
+  bind classifier polarity, complete drain/guard-before-return order, worker terminal-authority absence, Linux
+  returned-error classification and join-before-child cleanup, both macOS result-propagating entries, the three
+  finalizer callers, R-S11ar, Appendix C #166, and this ledger. Verification used the existing pinned development
+  image as numeric UID/GID 1000 with networking disabled, read-only source/root/toolchain/dependency inputs, all
+  capabilities dropped, `no-new-privileges`, bounded resources, disposable output, and no published ports; no image
+  was built or pulled. The pinned policy typecheck, exact shared/Apple gates, semantic positive and complete
+  mutation runs, shell and Python syntax, requirements-digest synchronization, native-codec watch, dependency
+  inventory, and
+  `git diff --check` passed. No application binary, service, socket, public listener, host RustDesk state, firewall,
+  or network policy was executed, inspected, or changed. The application-level focused Cargo test was attempted in
+  a fresh UID-1000 tmpfs target but could not read the pre-existing root-owned
+  `pin-utils-0.1.0/src/lib.rs` cache entry; an earlier attempt also correctly refused the pre-existing target
+  volume's unwritable `.cargo-lock`. Neither ownership/mode nor privilege was changed to bypass those refusals, and
+  neither attempt is counted as passing evidence. Native init/launchd listener-failure injection,
+  exact-commit artifact/reproducibility evidence, and external audit remain R-R2/R-B2/R-V3 work and are not claimed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6218,8 +6269,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e071adbcde8643d3e772ad46c7c75ef41b95a24f83b01a28d3032e4f10544c19  requirements.html
+3f221fdb965d715be0bb8d09988545d38255dab3e5635ce3b9ac897b7fc7c276  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11aq, and Appendix C #165. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ar, and Appendix C #166. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -3028,6 +3028,101 @@ grep -qF 'R-S11e-39 — Linux service-owned pkcheck inherited environment author
 if [ -n "$r_s11e39" ]; then echo "  FAIL R-S11e-39 Linux pkcheck helper ambient environment authority:$r_s11e39"; rc=1; else
   echo "  ok  R-S11e-39 Linux service-owned pkcheck starts with an empty environment and an actual child excludes a hostile inherited system-bus selector"; fi
 
+# (3b-iii-d9b) R-S11z/R-S11e-40: Linux active-session discovery is
+# a closed local logind query. The receiver, not its launch environment
+# or a generic argv caller, owns the transport, properties, parser, and
+# X11 fallback used by the installed supervisor.
+echo "== (3b-iii-d9b) Linux loginctl session-query authority (R-S11z/R-S11e-40) =="
+r_s11e40=
+loginctl_display_query=$(awk '/pub fn get_display_server_of_session/,/pub fn get_values_of_seat0/' libs/hbb_common/src/platform/linux.rs)
+loginctl_authority=$(awk '/enum LoginctlProperty/,/#\[derive\(Debug, Clone\)\]/' libs/hbb_common/src/platform/linux.rs)
+loginctl_selection=$(awk '/fn _get_values_of_seat0/,/#\[derive\(Clone, Copy, Debug, Eq, PartialEq\)\]/' libs/hbb_common/src/platform/linux.rs)
+loginctl_tests=$(awk '/fn r_s11e40_loginctl_queries_are_typed_and_noninteractive/,/fn r_s11c10m_command_candidates_are_fixed_absolute_paths/' libs/hbb_common/src/platform/linux.rs)
+for loginctl_binding in \
+  'enum LoginctlProperty {' \
+  'enum LoginctlQuery<' \
+  'Self::ListSessions => vec!["--no-pager", "--no-legend", "list-sessions"]' \
+  'arguments.push("--no-pager")' \
+  'arguments.extend(properties.iter().map(|property| property.argument()))' \
+  'arguments.push("show-session")' \
+  'arguments.push("--")' \
+  'fn parse_loginctl_sessions(stdout: &[u8])' \
+  'line.split_ascii_whitespace()' \
+  'parsed_uid.to_string() != uid' \
+  'fn parse_loginctl_session_properties(' \
+  'loginctl returned an unrequested property' \
+  'loginctl returned a duplicate property' \
+  'loginctl omitted a requested property' \
+  'fn configure_loginctl_environment(command: &mut Command)' \
+  'command.env_clear();' \
+  'cmd.args(query.arguments());' \
+  'configure_command_close_nonstdio_on_exec(&mut cmd)?;' \
+  'if !output.status.success()'; do
+  grep -qF "$loginctl_binding" <<<"$loginctl_authority" || r_s11e40="$r_s11e40 typed-query-contract-missing"
+done
+loginctl_field_reads=$( (grep -oF 'fields.next()' <<<"$loginctl_authority" || true) | wc -l)
+if [ "$loginctl_field_reads" -ne 4 ]; then
+  r_s11e40="$r_s11e40 stable-leading-session-fields-invalid"
+fi
+for selection_binding in \
+  'session.seat == "seat0"' \
+  'Ok([state]) if state == "active"' \
+  'Ok([state, seat]) if state == "active" && seat == "seat0"' \
+  'Ok([locked]) if locked == "yes"'; do
+  grep -qF "$selection_binding" <<<"$loginctl_selection" || r_s11e40="$r_s11e40 exact-selection-contract-missing"
+done
+grep -qF 'normalize_session_display_server(display_server.as_deref())' <<<"$loginctl_display_query" \
+  || r_s11e40="$r_s11e40 binary-owned-display-fallback-missing"
+if grep -qF 'XDG_SESSION_TYPE' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then
+  r_s11e40="$r_s11e40 ambient-session-type-fallback-present"
+fi
+if grep -Eq 'run_loginctl\((Some|None)|from_utf8_lossy|\.contains\(' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then
+  r_s11e40="$r_s11e40 generic-query-or-lossy-substring-parser-present"
+fi
+if grep -Eq '\.envs?[[:space:]]*\(' <<<"$loginctl_authority"; then
+  r_s11e40="$r_s11e40 explicit-loginctl-environment-present"
+fi
+loginctl_environment_line=$(grep -nF 'configure_loginctl_environment(&mut cmd);' <<<"$loginctl_authority" | head -n1 | cut -d: -f1)
+loginctl_args_line=$(grep -nF 'cmd.args(query.arguments());' <<<"$loginctl_authority" | head -n1 | cut -d: -f1)
+loginctl_descriptor_line=$(grep -nF 'configure_command_close_nonstdio_on_exec(&mut cmd)?;' <<<"$loginctl_authority" | head -n1 | cut -d: -f1)
+loginctl_output_line=$(grep -nF 'let output = cmd.output()?;' <<<"$loginctl_authority" | head -n1 | cut -d: -f1)
+if [ -z "$loginctl_environment_line" ] || [ -z "$loginctl_args_line" ] \
+  || [ -z "$loginctl_descriptor_line" ] || [ -z "$loginctl_output_line" ] \
+  || [ "$loginctl_environment_line" -ge "$loginctl_args_line" ] \
+  || [ "$loginctl_args_line" -ge "$loginctl_descriptor_line" ] \
+  || [ "$loginctl_descriptor_line" -ge "$loginctl_output_line" ]; then
+  r_s11e40="$r_s11e40 loginctl-boundary-order-invalid"
+fi
+for test_binding in \
+  'fn r_s11e40_loginctl_queries_are_typed_and_noninteractive()' \
+  'fn r_s11e40_loginctl_session_list_parser_validates_stable_leading_fields()' \
+  'b"7 1000 owner seat0 1234 user tty2 no -\n"' \
+  'fn r_s11e40_loginctl_property_parser_requires_exact_requested_rows()' \
+  'fn r_s11e40_session_display_fallback_is_binary_owned()' \
+  'fn r_s11e40_loginctl_child_excludes_inherited_environment()' \
+  '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)' \
+  '.env("SYSTEMD_PAGER", "/bin/sh")' \
+  '.env("XDG_SESSION_TYPE", "wayland")' \
+  'configure_loginctl_environment(&mut worker);' \
+  'unexpected.is_empty()'; do
+  grep -qF "$test_binding" <<<"$loginctl_tests" || r_s11e40="$r_s11e40 focused-regression-missing"
+done
+for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-loginctl.sh; do
+  for fixture_query in \
+    '"3:--no-pager --no-legend list-sessions")' \
+    '"5:--no-pager --property=State show-session -- 1")' \
+    '"5:--no-pager --property=Type show-session -- 1")' \
+    '"6:--no-pager --property=State --property=Seat show-session -- 1")'; do
+    grep -qF "$fixture_query" "$fixture" || r_s11e40="$r_s11e40 ${fixture##*/}:strict-query-missing"
+  done
+done
+grep -qF '<span class="id">R-S11z</span>' requirements.html || r_s11e40="$r_s11e40 normative-requirement-missing"
+grep -qF 'Linux loginctl session-query authority and ambient desktop confusion' requirements.html || r_s11e40="$r_s11e40 appendix-disposition-missing"
+grep -qF '<tr><td>148</td>' requirements.html || r_s11e40="$r_s11e40 appendix-row-missing"
+grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md || r_s11e40="$r_s11e40 hardening-ledger-missing"
+if [ -n "$r_s11e40" ]; then echo "  FAIL R-S11e-40 Linux loginctl session-query authority:$r_s11e40"; rc=1; else
+  echo "  ok  R-S11e-40 Linux session discovery uses typed local loginctl queries, stable authority-field parsing across systemd list versions, an empty helper environment, and no ambient XDG session substitution"; fi
+
 # (3b-iii-d10) R-S11q/R-S11e-31: every Linux same-executable
 # helper launch owns its descriptor contract. This includes the root
 # service-owned headless CM route, so run_me_with_env must apply the
@@ -4580,11 +4675,11 @@ for token in \
     || r_s11c27m="$r_s11c27m guest:${token%% *}"
 done
 for token in \
-  '"0:")' \
-  '"4:show-session -p State 1")' \
-  '"4:show-session -p Type 1")' \
-  '"2:show-session 1")' \
-  'User=4001' \
+  '"3:--no-pager --no-legend list-sessions")' \
+  '"5:--no-pager --property=State show-session -- 1")' \
+  '"5:--no-pager --property=Type show-session -- 1")' \
+  '"6:--no-pager --property=State --property=Seat show-session -- 1")' \
+  '1 4001 rdseat seat0' \
   'State=active' \
   'Type=x11' \
   'exit 64'; do

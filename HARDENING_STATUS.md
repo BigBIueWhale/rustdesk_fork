@@ -2578,6 +2578,71 @@ unreachable and a source/test/AST gate prevents reintroduction.
   build were not run because they deliberately build images and/or execute root service fixtures and the controlling
   prompt forbids that expansion. Exact clean Debian artifact execution remains owned by R-B2/R-S11c-27; this source
   slice does not substitute for that release evidence. Publication evidence is recorded after commit and push.
+- **R-S11e-40 — Linux loginctl session-query authority — SOURCE IMPLEMENTED AND SOURCE-GATED 2026-07-19;
+  EXACT DEBIAN ARTIFACT EXECUTION REMAINS WITH R-B2/R-S11c-27.** Platform: Linux installed supervisor and
+  service-owned/user-owned desktop processes. Endpoint/action: the shared fixed-path `loginctl` calls used to list
+  logind sessions and read `Type`, `State`, `Seat`, and `LockedHint`. Boundary: root/service process launch state and
+  locally reported logind data ↔ active-user selection, display-protocol classification, lock state, and
+  service-child replacement decisions.
+
+  Proven old path: R-S11c-10m and R-S11e-32 already required a fixed canonical root-owned executable plus a
+  stdio-only descriptor boundary, but `run_loginctl(Option<Vec<&str>>)` still encoded a generic argv surface and
+  inherited the caller's complete environment. Session listing invoked the default human-oriented command, ignored
+  child exit status, decoded with lossy UTF-8, searched an entire row for `seat0`, and treated every state string
+  containing `active` as active. `get_display_server_of_session(session)` correctly queried one explicit session,
+  then on empty/tty/unspecified output substituted the calling process's `XDG_SESSION_TYPE`; that value describes the
+  caller and need not describe the queried session. The official systemd 252 `loginctl(1)` contract designates
+  `show-session` for computer-parsable output, provides property/no-legend/no-pager controls, defines nonzero exit as
+  failure, and warns that inherited pager state is an elevated-command boundary. The pinned systemd 252 source emits
+  SESSION/UID/USER/SEAT/TTY; current systemd 260 preserves those first four authority fields while appending
+  LEADER/CLASS/TTY/IDLE/SINCE presentation fields. The logind contract limits session State to
+  online/active/closing and Type to unspecified/tty/graphical protocols.
+
+  Authority assessment: no inspected packaged systemd/SysV/OpenRC/runit/manual launcher gives an ordinary user a
+  proved write into the root supervisor environment, and the parsed output comes from the local system logind
+  service rather than a network peer. A hostile `DBUS_SYSTEM_BUS_ADDRESS`, pager, loader value, or forged logind
+  response therefore requires privileged/misconfigured launch state or already-compromised local OS authority. The
+  concrete bugs are cross-session ambient-state confusion and permissive parsing; the privilege classification is
+  conceptual receiver/future-deployment authority and defense in depth, not a demonstrated promptless
+  ordinary-user-to-root primitive.
+
+  Closure: `LoginctlQuery` has only `ListSessions` and `SessionProperties`; the latter accepts only the closed
+  `LoginctlProperty::{Type,State,Seat,LockedHint}` vocabulary. It emits fixed local queries with explicit
+  `--no-pager`, list-only `--no-legend`, `show-session --property=...`, and `--` before the separate session ID.
+  `configure_loginctl_environment` clears every inherited variable before argv and the existing descriptor policy
+  are applied. `run_loginctl` requires a successful exit. The strict list parser requires UTF-8 and validates the
+  stable leading SESSION/UID/USER/SEAT authority fields, including canonical decimal UIDs, while ignoring only
+  version-dependent trailing presentation fields. The property parser requires exactly-once requested rows;
+  malformed, missing, duplicate, or unrequested authority data fails closed. Seat/state/lock decisions compare the
+  parsed field/value exactly. Empty, tty, unspecified, or unavailable session Type now uses only the compile-pinned
+  X11 constant; production session
+  selection contains no `XDG_SESSION_TYPE` read. Both strict lifecycle fixtures accept only the new production argv.
+  Primary contracts:
+  https://www.freedesktop.org/software/systemd/man/252/loginctl.html,
+  https://github.com/systemd/systemd/blob/v252/src/login/loginctl.c,
+  https://github.com/systemd/systemd/blob/v260/src/login/loginctl.c,
+  https://wiki.freedesktop.org/www/Software/systemd/logind/, and
+  https://doc.rust-lang.org/std/process/struct.Command.html#method.env_clear.
+
+  Verification: Rust 1.75 compiled and ran five focused tests in the existing non-root networkless devcheck image.
+  Pure tests bind exact typed argv, pinned/current list shapes, stable leading-field/UID rejection,
+  requested-property exactness and duplicate/missing/extra-row rejection, exact active-state behavior, and
+  X11-owned fallback. A two-hop actual-child test puts hostile
+  `DBUS_SYSTEM_BUS_ADDRESS`, `SYSTEMD_PAGER`, and `XDG_SESSION_TYPE` values in an intermediate image, applies the
+  production environment policy, and proves the final child receives none of them and no environment entry except
+  its test role marker. The full offline Linux library check completed with only the repository's existing warning
+  set. Rustfmt, both fixture syntax checks, the extracted R-S11e-40 shell gate, the normal semantic verifier, and its
+  complete independent source-mutation suite passed. The native-codec ledger and self-test passed, as did the
+  dependency inventory and all 103 inventory mutations (909 Cargo packages; 850 lexical unsafe blocks across 251
+  tracked Rust files). These gates bind production ordering, forbidden old parsing/ambient shapes, both strict
+  fixtures, R-S11z, Appendix C #148, and this ledger entry. Publication evidence is recorded after commit and push.
+
+  All code/test execution for this slice uses the invoking non-root UID in an existing local image, networking
+  disabled, all capabilities dropped, no-new-privileges, read-only source/Cargo inputs, and tmpfs outputs. No image
+  is built or pulled; no Docker socket, host PID/network namespace, port publication, service/config path, or host
+  root identity is used. No host RustDesk process/service/configuration, listener, firewall, or network state is
+  inspected or changed. The long full release build and root service fixtures remain excluded. Exact clean Debian
+  artifact execution remains owned by R-B2/R-S11c-27 and is not inferred from this source slice.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -4917,8 +4982,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5e2ff110dea6ae6af33e0094fa9452a8b2f6bc6a2363359cb70512b494f5a74f  requirements.html
+5349fee77bdc9107ccfa2fa426d05cef138451214a8c0943a11ddc491f3b4b43  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11y, and Appendix C #147. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11z, and Appendix C #148. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

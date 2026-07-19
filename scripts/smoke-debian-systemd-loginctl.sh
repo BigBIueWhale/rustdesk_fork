@@ -6,23 +6,17 @@ set -eu
 # fixed-path loginctl parser, then descriptor-exec the service-owned child after
 # dropping every credential/capability set.
 case "$#:$*" in
-  "0:")
+  "3:--no-pager --no-legend list-sessions")
     printf '%s\n' '1 4001 rdseat seat0'
     ;;
-  "4:show-session -p State 1")
+  "5:--no-pager --property=State show-session -- 1")
     printf '%s\n' 'State=active'
     ;;
-  "4:show-session -p Type 1")
+  "5:--no-pager --property=Type show-session -- 1")
     printf '%s\n' 'Type=x11'
     ;;
-  "2:show-session 1")
-    printf '%s\n' \
-      'Id=1' \
-      'User=4001' \
-      'Name=rdseat' \
-      'Seat=seat0' \
-      'State=active' \
-      'Type=x11'
+  "6:--no-pager --property=State --property=Seat show-session -- 1")
+    printf '%s\n' 'State=active' 'Seat=seat0'
     ;;
   *)
     printf 'systemd smoke loginctl: unexpected arguments: %s\n' "$*" >&2

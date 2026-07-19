@@ -383,33 +383,28 @@ pub fn get_display_server() -> String {
 }
 
 pub fn get_display_server_of_session(session: &str) -> String {
-    let mut display_server = if let Ok(output) =
-        run_loginctl(Some(vec!["show-session", "-p", "Type", session]))
-    // Check session type of the session
-    {
-        String::from_utf8_lossy(&output.stdout)
-            .replace("Type=", "")
-            .trim_end()
-            .into()
-    } else {
-        "".to_owned()
-    };
-    if display_server.is_empty() || display_server == "tty" || display_server == "unspecified" {
-        if let Ok(sestype) = std::env::var("XDG_SESSION_TYPE") {
-            if !sestype.is_empty() {
-                return sestype.to_lowercase();
-            }
-        }
-        display_server = "x11".to_owned();
-    }
-    display_server.to_lowercase()
+    let display_server = loginctl_session_properties(session, &[LoginctlProperty::Type])
+        .ok()
+        .and_then(|mut values| values.pop());
+    normalize_session_display_server(display_server.as_deref())
 }
 
 #[inline]
-fn line_values(indices: &[usize], line: &str) -> Vec<String> {
+fn session_values(indices: &[usize], session: Option<&LoginctlSession>) -> Vec<String> {
     indices
         .into_iter()
-        .map(|idx| line.split_whitespace().nth(*idx).unwrap_or("").to_owned())
+        .map(|idx| {
+            let Some(session) = session else {
+                return String::new();
+            };
+            match idx {
+                0 => session.id.clone(),
+                1 => session.uid.clone(),
+                2 => session.username.clone(),
+                3 => session.seat.clone(),
+                _ => String::new(),
+            }
+        })
         .collect::<Vec<String>>()
 }
 
@@ -423,87 +418,272 @@ pub fn get_values_of_seat0_with_gdm_wayland(indices: &[usize]) -> Vec<String> {
     _get_values_of_seat0(indices, false)
 }
 
-// Ignore "3 sessions listed."
-fn ignore_loginctl_line(line: &str) -> bool {
-    line.contains("sessions") || line.split(" ").count() < 4
-}
-
 fn _get_values_of_seat0(indices: &[usize], ignore_gdm_wayland: bool) -> Vec<String> {
-    if let Ok(output) = run_loginctl(None) {
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if ignore_loginctl_line(line) {
-                continue;
-            }
-            if line.contains("seat0") {
-                if let Some(sid) = line.split_whitespace().next() {
-                    if is_active(sid) {
-                        if ignore_gdm_wayland {
-                            if is_gdm_user(line.split_whitespace().nth(2).unwrap_or(""))
-                                && get_display_server_of_session(sid) == DISPLAY_SERVER_WAYLAND
-                            {
-                                continue;
-                            }
-                        }
-                        return line_values(indices, line);
-                    }
+    if let Ok(sessions) = loginctl_sessions() {
+        for session in &sessions {
+            if session.seat == "seat0" && is_active(&session.id) {
+                if ignore_gdm_wayland
+                    && is_gdm_user(&session.username)
+                    && get_display_server_of_session(&session.id) == DISPLAY_SERVER_WAYLAND
+                {
+                    continue;
                 }
+                return session_values(indices, Some(session));
             }
         }
 
         // some case, there is no seat0 https://github.com/rustdesk/rustdesk/issues/73
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if ignore_loginctl_line(line) {
-                continue;
-            }
-            if let Some(sid) = line.split_whitespace().next() {
-                if is_active(sid) {
-                    let d = get_display_server_of_session(sid);
-                    if ignore_gdm_wayland {
-                        if is_gdm_user(line.split_whitespace().nth(2).unwrap_or(""))
-                            && d == DISPLAY_SERVER_WAYLAND
-                        {
-                            continue;
-                        }
-                    }
-                    if d == "tty" || d == "unspecified" {
-                        continue;
-                    }
-                    return line_values(indices, line);
+        for session in &sessions {
+            if is_active(&session.id) {
+                let display_server = get_display_server_of_session(&session.id);
+                if ignore_gdm_wayland
+                    && is_gdm_user(&session.username)
+                    && display_server == DISPLAY_SERVER_WAYLAND
+                {
+                    continue;
                 }
+                if display_server == "tty" || display_server == "unspecified" {
+                    continue;
+                }
+                return session_values(indices, Some(session));
             }
         }
     }
 
-    line_values(indices, "")
+    session_values(indices, None)
 }
 
 pub fn is_active(sid: &str) -> bool {
-    if let Ok(output) = run_loginctl(Some(vec!["show-session", "-p", "State", sid])) {
-        String::from_utf8_lossy(&output.stdout).contains("active")
-    } else {
-        false
-    }
+    matches!(
+        loginctl_session_properties(sid, &[LoginctlProperty::State]).as_deref(),
+        Ok([state]) if state == "active"
+    )
 }
 
 pub fn is_active_and_seat0(sid: &str) -> bool {
-    if let Ok(output) = run_loginctl(Some(vec!["show-session", sid])) {
-        String::from_utf8_lossy(&output.stdout).contains("State=active")
-            && String::from_utf8_lossy(&output.stdout).contains("Seat=seat0")
-    } else {
-        false
-    }
+    matches!(
+        loginctl_session_properties(
+            sid,
+            &[LoginctlProperty::State, LoginctlProperty::Seat],
+        )
+        .as_deref(),
+        Ok([state, seat]) if state == "active" && seat == "seat0"
+    )
 }
 
 // Check both "Lock" and "Switch user"
 pub fn is_session_locked(sid: &str) -> bool {
-    if let Ok(output) = run_loginctl(Some(vec!["show-session", sid, "--property=LockedHint"])) {
-        String::from_utf8_lossy(&output.stdout).contains("LockedHint=yes")
-    } else {
-        false
+    matches!(
+        loginctl_session_properties(sid, &[LoginctlProperty::LockedHint]).as_deref(),
+        Ok([locked]) if locked == "yes"
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LoginctlProperty {
+    LockedHint,
+    Seat,
+    State,
+    Type,
+}
+
+impl LoginctlProperty {
+    fn name(self) -> &'static str {
+        match self {
+            Self::LockedHint => "LockedHint",
+            Self::Seat => "Seat",
+            Self::State => "State",
+            Self::Type => "Type",
+        }
+    }
+
+    fn argument(self) -> &'static str {
+        match self {
+            Self::LockedHint => "--property=LockedHint",
+            Self::Seat => "--property=Seat",
+            Self::State => "--property=State",
+            Self::Type => "--property=Type",
+        }
     }
 }
 
-fn run_loginctl(args: Option<Vec<&str>>) -> std::io::Result<std::process::Output> {
+#[derive(Debug, Eq, PartialEq)]
+struct LoginctlSession {
+    id: String,
+    uid: String,
+    username: String,
+    seat: String,
+}
+
+enum LoginctlQuery<'a> {
+    ListSessions,
+    SessionProperties {
+        session: &'a str,
+        properties: &'a [LoginctlProperty],
+    },
+}
+
+impl LoginctlQuery<'_> {
+    fn arguments(&self) -> Vec<&str> {
+        match self {
+            Self::ListSessions => vec!["--no-pager", "--no-legend", "list-sessions"],
+            Self::SessionProperties {
+                session,
+                properties,
+            } => {
+                let mut arguments = Vec::with_capacity(properties.len() + 4);
+                arguments.push("--no-pager");
+                arguments.extend(properties.iter().map(|property| property.argument()));
+                arguments.push("show-session");
+                arguments.push("--");
+                arguments.push(session);
+                arguments
+            }
+        }
+    }
+}
+
+fn normalize_session_display_server(display_server: Option<&str>) -> String {
+    let display_server = display_server.map(str::to_ascii_lowercase);
+    match display_server.as_deref() {
+        Some(display_server)
+            if !display_server.is_empty()
+                && display_server != "tty"
+                && display_server != "unspecified" =>
+        {
+            display_server.to_owned()
+        }
+        _ => DISPLAY_SERVER_X11.to_owned(),
+    }
+}
+
+fn invalid_loginctl_output(message: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn parse_loginctl_sessions(stdout: &[u8]) -> io::Result<Vec<LoginctlSession>> {
+    let stdout = std::str::from_utf8(stdout)
+        .map_err(|_| invalid_loginctl_output("loginctl session list is not UTF-8"))?;
+    let mut sessions = Vec::new();
+    for line in stdout.lines() {
+        if line.is_empty() {
+            return Err(invalid_loginctl_output(
+                "loginctl session list contains an empty row",
+            ));
+        }
+        // The first four fields are the session authority consumed here. systemd 252
+        // appends TTY, while newer versions append further presentation fields.
+        let mut fields = line.split_ascii_whitespace();
+        let Some(id) = fields.next() else {
+            return Err(invalid_loginctl_output(
+                "loginctl session row has no identifier",
+            ));
+        };
+        let Some(uid) = fields.next() else {
+            return Err(invalid_loginctl_output("loginctl session row has no uid"));
+        };
+        let Some(username) = fields.next() else {
+            return Err(invalid_loginctl_output(
+                "loginctl session row has no username",
+            ));
+        };
+        let Some(seat) = fields.next() else {
+            return Err(invalid_loginctl_output("loginctl session row has no seat"));
+        };
+        let parsed_uid = uid
+            .parse::<u32>()
+            .map_err(|_| invalid_loginctl_output("loginctl session uid is not decimal"))?;
+        if parsed_uid.to_string() != uid {
+            return Err(invalid_loginctl_output(
+                "loginctl session uid is not canonical decimal",
+            ));
+        }
+        sessions.push(LoginctlSession {
+            id: id.to_owned(),
+            uid: uid.to_owned(),
+            username: username.to_owned(),
+            seat: seat.to_owned(),
+        });
+    }
+    Ok(sessions)
+}
+
+fn parse_loginctl_session_properties(
+    stdout: &[u8],
+    properties: &[LoginctlProperty],
+) -> io::Result<Vec<String>> {
+    if properties.is_empty() {
+        return Err(invalid_loginctl_output(
+            "loginctl property query has no properties",
+        ));
+    }
+    let stdout = std::str::from_utf8(stdout)
+        .map_err(|_| invalid_loginctl_output("loginctl property output is not UTF-8"))?;
+    let mut values = vec![None; properties.len()];
+    for line in stdout.lines() {
+        let Some((name, value)) = line.split_once('=') else {
+            return Err(invalid_loginctl_output(
+                "loginctl property row has no separator",
+            ));
+        };
+        if value.bytes().any(|byte| byte.is_ascii_control()) {
+            return Err(invalid_loginctl_output(
+                "loginctl property value contains control bytes",
+            ));
+        }
+        let Some(index) = properties
+            .iter()
+            .position(|property| property.name() == name)
+        else {
+            return Err(invalid_loginctl_output(
+                "loginctl returned an unrequested property",
+            ));
+        };
+        if values[index].replace(value.to_owned()).is_some() {
+            return Err(invalid_loginctl_output(
+                "loginctl returned a duplicate property",
+            ));
+        }
+    }
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        let Some(value) = value else {
+            return Err(invalid_loginctl_output(
+                "loginctl omitted a requested property",
+            ));
+        };
+        parsed.push(value);
+    }
+    Ok(parsed)
+}
+
+fn loginctl_sessions() -> io::Result<Vec<LoginctlSession>> {
+    let output = run_loginctl(LoginctlQuery::ListSessions)?;
+    parse_loginctl_sessions(&output.stdout)
+}
+
+fn loginctl_session_properties(
+    session: &str,
+    properties: &[LoginctlProperty],
+) -> io::Result<Vec<String>> {
+    if session.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "loginctl session identifier is empty",
+        ));
+    }
+    let output = run_loginctl(LoginctlQuery::SessionProperties {
+        session,
+        properties,
+    })?;
+    parse_loginctl_session_properties(&output.stdout, properties)
+}
+
+fn configure_loginctl_environment(command: &mut Command) {
+    command.env_clear();
+}
+
+fn run_loginctl(query: LoginctlQuery<'_>) -> std::io::Result<std::process::Output> {
     let Some(loginctl) = trusted_command_path(&LOGINCTL_PATHS) else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -511,11 +691,17 @@ fn run_loginctl(args: Option<Vec<&str>>) -> std::io::Result<std::process::Output
         ));
     };
     let mut cmd = std::process::Command::new(loginctl);
-    if let Some(a) = args {
-        cmd.args(a);
-    }
+    configure_loginctl_environment(&mut cmd);
+    cmd.args(query.arguments());
     configure_command_close_nonstdio_on_exec(&mut cmd)?;
-    cmd.output()
+    let output = cmd.output()?;
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("loginctl query failed with {}", output.status),
+        ));
+    }
+    Ok(output)
 }
 
 #[derive(Debug, Clone)]
@@ -651,6 +837,165 @@ pub fn get_effective_home_dir_trusted() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn r_s11e40_loginctl_queries_are_typed_and_noninteractive() {
+        assert_eq!(
+            LoginctlQuery::ListSessions.arguments(),
+            ["--no-pager", "--no-legend", "list-sessions"]
+        );
+        assert_eq!(
+            LoginctlQuery::SessionProperties {
+                session: "c7",
+                properties: &[LoginctlProperty::State, LoginctlProperty::Seat],
+            }
+            .arguments(),
+            [
+                "--no-pager",
+                "--property=State",
+                "--property=Seat",
+                "show-session",
+                "--",
+                "c7",
+            ]
+        );
+    }
+
+    #[test]
+    fn r_s11e40_loginctl_session_list_parser_validates_stable_leading_fields() {
+        assert_eq!(
+            parse_loginctl_sessions(b"1 1000 owner seat0 tty2\nc4 1001 other - -\n").unwrap(),
+            vec![
+                LoginctlSession {
+                    id: "1".to_owned(),
+                    uid: "1000".to_owned(),
+                    username: "owner".to_owned(),
+                    seat: "seat0".to_owned(),
+                },
+                LoginctlSession {
+                    id: "c4".to_owned(),
+                    uid: "1001".to_owned(),
+                    username: "other".to_owned(),
+                    seat: "-".to_owned(),
+                },
+            ]
+        );
+        assert!(
+            parse_loginctl_sessions(b"SESSION UID USER SEAT TTY\n1 1000 owner seat0 tty2\n")
+                .is_err()
+        );
+        assert!(parse_loginctl_sessions(b"1 01000 owner seat0 tty2\n").is_err());
+        let current = parse_loginctl_sessions(b"7 1000 owner seat0 1234 user tty2 no -\n").unwrap();
+        assert_eq!(current[0].id, "7");
+        assert_eq!(current[0].seat, "seat0");
+        let ambiguous = parse_loginctl_sessions(b"1 1000 seat0-owner - tty2\n").unwrap();
+        assert_eq!(ambiguous[0].username, "seat0-owner");
+        assert_eq!(ambiguous[0].seat, "-");
+    }
+
+    #[test]
+    fn r_s11e40_loginctl_property_parser_requires_exact_requested_rows() {
+        let properties = [LoginctlProperty::State, LoginctlProperty::Seat];
+        assert_eq!(
+            parse_loginctl_session_properties(b"Seat=seat0\nState=active\n", &properties).unwrap(),
+            ["active", "seat0"]
+        );
+        let inactive =
+            parse_loginctl_session_properties(b"State=inactive\n", &[LoginctlProperty::State])
+                .unwrap();
+        assert_ne!(inactive.as_slice(), ["active"]);
+        assert!(parse_loginctl_session_properties(b"State=active\n", &properties).is_err());
+        assert!(parse_loginctl_session_properties(
+            b"State=active\nState=closing\n",
+            &[LoginctlProperty::State],
+        )
+        .is_err());
+        assert!(parse_loginctl_session_properties(
+            b"State=active\nType=x11\n",
+            &[LoginctlProperty::State],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn r_s11e40_session_display_fallback_is_binary_owned() {
+        assert_eq!(normalize_session_display_server(None), DISPLAY_SERVER_X11);
+        assert_eq!(
+            normalize_session_display_server(Some("")),
+            DISPLAY_SERVER_X11
+        );
+        assert_eq!(
+            normalize_session_display_server(Some("tty")),
+            DISPLAY_SERVER_X11
+        );
+        assert_eq!(
+            normalize_session_display_server(Some("unspecified")),
+            DISPLAY_SERVER_X11
+        );
+        assert_eq!(
+            normalize_session_display_server(Some("WAYLAND")),
+            DISPLAY_SERVER_WAYLAND
+        );
+    }
+
+    #[test]
+    fn r_s11e40_loginctl_child_excludes_inherited_environment() {
+        const ROLE: &str = "RUSTDESK_TEST_LOGINCTL_ENVIRONMENT_ROLE";
+        const HOSTILE_BUS: &str = "unix:path=/tmp/rustdesk-hostile-loginctl-system-bus";
+        const TEST_NAME: &str =
+            "platform::linux::tests::r_s11e40_loginctl_child_excludes_inherited_environment";
+
+        match std::env::var(ROLE).as_deref() {
+            Ok("launcher") => {
+                assert_eq!(
+                    std::env::var("DBUS_SYSTEM_BUS_ADDRESS").as_deref(),
+                    Ok(HOSTILE_BUS)
+                );
+                assert_eq!(std::env::var("SYSTEMD_PAGER").as_deref(), Ok("/bin/sh"));
+                assert_eq!(std::env::var("XDG_SESSION_TYPE").as_deref(), Ok("wayland"));
+                let mut worker = Command::new(std::env::current_exe().unwrap());
+                configure_loginctl_environment(&mut worker);
+                let status = worker
+                    .env(ROLE, "worker")
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
+            Ok("worker") => {
+                for variable in [
+                    "DBUS_SYSTEM_BUS_ADDRESS",
+                    "SYSTEMD_PAGER",
+                    "XDG_SESSION_TYPE",
+                ] {
+                    assert!(
+                        std::env::var_os(variable).is_none(),
+                        "{} survived",
+                        variable
+                    );
+                }
+                let unexpected: Vec<_> = std::env::vars_os()
+                    .filter(|(key, _)| key != std::ffi::OsStr::new(ROLE))
+                    .collect();
+                assert!(
+                    unexpected.is_empty(),
+                    "unexpected environment: {:?}",
+                    unexpected
+                );
+            }
+            _ => {
+                let status = Command::new(std::env::current_exe().unwrap())
+                    .env(ROLE, "launcher")
+                    .env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)
+                    .env("SYSTEMD_PAGER", "/bin/sh")
+                    .env("XDG_SESSION_TYPE", "wayland")
+                    .args(["--exact", TEST_NAME, "--nocapture"])
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+            }
+        }
+    }
 
     #[test]
     fn r_s11c10m_command_candidates_are_fixed_absolute_paths() {

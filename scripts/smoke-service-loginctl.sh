@@ -24,17 +24,17 @@ case "$mode" in
 esac
 
 case "$#:$*" in
-  "0:")
+  "3:--no-pager --no-legend list-sessions")
     printf '1 %s %s seat0\n' "$uid" "$username"
     ;;
-  "4:show-session -p State 1")
+  "5:--no-pager --property=State show-session -- 1")
     printf '%s\n' 'State=active'
     ;;
-  "4:show-session -p Type 1")
+  "5:--no-pager --property=Type show-session -- 1")
     printf '%s\n' 'Type=x11'
     ;;
-  "2:show-session 1")
-    printf '%s\n' 'Id=1' "User=$uid" "Name=$username" 'Seat=seat0' 'State=active' 'Type=x11'
+  "6:--no-pager --property=State --property=Seat show-session -- 1")
+    printf '%s\n' 'State=active' 'Seat=seat0'
     ;;
   *)
     printf 'smoke loginctl: unexpected arguments: %s\n' "$*" >&2

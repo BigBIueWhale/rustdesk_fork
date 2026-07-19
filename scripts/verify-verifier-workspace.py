@@ -3160,10 +3160,10 @@ def validate_systemd_smoke_contract(
     )
 
     for text, label in (
-        ('"0:")', "systemd VM loginctl session listing"),
-        ('"4:show-session -p State 1")', "systemd VM loginctl state query"),
-        ('"4:show-session -p Type 1")', "systemd VM loginctl type query"),
-        ('User=4001', "systemd VM loginctl non-root seat"),
+        ('"3:--no-pager --no-legend list-sessions")', "systemd VM loginctl session listing"),
+        ('"5:--no-pager --property=State show-session -- 1")', "systemd VM loginctl state query"),
+        ('"5:--no-pager --property=Type show-session -- 1")', "systemd VM loginctl type query"),
+        ('1 4001 rdseat seat0', "systemd VM loginctl non-root seat"),
         ('State=active', "systemd VM loginctl active seat"),
         ('Type=x11', "systemd VM loginctl X11 seat"),
         ('exit 64', "systemd VM loginctl unexpected-argv rejection"),
@@ -3331,6 +3331,9 @@ def validate_smoke_contract(
         ('Linux pkcheck helper ambient environment authority (R-S11y/R-S11e-39)', "pkcheck helper environment source gate"),
         ('if grep -Eq \'\\.envs?[[:space:]]*\\(\' <<<"$pkcheck_environment_policy$pkcheck_authorization_block"; then', "pkcheck explicit environment source gate"),
         ("grep -qF 'R-S11e-39 — Linux service-owned pkcheck inherited environment authority' HARDENING_STATUS.md", "pkcheck helper environment hardening ledger gate"),
+        ('Linux loginctl session-query authority (R-S11z/R-S11e-40)', "loginctl session authority source gate"),
+        ('if grep -qF \'XDG_SESSION_TYPE\' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then', "loginctl ambient session source gate"),
+        ("grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md", "loginctl session hardening ledger gate"),
         ('Linux same-executable child inherited descriptor authority (R-S11q/R-S11e-31)', "same-executable child descriptor source gate"),
         ("grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md", "same-executable child descriptor hardening ledger gate"),
         ('Linux external-helper descriptor allowlist authority (R-S11r/R-S11e-32)', "external-helper descriptor source gate"),
@@ -3381,6 +3384,26 @@ def validate_smoke_contract(
         requirements,
         "Linux service-owned pkcheck inherited environment authority",
         "pkcheck environment Appendix C disposition",
+    )
+    require_text(
+        hardening,
+        "R-S11e-40 — Linux loginctl session-query authority",
+        "loginctl session hardening ledger",
+    )
+    require_text(
+        requirements,
+        '<span class="id">R-S11z</span>',
+        "loginctl session normative requirement",
+    )
+    require_text(
+        requirements,
+        '<tr><td>148</td>',
+        "loginctl session Appendix C row",
+    )
+    require_text(
+        requirements,
+        "Linux loginctl session-query authority and ambient desktop confusion",
+        "loginctl session Appendix C disposition",
     )
     require_text(
         hardening,
@@ -3751,14 +3774,14 @@ def validate_smoke_contract(
             )
     for text, label in (
         ('readonly STATE=/tmp/rd-service-loginctl-state', "loginctl switch state"),
-        ('"0:")', "loginctl session-list invocation"),
+        ('"3:--no-pager --no-legend list-sessions")', "loginctl session-list invocation"),
         ('uid=0', "loginctl root seat uid"),
         ('uid=4001', "loginctl non-root seat uid"),
         ('username=rdseat', "loginctl non-root seat identity"),
         ('printf \'1 %s %s seat0\\n\' "$uid" "$username"', "loginctl exact selected seat"),
-        ('"4:show-session -p State 1")', "loginctl state query"),
-        ('"4:show-session -p Type 1")', "loginctl type query"),
-        ('"2:show-session 1")', "loginctl session query"),
+        ('"5:--no-pager --property=State show-session -- 1")', "loginctl state query"),
+        ('"5:--no-pager --property=Type show-session -- 1")', "loginctl type query"),
+        ('"6:--no-pager --property=State --property=Seat show-session -- 1")', "loginctl session query"),
         ('exit 64', "loginctl unexpected-argv rejection"),
     ):
         require_text(loginctl_fixture, text, label)
@@ -4172,6 +4195,148 @@ def validate_smoke_contract(
         ("unexpected.is_empty()", "actual-child empty environment assertion"),
     ):
         require_text(pkcheck_environment_test, text, label)
+
+    loginctl_display_query = extract_between(
+        hbb_common_linux,
+        "pub fn get_display_server_of_session",
+        "\n#[inline]\npub fn get_values_of_seat0",
+        "Linux loginctl display query",
+    )
+    loginctl_selection = extract_between(
+        hbb_common_linux,
+        "fn _get_values_of_seat0",
+        "\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]",
+        "Linux loginctl session selection",
+    )
+    loginctl_authority = extract_between(
+        hbb_common_linux,
+        "enum LoginctlProperty",
+        "\n#[derive(Debug, Clone)]",
+        "Linux loginctl typed query authority",
+    )
+    for text, label in (
+        ("enum LoginctlProperty {", "closed loginctl property vocabulary"),
+        ("enum LoginctlQuery<'a> {", "closed loginctl query vocabulary"),
+        (
+            'Self::ListSessions => vec!["--no-pager", "--no-legend", "list-sessions"]',
+            "explicit legend/pager-free session list",
+        ),
+        ('arguments.push("--no-pager");', "session property pager denial"),
+        (
+            "arguments.extend(properties.iter().map(|property| property.argument()));",
+            "enumerated property arguments",
+        ),
+        ('arguments.push("show-session");', "computer-parsable property command"),
+        ('arguments.push("--");', "session identifier option terminator"),
+        ("fn parse_loginctl_sessions(stdout: &[u8])", "strict session-list parser"),
+        ("line.split_ascii_whitespace()", "session-list field parser"),
+        ("parsed_uid.to_string() != uid", "canonical decimal session uid"),
+        ("fn parse_loginctl_session_properties(", "strict property parser"),
+        ("loginctl returned an unrequested property", "unrequested property rejection"),
+        ("loginctl returned a duplicate property", "duplicate property rejection"),
+        ("loginctl omitted a requested property", "missing property rejection"),
+        (
+            "fn configure_loginctl_environment(command: &mut Command)",
+            "loginctl environment policy",
+        ),
+        ("command.env_clear();", "loginctl empty environment"),
+        ("cmd.args(query.arguments());", "typed loginctl argv application"),
+        (
+            "configure_command_close_nonstdio_on_exec(&mut cmd)?;",
+            "loginctl descriptor policy",
+        ),
+        ("let output = cmd.output()?;", "loginctl captured execution"),
+        ("if !output.status.success()", "loginctl successful-exit requirement"),
+    ):
+        require_text(loginctl_authority, text, label)
+    require_exact_count(
+        loginctl_authority,
+        "fields.next()",
+        4,
+        "stable leading loginctl session fields",
+    )
+    require_order(
+        loginctl_authority,
+        (
+            "configure_loginctl_environment(&mut cmd);",
+            "cmd.args(query.arguments());",
+            "configure_command_close_nonstdio_on_exec(&mut cmd)?;",
+            "let output = cmd.output()?;",
+            "if !output.status.success()",
+        ),
+        "loginctl environment/argv/descriptor/status authority",
+    )
+    if re.search(r"\.envs?\s*\(", loginctl_authority):
+        raise VerificationError("loginctl query reintroduces an explicit environment variable")
+    for forbidden in ("run_loginctl(Some", "run_loginctl(None", "from_utf8_lossy", ".contains("):
+        if forbidden in loginctl_display_query + loginctl_selection + loginctl_authority:
+            raise VerificationError(
+                f"loginctl query retains generic/lossy/substring authority: {forbidden}"
+            )
+    if "XDG_SESSION_TYPE" in loginctl_display_query + loginctl_selection + loginctl_authority:
+        raise VerificationError("queried Linux session still consumes ambient XDG_SESSION_TYPE")
+    for text, label in (
+        (
+            "normalize_session_display_server(display_server.as_deref())",
+            "binary-owned display fallback",
+        ),
+    ):
+        require_text(loginctl_display_query, text, label)
+    for text, label in (
+        ('session.seat == "seat0"', "exact parsed seat selection"),
+        ('Ok([state]) if state == "active"', "exact active-state selection"),
+        (
+            'Ok([state, seat]) if state == "active" && seat == "seat0"',
+            "exact replacement session selection",
+        ),
+        ('Ok([locked]) if locked == "yes"', "exact locked-hint selection"),
+    ):
+        require_text(loginctl_selection, text, label)
+
+    loginctl_tests = extract_between(
+        hbb_common_linux,
+        "fn r_s11e40_loginctl_queries_are_typed_and_noninteractive()",
+        "\n    #[test]\n    fn r_s11c10m_command_candidates_are_fixed_absolute_paths",
+        "Linux loginctl focused regressions",
+    )
+    for text, label in (
+        (
+            "fn r_s11e40_loginctl_session_list_parser_validates_stable_leading_fields()",
+            "session-list parser regression",
+        ),
+        (
+            'b"7 1000 owner seat0 1234 user tty2 no -\\n"',
+            "current systemd session-list regression",
+        ),
+        (
+            "fn r_s11e40_loginctl_property_parser_requires_exact_requested_rows()",
+            "property parser regression",
+        ),
+        (
+            "fn r_s11e40_session_display_fallback_is_binary_owned()",
+            "binary-owned fallback regression",
+        ),
+        (
+            "fn r_s11e40_loginctl_child_excludes_inherited_environment()",
+            "actual-child environment regression",
+        ),
+        (
+            '.env("DBUS_SYSTEM_BUS_ADDRESS", HOSTILE_BUS)',
+            "hostile loginctl system bus fixture",
+        ),
+        ('.env("SYSTEMD_PAGER", "/bin/sh")', "hostile loginctl pager fixture"),
+        ('.env("XDG_SESSION_TYPE", "wayland")', "hostile caller session fixture"),
+        (
+            "configure_loginctl_environment(&mut worker);",
+            "actual-child production environment policy",
+        ),
+        (
+            "std::env::var_os(variable).is_none()",
+            "actual-child selected environment exclusions",
+        ),
+        ("unexpected.is_empty()", "actual-child complete empty environment proof"),
+    ):
+        require_text(loginctl_tests, text, label)
     run_me_with_env = extract_between(
         common_source,
         "pub fn run_me_with_env<",
@@ -11156,6 +11321,60 @@ def run_source_mutations(sources):
             "pkcheck execution after descriptor policy",
         ),
         (
+            "hbb_common_linux",
+            "    command.env_clear();\n}",
+            "    // loginctl environment clear removed\n}",
+            "loginctl empty environment",
+        ),
+        (
+            "hbb_common_linux",
+            "fn configure_loginctl_environment(command: &mut Command) {\n    command.env_clear();\n}",
+            'fn configure_loginctl_environment(command: &mut Command) {\n    command.env_clear();\n    command.env("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/tmp/ambient");\n}',
+            "loginctl query reintroduces an explicit environment variable",
+        ),
+        (
+            "hbb_common_linux",
+            'Self::ListSessions => vec!["--no-pager", "--no-legend", "list-sessions"],',
+            'Self::ListSessions => vec!["list-sessions"],',
+            "explicit legend/pager-free session list",
+        ),
+        (
+            "hbb_common_linux",
+            '                arguments.push("--");',
+            '                // session option terminator removed',
+            "session identifier option terminator",
+        ),
+        (
+            "hbb_common_linux",
+            '        Ok([state]) if state == "active"',
+            '        Ok([state]) if state.contains("active")',
+            "loginctl query retains generic/lossy/substring authority",
+        ),
+        (
+            "hbb_common_linux",
+            "    normalize_session_display_server(display_server.as_deref())",
+            '    std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| normalize_session_display_server(display_server.as_deref()))',
+            "queried Linux session still consumes ambient XDG_SESSION_TYPE",
+        ),
+        (
+            "hbb_common_linux",
+            "    if !output.status.success() {",
+            "    if false {",
+            "loginctl successful-exit requirement",
+        ),
+        (
+            "hbb_common_linux",
+            "        let parsed_uid = uid",
+            "        let _unexpected_trailing_field = fields.next();\n        let parsed_uid = uid",
+            "stable leading loginctl session fields",
+        ),
+        (
+            "hbb_common_linux",
+            '                    assert!(\n                        std::env::var_os(variable).is_none(),',
+            '                    assert!(\n                        std::env::var_os(variable).is_some(),',
+            "actual-child selected environment exclusions",
+        ),
+        (
             "common_source",
             "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut cmd)",
             "hbb_common::platform::linux::configure_command_close_nonstdio_on_exec_disabled(&mut cmd)",
@@ -11668,7 +11887,7 @@ def run_source_mutations(sources):
         (
             "requirements",
             '<span class="id">R-S11t</span>',
-            '<span class="id">R-S11z</span>',
+            '<span class="id">R-S11zz</span>',
             "macOS descriptor normative requirement",
         ),
         (
@@ -11812,7 +12031,7 @@ def run_source_mutations(sources):
         (
             "requirements",
             '<span class="id">R-S11x</span>',
-            '<span class="id">R-S11z</span>',
+            '<span class="id">R-S11zz</span>',
             "cross-platform helper normative requirement",
         ),
         (
@@ -11842,7 +12061,7 @@ def run_source_mutations(sources):
         (
             "requirements",
             '<span class="id">R-S11y</span>',
-            '<span class="id">R-S11z</span>',
+            '<span class="id">R-S11zz</span>',
             "pkcheck environment normative requirement",
         ),
         (
@@ -11856,6 +12075,36 @@ def run_source_mutations(sources):
             "R-S11e-39 — Linux service-owned pkcheck inherited environment authority",
             "R-S11e-39 — Linux service-owned pkcheck environment compatibility",
             "pkcheck helper environment hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d9b) Linux loginctl session-query authority (R-S11z/R-S11e-40) =="',
+            'echo "== (3b-iii-d9b) Linux loginctl session-query compatibility (R-S11z/R-S11e-40) =="',
+            "loginctl session authority source gate",
+        ),
+        (
+            "verify",
+            'if grep -qF \'XDG_SESSION_TYPE\' <<<"$loginctl_display_query$loginctl_authority$loginctl_selection"; then',
+            "if false; then",
+            "loginctl ambient session source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11z</span>',
+            '<span class="id">R-S11zz</span>',
+            "loginctl session normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>148</td>",
+            "<tr><td>9148</td>",
+            "loginctl session Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-40 — Linux loginctl session-query authority",
+            "R-S11e-40 — Linux loginctl session-query compatibility",
+            "loginctl session hardening ledger",
         ),
         (
             "server_source",

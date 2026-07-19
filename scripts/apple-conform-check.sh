@@ -1086,7 +1086,10 @@ grep -Fq 'fn macos_path_has_expected_type_and_permissions(' "$REPO/src/ipc/auth.
 grep -Fq 'fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-helper-codesign-check-missing"
 grep -Fq 'fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-app-codesign-check-missing"
 grep -Fq 'MacosSecStaticCode::from_path(&url, MacosCodeSigningFlags::NONE)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-static-code-check-not-native"
-grep -Fq 'code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-code-requirement-not-strict"
+grep -Fq 'MacosCodeSigningFlags::STRICT_VALIDATE' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-code-requirement-not-strict"
+grep -Fq 'MacosCodeSigningFlags::CHECK_ALL_ARCHITECTURES' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-static-code-all-architectures-missing"
+grep -Fq 'MacosCodeSigningFlags::CHECK_NESTED_CODE' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-static-app-nested-code-check-missing"
+grep -Fq 'code.check_validity(validation_flags, &requirement)' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-static-code-validation-flags-not-used"
 if grep -Fq 'Command::new(MACOS_CODESIGN)' "$REPO/src/ipc/auth.rs" || grep -Fq 'const MACOS_CODESIGN' "$REPO/src/ipc/auth.rs"; then
   r_s11c5="$r_s11c5 macos-rust-codesign-subprocess-present"
 fi
@@ -1152,7 +1155,7 @@ grep -q 'quoted form of bundled_service_exec' "$script" || r_s11c5="$r_s11c5 $(b
 grep -q 'set verify_bundled_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-bundled-helper-verifier"
 grep -q 'set install_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-helper-installer"
 grep -q 'set verify_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-service-exec-verifier"
-grep -q '/usr/bin/codesign --verify --strict -R " & quoted form of helper_requirement' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-codesign-check-missing"
+grep -q '/usr/bin/codesign --verify --strict --all-architectures -R " & quoted form of helper_requirement' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-codesign-check-missing"
 grep -q '/usr/bin/install -o root -g wheel -m 0755 " & quoted form of bundled_service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-not-installed-from-bundle"
 grep -q '/usr/bin/cmp -s " & quoted form of bundled_service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-copy-not-byte-checked"
 grep -q '/Library/PrivilegedHelperTools' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-dir-not-used"
@@ -1202,6 +1205,21 @@ if [ -n "$r_s11c5" ]; then
   rc=1
 else
   note "ok  R-S11c-5 LaunchDaemon uses a signed root-owned PrivilegedHelperTools executable, and _service IPC identity matches that deployed helper model; dormant updater and active-user config import are absent"
+fi
+
+echo "== (2b-iii-c5a) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="
+r_s11e61=
+python3 "$REPO/scripts/verify-macos-helper-build-binding.py" --repo "$REPO" \
+  || r_s11e61="$r_s11e61 macos-helper-build-binding-semantic-invalid"
+python3 "$REPO/scripts/verify-macos-helper-build-binding.py" --repo "$REPO" --self-test \
+  || r_s11e61="$r_s11e61 macos-helper-build-binding-mutations-invalid"
+python3 -m py_compile "$REPO/scripts/verify-macos-helper-build-binding.py" \
+  || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
+if [ -n "$r_s11e61" ]; then
+  echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"
+  rc=1
+else
+  note "ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, stale-upgrade detection/reinstall, and partial-state uninstall share one current-build authority"
 fi
 
 echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="

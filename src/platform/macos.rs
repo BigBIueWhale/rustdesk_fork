@@ -43,6 +43,10 @@ const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 const MACOS_OPEN: &str = "/usr/bin/open";
 const MACOS_OSASCRIPT: &str = "/usr/bin/osascript";
 const MACOS_IOREG: &str = "/usr/sbin/ioreg";
+const MACOS_PRIVILEGED_HELPER_EXEC: &str =
+    "/Library/PrivilegedHelperTools/com.carriez.rustdesk_service";
+const MACOS_PRIVILEGED_HELPER_TEMP: &str =
+    "/Library/PrivilegedHelperTools/.com.carriez.rustdesk_service.installing";
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/platform/privileges_scripts");
@@ -195,7 +199,10 @@ pub fn install_service() -> bool {
 
 pub fn is_installed_daemon(prompt: bool) -> bool {
     let (daemon_plist_file, agent_plist_file) = service_plist_files();
-    if service_plists_exist(&daemon_plist_file, &agent_plist_file) {
+    if service_installation_is_current(
+        service_plists_exist(&daemon_plist_file, &agent_plist_file),
+        crate::ipc::macos_deployed_helper_matches_installed_app_bytes(),
+    ) {
         return true;
     }
     if !prompt {
@@ -213,6 +220,11 @@ pub fn is_installed_daemon(prompt: bool) -> bool {
     false
 }
 
+#[inline]
+fn service_installation_is_current(plists_exist: bool, helper_matches_current_app: bool) -> bool {
+    plists_exist && helper_matches_current_app
+}
+
 fn service_plist_files() -> (String, String) {
     let daemon = format!("{}_service.plist", crate::get_full_name());
     let agent = format!("{}_server.plist", crate::get_full_name());
@@ -225,6 +237,17 @@ fn service_plist_files() -> (String, String) {
 fn service_plists_exist(daemon_plist_file: &str, agent_plist_file: &str) -> bool {
     std::path::Path::new(daemon_plist_file).exists()
         && std::path::Path::new(agent_plist_file).exists()
+}
+
+fn service_artifacts_exist(daemon_plist_file: &str, agent_plist_file: &str) -> bool {
+    [
+        daemon_plist_file,
+        agent_plist_file,
+        MACOS_PRIVILEGED_HELPER_EXEC,
+        MACOS_PRIVILEGED_HELPER_TEMP,
+    ]
+    .iter()
+    .any(|path| std::fs::symlink_metadata(path).is_ok())
 }
 
 fn server_launch_agent_label() -> String {
@@ -306,10 +329,29 @@ fn bundled_service_executable() -> Option<PathBuf> {
         );
         return None;
     };
+    let installed_macos_dir = PathBuf::from(format!(
+        "/Applications/{}.app/Contents/MacOS",
+        crate::get_app_name()
+    ));
+    if current_exe_dir != installed_macos_dir {
+        log::error!(
+            "macOS service install requires the fixed installed app directory: expected={}, actual={}",
+            installed_macos_dir.display(),
+            current_exe_dir.display()
+        );
+        return None;
+    }
     let bundled_service_exec = current_exe_dir.join("service");
-    if !bundled_service_exec.is_file() {
+    let Ok(metadata) = std::fs::symlink_metadata(&bundled_service_exec) else {
         log::error!(
             "Bundled macOS service helper is missing: {}",
+            bundled_service_exec.display()
+        );
+        return None;
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        log::error!(
+            "Bundled macOS service helper is not a regular non-symlink file: {}",
             bundled_service_exec.display()
         );
         return None;
@@ -429,6 +471,7 @@ fn render_macos_service_template(s: &str) -> String {
     let full_name = crate::get_full_name();
     let service_label = format!("{full_name}_service");
     let server_label = format!("{full_name}_server");
+    let app_bundle = format!("/Applications/{app_name}.app");
     let app_executable = format!("/Applications/{app_name}.app/Contents/MacOS/{app_name}");
     let app_macos_dir = format!("/Applications/{app_name}.app/Contents/MacOS/");
     let log_dir = format!("/Library/Logs/{app_name}");
@@ -442,6 +485,7 @@ fn render_macos_service_template(s: &str) -> String {
         &app_executable,
     )
     .replace("/Applications/RustDesk.app/Contents/MacOS/", &app_macos_dir)
+    .replace("/Applications/RustDesk.app", &app_bundle)
     .replace("/Library/Logs/RustDesk", &log_dir)
     .replace("/Library/Application Support/RustDesk", &support_dir)
     .replace(
@@ -458,10 +502,10 @@ fn render_macos_service_template(s: &str) -> String {
 }
 
 pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
-    if !is_installed_daemon(false) {
+    let (daemon_plist_file, agent_plist_file) = service_plist_files();
+    if !service_artifacts_exist(&daemon_plist_file, &agent_plist_file) {
         return false;
     }
-    let (daemon_plist_file, agent_plist_file) = service_plist_files();
 
     let Some(script_file) = PRIVILEGES_SCRIPTS_DIR.get_file("uninstall.scpt") else {
         log::error!("Embedded macOS uninstall.scpt is missing");
@@ -980,6 +1024,14 @@ mod root_principal_tests {
         assert!(effective_uid_is_root(0));
         assert!(!effective_uid_is_root(1));
         assert!(!effective_uid_is_root(501));
+    }
+
+    #[test]
+    fn r_s11e61_macos_service_status_requires_current_helper_bytes() {
+        assert!(service_installation_is_current(true, true));
+        assert!(!service_installation_is_current(true, false));
+        assert!(!service_installation_is_current(false, true));
+        assert!(!service_installation_is_current(false, false));
     }
 }
 

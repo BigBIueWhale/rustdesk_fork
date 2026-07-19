@@ -9007,6 +9007,78 @@ def validate_linux_service_admission_contract(sources):
     )
 
 
+def validate_macos_helper_build_binding_contract(sources):
+    verify = sources["verify"]
+    apple = sources["apple"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+    validator = sources["macos_helper_binding_validator"]
+
+    for source, heading, label in (
+        (
+            verify,
+            'echo "== (3b-iii-d9ck) macOS privileged helper current-build binding '
+            '(R-S11au/R-S11e-61) =="',
+            "macOS helper current-build shared gate",
+        ),
+        (
+            apple,
+            'echo "== (2b-iii-c5a) macOS privileged helper current-build binding '
+            '(R-S11au/R-S11e-61) =="',
+            "macOS helper current-build Apple gate",
+        ),
+    ):
+        require_text(source, heading, label)
+        require_text(
+            source,
+            "verify-macos-helper-build-binding.py",
+            f"{label} semantic validator",
+        )
+        require_text(source, "--self-test", f"{label} mutation suite")
+
+    for text, label in (
+        (
+            "def validate(sources",
+            "macOS helper current-build focused validator semantic entry",
+        ),
+        (
+            "def run_mutations(sources",
+            "macOS helper current-build focused validator mutation entry",
+        ),
+        (
+            "MUTATIONS: Tuple[Mutation, ...]",
+            "macOS helper current-build focused validator mutation inventory",
+        ),
+        (
+            "mutation was not rejected",
+            "macOS helper current-build focused validator mutation rejection",
+        ),
+        ("MacosCodeSigningFlags::CHECK_NESTED_CODE", "nested-code proof"),
+        ("macos_deployed_helper_matches_installed_app_bytes", "runtime byte binding proof"),
+        ("verify_current_build_binding", "pre-load build binding proof"),
+    ):
+        require_text(validator, text, label)
+
+    for text, label in (
+        ('<span class="id">R-S11au</span>', "macOS helper current-build requirement"),
+        (
+            "macOS privileged helper is bound to the current signed app build",
+            "macOS helper current-build requirement title",
+        ),
+        ("<tr><td>169</td>", "macOS helper current-build Appendix C row"),
+        (
+            "macOS accepted a stale or mix-and-match same-Team privileged helper",
+            "macOS helper current-build Appendix C disposition",
+        ),
+    ):
+        require_text(requirements, text, label)
+    require_text(
+        hardening,
+        "R-S11e-61 — macOS privileged helper current-build binding",
+        "macOS helper current-build hardening ledger",
+    )
+
+
 def validate_linux_service_child_principal_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -9869,6 +9941,7 @@ def validate_sources(sources):
     validate_protected_service_outcome_ownership_contract(sources)
     validate_desktop_ipc_retained_owner_contract(sources)
     validate_linux_service_admission_contract(sources)
+    validate_macos_helper_build_binding_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -17265,6 +17338,42 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
+            'echo "== (3b-iii-d9ck) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="',
+            'echo "== (3b-iii-d9ck) macOS stale helper acceptance (R-S11au/R-S11e-61) =="',
+            "macOS helper current-build shared gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iii-c5a) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="',
+            'echo "== (2b-iii-c5a) macOS stale helper acceptance (R-S11au/R-S11e-61) =="',
+            "macOS helper current-build Apple gate",
+        ),
+        (
+            "macos_helper_binding_validator",
+            "def run_mutations(sources",
+            "def skip_mutations(sources",
+            "macOS helper current-build focused validator mutation entry",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11au</span>',
+            '<span class="id">R-S11az</span>',
+            "macOS helper current-build requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>169</td>",
+            "<tr><td>9169</td>",
+            "macOS helper current-build Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11e-61 — macOS privileged helper current-build binding",
+            "R-S11e-61 — stale macOS helper accepted",
+            "macOS helper current-build hardening ledger",
+        ),
+        (
+            "verify",
             'echo "== (3b-iii-d9c7) Linux numeric selected-session service-child authority (R-S11ah/R-S11e-48) =="',
             'echo "== (3b-iii-d9c7) Linux account-name service-child compatibility (R-S11ah/R-S11e-48) =="',
             "Linux selected-session principal source gate",
@@ -20208,6 +20317,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "linux_service_admission_validator": (
                 repo / "scripts/verify-linux-service-admission.py"
+            ).read_text(encoding="utf-8"),
+            "macos_helper_binding_validator": (
+                repo / "scripts/verify-macos-helper-build-binding.py"
             ).read_text(encoding="utf-8"),
             "ipc_auth_source": (repo / "src/ipc/auth.rs").read_text(encoding="utf-8"),
             "faillo": (repo / "scripts/test-build-faillo.sh").read_text(encoding="utf-8"),

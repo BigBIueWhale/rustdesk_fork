@@ -4441,6 +4441,25 @@ grep -qF 'R-S11e-60 — Linux protected-service admission owns active-session id
 if [ -n "$r_s11e60" ]; then echo "  FAIL R-S11e-60 Linux protected-service admission:$r_s11e60"; rc=1; else
   echo "  ok  R-S11e-60 transaction permits own both Linux authorization paths and cached active UID only prefilters the fresh final-authority lookup"; fi
 
+# (3b-iii-d9ck) R-S11au/R-S11e-61: a macOS LaunchDaemon helper is
+# current only when it is the exact nested helper of the signed installed app.
+echo "== (3b-iii-d9ck) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="
+r_s11e61=
+python3 scripts/verify-macos-helper-build-binding.py --repo . \
+  || r_s11e61="$r_s11e61 macos-helper-build-binding-semantic-invalid"
+python3 scripts/verify-macos-helper-build-binding.py --repo . --self-test \
+  || r_s11e61="$r_s11e61 macos-helper-build-binding-mutations-invalid"
+python3 -m py_compile scripts/verify-macos-helper-build-binding.py \
+  || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
+grep -qF '<span class="id">R-S11au</span>' requirements.html || r_s11e61="$r_s11e61 normative-requirement-missing"
+grep -qF '<tr><td>169</td>' requirements.html || r_s11e61="$r_s11e61 appendix-row-missing"
+grep -qF 'R-S11e-61 — macOS privileged helper current-build binding' HARDENING_STATUS.md \
+  || r_s11e61="$r_s11e61 hardening-ledger-missing"
+grep -qF 'macOS privileged helper current-build binding (R-S11au/R-S11e-61)' scripts/apple-conform-check.sh \
+  || r_s11e61="$r_s11e61 apple-source-conformance-gate-missing"
+if [ -n "$r_s11e61" ]; then echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"; rc=1; else
+  echo "  ok  R-S11e-61 signed installed-app nested code, deployed helper bytes, upgrade status, reinstall, and partial-state uninstall share one current-build authority"; fi
+
 # (3b-iii-d9d) R-S11aa/R-S11e-41: privileged systemd service
 # lifecycle calls own their action, unit identity, interaction mode, and
 # complete child environment rather than inheriting launcher policy.
@@ -5346,7 +5365,10 @@ grep -Fq 'fn macos_path_has_expected_type_and_permissions(' src/ipc/auth.rs || r
 grep -Fq 'fn macos_privileged_helper_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-helper-codesign-check-missing"
 grep -Fq 'fn macos_installed_app_satisfies_code_requirement(path: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-codesign-check-missing"
 grep -Fq 'MacosSecStaticCode::from_path(&url, MacosCodeSigningFlags::NONE)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-static-code-check-not-native"
-grep -Fq 'code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-code-requirement-not-strict"
+grep -Fq 'MacosCodeSigningFlags::STRICT_VALIDATE' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-code-requirement-not-strict"
+grep -Fq 'MacosCodeSigningFlags::CHECK_ALL_ARCHITECTURES' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-static-code-all-architectures-missing"
+grep -Fq 'MacosCodeSigningFlags::CHECK_NESTED_CODE' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-static-app-nested-code-check-missing"
+grep -Fq 'code.check_validity(validation_flags, &requirement)' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-static-code-validation-flags-not-used"
 if grep -Fq 'Command::new(MACOS_CODESIGN)' src/ipc/auth.rs || grep -Fq 'const MACOS_CODESIGN' src/ipc/auth.rs; then
   r_s11c5="$r_s11c5 macos-rust-codesign-subprocess-present"
 fi
@@ -5412,7 +5434,7 @@ grep -q 'quoted form of bundled_service_exec' "$script" || r_s11c5="$r_s11c5 $(b
 grep -q 'set verify_bundled_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-bundled-helper-verifier"
 grep -q 'set install_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-helper-installer"
 grep -q 'set verify_service_exec to' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-no-service-exec-verifier"
-grep -q '/usr/bin/codesign --verify --strict -R " & quoted form of helper_requirement' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-codesign-check-missing"
+grep -q '/usr/bin/codesign --verify --strict --all-architectures -R " & quoted form of helper_requirement' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-codesign-check-missing"
 grep -q '/usr/bin/install -o root -g wheel -m 0755 " & quoted form of bundled_service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-not-installed-from-bundle"
 grep -q '/usr/bin/cmp -s " & quoted form of bundled_service_exec' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-copy-not-byte-checked"
 grep -q '/Library/PrivilegedHelperTools' "$script" || r_s11c5="$r_s11c5 $(basename "$script")-helper-dir-not-used"

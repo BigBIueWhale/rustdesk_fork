@@ -4030,6 +4030,47 @@ unreachable and a source/test/AST gate prevents reintroduction.
   firewall, or host network state was executed, inspected, or changed. Native installed-service contention,
   exact-commit artifact/reproducibility evidence, and external expert audit remain R-R2/R-B2/R-V3 and are not
   claimed.
+- **R-S11e-61 — macOS privileged helper current-build binding — SOURCE IMPLEMENTED; NATIVE SIGNED-UPGRADE AND
+  ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: macOS source-conformance and any future signed macOS artifact.
+  Surfaces: `src/platform/macos.rs`, `src/platform/privileges_scripts/install.scpt`, `src/ipc/auth.rs`, and the
+  protected `_service`/raw password endpoints that rely on helper identity. Boundary: currently installed signed
+  app build ↔ root LaunchDaemon helper selection and runtime IPC authority. Proven gap: the earlier exact-copy
+  closure replaced the deployed helper whenever the installer ran, but `is_installed_daemon` returned true from
+  the two plist files alone. An app replacement could therefore leave the prior same-Team helper running without
+  offering reinstall. Installer input and runtime helper admission proved Team ID/identifier, path, ownership, and
+  mode, but did not require the deployed bytes to equal the helper nested in the currently installed app. This was
+  a privileged-component provenance/version-coherence defect with potential downgrade to defects in an older
+  correctly signed helper, not evidence that a downgrade, privilege escalation, compromise, host service change,
+  public listener, or network exposure occurred.
+
+  Authority model and source closure: `/Applications/<App>.app` is the current build authority. Rust service
+  installation now resolves `Contents/MacOS/service` only beside the fixed installed app executable and rejects a
+  symlink or non-file source. The admin AppleScript rejects any helper argument other than that exact fixed path;
+  requires the app and helper source to be root-owned and non-group/world-writable; validates the pinned outer app
+  requirement with `--deep --strict --all-architectures`; validates every helper copy with the pinned helper
+  requirement across all architectures; and, immediately before launchd replacement/load, repeats the outer-app
+  proof and byte-compares deployed helper to bundled helper. Runtime `SecStaticCode` validation adds
+  `CHECK_ALL_ARCHITECTURES` and, for the app bundle, `CHECK_NESTED_CODE`. Every trusted deployed-helper path then
+  requires the protected installed app plus a no-follow regular-file, length-first, fixed-64-KiB streaming byte
+  equality proof against its sealed `Contents/MacOS/service`. This composes with the existing root/wheel/mode/ACL,
+  designated-requirement, audit-token, installed-app peer, console-owner, and fixed transaction/Security-framework
+  capacity checks rather than replacing them.
+
+  Lifecycle correction: service state is current only when both plists exist and the deployed bytes match the
+  current app. A stale helper returns false, so the existing UI offers its admin-authorized install transaction and
+  that transaction replaces/reloads the helper; it is never silently treated as current. Uninstall admission checks
+  for any managed plist, deployed helper, or install-temp entry through no-follow metadata, so mismatch or partial
+  installation cannot make cleanup unreachable. The focused Rust truth-table regression pins the status
+  conjunction. `scripts/verify-macos-helper-build-binding.py` independently binds static-signature flags, bounded
+  byte comparison, runtime trust composition, fixed installer input, pre-load revalidation, stale-state reinstall,
+  partial-state uninstall, normative/ledger/source-gate synchronization, and rejects all 26 deliberate mutations.
+  Shared and Apple source gates invoke the validator and its self-test. R-S11au and Appendix C #169 make the model
+  normative. Apple's [Code Signing Guide](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/Procedures/Procedures.html)
+  documents `Contents/MacOS` helpers as nested code sealed into the outer resource envelope and requires recursive
+  verification to validate nested code; its [static code validation flags](https://developer.apple.com/documentation/security/static-code-validation-flags)
+  separately document all-architecture validation. Native signed app replacement, admin reinstall/relaunch,
+  universal-binary rejection injection, and exact-commit artifact proof remain R-R2/R-B2. External expert audit
+  remains R-V3.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6375,8 +6416,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8b7fb24f98ba3fb2d92da7aac02f7aeb2b862706ee4f28057d1facb958889695  requirements.html
+f2752e7e462ca7d3fecb61739f446a849a2e6c2029f6e7f7b3c8573e47fc9473  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11at, and Appendix C #168. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11au, and Appendix C #169. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

@@ -45,6 +45,8 @@ use ipc_auth::linux_proc_start_time;
 use ipc_auth::linux_proc_stat_start_time;
 #[cfg(windows)]
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
+#[cfg(target_os = "macos")]
+pub(crate) use ipc_auth::macos_deployed_helper_matches_installed_app_bytes;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(target_os = "linux")]

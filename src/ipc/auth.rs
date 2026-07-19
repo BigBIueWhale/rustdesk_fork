@@ -21,9 +21,13 @@ use std::ffi::{c_void, CString};
 #[cfg(target_os = "linux")]
 use std::fmt;
 #[cfg(target_os = "macos")]
+use std::io::{BufReader, Read};
+#[cfg(target_os = "macos")]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::MetadataExt;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::OpenOptionsExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1723,6 +1727,68 @@ fn macos_installed_app_bundle_path() -> PathBuf {
 
 #[cfg(target_os = "macos")]
 #[inline]
+fn macos_installed_app_bundled_helper_path() -> PathBuf {
+    macos_installed_app_bundle_path().join("Contents/MacOS/service")
+}
+
+#[cfg(target_os = "macos")]
+fn macos_open_regular_file_no_follow(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(crate::libc::O_CLOEXEC | crate::libc::O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_regular_files_have_same_contents(left: &Path, right: &Path) -> bool {
+    let (Ok(left_file), Ok(right_file)) = (
+        macos_open_regular_file_no_follow(left),
+        macos_open_regular_file_no_follow(right),
+    ) else {
+        return false;
+    };
+    let (Ok(left_metadata), Ok(right_metadata)) =
+        (left_file.metadata(), right_file.metadata())
+    else {
+        return false;
+    };
+    if !left_metadata.is_file()
+        || !right_metadata.is_file()
+        || left_metadata.len() != right_metadata.len()
+    {
+        return false;
+    }
+
+    let mut left_file = BufReader::new(left_file);
+    let mut right_file = BufReader::new(right_file);
+    let mut left_buffer = [0u8; 64 * 1024];
+    let mut right_buffer = [0u8; 64 * 1024];
+    loop {
+        let (Ok(left_read), Ok(right_read)) = (
+            left_file.read(&mut left_buffer),
+            right_file.read(&mut right_buffer),
+        ) else {
+            return false;
+        };
+        if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
+            return false;
+        }
+        if left_read == 0 {
+            return true;
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn macos_deployed_helper_matches_installed_app_bytes() -> bool {
+    macos_regular_files_have_same_contents(
+        Path::new(MACOS_PRIVILEGED_HELPER_EXEC),
+        &macos_installed_app_bundled_helper_path(),
+    )
+}
+
+#[cfg(target_os = "macos")]
+#[inline]
 fn macos_executable_matches_expected_path(actual: &Path, expected: &Path) -> bool {
     actual == expected || paths_refer_to_same_file(actual, expected)
 }
@@ -1846,7 +1912,12 @@ fn macos_static_code_satisfies_requirement(
             return false;
         }
     };
-    match code.check_validity(MacosCodeSigningFlags::STRICT_VALIDATE, &requirement) {
+    let mut validation_flags =
+        MacosCodeSigningFlags::STRICT_VALIDATE | MacosCodeSigningFlags::CHECK_ALL_ARCHITECTURES;
+    if is_dir {
+        validation_flags |= MacosCodeSigningFlags::CHECK_NESTED_CODE;
+    }
+    match code.check_validity(validation_flags, &requirement) {
         Ok(()) => true,
         Err(err) => {
             log::error!("macOS {description} static code-signing check failed: {err:?}");
@@ -1955,6 +2026,8 @@ fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> b
         return false;
     };
     macos_privileged_helper_satisfies_code_requirement(expected)
+        && macos_installed_app_path_is_expected_and_trusted(&macos_installed_app_executable_path())
+        && macos_deployed_helper_matches_installed_app_bytes()
 }
 
 #[cfg(target_os = "macos")]

@@ -492,6 +492,10 @@ class RustDeskMultiWindowManager {
     return _activeWindows;
   }
 
+  bool hasPortForwardWindows() {
+    return _portForwardWindows.isNotEmpty;
+  }
+
   Future<void> _notifyActiveWindow() async {
     for (final callback in _windowActiveCallbacks) {
       await callback.call();

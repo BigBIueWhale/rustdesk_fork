@@ -101,7 +101,9 @@ class _PortForwardTabPageState extends State<PortForwardTabPage> {
       body: DesktopTab(
         controller: tabController,
         onWindowCloseButton: () async {
-          tabController.clear();
+          if (isRDP) {
+            tabController.clear();
+          }
           return true;
         },
         tail: AddButton(),

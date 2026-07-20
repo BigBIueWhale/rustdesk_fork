@@ -15,4 +15,28 @@ void main() {
       'rdp-peer',
     );
   });
+
+  test('keeps a hidden port-forward process alive', () {
+    expect(
+      shouldKeepLockedT3TunnelAlive(
+        hasActiveWindows: false,
+        hasPortForwardWindows: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldKeepLockedT3TunnelAlive(
+        hasActiveWindows: true,
+        hasPortForwardWindows: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldKeepLockedT3TunnelAlive(
+        hasActiveWindows: false,
+        hasPortForwardWindows: false,
+      ),
+      isFalse,
+    );
+  });
 }

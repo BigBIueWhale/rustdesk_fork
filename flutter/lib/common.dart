@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hbb/common/locked_t3_tunnel.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
@@ -2745,9 +2746,16 @@ bool isRunningInPortableMode() {
 
 /// Window status callback
 Future<void> onActiveWindowChanged() async {
-  print(
-      "[MultiWindowHandler] active window changed: ${rustDeskWinManager.getActiveWindows()}");
-  if (rustDeskWinManager.getActiveWindows().isEmpty) {
+  final activeWindows = rustDeskWinManager.getActiveWindows();
+  print("[MultiWindowHandler] active window changed: $activeWindows");
+  if (shouldKeepLockedT3TunnelAlive(
+    hasActiveWindows: activeWindows.isNotEmpty,
+    hasPortForwardWindows: rustDeskWinManager.hasPortForwardWindows(),
+  )) {
+    debugPrint("Keeping RustDesk alive for the locked T3 port forward");
+    return;
+  }
+  if (activeWindows.isEmpty) {
     // close all sub windows
     try {
       if (isLinux) {

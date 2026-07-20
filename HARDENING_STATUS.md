@@ -4268,6 +4268,44 @@ unreachable and a source/test/AST gate prevents reintroduction.
   filesystem read-only, disposable output/cache storage, no capabilities, no-new-privileges, bounded pids, and no
   published ports or Docker socket. No host RustDesk, service, configuration, listener, firewall, or host-network
   state was inspected or changed.
+- **R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage — SOURCE CHECKERS REPAIRED/GATED; NATIVE AND
+  EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platforms: shared desktop password-IPC assurance, Linux semantic
+  verification, and macOS source conformance. Boundary: prepared listener ownership ↔ retained runner admission,
+  authorization, transaction drain, and terminal outcome. R-S11as correctly replaced the monolithic main listener
+  with `prepare_main_ipc`/`run_main_ipc`; service IPC likewise uses `prepare_service_ipc`/`run_service_ipc` behind a
+  thin wrapper. The Apple password checker, the structured Linux password-IPC verifier, and an embedded shared gate
+  still parsed `start_main_ipc`; the structured verifier also expected listener construction and execution inside
+  the thin service wrapper. Those structural failures stopped later security assertions and mutation fixtures from
+  executing. Its service-password order also predated R-S11at and incorrectly placed identity work before bounded
+  admission. One Apple proof-worker mutation targeted the first generic thread-builder token rather than the exact
+  Security.framework worker. This was fail-loud assurance drift after a correct runtime refactor, not a runtime
+  listener/authentication defect, privilege escalation, exploitation, or evidence of compromise.
+
+  Checker closure: each verifier separately extracts the preparation and runner functions. Preparation assertions
+  bind both ordinary and dedicated raw-password endpoints before readiness; runner assertions bind proof-before-
+  secret admission, sole authenticated handler ownership, transaction/worker drain, sensitive-ledger clearing,
+  listener-guard drop, and returned outcome. The thin service wrapper is checked only for prepare-then-run ownership.
+  Linux service-password ordering now preserves R-S11at's transaction permit before active-session/executable
+  identity work. The Apple proof-worker mutation uses the unique `let worker = std::thread::Builder::new()` binding.
+  R-S11bb and Appendix C #178 make this executable assurance topology normative. The workspace semantic validator
+  binds all three checker sources and documentary surfaces with deliberate mutations.
+
+  Verification: the structured Linux verifier passed both normal execution and its adversarial self-test; the Apple
+  password checker's `r_s11b`, `r_s11b2`, and `r_s11e16` structural/mutation groups passed; and the shared embedded
+  raw-password checker plus the R-S11bb source gate passed. The workspace verifier passed normally and its complete
+  in-memory semantic source-mutation matrix rejected every affected checker, ordering, requirement, Appendix, and
+  ledger mutation. Native-codec normal/self-test, dependency inventory and all 103 self-tests, Bash/Python syntax,
+  requirements-hash equality at `ada3cca27f8576b60311f945dd17d19fbcba56583b7ea908208494119be24506`, and
+  `git diff --check` passed. During development, the workspace validator first exposed an R-S11bb assertion placed
+  against the unrelated macOS descriptor source and then a retired-name absence check that included the shell gate's
+  deliberate rejection string; both scopes were narrowed to the actual shared checker body before the passing runs.
+  A broad executable `--self-test` invocation without its mandatory separately owned scratch directory was correctly
+  rejected and is not counted; the explicit complete source-mutation mode is the applicable adversarial evidence for
+  this checker-only slice. All substantive checks used the pre-existing immutable `rd-devcheck` image as UID/GID
+  1000 with no network, capabilities, new privileges, writable source, published ports, or Docker socket. Native
+  Apple execution and clean exact-commit release artifact proof remain R-R2/R-B2; external review remains R-V3. No
+  runtime Rust source is changed by this checker-repair slice, and no host RustDesk/service/configuration/network state
+  was inspected or changed.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
   ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
   and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
@@ -6706,9 +6744,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-fe200216eb9128822b9214e0e1f0fc87057d175dfb2abf64b784624fa9f6fd98  requirements.html
+ada3cca27f8576b60311f945dd17d19fbcba56583b7ea908208494119be24506  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ba, R-SV4a,
-R-SV5a, and Appendix C #177. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bb, R-SV4a,
+R-SV5a, and Appendix C #178. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

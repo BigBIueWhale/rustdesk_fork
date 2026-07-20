@@ -427,8 +427,10 @@ def analyze(sources):
         findings["b1"].append(f"structural-parse:{error}")
 
     try:
-        start_main = item(ipc, "async fn start_main_ipc")
-        start_service = item(ipc, "async fn start_service_ipc")
+        prepare_main = item(ipc, "async fn prepare_main_ipc")
+        run_main = item(ipc, "async fn run_main_ipc")
+        prepare_service = item(ipc, "async fn prepare_service_ipc")
+        run_service = item(ipc, "async fn run_service_ipc")
         main_sensitive = item(ipc, "async fn handle_sensitive_main_ipc_transaction")
         mac_sensitive = item(ipc, "async fn handle_sensitive_macos_service_ipc_transaction")
         mac_password_mutation = item(ipc, "async fn handle_macos_service_owned_unattended_password_request")
@@ -457,7 +459,7 @@ def analyze(sources):
         need("b2", "raw-endpoints-not-dedicated", all(token in password for token in [
             'USER_PASSWORD_IPC_POSTFIX: &str = "_password"',
             'SERVICE_PASSWORD_IPC_POSTFIX: &str = "_service_password"',
-        ]) and "new_listener(password::USER_PASSWORD_IPC_POSTFIX)" in start_main and "new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)" in start_service)
+        ]) and "new_listener(password::USER_PASSWORD_IPC_POSTFIX)" in prepare_main and "new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)" in prepare_service)
         need("b2", "raw-wire-shape-not-fixed", all(token in password for token in [
             'const REQUEST_MAGIC: [u8; 8] = *b"RDPWREQ\\0";',
             'const STATUS_MAGIC: [u8; 8] = *b"RDPWSTS\\0";',
@@ -498,11 +500,11 @@ def analyze(sources):
             "zeroize_sensitive_bytes(&mut self.0);", "impl<const N: usize> Drop for SensitiveStackBytes",
             "SensitivePassword([REDACTED])", "zeroize_sensitive_bytes(&mut body.bytes[password_len..]);",
         ]) and "Serialize for SensitivePassword" not in password_prod and "Deserialize" not in password_prod)
-        need("b2", "main-peer-auth-not-before-secret-read", ordered(start_main, [
+        need("b2", "main-peer-auth-not-before-secret-read", ordered(run_main, [
             "SensitiveMainListenerEvent::Accepted(stream)", "sensitive_main_ipc_authority(&stream)",
             "try_acquire_sensitive_main_ipc_transaction_slot(authority)", "handle_sensitive_main_ipc_transaction(",
         ]) and "SensitivePayloadKind::Password" in main_sensitive)
-        password_accept = start_service[start_service.find("result = password_incoming.next()") : start_service.find("result = incoming.next()")]
+        password_accept = run_service[run_service.find("result = password_incoming.next()") : run_service.find("result = incoming.next()")]
         need("b2", "macos-peer-auth-not-before-secret-read", ordered(password_accept, [
             "try_acquire_service_password_ipc_transaction_slot()", "try_acquire_macos_service_password_ipc_authorization_slot()",
             "transactions.spawn(async move", "let deadline = tokio::time::Instant::now()",
@@ -622,7 +624,7 @@ def analyze(sources):
             "password_mutations().begin_shutdown();", "while let Some(result) = transactions.join_next().await",
             "password_mutations().drain().await;", "password_mutations().clear_after_transactions_drain();",
         ]
-        need("b2", "password-ledger-shutdown-not-drained-cleared", ordered(start_service, service_shutdown) and ordered(start_main, service_shutdown))
+        need("b2", "password-ledger-shutdown-not-drained-cleared", ordered(run_service, service_shutdown) and ordered(run_main, service_shutdown))
 
         need("b2", "snapshot-requester-argv-not-exact", all(token in snapshot_argv for token in [
             "cmd.len() == 3", 'Some("--server")', "Some(crate::common::SERVICE_OWNED_SERVER_ARG)",
@@ -732,7 +734,7 @@ mutation("service-admission", "ipc", "Data::Test => true", "Data::Test => false"
 mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
 mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
-mutation("proof-worker-owner", "ipc", "std::thread::Builder::new()", "tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
+mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
 mutation("fresh-transport-deadline", "ipc", '#[cfg(target_os = "macos")]\n        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);', '#[cfg(target_os = "macos")]\n        let deadline = readiness_deadline;', "b2", "macos-user-prompt-sequence-not-readiness-prompt-fresh-deadline")
 mutation("ledger-clear", "ipc", "password_mutations().clear_after_transactions_drain();", "password_mutations().begin_shutdown();", "b2", "password-ledger-shutdown-not-drained-cleared")

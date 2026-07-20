@@ -10941,6 +10941,112 @@ def validate_direct_address_cli_contract(sources):
     )
 
 
+def validate_ipc_lifecycle_checker_contract(sources):
+    apple = sources["apple"]
+    for text, expected, label in (
+        ('item(ipc, "async fn prepare_main_ipc")', 1, "Apple main-listener preparation checker"),
+        ('item(ipc, "async fn run_main_ipc")', 1, "Apple main-listener execution checker"),
+        ('item(ipc, "async fn prepare_service_ipc")', 1, "Apple service-listener preparation checker"),
+        ('item(ipc, "async fn run_service_ipc")', 1, "Apple service-listener execution checker"),
+    ):
+        require_exact_count(apple, text, expected, label)
+    require_absent(
+        apple,
+        'item(ipc, "async fn start_main_ipc")',
+        "retired Apple monolithic main-listener checker",
+    )
+    for text, label in (
+        (
+            '"new_listener(password::USER_PASSWORD_IPC_POSTFIX)" in prepare_main',
+            "Apple prepared main password endpoint checker",
+        ),
+        (
+            '"new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)" in prepare_service',
+            "Apple prepared service password endpoint checker",
+        ),
+        (
+            'ordered(run_service, service_shutdown) and ordered(run_main, service_shutdown)',
+            "Apple running-listener drain checker",
+        ),
+        (
+            'mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()"',
+            "Apple proof-worker mutation scope",
+        ),
+    ):
+        require_text(apple, text, label)
+
+    shared_section = extract_between(
+        sources["verify"],
+        "# (3b-iii-c) R-S11b/R-S11c/R-S11g/R-S11h/R-S11i:",
+        "# (3b-iii-d) R-S11b-3a/R-S11b-3d:",
+        "shared raw-password checker",
+    )
+    shared = extract_between(
+        shared_section,
+        "if ! python3 - <<'PY'\n",
+        "\nPY\nthen",
+        "shared raw-password embedded checker",
+    )
+    for text, label in (
+        ('run_main = between(ipc, "async fn run_main_ipc("', "shared running-main checker"),
+        ('run_service = between(ipc, "async fn run_service_ipc("', "shared running-service checker"),
+        ("run_main,", "shared main drain input"),
+        ("run_service,", "shared service drain/proof input"),
+    ):
+        require_text(shared, text, label)
+    require_absent(shared, "start_main_ipc", "retired shared monolithic main checker")
+    require_absent(
+        shared,
+        'start_service = between(ipc, "async fn start_service_ipc',
+        "retired shared monolithic service checker",
+    )
+    require_text(
+        shared_section,
+        "R-S11bb IPC lifecycle-split checker coverage",
+        "IPC lifecycle-split shared source gate",
+    )
+
+    linux = sources["linux_password_ipc_validator"]
+    for text, expected, label in (
+        ('ipc.function("prepare_main_ipc")', 1, "Linux main-listener preparation checker"),
+        ('ipc.function("run_main_ipc")', 2, "Linux main-listener execution checker"),
+        ('ipc.function("prepare_service_ipc")', 1, "Linux service-listener preparation checker"),
+        ('ipc.function("run_service_ipc")', 2, "Linux service-listener execution checker"),
+        ('ipc.function("start_service_ipc")', 1, "Linux service wrapper checker"),
+    ):
+        require_exact_count(linux, text, expected, label)
+    require_absent(
+        linux,
+        'ipc.function("start_main_ipc")',
+        "retired Linux monolithic main-listener checker",
+    )
+    require_order(
+        linux,
+        (
+            '(("password_incoming", ".", "next", "(", ")"), "raw service accept lane")',
+            '(("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission")',
+            '(("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate")',
+        ),
+        "Linux service-password permit-before-identity checker",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S11bb", "IPC lifecycle-checker requirement"
+    )
+    for text, label in (
+        ("preparation and execution", "lifecycle split requirement"),
+        ("retired monolithic", "retired-checker prohibition"),
+        ("permit-before-identity", "service admission checker requirement"),
+    ):
+        require_text(requirement, text, label)
+    require_text(sources["requirements"], "<tr><td>178</td>", "IPC checker Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage",
+        "IPC lifecycle-checker hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -11006,6 +11112,7 @@ def validate_sources(sources):
     validate_smoke_container_authority_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
+    validate_ipc_lifecycle_checker_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -21488,6 +21595,66 @@ def run_source_mutations(sources):
             "numeric-ID hardening ledger",
         ),
         (
+            "apple",
+            'item(ipc, "async fn prepare_main_ipc")',
+            'item(ipc, "async fn start_main_ipc")',
+            "Apple main-listener preparation checker",
+        ),
+        (
+            "apple",
+            'mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()"',
+            'mutation("proof-worker-owner", "ipc", "std::thread::Builder::new()"',
+            "Apple proof-worker mutation scope",
+        ),
+        (
+            "verify",
+            'run_main = between(ipc, "async fn run_main_ipc("',
+            'run_main = between(ipc, "async fn start_main_ipc("',
+            "shared running-main checker",
+        ),
+        (
+            "verify",
+            "R-S11bb IPC lifecycle-split checker coverage",
+            "R-S11bb IPC lifecycle checker gate disabled",
+            "IPC lifecycle-split shared source gate",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'ipc.function("prepare_main_ipc")',
+            'ipc.function("start_main_ipc")',
+            "Linux main-listener preparation checker",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'ipc.function("prepare_service_ipc")',
+            'ipc.function("start_service_ipc")',
+            "Linux service-listener preparation checker",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '(("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),\n            (("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate"),',
+            '(("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate"),\n            (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),',
+            "Linux service-password permit-before-identity checker",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bb</span>',
+            '<span class="id">R-S11bb-disabled</span>',
+            "IPC lifecycle-checker requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>178</td>",
+            "<tr><td>178-disabled</td>",
+            "IPC checker Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage",
+            "R-S11bb/R-S11e-68 — IPC checker repair deferred",
+            "IPC lifecycle-checker hardening ledger",
+        ),
+        (
             "cli_source",
             "fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>",
             "fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>>",
@@ -22029,6 +22196,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "linux_service_admission_validator": (
                 repo / "scripts/verify-linux-service-admission.py"
+            ).read_text(encoding="utf-8"),
+            "linux_password_ipc_validator": (
+                repo / "scripts/verify-linux-service-password-ipc.py"
             ).read_text(encoding="utf-8"),
             "macos_helper_binding_validator": (
                 repo / "scripts/verify-macos-helper-build-binding.py"

@@ -782,11 +782,16 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     connect_raw.forbid(("ConnectionTmpl", "::"), "generic framed connection construction")
     connect_raw.forbid(("send_json",), "JSON transport")
 
-    main_listener = ipc.function("start_main_ipc")
-    main_listener.require_order(
+    main_prepare = ipc.function("prepare_main_ipc")
+    main_prepare.require_order(
         (
             (("new_listener", "(", '""', ")"), "ordinary main listener"),
             (("new_listener", "(", "password", "::", "USER_PASSWORD_IPC_POSTFIX", ")"), "separate raw password listener"),
+        )
+    )
+    main_listener = ipc.function("run_main_ipc")
+    main_listener.require_order(
+        (
             (("next_sensitive_main_listener_event", "(", "&", "mut", "password_events", ")"), "raw accept lane"),
             (("sensitive_main_ipc_authority", "(", "&", "stream", ")"), "raw peer authorization"),
             (("try_acquire_sensitive_main_ipc_transaction_slot", "(", "authority", ")"), "raw bounded admission"),
@@ -794,21 +799,33 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (("Connection", "::", "new_main", "(", "stream", ")"), "ordinary framed main lane"),
         )
     )
-    service_listener = ipc.function("start_service_ipc")
-    service_listener.require_order(
+    service_entry = ipc.function("start_service_ipc")
+    service_entry.require_order(
+        (
+            (("prepare_service_ipc", "(", "postfix", ")", ".", "await"), "service listener preparation"),
+            (("run_service_ipc", "(", "postfix", ",", "listeners", ")", ".", "await"), "service listener execution"),
+        )
+    )
+    service_prepare = ipc.function("prepare_service_ipc")
+    service_prepare.require_order(
         (
             (("new_listener", "(", "postfix", ")"), "ordinary service listener"),
             (("new_listener", "(", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "separate raw service-password listener"),
+        )
+    )
+    service_listener = ipc.function("run_service_ipc")
+    service_listener.require_order(
+        (
             (("password_incoming", ".", "next", "(", ")"), "raw service accept lane"),
+            (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),
             (("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate"),
             (("service_scoped_ipc_authorization_snapshot_from_stream", "(", "&", "stream"), "socket authorization snapshot supplied to gate"),
-            (("try_acquire_service_password_ipc_transaction_slot", "(", ")"), "raw service bounded admission"),
             (("peer_process_identity_from_stream", "(", "&", "stream"), "full caller identity capture"),
             (("transactions", ".", "spawn", "(", "handle_sensitive_linux_service_ipc_transaction"), "raw Linux handler spawn"),
             (("Connection", "::", "new_protected_service", "(", "stream", ")"), "ordinary framed service lane"),
         )
     )
-    for listener in (main_listener, service_listener):
+    for listener in (main_prepare, main_listener, service_prepare, service_listener):
         listener.require_identifier_absent(
             {"body_mut", "into_password", "read_exact", "receive_request_unix"},
             "listener reads a secret body outside its authenticated raw handler",
@@ -1603,7 +1620,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
         )
     )
 
-    main_listener = ipc.function("start_main_ipc")
+    main_listener = ipc.function("run_main_ipc")
     main_listener.require_order(
         (
             (("password_mutations", "(", ")", ".", "begin_shutdown", "(", ")"), "main mutation non-admission"),
@@ -1613,7 +1630,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("drop", "(", "listener_guard", ")"), "listener deactivation after finality"),
         )
     )
-    service_listener = ipc.function("start_service_ipc")
+    service_listener = ipc.function("run_service_ipc")
     service_listener.require_order(
         (
             (("linux_password_admissions", "(", ")", ".", "begin_shutdown", "(", ")"), "service admission stop"),

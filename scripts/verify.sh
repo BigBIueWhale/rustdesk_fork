@@ -2072,12 +2072,12 @@ need(
     and "LinuxPasswordAdmissionState::Recoverable => None" in ipc
     and "WindowsCredentialOperationState::Active => None" in ipc,
 )
-start_main = between(ipc, "async fn start_main_ipc()", "fn sensitive_main_ipc_authority")
-start_service = between(ipc, "async fn start_service_ipc(postfix: &str)", "async fn handle_sensitive_linux_service_ipc_transaction")
+run_main = between(ipc, "async fn run_main_ipc(", "fn sensitive_main_ipc_authority")
+run_service = between(ipc, "async fn run_service_ipc(", "async fn handle_sensitive_linux_service_ipc_transaction")
 need(
     "password-ledger-shutdown-order-invalid",
     ordered(
-        start_main,
+        run_main,
         (
             "password_mutations().begin_shutdown();",
             "while let Some(result) = transactions.join_next().await",
@@ -2086,7 +2086,7 @@ need(
         ),
     )
     and ordered(
-        start_service,
+        run_service,
         (
             "password_mutations().begin_shutdown();",
             "while let Some(result) = transactions.join_next().await",
@@ -2117,7 +2117,7 @@ need(
     and "spawn_blocking" not in mac_proof,
 )
 mac_password_accept = between(
-    start_service,
+    run_service,
     "result = password_incoming.next()",
     "result = incoming.next()",
 )
@@ -2331,6 +2331,26 @@ if grep -Eq 'MacosServiceOwnedPasswordRequest|macos_store_service_owned_password
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 raw password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b/R-S11c/R-S11g/R-S11h/R-S11i password bodies use only fixed raw _password/_service_password frames; Linux proof/polkit/replica authority, macOS exactly-owned native proof and wiping authorization, Windows retained first-instance pipe and SCM durability, keyed replay finality, and shutdown drain are source-gated"; fi
+# R-S11bb: the listener lifecycle is deliberately split into prepare/run ownership. The security
+# gates must follow that split rather than silently stopping at retired monolithic function names.
+r_s11bb=""
+grep -qF 'item(ipc, "async fn prepare_main_ipc")' scripts/apple-conform-check.sh || r_s11bb="$r_s11bb apple-prepare-main-checker-missing"
+grep -qF 'ipc.function("prepare_main_ipc")' scripts/verify-linux-service-password-ipc.py || r_s11bb="$r_s11bb linux-prepare-main-checker-missing"
+if grep -Fq 'ipc.function("start_main_ipc")' scripts/verify-linux-service-password-ipc.py \
+    || grep -Fq 'item(ipc, "async fn start_main_ipc")' scripts/apple-conform-check.sh; then
+  r_s11bb="$r_s11bb retired-main-listener-checker-present"
+fi
+grep -qF '<span class="id">R-S11bb</span>' requirements.html \
+  || r_s11bb="$r_s11bb requirement-missing"
+grep -qF '<tr><td>178</td>' requirements.html \
+  || r_s11bb="$r_s11bb appendix-disposition-missing"
+grep -qF 'R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage' HARDENING_STATUS.md \
+  || r_s11bb="$r_s11bb ledger-disposition-missing"
+if [ -n "$r_s11bb" ]; then
+  echo "  FAIL R-S11bb IPC lifecycle-split checker coverage:$r_s11bb"; rc=1
+else
+  echo "  ok  R-S11bb shared/Apple/Linux password-IPC gates cover prepared endpoints and retained runners"
+fi
 echo "== (3b-iii-c-1) Windows service-owned child tree supervision (R-S11e-19) =="
 r_s11e19=
 windows_launch_native=$(awk '/HANDLE LaunchProcessWin/,/^    }/' src/platform/windows.cc)

@@ -99,6 +99,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
+    legacy_flutter_verifier = sources["legacy_flutter_verifier"]
 
     require_all(
         dart,
@@ -112,6 +113,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
             'ONLINE_SNAPSHOT="$ONLINE_SNAPSHOT_PARENT/online"',
             'archive_current_source >"$SOURCE_ARCHIVE"',
+            'if relative and os.path.lexists(os.path.join(root, relative)):',
             'SOURCE_DIGEST="$(sha256sum "$SOURCE_ARCHIVE" | awk \'{print $1}\')"',
             'chmod -R a-w "$SOURCE_SNAPSHOT"',
             'FRB_IMAGE_ID="$IMAGE_ID"',
@@ -126,6 +128,17 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'analyze_status=$?',
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
+            '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
+            'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
+            '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
+            'printf "[net]\\noffline = true\\n"',
+            'sed "s#directory = .*#directory = \\"/online/cargo-vendor\\"#" /online/cargo-vendor-config.toml',
+            'export VCPKG_ROOT=/online/vcpkg',
+            '[ -d "$VCPKG_ROOT/installed/x64-linux/lib" ]',
+            'export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0',
+            '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)',
+            'cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never',
+            'if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then',
             'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk \'{print $1}\')"',
             '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
         ),
@@ -149,6 +162,26 @@ def validate_contract(sources: Dict[str, str]) -> None:
         dart.rindex('verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"')
         < dart.index('SOURCE_DIGEST_AFTER="$(archive_current_source'),
         "dart verifier final online/source checks are not ordered",
+    )
+    require(
+        dart.index('(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)')
+        < dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/'),
+        "Flutter tool dependencies are not explicitly resolved offline before analyzer launch",
+    )
+    require(
+        dart.index('flutter test --no-pub test/address_validator_test.dart')
+        < dart.index('cargo check --offline --locked --features flutter,unix-file-copy-paste'),
+        "shipped-feature Rust check does not follow generated-binding Dart verification",
+    )
+    require(
+        dart.index('cargo_lock_before="$(sha256sum /src/Cargo.lock')
+        < dart.index('cargo check --offline --locked --features flutter,unix-file-copy-paste'),
+        "Rust lock identity is not recorded before the shipped-feature check",
+    )
+    require(
+        dart.index('cargo check --offline --locked --features flutter,unix-file-copy-paste')
+        < dart.index('cargo_lock_after="$(sha256sum Cargo.lock'),
+        "Rust lock identity is not checked after the shipped-feature check",
     )
     for forbidden in (
         "docker build",
@@ -219,6 +252,22 @@ def validate_contract(sources: Dict[str, str]) -> None:
         "R-S11bc/R-S11e-69" in hardening,
         "hardening ledger is missing the Dart verifier authority closure",
     )
+    require(
+        legacy_flutter_verifier == "absent",
+        "the unsafe parallel Flutter verifier or its live-fetching image recipe is present",
+    )
+    require(
+        '<span class="id">R-S11bd</span>' in requirements,
+        "requirements are missing R-S11bd",
+    )
+    require(
+        "<tr><td>181</td>" in requirements,
+        "requirements are missing Appendix C #181",
+    )
+    require(
+        "R-S11bd/R-S11e-70" in hardening,
+        "hardening ledger is missing the consolidated Flutter/Rust verifier closure",
+    )
 
 
 def mutate_once(sources: Dict[str, str], mutation: Mutation) -> Dict[str, str]:
@@ -248,6 +297,12 @@ MUTATIONS = (
         "final online proof",
     ),
     Mutation("dart", 'archive_current_source >"$SOURCE_ARCHIVE"\n', "", "source snapshot identity"),
+    Mutation(
+        "dart",
+        'if relative and os.path.lexists(os.path.join(root, relative)):',
+        'if relative:',
+        "deleted-path source inventory",
+    ),
     Mutation("dart", 'chmod -R a-w "$SOURCE_SNAPSHOT"', 'chmod -R u+w "$SOURCE_SNAPSHOT"', "read-only source snapshot"),
     Mutation("dart", '--pull=never', '--pull=always', "Dart pull refusal"),
     Mutation("dart", '--network=none', '--network=bridge', "Dart network isolation"),
@@ -297,6 +352,48 @@ MUTATIONS = (
         'true # focused direct-address test disabled',
         "focused Dart regression",
     ),
+    Mutation(
+        "dart",
+        '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
+        '--env "RUSTDESK_RUST_VERSION=nightly"',
+        "pinned Rust toolchain input",
+    ),
+    Mutation(
+        "dart",
+        'printf "[net]\\noffline = true\\n"',
+        'printf "[net]\\noffline = false\\n"',
+        "offline Cargo resolver",
+    ),
+    Mutation(
+        "dart",
+        'export VCPKG_ROOT=/online/vcpkg',
+        'export VCPKG_ROOT=/usr/local/vcpkg',
+        "staged native dependency root",
+    ),
+    Mutation(
+        "dart",
+        'export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0',
+        'export CARGO_TARGET_DIR=/build CARGO_INCREMENTAL=1',
+        "private disposable Cargo target",
+    ),
+    Mutation(
+        "dart",
+        '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)',
+        '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get >/dev/null)',
+        "offline Flutter-tool bootstrap",
+    ),
+    Mutation(
+        "dart",
+        'cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never',
+        'cargo check --features flutter --lib --color never',
+        "exact locked shipped-feature Rust check",
+    ),
+    Mutation(
+        "dart",
+        'if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then',
+        'if false; then # Rust lock postcondition disabled',
+        "Cargo lock preservation",
+    ),
     Mutation("dart", 'SOURCE_DIGEST_AFTER="$(archive_current_source', 'SOURCE_DIGEST_AFTER="$(printf stale |', "final source proof"),
     Mutation("frb", '[ "$(id -u)" -ne 0 ]', '[ "$(id -u)" -ge 0 ]', "FRB uid-root refusal"),
     Mutation("frb", '[ "$(id -g)" -ne 0 ]', '[ "$(id -g)" -ge 0 ]', "FRB gid-root refusal"),
@@ -344,6 +441,10 @@ MUTATIONS = (
     Mutation("requirements", '<span class="id">R-S11bc</span>', '<span class="id">R-S11bc-broken</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>180</td>", "<tr><td>180-broken</td>", "Appendix disposition"),
     Mutation("hardening", "R-S11bc/R-S11e-69", "R-S11bc/R-S11e-XX", "hardening ledger"),
+    Mutation("legacy_flutter_verifier", "absent", "present", "unsafe parallel Flutter verifier absence"),
+    Mutation("requirements", '<span class="id">R-S11bd</span>', '<span class="id">R-S11bd-broken</span>', "consolidation requirement"),
+    Mutation("requirements", "<tr><td>181</td>", "<tr><td>181-broken</td>", "consolidation disposition"),
+    Mutation("hardening", "R-S11bd/R-S11e-70", "R-S11bd/R-S11e-XX", "consolidation ledger"),
 )
 
 
@@ -355,7 +456,15 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "requirements": repo / "requirements.html",
         "hardening": repo / "HARDENING_STATUS.md",
     }
-    return {name: path.read_text(encoding="utf-8") for name, path in paths.items()}
+    sources = {name: path.read_text(encoding="utf-8") for name, path in paths.items()}
+    retired_paths = (
+        repo / "scripts/flutter-verify.sh",
+        repo / "scripts/Dockerfile.fluttercheck",
+    )
+    sources["legacy_flutter_verifier"] = (
+        "absent" if all(not path.exists() for path in retired_paths) else "present"
+    )
+    return sources
 
 
 def main() -> int:

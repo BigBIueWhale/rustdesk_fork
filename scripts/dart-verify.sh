@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# dart-verify.sh — analyze the Flutter/Dart UI (lib/) in a confined offline container.
+# dart-verify.sh — verify the Flutter/Dart UI and shipped Linux Rust feature set offline.
 #
-# flutter-verify.sh cargo-checks the feature="flutter" RUST; this gates the DART side, so
-# the §19 GUI sweep (removing dead widgets/strings) and the R-S17 known-hosts dialogs are
-# verifiable. It runs `dart pub get --offline` + the full FRB codegen (the Dart bridge too) +
-# `flutter analyze lib/`, requiring ZERO ERRORS — the upstream info/warnings remain outside
-# this gate. All generated state lives in a disposable invoking-user-owned source snapshot.
-# The real repository and the canonical offline-input tree are never writable container mounts.
+# This one transaction runs `dart pub get --offline`, full FRB codegen, `flutter analyze lib/`,
+# the focused Dart test, and a locked/offline Rust library check with the exact shipped Debian
+# features (`flutter,unix-file-copy-paste`). Analyzer errors are forbidden; the accepted upstream
+# info/warning baseline remains nonfatal. All generated state lives in a disposable
+# invoking-user-owned source snapshot. The real repository and canonical offline-input tree are
+# never writable container mounts.
 #
 # R-R1/R-B12: the committed flutter/pubspec.lock is the authoritative Dart
 # dependency pin. This verifier resolves the project from the staged pub cache
@@ -62,6 +62,15 @@ require_pinned_builder_image deb-builder "$IMAGE_ID"
 
 archive_current_source() {
   git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard \
+    | python3 -c '
+import os
+import sys
+
+root = os.fsencode(sys.argv[1])
+for relative in sys.stdin.buffer.read().split(b"\0"):
+    if relative and os.path.lexists(os.path.join(root, relative)):
+        sys.stdout.buffer.write(relative + b"\0")
+' "$REPO_ROOT" \
     | tar --create --file=- --directory="$REPO_ROOT" --null --verbatim-files-from \
         --no-recursion --files-from=- --sort=name --format=gnu --mtime='@0' \
         --owner=0 --group=0 --numeric-owner
@@ -98,7 +107,7 @@ cp -a --reflink=auto "$SOURCE_SNAPSHOT/." "$ANALYSIS_ROOT/"
 chmod -R u+rwX "$ANALYSIS_ROOT"
 cp -a "$FRB_OUTPUT/." "$ANALYSIS_ROOT/"
 
-echo "== flutter pub resolution + analyze + focused test in the disposable snapshot =="
+echo "== flutter pub/analyze/test + shipped-feature Rust check in the disposable snapshot =="
 docker run --rm --pull=never --network=none --read-only \
   --user "$(id -u):$(id -g)" \
   --cap-drop=ALL --security-opt=no-new-privileges \
@@ -106,17 +115,33 @@ docker run --rm --pull=never --network=none --read-only \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
   --mount "type=bind,source=$ANALYSIS_ROOT,target=/src" \
   --mount "type=bind,source=$ONLINE_SNAPSHOT,target=/online,readonly" \
+  --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
   --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
   --workdir /src "$IMAGE_ID" \
   bash -euo pipefail -c '
     toolchain=/tmp/rustdesk-dart-toolchain
     home=/tmp/rustdesk-dart-home
-    mkdir -p "$toolchain" "$home"
+    cargo_home=/tmp/rustdesk-dart-cargo-home
+    mkdir -p "$toolchain" "$home" "$cargo_home"
+    tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"
     tar -C "$toolchain" -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+    rust_installers=("$toolchain"/rust-1.*/install.sh)
+    [ "${#rust_installers[@]}" -eq 1 ] && [ -f "${rust_installers[0]}" ]
+    "${rust_installers[0]}" --prefix="$toolchain/rustinstall" --disable-ldconfig \
+      --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
     flutter_roots=("$toolchain"/flutter)
     [ "${#flutter_roots[@]}" -eq 1 ] && [ -x "${flutter_roots[0]}/bin/flutter" ]
-    export HOME="$home" PUB_CACHE=/online/pub-cache CI=true
-    export PATH="${flutter_roots[0]}/bin:${flutter_roots[0]}/bin/cache/dart-sdk/bin:$PATH"
+    export HOME="$home" CARGO_HOME="$cargo_home" PUB_CACHE=/online/pub-cache CI=true
+    export PATH="$toolchain/rustinstall/bin:${flutter_roots[0]}/bin:${flutter_roots[0]}/bin/cache/dart-sdk/bin:$PATH"
+    {
+      printf "[net]\noffline = true\n"
+      sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" /online/cargo-vendor-config.toml
+    } >"$CARGO_HOME/config.toml"
+    export VCPKG_ROOT=/online/vcpkg
+    [ -d "$VCPKG_ROOT/installed/x64-linux/lib" ]
+    export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0
+    cargo_lock_before="$(sha256sum /src/Cargo.lock | awk "{print \$1}")"
+    (cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)
     cd /src/flutter
     lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
     dart pub get --offline >/dev/null
@@ -142,6 +167,14 @@ docker run --rm --pull=never --network=none --read-only \
     fi
     echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
     flutter test --no-pub test/address_validator_test.dart
+    cd /src
+    echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
+    cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
+    cargo_lock_after="$(sha256sum Cargo.lock | awk "{print \$1}")"
+    if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then
+      echo "DART-VERIFY: FAILED — cargo check rewrote Cargo.lock" >&2
+      exit 1
+    fi
   '
 
 cd "$ANALYSIS_ROOT"
@@ -330,4 +363,4 @@ verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
 [ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
   || die "dart-verify detected a change in the real source worktree"
-echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean; source worktree unchanged"
+echo "DART-VERIFY: Flutter analyze/test + shipped-feature Rust check are GREEN; §19 greps clean; source worktree unchanged"

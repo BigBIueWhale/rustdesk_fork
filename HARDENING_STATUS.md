@@ -4372,6 +4372,60 @@ unreachable and a source/test/AST gate prevents reintroduction.
   online acquisition, platform builders, or every other Docker consumer has the same containment; those remain
   independent audit surfaces. It does not close the clean cold R-B2 build, R-B10 exact Android artifact evidence,
   native installed-platform behavior, or R-V3 review.
+- **R-S11bd/R-S11e-70 — one confined owner for Flutter-side Rust verification — SOURCE CLOSED/GATED;
+  EXACT R-B2 ARTIFACT EVIDENCE OPEN.** Platform: the Linux Docker build host used by source and release
+  verification. Endpoint/action: the retired manual `scripts/flutter-verify.sh`/`scripts/Dockerfile.fluttercheck`
+  path and the replacement shipped-feature Rust library check inside `scripts/dart-verify.sh`. Boundary: Rust/FRB
+  build dependencies and mutable Cargo/native state ↔ the developer worktree, Docker daemon state, DMZ-host
+  network, and the truthfulness of release feature coverage. The orphaned harness built the mutable
+  `rd-devcheck`/`rd-fluttercheck` tags with live dependency downloads, created reusable daemon-global Cargo/Git/target
+  volumes, ran as default container root with default bridge networking, and mounted the real repository read-write.
+  It tolerated a failed FRB invocation if two generated Rust files existed and checked
+  `flutter,linux-pkg-config`; no tracked caller or release gate invoked it, while the Debian artifact actually builds
+  `flutter,unix-file-copy-paste` against the staged vcpkg native set. The harness published no port and executed no
+  RustDesk process or service. This was a real parallel build-host/supply-chain authority path and an assurance
+  mismatch, not evidence of a public listener, host RustDesk mutation, container escape, exploitation, or compromise.
+
+  Source closure: both orphaned files are deleted rather than preserved as an alias or alternate entrance. After the
+  R-S11bc transaction has successfully generated all FRB outputs, preserved `pubspec.lock`, analyzed authored Dart,
+  and passed the focused direct-address test, its existing immutable nonroot/networkless analyzer container extracts
+  the hash-verified pinned Rust 1.75 toolchain. Before any Flutter wrapper command it explicitly resolves the
+  extracted SDK's own `packages/flutter_tools` package with `dart pub get --offline`; network isolation remains a
+  backstop rather than silently containing an implicit online bootstrap. It builds a private Cargo home from the complete staged vendor source
+  map with `[net] offline = true`, requires `/online/vcpkg/installed/x64-linux/lib`, puts nonincremental target state
+  under the current-user-owned disposable analysis snapshot, records `Cargo.lock`, and runs
+  `cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never`; a nonzero status or
+  lock change is final. The container keeps the existing immutable image ID, `--pull=never`, `--network=none`,
+  read-only root, numeric invoking UID:GID, capability drop, no-new-privileges, resource ceilings, two-mount inventory,
+  no ports/socket/host namespaces, final private-online proof, and normalized real-source postcondition. No new
+  container launch, image build, named volume, host worktree mount, root authority, distro-native approximation, or
+  ignored fallback is introduced. The source comment that named the deleted generator now points to the sole owner.
+
+  Verification: R-S11bd and Appendix C #181 bind the consolidated topology. The focused semantic validator rejects
+  all 60 deliberate mutations spanning the pinned Rust input, offline Flutter-tool/Cargo configuration, staged vcpkg
+  root, private target, exact feature command, lock postcondition, deleted-source inventory, retired-file absence,
+  requirement, disposition, and this ledger. The first cold attempt failed before Docker because the normalized
+  archive inventory incorrectly retained intentionally deleted tracked paths; the inventory now filters the NUL-safe
+  Git list by `lexists`, is mutation-bound, and excludes both retired files. The second cold attempt completed full
+  FRB generation but was deliberately stopped after `flutter analyze --no-pub` triggered a non-offline Flutter-tools
+  Pub bootstrap that made no progress for more than ten minutes under network isolation; the container and complete
+  private workspace were removed, and explicit offline tool-package resolution was added rather than accepting the
+  implicit attempt. These were fail-closed verifier defects, not ignored failures or successful evidence.
+
+  The final complete cold transaction reverified canonical closure
+  `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac` and immutable Debian-builder image
+  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776`, built and reverified a fresh
+  25-GiB private offline snapshot, generated and atomically published all FRB outputs, explicitly resolved both
+  Flutter tool/project packages offline without lock drift, received analyzer status zero with zero errors, and passed
+  all six direct-address tests. The new exact
+  `cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never` completed in 1m58s
+  from the staged vendor/vcpkg closure with 59 existing warnings; it was successful but not warning-free. All Dart
+  excision greps, `Cargo.lock` identity, private-closure postcondition, and normalized real-source postcondition passed.
+  FRB retained its already-recorded unresolvable-module warnings and `Dart_Handle` typedef diagnostic before
+  succeeding; that phase likewise is not claimed diagnostic-free. Independent workspace mutation, dependency
+  inventory, native-codec, syntax, requirements-hash, diff, and publication evidence are recorded before publication.
+  This strengthens source verification but does not substitute for the clean exact-commit R-B2 Debian double build,
+  package/manifest/lifecycle evidence, native installed behavior, or R-V3 independent review.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
   ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
   and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
@@ -6864,9 +6918,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b2112d16e43bbfbff936d34708d6d84a6fb6f7c32ee4349dc5b32278977cc61a  requirements.html
+6cfdfa3c912dfbd49c001ea49c8eae210ff95d9c102b433a7166a4931040c7e2  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bc, R-SV4a,
-R-SV5a, R-SV6a, and Appendix C #180. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bd, R-SV4a,
+R-SV5a, R-SV6a, and Appendix C #181. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

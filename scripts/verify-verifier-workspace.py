@@ -11417,39 +11417,71 @@ def validate_dart_audit_authority_contract(sources):
     shell = sources["dart_audit"]
     result = sources["dart_audit_result"]
     authority = sources["dart_audit_authority_validator"]
+    pins = sources["pins"]
 
     for text, label in (
-        ('[ "$(id -u)" -ne 0 ] || die "refuses host or container-root execution"', "Dart audit UID-root refusal"),
-        ('[ "$(id -g)" -ne 0 ] || die "refuses a root primary group"', "Dart audit GID-root refusal"),
-        ('IMAGE_ID="$($DOCKER_BIN build -q', "Dart audit built content identity"),
-        ('[ "$TAG_IMAGE_ID" = "$IMAGE_ID" ]', "Dart audit tag/content identity"),
-        ("--pull=never --network=none --read-only", "Dart audit pull/network/root confinement"),
+        ('[ "$(id -u)" -ne 0 ] || dart_audit_die "refuses host or container-root execution"', "Dart audit UID-root refusal"),
+        ('[ "$(id -g)" -ne 0 ] || dart_audit_die "refuses a root primary group"', "Dart audit GID-root refusal"),
+        ('IMAGE_ID="$($DOCKER_BIN image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"', "Dart audit immutable content identity"),
+        ('[ "$IMAGE_ID" = "$DART_AUDIT_IMAGE_ID" ]', "Dart audit exact image identity"),
+        ("scripts/dart-audit-result.py prepare", "Dart audit stable input preparation"),
+        ("scripts/dart-audit-result.py check-freshness", "Dart audit snapshot freshness"),
+        ("run_bounded_docker run --rm --pull=never --network=none --read-only", "Dart audit pull/network/root confinement"),
         ('--user "$(id -u):$(id -g)"', "Dart audit non-root user"),
         ("--cap-drop=ALL --security-opt=no-new-privileges", "Dart audit privilege floor"),
         ("--pids-limit=64 --memory=512m --memory-swap=512m --cpus=2", "Dart audit resource bounds"),
-        ('--mount "type=bind,source=$LOCKFILE_PATH,target=/work/$LOCKFILE,readonly"', "Dart audit exact input"),
+        ('--mount "type=bind,source=$STAGED_LOCKFILE_PATH,target=/work/$LOCKFILE,readonly"', "Dart audit exact private input"),
         ('case "$SCANNER_STATUS" in\n  0|1) ;;', "Dart audit exact scanner outcomes"),
         ('--scanner-status "$SCANNER_STATUS"', "Dart audit status/result binding"),
+        ('--result "$RESULT_FILE" --stderr "$ERROR_FILE"', "Dart audit stderr/result binding"),
     ):
         require_text(shell, text, label)
-    require_exact_count(shell, "$DOCKER_BIN run ", 1, "Dart audit scanner inventory")
+    require_exact_count(shell, "run_bounded_docker run ", 2, "Dart audit preflight/scanner inventory")
     require_exact_count(shell, "--mount ", 1, "Dart audit mount inventory")
+    preflight_start = shell.index("run_bounded_docker run ")
+    scanner_start = shell.index("run_bounded_docker run ", preflight_start + 1)
+    preflight = shell[preflight_start:scanner_start]
+    scanner = shell[scanner_start:]
+    require_text(
+        preflight,
+        "--pull=never --network=none --read-only",
+        "Dart audit pull/network/root confinement (preflight)",
+    )
+    require_text(
+        scanner,
+        "--pull=never --network=none --read-only",
+        "Dart audit pull/network/root confinement (scanner)",
+    )
     for text, label in (
         ("|| true", "Dart audit ignored scanner result"),
         ('-v "$PWD:/work:ro"', "Dart audit whole-worktree mount"),
         ('--workdir /work "$IMG"', "Dart audit mutable-tag execution"),
+        ("$DOCKER_BIN build", "Dart audit live image construction"),
+        ("rd-dart-audit", "Dart audit mutable image tag"),
     ):
         require_absent(shell, text, label)
 
     for text, label in (
         ("ALLOWED_SCANNER_STATUSES = frozenset((0, 1))", "Dart audit exact result statuses"),
+        ("EXPECTED_DB_MAX_AGE_DAYS = 30", "Dart audit freshness ceiling"),
+        ("metadata.st_nlink == 1", "Dart audit hardlink refusal"),
+        ("def validate_scanner_stderr(path, expected_source):", "Dart audit scanner telemetry grammar"),
+        ("len(lines) == 4", "Dart audit stderr telemetry finality"),
         ('results = data.get("results")', "Dart audit required results field"),
         ('isinstance(results, list)', "Dart audit results schema"),
+        ('source.get("path") == expected_source and source.get("type") == "lockfile"', "Dart audit exact result source"),
+        ('package.get("ecosystem") == "Pub"', "Dart audit Pub result ecosystem"),
         ("OSV status 0 disagrees with nonempty vulnerability results", "Dart audit clean-status finality"),
         ("OSV status 1 has no vulnerability result", "Dart audit finding-status finality"),
-        ("require(checks == 19", "Dart audit behavioral self-test inventory"),
+        ("require(checks == 31", "Dart audit behavioral self-test inventory"),
     ):
         require_text(result, text, label)
+    for text, label in (
+        ('DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"', "Dart audit immutable image pin"),
+        ('OSV_DB_PUB_CAPTURE_EPOCH="1782347599"', "Dart audit capture pin"),
+        ('OSV_DB_PUB_MAX_AGE_DAYS="30"', "Dart audit age pin"),
+    ):
+        require_text(pins, text, label)
 
     authority_mutations = extract_between(
         authority,
@@ -11459,10 +11491,14 @@ def validate_dart_audit_authority_contract(sources):
     )
     for text, label in (
         ('Mutation("shell", "--network=none", "--network=bridge"', "Dart audit validator network mutation"),
-        ('Mutation("shell", "  0|1) ;;", "  0|1|127) ;;"', "Dart audit validator status mutation"),
+        ('Mutation("shell", \'case "$SCANNER_STATUS" in\\n  0|1) ;;\'', "Dart audit validator status mutation"),
         (
-            'Mutation(\n        "result",\n        "ALLOWED_SCANNER_STATUSES = frozenset((0, 1))"',
-            "Dart audit validator result mutation",
+            'Mutation("result", "EXPECTED_DB_MAX_AGE_DAYS = 30"',
+            "Dart audit validator freshness mutation",
+        ),
+        (
+            'Mutation("pins", \'DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"\'',
+            "Dart audit validator image-pin mutation",
         ),
     ):
         require_text(authority_mutations, text, label)
@@ -11479,13 +11515,25 @@ def validate_dart_audit_authority_contract(sources):
     requirement = extract_html_requirement(
         sources["requirements"], "R-S11be", "Dart audit authority requirement"
     )
-    for text in ("statuses <code>0</code> and <code>1</code>", "--pull=never", "--network=none", "MUST NOT"):
+    for text in (
+        "statuses <code>0</code> and <code>1</code>",
+        "never build, pull, or resolve an image tag",
+        "exactly 30 days",
+        "--pull=never",
+        "--network=none",
+        "MUST NOT",
+    ):
         require_text(requirement, text, "Dart audit authority requirement")
     require_text(sources["requirements"], "<tr><td>182</td>", "Dart audit Appendix C row")
     require_text(
         sources["hardening"],
         "R-S11be/R-S11e-71 — Dart advisory result and scanner authority",
         "Dart audit authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "ACQUISITION REMOVED FROM VERDICT PATH",
+        "Dart audit acquisition-removal evidence",
     )
 
 
@@ -22330,9 +22378,27 @@ def run_source_mutations(sources):
         ),
         (
             "dart_audit_result",
+            "EXPECTED_DB_MAX_AGE_DAYS = 30",
+            "EXPECTED_DB_MAX_AGE_DAYS = 90",
+            "Dart audit freshness ceiling",
+        ),
+        (
+            "dart_audit_result",
+            "len(lines) == 4",
+            "len(lines) >= 0",
+            "Dart audit stderr telemetry finality",
+        ),
+        (
+            "dart_audit_result",
             'results = data.get("results")',
             'results = data.get("results", [])',
             "Dart audit required results field",
+        ),
+        (
+            "pins",
+            'DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"',
+            'DART_AUDIT_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
+            "Dart audit immutable image pin",
         ),
         (
             "dart_audit_authority_validator",

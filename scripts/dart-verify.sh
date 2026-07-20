@@ -1,82 +1,150 @@
 #!/usr/bin/env bash
 #
-# dart-verify.sh — analyze the Flutter/Dart UI (lib/) in docker.
+# dart-verify.sh — analyze the Flutter/Dart UI (lib/) in a confined offline container.
 #
 # flutter-verify.sh cargo-checks the feature="flutter" RUST; this gates the DART side, so
 # the §19 GUI sweep (removing dead widgets/strings) and the R-S17 known-hosts dialogs are
 # verifiable. It runs `dart pub get --offline` + the full FRB codegen (the Dart bridge too) +
-# `flutter analyze lib/`, requiring ZERO ERRORS — the ~238 info/warnings are the upstream
-# baseline (style lints), and test/ has pre-existing errors out of scope here. No socket is
-# bound by pub-get/codegen/analyze, so this is safe on the DMZ host (never publishes a port).
+# `flutter analyze lib/`, requiring ZERO ERRORS — the upstream info/warnings remain outside
+# this gate. All generated state lives in a disposable invoking-user-owned source snapshot.
+# The real repository and the canonical offline-input tree are never writable container mounts.
 #
 # R-R1/R-B12: the committed flutter/pubspec.lock is the authoritative Dart
 # dependency pin. This verifier resolves the project from the staged pub cache
 # and fails if pub would rewrite the lockfile; it never "restores" drift.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+source "$SCRIPT_DIR/lib.sh"
+load_pins
+cd "$REPO_ROOT"
 
-IMG=rd-fluttercheck
-RUN=(docker run --rm
-  -v "$PWD:/work:rw"
-  -v rd-pub-cache:/root/.pub-cache
-  -v rd-cargo-cache:/usr/local/cargo/registry
-  -v rd-git-cache:/usr/local/cargo/git
-  -v rd-verify-target:/build
-  -e CARGO_TARGET_DIR=/build
-  -w /work "$IMG")
-
-echo "== ensuring images + caches =="
-docker volume create rd-pub-cache     >/dev/null
-docker volume create rd-cargo-cache   >/dev/null
-docker volume create rd-git-cache     >/dev/null
-docker volume create rd-verify-target >/dev/null
-docker build -q -t rd-devcheck -f scripts/Dockerfile.devcheck     scripts >/dev/null
-docker build -q -t "$IMG"      -f scripts/Dockerfile.fluttercheck scripts >/dev/null
-
-echo "== flutter pub get + full FRB codegen + flutter analyze lib/ (zero-errors gate) =="
-"${RUN[@]}" bash -c '
-  set -e
-  cd /work/flutter
-  lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
-  dart pub get --offline >/dev/null
-  lock_after="$(sha256sum pubspec.lock | awk "{print \$1}")"
-  if [ "$lock_before" != "$lock_after" ]; then
-    echo "DART-VERIFY: FAILED — dart pub get --offline rewrote flutter/pubspec.lock"
-    git --no-pager diff -- pubspec.lock || true
-    exit 1
-  fi
-  cd /work
-  frb_log=/tmp/rustdesk-frb-codegen.log
-  # Prime build_runner once if a cold asset graph prevents FRB code generation.
-  if ! flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
-        --dart-output ./flutter/lib/generated_bridge.dart >"$frb_log" 2>&1; then
-    echo "  WARN: FRB codegen failed once (cold build_runner asset-cache) — priming + retrying"
-    ( cd /work/flutter && flutter pub run build_runner build --delete-conflicting-outputs \
-        --enable-experiment=class-modifiers ) >/dev/null 2>&1 || true
-    if ! flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
-        --dart-output ./flutter/lib/generated_bridge.dart >"$frb_log" 2>&1; then
-      cat "$frb_log" >&2
-      echo "DART-VERIFY: FAILED — FRB codegen failed after prime+retry"
-      exit 1
+WORKSPACE=""
+cleanup() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if [ -n "$WORKSPACE" ]; then
+    if [ -L "$WORKSPACE" ]; then
+      rm -f -- "$WORKSPACE" || status=1
+    elif [ -d "$WORKSPACE" ]; then
+      chmod -R u+rwX "$WORKSPACE" 2>/dev/null || status=1
+      rm -rf -- "$WORKSPACE" || status=1
+    elif [ -e "$WORKSPACE" ]; then
+      status=1
     fi
   fi
-  rm -f "$frb_log"
-  cd /work/flutter
-  out="$(flutter analyze lib/ 2>&1 || true)"
-  errs="$(printf "%s\n" "$out" | grep -c "error •" || true)"
-  echo "  lib/ analyze errors: $errs"
-  if [ "$errs" != "0" ]; then
-    printf "%s\n" "$out" | grep "error •"
-    echo "DART-VERIFY: FAILED — $errs error(s) in lib/"
-    exit 1
-  fi
-  # R-SV10 (requirements.html:693): a test MUST prove a bare-ID input is rejected. Run the
-  # isDirectAddress unit test (the connect-box validator the connect() choke uses to fail closed).
-  # Pure-dart (id_formatter + flutter SDK only, no bridge) - runs headless, binds no socket. A test
-  # failure aborts the gate under set -e, so a regression that re-admitted bare IDs turns it red.
-  echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
-  flutter test --no-pub test/address_validator_test.dart
-'
+  exit "$status"
+}
+signal_exit() {
+  local status="$1"
+  trap - HUP INT TERM
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'signal_exit 129' HUP
+trap 'signal_exit 130' INT
+trap 'signal_exit 143' TERM
+
+require_cmd docker git python3 realpath sha256sum tar
+[ "$(id -u)" -ne 0 ] || die "dart-verify refuses host or container-root execution"
+[ "$(id -g)" -ne 0 ] || die "dart-verify refuses a root primary group"
+require_online_complete
+verify_online_shas \
+  "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
+  "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
+  "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6" \
+  "frb-${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz" "$SHA256_FRB_1_80_1"
+
+IMAGE_ID="$DEB_BUILDER_IMAGE_ID"
+[[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || die "dart-verify has a malformed immutable image ID: $IMAGE_ID"
+require_pinned_builder_image deb-builder "$IMAGE_ID"
+
+archive_current_source() {
+  git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard \
+    | tar --create --file=- --directory="$REPO_ROOT" --null --verbatim-files-from \
+        --no-recursion --files-from=- --sort=name --format=gnu --mtime='@0' \
+        --owner=0 --group=0 --numeric-owner
+}
+
+WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-dart-verify.XXXXXXXXXX)"
+[ -d "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ] \
+  || die "dart-verify private workspace creation failed"
+[ "$(stat -c '%u:%g:%a' "$WORKSPACE")" = "$(id -u):$(id -g):700" ] \
+  || die "dart-verify private workspace identity or mode is invalid"
+
+SOURCE_ARCHIVE="$WORKSPACE/source.tar"
+SOURCE_SNAPSHOT="$WORKSPACE/source"
+FRB_OUTPUT="$WORKSPACE/frb-output"
+ANALYSIS_ROOT="$WORKSPACE/analysis"
+ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"
+create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+ONLINE_SNAPSHOT="$ONLINE_SNAPSHOT_PARENT/online"
+mkdir "$SOURCE_SNAPSHOT" "$ANALYSIS_ROOT"
+archive_current_source >"$SOURCE_ARCHIVE"
+SOURCE_DIGEST="$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')"
+tar --extract --file="$SOURCE_ARCHIVE" --directory="$SOURCE_SNAPSHOT"
+chmod -R a-w "$SOURCE_SNAPSHOT"
+
+echo "== full pinned FRB generation in a disposable source snapshot =="
+ONLINE_DIR="$ONLINE_SNAPSHOT" FRB_IMAGE_ID="$IMAGE_ID" \
+  bash "$SCRIPT_DIR/frb-codegen.sh" \
+    --source-root "$SOURCE_SNAPSHOT" \
+    --online-root "$ONLINE_SNAPSHOT" \
+    --output-root "$FRB_OUTPUT"
+
+cp -a --reflink=auto "$SOURCE_SNAPSHOT/." "$ANALYSIS_ROOT/"
+chmod -R u+rwX "$ANALYSIS_ROOT"
+cp -a "$FRB_OUTPUT/." "$ANALYSIS_ROOT/"
+
+echo "== flutter pub resolution + analyze + focused test in the disposable snapshot =="
+docker run --rm --pull=never --network=none --read-only \
+  --user "$(id -u):$(id -g)" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
+  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
+  --mount "type=bind,source=$ANALYSIS_ROOT,target=/src" \
+  --mount "type=bind,source=$ONLINE_SNAPSHOT,target=/online,readonly" \
+  --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+  --workdir /src "$IMAGE_ID" \
+  bash -euo pipefail -c '
+    toolchain=/tmp/rustdesk-dart-toolchain
+    home=/tmp/rustdesk-dart-home
+    mkdir -p "$toolchain" "$home"
+    tar -C "$toolchain" -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+    flutter_roots=("$toolchain"/flutter)
+    [ "${#flutter_roots[@]}" -eq 1 ] && [ -x "${flutter_roots[0]}/bin/flutter" ]
+    export HOME="$home" PUB_CACHE=/online/pub-cache CI=true
+    export PATH="${flutter_roots[0]}/bin:${flutter_roots[0]}/bin/cache/dart-sdk/bin:$PATH"
+    cd /src/flutter
+    lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
+    dart pub get --offline >/dev/null
+    lock_after="$(sha256sum pubspec.lock | awk "{print \$1}")"
+    if [ "$lock_before" != "$lock_after" ]; then
+      echo "DART-VERIFY: FAILED — dart pub get --offline rewrote flutter/pubspec.lock" >&2
+      exit 1
+    fi
+    set +e
+    out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
+    analyze_status=$?
+    set -e
+    errs="$(printf "%s\n" "$out" | grep -c "error •" || true)"
+    echo "  lib/ analyze errors: $errs"
+    if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then
+      if [ "$errs" != "0" ]; then
+        printf "%s\n" "$out" | grep "error •" || true
+      else
+        printf "%s\n" "$out" >&2
+      fi
+      echo "DART-VERIFY: FAILED — flutter analyze exited $analyze_status with $errs error diagnostic(s) in lib/" >&2
+      exit 1
+    fi
+    echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
+    flutter test --no-pub test/address_validator_test.dart
+  '
+
+cd "$ANALYSIS_ROOT"
 echo "== §19 / R-A6 Dart-layer grep (dead GUI tokens absent) =="
 # Extends the R-A6/R-SV10 grep set into the Dart + asset layers (§19's CI hook). Each
 # token names a UI surface whose backend §8/§18 removed; a non-comment hit fails the gate.
@@ -257,4 +325,9 @@ for tp in flutter/lib/mobile/pages/terminal_page.dart flutter/lib/desktop/pages/
 done
 echo "  ok  §19 terminal TerminalView backgroundOpacity opaque (1.0) — desktop + mobile (WCAG contrast)"
 
-echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean"
+cd "$REPO_ROOT"
+verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
+[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
+  || die "dart-verify detected a change in the real source worktree"
+echo "DART-VERIFY: flutter analyze lib/ is GREEN (zero errors) + §19 Dart-layer greps clean; source worktree unchanged"

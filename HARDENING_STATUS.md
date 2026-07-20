@@ -4320,6 +4320,58 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Apple execution and clean exact-commit release artifact proof remain R-R2/R-B2; external review remains R-V3. No
   runtime Rust source is changed by this checker-repair slice, and no host RustDesk/service/configuration/network state
   was inspected or changed.
+- **R-S11bc/R-S11e-69 — Dart/FRB verifier container authority — SOURCE CLOSED/GATED; CONFINED COLD DART/FRB
+  EXECUTION RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the Linux Docker build host used by the release
+  source-verification bundle. Endpoint/action: `scripts/dart-verify.sh` Pub resolution, Flutter Rust Bridge generation, Flutter analysis,
+  and the focused direct-address test. Boundary: untrusted build/code-generation dependencies and mutable tool state
+  ↔ the developer's real source worktree, offline-input closure, Docker daemon image/cache state, and DMZ-host
+  network. The inherited verifier built the mutable `rd-devcheck`/`rd-fluttercheck` tags, created four reusable named
+  volumes, used Docker's default bridge and implicit image-pull policy, and ran its tools as the default container
+  root user with the real repository mounted read-write. It also wrote a fixed `/tmp` log and used an ignored
+  build-runner priming attempt before retrying code generation. Docker's documented bind-mount semantics allow a
+  writable container bind to create, modify, or delete host files; its default runtime user is UID 0, and its default
+  missing-image pull policy may consult external state. A failed or compromised Pub/build-runner/FRB/analyzer step
+  could therefore modify or root-own repository files, communicate externally, or consume mutable daemon-side
+  tool/cache state. No port was published and no RustDesk binary or service was run, so this was build-host and
+  supply-chain authority debt, not evidence of a public listener, host RustDesk mutation, container escape,
+  privilege escalation incident, or compromise.
+
+  Source closure: the verifier rejects UID or primary GID zero and selects the locally provenance-verified immutable
+  Debian-builder image ID. It validates the canonical offline closure, then creates a current-user mode-0700 private
+  workspace and a complete read-only private online snapshot whose identity is checked before and after use. A
+  normalized archive captures exactly the tracked plus nonignored current source state; its digest is checked again
+  after every gate. FRB receives a read-only source snapshot and writes only to its own private invoking-user-owned
+  copy/output. Analysis receives a second private writable copy with freshly generated bindings. The real worktree
+  is never mounted into either container. Both launches use `--pull=never`, `--network=none`, read-only root filesystems,
+  the invoking numeric UID:GID, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU bounds,
+  and a size-bounded `nosuid,nodev` tmpfs. The only mounts are the private writable work copy and read-only private
+  offline snapshot; there are no named volumes, image builds, published ports, host namespaces, or Docker socket.
+  Pub resolution is offline and lock-preserving. Analyzer warnings/info retain their accepted nonfatal baseline, but
+  any nonzero analyzer status is final rather than inferred away by matching one diagnostic string. The former
+  ignored build-runner priming fallback is absent: a pinned FRB-generation failure is final. `scripts/frb-codegen.sh` now carries the same explicit non-root, pull,
+  capability, no-new-privileges, and resource limits. R-S11bc and Appendix C #180 make this exact two-launch
+  authority model normative, and `scripts/verify-dart-verifier-authority.py` binds it with deliberate mutations.
+
+  Verification: the focused validator passed under the immutable non-root verifier image with all 48 deliberate
+  mutations rejected. A complete cold `scripts/dart-verify.sh` transaction then reverified canonical closure
+  `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac`, built and reverified a complete private
+  offline snapshot, generated and atomically published the FRB outputs inside private state, received analyzer exit
+  status zero with zero Flutter analyzer errors, passed all six direct-address tests, passed the complete Dart excision grep set, reverified the
+  private closure, and proved the real normalized source archive unchanged. FRB/ffigen emitted the existing
+  unresolvable-module warnings and a `Dart_Handle` typedef-redefinition diagnostic before completing successfully;
+  this run is therefore recorded as successful but not diagnostic-free. The validator initially used Python features
+  absent from the pinned Debian-builder Python 3.6 and two first-draft mutation fixtures did not target their intended
+  assertions; those checker-only defects were corrected before the recorded 48-mutation pass. The independent
+  workspace verifier passed normally and passed its complete source-mutation matrix while binding the focused
+  checker, both launchers, shared gate, normative requirement, disposition, and ledger. The dependency inventory
+  passed normally and with all 103 self-test checks; native-codec watch passed normally and with its full mutation
+  self-test; Bash syntax, in-memory Python compilation, the synchronized requirements SHA-256, and `git diff
+  --check` passed.
+
+  Remaining scope: this slice does not claim that all of `verify.sh`, advisory gates, smoke/lifecycle fixtures,
+  online acquisition, platform builders, or every other Docker consumer has the same containment; those remain
+  independent audit surfaces. It does not close the clean cold R-B2 build, R-B10 exact Android artifact evidence,
+  native installed-platform behavior, or R-V3 review.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
   ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
   and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
@@ -6812,9 +6864,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-50655aa11805bd348fa451d9e858f9e656b31e11aa92dd0bfc5b4a01554f25ff  requirements.html
+b2112d16e43bbfbff936d34708d6d84a6fb6f7c32ee4349dc5b32278977cc61a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bb, R-SV4a,
-R-SV5a, R-SV6a, and Appendix C #179. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bc, R-SV4a,
+R-SV5a, R-SV6a, and Appendix C #180. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

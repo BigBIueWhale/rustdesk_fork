@@ -84,6 +84,8 @@ trap 'signal_exit 130' INT
 trap 'signal_exit 143' TERM
 
 require_cmd docker git python3 realpath
+[ "$(id -u)" -ne 0 ] || die "FRB code generation refuses host or container-root execution"
+[ "$(id -g)" -ne 0 ] || die "FRB code generation refuses a root primary group"
 SOURCE_ROOT="$(realpath -e -- "$SOURCE_ROOT")"
 ONLINE_DIR="$(realpath -e -- "$FRB_ONLINE_ROOT")"
 export ONLINE_DIR
@@ -216,8 +218,10 @@ for relative in "${GENERATED_BRIDGES[@]}"; do
 done
 
 log "generating FRB outputs from private source snapshot with image $IMAGE_ID"
-docker run --rm --network=none --read-only --user "$(id -u):$(id -g)" \
-    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777 \
+docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g)" \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
     --mount "type=bind,source=$WORK_SOURCE,target=/src" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
     --workdir /src "$IMAGE_ID" \

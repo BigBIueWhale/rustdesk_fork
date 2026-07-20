@@ -11265,6 +11265,154 @@ def validate_ipc_lifecycle_checker_contract(sources):
     )
 
 
+def validate_dart_verifier_authority_contract(sources):
+    dart = sources["dart_verify"]
+    frb = sources["frb_codegen"]
+    authority = sources["dart_authority_validator"]
+
+    for text, label in (
+        (
+            '[ "$(id -u)" -ne 0 ] || die "dart-verify refuses host or container-root execution"',
+            "Dart verifier UID-root refusal",
+        ),
+        (
+            '[ "$(id -g)" -ne 0 ] || die "dart-verify refuses a root primary group"',
+            "Dart verifier GID-root refusal",
+        ),
+        ('IMAGE_ID="$DEB_BUILDER_IMAGE_ID"', "Dart verifier immutable image selection"),
+        ('require_pinned_builder_image deb-builder "$IMAGE_ID"', "Dart verifier image provenance"),
+        (
+            'WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-dart-verify.XXXXXXXXXX)"',
+            "Dart verifier private workspace",
+        ),
+        (
+            'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+            "Dart verifier private online snapshot",
+        ),
+        ('archive_current_source >"$SOURCE_ARCHIVE"', "Dart verifier source snapshot"),
+        ('chmod -R a-w "$SOURCE_SNAPSHOT"', "Dart verifier read-only source snapshot"),
+        ('--pull=never --network=none --read-only', "Dart verifier pull/network/root isolation"),
+        ('--user "$(id -u):$(id -g)"', "Dart verifier numeric non-root user"),
+        ('--cap-drop=ALL --security-opt=no-new-privileges', "Dart verifier privilege floor"),
+        (
+            '--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4',
+            "Dart verifier resource bounds",
+        ),
+        (
+            '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g',
+            "Dart verifier bounded temporary storage",
+        ),
+        (
+            '--mount "type=bind,source=$ANALYSIS_ROOT,target=/src"',
+            "Dart verifier private writable mount",
+        ),
+        (
+            '--mount "type=bind,source=$ONLINE_SNAPSHOT,target=/online,readonly"',
+            "Dart verifier read-only online mount",
+        ),
+        ('    dart pub get --offline >/dev/null', "Dart verifier offline dependency resolution"),
+        ('if [ "$lock_before" != "$lock_after" ]; then', "Dart verifier Pub lock preservation"),
+        (
+            'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
+            "Dart verifier generated-source analysis",
+        ),
+        (
+            'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
+            "Dart verifier analyzer exit finality",
+        ),
+        (
+            'flutter test --no-pub test/address_validator_test.dart',
+            "Dart verifier focused regression",
+        ),
+        (
+            'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum',
+            "Dart verifier final source proof",
+        ),
+    ):
+        require_text(dart, text, label)
+    require_exact_count(
+        dart,
+        'verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+        2,
+        "Dart verifier private online pre/post proof",
+    )
+    require_exact_count(dart, "docker run ", 1, "Dart verifier complete container inventory")
+    require_exact_count(dart, "--mount ", 2, "Dart verifier complete mount inventory")
+    for text, label in (
+        ("docker build", "Dart verifier image-build authority"),
+        ("docker volume", "Dart verifier named-volume authority"),
+        ("rd-fluttercheck", "Dart verifier mutable image tag"),
+        ('-v "$PWD:/work:rw"', "Dart verifier real-worktree mount"),
+        ("build_runner build --delete-conflicting-outputs", "Dart verifier ignored codegen fallback"),
+    ):
+        require_absent(dart, text, label)
+
+    for text, label in (
+        (
+            '[ "$(id -u)" -ne 0 ] || die "FRB code generation refuses host or container-root execution"',
+            "FRB generator UID-root refusal",
+        ),
+        (
+            '[ "$(id -g)" -ne 0 ] || die "FRB code generation refuses a root primary group"',
+            "FRB generator GID-root refusal",
+        ),
+        ('require_pinned_builder_image deb-builder "$IMAGE_ID"', "FRB generator image provenance"),
+        (
+            'docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g)"',
+            "FRB generator pull refusal and isolation",
+        ),
+        ('--cap-drop=ALL --security-opt=no-new-privileges', "FRB generator privilege floor"),
+        (
+            '--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4',
+            "FRB generator resource bounds",
+        ),
+        (
+            '--mount "type=bind,source=$WORK_SOURCE,target=/src"',
+            "FRB generator private writable mount",
+        ),
+        (
+            '--mount "type=bind,source=$ONLINE_DIR,target=/online,readonly"',
+            "FRB generator read-only online mount",
+        ),
+    ):
+        require_text(frb, text, label)
+    require_exact_count(frb, "docker run ", 1, "FRB generator complete container inventory")
+    require_exact_count(frb, "--mount ", 2, "FRB generator complete mount inventory")
+
+    for text in (
+        "def validate_contract(sources: Dict[str, str]) -> None:",
+        "def validate_docker_block(block: str, label: str, source_mount: str, online_mount: str) -> None:",
+        'Mutation("dart", \'--network=none\', \'--network=bridge\', "Dart network isolation")',
+        'Mutation("frb", \'--pull=never\', \'--pull=missing\', "FRB pull refusal")',
+        'Mutation(\n        "verify",',
+        'Mutation("requirements", \'<span class="id">R-S11bc</span>\'',
+        'Mutation("hardening", "R-S11bc/R-S11e-69"',
+    ):
+        require_text(authority, text, "Dart authority validator mutation coverage")
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-dart-verifier-authority.py --repo . --self-test",
+        "Dart authority shared-gate wiring",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S11bc", "Dart verifier authority requirement"
+    )
+    for text in (
+        "non-root, offline, disposable-snapshot transaction",
+        "--pull=never",
+        "--network=none",
+        "no-new-privileges",
+        "MUST NOT",
+    ):
+        require_text(requirement, text, "Dart verifier authority requirement")
+    require_text(sources["requirements"], "<tr><td>180</td>", "Dart verifier Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-S11bc/R-S11e-69 — Dart/FRB verifier container authority",
+        "Dart verifier authority hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -11333,6 +11481,7 @@ def validate_sources(sources):
     validate_account_control_plane_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
+    validate_dart_verifier_authority_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -22037,6 +22186,54 @@ def run_source_mutations(sources):
             "IPC lifecycle-checker hardening ledger",
         ),
         (
+            "dart_verify",
+            "--pull=never --network=none --read-only",
+            "--pull=never --network=bridge --read-only",
+            "Dart verifier pull/network/root isolation",
+        ),
+        (
+            "dart_verify",
+            'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
+            'if [ "$errs" != "0" ]; then',
+            "Dart verifier analyzer exit finality",
+        ),
+        (
+            "frb_codegen",
+            "docker run --rm --pull=never --network=none --read-only",
+            "docker run --rm --pull=always --network=none --read-only",
+            "FRB generator pull refusal and isolation",
+        ),
+        (
+            "dart_authority_validator",
+            'Mutation("dart", \'--network=none\', \'--network=bridge\', "Dart network isolation")',
+            'Mutation("dart", \'--network=none\', \'--network=bridge\', "network mutation disabled")',
+            "Dart authority validator mutation coverage",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-dart-verifier-authority.py --repo . --self-test",
+            "python3 scripts/verify-dart-verifier-authority.py --repo .",
+            "Dart authority shared-gate wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bc</span>',
+            '<span class="id">R-S11bc-disabled</span>',
+            "Dart verifier authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>180</td>",
+            "<tr><td>180-disabled</td>",
+            "Dart verifier Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bc/R-S11e-69 — Dart/FRB verifier container authority",
+            "R-S11bc/R-S11e-69 — Dart verifier closure deferred",
+            "Dart verifier authority hardening ledger",
+        ),
+        (
             "cli_source",
             "fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>",
             "fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>>",
@@ -22640,6 +22837,10 @@ def main():
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),
             "dart_verify": (repo / "scripts/dart-verify.sh").read_text(encoding="utf-8"),
+            "frb_codegen": (repo / "scripts/frb-codegen.sh").read_text(encoding="utf-8"),
+            "dart_authority_validator": (
+                repo / "scripts/verify-dart-verifier-authority.py"
+            ).read_text(encoding="utf-8"),
             "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),

@@ -50,6 +50,8 @@ pub mod core_main;
 // R-X4: mod custom_server removed (the custom-rendezvous-server-from-exe-name parser).
 mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod locked_t3_tunnel;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

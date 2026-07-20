@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/model.dart';
@@ -54,9 +53,6 @@ class PortForwardPage extends StatefulWidget {
 
 class _PortForwardPageState extends State<PortForwardPage>
     with AutomaticKeepAliveClientMixin {
-  final TextEditingController localPortController = TextEditingController();
-  final TextEditingController remoteHostController = TextEditingController();
-  final TextEditingController remotePortController = TextEditingController();
   RxList<_PortForward> pfs = RxList.empty(growable: true);
   late FFI _ffi;
 
@@ -156,7 +152,7 @@ class _PortForwardPageState extends State<PortForwardPage>
       ),
       child: Obx(() => ListView.builder(
           controller: ScrollController(),
-          itemCount: pfs.length + 2,
+          itemCount: pfs.length + 1,
           itemBuilder: ((context, index) {
             if (index == 0) {
               return Container(
@@ -167,82 +163,13 @@ class _PortForwardPageState extends State<PortForwardPage>
                   const SizedBox(width: _kColumn1Width),
                   text('Remote Host'),
                   text('Remote Port'),
-                  SizedBox(
-                      width: _kColumn4Width, child: Text(translate('Action')))
+                  const SizedBox(width: _kColumn4Width)
                 ]),
               );
-            } else if (index == 1) {
-              return buildTunnelAddRow(context);
             } else {
-              return buildTunnelDataRow(context, pfs[index - 2], index - 2);
+              return buildTunnelDataRow(context, pfs[index - 1], index - 1);
             }
           }))),
-    );
-  }
-
-  buildTunnelAddRow(BuildContext context) {
-    var portInputFormatter = [
-      FilteringTextInputFormatter.allow(RegExp(
-          r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$'))
-    ];
-
-    return Container(
-      height: _kRowHeight,
-      decoration:
-          BoxDecoration(color: Theme.of(context).colorScheme.background),
-      child: Row(children: [
-        buildTunnelInputCell(context,
-            controller: localPortController,
-            inputFormatters: portInputFormatter),
-        const SizedBox(
-            width: _kColumn1Width, child: Icon(Icons.arrow_forward_sharp)),
-        buildTunnelInputCell(context,
-            controller: remoteHostController, hint: 'localhost'),
-        buildTunnelInputCell(context,
-            controller: remotePortController,
-            inputFormatters: portInputFormatter),
-        ElevatedButton(
-          onPressed: () async {
-            int? localPort = int.tryParse(localPortController.text);
-            int? remotePort = int.tryParse(remotePortController.text);
-            if (localPort != null &&
-                remotePort != null &&
-                (remoteHostController.text.isEmpty ||
-                    remoteHostController.text.trim().isNotEmpty)) {
-              await bind.sessionAddPortForward(
-                  sessionId: _ffi.sessionId,
-                  localPort: localPort,
-                  remoteHost: remoteHostController.text.trim().isEmpty
-                      ? 'localhost'
-                      : remoteHostController.text.trim(),
-                  remotePort: remotePort);
-              localPortController.clear();
-              remoteHostController.clear();
-              remotePortController.clear();
-              refreshTunnelConfig();
-            }
-          },
-          child: Text(
-            translate('Add'),
-          ),
-        ).marginSymmetric(horizontal: 10),
-      ]),
-    );
-  }
-
-  buildTunnelInputCell(BuildContext context,
-      {required TextEditingController controller,
-      List<TextInputFormatter>? inputFormatters,
-      String? hint}) {
-    return Expanded(
-      child: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: TextField(
-              controller: controller,
-              inputFormatters: inputFormatters,
-              decoration: InputDecoration(
-                hintText: hint,
-              )).workaroundFreezeLinuxMint()),
     );
   }
 
@@ -264,17 +191,7 @@ class _PortForwardPageState extends State<PortForwardPage>
         const SizedBox(width: _kColumn1Width),
         text(pf.remoteHost),
         text(pf.remotePort.toString()),
-        SizedBox(
-          width: _kColumn4Width,
-          child: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () async {
-              await bind.sessionRemovePortForward(
-                  sessionId: _ffi.sessionId, localPort: pf.localPort);
-              refreshTunnelConfig();
-            },
-          ),
-        ),
+        const SizedBox(width: _kColumn4Width),
       ]),
     );
   }

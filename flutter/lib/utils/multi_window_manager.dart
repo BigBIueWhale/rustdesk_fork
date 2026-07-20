@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/locked_t3_tunnel.dart';
 import 'package:flutter_hbb/main.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 
@@ -317,10 +318,11 @@ class RustDeskMultiWindowManager {
     bool? isSharedPassword,
     String? connToken,
   }) async {
+    final effectiveRemoteId = resolvePortForwardPeer(remoteId, isRDP: isRDP);
     return await newSession(
       WindowType.PortForward,
       kWindowEventNewPortForward,
-      remoteId,
+      effectiveRemoteId,
       _portForwardWindows,
       password: password,
       isRDP: isRDP,

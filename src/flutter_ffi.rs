@@ -139,6 +139,13 @@ pub fn session_add_sync(
     is_shared_password: bool,
     conn_token: Option<String>,
 ) -> SyncReturn<String> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let id = if is_port_forward && !is_rdp {
+        crate::locked_t3_tunnel::enforce_peer_config();
+        crate::locked_t3_tunnel::PEER_ID.to_owned()
+    } else {
+        id
+    };
     let add_res = session_add(
         &session_id,
         &id,
@@ -1451,12 +1458,28 @@ pub fn session_add_port_forward(
     remote_host: String,
     remote_port: i32,
 ) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = (session_id, local_port, remote_host, remote_port);
+        crate::locked_t3_tunnel::enforce_peer_config();
+        log::warn!("Ignoring mutation of the locked T3 port-forward profile");
+        return;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.add_port_forward(local_port, remote_host, remote_port);
     }
 }
 
 pub fn session_remove_port_forward(session_id: SessionID, local_port: i32) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _ = (session_id, local_port);
+        crate::locked_t3_tunnel::enforce_peer_config();
+        log::warn!("Ignoring mutation of the locked T3 port-forward profile");
+        return;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.remove_port_forward(local_port);
     }

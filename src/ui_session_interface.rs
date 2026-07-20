@@ -572,17 +572,6 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::Message(msg));
     }
 
-    pub fn get_audit_server(&self, typ: String) -> String {
-        if LocalConfig::get_option("access_token").is_empty() {
-            return "".to_owned();
-        }
-        crate::get_audit_server(
-            Config::get_option("api-server"),
-            Config::get_option("custom-rendezvous-server"),
-            typ,
-        )
-    }
-
     pub fn send_note(&self, note: String) {
         // R-SV6(a) / R-G4 / §18 (dial nobody): the session note was POSTed to the audit server
         // (the free `send_note` -> post_request, now removed). A serverless direct-IP fork has no

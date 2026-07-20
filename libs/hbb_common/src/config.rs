@@ -3160,15 +3160,6 @@ impl Config {
         *KEY_PAIR.lock().unwrap() = key_pair;
     }
 
-    pub fn no_register_device() -> bool {
-        BUILTIN_SETTINGS
-            .read()
-            .unwrap()
-            .get(keys::OPTION_REGISTER_DEVICE)
-            .map(|v| v == "N")
-            .unwrap_or(false)
-    }
-
     pub fn is_disable_change_permanent_password() -> bool {
         BUILTIN_SETTINGS
             .read()
@@ -4823,7 +4814,6 @@ pub mod keys {
     pub const OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE: &str =
         "enable-android-software-encoding-half-scale";
     pub const OPTION_TRACKPAD_SPEED: &str = "trackpad-speed";
-    pub const OPTION_REGISTER_DEVICE: &str = "register-device";
     pub const OPTION_RELAY_SERVER: &str = "relay-server";
     /// Maximum number of files allowed during a single file transfer request.
     ///
@@ -4868,7 +4858,6 @@ pub mod keys {
     pub const OPTION_ALLOW_DEEP_LINK_PASSWORD: &str = "allow-deep-link-password";
     pub const OPTION_ALLOW_DEEP_LINK_SERVER_SETTINGS: &str = "allow-deep-link-server-settings";
     pub const OPTION_ONE_WAY_FILE_TRANSFER: &str = "one-way-file-transfer";
-    pub const OPTION_ALLOW_HTTPS_21114: &str = "allow-https-21114";
     pub const OPTION_USE_RAW_TCP_FOR_API: &str = "use-raw-tcp-for-api";
     pub const OPTION_HIDE_POWERED_BY_ME: &str = "hide-powered-by-me";
     pub const OPTION_MAIN_WINDOW_ALWAYS_ON_TOP: &str = "main-window-always-on-top";
@@ -5121,8 +5110,6 @@ pub mod keys {
         OPTION_ALLOW_DEEP_LINK_PASSWORD,
         OPTION_ALLOW_DEEP_LINK_SERVER_SETTINGS,
         OPTION_ONE_WAY_FILE_TRANSFER,
-        OPTION_ALLOW_HTTPS_21114,
-        OPTION_REGISTER_DEVICE,
         OPTION_HIDE_POWERED_BY_ME,
         OPTION_MAIN_WINDOW_ALWAYS_ON_TOP,
         OPTION_FILE_TRANSFER_MAX_FILES,

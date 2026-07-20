@@ -218,15 +218,6 @@ echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =
 echo "== (3b-i-r) relay-route suffix identity test (R-G6/R-SV4) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ui_interface::relay_route_tests --color never
 
-# (3b-ii) api-server RESOLUTION sovereignty (R-SV6(d)/R-D6): get_api_server("","") and
-# get_custom_rendezvous_server("") must resolve to "" — no hardwired global host. The upstream
-# "https://admin.rustdesk.com" fallback is excised and PROD_RENDEZVOUS_SERVER stays empty (zero
-# write sites). The account/address-book HTTP client and generic request FFI are deleted separately
-# below; this guards the resolution layer against re-introducing either hardwired host. The config-pin
-# layer (api-server/custom-rendezvous-server pinned empty) is covered by config_it.
-echo "== (3b-ii) api-server resolution dials-nobody behavior test (R-SV6(d)) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config common::tests::api_server_resolution_defaults_to_sovereign_empty --color never
-
 # (3b-iv) R-A4/R-X4/R-S11b-3: the rendezvous trust anchor (get_key) must return the baked RS_PUB_KEY,
 # and the legacy "key" option must not persist at all. Upstream re-pointed the client via
 # Config::get_option("key") / the async IPC options blob / the Windows license; the fork pins the option
@@ -8246,8 +8237,10 @@ echo "$r_sv5a_core_main" | grep -qF 'println!("{}", crate::ipc::get_id());' \
   && r_sv5a="$r_sv5a get-id-print-present"
 echo "$r_sv5a_scope" | grep -qF 'Some("--get-id")' \
   && r_sv5a="$r_sv5a get-id-user-main-ipc-scope-present"
-echo "$r_sv5a_scope" | grep -qF 'Some("--option") | Some("--assign")' \
+echo "$r_sv5a_scope" | grep -qF 'Some("--option")' \
   || r_sv5a="$r_sv5a retained-management-scope-not-exact"
+echo "$r_sv5a_scope" | grep -qF 'Some("--assign")' \
+  && r_sv5a="$r_sv5a account-assignment-user-main-ipc-scope-present"
 grep -qF 'fn obsolete_get_id_command_has_no_user_main_ipc_scope()' src/core_main.rs \
   || r_sv5a="$r_sv5a get-id-scope-regression-missing"
 grep -qF '<span class="id">R-SV5a</span>' requirements.html \
@@ -8788,8 +8781,8 @@ fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),
 # parsed by custom_server.rs and injected as custom-rendezvous-server / api-server at 4 sites
-# (get_rendezvous_server, get_custom_rendezvous_server, get_api_server_, bootstrap EXE_RENDEZVOUS_SERVER
-# + the install-time config write) -- a server config arriving from the binary's filename, a
+# (get_rendezvous_server plus the retired account/API builders and bootstrap
+# EXE_RENDEZVOUS_SERVER + the install-time config write) -- a server config arriving from the binary's filename, a
 # sovereignty/trust-anchor egress vector on a direct-IP-only fork. The whole module +
 # get_license_from_exe_name + get_license(CustomServer) go to zero.
 ra6_clean 'mod custom_server|get_custom_server_from_string|get_license_from_exe_name|\bCustomServer\b|EXE_RENDEZVOUS_SERVER' 'R-X4 custom-rendezvous-server-from-exe-name (custom_server module + get_license_from_exe_name + the EXE_RENDEZVOUS_SERVER config-level override)' || rc=1
@@ -8940,15 +8933,34 @@ if [ -n "$r_t15c" ]; then echo "  FAIL R-T15c Hash challenge/response collapse:$
 # absent, not config-pinned (R-SV1). The fn defs and the URL literal are gone; only
 # `//` comments naming the host remain (filtered above).
 ra6_clean 'api\.telegram\.org|send_2fa_code_to_telegram|get_chatid_telegram' 'R-SV7 Telegram 2FA egress' || rc=1
-# R-SV6(c) / §18: the device-deploy egress — deploy_device() POSTed {id,uuid,pk}+token to
-# get_api_server()+"/api/devices/deploy" (account-server device registration a sovereign
-# fork has no server for) — is excised: the endpoint literal + the --deploy CLI driver are
-# gone (deploy_device is a refuse-stub; the §19/R-G4 sweep removes its flutter UI caller).
-ra6_clean 'api/devices/deploy|api/devices/cli' 'R-SV6(c) device-deploy/assign egress' || rc=1
-# R-SV6(d) / R-D6 / §18: the hardwired global api-server default ("https://admin.rustdesk.com")
-# is excised — get_api_server_'s fallback is String::new() (behavior-gated at (3b-ii)). Assert the
-# host literal never returns to the tree (a cheap string backstop for the resolution-layer test).
-ra6_clean 'admin\.rustdesk\.com' 'R-SV6(d) hardwired global api-server default (admin.rustdesk.com)' || rc=1
+# R-SV6a/R-X4: the direct-IP fork has no account control plane. Delete its authority vocabulary,
+# not merely its HTTP sink: no argv token/password parser, cross-principal IPC scope, deploy ABI,
+# API/audit/avatar resolver, stale account profile consumer, or account-only built-in keys.
+r_sv6a=""
+r_sv6a_core_main=$(awk '/^pub fn core_main\(\)/{capture=1} capture{print} /^fn core_main_invoke_new_connection\(/{exit}' src/core_main.rs)
+r_sv6a_scope=$(awk '/^fn is_user_main_ipc_scope_cli_command\(/{capture=1} capture{print} capture && /^}/{exit}' src/core_main.rs)
+echo "$r_sv6a_core_main" | grep -qF 'args[0] == "--assign"' && r_sv6a="$r_sv6a assign-handler-present"
+echo "$r_sv6a_core_main" | grep -qF 'Authorization: Bearer' && r_sv6a="$r_sv6a argv-bearer-builder-present"
+echo "$r_sv6a_scope" | grep -qF 'Some("--assign")' && r_sv6a="$r_sv6a assign-user-main-ipc-scope-present"
+echo "$r_sv6a_scope" | grep -qF 'Some("--option")' || r_sv6a="$r_sv6a option-scope-missing"
+grep -qF 'fn user_main_ipc_scope_cli_command_matches_option_only()' src/core_main.rs || r_sv6a="$r_sv6a scope-regression-missing"
+if git grep -nE 'DeployResult|deploy_device|main_deploy_device|mainDeployDevice|wire_main_deploy_device|get_api_server|get_custom_rendezvous_server|get_audit_server|resolve_avatar_url|fn is_public\(' \
+    -- 'src/*.rs' 'src/**/*.rs' 'flutter/lib/*.dart' 'flutter/lib/**/*.dart' 2>/dev/null \
+    | grep -v '^[^:]*:[^:]*:[[:space:]]*//'; then
+  r_sv6a="$r_sv6a account-api-or-deploy-symbol-present"
+fi
+grep -qF 'LocalConfig::get_option("user_info")' src/client.rs && r_sv6a="$r_sv6a stale-user-info-consumer-present"
+grep -Eq 'no_register_device|OPTION_REGISTER_DEVICE|OPTION_ALLOW_HTTPS_21114' libs/hbb_common/src/config.rs && r_sv6a="$r_sv6a account-config-key-present"
+grep -qF 'let avatar = get_builtin_option(keys::OPTION_AVATAR).trim().to_owned();' src/client.rs || r_sv6a="$r_sv6a local-avatar-source-not-exact"
+grep -qF '<span class="id">R-SV6a</span>' requirements.html || r_sv6a="$r_sv6a requirement-missing"
+grep -qF '<tr><td>179</td>' requirements.html || r_sv6a="$r_sv6a appendix-disposition-missing"
+grep -qF 'R-SV6a — account/control-plane compatibility surface deleted' HARDENING_STATUS.md || r_sv6a="$r_sv6a ledger-disposition-missing"
+if [ -n "$r_sv6a" ]; then
+  echo "  FAIL R-SV6a account/control-plane structural excision:$r_sv6a"; rc=1
+else
+  echo "  ok  R-SV6a account/control-plane authority absent; profile metadata is build-local only"
+fi
+ra6_clean 'api/devices/deploy|api/devices/cli|admin\.rustdesk\.com' 'R-SV6/R-SV6a account endpoint and hardwired API host literals' || rc=1
 # R-D4 Stage 2 / R-SV10: the rendezvous-mediator PROTOCOL is removed from the tree (the
 # register loop + register_pk method, the relay/punch-hole/intranet handlers, the UDP/KCP
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the

@@ -18,7 +18,6 @@ use hbb_common::{
     message_proto::*,
     protobuf::{Enum, Message as _},
     rendezvous_proto::*,
-    socket_client,
     sodiumoxide::crypto::sign,
     tokio::{
         self,
@@ -830,11 +829,6 @@ pub fn check_port<T: std::string::ToString>(host: T, port: i32) -> String {
     hbb_common::socket_client::check_port(host, port)
 }
 
-#[inline]
-pub fn increase_port<T: std::string::ToString>(host: T, offset: i32) -> String {
-    hbb_common::socket_client::increase_port(host, offset)
-}
-
 pub const POSTFIX_SERVICE: &'static str = "_service";
 
 #[inline]
@@ -887,77 +881,8 @@ pub fn get_full_name() -> String {
     )
 }
 
-pub fn get_custom_rendezvous_server(custom: String) -> String {
-    // R-X4: exe-name license rendezvous-server override removed (direct-IP only).
-    if !custom.is_empty() {
-        return custom;
-    }
-    if !config::PROD_RENDEZVOUS_SERVER.read().unwrap().is_empty() {
-        return config::PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
-    }
-    "".to_owned()
-}
-
-#[inline]
-pub fn get_api_server(api: String, custom: String) -> String {
-    if Config::no_register_device() {
-        return "".to_owned();
-    }
-    let mut res = get_api_server_(api, custom);
-    if res.ends_with('/') {
-        res.pop();
-    }
-    if res.starts_with("https")
-        && res.ends_with(":21114")
-        && get_builtin_option(keys::OPTION_ALLOW_HTTPS_21114) != "Y"
-    {
-        return res.replace(":21114", "");
-    }
-    res
-}
-
-fn get_api_server_(api: String, custom: String) -> String {
-    // R-X4: exe-name license api-server override removed (direct-IP only).
-    if !api.is_empty() {
-        return api.to_owned();
-    }
-    let s0 = get_custom_rendezvous_server(custom);
-    if !s0.is_empty() {
-        let s = crate::increase_port(&s0, -2);
-        if s == s0 {
-            return format!("http://{}:{}", s, config::RENDEZVOUS_PORT - 2);
-        } else {
-            return format!("http://{}", s);
-        }
-    }
-    // R-SV6(d) / R-D6 / §18: NO global-host default. Upstream returned the hardcoded
-    // "https://admin.rustdesk.com" here, and the only thing that kept the audit POSTs
-    // (post_conn_audit etc.) silent was get_audit_server's `is_public(&url)` string-
-    // match on "rustdesk.com" — a fragile silencing the spec forbids ("the silencing
-    // MUST NOT rest on is_public()'s hostname string-match"). With api-server and
-    // custom-rendezvous-server pinned empty (R-S16) the fork reaches this fallback, so
-    // returning "" makes get_audit_server short-circuit on url.is_empty() — no global
-    // host can ever resolve, independent of is_public(). (BUILTIN_SETTINGS is asserted
-    // empty by R-A4, so no_register_device() is false and this path IS reached.)
-    String::new()
-}
-
-#[inline]
-pub fn is_public(url: &str) -> bool {
-    let url = url.to_ascii_lowercase();
-    url.contains("rustdesk.com/") || url.ends_with("rustdesk.com")
-}
-
 pub fn get_local_option(key: &str) -> String {
     LocalConfig::get_option(key)
-}
-
-pub fn get_audit_server(api: String, custom: String, typ: String) -> String {
-    let url = get_api_server(api, custom);
-    if url.is_empty() || is_public(&url) {
-        return "".to_owned();
-    }
-    format!("{}/api/audit/{}", url, typ)
 }
 
 #[inline]
@@ -1856,29 +1781,6 @@ mod tests {
         fs::remove_dir(&test_root).expect("parent-bound child test directory must be removable");
     }
 
-    // R-SV6(d) / R-D6 / §18: the api-server resolution MUST default to a sovereign empty string —
-    // no hardwired global host. Upstream returned "https://admin.rustdesk.com" as the fallback and
-    // also derived an api endpoint from the built-in rs-ny.rustdesk.com rendezvous default; the fork
-    // excises both (the admin.rustdesk.com default is gone, and PROD_RENDEZVOUS_SERVER is init-empty
-    // and never written — verified: zero write sites). With empty api-server / custom-rendezvous-server
-    // inputs (those options are themselves pinned empty at the config layer — config_it/lockdown.rs),
-    // the resolver must yield "" so a future account/address-book API path has no host to dial. This
-    // test guards the *resolution* layer (distinct from the config-pin layer) against re-introducing
-    // either hardwired host.
-    #[test]
-    fn api_server_resolution_defaults_to_sovereign_empty() {
-        assert_eq!(
-            get_custom_rendezvous_server(String::new()),
-            "",
-            "no built-in rendezvous host may resolve (PROD_RENDEZVOUS_SERVER must stay empty)"
-        );
-        assert_eq!(
-            get_api_server(String::new(), String::new()),
-            "",
-            "no hardwired global api host may resolve (the upstream global-host default is excised)"
-        );
-    }
-
     // R-A4 / R-X4 / §18: the rendezvous trust anchor is the baked RS_PUB_KEY, unconditionally.
     // Upstream's get_key read an override from Config::get_option("key"), the async IPC options blob,
     // or the Windows license/renamed-exe. The fork has no stored override: the option is pinned empty
@@ -2094,31 +1996,6 @@ mod tests {
             Duration::from_secs_f64(dur.as_secs_f64() * 0.499 * 1e-9),
             Duration::from_nanos(0)
         );
-    }
-
-    #[test]
-    fn test_is_public() {
-        // Test URLs containing "rustdesk.com/"
-        assert!(is_public("https://rustdesk.com/"));
-        assert!(is_public("https://www.rustdesk.com/"));
-        assert!(is_public("https://api.rustdesk.com/v1"));
-        assert!(is_public("https://API.RUSTDESK.COM/v1"));
-        assert!(is_public("https://rustdesk.com/path"));
-
-        // Test URLs ending with "rustdesk.com"
-        assert!(is_public("rustdesk.com"));
-        assert!(is_public("https://rustdesk.com"));
-        assert!(is_public("https://RustDesk.com"));
-        assert!(is_public("http://www.rustdesk.com"));
-        assert!(is_public("https://api.rustdesk.com"));
-
-        // Test non-public URLs
-        assert!(!is_public("https://example.com"));
-        assert!(!is_public("https://custom-server.com"));
-        assert!(!is_public("http://192.168.1.1"));
-        assert!(!is_public("localhost"));
-        assert!(!is_public("https://rustdesk.computer.com"));
-        assert!(!is_public("rustdesk.comhello.com"));
     }
 
     #[test]

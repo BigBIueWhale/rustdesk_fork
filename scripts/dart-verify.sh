@@ -141,13 +141,8 @@ dg_clean 'SettingsTabKey\.network|changeSocks5Proxy|void showServerSettings\(' '
 # gone; this closes the last config-injection surface on any shipped front-end (the writes were
 # already inert under the R-S16 pins / R-X4 baked anchor — editable-but-inert is the R-S12/R-G1 trap).
 dg_clean 'showServerSettingsWithValue|showServerSettingFromQr|ServerConfigImportExportWidgets|setServerConfig|ID/Relay Server' 'R-G4 mobile server-config editor + config-QR (trust-anchor injection)'
-# R-G4 / R-SV6(c) / §18 (now CLOSED): the Android device-DEPLOY UI is removed — deploy_dialog.dart
-# (showDeployDialog/showDeployPromptDialog, the API-token device-registration dialog), the "Deploy"
-# settings tile, and the 'android_needs_deploy' main.dart event handler. The /api/devices/deploy
-# egress is excised (deploy_device is a refuse-stub) and the mediator that fired NEEDS_DEPLOY is gone
-# (R-D4), so a sovereign direct-IP fork has no account server to deploy to. (The main_deploy_device
-# FFI stub is intentionally kept — signature preserved — so it is NOT gated here.) None may reappear.
-dg_clean 'showDeployDialog|showDeployPromptDialog|deploy_dialog|android_needs_deploy' 'R-G4/R-SV6 Android device-deploy UI'
+# R-G4 / R-SV6a / §18: Android device deployment is structurally absent through UI and bridge.
+dg_clean 'showDeployDialog|showDeployPromptDialog|deploy_dialog|android_needs_deploy|mainDeployDevice' 'R-G4/R-SV6a Android device-deploy UI and bridge ABI'
 # R-G4 / R-SV6 / §19: the desktop "Account" settings tab is deleted — the _Account/_AccountState
 # classes (the rustdesk-account login/logout panel) + the SettingsTabKey.account enum value + its
 # tabKeys include + both _settingTabs()/_children() switch cases. A direct-IP fork has no account

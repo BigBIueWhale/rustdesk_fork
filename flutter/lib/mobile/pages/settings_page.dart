@@ -293,9 +293,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
       sections: [
         customClientSection,
         SettingsSection(title: Text(translate("Settings")), tiles: [
-          // R-G4 / R-SV6(c) / §18: the "Deploy" tile is removed — device deployment (the
-          // /api/devices/deploy account-registration egress) is excised; deploy_device is a
-          // refuse-stub and a sovereign, direct-IP fork has no account server to deploy to.
+          // R-G4 / R-SV6a / §18: the account-bound "Deploy" tile and bridge ABI are excised.
           // R-D5: the "Disable UDP" toggle is removed — the KCP-UDP transport is excised, so
           // there is no UDP to disable (this fork is direct TCP only).
           SettingsTile(

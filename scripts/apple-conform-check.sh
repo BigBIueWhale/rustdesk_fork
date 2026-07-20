@@ -708,8 +708,12 @@ def analyze(sources):
         need("cli", "obsolete-get-id-command-present", all(token not in core_main for token in [
             'args[0] == "--get-id"', 'println!("{}", crate::ipc::get_id());',
         ]) and 'Some("--get-id")' not in cli_scope
-            and 'Some("--option") | Some("--assign")' in cli_scope
+            and 'Some("--option")' in cli_scope
             and "fn obsolete_get_id_command_has_no_user_main_ipc_scope()" in core)
+        need("cli", "account-assignment-command-present", all(token not in core_main for token in [
+            'args[0] == "--assign"', 'Authorization: Bearer',
+        ]) and 'Some("--assign")' not in cli_scope
+            and "fn user_main_ipc_scope_cli_command_matches_option_only()" in core)
     except ValueError as error:
         findings["cli"].append(f"structural-parse:{error}")
 
@@ -743,7 +747,9 @@ mutation("cli-exact-arity", "core", 'Some("--password") if args.len() == 1', 'So
 mutation("cli-stdin-bound", "core", "reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)", "reader.take(u64::MAX)", "cli", "cli-stdin-not-bounded-utf8-zeroized")
 mutation("cli-confirmation-wipe", "core", "if !confirmation.zeroize()", "if confirmation.as_str().is_empty()", "cli", "cli-hidden-confirmed-prompt-not-wiping")
 mutation("obsolete-get-id-handler", "core", '} else if args[0] == "--option" {', '} else if args[0] == "--get-id" {\n            println!("{}", crate::ipc::get_id());\n            return None;\n        } else if args[0] == "--option" {', "cli", "obsolete-get-id-command-present")
-mutation("obsolete-get-id-scope", "core", 'Some("--option") | Some("--assign")', 'Some("--get-id") | Some("--option") | Some("--assign")', "cli", "obsolete-get-id-command-present")
+mutation("obsolete-get-id-scope", "core", 'Some("--option")', 'Some("--get-id") | Some("--option")', "cli", "obsolete-get-id-command-present")
+mutation("account-assignment-handler", "core", '} else if args[0] == "--option" {', '} else if args[0] == "--assign" {\n            let header = "Authorization: Bearer ";\n            return None;\n        } else if args[0] == "--option" {', "cli", "account-assignment-command-present")
+mutation("account-assignment-scope", "core", 'Some("--option")', 'Some("--option") | Some("--assign")', "cli", "account-assignment-command-present")
 
 for name, group in [("r_s11b", "b1"), ("r_s11b2", "b2"), ("r_s11e16", "cli")]:
     (out_dir / name).write_text(" ".join(findings[group]))

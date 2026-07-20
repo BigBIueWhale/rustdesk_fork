@@ -6879,10 +6879,8 @@ pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
     }
 }
 
-// R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —
-// device deployment is gone (deploy_device is a refuse-stub), so there was no caller and no arm to
-// receive it. The `Data::Deployed` variant + its no-op handler are gone too. (notify_deployed
-// carried a #[tokio::main] attribute — removed with it.)
+// R-SV6a/R-D4: `notify_deployed()` and `Data::Deployed` are removed with the account deployment
+// control plane. No deployment UI, bridge, or API actuator remains.
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn send_url_scheme(url: String) -> ResultType<()> {

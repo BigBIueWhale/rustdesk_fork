@@ -5,7 +5,7 @@ use hbb_common::sleep;
 use hbb_common::{
     allow_err,
     bytes::Bytes,
-    config::{self, keys::*, Config, LocalConfig, PeerConfig, CONNECT_TIMEOUT, RENDEZVOUS_PORT},
+    config::{self, keys::*, Config, LocalConfig, PeerConfig, CONNECT_TIMEOUT},
     directories_next,
     futures::future::join_all,
     log, tokio,
@@ -182,19 +182,6 @@ pub fn get_builtin_option(key: &str) -> String {
 #[inline]
 pub fn set_local_option(key: String, value: String) {
     LocalConfig::set_option(key.clone(), value);
-}
-
-/// Resolve relative avatar path (e.g. "/avatar/xxx") to absolute URL
-/// by prepending the API server address.
-pub fn resolve_avatar_url(avatar: String) -> String {
-    let avatar = avatar.trim().to_owned();
-    if avatar.starts_with('/') {
-        let api_server = get_api_server();
-        if !api_server.is_empty() {
-            return format!("{}{}", api_server.trim_end_matches('/'), avatar);
-        }
-    }
-    avatar
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
@@ -778,52 +765,6 @@ pub fn video_save_directory(root: bool) -> String {
         }
     }
     Default::default()
-}
-
-#[inline]
-pub fn get_api_server() -> String {
-    crate::get_api_server(
-        get_option("api-server"),
-        get_option("custom-rendezvous-server"),
-    )
-}
-
-pub enum DeployResult {
-    Ok,
-    NotEnabled,
-    InvalidInput,
-    IdTaken(String),
-    Error(String),
-}
-
-impl DeployResult {
-    pub fn message(&self) -> String {
-        match self {
-            Self::Ok => "".to_owned(),
-            Self::NotEnabled => "The server does not require explicit deployment.".to_owned(),
-            Self::InvalidInput => "Invalid input.".to_owned(),
-            Self::IdTaken(id) => {
-                format!(
-                    "Id `{}` is already used by another machine on the server.",
-                    id
-                )
-            }
-            Self::Error(err) => err.clone(),
-        }
-    }
-}
-
-pub fn deploy_device(_token: String, _new_id: Option<String>) -> DeployResult {
-    // R-SV6(c) / §18: device deployment is EXCISED. Upstream POSTed {id,uuid,pk} + a
-    // Bearer token to get_api_server()+"/api/devices/deploy" — account-bound device
-    // registration a sovereign, direct-IP fork has no server for (the residual R-X4's
-    // --assign/--set-id/--deploy excision missed; its CLI driver is removed from
-    // core_main.rs). This stub keeps the FFI signature (main_deploy_device, flutter)
-    // compiling while the account/API HTTP egress — and the Android mediator
-    // NEEDS_DEPLOY/restart it drove — is structurally absent: refused, not silenced by
-    // the empty-api-server pin (R-SV1 compile-out). The §19/R-G4 sweep removes the
-    // deploy UI that calls it.
-    DeployResult::Error("Device deployment is disabled in this build.".to_owned())
 }
 
 #[inline]

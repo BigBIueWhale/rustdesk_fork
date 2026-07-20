@@ -27,7 +27,7 @@ use uuid::Uuid;
 use crate::{
     check_port,
     common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
-    ui_interface::{get_builtin_option, resolve_avatar_url, use_texture_render},
+    ui_interface::{get_builtin_option, use_texture_render},
     ui_session_interface::{InvokeUiSession, Session},
 };
 #[cfg(feature = "unix-file-copy-paste")]
@@ -43,8 +43,8 @@ use hbb_common::anyhow::anyhow;
 use hbb_common::{
     allow_err, bail,
     config::{
-        self, keys, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution, CONNECT_TIMEOUT,
-        DIRECT_PORT, READ_TIMEOUT,
+        self, keys, Config, PeerConfig, PeerInfoSerde, Resolution, CONNECT_TIMEOUT, DIRECT_PORT,
+        READ_TIMEOUT,
     },
     fs::JobType,
     get_version_number, log,
@@ -2193,34 +2193,10 @@ impl LoginConfigHandler {
         } else {
             (my_id, self.id.clone())
         };
-        let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
-        if avatar.is_empty() {
-            avatar =
-                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
-                    .ok()
-                    .and_then(|x| {
-                        x.get("avatar")
-                            .and_then(|x| x.as_str())
-                            .map(|x| x.trim().to_owned())
-                    })
-                    .unwrap_or_default();
-        }
-        avatar = resolve_avatar_url(avatar);
-        let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
-        if display_name.is_empty() {
-            display_name =
-                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
-                    .map(|x| {
-                        x.get("display_name")
-                            .and_then(|x| x.as_str())
-                            .map(|x| x.trim())
-                            .filter(|x| !x.is_empty())
-                            .or_else(|| x.get("name").and_then(|x| x.as_str()))
-                            .map(|x| x.to_owned())
-                            .unwrap_or_default()
-                    })
-                    .unwrap_or_default();
-        }
+        let avatar = get_builtin_option(keys::OPTION_AVATAR).trim().to_owned();
+        let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME)
+            .trim()
+            .to_owned();
         if display_name.is_empty() {
             display_name = crate::username();
         }

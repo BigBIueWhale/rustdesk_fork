@@ -1585,11 +1585,5 @@ class RustdeskImpl {
     return false;
   }
 
-
-  Future<String> mainDeployDevice(
-      {required String token, required String id, dynamic hint}) {
-    throw UnimplementedError("mainDeployDevice");
-  }
-
   void dispose() {}
 }

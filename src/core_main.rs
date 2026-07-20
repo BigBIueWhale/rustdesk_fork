@@ -492,10 +492,9 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             println!("Done!");
             return None;
-        // R-X4: the `--set-id` (rendezvous-ID change) and `--config` (trust-anchor +
-        // server adoption) CLI paths are excised — both presuppose the rendezvous
-        // account / anchor this serverless fork removes; the larger account
-        // `--assign`/`--deploy` argv-token paths go with the R-D4 account removal.
+        // R-X4: the `--set-id` (rendezvous-ID change), `--config` (trust-anchor +
+        // server adoption), `--assign`, and `--deploy` account/control-plane CLI
+        // paths are excised from this serverless direct-IP fork.
         } else if args[0] == "--option" {
             if is_cli_setting_change_disabled() {
                 println!("Settings are disabled!");
@@ -512,114 +511,6 @@ pub fn core_main() -> Option<Vec<String>> {
                 println!("Installation and administrative privileges required!");
             }
             return None;
-        } else if args[0] == "--assign" {
-            if config::Config::no_register_device() {
-                println!("Cannot assign an unregistrable device!");
-            } else if crate::platform::is_installed() && is_root() {
-                let max = args.len() - 1;
-                let pos = args.iter().position(|x| x == "--token").unwrap_or(max);
-                if pos < max {
-                    let token = args[pos + 1].to_owned();
-                    let id = crate::ipc::get_id();
-                    let uuid = crate::encode64(hbb_common::get_uuid());
-                    let get_value = |c: &str| {
-                        let pos = args.iter().position(|x| x == c).unwrap_or(max);
-                        if pos < max {
-                            Some(args[pos + 1].to_owned())
-                        } else {
-                            None
-                        }
-                    };
-                    let user_name = get_value("--user_name");
-                    let strategy_name = get_value("--strategy_name");
-                    let address_book_name = get_value("--address_book_name");
-                    let address_book_tag = get_value("--address_book_tag");
-                    let address_book_alias = get_value("--address_book_alias");
-                    let address_book_password = get_value("--address_book_password");
-                    let address_book_note = get_value("--address_book_note");
-                    let device_group_name = get_value("--device_group_name");
-                    let note = get_value("--note");
-                    let device_username = get_value("--device_username");
-                    let device_name = get_value("--device_name");
-                    let mut body = serde_json::json!({
-                        "id": id,
-                        "uuid": uuid,
-                    });
-                    let header = "Authorization: Bearer ".to_owned() + &token;
-                    if user_name.is_none()
-                        && strategy_name.is_none()
-                        && address_book_name.is_none()
-                        && device_group_name.is_none()
-                        && note.is_none()
-                        && device_username.is_none()
-                        && device_name.is_none()
-                    {
-                        println!(
-                            r#"At least one of the following options is required:
-  --user_name
-  --strategy_name
-  --address_book_name
-  --device_group_name
-  --note
-  --device_username
-  --device_name"#
-                        );
-                    } else {
-                        if let Some(name) = user_name {
-                            body["user_name"] = serde_json::json!(name);
-                        }
-                        if let Some(name) = strategy_name {
-                            body["strategy_name"] = serde_json::json!(name);
-                        }
-                        if let Some(name) = address_book_name {
-                            body["address_book_name"] = serde_json::json!(name);
-                            if let Some(name) = address_book_tag {
-                                body["address_book_tag"] = serde_json::json!(name);
-                            }
-                            if let Some(name) = address_book_alias {
-                                body["address_book_alias"] = serde_json::json!(name);
-                            }
-                            if let Some(name) = address_book_password {
-                                body["address_book_password"] = serde_json::json!(name);
-                            }
-                            if let Some(name) = address_book_note {
-                                body["address_book_note"] = serde_json::json!(name);
-                            }
-                        }
-                        if let Some(name) = device_group_name {
-                            body["device_group_name"] = serde_json::json!(name);
-                        }
-                        if let Some(name) = note {
-                            body["note"] = serde_json::json!(name);
-                        }
-                        if let Some(name) = device_username {
-                            body["device_username"] = serde_json::json!(name);
-                        }
-                        if let Some(name) = device_name {
-                            body["device_name"] = serde_json::json!(name);
-                        }
-                        // R-SV6(c) / R-X4 / R-G4 / §18 (dial nobody): the account device-assignment
-                        // POST to <api-server>/api/devices/cli is EXCISED — a serverless, direct-IP
-                        // fork has no account server to assign devices/strategies/address-books on.
-                        // `body`/`header` were assembled above; nothing is sent. (Sibling of the
-                        // already-excised `--deploy` /api/devices/deploy POST, R-SV6(c).)
-                        let _ = (&body, &header);
-                        println!("--assign is not supported: this is a serverless, direct-IP fork (it dials nobody).");
-                    }
-                } else {
-                    println!("--token is required!");
-                }
-            } else {
-                println!("Installation and administrative privileges required!");
-            }
-            return None;
-        // R-SV6(c)/R-X4/§18: the `--deploy` CLI arm is EXCISED. It called
-        // ui_interface::deploy_device() to POST {id,uuid,pk}+token to the account
-        // server's /api/devices/deploy — account-bound device registration a sovereign,
-        // direct-IP fork has no server for (the residual R-X4's --assign/--set-id
-        // excision missed). Removed so the egress is structurally absent (R-SV1), not
-        // merely pin-safe via the empty api-server; deploy_device itself is gutted to
-        // refuse (ui_interface.rs), keeping the flutter FFI signature compiling.
         } else if args[0] == "--terminal-helper" {
             // Terminal helper process - runs as user to create ConPTY
             // This is needed because ConPTY has compatibility issues with CreateProcessAsUserW
@@ -764,10 +655,7 @@ fn linux_user_session_ui_allowed(is_root: bool) -> bool {
 
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
 fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
-    matches!(
-        args.first().map(String::as_str),
-        Some("--option") | Some("--assign")
-    )
+    matches!(args.first().map(String::as_str), Some("--option"))
 }
 
 #[inline]
@@ -787,12 +675,11 @@ mod tests {
     }
 
     #[test]
-    fn user_main_ipc_scope_cli_command_matches_management_commands_only() {
-        for command in ["--option", "--assign"] {
-            assert!(is_user_main_ipc_scope_cli_command(&args(&[command])));
-        }
+    fn user_main_ipc_scope_cli_command_matches_option_only() {
+        assert!(is_user_main_ipc_scope_cli_command(&args(&["--option"])));
 
         for command in [
+            "--assign",
             "--service",
             "--server",
             "--tray",

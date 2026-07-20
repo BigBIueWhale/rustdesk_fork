@@ -4383,7 +4383,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   or evidence of compromise.
 
   Source closure: the `core_main` handler is deleted and the scope classifier accepts only the separately retained
-  `--option`/`--assign` management commands. A focused regression proves that `--get-id` has no user-main-IPC scope;
+  `--option` management command. A focused regression proves that `--get-id` has no user-main-IPC scope;
   the shared verifier, Apple checker, semantic validator, deliberate mutations, R-SV5a, and Appendix C #177 bind
   both absences. Internal `Config::get_id()`/`ipc::get_id()` compatibility reads are not blanket-deleted in this
   slice: they remain side-effect-free metadata reads for separately audited consumers and are not a CLI identity
@@ -4408,6 +4408,56 @@ unreachable and a source/test/AST gate prevents reintroduction.
   immutable image with pulls and networking disabled, source and input caches read-only, the container root read-only,
   capabilities dropped, no-new-privileges, bounded pids, no published ports, and no Docker socket. No host RustDesk
   process, service, binary, configuration, listener, firewall, or host-network state was inspected or changed.
+- **R-SV6a — account/control-plane compatibility surface deleted — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: desktop assignment and Unix
+  user-main-IPC selection; Rust/Flutter login metadata and Android/web deployment bridge surfaces. Boundary:
+  operator argv and active-user IPC namespace ↔ deleted account server authority; stale local account cache ↔
+  peer-visible profile metadata. After the account HTTP sinks were deleted, `--assign` still parsed a bearer token
+  and address-book passwords from argv, assembled an account request body, and selected `UserMainIpcScope` for an
+  installed-root Unix launch. Refusal-only deployment Rust/FFI/generated/web methods, API/audit/public-host/avatar
+  resolvers, an unused session audit resolver, account-only built-in keys, and the stale `user_info` profile fallback
+  also remained. The absent HTTP sinks prevented current account egress, so this was conceptual authority,
+  credential-handling, cross-principal-routing, and future-reactivation debt—not a demonstrated request, local-to-root
+  escalation, exploitation incident, or evidence of compromise.
+
+  Authority model and source closure: this serverless direct-IP fork has no account control plane. The assignment
+  handler and its IPC classification are deleted rather than refused. The deployment backend, Flutter FFI export,
+  generated Rust wire functions, and authored web bridge method are absent. The API/custom-rendezvous/audit/public-
+  host/avatar resolver cluster and account-only `register-device`/`allow-https-21114` keys are absent. Login avatar
+  and display name come only from trimmed build-local options, with the local OS username as the display-name
+  fallback; relative avatar text is never expanded into an API URL. Empty `api-server` and
+  `custom-rendezvous-server` pins remain only as stale-value masking and defense in depth, with no resolver or
+  actuator. The focused scope regression, shared Rust/Dart source gates, Apple source checker, R-SV6a, Appendix C
+  #179, and independent semantic validator/mutations bind those absences. Exact current-commit packaged artifacts
+  remain part of R-B2/R-B10; this slice does not claim them.
+
+  Verification: exact Rust 1.75 locked/offline compilation passed both the focused `core_main::tests` group (five
+  tests, including the option-only classifier and explicit `--assign` rejection) and a separate production
+  `cargo check --lib --features linux-pkg-config`. Exact Rust 1.75 rustfmt accepts `config.rs`, `client.rs`,
+  `common.rs`, `core_main.rs`, `ui_interface.rs`, and the directly edited `ipc.rs` with child formatting disabled;
+  the deletion-only `flutter_ffi.rs`/`ui_session_interface.rs` hunks introduce no formatter output, while those two
+  whole files retain the same unrelated parent-commit import-order/line-wrap drift recorded by prior slices. The
+  shared account source gate, generated-shaped Dart absence gate, and Apple CLI structural group with deliberate
+  handler/scope mutations pass. The independent semantic verifier passes normally and against its complete source-
+  mutation matrix, including account handler, scope, Rust/FFI/web surface, local profile, config-key, shared/Dart/
+  Apple checker, requirement, Appendix, and ledger mutations. Dependency inventory is clean and all 103 inventory
+  self-tests pass; native-codec watch normal/self-test, Bash/Python syntax, synchronized requirements SHA-256, and
+  `git diff --check` pass. A disposable Flutter Rust Bridge generation reached and produced all three primary Rust/
+  Dart binding outputs with the deployment ABI absent; the legacy generator's subsequent Flutter artifact-preload
+  phase could not complete against the deliberately read-only SDK, so no full Dart analyzer or exact generated-
+  artifact claim is made here. Those remain in R-B2/R-B10.
+
+  Failed setups stayed fail-closed: the first Cargo run had no Git checkout seed; the next reached the pre-existing
+  root-owned unreadable `pin-utils` source; a first exact-rustfmt extraction exhausted an undersized tmpfs; and
+  several disposable bridge runs exposed, in order, an unwritable destination, Rustup update scratch, missing Git
+  seed, missing Rustfmt, and immutable Flutter cache writes. None was bypassed with root, permission/ownership
+  changes, a dependency fetch, a mutable image build, or a host-source write. Passing compilation rebuilt a
+  user-owned Cargo home from read-only `.crate`/Git seeds in tmpfs. Every substantive run used immutable image IDs as
+  UID/GID 1000 with pulls/networking disabled, read-only source/root/seeds, all capabilities dropped,
+  no-new-privileges, bounded pids/CPU/memory, disposable outputs, no published ports, and no Docker socket. Only the
+  slice-owned stalled disposable bridge containers were stopped. No host RustDesk process, service, binary,
+  configuration, listener, firewall, UFW/nftables/iptables state, or host-network state was inspected or changed.
+
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6457,13 +6507,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   regression risk at the completion boundary: orphaned uncompiled
   `libs/scrap/src/wayland.rs` + `libs/scrap/src/common/wayland.rs` (the `mod` is
   excised, the files linger beside cfg-gated `common/linux.rs` WAYLAND arms);
-  the neutered `--assign` arm in `core_main.rs` (assembles then discards a body —
-  dials nobody); dead `--quick_support` plumbing in `libs/portable`;
+  dead `--quick_support` plumbing in `libs/portable`;
   and, at the time of this earlier note, `enable_trusted_devices` viewer plumbing plus
   `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs. The trusted-device/2FA cluster was
   subsequently excised and is closed/gated by I-11 below; it is no longer retained residue.
-  The other listed leftovers do not affect behavior or open a security path (reviewer +
-  local re-confirm) and remain candidates for focused excision with their own build re-prove.
+  The account-assignment residue was subsequently deleted and is closed/gated by R-SV6a above. The other listed
+  leftovers do not affect behavior or open a security path (reviewer + local re-confirm) and remain candidates for
+  focused excision with their own build re-prove.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
@@ -6699,12 +6749,14 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   has one direct policy; first-message retry is named for receiver evidence; and session add/reconnect,
   FRB, authored Dart, and the web bridge carry no relay-choice parameter. Focused Rust regressions and
   Rust/Dart source gates bind the behavior and API absence. Exact artifact evidence remains R-B2/R-B10.
-- **Dead FFI exports (zero Dart callers):** `main_test_if_valid_server`, `main_get_proxy_status`,
-  `main_handle_relay_id`, `main_resolve_avatar_url` (`src/flutter_ffi.rs`). Drop the exports.
+- **Dead FFI exports — CLOSED/GATED:** `main_test_if_valid_server`, `main_get_proxy_status`,
+  `main_handle_relay_id`, and `main_resolve_avatar_url` were already absent on re-audit; R-SV6a additionally deletes
+  the account deployment FFI and generated/authored bridge surface.
 - **Dead Rust backends — SOCKS/proxy CLOSED/GATED 2026-07-20 (R-S11b-3j); remaining roots still itemized:**
   the structured proxy store, alternate proxy/TLS connector, proxy-only validator, and their package records are
-  deleted. The remaining row is `change_id`/`change_id_shared`, the IPC `rendezvous_server(s)` query answer, and
-  the `resolve_avatar_url`/`get_api_server` builder; each still requires its own call-graph proof before excision.
+  deleted. R-SV6a deletes the independently proven account API/audit/avatar builder cluster. The remaining row is
+  `change_id`/`change_id_shared` and the IPC `rendezvous_server(s)` query answer; each still requires its own
+  call-graph proof before excision.
 - **Dead Dart option constants:** `kOptionHideServerSetting`, `kOptionHideProxySetting`,
   `kOptionDisableChangeId`, `kOptionAllowDeepLinkServerSettings` (`flutter/lib/consts.dart:171-187`) —
   zero consumers. Delete.
@@ -6760,9 +6812,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d994dba046980eace9d636785a4ae760ef8e015da30bf9a0025a5a6ea85541ba  requirements.html
+50655aa11805bd348fa451d9e858f9e656b31e11aa92dd0bfc5b4a01554f25ff  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bb, R-SV4a,
-R-SV5a, and Appendix C #178. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, and Appendix C #179. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

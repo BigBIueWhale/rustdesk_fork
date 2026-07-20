@@ -562,10 +562,15 @@ def extract_through(source, start_token, end_token, label):
 
 
 def extract_html_requirement(source, requirement_id, label):
-    start_token = f'<div class="req"><span class="id">{requirement_id}</span>'
-    start = source.find(start_token)
-    if start < 0:
+    start_tokens = (
+        f'<div class="req"><span class="id">{requirement_id}</span>',
+        f'<div class="req x"><span class="id">{requirement_id}</span>',
+    )
+    matches = [(source.find(token), token) for token in start_tokens]
+    matches = [(start, token) for start, token in matches if start >= 0]
+    if not matches:
         raise VerificationError(f"{label}: opening token is absent")
+    start, start_token = min(matches)
     content_start = start + len(start_token)
     end_candidates = (
         source.find('\n\n<div class="req"', content_start),
@@ -4829,7 +4834,7 @@ def validate_smoke_contract(
     run_me_descriptor_test = extract_between(
         common_source,
         "fn linux_run_me_child_excludes_inherited_nonstdio_descriptors()",
-        "\n    // R-SV6(d)",
+        "\n    #[test]\n    fn r_s11e44_linux_parent_bound_child_dies_with_launcher()",
         "Linux same-executable actual-child descriptor regression",
     )
     for text, label in (
@@ -7178,7 +7183,7 @@ def validate_linux_headless_cm_parent_contract(sources):
     actual_child_test = extract_between(
         common_source,
         "fn r_s11e44_linux_parent_bound_child_dies_with_launcher()",
-        "\n    // R-SV6(d)",
+        "\n    // R-A4 / R-X4 / §18",
         "Linux parent-bound actual-child regression",
     )
     for text, label in (
@@ -10894,8 +10899,8 @@ def validate_direct_address_cli_contract(sources):
     require_absent(scope, 'Some("--get-id")', "numeric-ID user-main-IPC scope")
     require_text(
         scope,
-        'Some("--option") | Some("--assign")',
-        "retained management-command IPC scope",
+        'Some("--option")',
+        "retained option management-command IPC scope",
     )
     require_text(
         core,
@@ -10938,6 +10943,114 @@ def validate_direct_address_cli_contract(sources):
         sources["hardening"],
         "R-SV5a — obsolete numeric-ID query command and user-main-IPC scope",
         "numeric-ID hardening ledger",
+    )
+
+
+def validate_account_control_plane_excision_contract(sources):
+    core_main = extract_between(
+        sources["core_main"],
+        "pub fn core_main() -> Option<Vec<String>> {",
+        "\nfn core_main_invoke_new_connection(",
+        "desktop CLI dispatch",
+    )
+    scope = extract_between(
+        sources["core_main"],
+        "fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {",
+        "\n}\n\n#[inline]",
+        "Unix user-main-IPC CLI scope",
+    )
+    for text, label in (
+        ('args[0] == "--assign"', "account assignment CLI handler"),
+        ("Authorization: Bearer", "argv bearer-token builder"),
+        ('Some("--assign")', "account assignment user-main-IPC scope"),
+    ):
+        require_absent(core_main + scope, text, label)
+    require_text(
+        scope,
+        'matches!(args.first().map(String::as_str), Some("--option"))',
+        "option-only user-main-IPC classifier",
+    )
+    require_text(
+        sources["core_main"],
+        "fn user_main_ipc_scope_cli_command_matches_option_only()",
+        "account assignment scope regression",
+    )
+
+    for source_key, tokens in (
+        (
+            "ui_interface_source",
+            ("DeployResult", "deploy_device", "get_api_server", "resolve_avatar_url"),
+        ),
+        ("flutter_ffi_source", ("main_deploy_device",)),
+        ("web_bridge_dart", ("mainDeployDevice",)),
+        (
+            "common_source",
+            (
+                "get_custom_rendezvous_server",
+                "get_api_server",
+                "get_audit_server",
+                "fn is_public(",
+            ),
+        ),
+        ("ui_session_source", ("get_audit_server",)),
+    ):
+        for token in tokens:
+            require_absent(sources[source_key], token, f"account control-plane symbol {token}")
+
+    for token, label in (
+        ('LocalConfig::get_option("user_info")', "stale account profile consumer"),
+        ("resolve_avatar_url", "account-relative avatar resolver"),
+    ):
+        require_absent(sources["client_source"], token, label)
+    require_text(
+        sources["client_source"],
+        "let avatar = get_builtin_option(keys::OPTION_AVATAR).trim().to_owned();",
+        "build-local trimmed avatar metadata",
+    )
+    require_text(
+        sources["client_source"],
+        "let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME)\n            .trim()\n            .to_owned();",
+        "build-local trimmed display-name metadata",
+    )
+    require_text(
+        sources["client_source"],
+        "display_name = crate::username();",
+        "local username display-name fallback",
+    )
+    for token, label in (
+        ("no_register_device", "account registration policy helper"),
+        ("OPTION_REGISTER_DEVICE", "account registration built-in key"),
+        ("OPTION_ALLOW_HTTPS_21114", "account API port built-in key"),
+    ):
+        require_absent(sources["config_source"], token, label)
+
+    for source_key, token, label in (
+        ("verify", "R-SV6a account/control-plane structural excision", "shared account source gate"),
+        ("dart_verify", "R-G4/R-SV6a Android device-deploy UI and bridge ABI", "Dart account bridge gate"),
+        (
+            "apple",
+            'need("cli", "account-assignment-command-present"',
+            "Apple account CLI gate",
+        ),
+    ):
+        require_text(sources[source_key], token, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-SV6a", "account control-plane requirement"
+    )
+    for text, label in (
+        ("Delete the account control plane", "structural account deletion requirement"),
+        ("UserMainIpcScope", "cross-principal account-scope requirement"),
+        ("stale account cache", "stale account-profile requirement"),
+        ("account-only", "account-only configuration-key requirement"),
+        ("build-local", "local profile metadata authority"),
+    ):
+        require_text(requirement, text, label)
+    require_text(sources["requirements"], "<tr><td>179</td>", "account control-plane Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-SV6a — account/control-plane compatibility surface deleted",
+        "account control-plane hardening ledger",
     )
 
 
@@ -11217,6 +11330,7 @@ def validate_sources(sources):
     validate_smoke_container_authority_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
+    validate_account_control_plane_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_smoke_contract(
@@ -21648,8 +21762,8 @@ def run_source_mutations(sources):
         ),
         (
             "core_main",
-            'Some("--option") | Some("--assign")',
-            'Some("--get-id") | Some("--option") | Some("--assign")',
+            'matches!(args.first().map(String::as_str), Some("--option"))',
+            'matches!(args.first().map(String::as_str), Some("--get-id") | Some("--option"))',
             "numeric-ID user-main-IPC scope",
         ),
         (
@@ -21699,6 +21813,102 @@ def run_source_mutations(sources):
             "R-SV5a — obsolete numeric-ID query command and user-main-IPC scope",
             "R-SV5a — obsolete numeric-ID closure deferred",
             "numeric-ID hardening ledger",
+        ),
+        (
+            "core_main",
+            '} else if args[0] == "--option" {',
+            '} else if args[0] == "--assign" {\n            let header = "Authorization: Bearer ";\n            return None;\n        } else if args[0] == "--option" {',
+            "account assignment CLI handler",
+        ),
+        (
+            "core_main",
+            'matches!(args.first().map(String::as_str), Some("--option"))',
+            'matches!(args.first().map(String::as_str), Some("--option") | Some("--assign"))',
+            "account assignment user-main-IPC scope",
+        ),
+        (
+            "core_main",
+            "fn user_main_ipc_scope_cli_command_matches_option_only()",
+            "fn user_main_ipc_scope_cli_command_matches_management_commands_only()",
+            "account assignment scope regression",
+        ),
+        (
+            "ui_interface_source",
+            "#[inline]\npub fn has_hwcodec() -> bool {",
+            "pub enum DeployResult { Error(String) }\npub fn deploy_device(_: String, _: Option<String>) -> DeployResult { DeployResult::Error(String::new()) }\n\n#[inline]\npub fn has_hwcodec() -> bool {",
+            "account control-plane symbol DeployResult",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_get_local_option(key: String) -> SyncReturn<String> {",
+            "pub fn main_deploy_device(_: String, _: String) -> String { String::new() }\n\npub fn main_get_local_option(key: String) -> SyncReturn<String> {",
+            "account control-plane symbol main_deploy_device",
+        ),
+        (
+            "web_bridge_dart",
+            "  void dispose() {}",
+            "  Future<String> mainDeployDevice() async => '';\n\n  void dispose() {}",
+            "account control-plane symbol mainDeployDevice",
+        ),
+        (
+            "common_source",
+            "pub fn get_local_option(key: &str) -> String {",
+            "pub fn get_api_server(_: String, _: String) -> String { String::new() }\n\npub fn get_local_option(key: &str) -> String {",
+            "account control-plane symbol get_api_server",
+        ),
+        (
+            "ui_session_source",
+            "    pub fn send_note(&self, note: String) {",
+            "    pub fn get_audit_server(&self, _: String) -> String { String::new() }\n\n    pub fn send_note(&self, note: String) {",
+            "account control-plane symbol get_audit_server",
+        ),
+        (
+            "client_source",
+            "let avatar = get_builtin_option(keys::OPTION_AVATAR).trim().to_owned();",
+            'let avatar = LocalConfig::get_option("user_info");',
+            "stale account profile consumer",
+        ),
+        (
+            "config_source",
+            '    pub const OPTION_PRESET_DEVICE_NAME: &str = "preset-device-name";',
+            '    pub const OPTION_REGISTER_DEVICE: &str = "register-device";\n    pub const OPTION_PRESET_DEVICE_NAME: &str = "preset-device-name";',
+            "account registration built-in key",
+        ),
+        (
+            "verify",
+            "R-SV6a account/control-plane structural excision",
+            "R-SV6a account/control-plane gate disabled",
+            "shared account source gate",
+        ),
+        (
+            "dart_verify",
+            "R-G4/R-SV6a Android device-deploy UI and bridge ABI",
+            "R-G4/R-SV6a Android device-deploy gate disabled",
+            "Dart account bridge gate",
+        ),
+        (
+            "apple",
+            'need("cli", "account-assignment-command-present"',
+            'need("cli", "account-assignment-gate-disabled"',
+            "Apple account CLI gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV6a</span>',
+            '<span class="id">R-SV6a-disabled</span>',
+            "account control-plane requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>179</td>",
+            "<tr><td>179-disabled</td>",
+            "account control-plane Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV6a — account/control-plane compatibility surface deleted",
+            "R-SV6a — account/control-plane deletion deferred",
+            "account control-plane hardening ledger",
         ),
         (
             "socket_client_source",

@@ -558,10 +558,7 @@ _registerEventHandler() {
   // plugin/handlers.dart) drove the excised plugin framework (register_ui_entry →
   // PluginUiManager, plugin-callback peer selection). The Rust plugin framework that fired this
   // event is gone, so it never arrives. The handler + its Dart UI are deleted with the framework.
-  // R-G4 / R-SV6(c) / §18: the 'android_needs_deploy' handler is removed — device deployment
-  // (the /api/devices/deploy account-registration egress) is excised (deploy_device is a refuse-
-  // stub), and the Android mediator that fired NEEDS_DEPLOY is gone (R-D4), so this event never
-  // arrives. The deploy UI it opened (deploy_dialog.dart) is deleted with it.
+  // R-G4 / R-SV6a / §18: the account-bound Android deployment event, UI, and bridge ABI are excised.
 }
 
 Widget keyListenerBuilder(BuildContext context, Widget? child) {

@@ -7314,7 +7314,7 @@ fi
 # R-D8/R-S11b: both safe password-input modes dispatch through the sensitive owner-aware operation.
 # Path/root checks are not authority: service-owned and user-owned storage select their dedicated raw
 # owner endpoint and platform proof inside the common operation.
-pw_arm=$(awk '/matches!\(args\[0\]\.as_str\(\), "--password"/,/args\[0\] == "--get-id"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
+pw_arm=$(awk '/matches!\(args\[0\]\.as_str\(\), "--password"/,/args\[0\] == "--option"/' src/core_main.rs | grep -vE '^[[:space:]]*//')
 pw_cli_helper=$(awk '/fn set_cli_permanent_password\(/,/^}/' src/core_main.rs)
 pw_sensitive_dispatch=$(awk '/pub\(crate\) fn set_permanent_password_sensitive\(/,/^}/' src/ipc.rs)
 if grep -q 'set_cli_permanent_password(password)' <<<"$pw_arm" \
@@ -8214,6 +8214,32 @@ if [ -n "$r_sv4a" ]; then
   echo "  FAIL R-SV4a direct-only viewer state/API finality:$r_sv4a"; rc=1
 else
   echo "  ok  R-SV4a keyed direct stream + fixed label, no relay-choice state/ABI, direct pre-login policy"
+fi
+# R-SV5a: a rendezvous numeric ID is not a direct-address capability. Its obsolete CLI query must
+# neither survive in argv dispatch nor redirect an installed-root Unix process into user main IPC.
+r_sv5a=""
+r_sv5a_core_main=$(awk '/^pub fn core_main\(\)/{capture=1} capture{print} /^fn core_main_invoke_new_connection\(/{exit}' src/core_main.rs)
+r_sv5a_scope=$(awk '/^fn is_user_main_ipc_scope_cli_command\(/{capture=1} capture{print} capture && /^}/{exit}' src/core_main.rs)
+echo "$r_sv5a_core_main" | grep -qF 'args[0] == "--get-id"' \
+  && r_sv5a="$r_sv5a get-id-handler-present"
+echo "$r_sv5a_core_main" | grep -qF 'println!("{}", crate::ipc::get_id());' \
+  && r_sv5a="$r_sv5a get-id-print-present"
+echo "$r_sv5a_scope" | grep -qF 'Some("--get-id")' \
+  && r_sv5a="$r_sv5a get-id-user-main-ipc-scope-present"
+echo "$r_sv5a_scope" | grep -qF 'Some("--option") | Some("--assign")' \
+  || r_sv5a="$r_sv5a retained-management-scope-not-exact"
+grep -qF 'fn obsolete_get_id_command_has_no_user_main_ipc_scope()' src/core_main.rs \
+  || r_sv5a="$r_sv5a get-id-scope-regression-missing"
+grep -qF '<span class="id">R-SV5a</span>' requirements.html \
+  || r_sv5a="$r_sv5a requirement-missing"
+grep -qF '<tr><td>177</td>' requirements.html \
+  || r_sv5a="$r_sv5a appendix-disposition-missing"
+grep -qF 'R-SV5a — obsolete numeric-ID query command and user-main-IPC scope' HARDENING_STATUS.md \
+  || r_sv5a="$r_sv5a ledger-disposition-missing"
+if [ -n "$r_sv5a" ]; then
+  echo "  FAIL R-SV5a obsolete numeric-ID CLI and IPC-scope closure:$r_sv5a"; rc=1
+else
+  echo "  ok  R-SV5a --get-id handler absent and excluded from installed-root Unix user-main IPC scope"
 fi
 # R-G6 ADDITIVE copy — the half the deletion-only greps never asserted (so it silently slipped): the
 # direct-only failure/status semantics MUST be REWRITTEN, not merely have the relay copy deleted. Two

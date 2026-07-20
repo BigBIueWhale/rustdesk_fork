@@ -10872,6 +10872,75 @@ def validate_direct_only_viewer_contract(sources):
     )
 
 
+def validate_direct_address_cli_contract(sources):
+    core = sources["core_main"]
+    core_main = extract_between(
+        core,
+        "pub fn core_main() -> Option<Vec<String>> {",
+        "\nfn core_main_invoke_new_connection(",
+        "desktop CLI dispatch",
+    )
+    scope = extract_between(
+        core,
+        "fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {",
+        "\n}\n\n#[inline]",
+        "Unix user-main-IPC CLI scope",
+    )
+    for text, label in (
+        ('args[0] == "--get-id"', "obsolete numeric-ID CLI handler"),
+        ('println!("{}", crate::ipc::get_id());', "obsolete numeric-ID CLI output"),
+    ):
+        require_absent(core_main, text, label)
+    require_absent(scope, 'Some("--get-id")', "numeric-ID user-main-IPC scope")
+    require_text(
+        scope,
+        'Some("--option") | Some("--assign")',
+        "retained management-command IPC scope",
+    )
+    require_text(
+        core,
+        "fn obsolete_get_id_command_has_no_user_main_ipc_scope()",
+        "numeric-ID IPC-scope regression",
+    )
+
+    require_text(
+        sources["verify"],
+        "R-SV5a obsolete numeric-ID CLI and IPC-scope closure",
+        "numeric-ID shared source gate",
+    )
+    require_text(
+        sources["verify"],
+        "'/matches!\\(args\\[0\\]\\.as_str\\(\\), \"--password\"/,/args\\[0\\] == \"--option\"/'",
+        "password CLI shell boundary after numeric-ID deletion",
+    )
+    require_text(
+        sources["apple"],
+        'need("cli", "obsolete-get-id-command-present"',
+        "numeric-ID Apple source gate",
+    )
+    require_text(
+        sources["apple"],
+        "password_arm_end = core_main.find('args[0] == \"--option\"', password_arm_start)",
+        "Apple password CLI boundary after numeric-ID deletion",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-SV5a", "numeric-ID CLI requirement"
+    )
+    for text, label in (
+        ("no numeric-ID query", "numeric-ID command absence requirement"),
+        ("UserMainIpcScope", "numeric-ID IPC-scope requirement"),
+        ("preserve an alias or fallback", "numeric-ID fallback prohibition"),
+    ):
+        require_text(requirement, text, label)
+    require_text(sources["requirements"], "<tr><td>177</td>", "numeric-ID Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-SV5a — obsolete numeric-ID query command and user-main-IPC scope",
+        "numeric-ID hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -10936,6 +11005,7 @@ def validate_sources(sources):
     )
     validate_smoke_container_authority_contract(sources)
     validate_direct_only_viewer_contract(sources)
+    validate_direct_address_cli_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -21356,6 +21426,66 @@ def run_source_mutations(sources):
             "R-SV4a — direct-only viewer transport and state finality",
             "R-SV4a — direct-only viewer closure deferred",
             "direct-only hardening ledger",
+        ),
+        (
+            "core_main",
+            '} else if args[0] == "--option" {',
+            '} else if args[0] == "--get-id" {\n            println!("{}", crate::ipc::get_id());\n            return None;\n        } else if args[0] == "--option" {',
+            "obsolete numeric-ID CLI handler",
+        ),
+        (
+            "core_main",
+            'Some("--option") | Some("--assign")',
+            'Some("--get-id") | Some("--option") | Some("--assign")',
+            "numeric-ID user-main-IPC scope",
+        ),
+        (
+            "core_main",
+            "fn obsolete_get_id_command_has_no_user_main_ipc_scope()",
+            "fn obsolete_get_id_command_scope_regression_removed()",
+            "numeric-ID IPC-scope regression",
+        ),
+        (
+            "verify",
+            "R-SV5a obsolete numeric-ID CLI and IPC-scope closure",
+            "R-SV5a numeric-ID CLI gate disabled",
+            "numeric-ID shared source gate",
+        ),
+        (
+            "verify",
+            "'/matches!\\(args\\[0\\]\\.as_str\\(\\), \"--password\"/,/args\\[0\\] == \"--option\"/'",
+            "'/matches!\\(args\\[0\\]\\.as_str\\(\\), \"--password\"/,/args\\[0\\] == \"--get-id\"/'",
+            "password CLI shell boundary after numeric-ID deletion",
+        ),
+        (
+            "apple",
+            'need("cli", "obsolete-get-id-command-present"',
+            'need("cli", "obsolete-get-id-gate-disabled"',
+            "numeric-ID Apple source gate",
+        ),
+        (
+            "apple",
+            "password_arm_end = core_main.find('args[0] == \"--option\"', password_arm_start)",
+            "password_arm_end = core_main.find('args[0] == \"--get-id\"', password_arm_start)",
+            "Apple password CLI boundary after numeric-ID deletion",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV5a</span>',
+            '<span class="id">R-SV5a-disabled</span>',
+            "numeric-ID CLI requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>177</td>",
+            "<tr><td>177-disabled</td>",
+            "numeric-ID Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV5a — obsolete numeric-ID query command and user-main-IPC scope",
+            "R-SV5a — obsolete numeric-ID closure deferred",
+            "numeric-ID hardening ledger",
         ),
         (
             "cli_source",

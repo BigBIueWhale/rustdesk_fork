@@ -4320,6 +4320,42 @@ unreachable and a source/test/AST gate prevents reintroduction.
   capabilities dropped, no-new-privileges, bounded pids, disposable outputs, and no ports or Docker socket. No host
   RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host network
   state was inspected or changed.
+- **R-SV5a — obsolete numeric-ID query command and user-main-IPC scope — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2.** Platforms: the desktop CLI on Linux, macOS, and Windows;
+  the user-main-IPC scope consequence existed only on installed root Unix launches. Boundary: argv dispatch ↔
+  active-user IPC namespace selection ↔ side-effect-free stored compatibility identity. The direct-only fork still
+  accepted `--get-id` and printed `ipc::get_id()`. On installed root Linux/macOS, the same argument was classified
+  with management commands and therefore selected `UserMainIpcScope`, carrying cross-principal IPC routing solely
+  for an identity capability the fork no longer supports. This was dead command and IPC-scope authority debt, not
+  password disclosure, network egress, authentication bypass, a demonstrated privilege escalation, exploitation,
+  or evidence of compromise.
+
+  Source closure: the `core_main` handler is deleted and the scope classifier accepts only the separately retained
+  `--option`/`--assign` management commands. A focused regression proves that `--get-id` has no user-main-IPC scope;
+  the shared verifier, Apple checker, semantic validator, deliberate mutations, R-SV5a, and Appendix C #177 bind
+  both absences. Internal `Config::get_id()`/`ipc::get_id()` compatibility reads are not blanket-deleted in this
+  slice: they remain side-effect-free metadata reads for separately audited consumers and are not a CLI identity
+  capability. Exact Debian/Windows packaged-artifact absence remains part of the clean R-B2 build obligation;
+  external review remains R-V3.
+
+  Verification: exact Rust 1.75 locked/offline compilation and all five `core_main::tests` pass, including the
+  focused obsolete-command scope regression. The focused shared R-SV5a shell gate and the Apple CLI structural
+  group pass; the workspace semantic validator passes normally and against its complete deliberate source-mutation
+  matrix, including independent handler, scope, regression, checker, requirement, Appendix, and ledger mutations.
+  Dependency inventory is clean and all 103 inventory self-tests pass. Native-codec watch normal/self-test, Bash
+  and Python syntax, requirements-digest synchronization, exact Rust 1.75 Rustfmt, and `git diff --check` pass.
+  The full Apple target/build checker and exact release artifacts were not run in this narrow slice: the former is
+  outside the no-long-build constraint and the latter remains R-B2. A diagnostic execution of the Apple checker's
+  other, unrelated `b2` structural group reports a pre-existing stale `start_main_ipc` marker; only its independently
+  emitted CLI group is claimed here and that group is clean.
+
+  Two initial Cargo setups failed closed: one exposed a missing writable extraction destination for `base64`, and
+  the next left rustc's `/tmp` on the read-only root. Neither was bypassed with root, a permission/ownership change,
+  or a dependency fetch. The passing run used a tmpfs Cargo overlay over read-only re-extracted crate, registry, and
+  Git inputs plus the prior user-owned compilation cache. All substantive checks ran as UID/GID 1000 in the existing
+  immutable image with pulls and networking disabled, source and input caches read-only, the container root read-only,
+  capabilities dropped, no-new-privileges, bounded pids, no published ports, and no Docker socket. No host RustDesk
+  process, service, binary, configuration, listener, firewall, or host-network state was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6629,11 +6665,14 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   `Data::SwitchPermission` variant, `src/ui_cm_interface.rs` has no receiver arm, and
   `src/server/connection.rs` has no handler that can reassign connection capabilities mid-session;
   `scripts/verify.sh` gates those absences.
+- **Numeric-ID query CLI — CLOSED/GATED 2026-07-20 (R-SV5a):** `--get-id` no longer has a desktop handler and
+  cannot select the installed-root Unix `UserMainIpcScope`; focused/source/mutation gates bind both absences.
+  Internal side-effect-free stored-ID reads remain separately audited compatibility metadata, not a supported CLI
+  identity capability. Exact packaged-artifact evidence remains R-B2.
 - **Misc:** the unshown my-numeric-ID machinery (`server_model.dart` `_serverId`/`fetchID`, fetched
   and never rendered); the serialized-but-unread `forceAlwaysRelay`/`sameServer`/`recording`/
   `block_input`/`restart` fields; the `formatID` numeric-grouping passthrough; the `switch_sides()`
-  empty stub; `logOut(apiServer)`; and the `--get-id` CLI (a
-  meaningless numeric ID in the direct-IP model). Delete.
+  empty stub; and `logOut(apiServer)`. Delete.
 
 ### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
 
@@ -6667,8 +6706,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-97dc94e32259532d12a595b36827bcbf4b0d21cfaca932f5979f44c7d4f07856  requirements.html
+fe200216eb9128822b9214e0e1f0fc87057d175dfb2abf64b784624fa9f6fd98  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ba, R-SV4a, and Appendix C #176. It is a
-source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ba, R-SV4a,
+R-SV5a, and Appendix C #177. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+by the R-B2 manifest.

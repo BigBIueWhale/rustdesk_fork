@@ -492,9 +492,6 @@ pub fn core_main() -> Option<Vec<String>> {
             }
             println!("Done!");
             return None;
-        } else if args[0] == "--get-id" {
-            println!("{}", crate::ipc::get_id());
-            return None;
         // R-X4: the `--set-id` (rendezvous-ID change) and `--config` (trust-anchor +
         // server adoption) CLI paths are excised — both presuppose the rendezvous
         // account / anchor this serverless fork removes; the larger account
@@ -769,7 +766,7 @@ fn linux_user_session_ui_allowed(is_root: bool) -> bool {
 fn is_user_main_ipc_scope_cli_command(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
-        Some("--get-id") | Some("--option") | Some("--assign")
+        Some("--option") | Some("--assign")
     )
 }
 
@@ -791,7 +788,7 @@ mod tests {
 
     #[test]
     fn user_main_ipc_scope_cli_command_matches_management_commands_only() {
-        for command in ["--get-id", "--option", "--assign"] {
+        for command in ["--option", "--assign"] {
             assert!(is_user_main_ipc_scope_cli_command(&args(&[command])));
         }
 
@@ -806,6 +803,11 @@ mod tests {
         ] {
             assert!(!is_user_main_ipc_scope_cli_command(&args(&[command])));
         }
+    }
+
+    #[test]
+    fn obsolete_get_id_command_has_no_user_main_ipc_scope() {
+        assert!(!is_user_main_ipc_scope_cli_command(&args(&["--get-id"])));
     }
 
     #[test]

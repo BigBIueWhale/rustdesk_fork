@@ -668,8 +668,9 @@ def analyze(sources):
         cli_prompt = item(core, "fn prompt_unattended_password")
         cli_set = item(core, "fn set_cli_permanent_password")
         core_main = item(core, "pub fn core_main()")
+        cli_scope = item(core, "fn is_user_main_ipc_scope_cli_command")
         password_arm_start = core_main.find('matches!(args[0].as_str(), "--password" | "--password-stdin")')
-        password_arm_end = core_main.find('args[0] == "--get-id"', password_arm_start)
+        password_arm_end = core_main.find('args[0] == "--option"', password_arm_start)
         password_arm = core_main[password_arm_start:password_arm_end]
         need("cli", "cli-password-command-not-exact", all(token in cli_parse for token in [
             'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)',
@@ -702,6 +703,11 @@ def analyze(sources):
             'password_cli_input(&args(&["--password", "secret"]))',
             'password_cli_input(&args(&["--password-stdin", "secret"]))',
         ]))
+        need("cli", "obsolete-get-id-command-present", all(token not in core_main for token in [
+            'args[0] == "--get-id"', 'println!("{}", crate::ipc::get_id());',
+        ]) and 'Some("--get-id")' not in cli_scope
+            and 'Some("--option") | Some("--assign")' in cli_scope
+            and "fn obsolete_get_id_command_has_no_user_main_ipc_scope()" in core)
     except ValueError as error:
         findings["cli"].append(f"structural-parse:{error}")
 
@@ -734,6 +740,8 @@ mutation("snapshot-exact-argv", "ipc", "cmd.len() == 3", "cmd.len() >= 3", "b2",
 mutation("cli-exact-arity", "core", 'Some("--password") if args.len() == 1', 'Some("--password") if !args.is_empty()', "cli", "cli-password-command-not-exact")
 mutation("cli-stdin-bound", "core", "reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)", "reader.take(u64::MAX)", "cli", "cli-stdin-not-bounded-utf8-zeroized")
 mutation("cli-confirmation-wipe", "core", "if !confirmation.zeroize()", "if confirmation.as_str().is_empty()", "cli", "cli-hidden-confirmed-prompt-not-wiping")
+mutation("obsolete-get-id-handler", "core", '} else if args[0] == "--option" {', '} else if args[0] == "--get-id" {\n            println!("{}", crate::ipc::get_id());\n            return None;\n        } else if args[0] == "--option" {', "cli", "obsolete-get-id-command-present")
+mutation("obsolete-get-id-scope", "core", 'Some("--option") | Some("--assign")', 'Some("--get-id") | Some("--option") | Some("--assign")', "cli", "obsolete-get-id-command-present")
 
 for name, group in [("r_s11b", "b1"), ("r_s11b2", "b2"), ("r_s11e16", "cli")]:
     (out_dir / name).write_text(" ".join(findings[group]))

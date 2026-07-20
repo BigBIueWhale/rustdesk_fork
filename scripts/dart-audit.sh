@@ -25,18 +25,26 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . scripts/pins.env
 
-IMG=rd-dart-audit
-LOCKFILE=flutter/pubspec.lock
-IGNORES_FILE=scripts/dart-audit-ignores.txt
+readonly IMG=rd-dart-audit
+readonly LOCKFILE=flutter/pubspec.lock
+readonly IGNORES_FILE=scripts/dart-audit-ignores.txt
+readonly DOCKER_BIN=/usr/bin/docker
+readonly PYTHON_BIN=/usr/bin/python3
 
-if [ ! -f "$LOCKFILE" ]; then
-  echo "dart-audit.sh: $LOCKFILE not found — nothing to audit" >&2
+die() {
+  echo "dart-audit.sh: $*" >&2
   exit 2
-fi
-if [ ! -f "$IGNORES_FILE" ]; then
-  echo "dart-audit.sh: $IGNORES_FILE not found — refusing to run without an accept-list source" >&2
-  exit 2
-fi
+}
+
+[ "$(id -u)" -ne 0 ] || die "refuses host or container-root execution"
+[ "$(id -g)" -ne 0 ] || die "refuses a root primary group"
+[ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
+[ -x "$PYTHON_BIN" ] || die "trusted Python interpreter is unavailable at $PYTHON_BIN"
+
+[ -f "$LOCKFILE" ] && [ ! -L "$LOCKFILE" ] \
+  || die "$LOCKFILE is not a regular non-symlink file"
+[ -f "$IGNORES_FILE" ] && [ ! -L "$IGNORES_FILE" ] \
+  || die "$IGNORES_FILE is not a regular non-symlink accept-list source"
 
 # Every pin must be present — refuse to build a non-reproducible image.
 : "${OSV_SCANNER_VERSION:?dart-audit.sh: OSV_SCANNER_VERSION unset in pins.env}"
@@ -44,118 +52,108 @@ fi
 : "${OSV_DB_PUB_SHA256:?dart-audit.sh: OSV_DB_PUB_SHA256 unset in pins.env}"
 : "${SHA256_BASEIMAGE_UBUNTU_1804:?dart-audit.sh: SHA256_BASEIMAGE_UBUNTU_1804 unset in pins.env}"
 
+AUDIT_TMP=""
+AUDIT_TMP_ID=""
+AUDIT_SUCCESS_MESSAGE=""
+cleanup_audit_tmp() {
+  local status=$? cleanup_failed=0
+  trap - EXIT HUP INT TERM
+  if [ -n "$AUDIT_TMP" ]; then
+    if [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
+      || [ "$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP" 2>/dev/null)" != "$AUDIT_TMP_ID" ]; then
+      echo "dart-audit.sh: private workspace identity is unavailable or changed: $AUDIT_TMP" >&2
+      cleanup_failed=1
+    elif ! "$PYTHON_BIN" scripts/verify-private-tree-closure.py \
+      --remove-private-root "$AUDIT_TMP" --expected-identity "$AUDIT_TMP_ID"; then
+      echo "dart-audit.sh: failed to remove private workspace: $AUDIT_TMP" >&2
+      cleanup_failed=1
+    elif [ -e "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ]; then
+      echo "dart-audit.sh: private workspace remains after removal: $AUDIT_TMP" >&2
+      cleanup_failed=1
+    fi
+  fi
+  [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
+  if [ "$cleanup_failed" -eq 0 ] && [ "$status" -eq 0 ] && [ -n "$AUDIT_SUCCESS_MESSAGE" ]; then
+    echo "$AUDIT_SUCCESS_MESSAGE"
+  fi
+  exit "$status"
+}
+trap cleanup_audit_tmp EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+AUDIT_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-dart-audit.XXXXXXXXXX)"
+AUDIT_TMP_ID="$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP")"
+readonly AUDIT_TMP AUDIT_TMP_ID
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$(id -u):$(id -g):700" ] \
+  || die "private workspace is not current-user/current-group mode 0700"
+
+# Validate the reason-bearing policy before the networked image-construction step.
+ACCEPT_COUNT="$($PYTHON_BIN scripts/dart-audit-result.py validate-policy --policy "$IGNORES_FILE")" \
+  || die "accept-list validation failed"
+[[ "$ACCEPT_COUNT" =~ ^[0-9]+$ ]] || die "accept-list validator returned a malformed count"
+echo "== R-R3 Dart advisory audit: ${ACCEPT_COUNT} documented accept(s) from ${IGNORES_FILE} =="
+
 echo "== building the Dart advisory gate image (osv-scanner ${OSV_SCANNER_VERSION} + pinned OSV Pub db) =="
-docker build -q \
+IMAGE_ID="$($DOCKER_BIN build -q \
   --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
   --build-arg "OSV_SCANNER_VERSION=${OSV_SCANNER_VERSION}" \
   --build-arg "OSV_SCANNER_SHA256=${OSV_SCANNER_SHA256}" \
   --build-arg "OSV_DB_PUB_SHA256=${OSV_DB_PUB_SHA256}" \
-  -t "$IMG" -f scripts/Dockerfile.dart-audit scripts >/dev/null
+  -t "$IMG" -f scripts/Dockerfile.dart-audit scripts)" \
+  || die "could not build the pinned Dart advisory image"
+[[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || die "docker build returned a malformed image identity"
+TAG_IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$IMG")" \
+  || die "cannot inspect the just-built Dart advisory image"
+[ "$TAG_IMAGE_ID" = "$IMAGE_ID" ] \
+  || die "Dart advisory image tag changed after construction"
+readonly IMAGE_ID TAG_IMAGE_ID
 
-# dart-audit-ignores.txt is the single accept-list. Parse active entries
-# deliberately: every accepted advisory must have exactly one id and a reason.
-ignores_tmp=$(mktemp)
-trap 'rm -f "$ignores_tmp"' EXIT
-python3 - "$IGNORES_FILE" <<'PY' >"$ignores_tmp"
-import re
-import sys
+RESULT_FILE="$AUDIT_TMP/osv-result.json"
+ERROR_FILE="$AUDIT_TMP/osv-stderr.log"
+LOCKFILE_PATH="$(/usr/bin/readlink -f -- "$LOCKFILE")" \
+  || die "cannot canonicalize $LOCKFILE"
+readonly RESULT_FILE ERROR_FILE LOCKFILE_PATH
 
-path = sys.argv[1]
-seen = set()
-ids = []
-with open(path, encoding="utf-8") as f:
-    for lineno, raw in enumerate(f, 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        body, sep, reason = raw.partition("#")
-        tokens = body.split()
-        if len(tokens) != 1:
-            print(f"dart-audit.sh: {path}:{lineno}: expected exactly one advisory id", file=sys.stderr)
-            sys.exit(2)
-        if not sep or not reason.strip():
-            print(f"dart-audit.sh: {path}:{lineno}: accepted advisory has no reason", file=sys.stderr)
-            sys.exit(2)
-        adv_id = tokens[0]
-        if not re.fullmatch(r"[A-Za-z0-9_.:-]+", adv_id):
-            print(f"dart-audit.sh: {path}:{lineno}: invalid advisory id {adv_id!r}", file=sys.stderr)
-            sys.exit(2)
-        if adv_id in seen:
-            print(f"dart-audit.sh: {path}:{lineno}: duplicate advisory id {adv_id}", file=sys.stderr)
-            sys.exit(2)
-        seen.add(adv_id)
-        ids.append(adv_id)
+# The scanner sees only the exact lockfile. The image ID, offline database, exit
+# status, and JSON are one decision: status 0 means packages/no findings, status
+# 1 means findings, and every other OSV status is an infrastructure failure.
+set +e
+$DOCKER_BIN run --rm --pull=never --network=none --read-only \
+  --user "$(id -u):$(id -g)" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=64 --memory=512m --memory-swap=512m --cpus=2 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
+  --env HOME=/tmp/audit-home \
+  --mount "type=bind,source=$LOCKFILE_PATH,target=/work/$LOCKFILE,readonly" \
+  --workdir /work "$IMAGE_ID" \
+  osv-scanner --offline --format=json --lockfile="$LOCKFILE" \
+  >"$RESULT_FILE" 2>"$ERROR_FILE"
+SCANNER_STATUS=$?
+set -e
+readonly SCANNER_STATUS
 
-sys.stdout.write("\n".join(sorted(ids)))
-PY
-mapfile -t IGNORES <"$ignores_tmp"
-echo "== R-R3 Dart advisory audit: ${#IGNORES[@]} documented accept(s) from ${IGNORES_FILE} =="
+case "$SCANNER_STATUS" in
+  0|1) ;;
+  *)
+    echo "dart-audit.sh: OSV scanner infrastructure failure (status $SCANNER_STATUS)" >&2
+    if [ -s "$ERROR_FILE" ]; then
+      /usr/bin/tail -c 65536 -- "$ERROR_FILE" | /usr/bin/sed 's/^/  /' >&2
+    fi
+    exit 2
+    ;;
+esac
 
-# Run the scan offline against a READ-ONLY mount of the repo (the audit must never
-# mutate it) and capture the machine-readable JSON. osv-scanner exits non-zero
-# when it finds vulnerabilities; with --format=json that exit is advisory, so we
-# decide pass/fail from the parsed ids below (more precise than the binary's exit,
-# and it lets the accept-list subtract). `|| true` keeps `set -e` from aborting on
-# the expected non-zero, but the JSON is the authority. --offline forbids any
-# network and errors if the baked db is missing — fail-closed.
-JSON="$(docker run --rm \
-  -v "$PWD:/work:ro" \
-  -w /work "$IMG" \
-  osv-scanner --offline --format=json --lockfile="$LOCKFILE" 2>/dev/null || true)"
+RESULT_BYTES="$(/usr/bin/stat -c '%s' -- "$RESULT_FILE")" \
+  || die "cannot inspect the OSV result"
+[ "$RESULT_BYTES" -gt 0 ] || die "OSV scanner produced an empty result"
+[ "$RESULT_BYTES" -le 67108864 ] || die "OSV scanner result exceeds 64 MiB"
 
-if [ -z "$JSON" ]; then
-  echo "dart-audit.sh: osv-scanner produced no output — refusing to pass blind" >&2
-  exit 2
-fi
+$PYTHON_BIN scripts/dart-audit-result.py evaluate \
+  --policy "$IGNORES_FILE" \
+  --result "$RESULT_FILE" \
+  --scanner-status "$SCANNER_STATUS" \
+  --lockfile "$LOCKFILE"
 
-# Compare the found advisory ids against the accept-list. Any id (or any of its
-# aliases, e.g. the CVE behind a GHSA) present in the accept-list is suppressed;
-# anything left over fails the gate. The JSON and the accept-list are passed via
-# the environment (stdin belongs to the heredoc), and this `python3` is the sole
-# command on the line, so `set -e` propagates its non-zero exit — fail-closed.
-OSV_JSON="$JSON" \
-IGNORES="$(printf '%s\n' "${IGNORES[@]:-}")" \
-python3 - "$LOCKFILE" <<'PY'
-import json, os, sys
-
-lockfile = sys.argv[1]
-ignores = {x.strip() for x in os.environ.get("IGNORES", "").splitlines() if x.strip()}
-data = json.loads(os.environ["OSV_JSON"])
-
-unignored = []   # (id, package, version, fixed)
-accepted  = []   # (id, package)
-for result in data.get("results", []):
-    for pkg in result.get("packages", []):
-        p = pkg.get("package", {})
-        name, ver = p.get("name", "?"), p.get("version", "?")
-        for vuln in pkg.get("vulnerabilities", []):
-            vid = vuln.get("id", "?")
-            ids = {vid, *vuln.get("aliases", [])}
-            fixed = ""
-            for aff in vuln.get("affected", []):
-                for rng in aff.get("ranges", []):
-                    for ev in rng.get("events", []):
-                        if "fixed" in ev:
-                            fixed = ev["fixed"]
-            if ids & ignores:
-                accepted.append((vid, name))
-            else:
-                unignored.append((vid, name, ver, fixed))
-
-if accepted:
-    print(f"-- {len(accepted)} accepted advisory(ies) (from the accept-list):")
-    for vid, name in accepted:
-        print(f"     ACCEPTED  {vid}  ({name})")
-
-if unignored:
-    print(f"\nDART-AUDIT: FAIL — {len(unignored)} unignored advisory(ies) against {lockfile}:")
-    for vid, name, ver, fixed in unignored:
-        fx = f"  (fixed in {fixed})" if fixed else ""
-        print(f"     {vid}  {name} {ver}{fx}")
-    print("\nResolve by an in-range pubspec.lock bump, or add the id to "
-          "scripts/dart-audit-ignores.txt WITH A REASON (R-R3).")
-    sys.exit(1)
-
-print("\nVERIFY-DART-AUDIT: green — no unignored advisories against the pinned "
-      "OSV Pub snapshot (R-R3).")
-PY
+AUDIT_SUCCESS_MESSAGE="VERIFY-DART-AUDIT: green — exact OSV status and structured results contain no unignored advisories against the pinned Pub snapshot (R-R3/R-S11be)"

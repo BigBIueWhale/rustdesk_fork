@@ -10225,8 +10225,14 @@ grep -qF 'cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked' scr
 grep -qF 'CARGO_DENY_DB_PATH' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-deny-db-path"
 grep -qF 'CARGO_DENY_VERSION=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-cargo-deny-version"
 grep -qF 'SHA256_BASEIMAGE_RUST_1_75_SLIM=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-rust-audit-base-digest"
-grep -qF 'accepted advisory has no reason' scripts/dart-audit.sh || r_r3_gate="$r_r3_gate dart:no-accept-reason-parser"
-grep -qF 'expected exactly one advisory id' scripts/dart-audit.sh || r_r3_gate="$r_r3_gate dart:no-strict-id-parser"
+grep -qF 'accepted advisory has no reason' scripts/dart-audit-result.py || r_r3_gate="$r_r3_gate dart:no-accept-reason-parser"
+grep -qF 'expected exactly one advisory id' scripts/dart-audit-result.py || r_r3_gate="$r_r3_gate dart:no-strict-id-parser"
+if ! python3 scripts/dart-audit-result.py --self-test; then
+  r_r3_gate="$r_r3_gate dart:result-behavior-self-test-failed"
+fi
+if ! python3 scripts/verify-dart-audit-authority.py --repo . --self-test; then
+  r_r3_gate="$r_r3_gate dart:scanner-authority-mutation-gate-failed"
+fi
 if grep -qE 'no[^<]{0,30}<code>deny[.]toml</code>|cargo[- ]audit</code> is not wired|not <code>cargo[- ]audit</code>-clean today|R-A7'\''s "audit green" does <em>not</em> hold as-is|dependency tree remains <strong>outstanding work</strong> \\(#16\\)' requirements.html; then
   r_r3_gate="$r_r3_gate requirements:stale-r-r3-text"
 fi

@@ -11413,6 +11413,82 @@ def validate_dart_verifier_authority_contract(sources):
     )
 
 
+def validate_dart_audit_authority_contract(sources):
+    shell = sources["dart_audit"]
+    result = sources["dart_audit_result"]
+    authority = sources["dart_audit_authority_validator"]
+
+    for text, label in (
+        ('[ "$(id -u)" -ne 0 ] || die "refuses host or container-root execution"', "Dart audit UID-root refusal"),
+        ('[ "$(id -g)" -ne 0 ] || die "refuses a root primary group"', "Dart audit GID-root refusal"),
+        ('IMAGE_ID="$($DOCKER_BIN build -q', "Dart audit built content identity"),
+        ('[ "$TAG_IMAGE_ID" = "$IMAGE_ID" ]', "Dart audit tag/content identity"),
+        ("--pull=never --network=none --read-only", "Dart audit pull/network/root confinement"),
+        ('--user "$(id -u):$(id -g)"', "Dart audit non-root user"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges", "Dart audit privilege floor"),
+        ("--pids-limit=64 --memory=512m --memory-swap=512m --cpus=2", "Dart audit resource bounds"),
+        ('--mount "type=bind,source=$LOCKFILE_PATH,target=/work/$LOCKFILE,readonly"', "Dart audit exact input"),
+        ('case "$SCANNER_STATUS" in\n  0|1) ;;', "Dart audit exact scanner outcomes"),
+        ('--scanner-status "$SCANNER_STATUS"', "Dart audit status/result binding"),
+    ):
+        require_text(shell, text, label)
+    require_exact_count(shell, "$DOCKER_BIN run ", 1, "Dart audit scanner inventory")
+    require_exact_count(shell, "--mount ", 1, "Dart audit mount inventory")
+    for text, label in (
+        ("|| true", "Dart audit ignored scanner result"),
+        ('-v "$PWD:/work:ro"', "Dart audit whole-worktree mount"),
+        ('--workdir /work "$IMG"', "Dart audit mutable-tag execution"),
+    ):
+        require_absent(shell, text, label)
+
+    for text, label in (
+        ("ALLOWED_SCANNER_STATUSES = frozenset((0, 1))", "Dart audit exact result statuses"),
+        ('results = data.get("results")', "Dart audit required results field"),
+        ('isinstance(results, list)', "Dart audit results schema"),
+        ("OSV status 0 disagrees with nonempty vulnerability results", "Dart audit clean-status finality"),
+        ("OSV status 1 has no vulnerability result", "Dart audit finding-status finality"),
+        ("require(checks == 19", "Dart audit behavioral self-test inventory"),
+    ):
+        require_text(result, text, label)
+
+    authority_mutations = extract_between(
+        authority,
+        "\nMUTATIONS = (",
+        "\n)\n\n\ndef mutate_once",
+        "Dart audit authority mutation matrix",
+    )
+    for text, label in (
+        ('Mutation("shell", "--network=none", "--network=bridge"', "Dart audit validator network mutation"),
+        ('Mutation("shell", "  0|1) ;;", "  0|1|127) ;;"', "Dart audit validator status mutation"),
+        (
+            'Mutation(\n        "result",\n        "ALLOWED_SCANNER_STATUSES = frozenset((0, 1))"',
+            "Dart audit validator result mutation",
+        ),
+    ):
+        require_text(authority_mutations, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/dart-audit-result.py --self-test",
+        "Dart audit result shared-gate wiring",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-dart-audit-authority.py --repo . --self-test",
+        "Dart audit authority shared-gate wiring",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S11be", "Dart audit authority requirement"
+    )
+    for text in ("statuses <code>0</code> and <code>1</code>", "--pull=never", "--network=none", "MUST NOT"):
+        require_text(requirement, text, "Dart audit authority requirement")
+    require_text(sources["requirements"], "<tr><td>182</td>", "Dart audit Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-S11be/R-S11e-71 — Dart advisory result and scanner authority",
+        "Dart audit authority hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -11482,6 +11558,7 @@ def validate_sources(sources):
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
+    validate_dart_audit_authority_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -22234,6 +22311,60 @@ def run_source_mutations(sources):
             "Dart verifier authority hardening ledger",
         ),
         (
+            "dart_audit",
+            "--pull=never --network=none --read-only",
+            "--pull=never --network=bridge --read-only",
+            "Dart audit pull/network/root confinement",
+        ),
+        (
+            "dart_audit",
+            'case "$SCANNER_STATUS" in\n  0|1) ;;',
+            'case "$SCANNER_STATUS" in\n  0|1|127) ;;',
+            "Dart audit exact scanner outcomes",
+        ),
+        (
+            "dart_audit_result",
+            "ALLOWED_SCANNER_STATUSES = frozenset((0, 1))",
+            "ALLOWED_SCANNER_STATUSES = frozenset((0, 1, 127, 128))",
+            "Dart audit exact result statuses",
+        ),
+        (
+            "dart_audit_result",
+            'results = data.get("results")',
+            'results = data.get("results", [])',
+            "Dart audit required results field",
+        ),
+        (
+            "dart_audit_authority_validator",
+            'Mutation("shell", "--network=none", "--network=bridge", "network isolation"),',
+            '# Dart audit network mutation removed',
+            "Dart audit validator network mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-dart-audit-authority.py --repo . --self-test",
+            "python3 scripts/verify-dart-audit-authority.py --repo .",
+            "Dart audit authority shared-gate wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11be</span>',
+            '<span class="id">R-S11be-disabled</span>',
+            "Dart audit authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>182</td>",
+            "<tr><td>182-disabled</td>",
+            "Dart audit Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11be/R-S11e-71 — Dart advisory result and scanner authority",
+            "R-S11be/R-S11e-71 — Dart advisory closure deferred",
+            "Dart audit authority hardening ledger",
+        ),
+        (
             "cli_source",
             "fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>",
             "fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>>",
@@ -22840,6 +22971,11 @@ def main():
             "frb_codegen": (repo / "scripts/frb-codegen.sh").read_text(encoding="utf-8"),
             "dart_authority_validator": (
                 repo / "scripts/verify-dart-verifier-authority.py"
+            ).read_text(encoding="utf-8"),
+            "dart_audit": (repo / "scripts/dart-audit.sh").read_text(encoding="utf-8"),
+            "dart_audit_result": (repo / "scripts/dart-audit-result.py").read_text(encoding="utf-8"),
+            "dart_audit_authority_validator": (
+                repo / "scripts/verify-dart-audit-authority.py"
             ).read_text(encoding="utf-8"),
             "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),

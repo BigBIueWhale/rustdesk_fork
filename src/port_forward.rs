@@ -582,18 +582,15 @@ async fn connect_and_login(
     } else {
         ConnType::PORT_FORWARD
     };
-    let Some(((mut stream, direct, _stream_type), (_feedback, _rendezvous_server))) =
-        cancellable_phase(
-            cancellation,
-            TunnelPhase::ConnectAndKey,
-            Client::start_port_forward(id, key, token, conn_type, target, interface.clone()),
-        )
-        .await?
+    let Some((mut stream, _stream_type)) = cancellable_phase(
+        cancellation,
+        TunnelPhase::ConnectAndKey,
+        Client::start_port_forward(id, key, token, conn_type, target, interface.clone()),
+    )
+    .await?
     else {
         return Ok(None);
     };
-    interface.update_direct(Some(direct));
-
     // R-S5 note / R-S13 (§4.4): the fork's direct-IP initiator MUST tunnel only over a PAKE-keyed
     // stream. `Client::start`/`_start` already key and assert is_secured, but assert AGAIN here —
     // before a single tunnelled byte, at the exact choke where the raw relay begins — and abort

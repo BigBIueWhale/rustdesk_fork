@@ -905,7 +905,7 @@ pub fn recent_sessions_updated() -> bool {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
-pub fn new_remote(id: String, remote_type: String, _force_relay: bool) {
+pub fn new_remote(id: String, remote_type: String) {
     let mut lock = CHILDREN.lock().unwrap();
     let args = vec![format!("--{}", remote_type), id.clone()];
     let key = (id.clone(), remote_type.clone());

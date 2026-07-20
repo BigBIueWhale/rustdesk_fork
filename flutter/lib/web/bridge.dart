@@ -82,7 +82,6 @@ class RustdeskImpl {
       required bool isPortForward,
       required bool isRdp,
       required bool isTerminal,
-      required bool forceRelay,
       required String password,
       required bool isSharedPassword,
       String? connToken,
@@ -172,8 +171,7 @@ class RustdeskImpl {
     return false;
   }
 
-  Future<void> sessionReconnect(
-      {required UuidValue sessionId, required bool forceRelay, dynamic hint}) {
+  Future<void> sessionReconnect({required UuidValue sessionId, dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['reconnect']));
   }
 

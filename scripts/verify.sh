@@ -8166,8 +8166,8 @@ else
 fi
 # R-G6 / R-SV4 / R-X6: relay route syntax must FAIL CLOSED. The inherited flow accepted
 # rustdesk://<id>/r, stripped `/r` in Rust, set forceRelay, and could persist
-# force-always-relay. The direct-only fork may keep generated ABI compatibility, but no
-# source path may strip a relay suffix, serialize relay=true, or save/read force-always-relay.
+# force-always-relay. No source path may strip a relay suffix, serialize relay=true, or
+# save/read force-always-relay.
 if grep -qF 'param_array.push(format!("relay=true"))' src/core_main.rs; then
   echo "  FAIL R-G6/R-X6: core_main still forwards --relay as relay=true"; rc=1
 elif ! grep -qF 'rejecting --relay on direct-only fork' src/core_main.rs; then
@@ -8190,6 +8190,31 @@ fi
 grep -qE 'fn handle_relay_id' src/ui_interface.rs \
   && { echo "  FAIL R-G6/R-SV4: handle_relay_id must be EXCISED (dead relay-route shim) — found a residual fn"; rc=1; } \
   || echo "  ok  R-G6/R-SV4 handle_relay_id excised (direct-only _start rejects /r; client.rs never strips)"
+# R-SV4a: direct-only is an API invariant established before login construction, not a late
+# transport label. Remove the relay discriminator at its root so no caller, reconnect ABI, or
+# pre-login quality policy can observe a false "unknown/non-direct" state.
+r_sv4a=""
+r_sv4a_relay_state=$(grep -RInE 'force_relay|forceRelay|retry_for_relay|is_force_relay|update_direct' src \
+  --include='*.rs' 2>/dev/null | grep -v 'bridge_generated' || true)
+[ -z "$r_sv4a_relay_state" ] || r_sv4a="$r_sv4a live-rust-relay-choice-state"
+grep -qF 'Ok((stream, "TCP"))' src/client.rs || r_sv4a="$r_sv4a direct-constructor-result-missing"
+grep -qF "ResultType<(Stream, &'static str)>" src/client.rs || r_sv4a="$r_sv4a direct-result-type-missing"
+grep -qF 'before_first_peer_message: bool' src/client.rs || r_sv4a="$r_sv4a retry-boundary-name-missing"
+grep -qF 'direct_only_custom_quality_is_not_relay_capped_before_login' src/client.rs \
+  || r_sv4a="$r_sv4a pre-login-quality-regression-missing"
+grep -qF 'early_reset_retry_uses_first_peer_message_boundary' src/client.rs \
+  || r_sv4a="$r_sv4a retry-boundary-regression-missing"
+grep -qF 'let mut limited_fps = min_decode_fps * 9 / 10;' src/client/io_loop.rs \
+  || r_sv4a="$r_sv4a direct-fps-policy-missing"
+grep -qF 'R-SV4a' requirements.html || r_sv4a="$r_sv4a requirement-missing"
+grep -qF '<tr><td>176</td>' requirements.html || r_sv4a="$r_sv4a appendix-disposition-missing"
+grep -qF 'R-SV4a — direct-only viewer transport and state finality' HARDENING_STATUS.md \
+  || r_sv4a="$r_sv4a ledger-disposition-missing"
+if [ -n "$r_sv4a" ]; then
+  echo "  FAIL R-SV4a direct-only viewer state/API finality:$r_sv4a"; rc=1
+else
+  echo "  ok  R-SV4a keyed direct stream + fixed label, no relay-choice state/ABI, direct pre-login policy"
+fi
 # R-G6 ADDITIVE copy — the half the deletion-only greps never asserted (so it silently slipped): the
 # direct-only failure/status semantics MUST be REWRITTEN, not merely have the relay copy deleted. Two
 # MUST clauses: (a) a peer that DISABLED a capability surfaces a SPECIFIC "disabled on the peer"

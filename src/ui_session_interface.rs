@@ -1282,7 +1282,7 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn reconnect(&self, _force_relay: bool) {
+    pub fn reconnect(&self) {
         // 1. If current session is connecting, do not reconnect.
         // 2. If the connection is established, send `Data::Close`.
         // 3. If the connection is disconnected, do nothing.
@@ -1320,7 +1320,7 @@ impl<T: InvokeUiSession> Session<T> {
             lc.connect_password = password;
             lc.remember = remember;
         }
-        self.reconnect(false);
+        self.reconnect();
     }
 
     #[cfg(not(feature = "flutter"))]
@@ -1694,10 +1694,8 @@ impl<T: InvokeUiSession> Interface for Session<T> {
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str) {
-        let direct = self.lc.read().unwrap().direct;
         let received = self.lc.read().unwrap().received;
-        let retry_for_relay = direct == Some(true) && !received;
-        let retry = check_if_retry(msgtype, title, text, retry_for_relay);
+        let retry = check_if_retry(msgtype, title, text, !received);
         self.ui_handler.msgbox(msgtype, title, text, link, retry);
     }
 

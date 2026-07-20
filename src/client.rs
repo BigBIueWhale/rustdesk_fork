@@ -184,7 +184,7 @@ impl Client {
         conn_type: ConnType,
         port_forward_target: Option<&PortForwardTarget>,
         interface: impl Interface,
-    ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
+    ) -> ResultType<(Stream, &'static str)> {
         let is_port_forward = matches!(conn_type, ConnType::PORT_FORWARD | ConnType::RDP);
         if is_port_forward != port_forward_target.is_some() {
             bail!("port-forward and RDP connections require an explicit immutable target");
@@ -193,7 +193,6 @@ impl Client {
             bail!("connection type does not match the login configuration");
         }
         debug_assert!(peer == interface.get_id());
-        interface.update_direct(None);
         interface.update_received(false);
         match Self::_start(peer, key, token, conn_type, interface.clone()).await {
             Err(err) => {
@@ -204,14 +203,10 @@ impl Client {
                     return Err(err);
                 }
             }
-            Ok(mut x) => {
-                // R-SV4 (Tier-4): the `direct_failures` retry-heuristic update is excised. The
-                // success return's update flag (`x.2`) is always false (there is no relay to fail
-                // over to — every connection is direct), so this block was dead; `direct_failures`
-                // is no longer stored.
+            Ok((mut stream, stream_type)) => {
                 // R-A1 (initiator analog): `_start` must already have keyed the direct TCP stream.
                 // This handoff assert keeps the message loop from becoming a fallback keying site again.
-                if !x.0 .0.is_secured() {
+                if !stream.is_secured() {
                     bail!(
                         "R-A1: refusing to proceed on an unkeyed stream (initiator, fail-closed)"
                     );
@@ -221,8 +216,8 @@ impl Client {
                 // (handle_hash) is gone. Send the login PROACTIVELY now that the stream is keyed, with
                 // no password field (no salted-hash second credential). The `probe_client login` smoke
                 // mode proves the server authorizes this keyed empty-pw login.
-                send_login(interface.get_lch(), port_forward_target, &mut x.0 .0).await?;
-                Ok((x.0, x.1))
+                send_login(interface.get_lch(), port_forward_target, &mut stream).await?;
+                Ok((stream, stream_type))
             }
         }
     }
@@ -234,7 +229,7 @@ impl Client {
         token: &str,
         conn_type: ConnType,
         interface: impl Interface,
-    ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
+    ) -> ResultType<(Stream, &'static str)> {
         Self::start_with_port_forward_target(peer, key, token, conn_type, None, interface).await
     }
 
@@ -246,7 +241,7 @@ impl Client {
         conn_type: ConnType,
         target: PortForwardTarget,
         interface: impl Interface,
-    ) -> ResultType<((Stream, bool, &'static str), (i32, String))> {
+    ) -> ResultType<(Stream, &'static str)> {
         Self::start_with_port_forward_target(peer, key, token, conn_type, Some(&target), interface)
             .await
     }
@@ -258,7 +253,7 @@ impl Client {
         token: &str,
         conn_type: ConnType,
         interface: impl Interface,
-    ) -> ResultType<((Stream, bool, &'static str), (i32, String), bool)> {
+    ) -> ResultType<(Stream, &'static str)> {
         if config::is_incoming_only() {
             bail!("Incoming only mode");
         }
@@ -323,7 +318,7 @@ impl Client {
         if !stream.is_secured() {
             bail!("R-A1: _start produced an unkeyed direct stream (initiator, fail-closed)");
         }
-        Ok(((stream, true, "TCP"), (0, "".to_owned()), false))
+        Ok((stream, "TCP"))
     }
 
     /// R-S13 / R-P14 / R-P1 — the viewer (initiator) keying choke point: the mirror of the
@@ -1370,8 +1365,6 @@ pub struct LoginConfigHandler {
     pub session_id: u64, // used for local <-> server communication
     pub supported_encoding: SupportedEncoding,
     pub restarting_remote_device: bool,
-    pub force_relay: bool,
-    pub direct: Option<bool>,
     pub received: bool,
     switch_uuid: Option<String>,
     pub save_ab_password_to_recent: bool, // true: connected with ab password
@@ -1408,7 +1401,6 @@ impl LoginConfigHandler {
         id: String,
         conn_type: ConnType,
         switch_uuid: Option<String>,
-        _force_relay: bool,
         adapter_luid: Option<i64>,
         shared_password: Option<String>,
         conn_token: Option<String>,
@@ -1465,12 +1457,10 @@ impl LoginConfigHandler {
         self.session_id = sid;
         self.supported_encoding = Default::default();
         self.restarting_remote_device = false;
-        self.force_relay = false;
         // R-X6: the persisted `other-server-key` re-adoption is removed — other_server's key is held
         // empty (never sourced from the deep-link `?key=`; see initialize above), so a stale or
         // option-injected `other-server-key` can never be re-adopted as a trust anchor.
 
-        self.direct = None;
         self.received = false;
         self.switch_uuid = switch_uuid;
         self.adapter_luid = adapter_luid;
@@ -1814,25 +1804,15 @@ impl LoginConfigHandler {
             msg.image_quality = q.into();
         } else if q == "custom" {
             let config = self.load_config();
-            // R-SV5 / I(Tier-4): `using_public_server()` was always true (no rendezvous), so the
-            // `!using_public_server() || …` term was dead — this fork is always direct.
-            let allow_more = self.direct == Some(true);
             let quality = if config.custom_image_quality.is_empty() {
                 50
             } else {
-                let mut quality = config.custom_image_quality[0];
-                if !allow_more && quality > 100 {
-                    quality = 50;
-                }
-                quality
+                config.custom_image_quality[0]
             };
             msg.custom_image_quality = quality << 8;
             #[cfg(feature = "flutter")]
             if let Some(custom_fps) = self.options.get("custom-fps") {
-                let mut custom_fps = custom_fps.parse().unwrap_or(30);
-                if !allow_more && custom_fps > 30 {
-                    custom_fps = 30;
-                }
+                let custom_fps = custom_fps.parse().unwrap_or(30);
                 msg.custom_fps = custom_fps;
                 *self.custom_fps.lock().unwrap() = Some(custom_fps as _);
             }
@@ -2999,15 +2979,7 @@ pub trait Interface: Send + Clone + 'static + Sized {
         self.get_lch().read().unwrap().connect_password.clone()
     }
 
-    fn is_force_relay(&self) -> bool {
-        self.get_lch().read().unwrap().force_relay
-    }
-
     fn swap_modifier_mouse(&self, _msg: &mut hbb_common::protos::message::MouseEvent) {}
-
-    fn update_direct(&self, direct: Option<bool>) {
-        self.get_lch().write().unwrap().direct = direct;
-    }
 
     fn update_received(&self, received: bool) {
         self.get_lch().write().unwrap().received = received;
@@ -3224,10 +3196,15 @@ lazy_static::lazy_static! {
 /// * `title` - The title of the message.
 /// * `text` - The text of the message.
 #[inline]
-pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: bool) -> bool {
+pub fn check_if_retry(
+    msgtype: &str,
+    title: &str,
+    text: &str,
+    before_first_peer_message: bool,
+) -> bool {
     msgtype == "error"
         && title == "Connection Error"
-        && ((text.contains("10054") || text.contains("104")) && retry_for_relay
+        && ((text.contains("10054") || text.contains("104")) && before_first_peer_message
             || (!text.to_lowercase().contains("offline")
                 && !text.to_lowercase().contains("not exist")
                 && !text.to_lowercase().contains("handshake")
@@ -3279,6 +3256,46 @@ mod tests {
         h.id = id.to_string();
         h.remember = true;
         h
+    }
+
+    #[test]
+    fn direct_only_custom_quality_is_not_relay_capped_before_login() {
+        isolate();
+        let id = "r-sv4a-direct-custom-quality";
+        let mut config = PeerConfig::default();
+        config.image_quality = "custom".to_owned();
+        config.custom_image_quality = vec![180];
+        #[cfg(feature = "flutter")]
+        config
+            .options
+            .insert("custom-fps".to_owned(), "90".to_owned());
+        config.store(id);
+
+        let mut h = handler(id);
+        h.config = config;
+        let options = h
+            .get_option_message(false)
+            .expect("a remote-control session must produce its option message");
+
+        assert_eq!(options.custom_image_quality, 180 << 8);
+        #[cfg(feature = "flutter")]
+        assert_eq!(options.custom_fps, 90);
+    }
+
+    #[test]
+    fn early_reset_retry_uses_first_peer_message_boundary() {
+        assert!(check_if_retry(
+            "error",
+            "Connection Error",
+            "Failed: 104",
+            true
+        ));
+        assert!(!check_if_retry(
+            "error",
+            "Connection Error",
+            "Failed: 104",
+            false
+        ));
     }
 
     // CRUX: under the collapse the proactive login carries an EMPTY legacy `password` (CPace already

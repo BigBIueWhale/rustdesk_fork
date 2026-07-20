@@ -10598,6 +10598,280 @@ def validate_smoke_container_authority_contract(sources):
     )
 
 
+def validate_direct_only_viewer_contract(sources):
+    client = sources["client_source"]
+    start = extract_between(
+        client,
+        "    async fn start_with_port_forward_target(",
+        "\n    pub async fn start(",
+        "direct-only connection handoff",
+    )
+    for text, label in (
+        ("ResultType<(Stream, &'static str)>", "direct-only handoff result type"),
+        ("Ok((mut stream, stream_type))", "direct-only handoff destructuring"),
+        (
+            "send_login(interface.get_lch(), port_forward_target, &mut stream).await?;",
+            "direct-only proactive login",
+        ),
+        ("Ok((stream, stream_type))", "direct-only handoff result"),
+    ):
+        require_text(start, text, label)
+    for text, label in (
+        ("Stream, bool", "direct-only handoff relay discriminator"),
+        ("update_direct", "direct-only handoff late transport state"),
+        ("direct_failures", "direct-only handoff failure heuristic"),
+    ):
+        require_absent(start, text, label)
+
+    constructor = extract_between(
+        client,
+        "    async fn _start(",
+        "\n    /// R-S13 / R-P14 / R-P1",
+        "direct-only keyed constructor",
+    )
+    require_text(
+        constructor,
+        "ResultType<(Stream, &'static str)>",
+        "direct-only constructor result type",
+    )
+    require_text(constructor, 'Ok((stream, "TCP"))', "direct-only constructor fixed result")
+    for text, label in (
+        ("Stream, bool", "direct-only constructor relay discriminator"),
+        ("(i32, String)", "direct-only constructor rendezvous feedback"),
+        ("direct_failures", "direct-only constructor relay retry state"),
+    ):
+        require_absent(constructor, text, label)
+
+    login_state = extract_between(
+        client,
+        "pub struct LoginConfigHandler {",
+        "\nimpl Deref for LoginConfigHandler",
+        "direct-only login state",
+    )
+    for text, label in (
+        ("force_relay", "direct-only login force-relay state"),
+        ("pub direct:", "direct-only login transport discriminator"),
+    ):
+        require_absent(login_state, text, label)
+
+    initialize = extract_between(
+        client,
+        "    pub fn initialize(",
+        "\n    // R-S18 / Appendix C #22",
+        "direct-only login initialization",
+    )
+    for text, label in (
+        ("force_relay", "direct-only initializer relay parameter"),
+        ("self.direct", "direct-only initializer late transport state"),
+    ):
+        require_absent(initialize, text, label)
+
+    options = extract_between(
+        client,
+        "    fn get_option_message(&self, ignore_default: bool) -> Option<OptionMessage> {",
+        "\n    pub fn get_supported_decoding",
+        "direct-only pre-login option construction",
+    )
+    for text, label in (
+        ("config.custom_image_quality[0]", "direct-only custom image quality"),
+        ("let custom_fps = custom_fps.parse().unwrap_or(30);", "direct-only custom FPS"),
+    ):
+        require_text(options, text, label)
+    for text, label in (
+        ("allow_more", "direct-only relay quality gate"),
+        ("self.direct", "direct-only late quality discriminator"),
+        ("custom_fps > 30", "direct-only custom FPS cap"),
+        ("quality > 100", "direct-only custom quality cap"),
+    ):
+        require_absent(options, text, label)
+
+    interface = extract_between(
+        client,
+        "pub trait Interface: Send + Clone + 'static + Sized {",
+        "\n#[derive(Clone)]",
+        "direct-only client interface",
+    )
+    for text, label in (
+        ("is_force_relay", "direct-only interface relay query"),
+        ("update_direct", "direct-only interface transport mutation"),
+    ):
+        require_absent(interface, text, label)
+
+    retry = extract_between(
+        client,
+        "pub fn check_if_retry(",
+        "\n\n// R-D4/R-SV/§8",
+        "first-peer-message retry predicate",
+    )
+    require_text(
+        retry,
+        "before_first_peer_message: bool",
+        "first-peer-message retry parameter",
+    )
+    require_text(
+        retry,
+        "&& before_first_peer_message",
+        "first-peer-message reset condition",
+    )
+    require_absent(retry, "retry_for_relay", "relay-named retry predicate")
+
+    for text, label in (
+        (
+            "fn direct_only_custom_quality_is_not_relay_capped_before_login()",
+            "direct-only pre-login quality regression",
+        ),
+        (
+            "assert_eq!(options.custom_image_quality, 180 << 8);",
+            "direct-only custom quality assertion",
+        ),
+        ("assert_eq!(options.custom_fps, 90);", "direct-only custom FPS assertion"),
+        (
+            "fn early_reset_retry_uses_first_peer_message_boundary()",
+            "first-peer-message retry regression",
+        ),
+    ):
+        require_text(client, text, label)
+
+    io_loop = sources["client_io_loop"]
+    require_text(
+        io_loop,
+        "Some(Ok((mut peer, stream_type))) => {",
+        "direct-only I/O handoff",
+    )
+    require_text(
+        io_loop,
+        "fn fps_control(&mut self, real_fps_map: HashMap<usize, i32>)",
+        "direct-only FPS controller API",
+    )
+    require_text(
+        io_loop,
+        "let mut limited_fps = min_decode_fps * 9 / 10;",
+        "direct-only FPS policy",
+    )
+    require_absent(io_loop, "fps_control(direct", "relay-dependent FPS controller call")
+    require_absent(io_loop, "if direct {", "relay-dependent FPS policy")
+
+    production_sources = (
+        "client_source",
+        "client_io_loop",
+        "port_forward_source",
+        "ui_session_source",
+        "flutter_source",
+        "flutter_ffi_source",
+        "cli_source",
+        "ui_interface_source",
+    )
+    for source_key in production_sources:
+        source = sources[source_key]
+        for text, label in (
+            ("force_relay", "retired Rust force-relay state"),
+            ("forceRelay", "retired Rust force-relay ABI"),
+            ("retry_for_relay", "retired Rust relay retry name"),
+            ("is_force_relay", "retired Rust force-relay query"),
+            ("update_direct", "retired Rust direct-state mutation"),
+        ):
+            require_absent(source, text, f"{label} in {source_key}")
+
+    require_text(
+        sources["port_forward_source"],
+        "let Some((mut stream, _stream_type)) =",
+        "direct-only port-forward handoff",
+    )
+    require_text(
+        sources["ui_session_source"],
+        "pub fn reconnect(&self) {",
+        "relay-free session reconnect API",
+    )
+    require_text(
+        sources["ui_session_source"],
+        "let retry = check_if_retry(msgtype, title, text, !received);",
+        "receiver-owned retry evidence",
+    )
+    require_text(
+        sources["flutter_ffi_source"],
+        "pub fn session_reconnect(session_id: SessionID) {",
+        "relay-free Rust FFI reconnect API",
+    )
+    require_text(
+        sources["ui_interface_source"],
+        "pub fn new_remote(id: String, remote_type: String) {",
+        "relay-free legacy viewer constructor",
+    )
+    require_text(
+        sources["cli_source"],
+        ".initialize(id.to_owned(), conn_type, None, None, None, None);",
+        "relay-free CLI login initialization",
+    )
+    for text, label in (
+        ("fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>", "current CLI interface login state"),
+        ("fn get_connect_password(&self) -> String", "pre-key CLI password source"),
+        ("self.password.clone()", "prompted CLI password handoff"),
+        ("fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>)", "current CLI Windows-session callback"),
+        ("Ok((mut stream, stream_type))", "direct-only CLI connection result"),
+        ("fn prompted_password_is_available_before_cli_keying()", "pre-key CLI password regression"),
+    ):
+        require_text(sources["cli_source"], text, label)
+    require_absent(
+        sources["cli_source"],
+        "get_login_config_handler",
+        "retired CLI interface method",
+    )
+    for text, label in (
+        ("fn cli_command() -> clap::Command", "current Clap CLI constructor"),
+        ("Command::new(\"rustdesk\")", "current Clap command type"),
+        (".action(ArgAction::SetTrue)", "value-free CLI server flag"),
+        ("matches.get_one::<String>(\"connect\")", "current Clap connect accessor"),
+        ("matches.get_flag(\"server\")", "current Clap server accessor"),
+        ("fn cli_server_is_a_value_free_flag()", "CLI server parser regression"),
+        ("fn cli_connect_and_key_keep_their_exact_values()", "CLI value parser regression"),
+    ):
+        require_text(sources["main_source"], text, label)
+    for text, label in (
+        ("clap::App", "retired Clap App API"),
+        ("args_from_usage", "retired Clap usage parser"),
+        ("value_of(", "retired Clap value accessor"),
+    ):
+        require_absent(sources["main_source"], text, label)
+
+    for source_key in ("model_dart", "web_bridge_dart"):
+        require_absent(
+            sources[source_key],
+            "forceRelay",
+            f"relay-choice parameter in {source_key}",
+        )
+    require_text(
+        sources["model_dart"],
+        "bind.sessionReconnect(sessionId: sessionId);",
+        "relay-free authored Dart reconnect",
+    )
+    require_text(
+        sources["dart_verify"],
+        "relay_hits=$(grep -RInE 'forceRelay|_forceRelay' flutter/lib",
+        "post-codegen relay-choice absence gate",
+    )
+    require_text(
+        sources["verify"],
+        "R-SV4a direct-only viewer state/API finality",
+        "direct-only shared source gate",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-SV4a", "direct-only viewer requirement"
+    )
+    for text, label in (
+        ("carry no relay-choice state", "direct-only API-state requirement"),
+        ("final before login", "direct-only pre-login requirement"),
+        ("no peer message has yet arrived", "direct-only receiver-evidence requirement"),
+    ):
+        require_text(requirement, text, label)
+    require_text(sources["requirements"], "<tr><td>176</td>", "direct-only Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-SV4a — direct-only viewer transport and state finality",
+        "direct-only hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -10661,6 +10935,7 @@ def validate_sources(sources):
         sources["hardening"],
     )
     validate_smoke_container_authority_contract(sources)
+    validate_direct_only_viewer_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -20998,6 +21273,114 @@ def run_source_mutations(sources):
             "Requirements digest:",
             "native-codec requirements hash is stale",
         ),
+        (
+            "client_source",
+            'Ok((stream, "TCP"))',
+            'Ok(((stream, true, "TCP"), (0, String::new()), false))',
+            "direct-only constructor fixed result",
+        ),
+        (
+            "client_source",
+            "    pub received: bool,",
+            "    pub force_relay: bool,\n    pub received: bool,",
+            "direct-only login force-relay state",
+        ),
+        (
+            "client_source",
+            "config.custom_image_quality[0]",
+            "50",
+            "direct-only custom image quality",
+        ),
+        (
+            "client_source",
+            "before_first_peer_message: bool",
+            "retry_for_relay: bool",
+            "first-peer-message retry parameter",
+        ),
+        (
+            "client_source",
+            "fn direct_only_custom_quality_is_not_relay_capped_before_login()",
+            "fn direct_only_custom_quality_regression_removed()",
+            "direct-only pre-login quality regression",
+        ),
+        (
+            "client_io_loop",
+            "let mut limited_fps = min_decode_fps * 9 / 10;",
+            "let mut limited_fps = min_decode_fps * 4 / 5;",
+            "direct-only FPS policy",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_reconnect(session_id: SessionID) {",
+            "pub fn session_reconnect(session_id: SessionID, force_relay: bool) {",
+            "retired Rust force-relay state",
+        ),
+        (
+            "model_dart",
+            "bind.sessionReconnect(sessionId: sessionId);",
+            "bind.sessionReconnect(sessionId: sessionId, forceRelay: false);",
+            "relay-choice parameter in model_dart",
+        ),
+        (
+            "web_bridge_dart",
+            "{required UuidValue sessionId, dynamic hint}",
+            "{required UuidValue sessionId, required bool forceRelay, dynamic hint}",
+            "relay-choice parameter in web_bridge_dart",
+        ),
+        (
+            "dart_verify",
+            "relay_hits=$(grep -RInE 'forceRelay|_forceRelay' flutter/lib",
+            "relay_hits=$(grep -RInE 'forceRelay' flutter/lib",
+            "post-codegen relay-choice absence gate",
+        ),
+        (
+            "verify",
+            "R-SV4a direct-only viewer state/API finality",
+            "R-SV4a direct-only viewer gate disabled",
+            "direct-only shared source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV4a</span>',
+            '<span class="id">R-SV4a-disabled</span>',
+            "direct-only viewer requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>176</td>",
+            "<tr><td>176-disabled</td>",
+            "direct-only Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV4a — direct-only viewer transport and state finality",
+            "R-SV4a — direct-only viewer closure deferred",
+            "direct-only hardening ledger",
+        ),
+        (
+            "cli_source",
+            "fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>",
+            "fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>>",
+            "current CLI interface login state",
+        ),
+        (
+            "cli_source",
+            "fn prompted_password_is_available_before_cli_keying()",
+            "fn prompted_password_regression_removed()",
+            "pre-key CLI password regression",
+        ),
+        (
+            "main_source",
+            "Command::new(\"rustdesk\")",
+            "clap::App::new(\"rustdesk\")",
+            "current Clap command type",
+        ),
+        (
+            "main_source",
+            "fn cli_server_is_a_value_free_flag()",
+            "fn cli_server_parser_regression_removed()",
+            "CLI server parser regression",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -21549,6 +21932,18 @@ def main():
             "hbb_common_cargo": (repo / "libs/hbb_common/Cargo.toml").read_text(encoding="utf-8"),
             "hbb_common_platform": (repo / "libs/hbb_common/src/platform/mod.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
+            "main_source": (repo / "src/main.rs").read_text(encoding="utf-8"),
+            "client_source": (repo / "src/client.rs").read_text(encoding="utf-8"),
+            "client_io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
+            "port_forward_source": (repo / "src/port_forward.rs").read_text(encoding="utf-8"),
+            "ui_session_source": (repo / "src/ui_session_interface.rs").read_text(encoding="utf-8"),
+            "flutter_source": (repo / "src/flutter.rs").read_text(encoding="utf-8"),
+            "flutter_ffi_source": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8"),
+            "cli_source": (repo / "src/cli.rs").read_text(encoding="utf-8"),
+            "ui_interface_source": (repo / "src/ui_interface.rs").read_text(encoding="utf-8"),
+            "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
+            "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),
+            "dart_verify": (repo / "scripts/dart-verify.sh").read_text(encoding="utf-8"),
             "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),

@@ -42,27 +42,55 @@ fn main() {
 }
 
 #[cfg(feature = "cli")]
+fn cli_command() -> clap::Command {
+    use clap::{Arg, ArgAction, Command};
+
+    Command::new("rustdesk")
+        .version(crate::VERSION)
+        .author("Purslane Ltd<info@rustdesk.com>")
+        .about("RustDesk command line tool")
+        .arg(
+            Arg::new("port-forward")
+                .short('p')
+                .long("port-forward")
+                .value_name("PORT-FORWARD-OPTIONS")
+                .num_args(1)
+                .help("Format: remote-id:local-port:remote-port[:remote-host]"),
+        )
+        .arg(
+            Arg::new("connect")
+                .short('c')
+                .long("connect")
+                .value_name("REMOTE_ID")
+                .num_args(1)
+                .help("test only"),
+        )
+        .arg(
+            Arg::new("key")
+                .short('k')
+                .long("key")
+                .value_name("KEY")
+                .num_args(1),
+        )
+        .arg(
+            Arg::new("server")
+                .short('s')
+                .long("server")
+                .action(ArgAction::SetTrue)
+                .help("Start server"),
+        )
+}
+
+#[cfg(feature = "cli")]
 fn main() {
     if !common::global_init() {
         return;
     }
-    use clap::App;
     use hbb_common::log;
-    let args = format!(
-        "-p, --port-forward=[PORT-FORWARD-OPTIONS] 'Format: remote-id:local-port:remote-port[:remote-host]'
-        -c, --connect=[REMOTE_ID] 'test only'
-        -k, --key=[KEY] ''
-       -s, --server=[] 'Start server'",
-    );
-    let matches = App::new("rustdesk")
-        .version(crate::VERSION)
-        .author("Purslane Ltd<info@rustdesk.com>")
-        .about("RustDesk command line tool")
-        .args_from_usage(&args)
-        .get_matches();
+    let matches = cli_command().get_matches();
     use hbb_common::{config::LocalConfig, env_logger::*};
     init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
-    if let Some(p) = matches.value_of("port-forward") {
+    if let Some(p) = matches.get_one::<String>("port-forward") {
         let options: Vec<String> = p.split(":").map(|x| x.to_owned()).collect();
         if options.len() < 3 {
             log::error!("Wrong port-forward options");
@@ -86,7 +114,10 @@ fn main() {
         if options.len() > 3 {
             remote_host = options[3].clone();
         }
-        let key = matches.value_of("key").unwrap_or("").to_owned();
+        let key = matches
+            .get_one::<String>("key")
+            .cloned()
+            .unwrap_or_default();
         let token = LocalConfig::get_option("access_token");
         cli::start_one_port_forward(
             options[0].clone(),
@@ -96,12 +127,43 @@ fn main() {
             key,
             token,
         );
-    } else if let Some(p) = matches.value_of("connect") {
-        let key = matches.value_of("key").unwrap_or("").to_owned();
+    } else if let Some(p) = matches.get_one::<String>("connect") {
+        let key = matches
+            .get_one::<String>("key")
+            .cloned()
+            .unwrap_or_default();
         let token = LocalConfig::get_option("access_token");
         cli::connect_test(p, key, token);
-    } else if let Some(p) = matches.value_of("server") {
+    } else if matches.get_flag("server") {
         crate::start_server(true);
     }
     common::global_clean();
+}
+
+#[cfg(all(test, feature = "cli"))]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn cli_server_is_a_value_free_flag() {
+        let matches = cli_command()
+            .try_get_matches_from(["rustdesk", "--server"])
+            .expect("the server flag must parse without a value");
+        assert!(matches.get_flag("server"));
+    }
+
+    #[test]
+    fn cli_connect_and_key_keep_their_exact_values() {
+        let matches = cli_command()
+            .try_get_matches_from(["rustdesk", "--connect", "127.0.0.1", "--key", "pinned"])
+            .expect("the connect and key arguments must parse");
+        assert_eq!(
+            matches.get_one::<String>("connect").map(String::as_str),
+            Some("127.0.0.1")
+        );
+        assert_eq!(
+            matches.get_one::<String>("key").map(String::as_str),
+            Some("pinned")
+        );
+    }
 }

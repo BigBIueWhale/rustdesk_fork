@@ -515,14 +515,13 @@ impl<T: InvokeUiSession> Remote<T> {
                     peer_id
                 );
             }
-            Some(Ok(((mut peer, direct, stream_type), _))) => {
+            Some(Ok((mut peer, stream_type))) => {
                 self.handler
                     .connection_round_state
                     .lock()
                     .unwrap()
                     .set_connected();
                 self.handler.set_connection_type(stream_type); // flutter -> connection_ready
-                self.handler.update_direct(Some(direct));
 
                 // just build for now
                 #[cfg(not(any(target_os = "windows", feature = "unix-file-copy-paste")))]
@@ -629,7 +628,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             self.video_threads.iter().for_each(|(_, v)| {
                                 *v.frame_count.write().unwrap() = 0;
                             });
-                            self.fps_control(direct, fps.clone());
+                            self.fps_control(fps.clone());
                             let chroma = self.chroma.read().unwrap().clone();
                             let chroma = match chroma {
                                 Some(Chroma::I444) => "4:4:4",
@@ -1512,7 +1511,7 @@ impl<T: InvokeUiSession> Remote<T> {
     // Currently, this function only considers decoding speed and queue length, not network delay.
     // The controlled end can consider auto fps as the maximum decoding fps.
     #[inline]
-    fn fps_control(&mut self, direct: bool, real_fps_map: HashMap<usize, i32>) {
+    fn fps_control(&mut self, real_fps_map: HashMap<usize, i32>) {
         self.video_threads.iter_mut().for_each(|(k, v)| {
             let real_fps = real_fps_map.get(k).cloned().unwrap_or_default();
             if real_fps == 0 {
@@ -1544,11 +1543,7 @@ impl<T: InvokeUiSession> Remote<T> {
         let Some(min_decode_fps) = min_decode_fps else {
             return;
         };
-        let mut limited_fps = if direct {
-            min_decode_fps * 9 / 10 // 30 got 27
-        } else {
-            min_decode_fps * 4 / 5 // 30 got 24
-        };
+        let mut limited_fps = min_decode_fps * 9 / 10; // 30 got 27
         if limited_fps > custom_fps {
             limited_fps = custom_fps;
         }

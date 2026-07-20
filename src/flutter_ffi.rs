@@ -170,7 +170,6 @@ pub fn session_add_sync(
     is_port_forward: bool,
     is_rdp: bool,
     is_terminal: bool,
-    force_relay: bool,
     password: String,
     is_shared_password: bool,
     conn_token: Option<String>,
@@ -183,7 +182,6 @@ pub fn session_add_sync(
         is_port_forward,
         is_rdp,
         is_terminal,
-        force_relay,
         password,
         is_shared_password,
         conn_token,
@@ -312,9 +310,9 @@ pub fn session_get_is_recording(session_id: SessionID) -> SyncReturn<bool> {
     }
 }
 
-pub fn session_reconnect(session_id: SessionID, _force_relay: bool) {
+pub fn session_reconnect(session_id: SessionID) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.reconnect(false);
+        session.reconnect();
     }
     session_on_waiting_for_image_dialog_show(session_id);
 }

@@ -43,15 +43,31 @@ impl Session {
             .lc
             .write()
             .unwrap()
-            .initialize(id.to_owned(), conn_type, None, false, None, None);
+            .initialize(id.to_owned(), conn_type, None, None, None, None);
         session
     }
 }
 
 #[async_trait]
 impl Interface for Session {
-    fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>> {
-        return self.lc.clone();
+    fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>> {
+        self.lc.clone()
+    }
+
+    fn get_connect_password(&self) -> String {
+        let password = self.lc.read().unwrap().connect_password.clone();
+        if password.is_empty() {
+            self.password.clone()
+        } else {
+            password
+        }
+    }
+
+    fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>) {
+        log::warn!(
+            "CLI viewer cannot select among {} Windows sessions",
+            sessions.len()
+        );
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, _link: &str) {
@@ -98,8 +114,8 @@ pub async fn connect_test(id: &str, key: String, token: String) {
         Err(err) => {
             log::error!("Failed to connect {}: {}", &id, err);
         }
-        Ok((mut stream, direct)) => {
-            log::info!("direct: {}", direct);
+        Ok((mut stream, stream_type)) => {
+            log::info!("stream: {}", stream_type);
             // rpassword::prompt_password("Input anything to exit").ok();
             loop {
                 tokio::select! {
@@ -150,4 +166,32 @@ pub async fn start_one_port_forward(
         log::error!("Failed to listen on {}: {}", port, err);
     }
     log::info!("port forward (:{}) exit", port);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session_with_password(password: &str) -> Session {
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        Session {
+            id: "127.0.0.1".to_owned(),
+            lc: Default::default(),
+            sender,
+            password: password.to_owned(),
+        }
+    }
+
+    #[test]
+    fn prompted_password_is_available_before_cli_keying() {
+        let session = session_with_password("prompted-password");
+        assert_eq!(session.get_connect_password(), "prompted-password");
+    }
+
+    #[test]
+    fn explicit_connect_password_precedes_prompted_password() {
+        let session = session_with_password("prompted-password");
+        session.lc.write().unwrap().connect_password = "explicit-password".to_owned();
+        assert_eq!(session.get_connect_password(), "explicit-password");
+    }
 }

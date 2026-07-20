@@ -4268,6 +4268,58 @@ unreachable and a source/test/AST gate prevents reintroduction.
   filesystem read-only, disposable output/cache storage, no capabilities, no-new-privileges, bounded pids, and no
   published ports or Docker socket. No host RustDesk, service, configuration, listener, firewall, or host-network
   state was inspected or changed.
+- **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
+  ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
+  and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
+  session/reconnect API. Proven defect: `_start` returned a hardcoded `direct=true`, but `send_login` ran before the
+  I/O loop copied that value into `LoginConfigHandler.direct`. The login option builder therefore observed `None` and
+  applied the inherited non-direct cap to custom image quality above 100 and Flutter custom FPS above 30 on a real
+  direct connection. The constructor also returned dead rendezvous feedback/update tuples; login state, the
+  `Interface` trait, FPS control, Rust FFI, generated/authored Dart, and the web bridge retained relay-choice state;
+  and a first-message reset predicate was named and gated as a relay retry. This was real cross-platform viewer
+  correctness/state debt, not network egress, authentication bypass, privilege escalation, Android foreground-
+  service authority failure, exploitation, or evidence of compromise.
+
+  Source closure: the direct constructor returns only an already-keyed `Stream` and the fixed `TCP` label. Its
+  callers have no direct boolean to propagate. `LoginConfigHandler` and `Interface` contain no force/direct relay
+  state. Login-time custom quality/FPS is unconditionally direct, including before the first I/O-loop iteration, and
+  FPS control has one direct-only coefficient. Session creation and reconnect remove the relay boolean at the Rust
+  FFI boundary, authored Dart, and web bridge; FRB regeneration derives the same ABI. Reset retry depends only on
+  the receiver-owned `received` boundary and is named `before_first_peer_message`. R-SV4a and Appendix C #176 bind
+  the invariant. The feature-gated CLI caller now implements the current `Interface`, consumes the fixed stream label
+  rather than misnaming it as a boolean, and supplies its prompted password through `get_connect_password` before
+  PAKE keying. Its binary entry now uses the locked Clap 4 `Command`/typed accessor API instead of the non-compiling
+  Clap 3 `App`/usage parser, with `--server` represented as a value-free flag. Four focused CLI regressions bind
+  prompted and explicit-password precedence plus flag/value parsing. Focused client tests prove uncapped pre-login
+  custom quality (and FPS under `flutter`) plus opposite retry outcomes across the first-message boundary. Shared and
+  post-codegen Dart gates reject every retired relay-state symbol or parameter. Exact generated-binding/platform-
+  artifact evidence remains R-B2/R-B10; external review remains R-V3.
+
+  Verification: exact Rust 1.75 locked/offline library filters pass for both direct-only pre-login quality and the
+  first-peer-message retry boundary. The feature-gated CLI's two password-source tests, binary's two Clap parser
+  tests, and complete `cli,linux-pkg-config` check pass. Fresh FRB 1.80.1 generation from `flutter_ffi.rs` produces
+  a one-argument `sessionReconnect`/`wire_session_reconnect` ABI and no `forceRelay`/`_forceRelay` or
+  `force_relay` residue; `flutter analyze --no-pub lib/` reports zero errors (39 pre-existing warnings and 224
+  informational diagnostics). The same Rust regression and a complete locked/offline
+  `flutter,linux-pkg-config` check pass against that generated bridge. The semantic workspace validator passes
+  normally and with its complete source-mutation matrix, including the CLI password and Clap parser mutations.
+  Native-codec watch normal/self-test, Bash syntax, requirements-digest synchronization, `git diff --check`, and
+  semantic binding of the shared source gate pass. Exact Rust 1.75 rustfmt accepts every slice-owned hunk; its only
+  remaining whole-file output is the same unrelated parent-commit formatting in `flutter_ffi.rs` and
+  `ui_session_interface.rs`, proven identical against `HEAD` and deliberately not reformatted.
+
+  Failed setup attempts are retained as evidence rather than hidden: the first Cargo cache was root-owned and
+  unreadable at `pin-utils`; early FRB harnesses omitted the exact Rustfmt or writable Git input, exhausted a small
+  tmpfs, or let Flutter enter its own online-mode package-resolution path despite a networkless container; a first
+  analyzer invocation returned nonzero solely for the existing warning/info baseline; and one textual generated-
+  ABI assertion required matching the generator's closure formatting rather than a semicolon. No permission or
+  ownership change, root fallback, dependency fetch, or source workaround was used. Only disposable verifier
+  containers owned by this slice were stopped. Final runs re-extracted read-only Cargo archives/Git inputs into
+  user-owned tmpfs, used the preserved offline Flutter snapshot and exact Rust 1.75 Rustfmt, and ran as UID/GID 1000
+  in already-present immutable images with pulls/networking disabled, a read-only root and host checkout, all
+  capabilities dropped, no-new-privileges, bounded pids, disposable outputs, and no ports or Docker socket. No host
+  RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host network
+  state was inspected or changed.
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -6537,7 +6589,7 @@ does not exist. That entire stratum is now gone — the tiers below record each 
   `message IdPk`, and `src/common.rs` contains no `decode_id_pk` helper. `scripts/verify.sh` gates
   both source absences so the dead rendezvous crypto cannot silently return.
 
-### Tier 4 — inert dead scaffolding ✅ DONE (~65 sites excised by root cause)
+### Tier 4 — inert dead scaffolding (itemized dispositions; no blanket completion claim)
 
 Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never contain:
 
@@ -6552,11 +6604,12 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   `get_custom_rendezvous_server(...).is_empty()` (`src/common.rs:1133`) is always `true` in a fork
   with no rendezvous, so it reports "using the public server" when there is no server at all; its
   callers (a quality cap, a peer-loop cadence) are inert. Delete the function + FFI.
-- **Viewer `direct`/relay residue:** `direct` is hardcoded `Some(true)` and
-  `direct_failures`/`set_direct_failure` are dead (`client.rs:314`); the `allow_more` quality cap, the
-  `retry_for_relay` misnomer, and the `getConnectionText` "Relay"→"TCP" branch are unreachable;
-  `set_connection_type`'s `is_secured`/`direct` args are sent always-true and ignored by Dart.
-  Simplify to unconditionally-direct.
+- **Viewer `direct`/relay residue — CLOSED/GATED 2026-07-20 (R-SV4a):** the keyed connection
+  constructor returns only its stream and fixed `TCP` label; login state and interfaces carry no
+  direct/relay discriminator; custom quality/FPS is unconditionally direct before login; FPS control
+  has one direct policy; first-message retry is named for receiver evidence; and session add/reconnect,
+  FRB, authored Dart, and the web bridge carry no relay-choice parameter. Focused Rust regressions and
+  Rust/Dart source gates bind the behavior and API absence. Exact artifact evidence remains R-B2/R-B10.
 - **Dead FFI exports (zero Dart callers):** `main_test_if_valid_server`, `main_get_proxy_status`,
   `main_handle_relay_id`, `main_resolve_avatar_url` (`src/flutter_ffi.rs`). Drop the exports.
 - **Dead Rust backends:** the socks/proxy module (`set_socks`/`get_socks`/`get_proxy_status`, not
@@ -6578,8 +6631,8 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   `scripts/verify.sh` gates those absences.
 - **Misc:** the unshown my-numeric-ID machinery (`server_model.dart` `_serverId`/`fetchID`, fetched
   and never rendered); the serialized-but-unread `forceAlwaysRelay`/`sameServer`/`recording`/
-  `block_input`/`restart` fields; `reconnect(_forceRelay)`; the `formatID` numeric-grouping
-  passthrough; the `switch_sides()` empty stub; `logOut(apiServer)`; and the `--get-id` CLI (a
+  `block_input`/`restart` fields; the `formatID` numeric-grouping passthrough; the `switch_sides()`
+  empty stub; `logOut(apiServer)`; and the `--get-id` CLI (a
   meaningless numeric ID in the direct-IP model). Delete.
 
 ### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
@@ -6614,8 +6667,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2d39219d9383736bfce09a6165dc70b7930ad99d03893e8de3ea4e05147f6363  requirements.html
+97dc94e32259532d12a595b36827bcbf4b0d21cfaca932f5979f44c7d4f07856  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ba, and Appendix C #175. It is a
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ba, R-SV4a, and Appendix C #176. It is a
 source-ledger identity; exact-commit artifact evidence is carried separately by the R-B2 manifest.

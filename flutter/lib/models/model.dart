@@ -805,11 +805,9 @@ class FfiModel with ChangeNotifier {
   }
 
   void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {
-    // R-SV4 (Tier-4): the relay-force reconnect param is dropped — there is no relay to force onto
-    // (every connection is direct), and all callers passed it false.
     // Disable relative mouse mode before reconnecting to ensure cursor is released.
     parent.target?.inputModel.setRelativeMouseMode(false);
-    bind.sessionReconnect(sessionId: sessionId, forceRelay: false);
+    bind.sessionReconnect(sessionId: sessionId);
     clearPermissions();
     dialogManager.dismissAll();
     dialogManager.showLoading(translate('Connecting...'),
@@ -3302,9 +3300,6 @@ class FFI {
         isPortForward: isPortForward,
         isRdp: isRdp,
         isTerminal: isTerminal,
-        // Generated FRB ABI still has the inherited parameter. Direct-only
-        // callers never set it, and Rust discards it defense-in-depth.
-        forceRelay: false,
         password: password ?? '',
         isSharedPassword: isSharedPassword ?? false,
         connToken: connToken,

@@ -4469,6 +4469,75 @@ unreachable and a source/test/AST gate prevents reintroduction.
   immutable by this slice and was not rerun under the no-image-build work boundary; Rust advisory scanning,
   other Docker consumers, exact R-B2/R-B10 artifact evidence, installed-platform behavior, and R-V3 review remain
   independent open surfaces.
+- **R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority — SOURCE
+  CLOSED/GATED; CURRENT SNAPSHOT INTENTIONALLY RELEASE-BLOCKING; REFRESHED IMAGE ACQUISITION AND BROADER RELEASE
+  EVIDENCE OPEN.** Platform: the Linux Docker build host used by the release source-verification bundle.
+  Endpoint/action: `scripts/audit.sh` validating `Cargo.lock` through pinned `cargo-audit` and `cargo-deny` plus the
+  reason-bearing `deny.toml` policy. Boundary: live acquisition, mutable Docker/cache/index state, scanner/database
+  failures, and machine output ↔ a green release verdict, the developer checkout, Docker daemon state, and the
+  DMZ-host network. The inherited gate built `rd-audit` from live APT/crates.io/GitHub on each invocation, discarded
+  the returned image content identity, and ran both scanners by mutable tag as Docker's default UID 0 with bridge
+  networking, writable roots, implicit pulls, the whole checkout, and reusable named Cargo registry/Git volumes.
+  The database was fixed at `4ea955aed4d1b1214badc01f9d029bb12ef9e8e4`, committer epoch 1764461716
+  (2025-11-30T00:15:16Z), to keep `cargo-audit 0.21.1` on the product's Rust 1.75 compiler. On 2026-07-20 that pin was
+  232 days old and omitted the 2026 RustSec series. Direct source inspection proved that `cargo-audit --no-fetch`
+  calls `Database::open` and bypasses the tool's fetch-path 90-day freshness check, explaining why the stale scan
+  still returned success. A truly offline `cargo-deny` probe also emitted `index-failure` warnings for registry
+  packages because `yanked = "warn"` consulted absent mutable crates.io index state; warnings did not fail. These
+  were deterministic false-green release-assurance and build-host/supply-chain authority defects. The path did not
+  publish a port, run RustDesk, touch a host RustDesk service/configuration, or inspect/mutate host firewall/network
+  state, and supplies no evidence of exploitation, compromise, container escape, or privilege escalation.
+
+  Source closure: acquisition and verdict execution are separated. `scripts/audit.sh` refuses effective UID or
+  primary GID zero, never builds/pulls/resolves a tag, and accepts only the locally present immutable
+  `RUST_AUDIT_IMAGE_ID`. Before Docker it validates `deny.toml` as exact `{ id, reason }` objects, stages stable
+  regular non-link copies in an identity-bound mode-0700 private workspace, and enforces exactly 90 days of maximum
+  RustSec age with no environment or argument override. The current 2025 pin therefore fails before Docker and keeps
+  the release red until a deliberately reviewed fresh image/database is independently acquired. This removes the
+  false green; it does not pretend the refresh is complete. A future audit image may use a newer independent Rust
+  toolchain—official `cargo-audit 0.22.2` declares Rust 1.88—without changing the shipped product's Rust 1.75
+  compiler. Image preflight runs the exact content ID with no input mounts and verifies both tool versions, pinned
+  binary SHA-256 values, clean advisory Git worktree, exact commit, and exact committer epoch.
+
+  All three Docker launches use `--pull=never`, `--network=none`, read-only roots, the invoking numeric UID:GID,
+  all capabilities dropped, no-new-privileges, and fixed PID/memory/no-swap/CPU plus size-bounded
+  `noexec,nosuid,nodev` tmpfs resources. Each Docker client also inherits an at-most-64-MiB output-file limit while
+  preserving any stricter caller limit. They publish/expose no port, use no host namespace, Docker socket,
+  privilege/capability addition, or named volume. `cargo-audit` sees only the private bundle, has yank lookup disabled
+  in a private config, scans the exact lockfile and exact database with `--no-fetch --deny warnings --json`, and
+  must return status 0
+  with a bounded structured object whose database field exists, dependency count is nonzero, reasoned ignore set is
+  exact, vulnerability found/count/list fields agree at zero, and warning fields are empty. `cargo-deny` sees the
+  real source read-only, but bounded private tmpfs mounts shadow project `.cargo/`, `.git/`, `.harness-state/`,
+  `online/`, `target/`, `flutter/.dart_tool/`, and `flutter/build/`; only the dedicated vendor subtree is exposed
+  separately read-only. That subtree's canonical
+  `online-input-provenance-v1` root is `96c8e717dc14458e3ddf0a4a7c26a1d3567f67e2557b6438ef6331afcdd4f503`
+  over 51,012 files, 12,173 directories, and 2,300,033,802 content bytes. The tool runs locked/offline, with yanks
+  explicitly allowed only in its private runtime copy because mutable yank metadata is outside the pinned release
+  verdict. Its required database lock bookkeeping occurs only on a bounded private tmpfs copy, whose commit and
+  cleanliness are checked before and after. Only a zero status and well-formed JSON-lines stream ending in one
+  zero-error advisory summary is green; the only accepted warning diagnostic is `advisory-not-detected`. Lockfile,
+  policy, vendor map, and the complete vendor subtree are reverified before the cleanup-bound green marker.
+
+  Verification: the policy helper's 20 policy/freshness/status/schema decisions pass, including the exact 90-day
+  boundary, one-second staleness failure, future-date refusal, hardlink/duplicate-policy rejection, exact
+  cargo-audit accepts, status/finding/warning disagreement, and cargo-deny stdout/error/status/`index-failure`
+  rejection. Because the production pin is
+  correctly stale, the full release gate
+  was exercised only through that required early failure: it reported 34 accepts, calculated age 232 days, returned
+  status 2, and removed its private workspace without invoking Docker. The otherwise unreachable scanner path was
+  separately probed in the already-present exact image under the same nonroot/no-pull/no-network/read-only/resource
+  restrictions, without treating it as current release evidence. `cargo-audit` returned structured status 0 over
+  905 packages with exactly 34 accepts and zero stderr; `cargo-deny` returned a zero-error summary with 64 policy
+  notes and two explicit obsolete-accept warnings, no index failure, from the canonical read-only vendor closure and
+  exact private database copy. The focused 46-mutation semantic validator, behavioral tests, syntax checks,
+  requirements/Appendix C #183, native-codec/hash binding, and diff hygiene passed. A full `scripts/verify.sh` result
+  is deliberately not counted: its reset-transaction fixture rejected the intentionally dirty worktree, then its
+  legacy compile/image phase started and was stopped to honor this run's no-image-build boundary; no verifier process
+  remained afterward. Publication evidence is recorded only after the commit reaches the remote.
+  Independently reproducible acquisition/distribution of a fresh audit image and database, policy re-review against
+  that current data, exact clean R-B2 artifacts, installed-platform evidence, and R-V3 external review remain open;
+  neither this item nor the overall release is claimed complete.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
   ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
   and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
@@ -6615,12 +6684,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   bundle, including the Apple gate and the release-gate ledger/requirements
   wording, so future Apple-source drift fails release verification rather than passing a
   "complete/proven" milestone silently.
-- **R-R3 dependency-advisory gates** — `scripts/audit.sh` builds a digest-pinned Rust 1.75 audit image,
-  installs the pinned `cargo-audit` and `cargo-deny` versions from `scripts/pins.env`, bakes the pinned
-  RustSec advisory-db snapshot, derives cargo-audit ignores only from `deny.toml` TOML ignore objects,
-  then runs both `cargo-audit` and `cargo-deny check advisories`. `scripts/dart-audit.sh` runs pinned
-  offline OSV for `flutter/pubspec.lock` and requires reason-bearing future accepts. `scripts/verify.sh`
-  pins that structure; `scripts/native-codec-watch.sh` covers the vcpkg native-codec watch separately.
+- **R-R3 dependency-advisory gates** — `scripts/audit.sh` now separates image acquisition from verdict execution,
+  uses only one exact local image content ID, verifies scanner bytes and the RustSec checkout, enforces an
+  unoverrideable 90-day database-age ceiling, and runs both `cargo-audit` and locked/offline `cargo-deny check
+  advisories` nonroot with no pull/network/capabilities, read-only inputs, bounded resources, strict structured
+  finality, and a canonical-hashed Cargo vendor closure. The current 2025-11-30 RustSec pin is stale and intentionally
+  leaves the release red until an independently acquired fresh image/database pin and policy review exist; it is not
+  described as current audit evidence. `scripts/dart-audit.sh` runs pinned offline OSV for `flutter/pubspec.lock` and
+  requires reason-bearing future accepts. `scripts/verify.sh` mutation-binds both advisory authority models;
+  `scripts/native-codec-watch.sh` covers the vcpkg native-codec watch separately.
 - **Peer-avatar remote-image egress — ✅ CLOSED 2026-07-01.** The 2026-07-01
   completion review found the sole open gap: a CPace-authenticated peer's
   `LoginRequest.avatar` (`connection.rs:1447` → CM `Client`) was rendered by
@@ -6961,7 +7033,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-82cfb7acec6c681b1c777d52cd60d899014621a44a5b1b39375698cade4859e5  requirements.html
+388522b602a6006ebe7600a46201d095a4d1ab71846bedf981c5692a705efe74  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11be, R-SV4a,

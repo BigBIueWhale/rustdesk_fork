@@ -10203,28 +10203,36 @@ else
   echo "  ok  R-A7 protobuf parser-safety floor: rust-protobuf $pb_ver >= 3.7.2 (RUSTSEC-2024-0437 recursion-limit fix; pre-key Cpace + post-key Message parse; audited 2026-06-29)"
 fi
 
-# R-R3/R-A7 advisory gates are intentionally outside the fast verifier, but the
-# verifier pins their fail-closed structure: both Rust advisory tools must be wired,
-# pins must come from scripts/pins.env, and accept-lists must not be comment greps.
+# R-R3/R-A7 advisory scans are intentionally outside the fast verifier, but the
+# verifier executes their behavioral result/freshness tests and the mutation-bound
+# Docker authority contract. Both Rust tools remain wired to one strict policy.
 echo "== R-R3/R-A7 dependency-advisory gate wiring =="
 r_r3_gate=
-grep -qF '. scripts/pins.env' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-pins-env"
+grep -qF 'load_pins' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-pins-env"
 grep -qF 'CARGO_AUDIT_VERSION' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-pin"
 grep -qF 'CARGO_DENY_VERSION' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-pin"
 grep -qF 'ADVISORY_DB_COMMIT' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-advisory-db-pin"
-grep -qF 'SHA256_BASEIMAGE_RUST_1_75_SLIM' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-base-digest-pin"
-grep -qF 'cargo-audit audit --db "$ADVISORY_DB" --no-fetch "$@"' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-run"
-grep -qF 'cargo-deny --locked check -c "$tmp" advisories --disable-fetch' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-run"
-grep -qF 'tomllib.load' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-toml-ignore-parser"
+grep -qF 'RUST_AUDIT_IMAGE_ID' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-content-id-pin"
+grep -qF 'check-freshness' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-db-freshness"
+grep -qF 'cargo-audit audit --file /audit/Cargo.lock --db /opt/advisory-db --no-fetch --deny warnings --json' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-run"
+grep -qF 'check -c /audit/deny.runtime.toml advisories --disable-fetch' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-run"
+grep -qF 'scripts/rust-audit-policy.py prepare' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-toml-policy-parser"
 if grep -qE 'grep .*RUSTSEC.*deny[.]toml' scripts/audit.sh; then
   r_r3_gate="$r_r3_gate audit:comment-grep-ignore-parser"
 fi
-grep -qF 'FROM rust:${RUST_VERSION}-slim@${BASE_DIGEST}' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-digest-pinned-rust-base"
-grep -qF 'cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-pinned-cargo-audit"
-grep -qF 'cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-pinned-cargo-deny"
-grep -qF 'CARGO_DENY_DB_PATH' scripts/Dockerfile.audit || r_r3_gate="$r_r3_gate docker:no-deny-db-path"
+if grep -qF '$DOCKER_BIN build' scripts/audit.sh; then
+  r_r3_gate="$r_r3_gate audit:networked-image-build"
+fi
 grep -qF 'CARGO_DENY_VERSION=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-cargo-deny-version"
-grep -qF 'SHA256_BASEIMAGE_RUST_1_75_SLIM=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-rust-audit-base-digest"
+grep -qF 'RUST_AUDIT_IMAGE_ID=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-rust-audit-image-id"
+grep -qF 'ADVISORY_DB_MAX_AGE_DAYS="90"' scripts/pins.env || r_r3_gate="$r_r3_gate pins:weakened-db-freshness"
+grep -qF 'SHA256_CARGO_VENDOR_CLOSURE_V1=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-vendor-closure"
+if ! python3 scripts/rust-audit-policy.py --self-test; then
+  r_r3_gate="$r_r3_gate rust:policy-result-self-test-failed"
+fi
+if ! python3 scripts/verify-rust-audit-authority.py --repo . --self-test; then
+  r_r3_gate="$r_r3_gate rust:scanner-authority-mutation-gate-failed"
+fi
 grep -qF 'accepted advisory has no reason' scripts/dart-audit-result.py || r_r3_gate="$r_r3_gate dart:no-accept-reason-parser"
 grep -qF 'expected exactly one advisory id' scripts/dart-audit-result.py || r_r3_gate="$r_r3_gate dart:no-strict-id-parser"
 if ! python3 scripts/dart-audit-result.py --self-test; then
@@ -10239,7 +10247,7 @@ fi
 if [ -n "$r_r3_gate" ]; then
   echo "  FAIL R-R3/R-A7 advisory gate wiring regressed:$r_r3_gate"; rc=1
 else
-  echo "  ok  R-R3/R-A7 Rust cargo-audit+cargo-deny gate, Dart OSV gate, pinned advisory snapshots, and structured accept-list parsing are wired"
+  echo "  ok  R-R3/R-A7 confined Rust cargo-audit+cargo-deny authority (including freshness/result finality), Dart OSV gate, pinned advisory snapshots, and structured accept policies are wired"
 fi
 # R-D5 / R-SV4 / R-G1: config-option keys + an IPC vestige orphaned by the UDP / webrtc / WebSocket
 # excisions are REMOVED, not just left unread — OPTION_DISABLE_UDP (the UDP transport is gone) +

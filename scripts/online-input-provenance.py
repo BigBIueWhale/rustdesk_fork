@@ -308,6 +308,15 @@ def verify(tree: Path, expected: str) -> Result:
     return result
 
 
+def verify_subtree(tree: Path, expected: str) -> Result:
+    """Verify a pinned subtree that deliberately has no record file of its own."""
+    expected = parse_expected(expected)
+    result = calculate(tree)
+    if result.root != expected:
+        fail(f"online subtree mismatch: expected {expected}, got {result.root}")
+    return result
+
+
 def write_record(tree: Path) -> Result:
     result = calculate(tree)
     record = tree / os.fsdecode(RECORD_NAME)
@@ -469,6 +478,7 @@ def self_test() -> None:
         os.symlink("dir/content", tree / "link")
         original = write_record(tree)
         verify(tree, original.root)
+        verify_subtree(tree, original.root)
 
         record = tree / os.fsdecode(RECORD_NAME)
         record.write_bytes(b"changed record\n")
@@ -553,6 +563,9 @@ def parser() -> argparse.ArgumentParser:
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("--tree", type=Path, required=True)
     verify_parser.add_argument("--expected", required=True)
+    subtree_parser = subparsers.add_parser("verify-subtree")
+    subtree_parser.add_argument("--tree", type=Path, required=True)
+    subtree_parser.add_argument("--expected", required=True)
     print_parser = subparsers.add_parser("maintenance-print-root")
     print_parser.add_argument("--tree", type=Path, required=True)
     record_parser = subparsers.add_parser("maintenance-write-record")
@@ -576,6 +589,9 @@ def main() -> int:
     if args.command == "verify" or args.command == "snapshot-verify":
         result = verify(args.tree, args.expected)
         print(f"verified {result.root}")
+    elif args.command == "verify-subtree":
+        result = verify_subtree(args.tree, args.expected)
+        print(f"verified subtree {result.root}")
     elif args.command == "maintenance-print-root":
         result = calculate(args.tree)
         sys.stdout.write(result.record().decode("ascii"))

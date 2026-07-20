@@ -30,10 +30,14 @@
 # scripts/dart-audit.sh (with scripts/Dockerfile.dart-audit + the Dart accept-list
 # scripts/dart-audit-ignores.txt) mirrors this gate for flutter/pubspec.lock,
 # offline against a PINNED OSV "Pub" db snapshot. The audit MUST run against a
-# PINNED advisory-db snapshot recorded in the build provenance (R-B10/R-B12):
-# cargo-audit 0.21.1 is the last release supporting rustc 1.74/1.75, and it cannot
-# parse the newest (2026-schema) advisory-db entries — so the snapshot and the tool
-# version are themselves pins (and so are osv-scanner's version + its OSV snapshot).
+# PINNED advisory-db snapshot recorded in the build provenance (R-B10/R-B12).
+# The product compiler remains Rust 1.75, but the audit tools are independent
+# release infrastructure and may use a newer compiler when their immutable image
+# is deliberately refreshed. The current 2025-11-30 snapshot is older than the
+# unoverrideable 90-day R-S11bf limit and therefore blocks release; passing it is
+# not current advisory evidence. scripts/audit.sh also excludes mutable crates.io
+# yank state from its reproducible offline verdict while retaining `yanked =
+# "warn"` here for other callers.
 
 [advisories]
 db-urls = ["https://github.com/RustSec/advisory-db"]

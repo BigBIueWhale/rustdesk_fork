@@ -439,6 +439,7 @@ pub async fn listen(
                         });
                     }
                     Err(err) => {
+                        reset_local_forward(&forward);
                         interface.on_establish_connection_error(err.to_string());
                     }
                     _ => {}
@@ -585,31 +586,78 @@ async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> 
     loop {
         tokio::select! {
             res = forward.next() => {
-                if let Some(Ok(bytes)) = res {
-                    // Preserve the tunnel under bursts by waiting for writer capacity. Capacity is
-                    // reserved before sealing, so cancelling this branch cannot skip a nonce.
-                    timeout(
-                        PORT_FORWARD_SEND_TIMEOUT,
-                        stream.send_bytes_backpressured(bytes.into()),
-                    )
-                    .await??;
-                } else {
-                    break;
+                match res {
+                    Some(Ok(bytes)) => {
+                        // Preserve the tunnel under bursts by waiting for writer capacity. Capacity
+                        // is reserved before sealing, so cancelling this branch cannot skip a nonce.
+                        match timeout(
+                            PORT_FORWARD_SEND_TIMEOUT,
+                            stream.send_bytes_backpressured(bytes.into()),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(err)) => {
+                                reset_local_forward(&forward);
+                                return Err(err);
+                            }
+                            Err(err) => {
+                                reset_local_forward(&forward);
+                                return Err(err.into());
+                            }
+                        }
+                    }
+                    Some(Err(err)) => return Err(err.into()),
+                    None => return Ok(()),
                 }
             },
             res = stream.next() => {
-                if let Some(Ok(bytes)) = res {
-                    // box -> next() already DECRYPTED the frame -> local client.
-                    // A renderer that was backgrounded or suspended can stop draining its
-                    // loopback socket. Bound this write so the relay can observe the stale local
-                    // connection and a reopened viewer can establish a fresh tunnel without
-                    // requiring the whole RustDesk process to quit.
-                    timeout(LOCAL_FORWARD_SEND_TIMEOUT, forward.send(bytes)).await??;
-                } else {
-                    break;
+                match res {
+                    Some(Ok(bytes)) => {
+                        // box -> next() already DECRYPTED the frame -> local client.
+                        // A renderer that was backgrounded or suspended can stop draining its
+                        // loopback socket. Bound this write so the relay can reset the stale local
+                        // connection and a reopened viewer can establish a fresh tunnel without
+                        // requiring the whole RustDesk process to quit.
+                        match timeout(
+                            LOCAL_FORWARD_SEND_TIMEOUT,
+                            forward.send(bytes),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(err)) => {
+                                reset_local_forward(&forward);
+                                return Err(err.into());
+                            }
+                            Err(err) => {
+                                reset_local_forward(&forward);
+                                return Err(err.into());
+                            }
+                        }
+                    }
+                    Some(Err(err)) => {
+                        reset_local_forward(&forward);
+                        return Err(err.into());
+                    }
+                    None => {
+                        reset_local_forward(&forward);
+                        bail!("Remote port-forward stream closed");
+                    }
                 }
             },
         }
     }
-    Ok(())
+}
+
+/// Force an immediately observable connection failure for a local viewer after the remote side
+/// dies or stops making progress. A normal FIN can leave the T3 viewer holding a stale socket in
+/// CLOSE_WAIT; zero linger makes the close abortive (RST), prompting it to create a fresh socket.
+fn reset_local_forward(forward: &Framed<TcpStream, BytesCodec>) {
+    if let Err(err) = forward
+        .get_ref()
+        .set_linger(Some(std::time::Duration::ZERO))
+    {
+        log::warn!("Failed to configure abortive close for stale local tunnel: {err}");
+    }
 }

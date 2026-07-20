@@ -6,7 +6,6 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_hbb/common/locked_t3_tunnel.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/desktop/pages/server_page.dart';
@@ -404,8 +403,6 @@ class App extends StatefulWidget {
 }
 
 class _AppState extends State<App> with WidgetsBindingObserver {
-  DateTime? _inactiveSince;
-
   @override
   void initState() {
     super.initState();
@@ -442,29 +439,6 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   @override
   void didChangeMetrics() {
     _updateOrientation();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!isDesktop || desktopType != DesktopType.main) {
-      return;
-    }
-    if (state == AppLifecycleState.resumed) {
-      final inactiveSince = _inactiveSince;
-      _inactiveSince = null;
-      if (inactiveSince != null &&
-          shouldResetLockedT3TunnelAfterResume(
-            hasPortForwardWindows:
-                rustDeskWinManager.hasPortForwardWindows(),
-            inactiveFor: DateTime.now().difference(inactiveSince),
-          )) {
-        unawaited(rustDeskWinManager.resetPortForwardSessions());
-      }
-    } else if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused) {
-      _inactiveSince ??= DateTime.now();
-    }
   }
 
   void _updateOrientation() {

@@ -2752,8 +2752,7 @@ Future<void> onActiveWindowChanged() async {
     hasActiveWindows: activeWindows.isNotEmpty,
     hasPortForwardWindows: rustDeskWinManager.hasPortForwardWindows(),
   )) {
-    debugPrint("Resetting the hidden locked T3 port forward");
-    await rustDeskWinManager.resetPortForwardSessions();
+    debugPrint("Keeping RustDesk alive for the locked T3 port forward");
     return;
   }
   if (activeWindows.isEmpty) {

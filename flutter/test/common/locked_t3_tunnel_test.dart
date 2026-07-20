@@ -39,28 +39,4 @@ void main() {
       isFalse,
     );
   });
-
-  test('resets a tunnel after a meaningful app suspension', () {
-    expect(
-      shouldResetLockedT3TunnelAfterResume(
-        hasPortForwardWindows: true,
-        inactiveFor: const Duration(seconds: 30),
-      ),
-      isTrue,
-    );
-    expect(
-      shouldResetLockedT3TunnelAfterResume(
-        hasPortForwardWindows: true,
-        inactiveFor: const Duration(seconds: 29),
-      ),
-      isFalse,
-    );
-    expect(
-      shouldResetLockedT3TunnelAfterResume(
-        hasPortForwardWindows: false,
-        inactiveFor: const Duration(minutes: 5),
-      ),
-      isFalse,
-    );
-  });
 }

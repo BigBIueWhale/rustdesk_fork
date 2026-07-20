@@ -496,17 +496,6 @@ class RustDeskMultiWindowManager {
     return _portForwardWindows.isNotEmpty;
   }
 
-  Future<void> resetPortForwardSessions() async {
-    for (final windowId in _portForwardWindows.toList(growable: false)) {
-      try {
-        await DesktopMultiWindow.invokeMethod(
-            windowId, kWindowEventResetPortForward, null);
-      } catch (e) {
-        debugPrint('Failed to reset port-forward window $windowId: $e');
-      }
-    }
-  }
-
   Future<void> _notifyActiveWindow() async {
     for (final callback in _windowActiveCallbacks) {
       await callback.call();

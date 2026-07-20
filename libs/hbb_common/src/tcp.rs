@@ -33,6 +33,11 @@ use tokio::{
 use tokio_socks::IntoTargetAddr;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
+const OUTBOUND_KEEPALIVE_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+const OUTBOUND_KEEPALIVE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+#[cfg(not(target_os = "windows"))]
+const OUTBOUND_KEEPALIVE_RETRIES: u32 = 3;
+
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(pub Box<dyn TcpStreamTrait + Send + Sync>);
 
@@ -286,6 +291,15 @@ pub(crate) fn new_socket(
     Ok(socket)
 }
 
+pub(crate) fn configure_outbound_keepalive(stream: &tokio::net::TcpStream) -> io::Result<()> {
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(OUTBOUND_KEEPALIVE_IDLE)
+        .with_interval(OUTBOUND_KEEPALIVE_INTERVAL);
+    #[cfg(not(target_os = "windows"))]
+    let keepalive = keepalive.with_retries(OUTBOUND_KEEPALIVE_RETRIES);
+    socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
+}
+
 /// R-T11 (§20): the socket for the PUBLIC inbound listener (the direct-server port). Unlike
 /// `new_socket`, it does NOT set `SO_REUSEPORT`: a single-instance service needs no kernel
 /// load-balance group, and `SO_REUSEPORT` would let another same-uid (root) process silently
@@ -326,6 +340,9 @@ impl FramedStream {
                     super::timeout(ms_timeout, socket.connect(remote_addr)).await
                 {
                     stream.set_nodelay(true).ok();
+                    if let Err(err) = configure_outbound_keepalive(&stream) {
+                        log::warn!("Failed to configure outbound TCP keepalive: {err}");
+                    }
                     let addr = stream.local_addr()?;
                     return Ok(Self::from_parts(
                         Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new()),
@@ -444,6 +461,40 @@ impl FramedStream {
             self.poison = true;
         }
         r
+    }
+
+    /// Send tunnel payload while applying bounded-channel backpressure without
+    /// advancing the encryption nonce until queue capacity is guaranteed.
+    pub async fn send_bytes_backpressured(&mut self, bytes: Bytes) -> ResultType<()> {
+        if self.poison {
+            bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
+        }
+        let result: ResultType<()> = match &mut self.state {
+            StreamState::Keyed(k) => {
+                // Reserving is cancellation-safe because sealing happens only after capacity is
+                // acquired. Once sealed, permit.send() is synchronous and cannot lose the frame.
+                match k.writer_tx.reserve().await {
+                    Ok(permit) => {
+                        let sealed = Bytes::from(k.seal.seal(&bytes));
+                        permit.send(WriterCommand::Frame(sealed));
+                        Ok(())
+                    }
+                    Err(_) => Err(anyhow::anyhow!(
+                        "R-T3: writer task gone — connection is dead"
+                    )),
+                }
+            }
+            StreamState::Unkeyed(_) => Err(anyhow::anyhow!(
+                "R-T3: backpressured payload send requires a keyed stream"
+            )),
+            StreamState::Keying => {
+                unreachable!("send_bytes_backpressured observed a mid-keying stream")
+            }
+        };
+        if result.is_err() {
+            self.poison = true;
+        }
+        result
     }
 
     #[inline]

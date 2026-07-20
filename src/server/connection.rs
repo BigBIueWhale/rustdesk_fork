@@ -2019,7 +2019,7 @@ impl Connection {
     // R-F1/R-D6/R-S5/R-A9: the SEALED port-forward/RDP relay. Runs after the main loop for a tunnel
     // session (no-op otherwise). It shuttles bytes between the LOCAL target socket (`forward`,
     // plaintext to the service) and the KEYED session stream (`self.stream`, encrypted to the peer):
-    //   local target --forward.next()-->  self.stream.send_bytes(..)  [SEALS -> ciphertext on wire]
+    //   local target --forward.next()-->  backpressured sealed send   [ciphertext on wire]
     //   peer         --self.stream.next()--> forward.send(..)         [next() already DECRYPTED it]
     // Critically it does NOT call self.stream.set_raw() (upstream did, dropping the secretbox to pass
     // raw plaintext — the R-S5 "plaintext tunnel" escape). On a keyed stream set_raw would panic
@@ -2049,8 +2049,14 @@ impl Connection {
                     res = forward.next() => {
                         if let Some(res) = res {
                             last_recv_time = Instant::now();
-                            // local target -> SEAL (send_bytes on the keyed stream) -> peer.
-                            self.stream.send_bytes(res?.into()).await?;
+                            // Tunnel traffic must wait for writer capacity instead of treating a
+                            // normal burst as a dead peer. The send reserves capacity before
+                            // advancing the encryption nonce, so timeout cancellation is safe.
+                            timeout(
+                                PORT_FORWARD_SEND_TIMEOUT,
+                                self.stream.send_bytes_backpressured(res?.into()),
+                            )
+                            .await??;
                         } else {
                             bail!("Forward reset by the peer");
                         }

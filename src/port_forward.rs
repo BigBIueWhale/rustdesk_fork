@@ -29,6 +29,9 @@ const RDP_CREDENTIAL_TARGET: &str = "TERMSRV/localhost";
 #[cfg(windows)]
 static RDP_CREDENTIAL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+const PORT_FORWARD_SEND_TIMEOUT: u64 = 120_000;
+const LOCAL_FORWARD_SEND_TIMEOUT: u64 = 5_000;
+
 fn rdp_endpoint_arg(port: u16) -> String {
     format!("/v:localhost:{}", port)
 }
@@ -560,9 +563,13 @@ async fn connect_and_login(
     // R-A3/R-S5/R-A9: NO `stream.set_raw()` — the tunnel stays on the KEYED framed stream so every
     // relayed byte is sealed by the secretbox. `set_raw()` would panic on a keyed stream (tcp.rs
     // R-A3). Flush any bytes the local client already sent during the login handshake through the
-    // SEALED path (`send_bytes` seals on the keyed stream).
+    // SEALED path (the backpressured send seals on the keyed stream).
     if !buffer.is_empty() {
-        allow_err!(stream.send_bytes(buffer.into()).await);
+        timeout(
+            PORT_FORWARD_SEND_TIMEOUT,
+            stream.send_bytes_backpressured(buffer.into()),
+        )
+        .await??;
     }
     Ok(Some(stream))
 }
@@ -579,8 +586,13 @@ async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> 
         tokio::select! {
             res = forward.next() => {
                 if let Some(Ok(bytes)) = res {
-                    // local client -> SEAL (send_bytes on the keyed stream) -> box (ciphertext).
-                    allow_err!(stream.send_bytes(bytes.into()).await);
+                    // Preserve the tunnel under bursts by waiting for writer capacity. Capacity is
+                    // reserved before sealing, so cancelling this branch cannot skip a nonce.
+                    timeout(
+                        PORT_FORWARD_SEND_TIMEOUT,
+                        stream.send_bytes_backpressured(bytes.into()),
+                    )
+                    .await??;
                 } else {
                     break;
                 }
@@ -588,7 +600,11 @@ async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> 
             res = stream.next() => {
                 if let Some(Ok(bytes)) = res {
                     // box -> next() already DECRYPTED the frame -> local client.
-                    allow_err!(forward.send(bytes).await);
+                    // A renderer that was backgrounded or suspended can stop draining its
+                    // loopback socket. Bound this write so the relay can observe the stale local
+                    // connection and a reopened viewer can establish a fresh tunnel without
+                    // requiring the whole RustDesk process to quit.
+                    timeout(LOCAL_FORWARD_SEND_TIMEOUT, forward.send(bytes)).await??;
                 } else {
                     break;
                 }

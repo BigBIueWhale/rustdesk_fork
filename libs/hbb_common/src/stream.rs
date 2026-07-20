@@ -27,6 +27,13 @@ impl Stream {
     }
 
     #[inline]
+    pub async fn send_bytes_backpressured(&mut self, bytes: bytes::Bytes) -> ResultType<()> {
+        match self {
+            Stream::Tcp(s) => s.send_bytes_backpressured(bytes).await,
+        }
+    }
+
+    #[inline]
     pub async fn send_raw(&mut self, bytes: Vec<u8>) -> ResultType<()> {
         match self {
             Stream::Tcp(s) => s.send_raw(bytes).await,

@@ -83,6 +83,13 @@ class _PortForwardTabPageState extends State<PortForwardTabPage> {
               tabController: tabController,
               connToken: args['connToken'],
             )));
+      } else if (call.method == kWindowEventResetPortForward) {
+        final pages = tabController.state.value.tabs
+            .map((tab) => tab.page)
+            .whereType<PortForwardPage>();
+        for (final page in pages) {
+          await page.reconnect();
+        }
       } else if (call.method == "onDestroy") {
         tabController.clear();
       } else if (call.method == kWindowActionRebuild) {

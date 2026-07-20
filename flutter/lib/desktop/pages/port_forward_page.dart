@@ -43,6 +43,14 @@ class PortForwardPage extends StatefulWidget {
 
   FFI get ffi => (_lastState.value! as _PortForwardPageState)._ffi;
 
+  Future<void> reconnect() async {
+    final state = _lastState.value;
+    if (state is _PortForwardPageState) {
+      await bind.sessionReconnect(
+          sessionId: state._ffi.sessionId, forceRelay: false);
+    }
+  }
+
   @override
   State<PortForwardPage> createState() {
     final state = _PortForwardPageState();

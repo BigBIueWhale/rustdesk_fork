@@ -17,7 +17,7 @@ use url::Url;
 
 use crate::{
     config::Socks5Server,
-    tcp::{DynTcpStream, FramedStream, SecretboxCodec},
+    tcp::{configure_outbound_keepalive, DynTcpStream, FramedStream, SecretboxCodec},
     tls::{get_cached_tls_accept_invalid_cert, get_cached_tls_type, upsert_tls_cache, TlsType},
     ResultType,
 };
@@ -365,6 +365,9 @@ impl Proxy {
         )
         .await??;
         stream.set_nodelay(true).ok();
+        if let Err(err) = configure_outbound_keepalive(&stream) {
+            log::warn!("Failed to configure proxy TCP keepalive: {err}");
+        }
         Ok(stream)
     }
 

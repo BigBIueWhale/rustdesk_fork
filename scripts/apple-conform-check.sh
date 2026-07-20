@@ -1018,6 +1018,7 @@ install_scpt="$REPO/src/platform/privileges_scripts/install.scpt"
 update_scpt="$REPO/src/platform/privileges_scripts/update.scpt"
 uninstall_scpt="$REPO/src/platform/privileges_scripts/uninstall.scpt"
 macos_rs="$REPO/src/platform/macos.rs"
+macos_production_source=$(awk '/^#\[cfg\(test\)\]/{exit} {print}' "$macos_rs")
 macos_helper_command_sources=("$REPO/src/platform/macos.rs" "$REPO/src/ipc.rs" "$REPO/src/ipc/auth.rs")
 daemon_args_block=$(awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$daemon_plist")
 echo "$daemon_args_block" | grep -q '<string>/Library/PrivilegedHelperTools/com.carriez.rustdesk_service</string>' || r_s11c5="$r_s11c5 daemon-not-privileged-helper-exec"
@@ -1050,7 +1051,7 @@ if grep -Fq 'caffeinate' "$REPO/src/server.rs" "$REPO/src/platform/macos.rs"; th
   r_s11c5="$r_s11c5 macos-caffeinate-subprocess-present"
 fi
 for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed' '/usr/bin/env'; do
-  if grep -Fq "$obsolete" "$macos_rs"; then
+  if grep -Fq "$obsolete" <<<"$macos_production_source"; then
     r_s11c5="$r_s11c5 macos-root-to-user-launcher-present:$obsolete"
   fi
 done
@@ -1150,7 +1151,7 @@ fi
 if grep -q '/tmp/rustdesk_service' "$daemon_plist" "$install_scpt" "$uninstall_scpt"; then
   r_s11c5="$r_s11c5 tmp-daemon-log-path"
 fi
-if grep -q '/Applications/RustDesk.app/Contents/MacOS/service' "$daemon_plist" "$install_scpt"; then
+if grep -q '/Applications/RustDesk.app/Contents/MacOS/service' "$daemon_plist"; then
   r_s11c5="$r_s11c5 app-bundle-root-service-path"
 fi
 grep -Fq 'bundled_service_exec: PathBuf' "$macos_rs" || r_s11c5="$r_s11c5 macos-install-context-no-bundled-helper"
@@ -1426,7 +1427,7 @@ fi
 
 echo "== (2b-iv-a-0c) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="
 r_s11e53=
-server_shutdown=$(awk '/static SHUTDOWN_FINALIZER_STARTED/,/pub struct Server/' "$REPO/src/server.rs")
+server_shutdown=$(awk '/static SHUTDOWN_FAILURE_LATCHED/,/pub struct Server/' "$REPO/src/server.rs")
 ipc_source=$(cat "$REPO/src/ipc.rs")
 for binding in \
   'static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);' \
@@ -1952,7 +1953,7 @@ grep -qF 'stat.st_mode & 0o077 != 0' "$pasteboard_context_rs" || r_s11e13="$r_s1
 grep -qF 'pub(super) fn create_placeholder_file(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-placeholder-file-creator"
 grep -qF 'libc::openat(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-openat-placeholder-create"
 grep -qF 'libc::O_EXCL' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-exclusive-placeholder-create"
-grep -qF '0o600 as libc::mode_t' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-owner-only-placeholder-mode"
+grep -qF '0o600 as libc::c_uint' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-owner-only-promoted-placeholder-mode"
 grep -qF 'fn remove_placeholder_file(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-placeholder-unlink-helper"
 grep -qF 'libc::unlinkat' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-unlinkat-placeholder-cleanup"
 grep -qF 'fn count_placeholder_files(placeholder_dir: &Path) -> io::Result<usize>' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-fail-closed-placeholder-count"

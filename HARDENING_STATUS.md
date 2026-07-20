@@ -4550,6 +4550,86 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Independently reproducible acquisition/distribution of a fresh audit image and database, policy re-review against
   that current data, exact clean R-B2 artifacts, installed-platform evidence, and R-V3 external review remain open;
   neither this item nor the overall release is claimed complete.
+- **R-S11bg/R-S11e-73 — main verifier container and root-test authority — SOURCE IMPLEMENTED/GATED;
+  CONFINED FULL-GATE EXECUTION VERIFIED 2026-07-20; INDEPENDENT IMAGE ACQUISITION AND BROADER RELEASE EVIDENCE
+  OPEN.** Platform:
+  the Linux Docker build host used by the primary `scripts/verify.sh` source/behavior/compile gate. Endpoint/action:
+  117 Cargo test/check/clean invocations and the two IPC filesystem tests that construct a foreign-owned service
+  directory. Boundary: build scripts, test binaries, mutable build outputs, image/tag/cache state, and Docker
+  networking/root authority ↔ the real developer checkout, ignored signing/harness state, Docker daemon state,
+  DMZ-host network, and truthfulness of the main verification verdict. The inherited gate created three reusable
+  daemon-global Cargo registry/Git/target volumes, rebuilt the mutable `rd-devcheck` tag from live image/APT inputs
+  on every invocation, and ran every Cargo command by tag under Docker default UID 0, default bridge, implicit
+  missing-image pull policy, and a writable root. The checkout bind was read-only and no port was published. Only
+  `test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir` and
+  `test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed` needed euid 0 to `chown` a private fixture;
+  the ACL branch additionally needs `CAP_FOWNER`. That narrow fixture need did not justify ambient root for all
+  builds and tests. This was high-frequency build-host/supply-chain, persistent-state, and verdict-authority debt,
+  not evidence of a public listener, host RustDesk execution, host service/configuration/firewall mutation, Docker
+  escape, exploitation, host privilege escalation, or compromise.
+
+  Source closure: the verifier now rejects host effective UID or primary GID zero and never builds, pulls, tags,
+  or resolves an image or creates/uses a named volume. `DEV_CHECK_IMAGE_ID` pins the already-present local content
+  identity `sha256:2f0406ee5b7dcd5683d900fb8b45668abd69934e6b4bdbf4737165fc01e72398`. A mount-free
+  nonroot preflight verifies Rust/Cargo 1.75.0, both binary hashes, the sorted installed-package manifest hash, and
+  the required sodium environment. `scripts/Dockerfile.devcheck` has a review-recipe hash, but independently
+  archived acquisition and reproducible distribution of this opaque image remain open; loss of the content ID is
+  a hard failure, never authority to build or fetch it.
+
+  Before Cargo, one current-user mode-0700 identity-bound workspace receives a normalized NUL-safe archive of
+  exactly tracked plus nonignored current source and a race-detecting read-only snapshot of the complete canonical
+  Cargo vendor subtree. Ignored `.git`, `.harness-state`, `online`, and worktree `target` state cannot reach build
+  code. A private mode-0400 complete 26-source Cargo map points at `/vendor`. The closed command wrapper accepts
+  only Cargo or the exact version-metadata checker. Resolving/compiling commands receive
+  `--config /tmp/cargo-config.toml --offline --locked`; the nested mount path is deliberate because Cargo 1.75's
+  source-path resolver panics for a command-line config mounted directly under `/`. The sole exact
+  `cargo clean -p rustdesk` operation uses
+  `CARGO_NET_OFFLINE=true` and an ephemeral Cargo home populated from the same map because Cargo 1.75 panics when
+  `clean` receives the command-line config; that cleanup acts only on the private target and executes no package code.
+  Every ordinary launch uses the exact image ID, `--pull=never`, `--network=none`, a read-only root, the invoking
+  numeric UID:GID, all capabilities dropped, no-new-privileges, nonincremental target state, bounded PID/memory/
+  no-swap/CPU/tmpfs resources, and exactly four private mounts: source read-only, vendor read-only, target writable,
+  and Cargo config read-only. It receives no real checkout, Git/signing state, named volume, Docker socket, port,
+  or host namespace.
+
+  The complete IPC filesystem module first runs nonroot. A separate nonroot `--no-run` emits bounded Cargo JSON;
+  `scripts/prepare-root-ipc-test.py` selects exactly the root crate library-test artifact, rejects duplicate,
+  non-test, noncanonical, linked, or writable inputs, then descriptor-stably copies and hashes it into a private
+  mode-0555 file beneath the mode-0700 workspace. The non-owner execute bits are required because the isolated UID-0
+  container intentionally lacks `CAP_DAC_OVERRIDE`; the private parent and read-only bind retain host confidentiality
+  and immutability. Each root-required test runs by exact name in a fresh container whose sole host mount is that file
+  read-only. The root container has no pull/network/port/host-namespace authority, a read-only root,
+  no-new-privileges, all capabilities dropped then exactly `CHOWN`/`FOWNER` added, bounded resources, and private
+  tmpfs fixtures. It has no source, vendor, target, Cargo config, or other writable host mount.
+  `RUSTDESK_ROOT_IPC_FS_HARNESS=1` makes a wrong euid or unavailable POSIX-ACL exercise fail instead of silently
+  taking the ordinary skip path. Status, output bounds, skip absence, exact test name, and one-pass result agree.
+
+  Before green, the private vendor closure, normalized real-source digest, source-map and recipe hashes, and local
+  image ID are rechecked. Identity-bound private-tree cleanup owns every output and suppresses the deferred green
+  marker on failure. The root-artifact helper has ten behavioral checks, including rejection of the package name
+  or a generic `lib` kind in place of the exact `librustdesk` `cdylib`/`staticlib`/`rlib` target; the
+  online-provenance helper tests the
+  subtree snapshot; and the focused semantic validator deliberately mutates the image/build/tag/volume absence,
+  private inputs, ordinary/root Docker inventories, exact capabilities, wrapper, artifact selection, required ACL
+  coverage, postconditions, R-S11bg, Appendix C #184, and this ledger.
+
+  Confined runtime evidence: from clean candidate `a576ce296e6d22b8bef4781966819ede7556587a`, the complete
+  `scripts/verify.sh` transaction exited zero with
+  `VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green`. The exact
+  `librustdesk` test artifact was selected from bounded Cargo JSON, descriptor-stably copied and hash-checked, and
+  the two foreign-owner/POSIX-ACL tests passed separately under only `CAP_CHOWN`/`CAP_FOWNER`; ordinary Cargo and
+  version-metadata work remained nonroot. The final private-vendor, normalized-real-source, local-image-identity,
+  and cleanup postconditions passed. Before that final green run, fail-closed full transactions exposed stale
+  textual assertions for the current retained-listener/finalizer, Linux service-child recovery/cleanup, deleted
+  generic sudo/env launcher, staged xrandr command, descriptor allowlist, macOS installer-versus-daemon path, Cargo
+  source mount, and other already-implemented authority shapes. Those assertions were corrected to bind the current
+  stronger implementations; no failed transaction was counted as evidence. Bash syntax, exact focused assertions,
+  the complete workspace/source-mutation suite, and all 63 focused main-verifier authority mutations then passed.
+  No image was built, pulled, fetched, or tagged during implementation or verification.
+
+  This closes only the source-defined main-verifier authority. It does not close independently archived devcheck
+  image acquisition, the intentionally release-blocking RustSec refresh, exact clean cold R-B2 artifacts, installed
+  platform behavior, or R-V3 independent review, and neither this item nor the overall release is claimed complete.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
   ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
   and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
@@ -7045,9 +7125,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d1844a2e61baeaa59dd1b1521ed35460390d3a57f40c0cdf0d4c7b045a7050b9  requirements.html
+dee7eab882c7e3b2ace041c112a4837b67a3fd066837e77ba21e10e0b6390d3e  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11be, R-SV4a,
-R-SV5a, R-SV6a, and Appendix C #182. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
+R-SV5a, R-SV6a, and Appendix C #184. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

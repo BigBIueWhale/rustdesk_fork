@@ -142,12 +142,27 @@ pub(crate) fn validate_pa_capture_authority(
         .unwrap()
         .as_ref()
         .map(|authority| {
-            token_eq(&authority.token, token)
-                && authority.expected_peer == *peer
-                && crate::ipc::peer_process_identity_is_live(peer, "_pa")
-                && !authority.conn_ids.is_empty()
+            pa_capture_authority_matches(authority, token, peer, || {
+                crate::ipc::peer_process_identity_is_live(peer, "_pa")
+            })
         })
         .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn pa_capture_authority_matches<F>(
+    authority: &PaCaptureAuthority,
+    token: &str,
+    peer: &crate::ipc::PeerProcessIdentity,
+    peer_is_live: F,
+) -> bool
+where
+    F: FnOnce() -> bool,
+{
+    token_eq(&authority.token, token)
+        && authority.expected_peer == *peer
+        && peer_is_live()
+        && !authority.conn_ids.is_empty()
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -607,15 +622,37 @@ mod test {
 
         let authority = install_pa_capture_authority(vec![42]).unwrap();
         let token = authority.token().to_owned();
+        let authority_snapshot = PA_CAPTURE_AUTHORITY
+            .lock()
+            .unwrap()
+            .as_ref()
+            .cloned()
+            .unwrap();
 
-        assert!(validate_pa_capture_authority(&token, &expected_peer));
+        assert!(pa_capture_authority_matches(
+            &authority_snapshot,
+            &token,
+            &expected_peer,
+            || true
+        ));
         let wrong_peer = crate::ipc::PeerProcessIdentity::for_test(
             expected_peer.pid().saturating_add(1).max(1),
             0,
             "wrong-start-time".to_owned(),
             "--cm".to_owned(),
         );
-        assert!(!validate_pa_capture_authority(&token, &wrong_peer));
+        assert!(!pa_capture_authority_matches(
+            &authority_snapshot,
+            &token,
+            &wrong_peer,
+            || true
+        ));
+        assert!(!pa_capture_authority_matches(
+            &authority_snapshot,
+            &token,
+            &expected_peer,
+            || false
+        ));
         assert!(!validate_pa_capture_authority("wrong", &expected_peer));
 
         drop(authority);

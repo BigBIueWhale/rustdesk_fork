@@ -10,6 +10,14 @@ cd "$(dirname "$0")/.."
   echo "version-metadata-check: CARGO_TARGET_DIR must be /build" >&2
   exit 1
 }
+[ "${CARGO_HOME:-}" = /tmp/cargo-home ] || {
+  echo "version-metadata-check: CARGO_HOME must be /tmp/cargo-home" >&2
+  exit 1
+}
+[ -f /tmp/cargo-config.toml ] && [ ! -L /tmp/cargo-config.toml ] || {
+  echo "version-metadata-check: exact Cargo config mount is unavailable" >&2
+  exit 1
+}
 case "${SOURCE_DATE_EPOCH:-}" in
   ''|*[!0-9]*|0[0-9]*)
     echo "version-metadata-check: SOURCE_DATE_EPOCH is not canonical" >&2
@@ -29,7 +37,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-metadata="$(cargo metadata --locked --no-deps --format-version 1)"
+metadata="$(cargo --config /tmp/cargo-config.toml --offline --locked metadata --no-deps --format-version 1)"
 app_version="$(printf '%s' "$metadata" | python3 -c '
 import json
 import sys

@@ -2802,13 +2802,18 @@ def validate_r_b2_version_metadata(sources):
 
     verify_run = extract_between(
         sources["verify"],
-        "RUN=(docker run --rm\n",
-        '\n  -w /work "$IMG")',
+        'RUN=("$DOCKER_BIN" run --rm --pull=never --network=none --read-only\n',
+        "\n  /bin/bash --noprofile --norc /work/scripts/verify-container-command.sh)",
         "verifier Cargo container",
     )
-    require_exact_count(verify_run, '-v "$PWD:/work:ro"', 1, "verifier read-only Cargo source bind")
-    if '-v "$PWD:/work:rw"' in verify_run or '-v "$PWD:/work"' in verify_run:
-        raise VerificationError("verifier Cargo source bind is mutable")
+    require_exact_count(
+        verify_run,
+        '--mount "type=bind,source=$VERIFY_SOURCE,target=/work,readonly"',
+        1,
+        "verifier private read-only Cargo source bind",
+    )
+    if 'source=$PWD,target=/work' in verify_run or '-v "$PWD:/work' in verify_run:
+        raise VerificationError("verifier Cargo source bind uses the real worktree")
     for text, label in (
         ('"${RUN[@]}" cargo clean -p rustdesk', "version-metadata Cargo clean"),
         ('"${RUN[@]}" cargo check --features linux-pkg-config --color never', "version-metadata primary Cargo build"),
@@ -2874,7 +2879,10 @@ def validate_r_b2_version_metadata(sources):
     for text, label in (
         ('[ "$PWD" = /work ]', "checker fixed read-only source mount"),
         ('[ "${CARGO_TARGET_DIR:-}" = /build ]', "checker external Cargo target"),
-        ('cargo metadata --locked --no-deps --format-version 1', "checker Cargo metadata authority"),
+        (
+            'cargo --config /tmp/cargo-config.toml --offline --locked metadata --no-deps --format-version 1',
+            "checker Cargo metadata authority",
+        ),
         ('if ("chrono", "build") not in build_dependencies:', "checker chrono build dependency"),
         ('if ("hbb_common", "build") in build_dependencies:', "checker hbb_common build-dependency rejection"),
         ("expected_date=\"$(date -u -d \"@$SOURCE_DATE_EPOCH\" '+%Y-%m-%d %H:%M')\"", "checker pinned UTC date"),
@@ -9039,6 +9047,23 @@ def validate_desktop_ipc_retained_owner_contract(sources):
         require_text(source, "--self-test", f"{label} validator mutation suite")
 
     for text, label in (
+        (
+            "grep -q 'prepare_windows_service_main_ipc().await' src/ipc.rs",
+            "Windows service-main listener preparation source gate",
+        ),
+        (
+            "grep -q 'run_windows_service_main_ipc(service_main)' src/ipc.rs",
+            "Windows service-main retained runner source gate",
+        ),
+    ):
+        require_text(verify, text, label)
+    require_absent(
+        verify,
+        "grep -q 'start_windows_service_main_ipc' src/server.rs",
+        "obsolete detached Windows service-main source gate",
+    )
+
+    for text, label in (
         ("def validate(sources", "focused validator semantic entry"),
         ("def run_mutations(sources", "focused validator mutation entry"),
         ("MUTATIONS: Tuple[Mutation, ...]", "focused validator mutation inventory"),
@@ -11537,6 +11562,139 @@ def validate_dart_audit_authority_contract(sources):
     )
 
 
+def validate_main_verifier_authority_contract(sources):
+    shell = sources["verify"]
+    wrapper = sources["verifier_command_wrapper"]
+    helper = sources["root_ipc_artifact_helper"]
+    authority = sources["main_verifier_authority_validator"]
+    provenance = sources["online_input_provenance"]
+    pins = sources["pins"]
+    ipc_fs = sources["ipc_fs_source"]
+
+    for text, label in (
+        ('readonly DOCKER_BIN=/usr/bin/docker', "main verifier trusted Docker client"),
+        ('[ "$(id -u)" -ne 0 ] || { echo "verify: refuses host or container-root execution"', "main verifier UID-root refusal"),
+        ('[ "$(id -g)" -ne 0 ] || { echo "verify: refuses a root primary group"', "main verifier GID-root refusal"),
+        ('IMAGE_ID="$($DOCKER_BIN image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier immutable image lookup"),
+        ('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"', "main verifier normalized source snapshot"),
+        ('snapshot-subtree-create', "main verifier private vendor snapshot"),
+        ('RUN=("$DOCKER_BIN" run --rm --pull=never --network=none --read-only', "main verifier ordinary pull/network/root isolation"),
+        ('--mount "type=bind,source=$VERIFY_SOURCE,target=/work,readonly"', "main verifier private source mount"),
+        ('--mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"', "main verifier private vendor mount"),
+        ('--mount "type=bind,source=$VERIFY_TARGET,target=/build"', "main verifier private target mount"),
+        ('--mount "type=bind,source=$VERIFY_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"', "main verifier private Cargo config mount"),
+        ('--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER', "main verifier root capability inventory"),
+        ('--mount "type=bind,source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly"', "main verifier root artifact-only mount"),
+        ('--env RUSTDESK_ROOT_IPC_FS_HARNESS=1', "main verifier root behavior requirement"),
+        ('SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum', "main verifier source postcondition"),
+    ):
+        require_text(shell, text, label)
+    require_exact_count(shell, '"$DOCKER_BIN" run ', 3, "main verifier Docker definition inventory")
+    require_exact_count(shell, 'RUN=("$DOCKER_BIN" run ', 1, "main verifier ordinary container inventory")
+    require_exact_count(
+        shell,
+        'run_root_ipc_test \\\n  ipc::ipc_fs::tests::',
+        2,
+        "main verifier exact root-test inventory",
+    )
+    for text, label in (
+        ('docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts', "main verifier image build"),
+        ('docker volume create rd-cargo-cache', "main verifier Cargo named volume"),
+        ('docker volume create rd-git-cache', "main verifier Git named volume"),
+        ('docker volume create rd-verify-target', "main verifier target named volume"),
+        ('\nIMG=rd-devcheck\n', "main verifier mutable image assignment"),
+    ):
+        require_absent(shell, text, label)
+
+    for text, label in (
+        ('exec cargo --config /tmp/cargo-config.toml --offline --locked "$@"', "main verifier locked/offline Cargo wrapper"),
+        ('[ "$(id -u)" -ne 0 ] && [ "$(id -g)" -ne 0 ]', "main verifier wrapper nonroot assertion"),
+        ('[ "$#" -eq 3 ] && [ "$2" = -p ] && [ "$3" = rustdesk ]', "main verifier exact Cargo clean"),
+        ('install -m 0400 -- /tmp/cargo-config.toml "$CARGO_HOME/config.toml"', "main verifier Cargo clean source map"),
+    ):
+        require_text(wrapper, text, label)
+    require_text(
+        wrapper,
+        '[ "$#" -eq 2 ] && [ "$2" = scripts/version-metadata-check.sh ]',
+        "main verifier wrapper shell allowlist",
+    )
+    for text, label in (
+        ('metadata.st_nlink == 1', "main verifier root artifact hardlink refusal"),
+        ('profile.get("test") is True', "main verifier root artifact test-profile selection"),
+        ('target.get("name") == "librustdesk"', "main verifier exact library target selection"),
+        ('target.get("kind") == ["cdylib", "staticlib", "rlib"]', "main verifier exact library kind selection"),
+        ('target.get("crate_types") == ["cdylib", "staticlib", "rlib"]', "main verifier exact library crate-type selection"),
+        ('ARTIFACT_RE.fullmatch(values[0])', "main verifier root artifact path grammar"),
+        ('os.O_EXCL', "main verifier root artifact exclusive copy"),
+        ('os.fchmod(output_fd, 0o555)', "main verifier capability-minimal artifact execution mode"),
+        ('require(checks == 10', "main verifier root artifact behavioral inventory"),
+    ):
+        require_text(helper, text, label)
+    for text, label in (
+        ('def create_subtree_snapshot(', "main verifier subtree snapshot implementation"),
+        ('source_after = verify_subtree(source, expected)', "main verifier subtree source stability"),
+        ('snapshot = verify_subtree(snapshot_tree, expected)', "main verifier subtree copy identity"),
+    ):
+        require_text(provenance, text, label)
+    require_text(
+        pins,
+        'DEV_CHECK_IMAGE_ID="sha256:2f0406ee5b7dcd5683d900fb8b45668abd69934e6b4bdbf4737165fc01e72398"',
+        "main verifier immutable image pin",
+    )
+    require_exact_count(
+        ipc_fs,
+        "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0",
+        2,
+        "main verifier root-required source behavior",
+    )
+    require_text(
+        ipc_fs,
+        '"root IPC filesystem harness requires POSIX ACL support: {}"',
+        "main verifier required ACL behavior",
+    )
+
+    authority_mutations = extract_between(
+        authority,
+        "\nMUTATIONS = (",
+        "\n)\n\n\ndef mutate_once",
+        "main verifier authority mutation matrix",
+    )
+    for text, label in (
+        ('Mutation("shell", "--network=none", "--network=bridge"', "main verifier network mutation"),
+        ('Mutation("shell", "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER"', "main verifier root capability mutation"),
+        ('Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked"', "main verifier wrapper mutation"),
+        ('Mutation("helper", \'metadata.st_nlink == 1\'', "main verifier artifact mutation"),
+        ('Mutation("helper", \'target.get("name") == "librustdesk"\'', "main verifier library-target mutation"),
+        ('Mutation("helper", \'target.get("kind") == ["cdylib", "staticlib", "rlib"]\'', "main verifier library-kind mutation"),
+        ('Mutation("helper", "os.fchmod(output_fd, 0o555)"', "main verifier artifact-mode mutation"),
+        ('Mutation("requirements", \'<span class="id">R-S11bg</span>\'', "main verifier requirement mutation"),
+    ):
+        require_text(authority_mutations, text, label)
+    require_text(
+        shell,
+        "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test",
+        "main verifier authority shared-gate wiring",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S11bg", "main verifier authority requirement"
+    )
+    for text in (
+        "immutable, non-root build authority",
+        "--pull=never",
+        "--network=none",
+        "CHOWN",
+        "FOWNER",
+        "MUST NOT",
+    ):
+        require_text(requirement, text, "main verifier authority requirement")
+    require_text(sources["requirements"], "<tr><td>184</td>", "main verifier Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-S11bg/R-S11e-73 — main verifier container and root-test authority",
+        "main verifier authority hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -11607,6 +11765,7 @@ def validate_sources(sources):
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
     validate_dart_audit_authority_contract(sources)
+    validate_main_verifier_authority_contract(sources)
     validate_smoke_contract(
         sources["verify"],
         sources["hardening"],
@@ -19158,6 +19317,18 @@ def run_source_mutations(sources):
             "desktop IPC shared gate",
         ),
         (
+            "verify",
+            "grep -q 'prepare_windows_service_main_ipc().await' src/ipc.rs",
+            "grep -q 'start_windows_service_main_ipc' src/server.rs",
+            "Windows service-main listener preparation source gate",
+        ),
+        (
+            "verify",
+            "grep -q 'run_windows_service_main_ipc(service_main)' src/ipc.rs",
+            "grep -q 'run_windows_service_main_ipc_disabled(service_main)' src/ipc.rs",
+            "Windows service-main retained runner source gate",
+        ),
+        (
             "apple",
             'echo "== (2b-iv-a-0h) desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59) =="',
             'echo "== (2b-iv-a-0h) detached desktop IPC lifecycle (R-S11as/R-S11e-59) =="',
@@ -21784,9 +21955,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'RUN=(docker run --rm\n  -v "$PWD:/work:ro"',
-            'RUN=(docker run --rm\n  -v "$PWD:/work:rw"',
-            "verifier read-only Cargo source bind",
+            '--mount "type=bind,source=$VERIFY_SOURCE,target=/work,readonly"',
+            '--mount "type=bind,source=$PWD,target=/work"',
+            "verifier private read-only Cargo source bind",
         ),
         (
             "core_main",
@@ -22431,6 +22602,84 @@ def run_source_mutations(sources):
             "Dart audit authority hardening ledger",
         ),
         (
+            "verifier_command_wrapper",
+            'exec cargo --config /tmp/cargo-config.toml --offline --locked "$@"',
+            'exec cargo "$@"',
+            "main verifier locked/offline Cargo wrapper",
+        ),
+        (
+            "root_ipc_artifact_helper",
+            "metadata.st_nlink == 1",
+            "metadata.st_nlink >= 1",
+            "main verifier root artifact hardlink refusal",
+        ),
+        (
+            "root_ipc_artifact_helper",
+            'target.get("name") == "librustdesk"',
+            'target.get("name") == "rustdesk"',
+            "main verifier exact library target selection",
+        ),
+        (
+            "root_ipc_artifact_helper",
+            'target.get("kind") == ["cdylib", "staticlib", "rlib"]',
+            'target.get("kind") == ["lib"]',
+            "main verifier exact library kind selection",
+        ),
+        (
+            "root_ipc_artifact_helper",
+            "os.fchmod(output_fd, 0o555)",
+            "os.fchmod(output_fd, 0o500)",
+            "main verifier capability-minimal artifact execution mode",
+        ),
+        (
+            "main_verifier_authority_validator",
+            'Mutation("shell", "--network=none", "--network=bridge", "network isolation"),',
+            '# main verifier network mutation removed',
+            "main verifier network mutation",
+        ),
+        (
+            "online_input_provenance",
+            "def create_subtree_snapshot(",
+            "def ignored_subtree_snapshot(",
+            "main verifier subtree snapshot implementation",
+        ),
+        (
+            "pins",
+            'DEV_CHECK_IMAGE_ID="sha256:2f0406ee5b7dcd5683d900fb8b45668abd69934e6b4bdbf4737165fc01e72398"',
+            'DEV_CHECK_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
+            "main verifier immutable image pin",
+        ),
+        (
+            "ipc_fs_source",
+            '"root IPC filesystem harness requires POSIX ACL support: {}"',
+            '"optional POSIX ACL support: {}"',
+            "main verifier required ACL behavior",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test",
+            "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo .",
+            "main verifier authority shared-gate wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bg</span>',
+            '<span class="id">R-S11bg-disabled</span>',
+            "main verifier authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>184</td>",
+            "<tr><td>184-disabled</td>",
+            "main verifier Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bg/R-S11e-73 — main verifier container and root-test authority",
+            "R-S11bg/R-S11e-73 — main verifier authority deferred",
+            "main verifier authority hardening ledger",
+        ),
+        (
             "cli_source",
             "fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>",
             "fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>>",
@@ -23042,6 +23291,18 @@ def main():
             "dart_audit_result": (repo / "scripts/dart-audit-result.py").read_text(encoding="utf-8"),
             "dart_audit_authority_validator": (
                 repo / "scripts/verify-dart-audit-authority.py"
+            ).read_text(encoding="utf-8"),
+            "verifier_command_wrapper": (
+                repo / "scripts/verify-container-command.sh"
+            ).read_text(encoding="utf-8"),
+            "root_ipc_artifact_helper": (
+                repo / "scripts/prepare-root-ipc-test.py"
+            ).read_text(encoding="utf-8"),
+            "main_verifier_authority_validator": (
+                repo / "scripts/verify-main-verifier-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_input_provenance": (
+                repo / "scripts/online-input-provenance.py"
             ).read_text(encoding="utf-8"),
             "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),

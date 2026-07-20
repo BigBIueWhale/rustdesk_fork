@@ -935,7 +935,14 @@ mod tests {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
         let euid = unsafe { hbb_common::libc::geteuid() };
+        let root_harness_required =
+            std::env::var_os("RUSTDESK_ROOT_IPC_FS_HARNESS").as_deref()
+                == Some(std::ffi::OsStr::new("1"));
         if euid != 0 {
+            assert!(
+                !root_harness_required,
+                "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0"
+            );
             eprintln!(
                 "skip recreate-foreign-service test: not root, cannot create a foreign-owned dir"
             );
@@ -992,6 +999,14 @@ mod tests {
                 0,
             )
         };
+        if root_harness_required {
+            assert_eq!(
+                set_rc,
+                0,
+                "root IPC filesystem harness requires POSIX ACL support: {}",
+                std::io::Error::last_os_error()
+            );
+        }
         // The threat-accurate check only runs where the FS supports POSIX ACLs; if setxattr is
         // unsupported (e.g. a noacl mount) we fall back to the uid/mode assertions below — never a
         // false failure.
@@ -1059,7 +1074,14 @@ mod tests {
         use std::os::unix::ffi::OsStrExt;
 
         let euid = unsafe { hbb_common::libc::geteuid() };
+        let root_harness_required =
+            std::env::var_os("RUSTDESK_ROOT_IPC_FS_HARNESS").as_deref()
+                == Some(std::ffi::OsStr::new("1"));
         if euid != 0 {
+            assert!(
+                !root_harness_required,
+                "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0"
+            );
             eprintln!("skip foreign-nonempty fail-closed test: not root");
             return;
         }

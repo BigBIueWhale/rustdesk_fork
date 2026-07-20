@@ -456,6 +456,46 @@ def create_snapshot(
         raise
 
 
+def create_subtree_snapshot(
+    source: Path,
+    destination: Path,
+    expected: str,
+    after_preflight: Callable[[], None] | None = None,
+) -> Result:
+    """Create a read-only snapshot of a pinned subtree without a root record file."""
+    if destination.exists() or destination.is_symlink():
+        fail(f"subtree snapshot destination already exists: {destination}")
+    before = verify_subtree(source, expected)
+    if after_preflight is not None:
+        after_preflight()
+    destination.mkdir(mode=0o700)
+    snapshot_tree = destination / "subtree"
+    copy_tree(source, snapshot_tree)
+    try:
+        source_after = verify_subtree(source, expected)
+        snapshot = verify_subtree(snapshot_tree, expected)
+        if before != source_after or before != snapshot:
+            fail("online subtree changed while the private snapshot was created")
+        make_read_only(snapshot_tree)
+        final = verify_subtree(snapshot_tree, expected)
+        if final != before:
+            fail("read-only subtree snapshot conversion changed the closure")
+        return final
+    except BaseException:
+        os.chmod(destination, 0o700)
+        for root, directories, files in os.walk(destination):
+            for name in directories:
+                path = Path(root) / name
+                if not path.is_symlink():
+                    os.chmod(path, 0o700, follow_symlinks=False)
+            for name in files:
+                path = Path(root) / name
+                if not path.is_symlink():
+                    os.chmod(path, 0o600, follow_symlinks=False)
+        shutil.rmtree(destination, ignore_errors=True)
+        raise
+
+
 def expect_failure(operation: Callable[[], object], label: str) -> None:
     try:
         operation()
@@ -556,6 +596,20 @@ def self_test() -> None:
         snapshot_content.write_bytes(b"after-use mutation")
         expect_failure(lambda: verify(snapshot / "online", original.root), "post-use snapshot mutation")
 
+        subtree_source = base / "subtree-source"
+        subtree_source.mkdir()
+        (subtree_source / "content").write_bytes(b"subtree\n")
+        subtree_root = calculate(subtree_source).root
+        subtree_snapshot = base / "subtree-snapshot"
+        create_subtree_snapshot(subtree_source, subtree_snapshot, subtree_root)
+        verify_subtree(subtree_snapshot / "subtree", subtree_root)
+        (subtree_snapshot / "subtree" / "content").chmod(0o600)
+        (subtree_snapshot / "subtree" / "content").write_bytes(b"changed\n")
+        expect_failure(
+            lambda: verify_subtree(subtree_snapshot / "subtree", subtree_root),
+            "post-use subtree snapshot mutation",
+        )
+
 
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
@@ -574,6 +628,10 @@ def parser() -> argparse.ArgumentParser:
     snapshot_parser.add_argument("--source", type=Path, required=True)
     snapshot_parser.add_argument("--destination", type=Path, required=True)
     snapshot_parser.add_argument("--expected", required=True)
+    subtree_snapshot_parser = subparsers.add_parser("snapshot-subtree-create")
+    subtree_snapshot_parser.add_argument("--source", type=Path, required=True)
+    subtree_snapshot_parser.add_argument("--destination", type=Path, required=True)
+    subtree_snapshot_parser.add_argument("--expected", required=True)
     snapshot_verify = subparsers.add_parser("snapshot-verify")
     snapshot_verify.add_argument("--tree", type=Path, required=True)
     snapshot_verify.add_argument("--expected", required=True)
@@ -601,6 +659,9 @@ def main() -> int:
     elif args.command == "snapshot-create":
         result = create_snapshot(args.source, args.destination, args.expected)
         print(f"snapshot {args.destination / 'online'} verified {result.root}")
+    elif args.command == "snapshot-subtree-create":
+        result = create_subtree_snapshot(args.source, args.destination, args.expected)
+        print(f"subtree snapshot {args.destination / 'subtree'} verified {result.root}")
     else:
         fail(f"unsupported command: {args.command}")
     return 0

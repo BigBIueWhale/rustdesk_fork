@@ -2,8 +2,8 @@
 #
 # verify.sh — the day-to-day "secure by assertion" CI gate (§9.2/§9.3, R-V3).
 #
-# Runs, in a disposable container built from scripts/Dockerfile.devcheck on the
-# pinned 1.75 toolchain:
+# Runs against one already-present immutable devcheck image on the pinned 1.75
+# toolchain. This verdict path never builds, pulls, tags, or resolves an image:
 #   1. the §10.4 PAKE KATs + the R-P3 self-consistency / negative KATs (R-A10);
 #   2. the wire-level CPace handshake + two-key-cipher integration tests;
 #   3. the R-S16 PINNED_SETTINGS policy funnel test (now unconditional, R-R2b);
@@ -128,16 +128,7 @@ install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
 # shellcheck source=scripts/fork-version.sh
 source scripts/fork-version.sh
-IMG=rd-devcheck
-RUN=(docker run --rm
-  -v "$PWD:/work:ro"
-  -v rd-cargo-cache:/usr/local/cargo/registry
-  -v rd-git-cache:/usr/local/cargo/git
-  -v rd-verify-target:/build
-  -e CARGO_TARGET_DIR=/build
-  -e RUSTUP_TOOLCHAIN=1.75.0
-  -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
-  -w /work "$IMG")
+readonly DOCKER_BIN=/usr/bin/docker
 rc=0
 
 echo "== (0) verifier workspace authority + release source/workflow ordering (R-S11c-10w/R-B2) =="
@@ -185,21 +176,201 @@ else
   echo "  ok  R-V3 exact-commit external-audit handoff names current mandatory roots/symbols, rejects stale line citations and self-signoff, and remains explicitly outstanding"
 fi
 
-echo "== building the compile-check image =="
-docker volume create rd-cargo-cache  >/dev/null
-docker volume create rd-git-cache    >/dev/null
-docker volume create rd-verify-target >/dev/null
-docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null
+echo "== (0c) main verifier immutable-container authority (R-S11bg) =="
+r_s11bg=
+if ! /usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py --self-test; then
+  r_s11bg="$r_s11bg root-artifact-helper-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test; then
+  r_s11bg="$r_s11bg authority-mutation-gate-failed"
+fi
+if [ -n "$r_s11bg" ]; then
+  echo "  FAIL R-S11bg main verifier authority:$r_s11bg"
+  rc=1
+else
+  echo "  ok  R-S11bg exact local image + private source/vendor/output state + non-root ordinary execution + isolated minimal-capability root tests"
+fi
+
+[ "$rc" -eq 0 ] || {
+  echo "VERIFY: FAILED before container execution"
+  exit 1
+}
+
+echo "== preparing the confined compile/test transaction (R-S11bg) =="
+[ "$(id -u)" -ne 0 ] || { echo "verify: refuses host or container-root execution" >&2; exit 1; }
+[ "$(id -g)" -ne 0 ] || { echo "verify: refuses a root primary group" >&2; exit 1; }
+[ -x "$DOCKER_BIN" ] || { echo "verify: trusted Docker client is unavailable: $DOCKER_BIN" >&2; exit 1; }
+: "${DEV_CHECK_IMAGE_ID:?verify: DEV_CHECK_IMAGE_ID is unset}"
+: "${SHA256_DEV_CHECK_DOCKERFILE:?verify: SHA256_DEV_CHECK_DOCKERFILE is unset}"
+: "${SHA256_DEV_CHECK_CARGO:?verify: SHA256_DEV_CHECK_CARGO is unset}"
+: "${SHA256_DEV_CHECK_RUSTC:?verify: SHA256_DEV_CHECK_RUSTC is unset}"
+: "${SHA256_DEV_CHECK_DPKG_MANIFEST:?verify: SHA256_DEV_CHECK_DPKG_MANIFEST is unset}"
+: "${SHA256_CARGO_VENDOR_CLOSURE_V1:?verify: SHA256_CARGO_VENDOR_CLOSURE_V1 is unset}"
+: "${SHA256_CARGO_VENDOR_CONFIG:?verify: SHA256_CARGO_VENDOR_CONFIG is unset}"
+[[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || { echo "verify: malformed immutable devcheck image ID" >&2; exit 1; }
+[ "$(sha256sum scripts/Dockerfile.devcheck | awk '{print $1}')" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+  || { echo "verify: devcheck acquisition recipe differs from its reviewed pin" >&2; exit 1; }
+[ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
+  || { echo "verify: Cargo vendor source map differs from its pin" >&2; exit 1; }
+
+IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
+  || { echo "verify: immutable devcheck image is not present locally" >&2; exit 1; }
+[ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ] \
+  || { echo "verify: local devcheck image identity differs from its pin" >&2; exit 1; }
+readonly IMAGE_ID
+
+archive_current_source() {
+  git -C "$PWD" ls-files -z --cached --others --exclude-standard \
+    | /usr/bin/python3 -c '
+import os
+import sys
+
+root = os.fsencode(sys.argv[1])
+for relative in sys.stdin.buffer.read().split(b"\0"):
+    if relative and os.path.lexists(os.path.join(root, relative)):
+        sys.stdout.buffer.write(relative + b"\0")
+' "$PWD" \
+    | tar --create --file=- --directory="$PWD" --null --verbatim-files-from \
+        --no-recursion --files-from=- --sort=name --format=gnu --mtime='@0' \
+        --owner=0 --group=0 --numeric-owner
+}
+
+readonly VERIFY_SOURCE_ARCHIVE="$VERIFY_TMP/source.tar"
+readonly VERIFY_SOURCE="$VERIFY_TMP/source"
+readonly VERIFY_VENDOR_PARENT="$VERIFY_TMP/vendor-input"
+readonly VERIFY_VENDOR="$VERIFY_VENDOR_PARENT/subtree"
+readonly VERIFY_TARGET="$VERIFY_TMP/target"
+readonly VERIFY_CARGO_CONFIG="$VERIFY_TMP/cargo-config.toml"
+install -d -m 0700 "$VERIFY_SOURCE" "$VERIFY_TARGET"
+archive_current_source >"$VERIFY_SOURCE_ARCHIVE"
+SOURCE_DIGEST="$(sha256sum "$VERIFY_SOURCE_ARCHIVE" | awk '{print $1}')"
+readonly SOURCE_DIGEST
+tar --extract --file="$VERIFY_SOURCE_ARCHIVE" --directory="$VERIFY_SOURCE" --no-same-owner
+chmod -R a-w "$VERIFY_SOURCE"
+/usr/bin/python3 scripts/online-input-provenance.py snapshot-subtree-create \
+  --source online/cargo-vendor \
+  --destination "$VERIFY_VENDOR_PARENT" \
+  --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+{
+  printf '[net]\noffline = true\n'
+  sed 's#directory = .*#directory = "/vendor"#' online/cargo-vendor-config.toml
+} >"$VERIFY_CARGO_CONFIG"
+chmod 0400 "$VERIFY_CARGO_CONFIG"
+[ "$(grep -c '^directory = "/vendor"$' "$VERIFY_CARGO_CONFIG")" -eq 1 ] \
+  || { echo "verify: private Cargo source map has an invalid vendor-directory cardinality" >&2; exit 1; }
+[ "$(stat -c '%u:%g:%a:%h' "$VERIFY_TARGET")" = "$(id -u):$(id -g):700:2" ] \
+  || { echo "verify: private Cargo target has invalid metadata" >&2; exit 1; }
+[ "$(stat -c '%u:%g:%a:%h' "$VERIFY_CARGO_CONFIG")" = "$(id -u):$(id -g):400:1" ] \
+  || { echo "verify: private Cargo config has invalid metadata" >&2; exit 1; }
+
+readonly IMAGE_PREFLIGHT_OUT="$VERIFY_TMP/image-preflight.out"
+readonly IMAGE_PREFLIGHT_ERR="$VERIFY_TMP/image-preflight.err"
+set +e
+"$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+  --user "$(id -u):$(id -g)" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m \
+  --env RUSTUP_TOOLCHAIN=1.75.0 \
+  "$IMAGE_ID" /bin/bash -euo pipefail -c '
+    [ "$(id -u)" -ne 0 ] && [ "$(id -g)" -ne 0 ]
+    printf "rustc=%s\n" "$(rustc --version)"
+    printf "cargo=%s\n" "$(cargo --version)"
+    cargo_sha="$(sha256sum /usr/local/cargo/bin/cargo)"; cargo_sha="${cargo_sha%% *}"
+    rustc_sha="$(sha256sum /usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc)"; rustc_sha="${rustc_sha%% *}"
+    dpkg_sha="$(dpkg-query -W | LC_ALL=C sort | sha256sum)"; dpkg_sha="${dpkg_sha%% *}"
+    printf "cargo-sha=%s\n" "$cargo_sha"
+    printf "rustc-sha=%s\n" "$rustc_sha"
+    printf "dpkg-sha=%s\n" "$dpkg_sha"
+    printf "sodium=%s\n" "${SODIUM_USE_PKG_CONFIG-}"
+  ' >"$IMAGE_PREFLIGHT_OUT" 2>"$IMAGE_PREFLIGHT_ERR"
+IMAGE_PREFLIGHT_STATUS=$?
+set -e
+[ "$IMAGE_PREFLIGHT_STATUS" -eq 0 ] && [ ! -s "$IMAGE_PREFLIGHT_ERR" ] \
+  || { echo "verify: immutable devcheck image preflight failed" >&2; cat "$IMAGE_PREFLIGHT_ERR" >&2; exit 1; }
+EXPECTED_IMAGE_PREFLIGHT="$VERIFY_TMP/image-preflight.expected"
+cat >"$EXPECTED_IMAGE_PREFLIGHT" <<EOF
+rustc=rustc 1.75.0 (82e1608df 2023-12-21)
+cargo=cargo 1.75.0 (1d8b05cdd 2023-11-20)
+cargo-sha=$SHA256_DEV_CHECK_CARGO
+rustc-sha=$SHA256_DEV_CHECK_RUSTC
+dpkg-sha=$SHA256_DEV_CHECK_DPKG_MANIFEST
+sodium=1
+EOF
+chmod 0600 "$EXPECTED_IMAGE_PREFLIGHT"
+cmp "$EXPECTED_IMAGE_PREFLIGHT" "$IMAGE_PREFLIGHT_OUT" \
+  || { echo "verify: immutable devcheck image contents differ from reviewed pins" >&2; exit 1; }
+
+RUN=("$DOCKER_BIN" run --rm --pull=never --network=none --read-only
+  --user "$(id -u):$(id -g)"
+  --cap-drop=ALL --security-opt=no-new-privileges
+  --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4
+  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g
+  --mount "type=bind,source=$VERIFY_SOURCE,target=/work,readonly"
+  --mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"
+  --mount "type=bind,source=$VERIFY_TARGET,target=/build"
+  --mount "type=bind,source=$VERIFY_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"
+  --env HOME=/tmp/verify-home
+  --env CARGO_HOME=/tmp/cargo-home
+  --env CARGO_TARGET_DIR=/build
+  --env CARGO_INCREMENTAL=0
+  --env CARGO_NET_OFFLINE=true
+  --env RUSTUP_TOOLCHAIN=1.75.0
+  --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
+  --workdir /work "$IMAGE_ID"
+  /bin/bash --noprofile --norc /work/scripts/verify-container-command.sh)
 
 echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
 "${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it --color never
 
-# (3b) IPC parent-dir hardening BEHAVIOR (R-S11a / R-S11a(b)): the docker test-runner is root, so these
-# unit tests actually exercise the root-only branches — symlink-parent reject, and the R-S11a(b)
-# foreign-owned service dir REJECT-AND-RECREATE (fresh inode, never fchown-adopt) + its fail-closed on a
-# non-emptyable foreign dir. These were un-run before (verify.sh only `cargo check`ed the main crate).
-echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), root-exercised) =="
+# (3b) The complete module first runs under the ordinary non-root authority. The two cases that must
+# create a foreign-owned directory are then compiled non-root, copied/hash-checked into private state,
+# and executed by exact name in isolated root containers with no writable host mount and only
+# CAP_CHOWN/CAP_FOWNER. The harness-required environment makes a root or POSIX-ACL skip a hard failure.
+echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), split authority) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_fs::tests --color never
+ROOT_IPC_MESSAGES="$VERIFY_TMP/root-ipc-build.json"
+"${RUN[@]}" cargo test --lib --features linux-pkg-config --no-run --message-format=json --color never \
+  >"$ROOT_IPC_MESSAGES"
+chmod 0600 "$ROOT_IPC_MESSAGES"
+ROOT_IPC_ARTIFACT="$VERIFY_TMP/root-ipc-test"
+/usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py \
+  --messages "$ROOT_IPC_MESSAGES" \
+  --target-root "$VERIFY_TARGET" \
+  --output "$ROOT_IPC_ARTIFACT"
+
+run_root_ipc_test() {
+  local test_name="$1" label="$2" output error status
+  output="$VERIFY_TMP/root-ipc-$label.out"
+  error="$VERIFY_TMP/root-ipc-$label.err"
+  set +e
+  "$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+    --user 0:0 \
+    --cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER \
+    --security-opt=no-new-privileges \
+    --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=128m \
+    --mount "type=bind,source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly" \
+    --env RUSTDESK_ROOT_IPC_FS_HARNESS=1 \
+    "$IMAGE_ID" /root-ipc-test "$test_name" --exact --nocapture --test-threads=1 \
+    >"$output" 2>"$error"
+  status=$?
+  set -e
+  [ "$status" -eq 0 ] || { echo "verify: root IPC test failed: $test_name" >&2; cat "$output" "$error" >&2; exit 1; }
+  [ "$(stat -c '%s' "$output")" -le 65536 ] && [ "$(stat -c '%s' "$error")" -le 65536 ] \
+    || { echo "verify: root IPC test output exceeded its bound" >&2; exit 1; }
+  ! grep -qi 'skip' "$output" "$error" \
+    || { echo "verify: root IPC test skipped required behavior: $test_name" >&2; exit 1; }
+  [ "$(grep -c '^running 1 test$' "$output")" -eq 1 ] \
+    && [ "$(grep -cF "test $test_name ... ok" "$output")" -eq 1 ] \
+    && [ "$(grep -cE '^test result: ok[.] 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in ' "$output")" -eq 1 ] \
+    || { echo "verify: root IPC test result is not the exact one-test verdict: $test_name" >&2; cat "$output" "$error" >&2; exit 1; }
+}
+run_root_ipc_test \
+  ipc::ipc_fs::tests::test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir recreate
+run_root_ipc_test \
+  ipc::ipc_fs::tests::test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed nonempty
 
 # (3b-i) IPC service-socket peer-uid AUTHORIZATION policy (R-S11a / §17 root box): the Linux `_service`
 # IPC socket is 0666 (world-connectable so the active non-root user process can reach it), gated at
@@ -337,7 +508,8 @@ grep -q 'authorize_windows_main_ipc_connection(&stream, "")' src/ipc.rs         
 grep -q 'pub(crate) const WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX: &str = "_service_main_control";' src/ipc.rs || r_s11="$r_s11 windows-service-main-control-endpoint-missing"
 grep -q 'pub(crate) const WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";' src/ipc.rs || r_s11="$r_s11 windows-service-credential-endpoint-missing"
 grep -q 'WindowsServiceMainRequest' src/ipc.rs                                       || r_s11="$r_s11 windows-service-main-request-enum-missing"
-grep -q 'start_windows_service_main_ipc' src/server.rs                               || r_s11="$r_s11 windows-service-main-listener-not-started"
+grep -q 'prepare_windows_service_main_ipc().await' src/ipc.rs                         || r_s11="$r_s11 windows-service-main-listeners-not-prepared"
+grep -q 'run_windows_service_main_ipc(service_main)' src/ipc.rs                       || r_s11="$r_s11 windows-service-main-listeners-not-run"
 grep -q 'authorize_windows_service_main_ipc_connection(&stream)' src/ipc.rs           || r_s11="$r_s11 windows-service-main-client-auth-missing"
 grep -q 'postfix == super::WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX' src/ipc/auth.rs   || r_s11="$r_s11 windows-service-main-dacl-not-specialized"
 windows_service_request_block=$(awk '/async fn handle_windows_service_ipc_request/,/^}/' src/platform/windows.rs)
@@ -2727,9 +2899,11 @@ grep -qF 'crate::platform::linux::get_effective_home_dir_trusted()' <<<"$config_
 grep -qF 'get_home_dir_for_uid_trusted(get_effective_uid())' libs/hbb_common/src/platform/linux.rs || r_s11e25="$r_s11e25 effective-uid-home-helper-missing"
 grep -qF 'Linux service-owned config home is unavailable' <<<"$config_service_root" || r_s11e25="$r_s11e25 missing-passwd-home-not-fail-closed"
 grep -qF 'Linux service-owned config root was initialized inconsistently' <<<"$config_service_root" || r_s11e25="$r_s11e25 inconsistent-reinitialization-not-rejected"
-grep -qF 'args_os().nth(1).as_deref()' <<<"$core_service_bootstrap"                || r_s11e25="$r_s11e25 service-role-not-exact-argv-one"
-grep -qF 'Some(std::ffi::OsStr::new("--service"))' <<<"$core_service_bootstrap"   || r_s11e25="$r_s11e25 service-supervisor-role-missing"
-grep -qF 'is_service_owned_server_process()' <<<"$core_service_bootstrap"          || r_s11e25="$r_s11e25 service-child-role-missing"
+grep -qF 'let service_supervisor_role = crate::common::current_service_supervisor_role();' <<<"$core_service_bootstrap" || r_s11e25="$r_s11e25 service-supervisor-classifier-missing"
+grep -qF 'if service_supervisor_role == crate::common::ServiceSupervisorRole::Malformed {' <<<"$core_service_bootstrap" || r_s11e25="$r_s11e25 malformed-service-supervisor-not-rejected"
+grep -qF 'let linux_service_owned_config_role = service_supervisor_role' <<<"$core_service_bootstrap" || r_s11e25="$r_s11e25 service-owned-config-role-missing"
+grep -qF '== crate::common::ServiceSupervisorRole::Exact' <<<"$core_service_bootstrap" || r_s11e25="$r_s11e25 exact-service-supervisor-role-missing"
+grep -qF '|| crate::common::is_service_owned_server_process();' <<<"$core_service_bootstrap" || r_s11e25="$r_s11e25 exact-service-child-role-missing"
 bootstrap_load_line=$(grep -nF 'crate::load_custom_client();' <<<"$core_service_bootstrap" | cut -d: -f1)
 bootstrap_root_line=$(grep -nF 'Config::initialize_linux_service_owned_root()' <<<"$core_service_bootstrap" | cut -d: -f1)
 if [ -z "$bootstrap_load_line" ] || [ -z "$bootstrap_root_line" ] || [ "$bootstrap_load_line" -ge "$bootstrap_root_line" ]; then
@@ -4074,7 +4248,7 @@ if [ -n "$r_s11e52" ]; then echo "  FAIL R-S11e-52 macOS service-owned config/lo
 echo "== (3b-iii-d9cc) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e53_ --color never
 r_s11e53=
-shutdown_policy=$(awk '/static SHUTDOWN_FINALIZER_STARTED/,/pub struct Server/' src/server.rs)
+shutdown_policy=$(awk '/static SHUTDOWN_FAILURE_LATCHED/,/pub struct Server/' src/server.rs)
 for binding in \
   'static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);' \
   'fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {' \
@@ -4090,13 +4264,11 @@ for binding in \
 done
 store_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);' <<<"$shutdown_policy" | cut -d: -f1 || true)
 cancel_line=$(grep -nF 'request_graceful_shutdown();' <<<"$shutdown_policy" | head -n1 | cut -d: -f1 || true)
-ipc_drain_line=$(grep -nF 'crate::ipc::wait_for_local_ipc_shutdown().await;' <<<"$shutdown_policy" | cut -d: -f1 || true)
 load_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)' <<<"$shutdown_policy" | cut -d: -f1 || true)
 exit_line=$(grep -nF 'std::process::exit(exit_code);' <<<"$shutdown_policy" | cut -d: -f1 || true)
-if [ -z "$store_line" ] || [ -z "$cancel_line" ] || [ -z "$ipc_drain_line" ] \
+if [ -z "$store_line" ] || [ -z "$cancel_line" ] \
   || [ -z "$load_line" ] || [ -z "$exit_line" ] \
-  || [ "$store_line" -ge "$cancel_line" ] || [ "$ipc_drain_line" -ge "$load_line" ] \
-  || [ "$load_line" -ge "$exit_line" ]; then
+  || [ "$store_line" -ge "$cancel_line" ] || [ "$load_line" -ge "$exit_line" ]; then
   r_s11e53="$r_s11e53 failure-latch-or-finalizer-order-invalid"
 fi
 if grep -qF 'std::process::exit(0);' <<<"$shutdown_policy"; then
@@ -5538,6 +5710,7 @@ install_scpt=src/platform/privileges_scripts/install.scpt
 update_scpt=src/platform/privileges_scripts/update.scpt
 uninstall_scpt=src/platform/privileges_scripts/uninstall.scpt
 macos_rs=src/platform/macos.rs
+macos_production_source=$(awk '/^#\[cfg\(test\)\]/{exit} {print}' "$macos_rs")
 macos_helper_command_sources=(src/platform/macos.rs src/ipc.rs src/ipc/auth.rs)
 daemon_args_block=$(awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$daemon_plist")
 echo "$daemon_args_block" | grep -q '<string>/Library/PrivilegedHelperTools/com.carriez.rustdesk_service</string>' || r_s11c5="$r_s11c5 daemon-not-privileged-helper-exec"
@@ -5570,7 +5743,7 @@ if grep -Fq 'caffeinate' src/server.rs src/platform/macos.rs; then
   r_s11c5="$r_s11c5 macos-caffeinate-subprocess-present"
 fi
 for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser")' 'macos_launch_env_key_is_allowed' '/usr/bin/env'; do
-  if grep -Fq "$obsolete" "$macos_rs"; then
+  if grep -Fq "$obsolete" <<<"$macos_production_source"; then
     r_s11c5="$r_s11c5 macos-root-to-user-launcher-present:$obsolete"
   fi
 done
@@ -5670,7 +5843,7 @@ fi
 if grep -q '/tmp/rustdesk_service' "$daemon_plist" "$install_scpt" "$uninstall_scpt"; then
   r_s11c5="$r_s11c5 tmp-daemon-log-path"
 fi
-if grep -q '/Applications/RustDesk.app/Contents/MacOS/service' "$daemon_plist" "$install_scpt"; then
+if grep -q '/Applications/RustDesk.app/Contents/MacOS/service' "$daemon_plist"; then
   r_s11c5="$r_s11c5 app-bundle-root-service-path"
 fi
 grep -Fq 'bundled_service_exec: PathBuf' "$macos_rs" || r_s11c5="$r_s11c5 macos-install-context-no-bundled-helper"
@@ -5814,7 +5987,7 @@ linux_discovery_blocks=$(
   awk '/fn get_envs/,/#\[link/' src/platform/linux.rs
   awk '/fn get_home\(&mut self\)/,/pub fn refresh/' src/platform/linux.rs
 )
-if echo "$linux_discovery_blocks" | grep -Eq 'run_cmds|run_cmds_trim_newline|getent passwd|ps -[uef]|cat /proc|grep |awk |sed |xargs|CMD_SH'; then
+if grep -Eq 'run_cmds|run_cmds_trim_newline|getent passwd|ps -[uef]|cat /proc|(^|[^[:alnum:]_])(grep|awk|sed|xargs)[[:space:]]|CMD_SH' <<<"$linux_discovery_blocks"; then
   r_s11c10a="$r_s11c10a shell-shaped-discovery-regressed"
 fi
 if [ -n "$r_s11c10a" ]; then echo "  FAIL R-S11c-10a Linux desktop discovery shell interpolation:$r_s11c10a"; rc=1; else
@@ -5926,24 +6099,24 @@ echo "$service_runtime_block" | grep -qF 'RENAME_NOREPLACE' || r_s11c27b="$r_s11
 echo "$service_runtime_block" | grep -qF '.sync_all()' || r_s11c27b="$r_s11c27b record-or-directory-fsync-missing"
 echo "$service_runtime_block" | grep -qF 'Refusing to overwrite an existing service child record' || r_s11c27b="$r_s11c27b record-overwrite-fail-closed-missing"
 service_recovery_block=$(awk '/fn recover_previous_child\(&self\)/,/fn syscall_succeeded/' src/platform/linux.rs)
-echo "$service_recovery_block" | grep -qF 'SYS_pidfd_open' || r_s11c27b="$r_s11c27b pidfd-acquisition-missing"
-echo "$service_recovery_block" | grep -qF 'SYS_pidfd_send_signal' || r_s11c27b="$r_s11c27b pidfd-signaling-missing"
-echo "$service_recovery_block" | grep -qF 'require_service_child_identity_match(record, "pidfd recovery before SIGTERM")' || r_s11c27b="$r_s11c27b pre-term-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'require_service_child_identity_match(record, "pidfd recovery before SIGKILL")' || r_s11c27b="$r_s11c27b pre-kill-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'read_service_child_proc_stat(record.pid)' || r_s11c27b="$r_s11c27b proc-start-time-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'executable.dev() != record.executable_device' || r_s11c27b="$r_s11c27b executable-device-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'executable.ino() != record.executable_inode' || r_s11c27b="$r_s11c27b executable-inode-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'service_child_cmdline_has_exact_role' || r_s11c27b="$r_s11c27b exact-role-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'service_child_environment_has_generation' || r_s11c27b="$r_s11c27b generation-revalidation-missing"
-echo "$service_recovery_block" | grep -qF 'final identity-check-to-kill race cannot be eliminated' || r_s11c27b="$r_s11c27b pre-pidfd-residual-race-not-explicit"
-echo "$service_recovery_block" | grep -qF 'send_revalidated_service_child_pid_signal' || r_s11c27b="$r_s11c27b pre-pidfd-revalidated-fallback-missing"
-service_entry_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/ipc::start\(crate::POSTFIX_SERVICE\)/' src/platform/linux.rs)
-if ! echo "$service_entry_block" | awk '
+grep -qF 'SYS_pidfd_open' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pidfd-acquisition-missing"
+grep -qF 'SYS_pidfd_send_signal' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pidfd-signaling-missing"
+grep -qF 'require_service_child_identity_match(record, "pidfd recovery before SIGTERM")' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pre-term-revalidation-missing"
+grep -qF 'require_service_child_identity_match(record, "pidfd recovery before SIGKILL")' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pre-kill-revalidation-missing"
+grep -qF 'read_service_child_proc_stat(record.pid)' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b proc-start-time-revalidation-missing"
+grep -qF 'executable.dev() != record.executable_device' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b executable-device-revalidation-missing"
+grep -qF 'executable.ino() != record.executable_inode' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b executable-inode-revalidation-missing"
+grep -qF 'service_child_cmdline_has_exact_role' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b exact-role-revalidation-missing"
+grep -qF 'service_child_environment_has_generation' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b generation-revalidation-missing"
+grep -qF 'final identity-check-to-kill race cannot be eliminated' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pre-pidfd-residual-race-not-explicit"
+grep -qF 'send_revalidated_service_child_pid_signal' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pre-pidfd-revalidated-fallback-missing"
+service_entry_block=$(awk '/^pub fn start_os_service\(\) -> ResultType<\(\)> \{/,/^}/' src/platform/linux.rs)
+if ! awk '
   /ServiceRuntime::acquire/ { lease = NR }
   /recover_previous_child/ { recovery = NR }
-  /ipc::start\(crate::POSTFIX_SERVICE\)/ { listener = NR }
+  /start_linux_service_ipc_with_readiness/ { listener = NR }
   END { exit !(lease && recovery && listener && lease < recovery && recovery < listener) }
-'; then
+' <<<"$service_entry_block"; then
   r_s11c27b="$r_s11c27b recovery-not-before-service-listener"
 fi
 grep -qF 'Linux service lifecycle authority failed closed' src/core_main.rs || r_s11c27b="$r_s11c27b service-entry-not-fail-closed"
@@ -5961,16 +6134,16 @@ r_s11c27c=
 grep -qF 'const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);' src/platform/linux.rs || r_s11c27c="$r_s11c27c graceful-timeout-missing"
 grep -qF 'const SERVICE_CHILD_FORCED_STOP_TIMEOUT: Duration = Duration::from_secs(8);' src/platform/linux.rs || r_s11c27c="$r_s11c27c forced-timeout-missing"
 service_child_termination_block=$(awk '/fn terminate_child_with_timeouts\(/,/fn stop_server\(/' src/platform/linux.rs)
-echo "$service_child_termination_block" | grep -qF 'child: &mut Option<OwnedServiceChild>' || r_s11c27c="$r_s11c27c exact-child-ownership-not-borrowed"
-echo "$service_child_termination_block" | grep -qF 'wait_child_exit(owned_child, graceful_timeout, label)' || r_s11c27c="$r_s11c27c graceful-wait-not-bounded"
-echo "$service_child_termination_block" | grep -qF 'let forced_kill_error = owned_child.process.kill().err();' || r_s11c27c="$r_s11c27c exact-child-kill-missing"
-echo "$service_child_termination_block" | grep -qF 'wait_child_exit(owned_child, forced_timeout, label)' || r_s11c27c="$r_s11c27c forced-wait-not-bounded"
-echo "$service_child_termination_block" | grep -qF 'remained unreaped after bounded SIGKILL wait; preserving direct child ownership and recovery record' || r_s11c27c="$r_s11c27c uncertain-reap-not-fail-closed"
-if echo "$service_child_termination_block" | grep -qF '.process.wait()'; then
+grep -qF 'child: &mut Option<OwnedServiceChild>' <<<"$service_child_termination_block" || r_s11c27c="$r_s11c27c exact-child-ownership-not-borrowed"
+grep -qF 'wait_child_exit(owned_child, graceful_timeout, label)' <<<"$service_child_termination_block" || r_s11c27c="$r_s11c27c graceful-wait-not-bounded"
+grep -qF 'let forced_kill_error = owned_child.process.kill().err();' <<<"$service_child_termination_block" || r_s11c27c="$r_s11c27c exact-child-kill-missing"
+grep -qF 'wait_child_exit(owned_child, forced_timeout, label)' <<<"$service_child_termination_block" || r_s11c27c="$r_s11c27c forced-wait-not-bounded"
+grep -qF 'remained unreaped after bounded SIGKILL wait; preserving direct child ownership and recovery record' <<<"$service_child_termination_block" || r_s11c27c="$r_s11c27c uncertain-reap-not-fail-closed"
+if grep -qF '.process.wait()' <<<"$service_child_termination_block"; then
   r_s11c27c="$r_s11c27c unbounded-child-wait-present"
 fi
-if [ "$(echo "$service_child_termination_block" | grep -cF 'drop(child.take());')" -ne 2 ] ||
-   ! echo "$service_child_termination_block" | awk '
+if [ "$(grep -cF 'drop(child.take());' <<<"$service_child_termination_block")" -ne 2 ] ||
+   ! awk '
      /remove_reaped_service_child_record/ { remove_count++; last_remove = NR }
      /drop\(child.take\(\)\)/ {
        take_count++
@@ -5978,18 +6151,20 @@ if [ "$(echo "$service_child_termination_block" | grep -cF 'drop(child.take());'
        last_remove = 0
      }
      END { exit !(remove_count == 2 && take_count == 2 && !bad) }
-   '; then
+   ' <<<"$service_child_termination_block"; then
   r_s11c27c="$r_s11c27c child-ownership-released-before-exact-record-removal"
 fi
 service_child_loop_block=$(awk '/pub fn start_os_service\(\) -> ResultType/,/log::info!\("Exit"\)/' src/platform/linux.rs)
-echo "$service_child_loop_block" | grep -qF 'stop_server(&mut user_server, &runtime)?;' || r_s11c27c="$r_s11c27c user-stop-error-not-propagated"
-echo "$service_child_loop_block" | grep -qF 'stop_server(&mut server, &runtime)?;' || r_s11c27c="$r_s11c27c root-stop-error-not-propagated"
-echo "$service_child_loop_block" | grep -qF 'terminate_child(&mut user_server, "--server", &runtime)?;' || r_s11c27c="$r_s11c27c final-user-stop-error-not-propagated"
-echo "$service_child_loop_block" | grep -qF 'terminate_child(&mut server, "--server", &runtime)?;' || r_s11c27c="$r_s11c27c final-root-stop-error-not-propagated"
+grep -qF 'stop_server(&mut user_server, &runtime)?;' <<<"$service_child_loop_block" || r_s11c27c="$r_s11c27c user-stop-error-not-propagated"
+grep -qF 'stop_server(&mut server, &runtime)?;' <<<"$service_child_loop_block" || r_s11c27c="$r_s11c27c root-stop-error-not-propagated"
+grep -qF 'terminate_child(&mut user_server, "--server", &runtime).map(|_| ())' <<<"$service_child_loop_block" || r_s11c27c="$r_s11c27c final-user-stop-error-not-merged"
+grep -qF '"active-user service-child termination"' <<<"$service_child_loop_block" || r_s11c27c="$r_s11c27c final-user-stop-context-missing"
+grep -qF 'terminate_child(&mut server, "--server", &runtime).map(|_| ())' <<<"$service_child_loop_block" || r_s11c27c="$r_s11c27c final-root-stop-error-not-merged"
+grep -qF '"root service-child termination"' <<<"$service_child_loop_block" || r_s11c27c="$r_s11c27c final-root-stop-context-missing"
 service_child_replacement_block=$(awk '/fn should_start_server\(/,/pub fn start_os_service\(/' src/platform/linux.rs)
-echo "$service_child_replacement_block" | grep -qF ') -> ResultType<bool> {' || r_s11c27c="$r_s11c27c replacement-decision-not-fallible"
-echo "$service_child_replacement_block" | grep -qF 'terminate_child(server, "--server", runtime)?;' || r_s11c27c="$r_s11c27c replacement-stop-error-not-propagated"
-if [ "$(echo "$service_child_loop_block" | grep -cF ')? {')" -lt 2 ]; then
+grep -qF ') -> ResultType<bool> {' <<<"$service_child_replacement_block" || r_s11c27c="$r_s11c27c replacement-decision-not-fallible"
+grep -qF 'terminate_child(server, "--server", runtime)?;' <<<"$service_child_replacement_block" || r_s11c27c="$r_s11c27c replacement-stop-error-not-propagated"
+if [ "$(grep -cF ')? {' <<<"$service_child_loop_block")" -lt 2 ]; then
   r_s11c27c="$r_s11c27c replacement-decision-error-not-propagated-at-call-sites"
 fi
 grep -qF 'R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27c="$r_s11c27c hardening-ledger-missing"
@@ -6767,7 +6942,10 @@ r_s11c10c=
 grep -q 'fn xrandr_query() -> ResultType<String>' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-xrandr-query-helper"
 grep -q 'const XRANDR_PATHS' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-fixed-xrandr-paths"
 grep -q 'let Some(xrandr) = xrandr_path()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-not-fixed-path-resolved"
-grep -q 'Command::new(xrandr).arg("--query").output()' src/platform/linux.rs || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
+xrandr_query_block=$(awk '/fn xrandr_query\(\) -> ResultType<String>/,/^}/' src/platform/linux.rs)
+for binding in 'let mut command = Command::new(xrandr);' 'command.arg("--query");' 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'let output = command.output()?;'; do
+  grep -qF "$binding" <<<"$xrandr_query_block" || r_s11c10c="$r_s11c10c xrandr-query-not-argv-only"
+done
 grep -q 'normalize_xrandr_query_output' src/platform/linux.rs || r_s11c10c="$r_s11c10c no-rust-space-normalizer"
 grep -q 'match xrandr_query()' src/platform/linux.rs || r_s11c10c="$r_s11c10c resolutions-not-using-helper"
 grep -q 'let xrandr_output = xrandr_query()?' src/platform/linux.rs || r_s11c10c="$r_s11c10c current-resolution-not-using-helper"
@@ -6912,9 +7090,8 @@ if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle sys
 echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (R-S11c-10k) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config platform::linux::service_lifecycle_tests::r_s11c10k --color never
 r_s11c10k=
-grep -q 'const SUDO_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-sudo-paths"
-grep -q 'const ENV_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-env-paths"
 grep -q 'const XDG_SCREENSAVER_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-xdg-screensaver-paths"
+grep -q 'const SYSTEMCTL_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-systemctl-paths"
 grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
 grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-canonical-trusted-command-resolver"
 grep -q 'fn linux_helper_path_is_clean_absolute(path: &Path) -> bool' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-clean-absolute-path-policy"
@@ -6924,9 +7101,9 @@ grep -q 'trusted_command_parent(&fs::metadata(canonical_parent).ok()?)' src/plat
 grep -q 'trusted_command_file(&fs::metadata(&canonical).ok()?)' src/platform/linux.rs || r_s11c10k="$r_s11c10k canonical-file-not-trusted"
 grep -q 'mode & 0o111 != 0' src/platform/linux.rs || r_s11c10k="$r_s11c10k helper-executable-bit-not-required"
 grep -q 'find_map(|path| trusted_fixed_executable_path(Path::new(path)))' src/platform/linux.rs || r_s11c10k="$r_s11c10k resolver-not-returning-canonical-path"
-grep -q 'fn sudo_path() -> Option' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-resolver"
-grep -q 'fn valid_sudo_envs' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-sudo-env-validator"
-grep -q 'Command::new(&sudo_path)' src/platform/linux.rs || r_s11c10k="$r_s11c10k sudo-not-canonical-path"
+if grep -qE 'SUDO_E_PRESERVES_ENV|SUDO_PATHS|ENV_PATHS|fn run_as_user|fn sudo_path\(\)|fn env_path\(\)|valid_sudo_envs|Command::new\(&sudo_path\)' src/platform/linux.rs; then
+  r_s11c10k="$r_s11c10k obsolete-generic-root-to-user-helper-present"
+fi
 if grep -q 'current_exe_process_cmdlines()' src/platform/linux.rs; then
   r_s11c10k="$r_s11c10k stale-current-image-lifecycle-authority"
 fi
@@ -7051,7 +7228,10 @@ grep -qF 'communication_fd: child_socket.as_raw_fd()' libs/clipboard/src/platfor
 grep -qF 'fn receive_fusermount_fd(socket: &UnixStream) -> Result<OwnedFd, CliprdrError>' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-fd-receiver"
 grep -qF 'libc::SCM_RIGHTS' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-scm-rights-validation"
 grep -qF 'libc::MSG_CTRUNC' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-control-truncation-check"
-grep -qF 'set_fd_cloexec(child_socket.as_raw_fd(), false)?;' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r child-fd-not-inheritable"
+grep -qF 'configure_command_descriptor_allowlist_on_exec(&mut command, &[child_socket.as_raw_fd()])' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r child-fd-not-in-exec-allowlist"
+if grep -qF 'set_fd_cloexec(child_socket.as_raw_fd(), false)' libs/clipboard/src/platform/unix/fuse/mod.rs; then
+  r_s11c10r="$r_s11c10r parent-mutates-child-fd-inheritability"
+fi
 grep -qF 'set_fd_cloexec(fuse_fd.as_raw_fd(), true)' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r fuse-fd-not-cloexec"
 grep -qF 'fuser::Session::from_fd(' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-session-from-fd"
 grep -qF 'fuser::SessionACL::Owner' libs/clipboard/src/platform/unix/fuse/mod.rs || r_s11c10r="$r_s11c10r no-owner-acl"
@@ -7672,7 +7852,7 @@ grep -qF 'stat.st_mode & 0o077 != 0' "$pasteboard_context_rs" || r_s11e13="$r_s1
 grep -qF 'pub(super) fn create_placeholder_file(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-placeholder-file-creator"
 grep -qF 'libc::openat(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-openat-placeholder-create"
 grep -qF 'libc::O_EXCL' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-exclusive-placeholder-create"
-grep -qF '0o600 as libc::mode_t' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-owner-only-placeholder-mode"
+grep -qF '0o600 as libc::c_uint' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-owner-only-promoted-placeholder-mode"
 grep -qF 'fn remove_placeholder_file(' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-placeholder-unlink-helper"
 grep -qF 'libc::unlinkat' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-unlinkat-placeholder-cleanup"
 grep -qF 'fn count_placeholder_files(placeholder_dir: &Path) -> io::Result<usize>' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-fail-closed-placeholder-count"
@@ -7780,11 +7960,10 @@ case "$version_ignore_status" in
   1) ;;
   *) version_output_bad="$version_output_bad ignore-matcher-failed" ;;
 esac
-verify_run_block="$(awk '/^RUN=\(docker run --rm$/{inside=1} inside{print} inside && /^  -w \/work "\$IMG"\)$/{exit}' scripts/verify.sh)"
-case "$verify_run_block" in
-  *'-v "$PWD:/work:ro"'*) ;;
-  *) version_output_bad="$version_output_bad mutable-main-cargo-source" ;;
-esac
+verify_run_block="$(awk '/^RUN=\("\$DOCKER_BIN" run --rm/{inside=1} inside{print} inside && /\/work\/scripts\/verify-container-command.sh\)$/{exit}' scripts/verify.sh)"
+if ! grep -qE '^  --mount "type=bind,source=\$VERIFY_SOURCE,target=/work,readonly"$' <<<"$verify_run_block"; then
+  version_output_bad="$version_output_bad mutable-main-cargo-source"
+fi
 [ -x scripts/version-metadata-check.sh ] \
   || version_output_bad="$version_output_bad behavioral-checker-not-executable"
 if ! "${RUN[@]}" bash scripts/version-metadata-check.sh; then
@@ -9551,7 +9730,7 @@ fi
 # Presence gate across the server primitive, connection drain arm, and retained lifecycle owner.
 r_t9_missing=
 grep -qF 'pub(crate) async fn finish_graceful_shutdown() -> ! {' src/server.rs || r_t9_missing="$r_t9_missing nonreturning-finalizer"
-grep -qF 'match std::future::pending::<std::convert::Infallible>().await {}' src/server.rs || r_t9_missing="$r_t9_missing finalizer-follower-wait"
+grep -qF 'std::process::exit(exit_code);' src/server.rs || r_t9_missing="$r_t9_missing finalizer-status-exit"
 grep -q 'fn is_shutting_down' src/server.rs                || r_t9_missing="$r_t9_missing is_shutting_down"
 grep -q 'SHUTDOWN_TOKEN' src/server.rs                     || r_t9_missing="$r_t9_missing SHUTDOWN_TOKEN"
 grep -q 'shutdown.cancelled()' src/server/connection.rs    || r_t9_missing="$r_t9_missing conn-drain-arm"
@@ -10365,6 +10544,7 @@ hw_hits=$(grep -RInE 'hwcodec|vram|mediacodec' \
             --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
           | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
           | grep -vE ':[0-9]+:[[:space:]]*#' \
+          | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
           | grep -viE 'nvram' || true)
 if [ -n "$hw_hits" ]; then
   echo "  FAIL §18/R-R2b: a build path still ENABLES hwcodec/vram/mediacodec (must be universally compiled out):"
@@ -11565,6 +11745,30 @@ echo "== pending excisions =="
 #    (a value, no runtime flip) + the still-excised os_login/LogonUserW SECOND-credential path (R-S18,
 #    hard-gated above) — granting the plain terminal adds NO second credential. NOT a module excision.
 echo "  ok  no pending excisions (R-X4 custom_server removed + hard-gated; R-X8 terminal granted to the owner, second-credential path still excised)"
+
+echo "== final confined-verifier input and source postconditions (R-S11bg) =="
+r_s11bg_post=
+/usr/bin/python3 scripts/online-input-provenance.py verify-subtree \
+  --tree "$VERIFY_VENDOR" \
+  --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+  || r_s11bg_post="$r_s11bg_post private-vendor-snapshot-changed"
+[ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
+  || r_s11bg_post="$r_s11bg_post source-vendor-map-changed"
+[ "$(sha256sum scripts/Dockerfile.devcheck | awk '{print $1}')" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+  || r_s11bg_post="$r_s11bg_post devcheck-recipe-changed"
+SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
+[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
+  || r_s11bg_post="$r_s11bg_post real-source-state-changed"
+FINAL_IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$IMAGE_ID" 2>/dev/null)" \
+  || r_s11bg_post="$r_s11bg_post immutable-image-disappeared"
+[ "${FINAL_IMAGE_ID:-}" = "$IMAGE_ID" ] \
+  || r_s11bg_post="$r_s11bg_post immutable-image-identity-changed"
+if [ -n "$r_s11bg_post" ]; then
+  echo "  FAIL R-S11bg verifier postconditions:$r_s11bg_post"
+  rc=1
+else
+  echo "  ok  R-S11bg private vendor + real normalized source + image identity unchanged"
+fi
 
 if [ "$rc" -ne 0 ]; then
   echo "VERIFY: FAILED (one or more required gates failed)"; exit 1

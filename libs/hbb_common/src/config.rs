@@ -1014,12 +1014,6 @@ macro_rules! serde_field_bool {
     };
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum NetworkType {
-    Direct,
-    ProxySocks,
-}
-
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Config {
     #[serde(
@@ -1047,16 +1041,6 @@ pub struct Config {
     key_pair: KeyPair, // sk, pk
 }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize, Clone)]
-pub struct Socks5Server {
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub proxy: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub username: String,
-    #[serde(default, deserialize_with = "deserialize_string")]
-    pub password: String,
-}
-
 // more variable configs
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Config2 {
@@ -1066,12 +1050,6 @@ pub struct Config2 {
     nat_type: i32,
     #[serde(default, deserialize_with = "deserialize_i32")]
     serial: i32,
-    // T2 (excise): the local-settings-PIN field was removed with that subsystem (R-G1 /
-    // excise-don't-disable). Config2 has no #[serde(deny_unknown_fields)], so an OLD config
-    // file that still carries the now-removed key loads fine — serde ignores the unknown field.
-    #[serde(default)]
-    socks: Option<Socks5Server>,
-
     // the other scalar value must before this
     #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
     pub options: HashMap<String, String>,
@@ -1349,19 +1327,7 @@ fn patch(path: PathBuf) -> PathBuf {
 
 impl Config2 {
     fn load() -> Config2 {
-        let mut config = Config::load_::<Config2>("2");
-        let mut store = false;
-        if let Some(mut socks) = config.socks {
-            let (password, _, store2) =
-                decrypt_str_or_original(&socks.password, PASSWORD_ENC_VERSION);
-            socks.password = password;
-            config.socks = Some(socks);
-            store |= store2;
-        }
-        if store {
-            config.store();
-        }
-        config
+        Config::load_::<Config2>("2")
     }
 
     pub fn file() -> PathBuf {
@@ -1369,19 +1335,7 @@ impl Config2 {
     }
 
     fn store(&self) {
-        let mut config = self.clone();
-        let stored = Config::load_::<Config2>("2");
-        if let Some(mut socks) = config.socks {
-            let stored_password = stored
-                .socks
-                .as_ref()
-                .map(|socks| socks.password.as_str())
-                .unwrap_or_default();
-            socks.password =
-                keep_encrypted_storage_if_plaintext_unchanged(&socks.password, stored_password);
-            config.socks = Some(socks);
-        }
-        Config::store_(&config, "2");
+        Config::store_(self, "2");
     }
 
     pub fn get() -> Config2 {
@@ -3639,126 +3593,6 @@ impl Config {
         CONFIG.read().unwrap().salt.clone()
     }
 
-    pub fn set_socks(socks: Option<Socks5Server>) {
-        // R-D6(d)(iii)/R-S11: the fork is direct-only (no proxy). proxy-url is pinned empty in
-        // PINNED_SETTINGS, but set_socks bypasses the `get_option` funnel and the inherited guard
-        // only checks the RustDesk-SIGNED `OVERWRITE_SETTINGS` (empty on a fork) — so it MUST honor
-        // the pin DIRECTLY here; the historical local IPC proxy write would otherwise have set a
-        // proxy as a local-MITM / egress-reroute primitive, and the trigger that flips
-        // CheckTestNatType's `is_direct` to fire a STUN probe (an R-A4 zero-UDP violation). Inert
-        // whenever proxy-url is pinned (always, on a fork build).
-        if pinned_setting(keys::OPTION_PROXY_URL).is_some() {
-            return;
-        }
-        if OVERWRITE_SETTINGS
-            .read()
-            .unwrap()
-            .contains_key(keys::OPTION_PROXY_URL)
-        {
-            return;
-        }
-
-        let mut config = CONFIG2.write().unwrap();
-        if config.socks == socks {
-            return;
-        }
-        if config.socks.is_none() {
-            let equal_to_default = |key: &str, value: &str| {
-                DEFAULT_SETTINGS
-                    .read()
-                    .unwrap()
-                    .get(key)
-                    .map_or(false, |x| *x == value)
-            };
-            let contains_url = DEFAULT_SETTINGS
-                .read()
-                .unwrap()
-                .get(keys::OPTION_PROXY_URL)
-                .is_some();
-            let url = equal_to_default(
-                keys::OPTION_PROXY_URL,
-                &socks.clone().unwrap_or_default().proxy,
-            );
-            let username = equal_to_default(
-                keys::OPTION_PROXY_USERNAME,
-                &socks.clone().unwrap_or_default().username,
-            );
-            let password = equal_to_default(
-                keys::OPTION_PROXY_PASSWORD,
-                &socks.clone().unwrap_or_default().password,
-            );
-            if contains_url && url && username && password {
-                return;
-            }
-        }
-        config.socks = socks;
-        config.store();
-    }
-
-    #[inline]
-    fn get_socks_from_custom_client_advanced_settings(
-        settings: &HashMap<String, String>,
-    ) -> Option<Socks5Server> {
-        let url = settings.get(keys::OPTION_PROXY_URL)?;
-        Some(Socks5Server {
-            proxy: url.to_owned(),
-            username: settings
-                .get(keys::OPTION_PROXY_USERNAME)
-                .map(|x| x.to_string())
-                .unwrap_or_default(),
-            password: settings
-                .get(keys::OPTION_PROXY_PASSWORD)
-                .map(|x| x.to_string())
-                .unwrap_or_default(),
-        })
-    }
-
-    pub fn get_socks() -> Option<Socks5Server> {
-        // R-D6(d)(iii): direct-only — never surface a proxy when proxy-url is pinned (the accessor
-        // fix; the get_option-funnel pin does not reach this struct-field accessor).
-        if pinned_setting(keys::OPTION_PROXY_URL).is_some() {
-            return None;
-        }
-        Self::get_socks_from_custom_client_advanced_settings(&OVERWRITE_SETTINGS.read().unwrap())
-            .or(CONFIG2.read().unwrap().socks.clone())
-            .or(Self::get_socks_from_custom_client_advanced_settings(
-                &DEFAULT_SETTINGS.read().unwrap(),
-            ))
-    }
-
-    #[inline]
-    pub fn is_proxy() -> bool {
-        Self::get_network_type() != NetworkType::Direct
-    }
-
-    pub fn get_network_type() -> NetworkType {
-        // R-D6(d)(iii): direct-only — Direct whenever proxy-url is pinned (keeps CheckTestNatType's
-        // is_direct constant so its Drop never fires the STUN probe, and is_proxy() stays false).
-        if pinned_setting(keys::OPTION_PROXY_URL).is_some() {
-            return NetworkType::Direct;
-        }
-        if OVERWRITE_SETTINGS
-            .read()
-            .unwrap()
-            .get(keys::OPTION_PROXY_URL)
-            .is_some()
-        {
-            return NetworkType::ProxySocks;
-        }
-        if CONFIG2.read().unwrap().socks.is_some() {
-            return NetworkType::ProxySocks;
-        }
-        if DEFAULT_SETTINGS
-            .read()
-            .unwrap()
-            .get(keys::OPTION_PROXY_URL)
-            .is_some()
-        {
-            return NetworkType::ProxySocks;
-        }
-        NetworkType::Direct
-    }
-
     pub fn get() -> Config {
         return CONFIG.read().unwrap().clone();
     }
@@ -4893,11 +4727,10 @@ pub fn option2bool(option: &str, value: &str) -> bool {
     }
 }
 
-// `use_ws()` and `allow_insecure_tls_fallback()` removed (R-G4/§8): the WebSocket transport is
-// excised, and insecure-TLS fallback is structurally gone (outbound TLS never accepts an invalid
-// cert — see `tls::get_cached_tls_accept_invalid_cert`). Both `allow-websocket` and
-// `allow-insecure-tls-fallback` are pinned `N` by the lockdown — permanently-false flags that
-// were read by live code.
+// `use_ws()` and `allow_insecure_tls_fallback()` are absent (R-G4/§8): the WebSocket and proxy
+// transports are excised, including the alternate TLS connector that consumed the fallback.
+// Their retired option names stay pinned `N` so stale stored values cannot reappear through broad
+// option reads.
 
 pub mod keys {
     pub const OPTION_VIEW_ONLY: &str = "view_only";
@@ -5072,9 +4905,8 @@ pub mod keys {
     pub const OPTION_DISABLE_DISCOVERY_PANEL: &str = "disable-discovery-panel";
     pub const OPTION_PRE_ELEVATE_SERVICE: &str = "pre-elevate-service";
 
-    // proxy settings
-    // The following options are not real keys, they are just used for custom client advanced settings.
-    // The real keys are in Config2::socks.
+    // Retired proxy option names remain pinned empty so stale stored or signed-custom values cannot
+    // surface through whole-map option reads. There is no proxy transport or structured proxy store.
     pub const OPTION_PROXY_URL: &str = "proxy-url";
     pub const OPTION_PROXY_USERNAME: &str = "proxy-username";
     pub const OPTION_PROXY_PASSWORD: &str = "proxy-password";
@@ -5411,6 +5243,35 @@ mod tests {
         assert!(config.enc_id.is_empty());
         assert!(config.key_pair.0.is_empty());
         assert!(!config.is_empty());
+    }
+
+    #[test]
+    fn config2_ignores_retired_proxy_state_and_never_serializes_it() {
+        let legacy = r#"
+rendezvous_server = ""
+nat_type = 0
+serial = 0
+
+[socks]
+proxy = "127.0.0.1:1080"
+username = "legacy-user"
+password = "legacy-secret"
+
+[options]
+unrelated = "preserved"
+"#;
+
+        let config: Config2 = toml::from_str(legacy).unwrap();
+        assert_eq!(
+            config.options.get("unrelated").map(String::as_str),
+            Some("preserved")
+        );
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(!serialized.contains("socks"));
+        assert!(!serialized.contains("127.0.0.1:1080"));
+        assert!(!serialized.contains("legacy-user"));
+        assert!(!serialized.contains("legacy-secret"));
     }
 
     #[test]

@@ -1,11 +1,6 @@
-use crate::{
-    config::{Config, NetworkType},
-    tcp::FramedStream,
-    ResultType, Stream,
-};
+use crate::{tcp::FramedStream, ResultType, Stream};
 use std::net::SocketAddr;
 use tokio::net::ToSocketAddrs;
-use tokio_socks::IntoTargetAddr;
 
 #[inline]
 pub fn check_port<T: std::string::ToString>(host: T, port: i32) -> String {
@@ -71,33 +66,9 @@ pub fn split_host_port<T: std::string::ToString>(host: T) -> Option<(String, i32
     None
 }
 
-pub fn test_if_valid_server(host: &str, test_with_proxy: bool) -> String {
-    let host = check_port(host, 0);
-    use std::net::ToSocketAddrs;
-
-    if test_with_proxy && NetworkType::ProxySocks == Config::get_network_type() {
-        test_if_valid_server_for_proxy_(&host)
-    } else {
-        match host.to_socket_addrs() {
-            Err(err) => err.to_string(),
-            Ok(_) => "".to_owned(),
-        }
-    }
-}
-
-#[inline]
-pub fn test_if_valid_server_for_proxy_(host: &str) -> String {
-    // `&host.into_target_addr()` is defined in `tokio-socs`, but is a common pattern for testing,
-    // it can be used for both `socks` and `http` proxy.
-    match &host.into_target_addr() {
-        Err(err) => err.to_string(),
-        Ok(_) => "".to_owned(),
-    }
-}
-
 // Direct-IP fork: the flagship path is always TCP (WebSocket transport excised, §8).
 #[inline]
-pub async fn connect_tcp<'t, T: IntoTargetAddr<'t> + ToSocketAddrs + std::fmt::Display>(
+pub async fn connect_tcp<T: ToSocketAddrs + std::fmt::Display>(
     target: T,
     ms_timeout: u64,
 ) -> ResultType<crate::Stream> {
@@ -105,17 +76,11 @@ pub async fn connect_tcp<'t, T: IntoTargetAddr<'t> + ToSocketAddrs + std::fmt::D
 }
 
 // This function connects directly to the target without checking for websocket endpoints.
-pub async fn connect_tcp_local<'t, T: IntoTargetAddr<'t> + ToSocketAddrs + std::fmt::Display>(
+pub async fn connect_tcp_local<T: ToSocketAddrs + std::fmt::Display>(
     target: T,
     local: Option<SocketAddr>,
     ms_timeout: u64,
 ) -> ResultType<Stream> {
-    if let Some(conf) = Config::get_socks() {
-        return Ok(Stream::Tcp(
-            FramedStream::connect(target, local, &conf, ms_timeout).await?,
-        ));
-    }
-
     Ok(Stream::Tcp(
         FramedStream::new(target, local, ms_timeout).await?,
     ))
@@ -124,24 +89,6 @@ pub async fn connect_tcp_local<'t, T: IntoTargetAddr<'t> + ToSocketAddrs + std::
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_test_if_valid_server() {
-        assert!(!test_if_valid_server("a", false).is_empty());
-        // on Linux, "1" is resolved to "0.0.0.1"
-        assert!(test_if_valid_server("1.1.1.1", false).is_empty());
-        assert!(test_if_valid_server("1.1.1.1:1", false).is_empty());
-        assert!(test_if_valid_server("microsoft.com", false).is_empty());
-        assert!(test_if_valid_server("microsoft.com:1", false).is_empty());
-
-        // with proxy
-        // `:0` indicates `let host = check_port(host, 0);` is called.
-        assert!(test_if_valid_server_for_proxy_("a:0").is_empty());
-        assert!(test_if_valid_server_for_proxy_("1.1.1.1:0").is_empty());
-        assert!(test_if_valid_server_for_proxy_("1.1.1.1:1").is_empty());
-        assert!(test_if_valid_server_for_proxy_("abc.com:0").is_empty());
-        assert!(test_if_valid_server_for_proxy_("abcd.com:1").is_empty());
-    }
 
     #[test]
     fn test_check_port() {

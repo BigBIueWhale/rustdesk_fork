@@ -11,15 +11,15 @@ history remains the traceability record for that intermediate work.
 
 > **Current `.6` source verdict (2026-07-14): implementation and release-harness state are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
 
-**Current machine inventory expectation.** `Cargo.lock` has 909 package records: 37 git-sourced records from
-27 unique git source URLs, including 27 rustdesk-org records from 21 unique rustdesk-org URLs.
+**Current machine inventory expectation.** `Cargo.lock` has 905 package records: 36 git-sourced records from
+26 unique git source URLs, including 26 rustdesk-org records from 20 unique rustdesk-org URLs.
 `flutter/pubspec.lock` has 199 package records, including 8 git records and 7 rustdesk-org records;
 `flutter/pubspec.yaml` declares 58 main and 6 dev dependencies, a 64-name union. `.github/workflows/` has
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
 there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 855 lexical `unsafe {`
-blocks across 251 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
+blocks across 249 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -557,9 +557,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the shared options map. Boundary: local option writers ↔ trust-anchor and proxy credential material.
   Attack surface closed: the legacy `key` option cannot persist a rendezvous trust-anchor override, and
   `proxy-username`/`proxy-password` cannot persist proxy credential material through ordinary options IPC,
-  UI/FFI setters, or server-pushed option maps. The existing `proxy-url` pin and the direct `set_socks` /
-  `get_socks` / `get_network_type` accessor checks keep the structured SOCKS store inert; this closure adds
-  the missing string-map pins for the credential-shaped companions and the trust-anchor override. `get_key`
+  UI/FFI setters, or server-pushed option maps. R-S11b-3j subsequently deletes the structured proxy store and
+  transport. The retired option names remain pinned empty here because whole-map reads must still mask stale
+  stored/default/signed-custom values rather than disclose old proxy-shaped credential strings. `get_key`
   continues to return the baked `RS_PUB_KEY`, now with no stored override to ignore. Verification closure:
   `config_it` asserts the pins read empty and reject both single-key and whole-map writes; the `get_key`
   unit test asserts rejected persistence plus constant anchor reads; `scripts/verify.sh` and
@@ -587,6 +587,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification closure: `scripts/verify.sh` rejects any reintroduced hardware-codec IPC message, handler helper,
   client/server sync helper, core `--check-hwcodec-config` entry, or direct helper-process/probe caller anywhere
   in the application source.
+- **R-S11b-3j — structured SOCKS/proxy transport and credential store deleted — CLOSED/GATED 2026-07-20.**
+  Platforms: all direct-IP viewer builds. Endpoint/action: outbound `connect_tcp_local`, `Config2` persistence,
+  and the dormant proxy/TLS connector modules. Boundary: local/default/signed-custom configuration ↔ outbound
+  route selection and stored proxy credentials. Attack surface closed: direct connections no longer branch on
+  configuration at all. `Socks5Server`, `NetworkType`, the `Config::set_socks`/`get_socks`/`get_network_type`/
+  `is_proxy` APIs, `Config2.socks` password encryption, `FramedStream::connect`, the proxy-only server validator,
+  and the complete `proxy.rs`/`tls.rs` modules are absent. The `tokio-socks`, `tokio-native-tls`, `native-tls`,
+  and `httparse` package records leave the lockfile with that code. Retired proxy option names remain pinned empty
+  solely to mask stale strings in broad option reads; they have no actuator or structured store. Existing TOML
+  with a historical `socks` table remains readable because `Config2` does not deny unknown fields, while a focused
+  regression proves the table and its credential strings are never serialized again. `scripts/verify.sh` gates
+  the complete source/module/dependency absence, the direct-only connector shape, the retained stale-value pins,
+  and the focused regression. The synchronized machine inventory proves 905 Cargo packages, 36 Git records from
+  26 source URLs (26 rustdesk-org records from 20 URLs), and 855 lexical unsafe blocks across 249 Rust files.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -4419,7 +4433,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   committed only by the LocalSystem service through a typed elevated `_service` request and, after R-S11e-23,
   stored only in the current MSI product's exact 64-bit package namespace; service identity/salt
   reads are side-effect-free after R-S11b-3e; desktop at-rest wrapper reads no longer mint key material after
-  R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g; whole-map option reads
+  R-S11b-3f; trust-anchor/proxy-shaped option keys are pinned empty after R-S11b-3g, and the structured proxy
+  credential store plus alternate transport are deleted after R-S11b-3j; whole-map option reads
   (`Config::get_options`, the UI cache, CLI `--option`, and `MainIpcRequest::StatusSnapshot`) now overlay
   `PINNED_SETTINGS` last after R-S11b-3i, so broad reads cannot surface stale default/stored/signed-custom
   values for pinned policy keys; and the main IPC mutation
@@ -6686,9 +6701,10 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   Rust/Dart source gates bind the behavior and API absence. Exact artifact evidence remains R-B2/R-B10.
 - **Dead FFI exports (zero Dart callers):** `main_test_if_valid_server`, `main_get_proxy_status`,
   `main_handle_relay_id`, `main_resolve_avatar_url` (`src/flutter_ffi.rs`). Drop the exports.
-- **Dead Rust backends:** the socks/proxy module (`set_socks`/`get_socks`/`get_proxy_status`, not
-  flutter-exported, no actuator), `change_id`/`change_id_shared`, the ipc `rendezvous_server(s)` query
-  answer (`ipc.rs:838`), and the `resolve_avatar_url`/`get_api_server` builder (resolves empty). Excise.
+- **Dead Rust backends — SOCKS/proxy CLOSED/GATED 2026-07-20 (R-S11b-3j); remaining roots still itemized:**
+  the structured proxy store, alternate proxy/TLS connector, proxy-only validator, and their package records are
+  deleted. The remaining row is `change_id`/`change_id_shared`, the IPC `rendezvous_server(s)` query answer, and
+  the `resolve_avatar_url`/`get_api_server` builder; each still requires its own call-graph proof before excision.
 - **Dead Dart option constants:** `kOptionHideServerSetting`, `kOptionHideProxySetting`,
   `kOptionDisableChangeId`, `kOptionAllowDeepLinkServerSettings` (`flutter/lib/consts.dart:171-187`) —
   zero consumers. Delete.
@@ -6744,7 +6760,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ada3cca27f8576b60311f945dd17d19fbcba56583b7ea908208494119be24506  requirements.html
+d994dba046980eace9d636785a4ae760ef8e015da30bf9a0025a5a6ea85541ba  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bb, R-SV4a,

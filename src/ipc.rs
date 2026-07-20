@@ -6879,10 +6879,6 @@ pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
     }
 }
 
-// R-D6 (Tier-4): the IPC socks CLIENT query wrappers (get_socks_/get_socks_async/get_socks/set_socks)
-// and the service-side proxy handler are excised with the proxy-settings UI. The `Config` storage
-// remains inert under the direct-only proxy pin.
-
 // R-SV6(c)/R-D4: `notify_deployed()` (sent `Data::Deployed`) is removed with the deploy excision —
 // device deployment is gone (deploy_device is a refuse-stub), so there was no caller and no arm to
 // receive it. The `Data::Deployed` variant + its no-op handler are gone too. (notify_deployed

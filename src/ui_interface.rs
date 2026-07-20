@@ -399,11 +399,6 @@ pub fn set_option(key: String, value: String) {
     }
 }
 
-// R-D6 (Tier-4): the app-layer socks/proxy get/set wrappers (+ their `ipc::*socks*` query shims and
-// the `main_get_proxy_status` FFI) are excised — there is no proxy-settings UI to drive them (the
-// proxy URL is lockdown-pinned inert). The `Config::get_socks` storage remains inert at the accessor;
-// the old proxy IPC message and handler are gone.
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[inline]
 pub fn is_installed() -> bool {

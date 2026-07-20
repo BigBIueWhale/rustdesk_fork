@@ -1,9 +1,7 @@
 use crate::{
     bail,
     bytes_codec::BytesCodec,
-    config::Socks5Server,
     cpace::{split_session_keys, DirectionalKeys, OpenCipher, SealCipher},
-    proxy::Proxy,
     ResultType,
 };
 use anyhow::Context as AnyhowCtx;
@@ -30,7 +28,6 @@ use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
 };
-use tokio_socks::IntoTargetAddr;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
@@ -369,22 +366,9 @@ impl FramedStream {
         bail!(format!("Failed to connect to {remote_addr}"));
     }
 
-    pub async fn connect<'t, T>(
-        target: T,
-        local_addr: Option<SocketAddr>,
-        proxy_conf: &Socks5Server,
-        ms_timeout: u64,
-    ) -> ResultType<Self>
-    where
-        T: IntoTargetAddr<'t>,
-    {
-        let proxy = Proxy::from_conf(proxy_conf, Some(ms_timeout))?;
-        proxy.connect::<T>(target, local_addr).await
-    }
-
     /// Build an unkeyed stream from a framed socket (R-T2: fresh = not poisoned; the per-send
-    /// timeout starts at 0/none). The single tuple-free constructor — `new`/`from` and the proxy
-    /// connectors all funnel through here so the keying-state machine has one entry point.
+    /// timeout starts at 0/none). Direct connects and accepted sockets both funnel through this
+    /// single constructor, so the keying-state machine has one entry point.
     pub(crate) fn from_parts(
         framed: Framed<DynTcpStream, SecretboxCodec>,
         local_addr: SocketAddr,

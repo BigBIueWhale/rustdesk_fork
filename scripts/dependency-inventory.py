@@ -39,13 +39,13 @@ EXPECTED = {
         "regular_files": 6,
     },
     "cargo_lock": {
-        "git_record_identities_sha256": "53dddf6ad2276d1825904927e9981bf310e3b6e46c4e77b07e8d5768acc4c5c0",
-        "git_source_identities_sha256": "b783dd90085e2e74e2acbcba9e37c0c389084fa5cdea7725b3daea6cf98928d1",
-        "git_sourced_records": 37,
-        "package_records": 909,
-        "package_records_sha256": "a7906255d35ff864234e67599d47986faf3f6eb0e6121638e0d6ba5dc7d82e73",
-        "rustdesk_org_git_records": 27,
-        "unique_git_source_urls": 27,
+        "git_record_identities_sha256": "5f04a0476697c3433ef5a9f5e087ff29b5dc9f9689c41d524dfd9829a82fd7e1",
+        "git_source_identities_sha256": "c4502af3f4c24f3d2c536bb4d39b2e85831450a838fa890140e1238ab3a91e24",
+        "git_sourced_records": 36,
+        "package_records": 905,
+        "package_records_sha256": "6c2f1b15047dc82fe54074aebb19584150171d3bacae21bfa98c4158dc1645e7",
+        "rustdesk_org_git_records": 26,
+        "unique_git_source_urls": 26,
     },
     "flutter_pubspec": {
         "dependencies": [
@@ -159,9 +159,9 @@ EXPECTED = {
     },
     "rust_sources": {
         "files_with_unsafe_blocks": 74,
-        "lexical_counts_by_file_sha256": "38d6395da84ce3ca90e8eb593c61006b6216c23e97149fa3e4f44cdb9a6590de",
+        "lexical_counts_by_file_sha256": "1802602cfeea3f7c12ba0a14cd757908fdfa6447e89bf53491452e5e001e0c68",
         "lexical_unsafe_open_brace_blocks": 855,
-        "tracked_rs_files": 251,
+        "tracked_rs_files": 249,
     },
 }
 

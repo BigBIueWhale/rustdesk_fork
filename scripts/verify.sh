@@ -9032,18 +9032,49 @@ ra6_clean '"--no-server"' 'R-X10 --no-server flag (the GUI never starts a contro
 # audit POST helpers (post_conn_audit/post_alarm_audit/post_file_audit -> <api-server>/api/audit/*)
 # are EXCISED — absent, not merely api-server-pinned — so an audit-egress leak cannot regress in.
 ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-home (conn/alarm/file POST)' || rc=1
-# R-D6(d)(iii)/R-S11: socks/proxy is INERT AT THE ACCESSOR. set_socks/get_socks/get_network_type bypass
-# the get_option funnel (they read the structured CONFIG2.socks field), so the PINNED_SETTINGS proxy-url
-# pin does not reach them — the inherited guard only checked the RustDesk-SIGNED OVERWRITE_SETTINGS, which
-# is EMPTY on a fork, leaving set_socks LIVE. The fork makes each accessor consult the proxy-url pin
-# DIRECTLY (pinned_setting), so the historical local IPC proxy write cannot install a proxy (a
-# local-MITM / egress-reroute primitive, or trigger CheckTestNatType's is_direct to fire
-# a STUN UDP probe). Behavior is proven by config_it (socks_is_inert_under_the_proxy_pin); this is belt.
-r_d6socks_n=$(grep -c 'pinned_setting(keys::OPTION_PROXY_URL).is_some()' libs/hbb_common/src/config.rs 2>/dev/null || echo 0)
-if [ "${r_d6socks_n:-0}" -ge 3 ]; then
-  echo "  ok  R-D6(d)(iii) socks/proxy inert at the accessor (set_socks/get_socks/get_network_type honor the proxy-url pin; behavior-tested by config_it)"
+# R-S11b-3j/R-D6(d)(iii): direct-only means there is no alternate proxy transport or structured
+# proxy-credential store to guard. The older accessor-level pin made the branch inert, but left its
+# actuator, credential type, TLS stack, parser, and Git dependency compiled. Bind the stronger source
+# model: one direct connector, no proxy modules/API/config field/dependency, and stale string option
+# names retained only as empty whole-map overlays. The focused serde regression proves an old Config2
+# `socks` table is ignored and never reserialized.
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::config2_ignores_retired_proxy_state_and_never_serializes_it --color never
+r_s11b3j=
+[ ! -e libs/hbb_common/src/proxy.rs ] || r_s11b3j="$r_s11b3j proxy-module-present"
+[ ! -e libs/hbb_common/src/tls.rs ] || r_s11b3j="$r_s11b3j proxy-tls-module-present"
+proxy_symbols=$(grep -RInE '\bSocks5Server\b|\bNetworkType\b|Config::(set_socks|get_socks|get_network_type|is_proxy)|test_if_valid_server|tokio_socks|proxy::Proxy|pub mod proxy|pub mod tls|get_cached_tls|\bTlsType\b' \
+  src libs --include='*.rs' 2>/dev/null | grep -v '//' || true)
+[ -z "$proxy_symbols" ] || r_s11b3j="$r_s11b3j proxy-source-symbol-present"
+config2_block=$(awk '/pub struct Config2 \{/,/^}/' libs/hbb_common/src/config.rs)
+if grep -qE '\bsocks\b' <<<"$config2_block"; then
+  r_s11b3j="$r_s11b3j structured-config-field-present"
+fi
+direct_connect_block=$(awk '/pub async fn connect_tcp_local/,/^}/' libs/hbb_common/src/socket_client.rs)
+grep -qF 'FramedStream::new(target, local, ms_timeout).await?' <<<"$direct_connect_block" \
+  || r_s11b3j="$r_s11b3j direct-connector-missing"
+if grep -qE 'Config::|FramedStream::connect|proxy' <<<"$direct_connect_block"; then
+  r_s11b3j="$r_s11b3j alternate-route-selection-present"
+fi
+if grep -qE '^(tokio-socks|tokio-native-tls|httparse|async-recursion|url) *=' libs/hbb_common/Cargo.toml \
+  || grep -qE '^name = "(tokio-socks|tokio-native-tls|native-tls|httparse)"$' Cargo.lock; then
+  r_s11b3j="$r_s11b3j retired-dependency-present"
+fi
+grep -qF '(OPTION_PROXY_URL, "")' libs/hbb_common/src/config.rs \
+  || r_s11b3j="$r_s11b3j stale-proxy-url-overlay-missing"
+grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs \
+  || r_s11b3j="$r_s11b3j stale-proxy-username-overlay-missing"
+grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs \
+  || r_s11b3j="$r_s11b3j stale-proxy-password-overlay-missing"
+grep -qF 'R-S11b-3j — structured SOCKS/proxy transport and credential store deleted' HARDENING_STATUS.md \
+  || r_s11b3j="$r_s11b3j hardening-ledger-missing"
+grep -qF 'R-S16(d)(iii) direct-only source form' requirements.html \
+  || r_s11b3j="$r_s11b3j requirements-disposition-missing"
+if [ -n "$r_s11b3j" ]; then
+  echo "  FAIL R-S11b-3j/R-D6(d)(iii) structured proxy excision:$r_s11b3j"
+  [ -z "$proxy_symbols" ] || printf '%s\n' "$proxy_symbols"
+  rc=1
 else
-  echo "  FAIL R-D6(d)(iii): socks accessors not all inert-at-accessor (found ${r_d6socks_n}/3 proxy-url pin checks in config.rs)"; rc=1
+  echo "  ok  R-S11b-3j/R-D6(d)(iii) direct connector has no proxy route, store, API, TLS/parser module, or dependency; stale option names remain empty overlays"
 fi
 # R-SV6(b)/R-SV1/R-SV10 / §18: the session-record UPLOAD egress (hbbs_http::record_upload — a reqwest
 # POST of the recorded session to <api-server>/api/record) is EXCISED — the whole module is removed

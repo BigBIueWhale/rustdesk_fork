@@ -6030,15 +6030,15 @@ def validate_macos_descriptor_contract(sources):
     )
     for text, label in (
         (
-            'with <strong>909 package records</strong>, of which <strong>37 are git-sourced records',
+            'with <strong>905 package records</strong>, of which <strong>36 are git-sourced records',
             "current Cargo package/source requirement inventory",
         ),
         (
-            "27 of the 37 git-sourced lockfile records",
+            "26 of the 36 git-sourced lockfile records",
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "855 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 74 files",
+            "855 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 74 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -10941,6 +10941,111 @@ def validate_direct_address_cli_contract(sources):
     )
 
 
+def validate_structured_proxy_excision_contract(sources):
+    config2 = extract_between(
+        sources["config_source"],
+        "pub struct Config2 {",
+        "\n}\n\n#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]\npub struct Resolution",
+        "Config2 persistence schema",
+    )
+    require_absent(config2, "socks", "retired structured proxy field")
+
+    direct_connect = extract_between(
+        sources["socket_client_source"],
+        "pub async fn connect_tcp_local",
+        "\n}\n\n#[cfg(test)]",
+        "direct TCP connector",
+    )
+    require_text(
+        direct_connect,
+        "FramedStream::new(target, local, ms_timeout).await?",
+        "unconditional direct TCP route",
+    )
+    for text, label in (
+        ("Config::", "configuration-selected route"),
+        ("FramedStream::connect", "alternate framed connector"),
+        ("proxy", "proxy route"),
+    ):
+        require_absent(direct_connect, text, label)
+
+    for text, label in (
+        ("pub struct Socks5Server", "structured proxy credential type"),
+        ("pub enum NetworkType", "proxy network discriminator"),
+        ("pub fn set_socks", "proxy configuration writer"),
+        ("pub fn get_socks", "proxy configuration reader"),
+        ("pub fn get_network_type", "proxy route selector"),
+        ("pub fn is_proxy", "proxy-state query"),
+    ):
+        require_absent(sources["config_source"], text, label)
+    for text, label in (
+        ('(OPTION_PROXY_URL, "")', "retired proxy URL stale-value overlay"),
+        ('(OPTION_PROXY_USERNAME, "")', "retired proxy username stale-value overlay"),
+        ('(OPTION_PROXY_PASSWORD, "")', "retired proxy password stale-value overlay"),
+        (
+            "fn config2_ignores_retired_proxy_state_and_never_serializes_it()",
+            "historical Config2 proxy-state regression",
+        ),
+    ):
+        require_text(sources["config_source"], text, label)
+
+    for text, label in (
+        ("pub mod proxy", "proxy module export"),
+        ("pub mod tls", "proxy TLS module export"),
+        ("pub use tokio_socks", "SOCKS dependency re-export"),
+    ):
+        require_absent(sources["hbb_common_lib"], text, label)
+    for source_key in ("socket_client_source", "tcp_source"):
+        for text, label in (
+            ("Socks5Server", "structured proxy credential type"),
+            ("tokio_socks", "SOCKS implementation"),
+            ("proxy::Proxy", "proxy connector"),
+        ):
+            require_absent(sources[source_key], text, f"{label} in {source_key}")
+    require_absent(
+        sources["socket_client_source"],
+        "test_if_valid_server",
+        "proxy-only server validator",
+    )
+    require_absent(sources["tcp_source"], "FramedStream::connect", "alternate proxy connector")
+
+    for dependency in (
+        "tokio-socks",
+        "tokio-native-tls",
+        "httparse",
+        "async-recursion",
+    ):
+        require_absent(
+            sources["hbb_common_cargo"],
+            f"{dependency} =",
+            f"retired direct dependency {dependency}",
+        )
+    require_absent(sources["hbb_common_cargo"], "url =", "retired direct dependency url")
+    for package in ("tokio-socks", "tokio-native-tls", "native-tls", "httparse"):
+        require_absent(
+            sources["cargo_lock"],
+            f'name = "{package}"',
+            f"retired lockfile package {package}",
+        )
+
+    require_text(
+        sources["verify"],
+        "R-S11b-3j/R-D6(d)(iii) structured proxy excision",
+        "structured proxy excision shared gate",
+    )
+    require_text(
+        sources["requirements"],
+        "R-S16(d)(iii) direct-only source form",
+        "direct-only source-form requirement",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3j — structured SOCKS/proxy transport and credential store deleted",
+        "structured proxy excision hardening ledger",
+    )
+    require_text(sources["proxy_module_state"], "proxy-module-absent", "deleted proxy module")
+    require_text(sources["proxy_tls_module_state"], "proxy-tls-module-absent", "deleted proxy TLS module")
+
+
 def validate_ipc_lifecycle_checker_contract(sources):
     apple = sources["apple"]
     for text, expected, label in (
@@ -11112,6 +11217,7 @@ def validate_sources(sources):
     validate_smoke_container_authority_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
+    validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_smoke_contract(
         sources["verify"],
@@ -16423,8 +16529,8 @@ def run_source_mutations(sources):
         ),
         (
             "cargo_lock",
-            'name = "hbb_common"\nversion = "0.1.0"\ndependencies = [\n "anyhow",\n "async-recursion",\n "base64 0.22.1",',
-            'name = "hbb_common"\nversion = "0.1.0"\ndependencies = [\n "anyhow",\n "async-recursion",\n "backtrace",\n "base64 0.22.1",',
+            'name = "hbb_common"\nversion = "0.1.0"\ndependencies = [\n "anyhow",\n "base64 0.22.1",',
+            'name = "hbb_common"\nversion = "0.1.0"\ndependencies = [\n "anyhow",\n "backtrace",\n "base64 0.22.1",',
             "obsolete hbb_common backtrace lock edge",
         ),
         (
@@ -16771,19 +16877,19 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            'with <strong>909 package records</strong>, of which <strong>37 are git-sourced records',
-            'with <strong>910 package records</strong>, of which <strong>38 are git-sourced records',
+            'with <strong>905 package records</strong>, of which <strong>36 are git-sourced records',
+            'with <strong>906 package records</strong>, of which <strong>37 are git-sourced records',
             "current Cargo package/source requirement inventory",
         ),
         (
             "requirements",
+            "26 of the 36 git-sourced lockfile records",
             "27 of the 37 git-sourced lockfile records",
-            "28 of the 38 git-sourced lockfile records",
             "current rustdesk-org Git requirement inventory",
         ),
         (
             "requirements",
-            "855 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 74 files",
+            "855 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 74 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -21595,6 +21701,72 @@ def run_source_mutations(sources):
             "numeric-ID hardening ledger",
         ),
         (
+            "socket_client_source",
+            "FramedStream::new(target, local, ms_timeout).await?",
+            "FramedStream::connect(target, local, ms_timeout).await?",
+            "unconditional direct TCP route",
+        ),
+        (
+            "config_source",
+            "    serial: i32,\n    // the other scalar value must before this",
+            "    serial: i32,\n    socks: String,\n    // the other scalar value must before this",
+            "retired structured proxy field",
+        ),
+        (
+            "config_source",
+            "fn config2_ignores_retired_proxy_state_and_never_serializes_it()",
+            "fn retired_proxy_state_regression_removed()",
+            "historical Config2 proxy-state regression",
+        ),
+        (
+            "hbb_common_lib",
+            "pub mod socket_client;",
+            "pub mod proxy;\npub mod socket_client;",
+            "proxy module export",
+        ),
+        (
+            "hbb_common_cargo",
+            'chrono = "0.4"',
+            'tokio-socks = "0.5"\nchrono = "0.4"',
+            "retired direct dependency tokio-socks",
+        ),
+        (
+            "cargo_lock",
+            'name = "nasm-rs"',
+            'name = "native-tls"',
+            "retired lockfile package native-tls",
+        ),
+        (
+            "proxy_module_state",
+            "proxy-module-absent",
+            "proxy-module-present",
+            "deleted proxy module",
+        ),
+        (
+            "proxy_tls_module_state",
+            "proxy-tls-module-absent",
+            "proxy-tls-module-present",
+            "deleted proxy TLS module",
+        ),
+        (
+            "verify",
+            "R-S11b-3j/R-D6(d)(iii) structured proxy excision",
+            "R-S11b-3j structured proxy gate disabled",
+            "structured proxy excision shared gate",
+        ),
+        (
+            "requirements",
+            "R-S16(d)(iii) direct-only source form",
+            "R-S16(d)(iii) optional direct-only source form",
+            "direct-only source-form requirement",
+        ),
+        (
+            "hardening",
+            "R-S11b-3j — structured SOCKS/proxy transport and credential store deleted",
+            "R-S11b-3j — structured SOCKS/proxy transport deferred",
+            "structured proxy excision hardening ledger",
+        ),
+        (
             "apple",
             'item(ipc, "async fn prepare_main_ipc")',
             'item(ipc, "async fn start_main_ipc")',
@@ -22222,6 +22394,20 @@ def main():
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
             "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
             "config_source": (repo / "libs/hbb_common/src/config.rs").read_text(encoding="utf-8"),
+            "socket_client_source": (repo / "libs/hbb_common/src/socket_client.rs").read_text(
+                encoding="utf-8"
+            ),
+            "tcp_source": (repo / "libs/hbb_common/src/tcp.rs").read_text(encoding="utf-8"),
+            "proxy_module_state": (
+                "proxy-module-present"
+                if (repo / "libs/hbb_common/src/proxy.rs").exists()
+                else "proxy-module-absent"
+            ),
+            "proxy_tls_module_state": (
+                "proxy-tls-module-present"
+                if (repo / "libs/hbb_common/src/tls.rs").exists()
+                else "proxy-tls-module-absent"
+            ),
             "hbb_fs_source": (repo / "libs/hbb_common/src/fs.rs").read_text(encoding="utf-8"),
             "macos_paste_task": (
                 repo / "libs/clipboard/src/platform/unix/macos/paste_task.rs"

@@ -358,6 +358,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     if (connLength == 1) {
     }
     if (connLength <= 1) {
+      await _closeAllSessions();
       tabController.clear();
       return true;
     } else {
@@ -369,9 +370,27 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         res = await closeConfirmDialog();
       }
       if (res) {
+        await _closeAllSessions();
         tabController.clear();
       }
       return res;
+    }
+  }
+
+  Future<void> _closeAllSessions() async {
+    // Native desktop windows can disappear before Flutter awaits each page's
+    // asynchronous dispose method. Remove the Rust registrations first so a
+    // quick reopen cannot reuse a disconnected session or event stream.
+    final pages = tabController.state.value.tabs
+        .map((tab) => tab.page)
+        .whereType<RemotePage>()
+        .toList(growable: false);
+    for (final page in pages) {
+      try {
+        await bind.sessionClose(sessionId: page.ffi.sessionId);
+      } catch (e) {
+        debugPrint('Failed to close remote session ${page.id}: $e');
+      }
     }
   }
 
@@ -429,6 +448,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     } else if (call.method == kWindowDisableGrabKeyboard) {
       // ???
     } else if (call.method == "onDestroy") {
+      await _closeAllSessions();
       tabController.clear();
     } else if (call.method == kWindowActionRebuild) {
       reloadCurrentWindow();

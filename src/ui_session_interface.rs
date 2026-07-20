@@ -106,8 +106,17 @@ impl ConnectionRoundState {
         self.round
     }
 
-    pub fn set_connected(&mut self) {
-        self.state = ConnectionState::Connected;
+    pub fn is_current_round(&self, round: u32) -> bool {
+        round == self.round
+    }
+
+    pub fn set_connected(&mut self, round: u32) -> bool {
+        if !self.is_current_round(round) {
+            false
+        } else {
+            self.state = ConnectionState::Connected;
+            true
+        }
     }
 
     pub fn is_round_gt(&self, round: u32) -> bool {
@@ -134,6 +143,23 @@ impl Default for ConnectionRoundState {
             round: 0,
             state: ConnectionState::Connecting,
         }
+    }
+}
+
+#[cfg(test)]
+mod connection_round_tests {
+    use super::{ConnectionRoundState, ConnectionState};
+
+    #[test]
+    fn stale_round_cannot_replace_current_connection_state() {
+        let mut state = ConnectionRoundState::default();
+        let stale_round = state.new_round();
+        let current_round = state.new_round();
+
+        assert!(!state.set_connected(stale_round));
+        assert!(matches!(state.state, ConnectionState::Connecting));
+        assert!(state.set_connected(current_round));
+        assert!(matches!(state.state, ConnectionState::Connected));
     }
 }
 
@@ -1277,9 +1303,17 @@ impl<T: InvokeUiSession> Session<T> {
         self.lc.write().unwrap().peer_info = None;
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);
         let mut lock = self.thread.lock().unwrap();
-        // No need to join the previous thread, because it will exit automatically.
-        // And the previous thread will not change important states.
+        let previous = lock.take();
         *lock = Some(std::thread::spawn(move || {
+            // The previous round owns the old TCP stream (and, for tunneling,
+            // the local listener). Wait for its close path before creating the
+            // replacement so two rounds cannot race on the shared sender or
+            // local port.
+            if let Some(previous) = previous {
+                if previous.join().is_err() {
+                    log::warn!("Previous connection thread panicked during reconnect");
+                }
+            }
             io_loop(cloned, round);
         }));
     }
@@ -1835,11 +1869,41 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let (sender, receiver) = mpsc::unbounded_channel::<Data>();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
+    if !handler
+        .connection_round_state
+        .lock()
+        .unwrap()
+        .is_current_round(round)
+    {
+        log::debug!(
+            "Ignoring stale connection worker round {} for {}",
+            round,
+            handler.get_id()
+        );
+        return;
+    }
     *handler.sender.write().unwrap() = Some(sender.clone());
     let token = LocalConfig::get_option("access_token");
     let key = crate::get_key(false).await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {
+        // Port-forward sessions bypass Remote::io_loop, which normally owns the
+        // connection-state transitions. Mark this round active here so retry is
+        // not permanently ignored as "Connecting", and reject a superseded
+        // listener before it can become current again.
+        if !handler
+            .connection_round_state
+            .lock()
+            .unwrap()
+            .set_connected(round)
+        {
+            log::debug!(
+                "Ignoring stale port-forward connection round {} for {}",
+                round,
+                handler.get_id()
+            );
+            return;
+        }
         if handler.is_rdp() {
             let port = handler
                 .get_option("rdp_port".to_owned())
@@ -1849,7 +1913,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
             let rdp_password = handler.get_option("rdp_password".to_owned());
             log::info!("Remote rdp port: {}", port);
             start_one_port_forward(
-                handler,
+                handler.clone(),
                 0,
                 "".to_owned(),
                 port,
@@ -1919,7 +1983,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
             let remote_host = handler.args[1].clone();
             let remote_port = handler.args[2].parse::<i32>().unwrap_or(0);
             start_one_port_forward(
-                handler,
+                handler.clone(),
                 port,
                 remote_host,
                 remote_port,
@@ -1931,6 +1995,11 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
             )
             .await;
         }
+        handler
+            .connection_round_state
+            .lock()
+            .unwrap()
+            .set_disconnected(round);
         return;
     }
     let mut remote = Remote::new(handler, receiver, sender);

@@ -1459,11 +1459,13 @@ pub fn session_start_(
                 id,
                 session.use_texture_render.load(Ordering::Relaxed)
             );
-            let session = (*session).clone();
-            std::thread::spawn(move || {
-                let round = session.connection_round_state.lock().unwrap().new_round();
-                io_loop(session, round);
-            });
+            let mut connection_state = session.connection_round_state.lock().unwrap();
+            let mut thread = session.thread.lock().unwrap();
+            let round = connection_state.new_round();
+            let handler = session.as_ref().clone();
+            *thread = Some(std::thread::spawn(move || {
+                io_loop(handler, round);
+            }));
         }
         Ok(())
     } else {

@@ -3476,16 +3476,9 @@ class FFI {
 
   /// Close the remote session.
   Future<void> close({bool closeSession = true}) async {
-    closed = true;
-    chatModel.close();
-    // Close all terminal models
-    for (final model in _terminalModels.values) {
-      model.dispose();
-    }
-    _terminalModels.clear();
     if (imageModel.image != null && !isWebDesktop) {
-      await setCanvasConfig(
-          sessionId,
+      setCanvasConfig(
+          id,
           cursorModel.x,
           cursorModel.y,
           canvasModel.x,
@@ -3493,17 +3486,32 @@ class FFI {
           canvasModel.scale,
           ffiModel.pi.currentDisplay);
     }
+    // Release local cursor constraints and modifier state synchronously;
+    // dispose() is not awaited by Flutter, so these cannot sit behind image
+    // cleanup without risking a stuck macOS cursor/grab.
+    inputModel.resetModifiers();
+    inputModel.disposeRelativeMouseMode();
+    inputModel.disposeSideButtonTracking();
+    // Dispatch native teardown before any UI cleanup awaits. Flutter does not
+    // await State.dispose(), and a desktop window can disappear while canvas or
+    // image cleanup is still pending. Delaying sessionClose leaves the Rust
+    // session registered, so the next connection can attach to stale state.
+    final sessionCloseFuture =
+        closeSession ? bind.sessionClose(sessionId: sessionId) : null;
+    closed = true;
+    chatModel.close();
+    // Close all terminal models
+    for (final model in _terminalModels.values) {
+      model.dispose();
+    }
+    _terminalModels.clear();
     imageModel.callbacksOnFirstImage.clear();
     await imageModel.update(null);
     cursorModel.clear();
     ffiModel.clear();
     canvasModel.clear();
-    inputModel.resetModifiers();
-    // Dispose relative mouse mode resources to ensure cursor is restored
-    inputModel.disposeRelativeMouseMode();
-    inputModel.disposeSideButtonTracking();
-    if (closeSession) {
-      await bind.sessionClose(sessionId: sessionId);
+    if (sessionCloseFuture != null) {
+      await sessionCloseFuture;
     }
     debugPrint('model $id closed');
     id = '';
@@ -3696,8 +3704,8 @@ class PeerInfo with ChangeNotifier {
 
 const canvasKey = 'canvas';
 
-Future<void> setCanvasConfig(
-    SessionID sessionId,
+void setCanvasConfig(
+    String peerId,
     double xCursor,
     double yCursor,
     double xCanvas,
@@ -3711,8 +3719,8 @@ Future<void> setCanvasConfig(
   p['yCanvas'] = yCanvas;
   p['scale'] = scale;
   p['currentDisplay'] = currentDisplay;
-  await bind.sessionSetFlutterOption(
-      sessionId: sessionId, k: canvasKey, v: jsonEncode(p));
+  bind.mainSetPeerFlutterOptionSync(
+      id: peerId, k: canvasKey, v: jsonEncode(p));
 }
 
 Future<Map<String, dynamic>?> getCanvasConfig(SessionID sessionId) async {

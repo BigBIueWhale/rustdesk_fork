@@ -493,13 +493,21 @@ impl<T: InvokeUiSession> Remote<T> {
         .await
         {
             Ok(((mut peer, direct, stream_type), _)) => {
-                self.handler
+                if !self
+                    .handler
                     .connection_round_state
                     .lock()
                     .unwrap()
-                    .set_connected();
-                self.handler
-                    .set_connection_type(stream_type); // flutter -> connection_ready
+                    .set_connected(round)
+                {
+                    log::debug!(
+                        "Ignoring stale connection round {} for {}",
+                        round,
+                        self.handler.get_id()
+                    );
+                    return;
+                }
+                self.handler.set_connection_type(stream_type); // flutter -> connection_ready
                 self.handler.update_direct(Some(direct));
 
                 // just build for now

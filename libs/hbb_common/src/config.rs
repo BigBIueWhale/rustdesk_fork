@@ -46,16 +46,9 @@ use crate::{
     },
 };
 
-pub const RENDEZVOUS_TIMEOUT: u64 = 12_000;
 pub const CONNECT_TIMEOUT: u64 = 18_000;
 pub const READ_TIMEOUT: u64 = 18_000;
-// https://github.com/quic-go/quic-go/issues/525#issuecomment-294531351
-// https://datatracker.ietf.org/doc/html/draft-hamilton-early-deployment-quic-00#section-6.10
-// 15 seconds is recommended by quic, though oneSIP recommend 25 seconds,
-// https://www.onsip.com/voip-resources/voip-fundamentals/what-is-nat-keepalive
-pub const REG_INTERVAL: i64 = 15_000;
 pub const COMPRESS_LEVEL: i32 = 3;
-const SERIAL: i32 = 3;
 
 #[cfg(target_os = "macos")]
 lazy_static::lazy_static! {
@@ -872,7 +865,6 @@ lazy_static::lazy_static! {
     static ref CONFIG2: RwLock<Config2> = RwLock::new(Config2::load());
     static ref LOCAL_CONFIG: RwLock<LocalConfig> = RwLock::new(LocalConfig::load());
     static ref STATUS: RwLock<Status> = RwLock::new(Status::load());
-    pub static ref PROD_RENDEZVOUS_SERVER: RwLock<String> = RwLock::new("".to_owned());
     // R-X4: EXE_RENDEZVOUS_SERVER (the exe-name license rendezvous server) removed.
     pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());
     static ref KEY_PAIR: Mutex<Option<KeyPair>> = Default::default();
@@ -919,22 +911,11 @@ const CHARS: &[char] = &[
     'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
-// R-SV4 / §18 (dial nobody): the fork is DIRECT-IP ONLY, so there is no sanctioned default
-// rendezvous broker. Upstream baked `rs-ny.rustdesk.com` in here as the fallback used whenever
-// no server is configured. The connect paths are already neutered (the initiator bails closed
-// for non-direct addresses, the health-check heartbeat and peer online-status query are removed)
-// and the latency probe early-returns on <= 1 server, so this default never actually dialed — but
-// baking an upstream endpoint into a "direct-IP only" binary is precisely the sovereignty smell
-// §18 targets, and it leaves a one-line revival from a phone-home. Empty: no hardwired broker,
-// nothing to fall back to. get_rendezvous_server[s]() handle the empty list (drain().next()
-// .unwrap_or_default() / the len<=1 guard), so dialing nobody fails closed instead of upstream.
-pub const RENDEZVOUS_SERVERS: &[&str] = &[];
 pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
 
-pub const RENDEZVOUS_PORT: i32 = 21116;
 // Upstream's RELAY_PORT (21117) / WS_RENDEZVOUS_PORT (21118) / WS_RELAY_PORT (21119) are REMOVED:
-// the relay and WebSocket transports are excised. Only RENDEZVOUS_PORT (above, the dial-address
-// default in common.rs) and the pinned DIRECT_PORT listener (below) remain.
+// the rendezvous, relay, and WebSocket transports are excised. Only the pinned DIRECT_PORT
+// listener remains.
 // R-F4: the serverless direct-IP listener binds a SINGLE pinned compile-time
 // constant. Deliberately a literal, NOT a rendezvous-port-plus-two derivation —
 // that would silently shift the port (and desync the §10.4 CPace `CI` KAT,
@@ -1044,13 +1025,6 @@ pub struct Config {
 // more variable configs
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Config2 {
-    #[serde(default, deserialize_with = "deserialize_string")]
-    rendezvous_server: String,
-    #[serde(default, deserialize_with = "deserialize_i32")]
-    nat_type: i32,
-    #[serde(default, deserialize_with = "deserialize_i32")]
-    serial: i32,
-    // the other scalar value must before this
     #[serde(default, deserialize_with = "deserialize_hashmap_string_string")]
     pub options: HashMap<String, String>,
 }
@@ -3029,77 +3003,6 @@ impl Config {
         }
     }
 
-    pub fn get_rendezvous_server() -> String {
-        // R-X4: the EXE_RENDEZVOUS_SERVER (exe-name license) override is removed.
-        let mut rendezvous_server = Self::get_option("custom-rendezvous-server");
-        if rendezvous_server.is_empty() {
-            rendezvous_server = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
-        }
-        if rendezvous_server.is_empty() {
-            rendezvous_server = CONFIG2.read().unwrap().rendezvous_server.clone();
-        }
-        if rendezvous_server.is_empty() {
-            rendezvous_server = Self::get_rendezvous_servers()
-                .drain(..)
-                .next()
-                .unwrap_or_default();
-        }
-        if !rendezvous_server.contains(':') {
-            rendezvous_server = format!("{rendezvous_server}:{RENDEZVOUS_PORT}");
-        }
-        rendezvous_server
-    }
-
-    pub fn get_rendezvous_servers() -> Vec<String> {
-        // R-X4: the EXE_RENDEZVOUS_SERVER (exe-name license) override is removed.
-        let s = Self::get_option("custom-rendezvous-server");
-        if !s.is_empty() {
-            return vec![s];
-        }
-        let s = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
-        if !s.is_empty() {
-            return vec![s];
-        }
-        let serial_obsolute = CONFIG2.read().unwrap().serial > SERIAL;
-        if serial_obsolute {
-            let ss: Vec<String> = Self::get_option("rendezvous-servers")
-                .split(',')
-                .filter(|x| x.contains('.'))
-                .map(|x| x.to_owned())
-                .collect();
-            if !ss.is_empty() {
-                return ss;
-            }
-        }
-        return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
-    }
-
-    pub fn set_nat_type(nat_type: i32) {
-        let mut config = CONFIG2.write().unwrap();
-        if nat_type == config.nat_type {
-            return;
-        }
-        config.nat_type = nat_type;
-        config.store();
-    }
-
-    pub fn get_nat_type() -> i32 {
-        CONFIG2.read().unwrap().nat_type
-    }
-
-    pub fn set_serial(serial: i32) {
-        let mut config = CONFIG2.write().unwrap();
-        if serial == config.serial {
-            return;
-        }
-        config.serial = serial;
-        config.store();
-    }
-
-    pub fn get_serial() -> i32 {
-        std::cmp::max(CONFIG2.read().unwrap().serial, SERIAL)
-    }
-
     pub fn get_auto_password(length: usize) -> String {
         Self::get_auto_password_with_chars(length, CHARS)
     }
@@ -4593,7 +4496,6 @@ impl Group {
 
 deserialize_default!(deserialize_string, String);
 deserialize_default!(deserialize_bool, bool);
-deserialize_default!(deserialize_i32, i32);
 deserialize_default!(deserialize_vec_u8, Vec<u8>);
 deserialize_default!(deserialize_vec_string, Vec<String>);
 deserialize_default!(deserialize_vec_i32_string_i32, Vec<(i32, String, i32)>);
@@ -5233,11 +5135,11 @@ mod tests {
     }
 
     #[test]
-    fn config2_ignores_retired_proxy_state_and_never_serializes_it() {
+    fn config2_ignores_retired_network_state_and_never_serializes_it() {
         let legacy = r#"
-rendezvous_server = ""
-nat_type = 0
-serial = 0
+rendezvous_server = "legacy.example:21116"
+nat_type = 2
+serial = 42
 
 [socks]
 proxy = "127.0.0.1:1080"
@@ -5259,6 +5161,10 @@ unrelated = "preserved"
         assert!(!serialized.contains("127.0.0.1:1080"));
         assert!(!serialized.contains("legacy-user"));
         assert!(!serialized.contains("legacy-secret"));
+        assert!(!serialized.contains("rendezvous_server"));
+        assert!(!serialized.contains("legacy.example:21116"));
+        assert!(!serialized.contains("nat_type"));
+        assert!(!serialized.contains("serial"));
     }
 
     #[test]

@@ -162,8 +162,6 @@ lazy_static::lazy_static! {
     static ref CLIPBOARD_STATE: Arc<Mutex<ClipboardState>> = Arc::new(Mutex::new(ClipboardState::new()));
 }
 
-const PUBLIC_SERVER: &str = "public";
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_key_state(key: enigo::Key) -> bool {
     use enigo::KeyboardControllable;
@@ -268,11 +266,11 @@ impl Client {
             // R-SV4(b) / R-D / R-S13(d): the fork is DIRECT-IP ONLY. The direct branches above
             // handle every reachable address (an IP, or host:port). Anything else is a bare
             // rendezvous "ID", which has NO path in this fork — the responder runs no mediator
-            // (6920db9) and `get_rendezvous_server` returns nothing (R-SV4), so a rendezvous attempt
-            // could only ever fail. The inherited initiator-side rendezvous/relay/NAT-punch
-            // machinery (`_start_inner`/`connect`/`request_relay`/`secure_connection`) is therefore
-            // dead and is removed (next commit); here we fail CLOSED with a clear message instead of
-            // dialing a mediator that does not exist (sovereign: dial nobody).
+            // (6920db9), and the rendezvous resolver is absent (R-SV4/R-SV6b), so a rendezvous
+            // attempt could only ever fail. The inherited initiator-side rendezvous/relay/NAT-punch
+            // machinery (`_start_inner`/`connect`/`request_relay`/`secure_connection`) is absent;
+            // fail CLOSED with a clear message instead of dialing a mediator that does not exist
+            // (sovereign: dial nobody).
             bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
         };
 
@@ -1368,7 +1366,6 @@ pub struct LoginConfigHandler {
     pub received: bool,
     switch_uuid: Option<String>,
     pub save_ab_password_to_recent: bool, // true: connected with ab password
-    pub other_server: Option<(String, String, String)>,
     pub custom_fps: Arc<Mutex<Option<usize>>>,
     pub last_auto_fps: Option<usize>,
     pub adapter_luid: Option<i64>,
@@ -1405,33 +1402,6 @@ impl LoginConfigHandler {
         shared_password: Option<String>,
         conn_token: Option<String>,
     ) {
-        let mut id = id;
-        if id.contains("@") {
-            let mut v = id.split("@");
-            let raw_id: &str = v.next().unwrap_or_default();
-            let server = v
-                .next()
-                .unwrap_or_default()
-                .split('?')
-                .next()
-                .unwrap_or_default();
-            // R-X6: NEVER adopt an embedded `?key=` trust anchor from a rustdesk:// deep-link URI.
-            // The direct-IP fork keys solely via CPace from the password PRS (the shared password is
-            // the sole trust anchor), so an attacker-supplied `?key=` must not become other_server's key,
-            // and the persisted `other-server-key` must never be URI-settable. (The `<id>@server` connect
-            // form is itself already dead — Client::_start bails on any non-direct address — but R-X6
-            // mandates this Rust-layer strip as defense-in-depth: the raw URI can reach the core via
-            // bind.sendUrlScheme even when the Dart-parser strip is bypassed.)
-            let key = String::new();
-
-            // R-G6/R-SV4: relay suffixes are rejected by the UI and by the
-            // direct-address choke point. The core must never strip `/r` or
-            // persist a relay preference as a side effect.
-            let real_id = raw_id.to_string();
-            self.other_server = Some((real_id.clone(), server.to_owned(), key));
-            id = format!("{real_id}@{server}");
-        }
-
         self.id = id;
         self.conn_type = conn_type;
         let config = self.load_config();
@@ -1457,10 +1427,6 @@ impl LoginConfigHandler {
         self.session_id = sid;
         self.supported_encoding = Default::default();
         self.restarting_remote_device = false;
-        // R-X6: the persisted `other-server-key` re-adoption is removed — other_server's key is held
-        // empty (never sourced from the deep-link `?key=`; see initialize above), so a stale or
-        // option-injected `other-server-key` can never be re-adopted as a trust anchor.
-
         self.received = false;
         self.switch_uuid = switch_uuid;
         self.adapter_luid = adapter_luid;
@@ -2126,13 +2092,6 @@ impl LoginConfigHandler {
                 log::debug!("remove password of {}", self.id);
             }
         }
-        if let Some((_, b, c)) = self.other_server.as_ref() {
-            if b != PUBLIC_SERVER {
-                config
-                    .options
-                    .insert("other-server-key".to_owned(), c.clone());
-            }
-        }
         #[cfg(feature = "flutter")]
         {
             // sync connected password to personal ab automatically if it is not shared password
@@ -2187,12 +2146,7 @@ impl LoginConfigHandler {
         let my_id = Config::get_id_or(crate::DEVICE_ID.lock().unwrap().clone());
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let my_id = Config::get_id();
-        let (my_id, pure_id) = if let Some((id, _, _)) = self.other_server.as_ref() {
-            let server = Config::get_rendezvous_server();
-            (format!("{my_id}@{server}"), id.clone())
-        } else {
-            (my_id, self.id.clone())
-        };
+        let pure_id = self.id.clone();
         let avatar = get_builtin_option(keys::OPTION_AVATAR).trim().to_owned();
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME)
             .trim()
@@ -3249,8 +3203,8 @@ pub fn check_if_retry(
 // R-D4/R-SV/§8: the rendezvous HEALTH-CHECK heartbeat (`hc_connection`/`hc_connection_` —
 // a kept-alive TCP connection to the rendezvous server, secured with the legacy single-key
 // `secure_tcp` and fed periodic `HealthCheck` messages) is REMOVED. The direct-IP fork has no
-// rendezvous server to keep a connection alive to (the entry point was already guarded dead
-// whenever `rendezvous_server` is empty, which is always) — gone, not merely disabled.
+// rendezvous server to keep a connection alive to; the local resolver and its compatibility state
+// are also absent after R-SV6b — gone, not merely disabled.
 
 // R-SV / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query (`peer_online::query_online_states`)
 // is REMOVED with the rest of the online-status pipeline. Upstream asked the rendezvous server which
@@ -3313,6 +3267,29 @@ mod tests {
         assert_eq!(options.custom_image_quality, 180 << 8);
         #[cfg(feature = "flutter")]
         assert_eq!(options.custom_fps, 90);
+    }
+
+    #[test]
+    fn login_identity_does_not_parse_cross_server_grammar() {
+        isolate();
+        let address = "12345@legacy.example?key=attacker";
+        let mut handler = LoginConfigHandler::default();
+        handler.initialize(
+            address.to_owned(),
+            ConnType::DEFAULT_CONN,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(handler.id, address);
+        let message = handler.create_login_msg(None).unwrap();
+        let login = match message.union {
+            Some(message::Union::LoginRequest(login)) => login,
+            _ => panic!("expected login request"),
+        };
+        assert_eq!(login.username, address);
     }
 
     #[test]

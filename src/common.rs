@@ -639,24 +639,12 @@ audio_rechannel!(audio_rechannel_8_7, 8, 7);
 // excised. The fork keys at the choke point and ships direct-only (R-D4); there is
 // no rendezvous probe and no probe-reply config adoption.
 
-// R-SV4 / §18 (dial nobody): the `get_rendezvous_server[_]` resolver chain (which port-checked and
-// ranked the rendezvous server list) is excised — it had ZERO callers (the direct-IP fork keys at the
-// choke point and never dials a mediator, R-D4/R-SV4). The live LOCAL accessors
-// `Config::get_rendezvous_server[s]` (the vestigial stored value) stay; only the async resolver +
-// its IPC query hop are gone.
-
-#[inline]
-pub async fn get_nat_type(_ms_timeout: u64) -> i32 {
-    Config::get_nat_type()
-}
-
 // R-SV4(d)/R-SV10: the rendezvous-server latency probe is EXCISED. It used to
-// spawn a startup outbound `connect_tcp` to RENDEZVOUS_PORT on each configured
-// rendezvous host to pick the fastest broker. The fork is direct-IP only —
-// `RENDEZVOUS_SERVERS` is empty (R-SV4) so there is no broker to probe — and the
-// spec names `test_rendezvous_server` as a sovereignty symbol that MUST be
-// absent, not merely dead. The function and all of its callers are removed so the
-// R-SV10 grep is sound (no startup phone-home a config-write could ever revive).
+// spawn a startup outbound connection to each configured rendezvous host to pick the fastest
+// broker. The fork is direct-IP only, and R-SV6b removes the local resolver and its stored
+// rendezvous/NAT compatibility state. The spec names `test_rendezvous_server` as a sovereignty
+// symbol that MUST be absent, not merely dead. The function and all of its callers are removed so
+// the R-SV10 grep is sound (no startup phone-home a config write could ever revive).
 
 pub fn run_me<T: AsRef<std::ffi::OsStr>>(args: Vec<T>) -> std::io::Result<std::process::Child> {
     run_me_with_env(args, std::iter::empty::<(&str, &str)>())

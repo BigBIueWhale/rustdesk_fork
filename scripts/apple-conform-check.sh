@@ -217,6 +217,31 @@ apple_absent 'fn elevate\b|bool Elevate\b|AuthorizationExecuteWithPrivileges' \
 apple_absent 'libpam|pam_authenticate|\bpam::' \
   'R-X14 PAM (absent-by-construction on Apple)'
 
+echo "== (2a-0) R-SV6b shared direct-address authority on Apple =="
+r_sv6b=
+config2_block=$(awk '/pub struct Config2 \{/,/^}/' "$REPO/libs/hbb_common/src/config.rs")
+grep -qF 'pub options: HashMap<String, String>' <<<"$config2_block" || r_sv6b="$r_sv6b config2-options-map-missing"
+if grep -qE '[[:space:]](rendezvous_server|nat_type|serial):' <<<"$config2_block"; then
+  r_sv6b="$r_sv6b retired-config2-network-field-present"
+fi
+if grep -qE 'other_server|other-server-key|const PUBLIC_SERVER|Config::get_rendezvous_server|id\.contains\("@"\)' "$REPO/src/client.rs"; then
+  r_sv6b="$r_sv6b cross-server-client-authority-present"
+fi
+if grep -qE 'PROD_RENDEZVOUS_SERVER|pub const (RENDEZVOUS_SERVERS|RENDEZVOUS_PORT|RENDEZVOUS_TIMEOUT|REG_INTERVAL)|pub fn get_rendezvous_servers?\(|pub fn (set|get)_nat_type\(|pub fn (set|get)_serial\(' "$REPO/libs/hbb_common/src/config.rs"; then
+  r_sv6b="$r_sv6b rendezvous-nat-resolver-or-state-present"
+fi
+grep -qE 'pub async fn get_nat_type\(' "$REPO/src/common.rs" && r_sv6b="$r_sv6b nat-wrapper-present"
+grep -qF 'self.id = id;' "$REPO/src/client.rs" || r_sv6b="$r_sv6b exact-address-assignment-missing"
+grep -qF 'let pure_id = self.id.clone();' "$REPO/src/client.rs" || r_sv6b="$r_sv6b exact-login-identity-missing"
+grep -qF 'fn login_identity_does_not_parse_cross_server_grammar()' "$REPO/src/client.rs" || r_sv6b="$r_sv6b client-regression-missing"
+grep -qF 'fn config2_ignores_retired_network_state_and_never_serializes_it()' "$REPO/libs/hbb_common/src/config.rs" || r_sv6b="$r_sv6b config2-regression-missing"
+if [ -n "$r_sv6b" ]; then
+  echo "  FAIL R-SV6b shared direct-address authority:$r_sv6b"
+  rc=1
+else
+  note "ok  R-SV6b Apple source has exact direct-address identity and no rendezvous/NAT compatibility actuator"
+fi
+
 echo "== (2a) R-S11e-17 typed CM file response authority =="
 r_s11e17=
 if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \

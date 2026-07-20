@@ -11079,6 +11079,110 @@ def validate_account_control_plane_excision_contract(sources):
     )
 
 
+def validate_rendezvous_compatibility_excision_contract(sources):
+    config2 = extract_between(
+        sources["config_source"],
+        "pub struct Config2 {",
+        "\n}\n\n#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]\npub struct Resolution",
+        "Config2 persistence schema",
+    )
+    require_exact_count(
+        config2,
+        "pub options: HashMap<String, String>",
+        1,
+        "sole Config2 options map",
+    )
+    for text, label in (
+        ("rendezvous_server:", "retired Config2 rendezvous field"),
+        ("nat_type:", "retired Config2 NAT field"),
+        ("serial:", "retired Config2 serial field"),
+    ):
+        require_absent(config2, text, label)
+
+    for text, label in (
+        ("other_server", "cross-server client state"),
+        ("other-server-key", "cross-server persisted key"),
+        ("const PUBLIC_SERVER", "cross-server public-server sentinel"),
+        ('id.contains("@")', "cross-server address parser"),
+        ("Config::get_rendezvous_server", "login-time rendezvous resolver"),
+    ):
+        require_absent(sources["client_source"], text, label)
+    require_text(sources["client_source"], "self.id = id;", "exact client address assignment")
+    require_text(
+        sources["client_source"],
+        "let pure_id = self.id.clone();",
+        "exact login username identity",
+    )
+    require_text(
+        sources["client_source"],
+        "fn login_identity_does_not_parse_cross_server_grammar()",
+        "cross-server grammar regression",
+    )
+
+    for text, label in (
+        ("PROD_RENDEZVOUS_SERVER", "process rendezvous override"),
+        ("pub const RENDEZVOUS_SERVERS", "rendezvous fallback list"),
+        ("pub const RENDEZVOUS_PORT", "rendezvous default port"),
+        ("pub const RENDEZVOUS_TIMEOUT", "rendezvous operation timeout"),
+        ("pub const REG_INTERVAL", "rendezvous registration interval"),
+        ("pub fn get_rendezvous_server(", "rendezvous resolver"),
+        ("pub fn get_rendezvous_servers(", "rendezvous list resolver"),
+        ("pub fn set_nat_type(", "NAT state writer"),
+        ("pub fn get_nat_type(", "NAT state reader"),
+        ("pub fn set_serial(", "rendezvous serial writer"),
+        ("pub fn get_serial(", "rendezvous serial reader"),
+    ):
+        require_absent(sources["config_source"], text, label)
+    require_absent(sources["common_source"], "pub async fn get_nat_type(", "dead NAT wrapper")
+
+    legacy_test = extract_between(
+        sources["config_source"],
+        "fn config2_ignores_retired_network_state_and_never_serializes_it()",
+        "\n    #[test]",
+        "retired Config2 network-state regression",
+    )
+    for text, label in (
+        ('rendezvous_server = "legacy.example:21116"', "nonempty legacy rendezvous fixture"),
+        ("nat_type = 2", "nondefault legacy NAT fixture"),
+        ("serial = 42", "nondefault legacy serial fixture"),
+        ('assert!(!serialized.contains("rendezvous_server"))', "rendezvous serialization absence"),
+        ('assert!(!serialized.contains("nat_type"))', "NAT serialization absence"),
+        ('assert!(!serialized.contains("serial"))', "serial serialization absence"),
+    ):
+        require_text(legacy_test, text, label)
+
+    require_text(
+        sources["verify"],
+        "R-SV6b dormant rendezvous/NAT compatibility authority excision",
+        "shared rendezvous-compatibility source gate",
+    )
+    require_text(
+        sources["apple"],
+        "R-SV6b shared direct-address authority on Apple",
+        "Apple rendezvous-compatibility source gate",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-SV6b", "rendezvous-compatibility requirement"
+    )
+    for text, label in (
+        ("exact direct address", "direct address authority requirement"),
+        ("cross-server", "cross-server grammar deletion requirement"),
+        ("NAT/serial", "NAT/serial state deletion requirement"),
+        ("unknown fields", "legacy deserialize-only requirement"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>186</td>",
+        "rendezvous-compatibility Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-SV6b — dormant rendezvous/NAT compatibility authority deleted",
+        "rendezvous-compatibility hardening ledger",
+    )
+
+
 def validate_structured_proxy_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -11120,8 +11224,8 @@ def validate_structured_proxy_excision_contract(sources):
         ('(OPTION_PROXY_USERNAME, "")', "retired proxy username stale-value overlay"),
         ('(OPTION_PROXY_PASSWORD, "")', "retired proxy password stale-value overlay"),
         (
-            "fn config2_ignores_retired_proxy_state_and_never_serializes_it()",
-            "historical Config2 proxy-state regression",
+            "fn config2_ignores_retired_network_state_and_never_serializes_it()",
+            "historical Config2 network-state regression",
         ),
     ):
         require_text(sources["config_source"], text, label)
@@ -11761,6 +11865,7 @@ def validate_sources(sources):
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
     validate_account_control_plane_excision_contract(sources)
+    validate_rendezvous_compatibility_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
@@ -22356,6 +22461,90 @@ def run_source_mutations(sources):
             "account control-plane hardening ledger",
         ),
         (
+            "client_source",
+            "    pub custom_fps: Arc<Mutex<Option<usize>>>,",
+            "    pub other_server: Option<(String, String, String)>,\n    pub custom_fps: Arc<Mutex<Option<usize>>>,",
+            "cross-server client state",
+        ),
+        (
+            "client_source",
+            "        self.id = id;",
+            "        if id.contains(\"@\") { self.id = id.split('@').next().unwrap_or_default().to_owned(); } else { self.id = id; }",
+            "cross-server address parser",
+        ),
+        (
+            "client_source",
+            "        let pure_id = self.id.clone();",
+            "        let pure_id = Config::get_rendezvous_server();",
+            "login-time rendezvous resolver",
+        ),
+        (
+            "client_source",
+            "fn login_identity_does_not_parse_cross_server_grammar()",
+            "fn cross_server_grammar_regression_removed()",
+            "cross-server grammar regression",
+        ),
+        (
+            "config_source",
+            "pub struct Config2 {\n    #[serde(default, deserialize_with = \"deserialize_hashmap_string_string\")]",
+            "pub struct Config2 {\n    rendezvous_server: String,\n    nat_type: i32,\n    serial: i32,\n    #[serde(default, deserialize_with = \"deserialize_hashmap_string_string\")]",
+            "retired Config2 rendezvous field",
+        ),
+        (
+            "config_source",
+            "    pub fn get_auto_password(length: usize) -> String {",
+            "    pub fn get_rendezvous_server() -> String { String::new() }\n\n    pub fn get_auto_password(length: usize) -> String {",
+            "rendezvous resolver",
+        ),
+        (
+            "config_source",
+            "pub const CONNECT_TIMEOUT: u64 = 18_000;",
+            "pub const RENDEZVOUS_TIMEOUT: u64 = 12_000;\npub const REG_INTERVAL: i64 = 15_000;\npub const CONNECT_TIMEOUT: u64 = 18_000;",
+            "rendezvous operation timeout",
+        ),
+        (
+            "common_source",
+            "pub fn run_me<T: AsRef<std::ffi::OsStr>>",
+            "pub async fn get_nat_type(_: u64) -> i32 { 0 }\n\npub fn run_me<T: AsRef<std::ffi::OsStr>>",
+            "dead NAT wrapper",
+        ),
+        (
+            "config_source",
+            "fn config2_ignores_retired_network_state_and_never_serializes_it()",
+            "fn retired_network_state_regression_removed()",
+            "retired Config2 network-state regression",
+        ),
+        (
+            "verify",
+            "R-SV6b dormant rendezvous/NAT compatibility authority excision",
+            "R-SV6b rendezvous compatibility gate disabled",
+            "shared rendezvous-compatibility source gate",
+        ),
+        (
+            "apple",
+            "R-SV6b shared direct-address authority on Apple",
+            "R-SV6b Apple compatibility gate disabled",
+            "Apple rendezvous-compatibility source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV6b</span>',
+            '<span class="id">R-SV6b-disabled</span>',
+            "rendezvous-compatibility requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>186</td>",
+            "<tr><td>186-disabled</td>",
+            "rendezvous-compatibility Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV6b — dormant rendezvous/NAT compatibility authority deleted",
+            "R-SV6b — dormant rendezvous/NAT compatibility authority deferred",
+            "rendezvous-compatibility hardening ledger",
+        ),
+        (
             "socket_client_source",
             "FramedStream::new(target, local, ms_timeout).await?",
             "FramedStream::connect(target, local, ms_timeout).await?",
@@ -22363,15 +22552,9 @@ def run_source_mutations(sources):
         ),
         (
             "config_source",
-            "    serial: i32,\n    // the other scalar value must before this",
-            "    serial: i32,\n    socks: String,\n    // the other scalar value must before this",
+            "pub struct Config2 {\n    #[serde(default, deserialize_with = \"deserialize_hashmap_string_string\")]",
+            "pub struct Config2 {\n    socks: String,\n    #[serde(default, deserialize_with = \"deserialize_hashmap_string_string\")]",
             "retired structured proxy field",
-        ),
-        (
-            "config_source",
-            "fn config2_ignores_retired_proxy_state_and_never_serializes_it()",
-            "fn retired_proxy_state_regression_removed()",
-            "historical Config2 proxy-state regression",
         ),
         (
             "hbb_common_lib",

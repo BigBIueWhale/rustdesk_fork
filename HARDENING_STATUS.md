@@ -4786,6 +4786,38 @@ unreachable and a source/test/AST gate prevents reintroduction.
   slice-owned stalled disposable bridge containers were stopped. No host RustDesk process, service, binary,
   configuration, listener, firewall, UFW/nftables/iptables state, or host-network state was inspected or changed.
 
+- **R-SV6b — dormant rendezvous/NAT compatibility authority deleted — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: the shared Rust viewer and
+  configuration source used by desktop, Android, iOS, and future Apple artifacts. Boundary: operator-supplied direct
+  address ↔ viewer routing/login identity ↔ historical rendezvous configuration. R-SV6a stated that the empty
+  `custom-rendezvous-server` policy pin had no resolver or actuator, but its gate inspected only the account resolver
+  cluster in `src/common.rs`. The client still parsed `<id>@<server>`, retained `other_server`, conditionally persisted
+  `other-server-key`, and rewrote login metadata through `Config::get_rendezvous_server()`. That resolver still
+  selected policy, process, persisted, and fallback state, while `Config2` stored rendezvous-server, NAT-type, and
+  migration-serial fields behind live accessors. `Client::_start` rejected the resulting non-direct address before any
+  dial, so this was a dormant future-reactivation and authority-coherence defect—not a demonstrated network request,
+  local-to-root path, privilege escalation, exploitation incident, or evidence of compromise.
+
+  Authority model and source closure: the exact address accepted by the direct-address choke point is the sole routing
+  input and login username. `LoginConfigHandler` now assigns that address without parsing cross-server grammar; the
+  `other_server` field, public-server sentinel, persisted key, and conditional login rewrite are absent. The config
+  resolver, process/fallback/timeout/registration constants, rendezvous default port, NAT/serial accessors, dead
+  common wrapper, and Config2 fields are deleted. Historical TOML network fields are accepted only by serde's
+  unknown-field behavior and are not serialized back; a focused regression proves that with nonempty/nondefault
+  legacy values. The empty
+  `custom-rendezvous-server` pin remains only as R-SV6a's stale-value mask and has no reader or actuator. This is the
+  structural completion of R-X6's earlier key-stripping rule: there is no cross-server key field left to sanitize.
+
+  Verification closure: focused hbb_common and shared-client Rust regressions bind legacy-field non-adoption and exact
+  login identity. `scripts/verify.sh` gates the one-field Config2 schema, all deleted symbols, exact address/login
+  assignment, both regressions, requirement, Appendix C #186, and this ledger. The Apple source checker applies the
+  same shared-source contract, and the independent workspace semantic validator plus deliberate mutations bind the
+  client state/parser/login path, config schema/resolver, dead wrapper, tests, both source gates, requirement,
+  Appendix row, and ledger. Exact current-commit packaged artifacts remain R-B2/R-B10; the separately itemized Tier 4
+  Dart presentation/formatting residue, installed-platform evidence, refreshed advisory data, independent image
+  provenance, and R-V3 external review remain open. No host RustDesk process/service/binary/configuration/listener,
+  firewall, UFW/nftables/iptables state, or host-network state was inspected or changed for this source slice.
+
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -7083,11 +7115,12 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
 - **Dead FFI exports — CLOSED/GATED:** `main_test_if_valid_server`, `main_get_proxy_status`,
   `main_handle_relay_id`, and `main_resolve_avatar_url` were already absent on re-audit; R-SV6a additionally deletes
   the account deployment FFI and generated/authored bridge surface.
-- **Dead Rust backends — SOCKS/proxy CLOSED/GATED 2026-07-20 (R-S11b-3j); remaining roots still itemized:**
-  the structured proxy store, alternate proxy/TLS connector, proxy-only validator, and their package records are
-  deleted. R-SV6a deletes the independently proven account API/audit/avatar builder cluster. The remaining row is
-  `change_id`/`change_id_shared` and the IPC `rendezvous_server(s)` query answer; each still requires its own
-  call-graph proof before excision.
+- **Dead Rust backends named by this row — CLOSED/GATED:** the structured proxy store, alternate proxy/TLS connector,
+  proxy-only validator, and their package records are deleted by R-S11b-3j. R-SV6a deletes the account
+  API/audit/avatar builder cluster. The numeric-ID change backend/export and IPC rendezvous-server query are absent on
+  current-source re-audit; R-SV6b additionally deletes the independently surviving Config resolver, cross-server
+  client grammar, and persisted rendezvous/NAT/serial state. The separately listed Dart constants and address-display
+  formatting are not covered by this Rust-backend closure.
 - **Dead Dart option constants:** `kOptionHideServerSetting`, `kOptionHideProxySetting`,
   `kOptionDisableChangeId`, `kOptionAllowDeepLinkServerSettings` (`flutter/lib/consts.dart:171-187`) —
   zero consumers. Delete.
@@ -7143,9 +7176,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-390e7956a063b0454d309c41510a08c063b5685815dd205fb10824cdd75f0165  requirements.html
+80c99dc71d8603fea1df98aaa789c61278bbd39842b3f1e7f1d194a28b4cffa4  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, and Appendix C #185. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, and Appendix C #186. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

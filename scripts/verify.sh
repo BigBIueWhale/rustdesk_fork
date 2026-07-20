@@ -8467,14 +8467,19 @@ if [ -n "$r_g6_add" ]; then
 else
   echo "  ok  R-G6 additive copy present+wired (capability-disabled-on-peer message + unreachable check-address/port-forward guidance)"
 fi
-# (2) The Rust core LoginConfigHandler::initialize (src/client.rs) MUST NOT adopt an embedded ?key= into
-# other_server, nor re-adopt a persisted/option-injected other-server-key.
-if grep -qE 'args_map\.remove\("key"\)' src/client.rs; then
-  echo "  FAIL R-X6: src/client.rs still parses an embedded ?key= into other_server"; rc=1
-elif ! grep -qF 'NEVER adopt an embedded' src/client.rs; then
-  echo "  FAIL R-X6: the client.rs ?key= strip marker is gone (regrowth risk)"; rc=1
+# (2) The Rust core has no cross-server grammar or storage surface at all. The exact address remains
+# opaque through LoginConfigHandler and any non-direct address is rejected at Client::_start.
+r_x6_rust_address=""
+grep -qF 'self.id = id;' src/client.rs || r_x6_rust_address="$r_x6_rust_address exact-address-assignment-missing"
+grep -qF 'fn login_identity_does_not_parse_cross_server_grammar()' src/client.rs \
+  || r_x6_rust_address="$r_x6_rust_address address-identity-regression-missing"
+if grep -qE 'other_server|other-server-key|args_map\.remove\("key"\)|id\.contains\("@"\)' src/client.rs; then
+  r_x6_rust_address="$r_x6_rust_address cross-server-parser-or-state-present"
+fi
+if [ -n "$r_x6_rust_address" ]; then
+  echo "  FAIL R-X6: Rust client address identity is not structurally free of cross-server key grammar:$r_x6_rust_address"; rc=1
 else
-  echo "  ok  R-X6 Rust core never adopts an embedded ?key= (other_server key held empty)"
+  echo "  ok  R-X6 Rust core retains the exact address and has no cross-server key parser or state"
 fi
 # R-X6 confirmation gate: a deep-link-initiated connection MUST be confirmed by the user. The Dart gate
 # (confirmDeepLinkConnect via msgBox) wraps every rustdesk:// connect, routed through the `fromUri`
@@ -9189,6 +9194,36 @@ else
   echo "  ok  R-SV6a account/control-plane authority absent; profile metadata is build-local only"
 fi
 ra6_clean 'api/devices/deploy|api/devices/cli|admin\.rustdesk\.com' 'R-SV6/R-SV6a account endpoint and hardwired API host literals' || rc=1
+# R-SV6b/R-SV4/R-X6: direct-IP routing and login identity have no dormant rendezvous resolver,
+# cross-server address grammar, or persisted NAT/serial migration authority. Config2 retains only
+# its unrelated options map; serde ignores historical network fields and never writes them back.
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::config2_ignores_retired_network_state_and_never_serializes_it --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::login_identity_does_not_parse_cross_server_grammar --color never
+r_sv6b=""
+config2_block=$(awk '/pub struct Config2 \{/,/^}/' libs/hbb_common/src/config.rs)
+grep -qF 'pub options: HashMap<String, String>' <<<"$config2_block" || r_sv6b="$r_sv6b config2-options-map-missing"
+if grep -qE '[[:space:]](rendezvous_server|nat_type|serial):' <<<"$config2_block"; then
+  r_sv6b="$r_sv6b retired-config2-network-field-present"
+fi
+if grep -qE 'other_server|other-server-key|const PUBLIC_SERVER|Config::get_rendezvous_server|id\.contains\("@"\)' src/client.rs; then
+  r_sv6b="$r_sv6b cross-server-client-authority-present"
+fi
+if grep -qE 'PROD_RENDEZVOUS_SERVER|pub const (RENDEZVOUS_SERVERS|RENDEZVOUS_PORT|RENDEZVOUS_TIMEOUT|REG_INTERVAL)|pub fn get_rendezvous_servers?\(|pub fn (set|get)_nat_type\(|pub fn (set|get)_serial\(' libs/hbb_common/src/config.rs; then
+  r_sv6b="$r_sv6b rendezvous-nat-resolver-or-state-present"
+fi
+grep -qE 'pub async fn get_nat_type\(' src/common.rs && r_sv6b="$r_sv6b nat-wrapper-present"
+grep -qF 'self.id = id;' src/client.rs || r_sv6b="$r_sv6b exact-address-assignment-missing"
+grep -qF 'let pure_id = self.id.clone();' src/client.rs || r_sv6b="$r_sv6b exact-login-identity-missing"
+grep -qF 'fn login_identity_does_not_parse_cross_server_grammar()' src/client.rs || r_sv6b="$r_sv6b client-regression-missing"
+grep -qF 'fn config2_ignores_retired_network_state_and_never_serializes_it()' libs/hbb_common/src/config.rs || r_sv6b="$r_sv6b config2-regression-missing"
+grep -qF '<span class="id">R-SV6b</span>' requirements.html || r_sv6b="$r_sv6b requirement-missing"
+grep -qF '<tr><td>186</td>' requirements.html || r_sv6b="$r_sv6b appendix-disposition-missing"
+grep -qF 'R-SV6b — dormant rendezvous/NAT compatibility authority deleted' HARDENING_STATUS.md || r_sv6b="$r_sv6b ledger-disposition-missing"
+if [ -n "$r_sv6b" ]; then
+  echo "  FAIL R-SV6b dormant rendezvous/NAT compatibility authority excision:$r_sv6b"; rc=1
+else
+  echo "  ok  R-SV6b direct address/login identity has no rendezvous resolver, cross-server grammar, or persisted NAT/serial state"
+fi
 # R-D4 Stage 2 / R-SV10: the rendezvous-mediator PROTOCOL is removed from the tree (the
 # register loop + register_pk method, the relay/punch-hole/intranet handlers, the UDP/KCP
 # path). These worker symbols were mediator-internal and are now tree-wide absent — the
@@ -9277,8 +9312,8 @@ ra6_clean 'post_conn_audit|post_alarm_audit|post_file_audit' 'R-D6 audit phone-h
 # actuator, credential type, TLS stack, parser, and Git dependency compiled. Bind the stronger source
 # model: one direct connector, no proxy modules/API/config field/dependency, and stale string option
 # names retained only as empty whole-map overlays. The focused serde regression proves an old Config2
-# `socks` table is ignored and never reserialized.
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::config2_ignores_retired_proxy_state_and_never_serializes_it --color never
+# `socks` table is ignored and never reserialized. The stronger R-SV6b historical-network-state
+# regression above covers this proxy table in the same Config2 fixture.
 r_s11b3j=
 [ ! -e libs/hbb_common/src/proxy.rs ] || r_s11b3j="$r_s11b3j proxy-module-present"
 [ ! -e libs/hbb_common/src/tls.rs ] || r_s11b3j="$r_s11b3j proxy-tls-module-present"
@@ -10265,21 +10300,9 @@ ra6_clean 'create_relay_connection|_start_inner|secure_connection|udp_nat_connec
 # refresh). The egress fns (create_online_stream / the OnlineRequest send) are gone; peer_online
 # now reports every peer offline with no network call. (Only `//` comments name them, filtered.)
 ra6_clean 'create_online_stream|set_online_request' 'R-SV viewer online-status egress' || rc=1
-# R-SV4 / §18 (dial nobody): the DEFAULT rendezvous-server list (RENDEZVOUS_SERVERS in
-# hbb_common/config.rs) must stay EMPTY. Upstream baked "rs-ny.rustdesk.com" in as the fallback used
-# whenever no server is configured, so a "direct-IP only" binary still carried a hardwired upstream
-# broker -- one revived caller away from a phone-home. The connect paths are already neutered (the
-# gates above) and the latency probe early-returns on <=1 server, so it never dialed; the const is
-# now &[] for defense-in-depth -- get_rendezvous_server[s]() fall back to nothing, dialing nobody.
-# Two hardened gates (presence-vs-VALUE): (a) structural -- no quoted host on the const's definition
-# line, catching ANY hardwired default (rustdesk or not); (b) value -- no rs-*.rustdesk.com host
-# anywhere in code, catching the host hardcoded elsewhere (`//` comments are filtered).
-if grep -nE 'pub const RENDEZVOUS_SERVERS[^=]*=[^;]*"' libs/hbb_common/src/config.rs; then
-  echo "  FAIL R-SV4/§18: RENDEZVOUS_SERVERS must be empty (&[]) -- no hardwired rendezvous broker baked into the direct-IP binary"; rc=1
-else
-  echo "  ok  R-SV4/§18 RENDEZVOUS_SERVERS default empty (no hardwired rendezvous broker; dial nobody)"
-fi
-ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/§18 hardwired rs-*.rustdesk.com rendezvous host (RENDEZVOUS_SERVERS emptied)' || rc=1
+# R-SV4/R-SV6b / §18 (dial nobody): the fallback list and resolver are absent, not empty compatibility
+# objects. Keep the independent hardwired-host search so a broker literal cannot regrow elsewhere.
+ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/R-SV6b/§18 hardwired rs-*.rustdesk.com rendezvous host' || rc=1
 # R-SV1 / §8 / §18 (no device fingerprinting): the upstream hbb_common::fingerprint module -- a
 # HARDWARE fingerprint generator (sysinfo-collected cpu brand/speed/cores/mem/platform/arch/addr,
 # obfuscated with a hand-rolled AES: the S-box TABLE + expand_key/gf_mul/add_round_key) that upstream

@@ -1272,30 +1272,72 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn reconnect(&self) {
-        // 1. If current session is connecting, do not reconnect.
-        // 2. If the connection is established, send `Data::Close`.
-        // 3. If the connection is disconnected, do nothing.
-        let mut connection_round_state_lock = self.connection_round_state.lock().unwrap();
-        if self.thread.lock().unwrap().is_some() {
-            match connection_round_state_lock.state {
-                ConnectionState::Connecting => return,
-                ConnectionState::Connected => self.send(Data::Close),
-                ConnectionState::Disconnected => {}
+        if self.close_requested.load(Ordering::Acquire) {
+            log::warn!("refusing to reconnect a viewer session whose owner has retired");
+            return;
+        }
+        // Serialize replacement against both final owner teardown and the initial start. A new
+        // connection round is not admitted until the exact previous I/O worker has returned and
+        // joined its decoder/audio children.
+        let mut thread_lock = self.thread.lock().unwrap();
+        if thread_lock.is_some() {
+            let state = {
+                let connection_round_state = self.connection_round_state.lock().unwrap();
+                match connection_round_state.state {
+                    ConnectionState::Connecting => return,
+                    ConnectionState::Connected => ConnectionState::Connected,
+                    ConnectionState::Disconnected => ConnectionState::Disconnected,
+                }
+            };
+            if matches!(state, ConnectionState::Connected) {
+                self.send(Data::Close);
+            }
+            if let Some(thread) = thread_lock.take() {
+                if thread.join().is_err() {
+                    log::error!("outgoing viewer I/O worker terminated by panic during reconnect");
+                }
             }
         }
-        let round = connection_round_state_lock.new_round();
-        drop(connection_round_state_lock);
-
-        let cloned = self.clone();
-
+        let round = self.connection_round_state.lock().unwrap().new_round();
         self.lc.write().unwrap().peer_info = None;
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);
-        let mut lock = self.thread.lock().unwrap();
-        // No need to join the previous thread, because it will exit automatically.
-        // And the previous thread will not change important states.
-        *lock = Some(std::thread::spawn(move || {
-            io_loop(cloned, round);
-        }));
+        match Self::spawn_io_thread(self.clone(), round) {
+            Ok(thread) => *thread_lock = Some(thread),
+            Err(err) => {
+                self.connection_round_state
+                    .lock()
+                    .unwrap()
+                    .set_disconnected(round);
+                log::error!("failed to start outgoing viewer I/O worker: {err}");
+            }
+        }
+    }
+
+    fn spawn_io_thread(session: Self, round: u32) -> std::io::Result<std::thread::JoinHandle<()>> {
+        std::thread::Builder::new()
+            .name("rustdesk-viewer-io".to_owned())
+            .spawn(move || io_loop(session, round))
+    }
+
+    pub fn start_io_thread(&self) -> std::io::Result<bool> {
+        let mut thread_lock = self.thread.lock().unwrap();
+        if thread_lock.is_some() || self.close_requested.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+        let round = self.connection_round_state.lock().unwrap().new_round();
+        match Self::spawn_io_thread(self.clone(), round) {
+            Ok(thread) => {
+                *thread_lock = Some(thread);
+                Ok(true)
+            }
+            Err(err) => {
+                self.connection_round_state
+                    .lock()
+                    .unwrap()
+                    .set_disconnected(round);
+                Err(err)
+            }
+        }
     }
 
     /// R-S13/A3 (prompt-before-keying): set the connect-time password entered into the
@@ -1376,6 +1418,21 @@ impl<T: InvokeUiSession> Session<T> {
         self.close_requested.store(true, Ordering::Release);
         self.close_notify.notify_waiters();
         self.send(Data::Close);
+    }
+
+    /// Retire the session and wait until its exact I/O worker (and therefore all of that worker's
+    /// owned media children) has completed. Holding the worker slot across close+join prevents an
+    /// initial start or reconnect from crossing final owner teardown.
+    pub fn close_and_join(&self) -> bool {
+        let mut thread_lock = self.thread.lock().unwrap();
+        self.close();
+        let Some(thread) = thread_lock.take() else {
+            return false;
+        };
+        if thread.join().is_err() {
+            log::error!("outgoing viewer I/O worker terminated by panic during final teardown");
+        }
+        true
     }
 
     fn try_auto_start_job_str(is_reconnected: bool, job_str: &str) -> Option<String> {

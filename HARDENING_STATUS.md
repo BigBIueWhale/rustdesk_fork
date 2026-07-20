@@ -295,18 +295,36 @@ superseded owner under the same write lock before marking itself started. Thus a
 rendering with a permanently stale generation, and delayed teardown from the displaced instance still cannot
 retire the resumed owner. Initial Dart owner registration also fails visibly closed: a false result closes that
 stale Activity before `runApp`, rather than launching a UI whose native add/start calls must all fail.
+Follow-up closure (2026-07-20), **Android outgoing-viewer I/O and media-worker completion ownership**:
+the UUID/generation transition previously proved only that a close was requested and the stale map entry was
+removed. Initial viewer start discarded its I/O `JoinHandle`; reconnect overwrote the prior handle without a
+join; and the video decoder, audio decoder, and voice-capture workers discarded their own handles. The retained
+Android process could therefore outlive the task while an old outgoing worker tree still owned native state—the
+observed shape in which file transfer (a separate session) remained usable but screen control hung until Android
+Force Stop terminated the process. Git history places these detach shapes in the fork baseline rather than the
+recent owner-generation work; this is a source-proven mechanism consistent with the report, not yet an on-device
+causal reproduction. Initial start now retains the exact I/O worker. Reconnect and final owner teardown serialize
+through that worker slot, request close, join the old round, and only then admit replacement. The I/O worker in
+turn owns its exact video/audio decoder and voice-capture workers, closes their channels/signals, and joins them
+through Tokio blocking delegation before it marks the round disconnected. Explicit session close and test cleanup
+use the same completion sink. The incoming `MainService`, controlled listener, projection grant, and capture
+resources are deliberately unchanged.
 Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
 drain, delayed-callback ABA rejection, admission/transition lock exclusion, and stopped-Activity ownership
-resumption without generation reuse; `scripts/verify.sh` gates the typed JNI surface, absence of
+resumption without generation reuse. They now also hold a synthetic outgoing worker open, prove an owner transition
+cannot report completion before releasing and joining it, and prove a media owner closes admission before joining
+its exact worker. `scripts/verify.sh` gates the typed JNI surface, absence of
 argument-free/global drain APIs, registration-before-UI-or-exit order, owner-scoped Activity/service teardown,
-started-Activity resumption, and lock-held add/start/resume/retire ordering. A disposable tracked-file candidate snapshot completed one
+started-Activity resumption, lock-held add/start/resume/retire ordering, initial I/O-handle retention,
+reconnect/final joins, child-worker ownership, and off-executor joining. A disposable tracked-file candidate snapshot completed one
 offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
 1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
 was checked for nonzero size and then discarded with the scratch tree. This is target-integration evidence, not the
 R-B2 final signed/reproducible artifact proof. The real-device connect → swipe-away → relaunch → reconnect sequence
 remains pending and is not claimed here. This lifecycle split is Android-specific: iOS has no retained Android
-foreground service and keeps the shared next-isolate stale-UUID cleanup; desktop uses its existing
-per-session/window ownership and is unchanged.
+foreground service and keeps the shared next-isolate stale-UUID cleanup. The generation/UUID layer is
+Android-specific, while exact outgoing I/O/media-worker completion is shared by Android, desktop, iOS, and future
+macOS builds through the common viewer core.
 
 **R-X6/R-S14 Android final APK manifest authority — CLOSED / GATED (2026-07-11).**
 Platform: Android release APK. Endpoint/action: the single merged `AndroidManifest.xml` packaged into the
@@ -7125,9 +7143,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-dee7eab882c7e3b2ace041c112a4837b67a3fd066837e77ba21e10e0b6390d3e  requirements.html
+390e7956a063b0454d309c41510a08c063b5685815dd205fb10824cdd75f0165  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, and Appendix C #184. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, and Appendix C #185. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -7674,6 +7674,7 @@ grep -Fq 'R-S9 permanent-password PRS read-state authority' HARDENING_STATUS.md 
 # viewer must cap display-thread creation and use bounded media queues.
 echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::owned_media_thread_closes_admission_before_join --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_opus_format_admission_pins_first_format --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_video_unsupported_guard_blocks_marked_format --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::peer_info_does_not_choose_saved_keyboard_mode --color never
@@ -8833,11 +8834,15 @@ fi
 # belong to one Flutter Activity/isolate. Lifecycle callbacks must therefore carry exact owner
 # authority. An argument-free global drain lets an obsolete Activity/onTaskRemoved callback close a
 # replacement isolate's live session. Bind a monotonic Activity generation to the isolate UUID,
-# reject stale session admission in Rust, and drain only that UUID.
+# reject stale session admission in Rust, drain only that UUID, and do not admit a replacement until
+# the retired viewer I/O worker has joined every native media child it owns.
 android_client_owner_bad=
 ma=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
 ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
 flutter_main=flutter/lib/main.dart
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  flutter::mobile_session_lifecycle_tests::android_owner_transition_joins_outgoing_worker_before_replacement \
+  --color never
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
 grep -qF 'external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean' "$ffi_kt" \
@@ -8864,6 +8869,35 @@ grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.
   || android_client_owner_bad="$android_client_owner_bad admission-transition-regression-test-missing"
 grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad stopped-activity-resume-regression-test-missing"
+grep -qF 'android_owner_transition_joins_outgoing_worker_before_replacement' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad exact-worker-join-regression-test-missing"
+grep -qF 'session.close_and_join();' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad owner-drain-does-not-join-worker"
+grep -qF 'session.close_and_join();' src/flutter_ffi.rs \
+  || android_client_owner_bad="$android_client_owner_bad explicit-session-close-does-not-join-worker"
+grep -qF 'pub fn start_io_thread(&self) -> std::io::Result<bool>' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad tracked-initial-io-worker-missing"
+grep -qF 'pub fn close_and_join(&self) -> bool' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad final-io-worker-join-missing"
+grep -qF 'outgoing viewer I/O worker terminated by panic during reconnect' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad reconnect-worker-join-missing"
+grep -qF 'self.shutdown_workers().await;' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad media-worker-shutdown-missing"
+grep -qF 'tokio::task::spawn_blocking' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad media-worker-join-blocks-async-runtime"
+grep -qF 'media_thread: OwnedMediaThread' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-worker-owner-missing"
+grep -qF 'voice_call_thread: Option<VoiceCallThread>' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad voice-worker-owner-missing"
+grep -qF 'owned_media_thread_closes_admission_before_join' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad media-owner-regression-test-missing"
+if grep -qF 'No need to join the previous thread' src/ui_session_interface.rs; then
+  android_client_owner_bad="$android_client_owner_bad detached-reconnect-worker-present"
+fi
+grep -qF 'Outgoing viewer owner completion and replacement' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad requirements-disposition-missing"
+grep -qF 'Android outgoing-viewer I/O and media-worker completion ownership' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad hardening-ledger-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path
@@ -8917,7 +8951,7 @@ ok = (
         < session_add.index("sessions::insert_session")
         < session_add.index("drop(owner_admission)")
     and session_start.index("acquire_android_client_owner(session_id)")
-        < session_start.index("std::thread::spawn")
+        < session_start.index("session.start_io_thread()?")
         < session_start.index("drop(owner_admission)")
     and owner_begin.index("ANDROID_CLIENT_OWNER.write()")
         < owner_begin.index("owner.begin()")
@@ -8940,7 +8974,7 @@ fi
 if [ -n "$android_client_owner_bad" ]; then
   echo "  FAIL R-D7a/R-T4: Android outgoing-client Activity/isolate ownership regressed:$android_client_owner_bad"; rc=1
 else
-  echo "  ok  R-D7a/R-T4 Android outgoing sessions are generation+isolate-owned; stale Activity/task callbacks cannot drain a replacement isolate"
+  echo "  ok  R-D7a/R-T4 Android outgoing sessions are generation+isolate-owned; stale Activity/task callbacks cannot drain a replacement isolate; replacement waits for exact I/O/media-worker completion"
 fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =

@@ -265,7 +265,7 @@ pub fn session_close(session_id: SessionID) {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         crate::keyboard::release_remote_keys("map");
         session.close_event_stream(session_id);
-        session.close();
+        session.close_and_join();
     }
 }
 

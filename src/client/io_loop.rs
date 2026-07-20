@@ -4,7 +4,7 @@ use crate::clipboard::{update_clipboard, ClipboardSide};
 use crate::{audio_service, clipboard::CLIPBOARD_INTERVAL, ConnInner, CLIENT_SERVER};
 use crate::{
     client::{
-        self, new_voice_call_request, Client, Data, Interface, MediaData, MediaSender,
+        self, new_voice_call_request, Client, Data, Interface, MediaData, OwnedMediaThread,
         QualityStatus, MILLI1, SEC30,
     },
     common::get_default_sound_input,
@@ -75,13 +75,46 @@ fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool {
     }
 }
 
+struct VoiceCallThread {
+    stop_sender: Option<std::sync::mpsc::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl VoiceCallThread {
+    fn new(stop_sender: std::sync::mpsc::Sender<()>, thread: std::thread::JoinHandle<()>) -> Self {
+        Self {
+            stop_sender: Some(stop_sender),
+            thread: Some(thread),
+        }
+    }
+
+    fn stop(&mut self) -> Option<std::thread::JoinHandle<()>> {
+        if let Some(sender) = self.stop_sender.take() {
+            if sender.send(()).is_err() {
+                log::debug!("voice-call worker had already closed its stop channel");
+            }
+        }
+        self.thread.take()
+    }
+}
+
+impl Drop for VoiceCallThread {
+    fn drop(&mut self) {
+        if let Some(thread) = self.stop() {
+            if thread.join().is_err() {
+                log::error!("voice-call worker terminated by panic");
+            }
+        }
+    }
+}
+
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
-    audio_sender: MediaSender,
+    audio_thread: OwnedMediaThread,
     receiver: mpsc::UnboundedReceiver<Data>,
     sender: mpsc::UnboundedSender<Data>,
     // Stop sending local audio to remote client.
-    stop_voice_call_sender: Option<std::sync::mpsc::Sender<()>>,
+    voice_call_thread: Option<VoiceCallThread>,
     voice_call_request_timestamp: Option<NonZeroI64>,
     read_jobs: Vec<fs::TransferJob>,
     write_jobs: Vec<fs::TransferJob>,
@@ -421,7 +454,7 @@ impl<T: InvokeUiSession> Remote<T> {
     ) -> Self {
         Self {
             handler,
-            audio_sender: crate::client::start_audio_thread(),
+            audio_thread: crate::client::start_owned_audio_thread(),
             receiver,
             sender,
             read_jobs: Vec::new(),
@@ -435,7 +468,7 @@ impl<T: InvokeUiSession> Remote<T> {
             client_conn_id: 0,
             data_count: Arc::new(AtomicUsize::new(0)),
             video_format: CodecFormat::Unknown,
-            stop_voice_call_sender: None,
+            voice_call_thread: None,
             voice_call_request_timestamp: None,
             peer_info: Default::default(),
             video_threads: Default::default(),
@@ -652,15 +685,12 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 log::debug!("Exit io_loop of id={}", self.handler.get_id());
-                // Stop client audio server.
-                if let Some(s) = self.stop_voice_call_sender.take() {
-                    s.send(()).ok();
-                }
             }
             Some(Err(err)) => {
                 self.handler.on_establish_connection_error(err.to_string());
             }
         }
+        self.shutdown_workers().await;
         // set_disconnected_ok is used to check if new connection round is started.
         let _set_disconnected_ok = self
             .handler
@@ -760,15 +790,55 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    fn stop_voice_call(&mut self) {
-        let voice_call_sender = std::mem::replace(&mut self.stop_voice_call_sender, None);
-        if let Some(stopper) = voice_call_sender {
-            let _ = stopper.send(());
+    async fn join_workers(workers: Vec<(&'static str, std::thread::JoinHandle<()>)>) {
+        if workers.is_empty() {
+            return;
+        }
+        if let Err(err) = tokio::task::spawn_blocking(move || {
+            for (name, worker) in workers {
+                if worker.join().is_err() {
+                    log::error!("{name} worker terminated by panic");
+                }
+            }
+        })
+        .await
+        {
+            log::error!("failed to join outgoing session workers: {err}");
         }
     }
 
+    async fn stop_voice_call(&mut self) {
+        let Some(mut voice_call_thread) = self.voice_call_thread.take() else {
+            return;
+        };
+        let worker = voice_call_thread.stop();
+        drop(voice_call_thread);
+        if let Some(worker) = worker {
+            Self::join_workers(vec![("voice-call", worker)]).await;
+        }
+    }
+
+    async fn shutdown_workers(&mut self) {
+        let mut workers = Vec::with_capacity(self.video_threads.len() + 2);
+        if let Some(mut voice_call_thread) = self.voice_call_thread.take() {
+            if let Some(worker) = voice_call_thread.stop() {
+                workers.push(("voice-call", worker));
+            }
+        }
+        for (_, mut video_thread) in self.video_threads.drain() {
+            *video_thread.discard_queue.write().unwrap() = true;
+            if let Some(worker) = video_thread.media_thread.close() {
+                workers.push(("video decoder", worker));
+            }
+        }
+        if let Some(worker) = self.audio_thread.close() {
+            workers.push(("audio decoder", worker));
+        }
+        Self::join_workers(workers).await;
+    }
+
     // Start a voice call recorder, records audio and send to remote
-    fn start_voice_call(&mut self) -> Option<std::sync::mpsc::Sender<()>> {
+    fn start_voice_call(&mut self) -> Option<VoiceCallThread> {
         if self.handler.is_file_transfer()
             || self.handler.is_port_forward()
             || self.handler.is_terminal()
@@ -798,7 +868,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 true,
             );
             let tx_audio = self.sender.clone();
-            std::thread::spawn(move || {
+            let thread = std::thread::spawn(move || {
                 loop {
                     // check if client is closed
                     match rx.try_recv() {
@@ -839,7 +909,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
             });
-            return Some(tx);
+            return Some(VoiceCallThread::new(tx, thread));
         }
         #[cfg(target_os = "ios")]
         {
@@ -1260,7 +1330,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.handler.on_voice_call_waiting();
             }
             Data::CloseVoiceCall => {
-                self.stop_voice_call();
+                self.stop_voice_call().await;
                 let msg = new_voice_call_request(false);
                 self.handler
                     .on_voice_call_closed("Closed manually by the peer");
@@ -1269,14 +1339,14 @@ impl<T: InvokeUiSession> Remote<T> {
             Data::ResetDecoder(display) => match display {
                 Some(display) => {
                     if let Some(v) = self.video_threads.get_mut(&display) {
-                        if let Err(err) = v.video_sender.try_send(MediaData::Reset) {
+                        if let Err(err) = v.media_thread.try_send(MediaData::Reset) {
                             log::warn!("viewer video decode queue full; dropping reset: {err}");
                         }
                     }
                 }
                 None => {
                     for (_, v) in self.video_threads.iter_mut() {
-                        if let Err(err) = v.video_sender.try_send(MediaData::Reset) {
+                        if let Err(err) = v.media_thread.try_send(MediaData::Reset) {
                             log::warn!("viewer video decode queue full; dropping reset: {err}");
                         }
                     }
@@ -1702,7 +1772,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     };
                     if Self::contains_key_frame(&vf) {
                         if let Err(err) = thread
-                            .video_sender
+                            .media_thread
                             .try_send(MediaData::VideoFrame(Box::new(vf)))
                         {
                             log::warn!(
@@ -1714,7 +1784,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         if video_queue.force_push(vf).is_some() {
                             drop(video_queue);
                             self.handler.refresh_video(display as _);
-                        } else if let Err(err) = thread.video_sender.try_send(MediaData::VideoQueue)
+                        } else if let Err(err) = thread.media_thread.try_send(MediaData::VideoQueue)
                         {
                             log::warn!(
                                 "viewer video decode queue full; dropping peer video queue signal: {err}"
@@ -2075,7 +2145,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::Misc(misc)) => match misc.union {
                     Some(misc::Union::AudioFormat(f)) => {
                         if client::native_opus_format_within_limit(f.sample_rate, f.channels) {
-                            if let Err(err) = self.audio_sender.try_send(MediaData::AudioFormat(f))
+                            if let Err(err) = self.audio_thread.try_send(MediaData::AudioFormat(f))
                             {
                                 log::warn!(
                                     "viewer audio decode queue full; dropping peer audio format: {err}"
@@ -2154,7 +2224,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(misc::Union::SwitchDisplay(s)) => {
                         self.handler.handle_peer_switch_display(&s);
                         if let Some(thread) = self.video_threads.get_mut(&(s.display as usize)) {
-                            if let Err(err) = thread.video_sender.try_send(MediaData::Reset) {
+                            if let Err(err) = thread.media_thread.try_send(MediaData::Reset) {
                                 log::warn!("viewer video decode queue full; dropping reset: {err}");
                             }
                         }
@@ -2273,7 +2343,7 @@ impl<T: InvokeUiSession> Remote<T> {
                     if !self.handler.lc.read().unwrap().disable_audio.v {
                         if client::native_opus_packet_within_limit(frame.data.len()) {
                             if let Err(err) = self
-                                .audio_sender
+                                .audio_thread
                                 .try_send(MediaData::AudioFrame(Box::new(frame)))
                             {
                                 log::warn!(
@@ -2316,8 +2386,8 @@ impl<T: InvokeUiSession> Remote<T> {
                         // TODO: maybe we will do a voice call from the peer in the future.
                     } else {
                         log::debug!("The remote has requested to close the voice call");
-                        if let Some(sender) = self.stop_voice_call_sender.take() {
-                            allow_err!(sender.send(()));
+                        if self.voice_call_thread.is_some() {
+                            self.stop_voice_call().await;
                             self.handler.on_voice_call_closed("");
                         }
                     }
@@ -2331,7 +2401,8 @@ impl<T: InvokeUiSession> Remote<T> {
                             if response.accepted {
                                 // The peer accepted the voice call.
                                 self.handler.on_voice_call_started();
-                                self.stop_voice_call_sender = self.start_voice_call();
+                                self.stop_voice_call().await;
+                                self.voice_call_thread = self.start_voice_call();
                             } else {
                                 // The peer refused the voice call.
                                 self.handler.on_voice_call_closed("");
@@ -2767,28 +2838,21 @@ impl<T: InvokeUiSession> Remote<T> {
         let decode_fps = Arc::new(RwLock::new(None));
         let frame_count = Arc::new(RwLock::new(0));
         let discard_queue = Arc::new(RwLock::new(false));
-        let video_thread = VideoThread {
-            video_queue: video_queue.clone(),
-            video_sender,
-            decode_fps: decode_fps.clone(),
-            frame_count: frame_count.clone(),
-            fps_control: Default::default(),
-            discard_queue: discard_queue.clone(),
-        };
         let handler = self.handler.ui_handler.clone();
-        crate::client::start_video_thread(
+        let decoder_frame_count = frame_count.clone();
+        let thread = crate::client::start_video_thread(
             self.handler.clone(),
             display,
             video_receiver,
-            video_queue,
-            decode_fps,
+            video_queue.clone(),
+            decode_fps.clone(),
             self.chroma.clone(),
-            discard_queue,
+            discard_queue.clone(),
             move |display: usize,
                   data: &mut scrap::ImageRgb,
                   _texture: *mut c_void,
                   pixelbuffer: bool| {
-                *frame_count.write().unwrap() += 1;
+                *decoder_frame_count.write().unwrap() += 1;
                 if pixelbuffer {
                     handler.on_rgba(display, data);
                 } else {
@@ -2797,6 +2861,14 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             },
         );
+        let video_thread = VideoThread {
+            video_queue,
+            media_thread: OwnedMediaThread::new(video_sender, thread),
+            decode_fps,
+            frame_count,
+            fps_control: Default::default(),
+            discard_queue,
+        };
         self.video_threads.insert(display, video_thread);
         if self.video_threads.len() == 1 {
             let auto_record =
@@ -2821,7 +2893,7 @@ impl<T: InvokeUiSession> Remote<T> {
         log::info!("record screen start: {start}");
         // update local
         for (_, v) in self.video_threads.iter_mut() {
-            if let Err(err) = v.video_sender.try_send(MediaData::RecordScreen(start)) {
+            if let Err(err) = v.media_thread.try_send(MediaData::RecordScreen(start)) {
                 log::warn!("viewer video decode queue full; dropping record-state update: {err}");
             }
         }
@@ -3162,7 +3234,7 @@ struct FpsControl {
 
 struct VideoThread {
     video_queue: Arc<RwLock<ArrayQueue<VideoFrame>>>,
-    video_sender: MediaSender,
+    media_thread: OwnedMediaThread,
     decode_fps: Arc<RwLock<Option<usize>>>,
     frame_count: Arc<RwLock<usize>>,
     discard_queue: Arc<RwLock<bool>>,

@@ -1,7 +1,7 @@
 use crate::{
     client::*,
     flutter_ffi::{EventToUI, SessionID},
-    ui_session_interface::{io_loop, InvokeUiSession, Session},
+    ui_session_interface::{InvokeUiSession, Session},
 };
 use flutter_rust_bridge::StreamSink;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1521,11 +1521,9 @@ pub fn session_start_(
                 id,
                 session.use_texture_render.load(Ordering::Relaxed)
             );
-            let session = (*session).clone();
-            std::thread::spawn(move || {
-                let round = session.connection_round_state.lock().unwrap().new_round();
-                io_loop(session, round);
-            });
+            if !session.start_io_thread()? {
+                bail!("Outgoing viewer session is already active or has retired");
+            }
         }
         #[cfg(target_os = "android")]
         drop(owner_admission);
@@ -2470,7 +2468,7 @@ pub mod sessions {
     #[cfg(test)]
     pub(super) fn clear_for_test() {
         for session in std::mem::take(&mut *SESSIONS.write().unwrap()).into_values() {
-            session.close();
+            session.close_and_join();
         }
     }
 
@@ -2501,7 +2499,7 @@ fn close_session_set(drained: Vec<FlutterSession>) -> (usize, usize) {
             session.close_event_stream(session_id);
         }
         session.session_handlers.write().unwrap().clear();
-        session.close();
+        session.close_and_join();
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -2526,7 +2524,7 @@ fn close_sessions_owned_by(session_id: &SessionID) -> (usize, usize) {
         try_send_close_event(&handler.event_stream);
     }
     for session in sessions {
-        session.close();
+        session.close_and_join();
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -2608,7 +2606,10 @@ pub fn close_android_client_owner(generation: u64, session_id: &SessionID) -> (u
 #[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -2652,6 +2653,46 @@ mod mobile_session_lifecycle_tests {
         assert!(stale_files.close_requested.load(Ordering::Acquire));
         assert!(stale_control.close_requested.load(Ordering::Acquire));
         assert_eq!(close_sessions_owned_by(&current_session), (1, 1));
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn android_owner_transition_joins_outgoing_worker_before_replacement() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let owner = SessionID::new_v4();
+        let session = sessions::insert_test_session(owner, "host-control", ConnType::DEFAULT_CONN);
+        let close_requested = session.close_requested.clone();
+        let finished = Arc::new(AtomicBool::new(false));
+        let finished_by_worker = finished.clone();
+        let (worker_reached_close_tx, worker_reached_close_rx) = mpsc::channel();
+        let (release_worker_tx, release_worker_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            while !close_requested.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+            worker_reached_close_tx.send(()).unwrap();
+            release_worker_rx.recv().unwrap();
+            finished_by_worker.store(true, Ordering::Release);
+        });
+        *session.thread.lock().unwrap() = Some(worker);
+
+        let (cleanup_done_tx, cleanup_done_rx) = mpsc::channel();
+        let cleanup = std::thread::spawn(move || {
+            cleanup_done_tx
+                .send(close_sessions_owned_by(&owner))
+                .unwrap();
+        });
+        worker_reached_close_rx.recv().unwrap();
+        assert!(cleanup_done_rx.try_recv().is_err());
+        assert!(!finished.load(Ordering::Acquire));
+
+        release_worker_tx.send(()).unwrap();
+        assert_eq!(cleanup_done_rx.recv().unwrap(), (1, 1));
+        cleanup.join().unwrap();
+        assert!(finished.load(Ordering::Acquire));
+        assert!(session.thread.lock().unwrap().is_none());
         sessions::clear_for_test();
     }
 

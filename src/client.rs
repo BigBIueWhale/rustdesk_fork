@@ -2327,6 +2327,49 @@ pub enum MediaData {
 
 pub type MediaSender = mpsc::SyncSender<MediaData>;
 
+/// Owns one decoder worker and the only sender that keeps its input channel open.
+/// Dropping the owner closes admission first and then joins the exact worker, so
+/// a later viewer session cannot overlap stale native decoder/audio resources.
+pub struct OwnedMediaThread {
+    sender: Option<MediaSender>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl OwnedMediaThread {
+    pub(crate) fn new(sender: MediaSender, thread: std::thread::JoinHandle<()>) -> Self {
+        Self {
+            sender: Some(sender),
+            thread: Some(thread),
+        }
+    }
+
+    pub fn try_send(&self, data: MediaData) -> Result<(), mpsc::TrySendError<MediaData>> {
+        match self.sender.as_ref() {
+            Some(sender) => sender.try_send(data),
+            None => Err(mpsc::TrySendError::Disconnected(data)),
+        }
+    }
+
+    pub(crate) fn close(&mut self) -> Option<std::thread::JoinHandle<()>> {
+        drop(self.sender.take());
+        self.thread.take()
+    }
+
+    fn close_and_join(&mut self) {
+        if let Some(thread) = self.close() {
+            if thread.join().is_err() {
+                log::error!("media decoder worker terminated by panic");
+            }
+        }
+    }
+}
+
+impl Drop for OwnedMediaThread {
+    fn drop(&mut self) {
+        self.close_and_join();
+    }
+}
+
 /// Start video thread.
 ///
 /// # Arguments
@@ -2341,7 +2384,8 @@ pub fn start_video_thread<F, T>(
     chroma: Arc<RwLock<Option<Chroma>>>,
     discard_queue: Arc<RwLock<bool>>,
     video_callback: F,
-) where
+) -> std::thread::JoinHandle<()>
+where
     F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool) + Send,
     T: InvokeUiSession,
 {
@@ -2490,14 +2534,12 @@ pub fn start_video_thread<F, T>(
             }
         }
         log::info!("Video decoder loop exits");
-    });
+    })
 }
 
-/// Start an audio thread
-/// Return a audio [`MediaSender`]
-pub fn start_audio_thread() -> MediaSender {
+fn new_audio_thread() -> (MediaSender, std::thread::JoinHandle<()>) {
     let (audio_sender, audio_receiver) = mpsc::sync_channel::<MediaData>(MEDIA_DATA_QUEUE_CAPACITY);
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let mut audio_handler = AudioHandler::default();
         loop {
             if let Ok(data) = audio_receiver.recv() {
@@ -2517,7 +2559,19 @@ pub fn start_audio_thread() -> MediaSender {
         }
         log::info!("Audio decoder loop exits");
     });
+    (audio_sender, thread)
+}
+
+/// Start an audio thread for legacy call sites that do not yet own worker teardown.
+pub fn start_audio_thread() -> MediaSender {
+    let (audio_sender, _thread) = new_audio_thread();
     audio_sender
+}
+
+/// Start an audio thread whose sender and worker are owned by one viewer session.
+pub fn start_owned_audio_thread() -> OwnedMediaThread {
+    let (audio_sender, thread) = new_audio_thread();
+    OwnedMediaThread::new(audio_sender, thread)
 }
 
 #[inline]
@@ -3211,7 +3265,10 @@ mod tests {
     // PRS-persistence behaviour the legacy-`Hash`-challenge collapse depends on (the same assurance
     // layer the landed viewer-CPace keying accepted). Run with --test-threads=1 (the verify.sh gate).
     use super::*;
-    use std::sync::Once;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Once,
+    };
 
     static INIT: Once = Once::new();
 
@@ -3420,6 +3477,24 @@ mod tests {
             sender.try_send(MediaData::VideoQueue),
             Err(mpsc::TrySendError::Full(_))
         ));
+    }
+
+    #[test]
+    fn owned_media_thread_closes_admission_before_join() {
+        let (sender, receiver) = mpsc::sync_channel::<MediaData>(1);
+        let finished = Arc::new(AtomicBool::new(false));
+        let finished_by_worker = finished.clone();
+        let worker = std::thread::spawn(move || {
+            while receiver.recv().is_ok() {}
+            finished_by_worker.store(true, Ordering::Release);
+        });
+        let mut owner = OwnedMediaThread::new(sender, worker);
+
+        let worker = owner
+            .close()
+            .expect("the owner must retain its exact worker");
+        worker.join().unwrap();
+        assert!(finished.load(Ordering::Acquire));
     }
 
     fn login_port_forward_target(message: Message) -> (String, i32) {

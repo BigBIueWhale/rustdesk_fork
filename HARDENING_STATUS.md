@@ -7132,6 +7132,41 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and debug-keystore diagnostics, and the wrapper reported `ANDROID_PREFERENCES_RESULT=clean`. This is exact
   named-commit target-local A/B evidence. It is not the independent-snapshot full R-B2/R-B10 release transaction
   and does not prove Android device behavior; those obligations remain open.
+- **R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities — SOURCE
+  IMPLEMENTED/GATED 2026-07-22; NATIVE MACOS AND EXACT PACKAGED-ARTIFACT EVIDENCE REMAIN
+  R-R2/R-B2.** Platforms: Linux and macOS installed desktop entry processes; Windows retains its
+  separately proved exact current-MSI-package executable classifier. Endpoint/action:
+  `platform::is_installed()`, consumed before unattended-password and machine-policy routing,
+  root CLI user-main-IPC selection, installed UI state, and other service-aware behavior. Boundary:
+  the running executable identity ↔ the decision that machine credentials/policy belong to the
+  root/LaunchDaemon service and therefore may never fall back to user-owned storage after service
+  denial or unavailability. Linux previously accepted every lossy current-executable string beginning
+  with `/usr` or `/nix/store`; macOS accepted every string beginning with
+  `/Applications/<app>.app`. Those prefixes also describe sibling names, helper executables, copied
+  bundles, and future files beneath the tree rather than one supported app entry. This was a
+  source-proven caller-side authority-classification defect and possible fail-closed availability
+  error. It is not evidence of an unprivileged local-to-root write: the privileged receivers retain
+  independent polkit/Authorization Services, peer-process, and installed-helper proofs, and no real
+  machine, service, credential, listener, firewall, or package was exercised or changed.
+
+  The classifier now compares `Path` values without lossy conversion or prefix matching. Linux has
+  one closed two-entry inventory: the packaged `/usr/share/rustdesk/rustdesk` runner and exact
+  `/usr/bin/rustdesk` entry, covering the documented platform-dependent `current_exe` symlink result
+  without admitting their directories. macOS derives and admits only
+  `/Applications/<app>.app/Contents/MacOS/<app>`. Current-executable lookup failure and `/usr` or app
+  bundle prefixes, sibling/helper names, copied bundles, Nix-store paths, and every unlisted path
+  classify non-installed. That false result preserves portable user ownership; an exact installed
+  path still selects service ownership before service readiness and therefore retains R-S11b's
+  no-fallback rule. Receiver authorization remains independent and unchanged.
+
+  Focused Rust regressions accept only the supported Linux entries and exact macOS app executable and
+  reject directory, prefix-confusion, helper, copied-bundle, and Nix-store examples. The standalone
+  `scripts/verify-installed-service-classifier.py` parses both platform implementations, binds the
+  closed inventories, exact equality, fail-closed lookup result, tests, R-S11bn, Appendix C #207,
+  this row, and shared/Apple gate wiring, and rejects 16 deliberate mutations. Linux compilation and
+  test execution use the existing pinned Rust 1.75 offline container. The Apple checker proves source
+  shape only; no native Mac, signed app, installed service, or exact release artifact is claimed, and
+  those evidence obligations remain R-R2/R-B2.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7847,9 +7882,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d9512748e16a3995bb459e63dc3b8aa8084246de182a62e8e29cdc2acddf5ad4  requirements.html
+ddf021b62f3f1ff2d701d76ed48fc9045ba608b5e32143d50c2e63a6d20311dd  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bn, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

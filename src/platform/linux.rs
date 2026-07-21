@@ -57,6 +57,8 @@ const SERVICE_CHILD_RECORD: &[u8] = b"service-child.record\0";
 const SERVICE_CHILD_RECORD_TMP: &[u8] = b"service-child.record.tmp\0";
 const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
 const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
+const LINUX_INSTALLED_EXECUTABLE_PATHS: [&str; 2] =
+    ["/usr/share/rustdesk/rustdesk", "/usr/bin/rustdesk"];
 pub const REOPEN_AFTER_SERVICE_STOP_ARG: &str = "--reopen-after-service-stop";
 
 // Terminal type constants
@@ -2709,12 +2711,46 @@ pub fn block_input(_v: bool) -> (bool, String) {
     (true, "".to_owned())
 }
 
+fn linux_path_is_supported_installed_executable(path: &Path) -> bool {
+    LINUX_INSTALLED_EXECUTABLE_PATHS
+        .iter()
+        .any(|expected| path == Path::new(expected))
+}
+
 pub fn is_installed() -> bool {
-    if let Ok(p) = std::env::current_exe() {
-        p.to_str().unwrap_or_default().starts_with("/usr")
-            || p.to_str().unwrap_or_default().starts_with("/nix/store")
-    } else {
-        false
+    match std::env::current_exe() {
+        Ok(path) => linux_path_is_supported_installed_executable(&path),
+        Err(err) => {
+            log::warn!("Failed to identify the current Linux executable: {err}");
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod installed_executable_path_tests {
+    use super::linux_path_is_supported_installed_executable;
+    use std::path::Path;
+
+    #[test]
+    fn r_s11e80_linux_installed_classifier_requires_an_exact_supported_executable() {
+        assert!(linux_path_is_supported_installed_executable(Path::new(
+            "/usr/share/rustdesk/rustdesk"
+        )));
+        assert!(linux_path_is_supported_installed_executable(Path::new(
+            "/usr/bin/rustdesk"
+        )));
+        for path in [
+            "/usr/share/rustdesk",
+            "/usr/share/rustdesk/rustdesk-helper",
+            "/usr-malicious/rustdesk",
+            "/nix/store/attacker-selected/bin/rustdesk",
+        ] {
+            assert!(
+                !linux_path_is_supported_installed_executable(Path::new(path)),
+                "unexpected installed executable classification: {path}"
+            );
+        }
     }
 }
 

@@ -1124,14 +1124,50 @@ pub fn block_input(_v: bool) -> (bool, String) {
     (true, "".to_owned())
 }
 
+fn macos_installed_executable_path() -> PathBuf {
+    let app_name = crate::get_app_name();
+    PathBuf::from(format!(
+        "/Applications/{app_name}.app/Contents/MacOS/{app_name}"
+    ))
+}
+
+fn macos_path_is_supported_installed_executable(path: &Path) -> bool {
+    path == macos_installed_executable_path()
+}
+
 pub fn is_installed() -> bool {
-    if let Ok(p) = std::env::current_exe() {
-        return p
-            .to_str()
-            .unwrap_or_default()
-            .starts_with(&format!("/Applications/{}.app", crate::get_app_name()));
+    match std::env::current_exe() {
+        Ok(path) => macos_path_is_supported_installed_executable(&path),
+        Err(err) => {
+            log::warn!("Failed to identify the current macOS executable: {err}");
+            false
+        }
     }
-    false
+}
+
+#[cfg(test)]
+mod installed_executable_path_tests {
+    use super::{macos_installed_executable_path, macos_path_is_supported_installed_executable};
+    use std::path::Path;
+
+    #[test]
+    fn r_s11e80_macos_installed_classifier_requires_the_exact_app_executable() {
+        let expected = macos_installed_executable_path();
+        assert!(macos_path_is_supported_installed_executable(&expected));
+
+        let app_name = crate::get_app_name();
+        for path in [
+            format!("/Applications/{app_name}.app"),
+            format!("/Applications/{app_name}.app/Contents/MacOS/service"),
+            format!("/Applications/{app_name}.app-copy/Contents/MacOS/{app_name}"),
+            format!("/Applications/{app_name}.app/Contents/MacOS/{app_name}-helper"),
+        ] {
+            assert!(
+                !macos_path_is_supported_installed_executable(Path::new(&path)),
+                "unexpected installed executable classification: {path}"
+            );
+        }
+    }
 }
 
 pub fn quit_gui() {

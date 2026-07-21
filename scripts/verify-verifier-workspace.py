@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11176,6 +11176,54 @@ def validate_macos_launchd_lifecycle_contract(sources):
         sources["hardening"],
         "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
         "macOS launchd lifecycle hardening ledger",
+    )
+
+
+def validate_installed_service_classifier_contract(sources):
+    focused = sources["installed_service_classifier_verifier"]
+    for text, label in (
+        ("def extract_rust_function(", "installed-service Rust function parser"),
+        ("def validate(sources", "installed-service semantic entry"),
+        (
+            '"LINUX_INSTALLED_EXECUTABLE_PATHS"',
+            "Linux closed installed-executable inventory contract",
+        ),
+        (
+            'raise VerificationError("Linux installed-state classifier retains prefix authority")',
+            "Linux installed-service prefix rejection semantics",
+        ),
+        (
+            'raise VerificationError("macOS installed-state classifier retains prefix authority")',
+            "macOS installed-service prefix rejection semantics",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "installed-service mutation inventory"),
+        ("run_mutations(sources)", "installed-service mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-installed-service-classifier.py --repo . --self-test",
+        "installed-service shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-installed-service-classifier.py --repo . --self-test",
+        "installed-service Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bn</span>',
+        "exact installed-service ownership requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>207</td>",
+        "installed-service classifier Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
+        "installed-service classifier hardening ledger",
     )
 
 
@@ -14092,6 +14140,7 @@ def validate_sources(sources):
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
+    validate_installed_service_classifier_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -26118,8 +26167,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -26205,6 +26254,48 @@ def run_source_mutations(sources):
             "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
             "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses implicit legacy commands",
             "macOS launchd lifecycle hardening ledger",
+        ),
+        (
+            "installed_service_classifier_verifier",
+            'raise VerificationError("Linux installed-state classifier retains prefix authority")',
+            "return # Linux prefix authority accepted",
+            "Linux installed-service prefix rejection semantics",
+        ),
+        (
+            "installed_service_classifier_verifier",
+            'raise VerificationError("macOS installed-state classifier retains prefix authority")',
+            "return # macOS prefix authority accepted",
+            "macOS installed-service prefix rejection semantics",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-installed-service-classifier.py --repo . --self-test",
+            "true # installed-service classifier verifier removed",
+            "installed-service shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-installed-service-classifier.py --repo . --self-test",
+            "true # installed-service classifier verifier removed",
+            "installed-service Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bn</span>',
+            '<span class="id">R-S11bn-disabled</span>',
+            "exact installed-service ownership requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>207</td>",
+            "<tr><td>207-disabled</td>",
+            "installed-service classifier Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
+            "R-S11bn/R-S11e-80 — installed-service ownership uses path prefixes",
+            "installed-service classifier hardening ledger",
         ),
         (
             "android_builder_authority_verifier",
@@ -27255,6 +27346,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "macos_launchd_lifecycle_verifier": (
                 repo / "scripts/verify-macos-launchd-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "installed_service_classifier_verifier": (
+                repo / "scripts/verify-installed-service-classifier.py"
             ).read_text(encoding="utf-8"),
             "android_build_source_verifier": (
                 repo / "scripts/verify-android-build-source.py"

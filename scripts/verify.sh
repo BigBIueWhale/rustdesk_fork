@@ -800,6 +800,14 @@ else
   rc=1
 fi
 
+echo "== (3b-iii-a1a0) Linux/macOS exact installed-service ownership classifier (R-S11bn/R-S11e-80) =="
+if python3 scripts/verify-installed-service-classifier.py --repo . --self-test; then
+  echo "  ok  R-S11e-80 installed-service ownership uses only exact supported executable identities"
+else
+  echo "  FAIL R-S11e-80 installed-service ownership regained ambient path-prefix authority"
+  rc=1
+fi
+
 echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then

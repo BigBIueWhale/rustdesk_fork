@@ -10763,6 +10763,11 @@ def validate_portable_quick_support_excision_contract(sources):
         "R-X9 — portable-packer Quick Support residue excised",
         "portable Quick Support residue hardening ledger",
     )
+    require_text(
+        sources["hardening"],
+        "R-X12a, R-X9, and Appendix C #192–#193",
+        "current portable Quick Support requirements-hash scope",
+    )
 
     mutation_matrix = extract_between(
         sources["workspace_verifier"],
@@ -10777,6 +10782,7 @@ def validate_portable_quick_support_excision_contract(sources):
         ("Windows run-mode excision requirement", "requirement mutation"),
         ("portable Quick Support residue Appendix C row", "Appendix mutation"),
         ("portable Quick Support residue hardening ledger", "hardening-ledger mutation"),
+        ("current portable Quick Support requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -24882,6 +24888,12 @@ def run_source_mutations(sources):
             "R-X9 — portable-packer Quick Support residue excised",
             "R-X9 — portable-packer Quick Support residue retained",
             "portable Quick Support residue hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-X12a, R-X9, and Appendix C #192–#193",
+            "R-X12a and Appendix C #192",
+            "current portable Quick Support requirements-hash scope",
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )

@@ -7413,5 +7413,5 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, and Appendix C #192. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, and Appendix C #192–#193. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

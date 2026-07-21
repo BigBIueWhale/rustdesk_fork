@@ -7054,9 +7054,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs. The trusted-device/2FA cluster was
   subsequently excised and is closed/gated by I-11 below; it is no longer retained residue.
   The account-assignment residue was subsequently deleted and is closed/gated by R-SV6a above. The two orphaned
-  Wayland capture files were subsequently deleted and are closed/gated by R-X12a below. The remaining portable
-  `--quick_support` plumbing does not affect behavior or open a security path (reviewer + local re-confirm) and
-  remains a candidate for focused excision with its own build re-prove.
+  Wayland capture files were subsequently deleted and are closed/gated by R-X12a below. The portable
+  `--quick_support` plumbing was subsequently deleted and is closed/gated by the R-X9 source-completeness record
+  below; it had no application receiver and the exact released setup name returned through the MSI installer path
+  before that legacy classifier. No item in this earlier sampled residue list remains open.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
@@ -7073,6 +7074,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   module, path, gate, requirement, disposition, or ledger mutations. The live X11 capture implementation and the
   separately compiled platform/session compatibility code are unchanged; exact packaged-artifact proof remains
   R-B2/R-B10.
+- **R-X9 — portable-packer Quick Support residue excised — CLOSED/GATED 2026-07-21.** The June 24 R-X9
+  change deleted the Windows application's portable controlled-side service, its Quick Support receiver and
+  elevation machinery, `set_quick_support`, the `--quick_support` argument arm, and the application's executable-
+  name classifier. It missed the duplicate classifier in `libs/portable/src/main.rs`, which still recognized
+  `-qs-`/`-qs.exe`/`_qs.exe` names and replaced an empty forwarded argument list with `--quick_support`. History and
+  current build tracing establish that `libs/portable` is now the live setup bootstrapper, not a dead crate:
+  `scripts/build-windows.ps1` generates it from a one-file `rustdesk-installer.msi` payload and publishes it only as
+  `rustdesk-setup.exe`. That exact name enters the closed protected-installer parser and returns before the legacy
+  classifier, while the embedded RustDesk application no longer has any Quick Support receiving mode. The residue
+  was therefore inert in the exact release flow and did not expose a second controlled-side mode, elevation path,
+  listener, credential, privilege escalation, exploitation incident, host mutation, or evidence of compromise.
+  It nevertheless contradicted R-X9's explicit compiled-out requirement and preserved misleading executable-name-
+  selected reactivation logic. The duplicate classifier, state, and synthesized argument are now deleted; the live
+  MSI filename classification, protected elevation ceremony, exact closed installer argv parser, extraction, and
+  ordinary argument forwarding are unchanged. The shared R-X9 source gate now rejects `quick_support` in any active
+  Rust source, and the independent workspace validator plus deliberate mutations bind the portable source absence,
+  gate, existing R-X9 requirement, Appendix C #193, and this ledger. Focused portable-crate tests and a locked,
+  offline nonroot Linux check provide source/build evidence; native Windows and exact setup-artifact execution remain
+  part of R-B2/R-B10.
 - **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
   correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
   `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
@@ -7389,7 +7409,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-724894f56d7a48804905e4d6062ce43031fb81f61055320a7bd5ddd265c06406  requirements.html
+93ed189b4c8d0ec0f74fa009618c6d2c8db7b506902f7d608c610e0d667d0ba4  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,

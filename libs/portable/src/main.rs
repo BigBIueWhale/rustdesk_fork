@@ -263,12 +263,7 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
 }
 
 fn main() {
-    let mut process_args = std::env::args();
-    #[cfg(windows)]
-    let arg_exe = process_args.next().unwrap_or_default();
-    #[cfg(not(windows))]
-    let _ = process_args.next();
-    let mut args = process_args.collect::<Vec<_>>();
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
     #[cfg(windows)]
     let installer_mode = match current_exe_is_installer() {
         Ok(installer_mode) => installer_mode,
@@ -303,17 +298,9 @@ fn main() {
         eprintln!("installer-only argument requires {SETUP_EXE_NAME}");
         std::process::exit(1);
     }
-    #[cfg(windows)]
-    let quick_support = args.is_empty() && win::is_quick_support_exe(&arg_exe);
-    #[cfg(not(windows))]
-    let quick_support = false;
-
     let mut ui = false;
     let reader = BinaryReader::default();
     if let Some(exe) = setup(reader, None, false, &args, &mut ui) {
-        if quick_support {
-            args = vec!["--quick_support".to_owned()];
-        }
         execute(exe, args, ui);
     }
 }
@@ -842,14 +829,6 @@ mod win {
             .and_then(|msi| validate_staged_installer_msi(&staging.path, &msi).map(|_| msi))
             .and_then(|msi| run_staged_msi(&msi, silent));
         finish_with_manifest_cleanup(&staging, &files, result)
-    }
-
-    /// Check if the executable is a Quick Support version.
-    /// Note: This function must be kept in sync with `src/core_main.rs`.
-    #[inline]
-    pub(super) fn is_quick_support_exe(exe: &str) -> bool {
-        let exe = exe.to_lowercase();
-        exe.contains("-qs-") || exe.contains("-qs.exe") || exe.contains("_qs.exe")
     }
 }
 

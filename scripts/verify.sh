@@ -8770,6 +8770,11 @@ fi
 # former Layer-2 token handshake, DataPortableService data-enum, and shmem-ACL follow-ups are gated
 # in the adjacent R-X9 clauses. (libs/portable is NOT dead — it is the live rustdesk-portable-packer installer.)
 ra6_clean 'pub mod portable_service|crate::portable_service::|portable_service::client|portable_service::server|fn run_uac|fn run_as_system|fn elevate_or_run_as_system|pub fn elevate\(arg: &str|impersonate_system::|set_quick_support|start_portable_service|set_portable_service_running|misc::Union::PortableServiceRunning|drop_portable_service_shared_memory' 'R-X9 portable run-mode + quick-support + interactive elevation (slices 2-4)' || rc=1
+# R-X9 source-completeness follow-on: the live MSI setup bootstrapper retained a duplicate
+# filename classifier that synthesized the already-retired --quick_support argument. The
+# application had no receiving mode and the release packer embeds only the MSI, but compiled-out
+# means the packer may not retain or recreate that executable-name-selected mode either.
+ra6_clean 'quick_support' 'R-X9 portable-packer quick-support filename/argument synthesis' || rc=1
 # R-X9 slices 2-4: the impersonate_system (SYSTEM token-theft, drove run_as_system) + shared_memory
 # (portable capture shmem) Cargo deps are removed — both were used only by the excised portable_service.
 r_x9_deps=

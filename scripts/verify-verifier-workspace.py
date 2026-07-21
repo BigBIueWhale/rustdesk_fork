@@ -10723,6 +10723,64 @@ def validate_wayland_capture_source_excision_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_portable_quick_support_excision_contract(sources):
+    portable = sources["portable_source"]
+    for token, label in (
+        ("is_quick_support_exe", "portable executable-name Quick Support classifier"),
+        ('"--quick_support"', "portable synthesized Quick Support argument"),
+    ):
+        if token in portable:
+            raise VerificationError(f"{label}: retired mode remains in portable packer source")
+    if re.search(r"\bquick_support\b", portable):
+        raise VerificationError(
+            "portable Quick Support state: retired mode remains in portable packer source"
+        )
+
+    require_text(
+        sources["verify"],
+        "ra6_clean 'quick_support' 'R-X9 portable-packer quick-support filename/argument synthesis' || rc=1",
+        "portable Quick Support shared source gate",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-X9", "Windows run-mode excision requirement"
+    )
+    for text, label in (
+        ("is_quick_support_exe", "portable Quick Support classifier requirement"),
+        ("--quick_support", "portable Quick Support argument requirement"),
+        (
+            'Everything else <span class="kw">MUST</span> be compiled out, not gated',
+            "Windows alternate-mode source-absence requirement",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>193</td>",
+        "portable Quick Support residue Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-X9 — portable-packer Quick Support residue excised",
+        "portable Quick Support residue hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "portable Quick Support deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("portable executable-name Quick Support classifier", "classifier source mutation"),
+        ("portable synthesized Quick Support argument", "argument source mutation"),
+        ("portable Quick Support shared source gate", "shared-gate mutation"),
+        ("Windows run-mode excision requirement", "requirement mutation"),
+        ("portable Quick Support residue Appendix C row", "Appendix mutation"),
+        ("portable Quick Support residue hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_direct_only_viewer_contract(sources):
     client = sources["client_source"]
     start = extract_between(
@@ -12912,6 +12970,7 @@ def validate_sources(sources):
     )
     validate_smoke_container_authority_contract(sources)
     validate_wayland_capture_source_excision_contract(sources)
+    validate_portable_quick_support_excision_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
@@ -24787,6 +24846,42 @@ def run_source_mutations(sources):
             "R-X12a — orphaned Wayland capture source files deleted",
             "R-X12a — orphaned Wayland capture source files retained",
             "Wayland capture source residue hardening ledger",
+        ),
+        (
+            "portable_source",
+            "fn main() {",
+            "fn is_quick_support_exe(_: &str) -> bool { true }\n\nfn main() {",
+            "portable executable-name Quick Support classifier",
+        ),
+        (
+            "portable_source",
+            'const SETUP_EXE_NAME: &str = "rustdesk-setup.exe";',
+            'const SETUP_EXE_NAME: &str = "rustdesk-setup.exe";\nconst RETIRED_MODE_ARG: &str = "--quick_support";',
+            "portable synthesized Quick Support argument",
+        ),
+        (
+            "verify",
+            "ra6_clean 'quick_support' 'R-X9 portable-packer quick-support filename/argument synthesis' || rc=1",
+            "true # portable Quick Support gate removed",
+            "portable Quick Support shared source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-X9</span>',
+            '<span class="id">R-X9-disabled</span>',
+            "Windows run-mode excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>193</td>",
+            "<tr><td>193-disabled</td>",
+            "portable Quick Support residue Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-X9 — portable-packer Quick Support residue excised",
+            "R-X9 — portable-packer Quick Support residue retained",
+            "portable Quick Support residue hardening ledger",
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )

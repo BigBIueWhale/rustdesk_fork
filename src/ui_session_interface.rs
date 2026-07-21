@@ -30,6 +30,7 @@ use rdev::{Event, EventType::*, KeyCode};
 #[cfg(all(feature = "vram", feature = "flutter"))]
 use std::ffi::c_void;
 use std::{
+    future::Future,
     ops::{Deref, DerefMut},
     str::FromStr,
     sync::{
@@ -76,7 +77,7 @@ pub struct Session<T: InvokeUiSession> {
     pub server_file_transfer_enabled: Arc<RwLock<bool>>,
     pub server_clipboard_enabled: Arc<RwLock<bool>>,
     pub last_change_display: Arc<Mutex<ChangeDisplayRecord>>,
-    pub connection_round_state: Arc<Mutex<ConnectionRoundState>>,
+    pub(crate) connection_round_owner: Arc<ConnectionRoundOwner>,
     // Final session teardown must also cancel a connection that has not installed its command
     // sender yet. This flag + notifier close that gap and let Client::start be interrupted instead
     // of leaving an orphan connection attempt after its UI owner has gone away.
@@ -104,53 +105,117 @@ pub struct ChangeDisplayRecord {
     height: i32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ConnectionState {
     Connecting,
     Connected,
     Disconnected,
 }
 
-/// ConnectionRoundState is used to control the reconnecting logic.
-pub struct ConnectionRoundState {
-    round: u32,
+struct ConnectionRoundState {
+    round: u64,
     state: ConnectionState,
-}
-
-impl ConnectionRoundState {
-    pub fn new_round(&mut self) -> u32 {
-        self.round += 1;
-        self.state = ConnectionState::Connecting;
-        self.round
-    }
-
-    pub fn set_connected(&mut self) {
-        self.state = ConnectionState::Connected;
-    }
-
-    pub fn is_round_gt(&self, round: u32) -> bool {
-        if round == u32::MAX && self.round == 0 {
-            true
-        } else {
-            round < self.round
-        }
-    }
-
-    pub fn set_disconnected(&mut self, round: u32) -> bool {
-        if self.is_round_gt(round) {
-            false
-        } else {
-            self.state = ConnectionState::Disconnected;
-            true
-        }
-    }
+    retired: bool,
 }
 
 impl Default for ConnectionRoundState {
     fn default() -> Self {
         Self {
             round: 0,
-            state: ConnectionState::Connecting,
+            state: ConnectionState::Disconnected,
+            retired: false,
         }
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct ConnectionRoundOwner {
+    state: Mutex<ConnectionRoundState>,
+    cancel_start: tokio::sync::Notify,
+}
+
+impl ConnectionRoundOwner {
+    fn begin(&self) -> Option<(ConnectionState, u64)> {
+        let mut state = self.state.lock().unwrap();
+        if state.retired {
+            return None;
+        }
+        let round = state.round.checked_add(1)?;
+        let previous = state.state;
+        state.round = round;
+        state.state = ConnectionState::Connecting;
+        Some((previous, round))
+    }
+
+    fn cancel_connecting_start(&self) {
+        self.cancel_start.notify_waiters();
+    }
+
+    fn retire(&self) {
+        self.state.lock().unwrap().retired = true;
+    }
+
+    pub(crate) async fn run_start<F, T, E>(
+        &self,
+        round: u64,
+        close_requested: &AtomicBool,
+        close_notify: &tokio::sync::Notify,
+        start: F,
+    ) -> Option<Result<T, E>>
+    where
+        F: Future<Output = Result<T, E>>,
+    {
+        // Construct both waiters before checking durable state. Tokio guarantees that an existing
+        // Notified observes notify_waiters even before its first poll; the current-round check
+        // covers cancellation that happened before either waiter existed.
+        let close_notified = close_notify.notified();
+        let round_cancelled = self.cancel_start.notified();
+        tokio::pin!(close_notified);
+        tokio::pin!(round_cancelled);
+        close_notified.as_mut().enable();
+        round_cancelled.as_mut().enable();
+
+        let start_cancelled = {
+            let state = self.state.lock().unwrap();
+            close_requested.load(Ordering::Acquire) || state.retired || state.round != round
+        };
+        if start_cancelled {
+            return None;
+        }
+
+        tokio::select! {
+            biased;
+            _ = &mut close_notified => None,
+            _ = &mut round_cancelled => None,
+            result = start => Some(result),
+        }
+    }
+
+    pub(crate) fn admit_connected<R>(&self, round: u64, admitted: impl FnOnce() -> R) -> Option<R> {
+        // Keep the synchronous publication inside the same critical section as admission so a
+        // reconnect or final retirement cannot cross the current-round check. This closure must
+        // not await or re-enter ConnectionRoundOwner.
+        let mut state = self.state.lock().unwrap();
+        if state.retired || state.round != round {
+            return None;
+        }
+        state.state = ConnectionState::Connected;
+        Some(admitted())
+    }
+
+    pub(crate) fn with_current<R>(&self, round: u64, current: impl FnOnce() -> R) -> Option<R> {
+        // Error publication has the same ordering requirement as successful readiness.
+        let state = self.state.lock().unwrap();
+        (!state.retired && state.round == round).then(current)
+    }
+
+    pub(crate) fn finish(&self, round: u64) -> bool {
+        let mut state = self.state.lock().unwrap();
+        if state.round != round {
+            return false;
+        }
+        state.state = ConnectionState::Disconnected;
+        true
     }
 }
 
@@ -1272,25 +1337,26 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn reconnect(&self) {
+        // The worker slot serializes explicit replacement against initial start and final owner
+        // teardown. Recheck retirement after acquiring it so a queued reconnect cannot revive a
+        // session whose owner closed while this caller was waiting.
+        let mut thread_lock = self.thread.lock().unwrap();
         if self.close_requested.load(Ordering::Acquire) {
             log::warn!("refusing to reconnect a viewer session whose owner has retired");
             return;
         }
-        // Serialize replacement against both final owner teardown and the initial start. A new
-        // connection round is not admitted until the exact previous I/O worker has returned and
-        // joined its decoder/audio children.
-        let mut thread_lock = self.thread.lock().unwrap();
+
+        let Some((previous_state, round)) = self.connection_round_owner.begin() else {
+            log::error!("refusing to reconnect after viewer owner retirement or round exhaustion");
+            return;
+        };
         if thread_lock.is_some() {
-            let state = {
-                let connection_round_state = self.connection_round_state.lock().unwrap();
-                match connection_round_state.state {
-                    ConnectionState::Connecting => return,
-                    ConnectionState::Connected => ConnectionState::Connected,
-                    ConnectionState::Disconnected => ConnectionState::Disconnected,
+            match previous_state {
+                ConnectionState::Connecting => {
+                    self.connection_round_owner.cancel_connecting_start()
                 }
-            };
-            if matches!(state, ConnectionState::Connected) {
-                self.send(Data::Close);
+                ConnectionState::Connected => self.send(Data::Close),
+                ConnectionState::Disconnected => {}
             }
             if let Some(thread) = thread_lock.take() {
                 if thread.join().is_err() {
@@ -1298,22 +1364,23 @@ impl<T: InvokeUiSession> Session<T> {
                 }
             }
         }
-        let round = self.connection_round_state.lock().unwrap().new_round();
+        if self.close_requested.load(Ordering::Acquire) {
+            self.connection_round_owner.finish(round);
+            log::warn!("refusing to reconnect a viewer session whose owner retired during drain");
+            return;
+        }
         self.lc.write().unwrap().peer_info = None;
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);
         match Self::spawn_io_thread(self.clone(), round) {
             Ok(thread) => *thread_lock = Some(thread),
             Err(err) => {
-                self.connection_round_state
-                    .lock()
-                    .unwrap()
-                    .set_disconnected(round);
+                self.connection_round_owner.finish(round);
                 log::error!("failed to start outgoing viewer I/O worker: {err}");
             }
         }
     }
 
-    fn spawn_io_thread(session: Self, round: u32) -> std::io::Result<std::thread::JoinHandle<()>> {
+    fn spawn_io_thread(session: Self, round: u64) -> std::io::Result<std::thread::JoinHandle<()>> {
         std::thread::Builder::new()
             .name("rustdesk-viewer-io".to_owned())
             .spawn(move || io_loop(session, round))
@@ -1324,17 +1391,19 @@ impl<T: InvokeUiSession> Session<T> {
         if thread_lock.is_some() || self.close_requested.load(Ordering::Acquire) {
             return Ok(false);
         }
-        let round = self.connection_round_state.lock().unwrap().new_round();
+        let Some((_, round)) = self.connection_round_owner.begin() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "viewer owner retired or connection round counter exhausted",
+            ));
+        };
         match Self::spawn_io_thread(self.clone(), round) {
             Ok(thread) => {
                 *thread_lock = Some(thread);
                 Ok(true)
             }
             Err(err) => {
-                self.connection_round_state
-                    .lock()
-                    .unwrap()
-                    .set_disconnected(round);
+                self.connection_round_owner.finish(round);
                 Err(err)
             }
         }
@@ -1415,6 +1484,7 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn close(&self) {
+        self.connection_round_owner.retire();
         self.close_requested.store(true, Ordering::Release);
         self.close_notify.notify_waiters();
         self.send(Data::Close);
@@ -1901,7 +1971,7 @@ impl<T: InvokeUiSession> Session<T> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
+pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u64) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let (sender, receiver) = mpsc::unbounded_channel::<Data>();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2461,3 +2531,139 @@ async fn start_admitted_port_forward<T: InvokeUiSession>(
 }
 
 // R-SV6(a)/R-G4: the free `send_note` (the audit-server POST) is removed — see `Session::send_note`.
+
+#[cfg(test)]
+mod connection_round_ownership_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn explicit_reconnect_cancels_an_exact_connecting_round() {
+        let owner = Arc::new(ConnectionRoundOwner::default());
+        let close_requested = Arc::new(AtomicBool::new(false));
+        let close_notify = Arc::new(tokio::sync::Notify::new());
+        let (previous, first_round) = owner.begin().expect("first connection round");
+        assert_eq!(previous, ConnectionState::Disconnected);
+
+        let (start_observed, start_wait) = tokio::sync::oneshot::channel();
+        let task_owner = owner.clone();
+        let task_close_requested = close_requested.clone();
+        let task_close_notify = close_notify.clone();
+        let first = tokio::spawn(async move {
+            task_owner
+                .run_start(
+                    first_round,
+                    &task_close_requested,
+                    &task_close_notify,
+                    async move {
+                        start_observed.send(()).expect("start observer");
+                        std::future::pending::<Result<(), ()>>().await
+                    },
+                )
+                .await
+        });
+        start_wait.await.expect("connecting round reached start");
+
+        let (previous, replacement_round) = owner.begin().expect("replacement round");
+        assert_eq!(previous, ConnectionState::Connecting);
+        owner.cancel_connecting_start();
+        let first_result = tokio::time::timeout(TokioDuration::from_secs(1), first)
+            .await
+            .expect("connecting round cancellation deadline")
+            .expect("connecting round task");
+        assert!(first_result.is_none());
+
+        let replacement_result = owner
+            .run_start(replacement_round, &close_requested, &close_notify, async {
+                Ok::<_, ()>(())
+            })
+            .await;
+        assert_eq!(replacement_result, Some(Ok(())));
+        assert!(owner.admit_connected(replacement_round, || ()).is_some());
+        assert!(owner.finish(replacement_round));
+    }
+
+    #[tokio::test]
+    async fn stale_start_completion_cannot_publish_success_or_failure() {
+        let owner = ConnectionRoundOwner::default();
+        let close_requested = AtomicBool::new(false);
+        let close_notify = tokio::sync::Notify::new();
+        let (_, first_round) = owner.begin().expect("first connection round");
+
+        let completed = owner
+            .run_start(first_round, &close_requested, &close_notify, async {
+                Ok::<_, ()>(())
+            })
+            .await;
+        assert_eq!(completed, Some(Ok(())));
+        let (previous, replacement_round) = owner.begin().expect("replacement round");
+        assert_eq!(previous, ConnectionState::Connecting);
+
+        let success_published = AtomicBool::new(false);
+        assert!(owner
+            .admit_connected(first_round, || {
+                success_published.store(true, Ordering::Release)
+            })
+            .is_none());
+        assert!(!success_published.load(Ordering::Acquire));
+
+        let failure_published = AtomicBool::new(false);
+        assert!(owner
+            .with_current(first_round, || {
+                failure_published.store(true, Ordering::Release)
+            })
+            .is_none());
+        assert!(!failure_published.load(Ordering::Acquire));
+
+        assert!(owner.admit_connected(replacement_round, || ()).is_some());
+        assert!(owner.finish(replacement_round));
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_waiter_creation_is_observed_from_round_state() {
+        let owner = ConnectionRoundOwner::default();
+        let close_requested = AtomicBool::new(false);
+        let close_notify = tokio::sync::Notify::new();
+        let (_, first_round) = owner.begin().expect("first connection round");
+        let (_, replacement_round) = owner.begin().expect("replacement round");
+        owner.cancel_connecting_start();
+
+        let result = tokio::time::timeout(
+            TokioDuration::from_secs(1),
+            owner.run_start(
+                first_round,
+                &close_requested,
+                &close_notify,
+                std::future::pending::<Result<(), ()>>(),
+            ),
+        )
+        .await
+        .expect("stale pre-registration cancellation deadline");
+        assert!(result.is_none());
+        assert!(owner.finish(replacement_round));
+    }
+
+    #[tokio::test]
+    async fn final_retirement_rejects_completed_start_publication() {
+        let owner = ConnectionRoundOwner::default();
+        let close_requested = AtomicBool::new(false);
+        let close_notify = tokio::sync::Notify::new();
+        let (_, round) = owner.begin().expect("connection round");
+
+        let completed = owner
+            .run_start(round, &close_requested, &close_notify, async {
+                Ok::<_, ()>(())
+            })
+            .await;
+        assert_eq!(completed, Some(Ok(())));
+
+        owner.retire();
+        close_requested.store(true, Ordering::Release);
+        close_notify.notify_waiters();
+        let published = AtomicBool::new(false);
+        assert!(owner
+            .admit_connected(round, || published.store(true, Ordering::Release))
+            .is_none());
+        assert!(!published.load(Ordering::Acquire));
+        assert!(owner.begin().is_none());
+    }
+}

@@ -9049,6 +9049,8 @@ flutter_main=flutter/lib/main.dart
   --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   client::tests::owned_media_thread_ -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
 grep -qF 'external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean' "$ffi_kt" \
@@ -9087,6 +9089,24 @@ grep -qF 'pub fn close_and_join(&self) -> bool' src/ui_session_interface.rs \
   || android_client_owner_bad="$android_client_owner_bad final-io-worker-join-missing"
 grep -qF 'outgoing viewer I/O worker terminated by panic during reconnect' src/ui_session_interface.rs \
   || android_client_owner_bad="$android_client_owner_bad reconnect-worker-join-missing"
+grep -qF 'pub(crate) connection_round_owner: Arc<ConnectionRoundOwner>' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad exact-round-owner-missing"
+grep -qF 'fn cancel_connecting_start(&self)' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad connecting-round-cancel-missing"
+grep -qF 'fn retire(&self)' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad final-round-retirement-missing"
+grep -qF '_ = &mut round_cancelled => None' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad connection-start-not-cancelable-by-round"
+grep -qF 'ConnectionState::Connecting => return' src/ui_session_interface.rs \
+  && android_client_owner_bad="$android_client_owner_bad connecting-reconnect-still-discarded"
+grep -qF 'explicit_reconnect_cancels_an_exact_connecting_round' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad connecting-round-regression-test-missing"
+grep -qF 'stale_start_completion_cannot_publish_success_or_failure' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad stale-start-admission-test-missing"
+grep -qF 'cancellation_before_waiter_creation_is_observed_from_round_state' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad pre-registration-cancel-test-missing"
+grep -qF 'final_retirement_rejects_completed_start_publication' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad final-retirement-admission-test-missing"
 grep -qF 'self.shutdown_workers().await;' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad media-worker-shutdown-missing"
 grep -qF 'const MEDIA_WORKER_REAPER_THREADS: usize = 4;' src/client.rs \
@@ -9124,6 +9144,12 @@ grep -qF 'shared controlled-audio and hard-drop completion ownership' HARDENING_
   || android_client_owner_bad="$android_client_owner_bad controlled-audio-ledger-missing"
 grep -qF 'The shared audio-worker API still exposed a sender-only constructor' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad controlled-audio-disposition-missing"
+grep -qF 'An explicit outgoing-viewer reconnect owns a new connection round' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad connection-round-requirement-missing"
+grep -qF '<tr><td>206</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad connection-round-disposition-missing"
+grep -qF 'shared outgoing-viewer reconnect round ownership' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad connection-round-ledger-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path
@@ -9275,6 +9301,76 @@ raise SystemExit(0 if ok else 1)
 PY
 then
   android_client_owner_bad="$android_client_owner_bad media-owner-or-controlled-audio-order-regressed"
+fi
+if ! python3 - src/ui_session_interface.rs src/client/io_loop.rs <<'PY'
+import sys
+from pathlib import Path
+
+session, io_loop = (Path(path).read_text() for path in sys.argv[1:])
+round_owner = session[
+    session.index("impl ConnectionRoundOwner"):
+    session.index("impl Default for ChangeDisplayRecord")
+]
+run_start = round_owner[
+    round_owner.index("pub(crate) async fn run_start"):
+    round_owner.index("pub(crate) fn admit_connected")
+]
+admit = round_owner[
+    round_owner.index("pub(crate) fn admit_connected"):
+    round_owner.index("pub(crate) fn with_current")
+]
+retire = round_owner[
+    round_owner.index("fn retire(&self)"):
+    round_owner.index("pub(crate) async fn run_start")
+]
+reconnect = session[
+    session.index("pub fn reconnect(&self)"):
+    session.index("fn spawn_io_thread")
+]
+client_start = io_loop[
+    io_loop.index("let start_result = self"):
+    io_loop.index("// set_disconnected_ok is used to check if new connection round is started.")
+]
+
+ok = (
+    reconnect.index("let mut thread_lock = self.thread.lock().unwrap()")
+        < reconnect.index("self.close_requested.load(Ordering::Acquire)")
+        < reconnect.index("self.connection_round_owner.begin()")
+        < reconnect.index("ConnectionState::Connecting")
+        < reconnect.index("cancel_connecting_start()")
+        < reconnect.index("thread.join()")
+        < reconnect.index("Self::spawn_io_thread(self.clone(), round)")
+    and "ConnectionState::Connecting => return" not in reconnect
+    and "self.state.lock().unwrap().retired = true" in retire
+    and run_start.index("let close_notified = close_notify.notified()")
+        < run_start.index("let round_cancelled = self.cancel_start.notified()")
+        < run_start.index("close_notified.as_mut().enable()")
+        < run_start.index("round_cancelled.as_mut().enable()")
+        < run_start.index("let start_cancelled = {")
+        < run_start.index("let state = self.state.lock().unwrap()")
+        < run_start.index("state.retired || state.round != round")
+        < run_start.index("if start_cancelled")
+        < run_start.index("tokio::select!")
+        < run_start.index("_ = &mut close_notified => None")
+        < run_start.index("_ = &mut round_cancelled => None")
+        < run_start.index("result = start => Some(result)")
+    and admit.index("if state.retired || state.round != round")
+        < admit.index("state.state = ConnectionState::Connected")
+        < admit.index("Some(admitted())")
+    and client_start.index(".run_start(")
+        < client_start.index("Some(Ok((mut peer, stream_type)))")
+        < client_start.index(".admit_connected(round")
+        < client_start.index("self.shutdown_workers().await")
+    and ".with_current(round" in client_start
+    and "self.handler.connection_round_owner.finish(round)" in io_loop
+    and session.index("self.connection_round_owner.retire()")
+        < session.index("self.close_requested.store(true, Ordering::Release)")
+        < session.index("self.close_notify.notify_waiters()")
+)
+raise SystemExit(0 if ok else 1)
+PY
+then
+  android_client_owner_bad="$android_client_owner_bad connection-round-owner-order-regressed"
 fi
 if [ -n "$android_client_owner_bad" ]; then
   echo "  FAIL R-D7a/R-T4: Android outgoing-client Activity/isolate ownership regressed:$android_client_owner_bad"; rc=1

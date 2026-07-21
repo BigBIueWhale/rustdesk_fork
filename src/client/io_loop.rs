@@ -479,7 +479,7 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    pub async fn io_loop(&mut self, key: &str, token: &str, round: u32) {
+    pub async fn io_loop(&mut self, key: &str, token: &str, round: u64) {
         #[cfg(target_os = "windows")]
         let _file_clip_context_holder = {
             // `is_port_forward()` will not reach here, but we still check it for clarity.
@@ -514,45 +514,43 @@ impl<T: InvokeUiSession> Remote<T> {
             ConnType::default()
         };
 
-        // A UI owner can disappear before Client::start finishes (or even before this task first
-        // runs). Data::Close alone cannot cancel that phase because the command receiver is polled
-        // only after a connection is established. Register the notification before checking the
-        // atomic flag so no teardown notification can be lost between the check and select.
-        let close_notify = self.handler.close_notify.clone();
-        let close_notified = close_notify.notified();
+        // Data::Close is consumed only after connection establishment. The round owner therefore
+        // races Client::start against both final UI-owner retirement and explicit replacement of
+        // this exact connecting round.
         let peer_id = self.handler.get_id();
-        tokio::pin!(close_notified);
-        close_notified.as_mut().enable();
-        let start_result = if self.handler.close_requested.load(Ordering::Acquire) {
-            None
-        } else {
-            tokio::select! {
-                biased;
-                _ = &mut close_notified => None,
-                result = Client::start(
-                    &peer_id,
-                    key,
-                    token,
-                    conn_type,
-                    self.handler.clone(),
-                ) => Some(result),
-            }
-        };
+        let start_result = self
+            .handler
+            .connection_round_owner
+            .run_start(
+                round,
+                &self.handler.close_requested,
+                &self.handler.close_notify,
+                Client::start(&peer_id, key, token, conn_type, self.handler.clone()),
+            )
+            .await;
 
         match start_result {
             None => {
                 log::debug!(
-                    "Canceled connection start for id={} after its UI owner closed",
+                    "Canceled connection start for id={} after its owner closed or its round was replaced",
                     peer_id
                 );
             }
             Some(Ok((mut peer, stream_type))) => {
-                self.handler
-                    .connection_round_state
-                    .lock()
-                    .unwrap()
-                    .set_connected();
-                self.handler.set_connection_type(stream_type); // flutter -> connection_ready
+                if self
+                    .handler
+                    .connection_round_owner
+                    .admit_connected(round, || self.handler.set_connection_type(stream_type))
+                    .is_none()
+                {
+                    log::debug!(
+                        "Discarded completed connection start for superseded id={} round={}",
+                        peer_id,
+                        round
+                    );
+                    self.shutdown_workers().await;
+                    return;
+                }
 
                 // just build for now
                 #[cfg(not(any(target_os = "windows", feature = "unix-file-copy-paste")))]
@@ -685,17 +683,14 @@ impl<T: InvokeUiSession> Remote<T> {
                 log::debug!("Exit io_loop of id={}", self.handler.get_id());
             }
             Some(Err(err)) => {
-                self.handler.on_establish_connection_error(err.to_string());
+                let _ = self.handler.connection_round_owner.with_current(round, || {
+                    self.handler.on_establish_connection_error(err.to_string())
+                });
             }
         }
         self.shutdown_workers().await;
         // set_disconnected_ok is used to check if new connection round is started.
-        let _set_disconnected_ok = self
-            .handler
-            .connection_round_state
-            .lock()
-            .unwrap()
-            .set_disconnected(round);
+        let _set_disconnected_ok = self.handler.connection_round_owner.finish(round);
 
         #[cfg(not(target_os = "ios"))]
         if self.handler.is_default() && _set_disconnected_ok {

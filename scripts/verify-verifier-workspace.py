@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11608,6 +11608,232 @@ def validate_android_media_projection_finality_contract(sources):
         sources["verify"],
         "ui_cm_interface::tests::android_capture_demand_is_remote_desktop_only",
         "Android capture-demand shared regression wiring",
+    )
+
+
+def validate_outgoing_viewer_round_ownership_contract(sources):
+    session = sources["ui_session_source"]
+    client = sources["client_io_loop"]
+    owner = extract_between(
+        session,
+        "impl ConnectionRoundOwner",
+        "impl Default for ChangeDisplayRecord",
+        "outgoing-viewer connection-round owner",
+    )
+    begin = extract_between(
+        owner,
+        "fn begin(&self)",
+        "fn cancel_connecting_start(&self)",
+        "outgoing-viewer round begin",
+    )
+    require_order(
+        begin,
+        (
+            "if state.retired",
+            "return None",
+            "state.round.checked_add(1)?",
+            "let previous = state.state",
+            "state.round = round",
+            "state.state = ConnectionState::Connecting",
+        ),
+        "outgoing-viewer terminal checked round replacement",
+    )
+    require_absent(begin, "wrapping_add", "outgoing-viewer round counter wraparound")
+
+    retire = extract_between(
+        owner,
+        "fn retire(&self)",
+        "pub(crate) async fn run_start",
+        "outgoing-viewer terminal retirement",
+    )
+    require_text(
+        retire,
+        "self.state.lock().unwrap().retired = true",
+        "outgoing-viewer terminal retirement state",
+    )
+    run_start = extract_between(
+        owner,
+        "pub(crate) async fn run_start",
+        "pub(crate) fn admit_connected",
+        "outgoing-viewer cancelable connection start",
+    )
+    require_order(
+        run_start,
+        (
+            "let close_notified = close_notify.notified()",
+            "let round_cancelled = self.cancel_start.notified()",
+            "close_notified.as_mut().enable()",
+            "round_cancelled.as_mut().enable()",
+            "let start_cancelled = {",
+            "let state = self.state.lock().unwrap()",
+            "state.retired || state.round != round",
+            "if start_cancelled",
+            "tokio::select!",
+            "_ = &mut close_notified => None",
+            "_ = &mut round_cancelled => None",
+            "result = start => Some(result)",
+        ),
+        "outgoing-viewer durable start cancellation",
+    )
+    admit = extract_between(
+        owner,
+        "pub(crate) fn admit_connected",
+        "pub(crate) fn with_current",
+        "outgoing-viewer readiness admission",
+    )
+    require_order(
+        admit,
+        (
+            "if state.retired || state.round != round",
+            "return None",
+            "state.state = ConnectionState::Connected",
+            "Some(admitted())",
+        ),
+        "outgoing-viewer current-round readiness publication",
+    )
+    current = extract_between(
+        owner,
+        "pub(crate) fn with_current",
+        "pub(crate) fn finish",
+        "outgoing-viewer current-round error admission",
+    )
+    require_text(
+        current,
+        "(!state.retired && state.round == round).then(current)",
+        "outgoing-viewer current-round error publication",
+    )
+    finish = owner[owner.index("pub(crate) fn finish"):]
+    require_order(
+        finish,
+        (
+            "if state.round != round",
+            "return false",
+            "state.state = ConnectionState::Disconnected",
+        ),
+        "outgoing-viewer exact-round completion",
+    )
+
+    reconnect = extract_between(
+        session,
+        "pub fn reconnect(&self)",
+        "fn spawn_io_thread",
+        "outgoing-viewer explicit reconnect",
+    )
+    require_order(
+        reconnect,
+        (
+            "let mut thread_lock = self.thread.lock().unwrap()",
+            "self.close_requested.load(Ordering::Acquire)",
+            "self.connection_round_owner.begin()",
+            "ConnectionState::Connecting",
+            "self.connection_round_owner.cancel_connecting_start()",
+            "thread_lock.take()",
+            "thread.join()",
+            "self.close_requested.load(Ordering::Acquire)",
+            "Self::spawn_io_thread(self.clone(), round)",
+        ),
+        "outgoing-viewer replacement order",
+    )
+    require_absent(
+        reconnect,
+        "ConnectionState::Connecting => return",
+        "outgoing-viewer connecting reconnect no-op",
+    )
+    close = extract_between(
+        session,
+        "pub fn close(&self)",
+        "/// Retire the session",
+        "outgoing-viewer final close",
+    )
+    require_order(
+        close,
+        (
+            "self.connection_round_owner.retire()",
+            "self.close_requested.store(true, Ordering::Release)",
+            "self.close_notify.notify_waiters()",
+            "self.send(Data::Close)",
+        ),
+        "outgoing-viewer terminal close publication",
+    )
+
+    start = extract_between(
+        client,
+        "let start_result = self",
+        "// set_disconnected_ok is used to check if new connection round is started.",
+        "outgoing-viewer start and completion publication",
+    )
+    require_order(
+        start,
+        (
+            ".connection_round_owner",
+            ".run_start(",
+            "Client::start(",
+            "Some(Ok((mut peer, stream_type)))",
+            ".admit_connected(round, || self.handler.set_connection_type(stream_type))",
+            "self.shutdown_workers().await",
+        ),
+        "outgoing-viewer current-round successful start",
+    )
+    require_text(
+        start,
+        ".with_current(round, || {",
+        "outgoing-viewer current-round establishment error",
+    )
+    completion = extract_between(
+        client,
+        "// set_disconnected_ok is used to check if new connection round is started.",
+        "#[cfg(not(target_os = \"ios\"))]",
+        "outgoing-viewer round completion",
+    )
+    require_text(
+        completion,
+        ".finish(round)",
+        "outgoing-viewer exact-round disconnected publication",
+    )
+
+    tests = session[session.index("mod connection_round_ownership_tests"):]
+    for text, label in (
+        (
+            "explicit_reconnect_cancels_an_exact_connecting_round",
+            "exact connecting-round cancellation regression",
+        ),
+        (
+            "stale_start_completion_cannot_publish_success_or_failure",
+            "stale start publication regression",
+        ),
+        (
+            "cancellation_before_waiter_creation_is_observed_from_round_state",
+            "pre-registration cancellation regression",
+        ),
+        (
+            "final_retirement_rejects_completed_start_publication",
+            "final retirement publication regression",
+        ),
+    ):
+        require_text(tests, text, f"outgoing-viewer {label}")
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-T4", "outgoing-viewer reconnect ownership requirement"
+    )
+    require_text(
+        requirement,
+        "An explicit outgoing-viewer reconnect owns a new connection round",
+        "outgoing-viewer explicit reconnect requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>206</td>",
+        "outgoing-viewer reconnect Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "shared outgoing-viewer reconnect round ownership",
+        "outgoing-viewer reconnect hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "ui_session_interface::connection_round_ownership_tests::",
+        "outgoing-viewer round regression wiring",
     )
 
 
@@ -13868,6 +14094,7 @@ def validate_sources(sources):
     validate_macos_launchd_lifecycle_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
+    validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
@@ -25891,8 +26118,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -26200,6 +26427,90 @@ def run_source_mutations(sources):
             "R-S14/R-T4 Android MediaProjection owner and capture-demand finality",
             "R-S14/R-T4 Android MediaProjection owner compatibility",
             "Android MediaProjection finality hardening ledger",
+        ),
+        (
+            "ui_session_source",
+            "let round = state.round.checked_add(1)?;",
+            "let round = state.round.wrapping_add(1);",
+            "outgoing-viewer terminal checked round replacement",
+        ),
+        (
+            "ui_session_source",
+            "ConnectionState::Connecting => {\n                    self.connection_round_owner.cancel_connecting_start()\n                }",
+            "ConnectionState::Connecting => {}",
+            "outgoing-viewer replacement order",
+        ),
+        (
+            "ui_session_source",
+            "_ = &mut round_cancelled => None,",
+            "_ = &mut round_cancelled => Some(start.await),",
+            "outgoing-viewer durable start cancellation",
+        ),
+        (
+            "ui_session_source",
+            "self.state.lock().unwrap().retired = true;",
+            "self.state.lock().unwrap().retired = false;",
+            "outgoing-viewer terminal retirement state",
+        ),
+        (
+            "ui_session_source",
+            "if state.retired || state.round != round {",
+            "if state.round != round {",
+            "outgoing-viewer current-round readiness publication",
+        ),
+        (
+            "ui_session_source",
+            "(!state.retired && state.round == round).then(current)",
+            "(state.round == round).then(current)",
+            "outgoing-viewer current-round error publication",
+        ),
+        (
+            "ui_session_source",
+            "self.connection_round_owner.retire();",
+            "// round owner retirement removed",
+            "outgoing-viewer terminal close publication",
+        ),
+        (
+            "client_io_loop",
+            ".admit_connected(round, || self.handler.set_connection_type(stream_type))",
+            ".admit_connected(round + 1, || self.handler.set_connection_type(stream_type))",
+            "outgoing-viewer current-round successful start",
+        ),
+        (
+            "client_io_loop",
+            ".with_current(round, || {",
+            ".with_current(round + 1, || {",
+            "outgoing-viewer current-round establishment error",
+        ),
+        (
+            "ui_session_source",
+            "final_retirement_rejects_completed_start_publication",
+            "final_retirement_publication_regression_removed",
+            "outgoing-viewer final retirement publication regression",
+        ),
+        (
+            "verify",
+            "ui_session_interface::connection_round_ownership_tests::",
+            "ui_session_interface::connection_round_compatibility_tests::",
+            "outgoing-viewer round regression wiring",
+        ),
+        (
+            "requirements",
+            "An explicit outgoing-viewer reconnect owns a new connection round",
+            "An explicit outgoing-viewer reconnect may reuse an old connection round",
+            "outgoing-viewer explicit reconnect requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>206</td>",
+            "<tr><td>206-disabled</td>",
+            "outgoing-viewer reconnect Appendix C row",
+        ),
+        (
+            "hardening",
+            "shared outgoing-viewer reconnect round ownership",
+            "shared outgoing-viewer reconnect round compatibility",
+            "outgoing-viewer reconnect hardening ledger",
         ),
         (
             "github_automation_authority_verifier",

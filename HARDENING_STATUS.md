@@ -339,14 +339,35 @@ loss aborts instead of detaching. Moving `Connection.closed = true` until after 
 also preserves the existing Drop fallback if cancellation lands during a
 worker wait. This controlled-side defect is shared across platforms and could overlap peer-audio native state; it
 is adjacent to, but not claimed as the cause of, the Android outgoing-viewer screen-control report.
+Follow-up correction (2026-07-22), **shared outgoing-viewer reconnect round ownership**: the retained exact-worker
+join still inherited one earlier state-machine error: `Session::reconnect()` discarded an explicit retry whenever
+the current worker was `Connecting`. That let a stuck connection start retain the peer/type worker slot while the
+user's retry did nothing. A concurrently completing old `Client::start()` also published `connection_ready`
+without proving that its round still owned the session. Android's persistent process can carry this incoherent
+viewer state across task swipe/relaunch, while file transfer remains usable through its separate `ConnType`
+session. The mechanism is therefore source-proven and consistent with the report, but it is shared viewer-core
+code and is not claimed as an on-device causal reproduction or as an Android-only defect.
+
+The session now has one checked monotonic round owner. Explicit reconnect acquires the worker slot, publishes the
+replacement round, wakes an exact connecting start (or sends `Data::Close` to an established round), joins the
+prior worker and its owned media children, rechecks terminal owner retirement, and only then spawns the
+replacement. `Client::start()` races both final retirement and exact-round replacement. Its notification waiters
+are registered before the durable round check, closing cancellation-before-registration and check/wait gaps. A
+successful start, establishment error, and final disconnected transition are admitted only while that exact round
+is current; a stale successful start drops its peer and drains its worker owner without publishing readiness.
+Final owner close remains terminal and cannot be reversed by a queued reconnect. This is the common outgoing
+viewer core used by Android, desktop, iOS, and future macOS builds; only the generation/UUID layer and persistent
+foreground-service amplification are Android-specific.
 Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
 drain, delayed-callback ABA rejection, admission/transition lock exclusion, and stopped-Activity ownership
 resumption without generation reuse. They now also hold a synthetic outgoing worker open, prove an owner transition
-cannot report completion before releasing and joining it, and prove a media owner closes admission before joining
-its exact worker. `scripts/verify.sh` gates the typed JNI surface, absence of
+cannot report completion before releasing and joining it, prove a media owner closes admission before joining
+its exact worker, cancel an exact connecting round, reject stale success/error publication, and prove durable
+supersession covers cancellation before waiter creation. `scripts/verify.sh` gates the typed JNI surface, absence of
 argument-free/global drain APIs, registration-before-UI-or-exit order, owner-scoped Activity/service teardown,
 started-Activity resumption, lock-held add/start/resume/retire ordering, initial I/O-handle retention,
-reconnect/final joins, child-worker ownership, the fixed completion pool, nonblocking hard-drop handoff, the sole
+reconnect/final joins, connecting-round replacement, current-round-only publication, child-worker ownership, the
+fixed completion pool, nonblocking hard-drop handoff, the sole
 owning audio constructor, and controlled voice-audio close/join sinks. A disposable tracked-file candidate snapshot completed one
 offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
 1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
@@ -7826,9 +7847,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-0f19384a35720c2043ddd511b74c61e4ed3d42a2a1dbcfdfb081c2dd826c37b0  requirements.html
+d9512748e16a3995bb459e63dc3b8aa8084246de182a62e8e29cdc2acddf5ad4  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

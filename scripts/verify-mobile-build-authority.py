@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R-R2/R-R2c exact mobile build-authority semantic verifier."""
+"""R-R2/R-R2c/R-R2d exact mobile build-authority semantic verifier."""
 
 from __future__ import annotations
 
@@ -218,7 +218,11 @@ def validate(sources: Dict[str, str]) -> None:
     if sources["disabled_workflow_state"] != "regular":
         raise VerificationError("historical disabled Flutter workflow is not a regular file")
     disabled = sources["disabled_workflow"]
-    require(disabled, "HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c)", "inert workflow marker")
+    require(
+        disabled,
+        "HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c/R-R2d)",
+        "inert workflow marker",
+    )
     require(disabled, "It MUST NOT become a build authority.", "inert workflow prohibition")
     require(disabled, "historical_on:", "schema-demoted historical workflow trigger")
     require(disabled, "historical_jobs:", "schema-demoted historical workflow jobs")
@@ -351,7 +355,7 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
     ),
     (
         "disabled_workflow",
-        "HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c)",
+        "HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c/R-R2d)",
         "HISTORICAL REFERENCE",
         "inert workflow marker",
     ),

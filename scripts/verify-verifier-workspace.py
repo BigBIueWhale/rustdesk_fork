@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R2c, and Appendix C #192–#194",
+        "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195",
         "current portable Quick Support requirements-hash scope",
     )
 
@@ -10827,6 +10827,48 @@ def validate_mobile_build_authority_verifier_contract(sources):
         sources["verify"],
         "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
         "mobile authority focused-verifier wiring",
+    )
+
+
+def validate_disabled_workflow_authority_verifier_contract(sources):
+    focused = sources["disabled_workflow_authority_verifier"]
+    for text, label in (
+        ("DISABLED_WORKFLOWS: Tuple[str, ...]", "disabled-workflow closed inventory"),
+        ("EXPECTED_ENTRY_INVENTORY", "disabled-workflow exact entry inventory"),
+        ("EXPECTED_TOP_LEVEL_KEYS", "disabled-workflow exact top-level key inventories"),
+        ('sources["entry_inventory"] != EXPECTED_ENTRY_INVENTORY', "workflow inventory rejection semantics"),
+        ('sources["enabled_inventory"] != "<none>"', "enabled-workflow rejection semantics"),
+        ('if sources[f"state:{name}"] != "regular":', "regular-reference rejection semantics"),
+        ('re.search(r"(?m)^(?:on|jobs):", workflow)', "active workflow-schema rejection semantics"),
+        ("top_level_keys(workflow, name) != EXPECTED_TOP_LEVEL_KEYS[name]", "alternate workflow-schema rejection semantics"),
+        ('re.findall(r"(?m)^historical_on:", workflow)', "demoted trigger cardinality semantics"),
+        ('re.findall(r"(?m)^historical_jobs:", workflow)', "demoted jobs cardinality semantics"),
+        ("HISTORICAL INERT REFERENCE ONLY", "disabled-workflow inert marker"),
+        ("schema-demoted so a rename cannot activate this file", "rename-resistant schema marker"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "disabled-workflow mutation inventory"),
+        ("run_mutations(sources)", "disabled-workflow mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-disabled-workflow-authority.py --repo . --self-test",
+        "disabled-workflow focused-verifier wiring",
+    )
+    require_text(
+        sources["workflow_disabled_docs"],
+        "Renaming a reference alone cannot enable it",
+        "rename-resistant workflow documentation",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-R2d</span>',
+        "semantic-inertia workflow requirement",
+    )
+    require_text(sources["requirements"], "<tr><td>195</td>", "workflow authority Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-R2d — retained GitHub Actions references made schema-inert",
+        "workflow authority hardening ledger",
     )
 
 
@@ -13021,6 +13063,7 @@ def validate_sources(sources):
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
+    validate_disabled_workflow_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
@@ -24935,8 +24978,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195",
             "R-X12a, R-X9, R-R2c, and Appendix C #192–#194",
-            "R-X12a, R-X9, and Appendix C #192–#193",
             "current portable Quick Support requirements-hash scope",
         ),
         (
@@ -24950,6 +24993,42 @@ def run_source_mutations(sources):
             "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
             "true # mobile authority focused verifier removed",
             "mobile authority focused-verifier wiring",
+        ),
+        (
+            "disabled_workflow_authority_verifier",
+            're.search(r"(?m)^(?:on|jobs):", workflow)',
+            "False",
+            "active workflow-schema rejection semantics",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-disabled-workflow-authority.py --repo . --self-test",
+            "true # disabled-workflow authority focused verifier removed",
+            "disabled-workflow focused-verifier wiring",
+        ),
+        (
+            "workflow_disabled_docs",
+            "Renaming a reference alone cannot enable it",
+            "Renaming a reference enables it",
+            "rename-resistant workflow documentation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-R2d</span>',
+            '<span class="id">R-R2d-disabled</span>',
+            "semantic-inertia workflow requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>195</td>",
+            "<tr><td>195-disabled</td>",
+            "workflow authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-R2d — retained GitHub Actions references made schema-inert",
+            "R-R2d — retained GitHub Actions references remain executable",
+            "workflow authority hardening ledger",
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
@@ -25610,6 +25689,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"
+            ).read_text(encoding="utf-8"),
+            "disabled_workflow_authority_verifier": (
+                repo / "scripts/verify-disabled-workflow-authority.py"
+            ).read_text(encoding="utf-8"),
+            "workflow_disabled_docs": (
+                repo / ".github/workflows/DISABLED.md"
             ).read_text(encoding="utf-8"),
             "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),

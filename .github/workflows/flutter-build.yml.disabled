@@ -1,10 +1,10 @@
 name: Build the flutter version of the RustDesk
 
-# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c): the `.disabled` suffix means GitHub
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c/R-R2d): the `.disabled` suffix means GitHub
 # does not load this upstream matrix. The fork has zero enabled workflow definitions;
 # its three release targets are owned only by the checked-in scripts/ harness. Several
-# commands below deliberately name deleted upstream helpers. The top-level trigger and
-# job keys are also schema-demoted, so renaming this file cannot activate it.
+# commands below deliberately name deleted upstream helpers. Both workflow authority keys
+# are schema-demoted so a rename cannot activate this file.
 # It MUST NOT become a build authority.
 
 historical_on:

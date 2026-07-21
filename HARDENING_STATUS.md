@@ -7140,6 +7140,49 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   No project build, APK build/sign, Android/device execution, full `scripts/verify.sh`, whole Apple checker, or R-B2
   release was run for this source-only slice. The complete verifier still lacks its exact pinned dev-check image,
   and the whole Apple checker would build images in preflight; neither boundary was bypassed or represented green.
+- **R-R2d — retained GitHub Actions references made schema-inert — SOURCE CLOSED/GATED 2026-07-21; EXACT
+  CURRENT-COMMIT ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Commit `16252a9` disabled GitHub-hosted CI/CD by
+  suffix-renaming seven upstream definitions under `.github/workflows/` to `*.disabled`. Current history and
+  source inspection found that only the later `flutter-build` reference had also lost executable workflow schema.
+  The other six still carried top-level `on` and `jobs`: `ci`, `flutter-ci`, `flutter-tag`, and `wf-cliprdr-ci`
+  retained manual plus push/PR/tag triggers, while `bridge` and `third-party-RustDeskTempTopMostWindow` retained
+  reusable `workflow_call` entry. Their historical bodies include package installation, build/test execution,
+  artifact upload, and a tag caller that inherits secrets into the release matrix. GitHub did not recognize these
+  non-`.yml`/`.yaml` files in their current names, so this was accidental rename/copy reactivation authority and
+  misleading re-enable documentation, not evidence that any job ran, a secret was disclosed, an artifact shipped,
+  the host was modified, a listener existed, privilege escalation occurred, or a system was compromised.
+
+  All seven retained references now carry exactly one schema-demoted `historical_on` and `historical_jobs`, no
+  top-level `on` or `jobs`, and an explicit inert/rename-resistant marker. Historical bodies remain available for
+  review, but renaming any one file cannot create a trigger, callable workflow, or executable job graph. The exact
+  directory inventory remains zero enabled definitions, seven regular disabled references, and `DISABLED.md`;
+  symlinks, extra entries, missing references, active extensions, and wrong types fail closed. The documentation no
+  longer presents rename as an enable ceremony: restoring both schema keys and reviewing reusable dependencies is
+  an explicit R-R2/R-R2d release-authority change. Local repository scripts remain the only build, verification,
+  and release transaction authority.
+
+  `scripts/verify-disabled-workflow-authority.py` checks that complete inventory and every file's regular type,
+  marker, top-level-key absence, and demoted-key cardinality, then binds R-R2d, Appendix C #195, documentation, the
+  shared verifier, and this ledger. Its self-test applies separate trigger and jobs reactivation mutations to every
+  retained reference, quoted/space-delimited YAML key variants, and inventory, enabled-definition, documentation,
+  requirement, disposition, ledger, and gate mutations. The independent workspace verifier statically binds the
+  focused validator's rejection semantics and wiring and mutation-tests the validator, documentation, normative
+  records, and shared invocation. This is a
+  source-authority closure only; cold exact-commit artifacts and release execution remain R-B2/R-B10.
+
+  Focused verification used the already-present immutable Apple/Rust/Python image
+  `sha256:612145fabd0c603417ab5e689e84d5b5a619f4edf31efceb3ecbe2813da2199c` as numeric UID/GID
+  1000:1000 with networking disabled, a read-only root/source mount, all capabilities dropped,
+  no-new-privileges, bounded CPU/memory/PIDs, no published ports, no Docker socket, and disposable tmpfs. The
+  focused validator passed its baseline and rejected all 23 deliberate mutations, including alternate YAML key
+  spellings; the exact extracted shared-verifier block passed. The existing 32-mutation mobile authority gate,
+  complete independent workspace source-mutation sweep, 103-case dependency inventory/current inventory,
+  63-mutation main-verifier authority suite, native-codec/hash normal and self-test gates, in-memory Python parsing,
+  edited-shell Bash parsing, and diff hygiene passed. The broader workspace behavioral self-test reached its
+  intentional live-systemd-user-bus prerequisite inside the isolated container; the host bus was not mounted, and
+  that incomplete run is not represented as a pass. Verification and publication evidence for this loop are
+  recorded in `/tmp/privilege_securiry_deep_audit.md`. No project build, artifact build/signing, Android/device
+  execution, full `scripts/verify.sh`, whole Apple checker, or R-B2 release is claimed by this source-only change.
 - **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
   correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
   `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
@@ -7456,9 +7499,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9ed51549359ec5470d87f29642d83f31e7be4c248a4ff498f968d665559d8bcd  requirements.html
+37d9d7e840dccfb147eebb217c5a2ebd4b5268bcac3a36416817421fad3459df  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R2c, and Appendix C #192–#194. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

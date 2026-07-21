@@ -1,6 +1,9 @@
 name: Flutter Tag Build
 
-on:
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2d). Both workflow authority keys
+# are schema-demoted so a rename cannot activate this file.
+
+historical_on:
   workflow_dispatch:
   push:
     tags:
@@ -9,7 +12,7 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+-[0-9]+'
       - '[0-9]+.[0-9]+.[0-9]+-[0-9]+'
 
-jobs:
+historical_jobs:
   run-flutter-tag-build:
     uses: ./.github/workflows/flutter-build.yml
     secrets: inherit

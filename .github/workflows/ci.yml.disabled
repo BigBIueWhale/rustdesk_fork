@@ -1,5 +1,8 @@
 name: CI
 
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2d). Both workflow authority keys
+# are schema-demoted so a rename cannot activate this file.
+
 env:
 #   MIN_SUPPORTED_RUST_VERSION: "1.46.0"
 #   CICD_INTERMEDIATES_DIR: "_cicd-intermediates"
@@ -7,7 +10,7 @@ env:
   # for multiarch gcc compatibility
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
 
-on:
+historical_on:
   workflow_dispatch:
   pull_request:
     paths-ignore:
@@ -22,7 +25,7 @@ on:
       - "README.md"
       - "res/**"
 
-jobs:
+historical_jobs:
   # ensure_cargo_fmt:
   #   name: Ensure 'cargo fmt' has been run
   #   runs-on: ubuntu-20.04

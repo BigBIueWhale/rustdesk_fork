@@ -2,7 +2,10 @@
 name: Build flutter-rust-bridge
 # 2023-11-23 18:00:00+00:00
 
-on:
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2d). Both workflow authority keys
+# are schema-demoted so a rename cannot activate this file.
+
+historical_on:
   workflow_call:
 
 env:
@@ -11,7 +14,7 @@ env:
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
   RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503
 
-jobs:
+historical_jobs:
   generate_bridge:
     runs-on: ${{ matrix.job.os }}
     strategy:

@@ -1,6 +1,9 @@
 name: wf-cliprdr CI
 
-on:
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2d). Both workflow authority keys
+# are schema-demoted so a rename cannot activate this file.
+
+historical_on:
   workflow_dispatch:
   pull_request:
     paths:
@@ -22,7 +25,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
+historical_jobs:
   test:
     name: wf_cliprdr invariant test
     runs-on: windows-2022

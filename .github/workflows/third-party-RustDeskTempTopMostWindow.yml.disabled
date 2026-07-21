@@ -1,6 +1,9 @@
 name: build RustDeskTempTopMostWindow
 
-on:
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2d). Both workflow authority keys
+# are schema-demoted so a rename cannot activate this file.
+
+historical_on:
   workflow_call:
     inputs:
         upload-artifact:
@@ -30,7 +33,7 @@ on:
 env:
   project_path: WindowInjection/WindowInjection.vcxproj
 
-jobs:
+historical_jobs:
   build-RustDeskTempTopMostWindow:
     runs-on: ${{ inputs.target }}
     strategy:

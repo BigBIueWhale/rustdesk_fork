@@ -12,14 +12,18 @@ from authenticated private snapshots, never in the cloud (§12 of `requirements.
 | Android       | the §12 Docker flow |
 
 The target-specific scripts are not independent release entry points. The upstream RustDesk workflows are
-retained for reference but **disabled** via the
-`.disabled` suffix — GitHub Actions only parses `*.yml` / `*.yaml`, so with every workflow
-renamed it triggers **nothing** (no push / PR / tag / schedule, and no manual dispatch).
+retained for reference but **disabled twice**. The `.disabled` suffix keeps GitHub Actions from loading them,
+and every retained file schema-demotes its top-level `on` and `jobs` keys to `historical_on` and
+`historical_jobs`. Renaming a reference alone cannot enable it: it still has neither a workflow trigger nor an
+executable job graph. This means the references trigger **nothing** (no push / PR / tag / schedule, no reusable
+call, and no manual dispatch).
 `dependabot.yml` is likewise disabled: this fork's dependency world is **exactly pinned**
 (`Cargo.lock` + `scripts/pins.env`, R-R1/R-B12), not auto-bumped.
 
 Disabled workflows: `bridge`, `ci`, `flutter-build`, `flutter-ci`, `flutter-tag`,
 `third-party-RustDeskTempTopMostWindow`, `wf-cliprdr-ci`.
 
-**To re-enable** a workflow, rename it back to `*.yml` — and also rename back any
-`workflow_call` workflow it `uses:` (e.g. `flutter-ci` → `flutter-build` → `bridge`).
+There is no rename-only re-enable path. Restoring `on` and `jobs` is an explicit release-authority change that
+must update R-R2/R-R2d and the closed workflow inventory before a file can be renamed to `*.yml`; reusable
+dependencies must be reviewed and restored separately. Historical `uses:` paths are intentionally left as
+references, not as an executable workflow chain.

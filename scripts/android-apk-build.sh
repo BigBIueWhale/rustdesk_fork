@@ -26,19 +26,22 @@ esac
     || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
 
 # Android SDK preferences are distinct from shell HOME: AGP runs in a JVM whose
-# user.home comes from the image account. ANDROID_USER_HOME is the current tools
-# contract, while AGP 7.3.1's pinned analytics-library 30.3.1 predates it and checks
-# ANDROID_PREFS_ROOT first. Bind both contracts to one per-pass directory on the
-# existing bounded tmpfs instead of falling through to the read-only container root.
-export ANDROID_USER_HOME=/tmp/android-user-home
-export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"
-if [ -e "$ANDROID_USER_HOME" ] || [ -L "$ANDROID_USER_HOME" ]; then
-    echo "[FATAL] Android user home was not freshly absent" >&2
+# user.home comes from the image account. In the pinned 30.3.1 tool stack, current
+# location code treats ANDROID_PREFS_ROOT as the parent of .android, while the older
+# analytics library uses that root directly. One private root therefore owns both
+# paths without the conflicting dual-variable injection rejected by current tools.
+unset ANDROID_USER_HOME ANDROID_SDK_HOME
+export ANDROID_PREFS_ROOT=/tmp/android-preferences-root
+if [ -e "$ANDROID_PREFS_ROOT" ] || [ -L "$ANDROID_PREFS_ROOT" ]; then
+    echo "[FATAL] Android preferences root was not freshly absent" >&2
     exit 1
 fi
-install -d -m 0700 "$ANDROID_USER_HOME"
-[ "$(stat -c '%u:%a' "$ANDROID_USER_HOME")" = "$(id -u):700" ] \
-    || { echo "[FATAL] Android user home is not private to the build identity" >&2; exit 1; }
+install -d -m 0700 "$ANDROID_PREFS_ROOT"
+install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"
+[ "$(stat -c '%u:%a' "$ANDROID_PREFS_ROOT")" = "$(id -u):700" ] \
+    || { echo "[FATAL] Android preferences root is not private to the build identity" >&2; exit 1; }
+[ "$(stat -c '%u:%a' "$ANDROID_PREFS_ROOT/.android")" = "$(id -u):700" ] \
+    || { echo "[FATAL] current Android preferences directory is not private to the build identity" >&2; exit 1; }
 
 prepare_offline_gradle_cache() {
     [ "$APK_MODE" = offline ] || return 0

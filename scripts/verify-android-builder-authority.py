@@ -97,11 +97,13 @@ def validate(sources: Dict[str, str]) -> None:
         raise AuthorityError("signing and verification do not each carry explicit resource bounds")
 
     for token, label in (
-        ('export ANDROID_USER_HOME=/tmp/android-user-home', "explicit Android preferences scratch"),
-        ('export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', "AGP 7.3.1 analytics preferences compatibility"),
-        ('Android user home was not freshly absent', "fresh Android preferences precondition"),
-        ('install -d -m 0700 "$ANDROID_USER_HOME"', "private Android preferences constructor"),
-        ('Android user home is not private to the build identity', "Android preferences mode/owner postcondition"),
+        ('unset ANDROID_USER_HOME ANDROID_SDK_HOME', "single Android preference-location injection"),
+        ('export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', "AGP 7.3.1 shared preferences root"),
+        ('Android preferences root was not freshly absent', "fresh Android preferences precondition"),
+        ('install -d -m 0700 "$ANDROID_PREFS_ROOT"', "private legacy analytics preferences constructor"),
+        ('install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"', "private current-tools preferences constructor"),
+        ('Android preferences root is not private to the build identity', "legacy analytics preferences mode/owner postcondition"),
+        ('current Android preferences directory is not private to the build identity', "current-tools preferences mode/owner postcondition"),
         ('prepare_offline_gradle_cache() {', "deferred Gradle-cache constructor"),
         ('tar -C "$TC" -xf /online/rust-1.75.tar.xz', "pinned Rust installer extraction"),
         ('tar -C "$TC" -xf /online/rust-std-1.75-aarch64-linux-android.tar.xz', "pinned Android std extraction"),
@@ -118,15 +120,16 @@ def validate(sources: Dict[str, str]) -> None:
         require(inner, token, label)
 
     require_count(inner, 'android-gradle-cache.py materialize', 1, "single Gradle-cache projection")
-    require_count(inner, 'export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', 1, "single legacy analytics preference binding")
+    require_count(inner, 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 1, "single Android preference-location binding")
     require_count(inner, 'rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"', 1, "single Rust-installer retirement")
     require_count(inner, 'rm -rf -- "$LLVM_ROOT"', 1, "single LLVM retirement")
     require_count(inner, 'prepare_offline_gradle_cache\n', 1, "single deferred Gradle-cache call")
 
     ordered_tokens = (
-        'export ANDROID_USER_HOME=/tmp/android-user-home',
-        'export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"',
-        'install -d -m 0700 "$ANDROID_USER_HOME"',
+        'unset ANDROID_USER_HOME ANDROID_SDK_HOME',
+        'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root',
+        'install -d -m 0700 "$ANDROID_PREFS_ROOT"',
+        'install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"',
         '"$ANDROID_STD_INSTALLER_ROOT/install.sh"',
         'rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"',
         'tar -C "$TC" -xf /online/flutter-3.24.5.tar.xz',
@@ -142,6 +145,7 @@ def validate(sources: Dict[str, str]) -> None:
         raise AuthorityError("Android scratch consumers and retirement phases are misordered")
 
     for token, label in (
+        ('ANDROID_USER_HOME=', "conflicting current Android home override"),
         ('ANDROID_SDK_HOME=', "broader legacy Android home override"),
         ('JAVA_TOOL_OPTIONS=', "JVM-wide Java tool options override"),
         ('JDK_JAVA_OPTIONS=', "JDK-wide Java options override"),
@@ -243,15 +247,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("build", "--cap-drop=ALL --security-opt=no-new-privileges", "--cap-drop=ALL", "no-new-privileges"),
     Mutation("build", "--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4", "--memory=12g --memory-swap=12g --cpus=4", "build PID bound"),
     Mutation("build", "--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4", "--pids-limit=512 --memory=12g --memory-swap=12g", "build CPU bound"),
-    Mutation("inner", 'export ANDROID_USER_HOME=/tmp/android-user-home', 'export ANDROID_USER_HOME=/home/ubuntu/.android', "Android preferences scratch selection"),
-    Mutation("inner", 'export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', 'export ANDROID_PREFS_ROOT=/home/ubuntu/.android', "AGP analytics preferences compatibility"),
-    Mutation("inner", 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"\nexport ANDROID_SDK_HOME=/tmp/buildhome', "broader legacy Android home override refusal"),
-    Mutation("inner", 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"\nexport JAVA_TOOL_OPTIONS=-Duser.home=/tmp/buildhome', "JVM-wide Java tool options refusal"),
-    Mutation("inner", 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"\nexport JDK_JAVA_OPTIONS=-Duser.home=/tmp/buildhome', "JDK-wide Java options refusal"),
-    Mutation("inner", 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"', 'export ANDROID_USER_HOME=/tmp/android-user-home\nexport ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"\nexport _JAVA_OPTIONS=-Duser.home=/tmp/buildhome', "legacy JVM-wide Java options refusal"),
-    Mutation("inner", 'install -d -m 0700 "$ANDROID_USER_HOME"', 'mkdir -p "$ANDROID_USER_HOME"', "private Android preferences constructor"),
-    Mutation("inner", 'Android user home was not freshly absent', 'pre-existing Android user home accepted', "fresh Android preferences precondition"),
-    Mutation("inner", 'Android user home is not private to the build identity', 'non-private Android user home accepted', "Android preferences owner/mode postcondition"),
+    Mutation("inner", 'unset ANDROID_USER_HOME ANDROID_SDK_HOME', 'true # conflicting Android preference locations retained', "single Android preference-location injection"),
+    Mutation("inner", 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 'export ANDROID_PREFS_ROOT=/home/ubuntu/.android', "Android preferences scratch selection"),
+    Mutation("inner", 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\nexport ANDROID_USER_HOME=/tmp/android-user-home', "conflicting current Android home override refusal"),
+    Mutation("inner", 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\nexport ANDROID_SDK_HOME=/tmp/buildhome', "broader legacy Android home override refusal"),
+    Mutation("inner", 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\nexport JAVA_TOOL_OPTIONS=-Duser.home=/tmp/buildhome', "JVM-wide Java tool options refusal"),
+    Mutation("inner", 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\nexport JDK_JAVA_OPTIONS=-Duser.home=/tmp/buildhome', "JDK-wide Java options refusal"),
+    Mutation("inner", 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', 'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\nexport _JAVA_OPTIONS=-Duser.home=/tmp/buildhome', "legacy JVM-wide Java options refusal"),
+    Mutation("inner", 'install -d -m 0700 "$ANDROID_PREFS_ROOT"', 'mkdir -p "$ANDROID_PREFS_ROOT"', "private legacy analytics preferences constructor"),
+    Mutation("inner", 'install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"', 'mkdir -p "$ANDROID_PREFS_ROOT/.android"', "private current-tools preferences constructor"),
+    Mutation("inner", 'Android preferences root was not freshly absent', 'pre-existing Android preferences root accepted', "fresh Android preferences precondition"),
+    Mutation("inner", 'Android preferences root is not private to the build identity', 'non-private Android preferences root accepted', "legacy analytics preferences owner/mode postcondition"),
+    Mutation("inner", 'current Android preferences directory is not private to the build identity', 'non-private current Android preferences directory accepted', "current-tools preferences owner/mode postcondition"),
     Mutation("inner", 'rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"', 'true # consumed Rust installers retained', "Rust-installer retirement"),
     Mutation("inner", 'consumed Rust installer payload survived scratch retirement', 'consumed Rust installer payload accepted', "Rust-installer retirement postcondition"),
     Mutation("inner", 'rm -rf -- "$LLVM_ROOT"', 'true # consumed LLVM retained', "LLVM retirement"),

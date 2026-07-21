@@ -6995,17 +6995,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `AnalyticsPaths.getAndEnsureAndroidSettingsHome()` checks `ANDROID_PREFS_ROOT`, then `ANDROID_SDK_HOME`, then JVM
   `user.home`.
 
-  The completed source correction binds both `ANDROID_USER_HOME` and the narrower version-compatible
-  `ANDROID_PREFS_ROOT` to the same `/tmp/android-user-home` before any extracted toolchain or Android/Gradle
-  consumer. Each fresh container still requires that path absent, creates it as a real mode-0700 directory, and
-  proves current numeric-UID ownership and mode. The path remains on the already-authorized 10-GiB tmpfs and is
-  discarded with the pass. `ANDROID_SDK_HOME` and JVM-wide Java options/home overrides are now explicitly refused;
-  there is still no host mount, writable root, scratch or memory increase, persistence fallback, image operation,
-  privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds both exact aligned
-  contracts, the broad-fallback refusals, freshness, private construction/postcondition, ordering before tool
-  consumers, R-S11bm, Appendix C #202, and this row with deliberate mutations; the shared verifier and independent
-  workspace meta-gate retain their enforcement roles. A clean exact corrected-commit A/B proof must now show the
-  legacy metrics warning absent; the complete release transaction and device behavior remain open.
+  The dual-variable correction at pushed commit `b757d8207a8be8fc063661dfba1369428021debd` was then tested through
+  the exact default path rather than accepted from source reasoning. Its pass A authenticated the complete online
+  snapshot, reproduced the private exact source, generated the bridge, completed the release native Rust/JNI build
+  in 2m27s, retired LLVM, and verified the deferred Gradle projection. AGP then failed closed while deriving its
+  default debug-keystore location. Inspection of exact `com.android.tools:common:30.3.1` bytecode proved why:
+  `ANDROID_USER_HOME` is a final path, whereas `ANDROID_PREFS_ROOT` is a parent to which current tools append
+  `.android`. Giving both the same string therefore produced two different resolved locations, which
+  `PathLocator.singlePathOf()` rejects. The failed private build published no APK and its owned workspace was
+  removed. This was another fail-closed compatibility/availability finding, not a reason to widen the root,
+  resources, privileges, or mounts.
+
+  The corrected single-input design clears `ANDROID_USER_HOME` and `ANDROID_SDK_HOME`, then exports only
+  `ANDROID_PREFS_ROOT=/tmp/android-preferences-root`. Before any extracted toolchain or Android/Gradle consumer,
+  each fresh container requires that root absent, creates both it and its `.android` child as real mode-0700
+  directories, and proves current numeric-UID ownership and mode for both. The exact pinned legacy analytics
+  component uses the private root directly; current location code resolves the private child, so both semantics
+  are owned without conflicting injections. The tree remains on the already-authorized 10-GiB tmpfs and is
+  discarded with the pass. Competing Android homes and JVM-wide Java options/home overrides are explicitly
+  refused; there is still no host mount, writable root, scratch or memory increase, persistence fallback, image
+  operation, privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds the exact
+  single root, competing-input clearing/refusal, freshness, both private constructions/postconditions, ordering
+  before tool consumers, R-S11bm, Appendix C #202, and this row with deliberate mutations; the shared verifier and
+  independent workspace meta-gate retain their enforcement roles. A clean exact corrected-commit A/B proof must
+  now show both the legacy metrics warning and location ambiguity absent; the complete release transaction and
+  device behavior remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7721,7 +7735,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9cab9fa66789006db429f003ab03e3d101c8305e3724242520162495baa35d53  requirements.html
+7e527d7617cfda0b04fee0d1c70b159cab7b5c36898996450bf6f5bee03562a7  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,

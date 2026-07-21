@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#201",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -10938,6 +10938,12 @@ def validate_android_builder_authority_contract(sources):
         ('consumed LLVM payload survived scratch retirement', "Android LLVM retirement postcondition"),
         ('single deferred Gradle-cache call', "Android late Gradle projection cardinality"),
         ('Gradle Cargo-metadata consumer', "Android retained Cargo final consumer"),
+        (
+            '(\'export ANDROID_USER_HOME=/tmp/android-user-home\', "explicit Android preferences scratch")',
+            "Android preferences scratch enforcement",
+        ),
+        ('Android user home was not freshly absent', "Android preferences freshness enforcement"),
+        ('Android user home is not private to the build identity', "Android preferences owner/mode enforcement"),
         ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
         ('run_mutations(sources)', "Android builder mutation dispatch"),
     ):
@@ -10989,6 +10995,11 @@ def validate_android_builder_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11bm</span>',
+        "Android preferences scratch requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>199</td>",
         "Android builder authority Appendix C row",
     )
@@ -11001,6 +11012,11 @@ def validate_android_builder_authority_contract(sources):
         sources["requirements"],
         "<tr><td>201</td>",
         "Android scratch-lifecycle Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>202</td>",
+        "Android preferences scratch Appendix C row",
     )
     require_text(
         sources["hardening"],
@@ -11016,6 +11032,11 @@ def validate_android_builder_authority_contract(sources):
         sources["hardening"],
         "R-S11bl/R-S11e-78 — Android bounded scratch lifecycle",
         "Android scratch-lifecycle hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
+        "Android preferences scratch hardening ledger",
     )
 
 
@@ -25190,8 +25211,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#201",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#200",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#201",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25291,6 +25312,12 @@ def run_source_mutations(sources):
             "Android builder scratch-order rejection semantics",
         ),
         (
+            "android_builder_authority_verifier",
+            '(\'export ANDROID_USER_HOME=/tmp/android-user-home\', "explicit Android preferences scratch")',
+            '(\'export ANDROID_USER_HOME=/home/ubuntu/.android\', "ambient Android preferences home")',
+            "Android preferences scratch enforcement",
+        ),
+        (
             "android_build_source_verifier",
             "if not allow_extras:",
             "if False:",
@@ -25334,6 +25361,12 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<span class="id">R-S11bm</span>',
+            '<span class="id">R-S11bm-disabled</span>',
+            "Android preferences scratch requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>199</td>",
             "<tr><td>199-disabled</td>",
             "Android builder authority Appendix C row",
@@ -25349,6 +25382,12 @@ def run_source_mutations(sources):
             "<tr><td>201</td>",
             "<tr><td>201-disabled</td>",
             "Android scratch-lifecycle Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>202</td>",
+            "<tr><td>202-disabled</td>",
+            "Android preferences scratch Appendix C row",
         ),
         (
             "hardening",
@@ -25367,6 +25406,12 @@ def run_source_mutations(sources):
             "R-S11bl/R-S11e-78 — Android bounded scratch lifecycle",
             "R-S11bl/R-S11e-78 — Android unbounded scratch lifecycle",
             "Android scratch-lifecycle hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
+            "R-S11bm/R-S11e-79 — Android tool preferences ambient ownership",
+            "Android preferences scratch hardening ledger",
         ),
         (
             "github_automation_authority_verifier",

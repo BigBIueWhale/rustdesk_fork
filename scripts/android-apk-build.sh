@@ -25,6 +25,18 @@ esac
 [ -z "${RUSTDESK_GRADLE_OFFLINE+x}" ] \
     || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
 
+# Android SDK preferences are distinct from shell HOME: AGP runs in a JVM whose
+# user.home comes from the image account. Keep that per-pass state on the existing
+# bounded tmpfs instead of falling through to the read-only container root.
+export ANDROID_USER_HOME=/tmp/android-user-home
+if [ -e "$ANDROID_USER_HOME" ] || [ -L "$ANDROID_USER_HOME" ]; then
+    echo "[FATAL] Android user home was not freshly absent" >&2
+    exit 1
+fi
+install -d -m 0700 "$ANDROID_USER_HOME"
+[ "$(stat -c '%u:%a' "$ANDROID_USER_HOME")" = "$(id -u):700" ] \
+    || { echo "[FATAL] Android user home is not private to the build identity" >&2; exit 1; }
+
 prepare_offline_gradle_cache() {
     [ "$APK_MODE" = offline ] || return 0
     python3 -I -S /src/scripts/android-gradle-cache.py materialize \

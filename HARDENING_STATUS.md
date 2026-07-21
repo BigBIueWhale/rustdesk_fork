@@ -6971,6 +6971,28 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   deliberate mutations for each closure edge. The independent workspace verifier and shared source gate retain
   their existing enforcement roles. These measurements and source gates are not APK evidence: an exact clean
   committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
+- **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CLOSED/GATED 2026-07-21;
+  EXACT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
+  Endpoint/action: Android SDK/AGP user-preference state created during final Flutter/Gradle packaging. Boundary:
+  numeric non-root build identity and the existing bounded ephemeral `/tmp` tmpfs ↔ the deliberately read-only
+  container root and image-account home. The first exact build at pushed commit
+  `c413f4e86cd05b4aac5f19bbdd9b79d4c63f50b5` proved R-S11bl through bridge generation and a complete release
+  native Rust/JNI build, retired LLVM, and verified the deferred Gradle projection. AGP 7.3.1 then failed closed
+  while applying `com.android.application` because it tried to create `/home/ubuntu/.android` on the read-only
+  root. Shell `HOME=/tmp/buildhome` was already present, but Java's `user.home` remained account-backed. This was
+  a separate hermetic-state ownership/availability defect, not ENOSPC, root execution, a host write, container
+  escape, host service or firewall mutation, port exposure, exploitation, or compromise.
+
+  The correction uses Android's official `ANDROID_USER_HOME` preference-directory contract. Before any extracted
+  toolchain or Android/Gradle consumer runs, each fresh container selects `/tmp/android-user-home`, requires it to
+  be absent, creates it as a real mode-0700 directory, and proves current numeric-UID ownership and mode. The path
+  is on the already-authorized 10-GiB tmpfs and is discarded with the pass. It does not add a host mount, writable
+  root, broad JVM `user.home` override, scratch or memory increase, persistence fallback, image operation,
+  privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds the exact path,
+  freshness, private construction/postcondition, ordering before tool consumers, R-S11bm, Appendix C #202, and
+  this row with deliberate mutations; the shared verifier and independent workspace meta-gate retain their
+  enforcement roles. These source gates do not promote the failed attempt into APK evidence: an exact clean
+  committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7686,9 +7708,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-00a05b4f8ab3560531b9d4ad822798b859e49958b54931833da5e56b02c138f4  requirements.html
+7b1166b3cf04ad549265b06737d8664c46eea47948b9e1a71fc0b67d770f3221  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bl, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#201. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

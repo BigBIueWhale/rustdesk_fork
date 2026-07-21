@@ -531,12 +531,12 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if args[0] == "--cm" {
             // call connection manager to establish connections
             // meanwhile, return true to call flutter window to show control panel
-            crate::ui_interface::start_option_status_sync();
+            crate::ui_interface::start_main_status_sync();
         } else if args[0] == "--cm-no-ui" {
             #[cfg(feature = "flutter")]
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                crate::ui_interface::start_option_status_sync();
+                crate::ui_interface::start_main_status_sync();
                 crate::flutter::connection_manager::start_cm_no_ui();
             }
             return None;

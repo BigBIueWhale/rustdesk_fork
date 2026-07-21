@@ -4818,6 +4818,39 @@ unreachable and a source/test/AST gate prevents reintroduction.
   provenance, and R-V3 external review remain open. No host RustDesk process/service/binary/configuration/listener,
   firewall, UFW/nftables/iptables state, or host-network state was inspected or changed for this source slice.
 
+- **R-SV6c — rendezvous peer-presence and compatibility status plane deleted — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: shared Rust, desktop/Android/iOS Flutter,
+  generated Flutter Rust Bridge, web compatibility implementation, and retained Apple source. Boundary: absent
+  rendezvous presence authority ↔ saved-peer presentation ↔ separately retained local main-IPC status and direct
+  listener reachability. Commit `d5aec5b` had already deleted the live `ONLINE` latency map, `Data::OnlineStatus`,
+  `status_num`, mobile `_connectStatus`, peer-query backend/runner/FFI, peer online field/callback, Status sort,
+  visibility tracking, invisible dot, and 300-ms polling loop. The Tier 4 itemized row nevertheless remained in its
+  original open-finding form, the source gates covered only the old network send and one authored Dart call, and
+  source scars plus `main_check_connect_status`/`OnlineStatusWidget` still described unrelated retained operations
+  in the retired rendezvous vocabulary. Android and iOS also invoked that no-op desktop-main FFI at startup. This was
+  a regression-boundary, cross-platform API, and audit-coherence defect—not a live rendezvous request, credential
+  disclosure, local-to-root path, privilege escalation, exploitation incident, host mutation, public listener, or
+  evidence of compromise.
+
+  Authority model and source closure: no rendezvous authority means no saved-peer presence state, query, event,
+  callback, polling, sort, dot, constant-false substitute, or compatibility alias exists. Obsolete explanatory scars
+  are deleted. The independent retained worker is now `start_main_status_sync`/`sync_main_status`, exposed as the
+  typed one-shot `main_start_status_sync`/`mainStartStatusSync`; it continues to consume only
+  `get_main_status_snapshot` for local options, UI metadata, Windows file-transfer state, and connection-manager
+  lifecycle. Dart invokes it only on native desktop, so Android/iOS/web do not attempt main-daemon synchronization.
+  The controlled-side widget is `DirectListenerStatusWidget`; its green state still comes only from the actual
+  `direct-listener-bound` fact, while `local-permanent-password-set` selects the actionable failure explanation.
+  Video/session count and protobuf per-display availability remain separate typed facts.
+
+  Verification closure: `scripts/verify.sh` gates the complete Rust absence inventory and positive typed worker;
+  `scripts/dart-verify.sh` checks authored plus freshly generated Dart and the retained direct-listener facts; the
+  Apple source checker binds the shared Rust deletion and ensures iOS inherits no peer-presence backend. The
+  independent workspace semantic validator and deliberate mutations bind every source family, the desktop-only
+  trigger, retained status semantics, all three gates, R-SV6c, Appendix C #187, and this ledger. Exact current-commit
+  packaged artifacts remain R-B2/R-B10; installed-platform evidence, refreshed advisory data, independent image
+  provenance, and R-V3 external review remain open. No host RustDesk process/service/binary/configuration/listener,
+  firewall, UFW/nftables/iptables state, or host-network state was inspected or changed for this source slice.
+
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -7095,13 +7128,11 @@ does not exist. That entire stratum is now gone — the tiers below record each 
 
 Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never contain:
 
-- **Rendezvous online-status cluster (always-0 / always-offline):** the `ONLINE` latency map +
-  `get_online_state()` are permanently 0 because `update_latency`/`reset_online` are never called
-  (`config.rs:995/999`); `status_num` and the mobile `_connectStatus` getter feed off it and are dead;
-  the whole viewer peer-online pipeline — `peer.online`, `_updateOnlineState`, `_cbQueryOnlines`, and a
-  **300 ms poll loop with a deleted payload** (`peers_view.dart:312`, `peer_model.dart`) — spins
-  forever behind an already-invisible dot (`getOnline()` → `SizedBox.shrink()`). Excise the map, the
-  loop, and the pipeline.
+- **Rendezvous peer-presence/status cluster — CLOSED/GATED (R-SV6c):** the latency map, generic IPC/
+  FFI status payload, peer query/backend/runner, Dart state/callback/sort/dot/visibility/polling pipeline, and
+  compatibility names are absent. The separately retained typed main-status synchronizer is native-desktop-only;
+  the local status widget is explicitly direct-listener reachability and is gated to the real listener-bound fact.
+  Exact artifact evidence remains R-B2/R-B10.
 - **`using_public_server()` returns the semantic OPPOSITE of its name** —
   `get_custom_rendezvous_server(...).is_empty()` (`src/common.rs:1133`) is always `true` in a fork
   with no rendezvous, so it reports "using the public server" when there is no server at all; its
@@ -7176,9 +7207,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-80c99dc71d8603fea1df98aaa789c61278bbd39842b3f1e7f1d194a28b4cffa4  requirements.html
+95635392cb24dcc8458453b11d37721ea31b666d004a7a88ec9e6dedcf4ac188  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, and Appendix C #186. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, and Appendix C #187. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

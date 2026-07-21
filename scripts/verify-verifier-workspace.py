@@ -11183,6 +11183,177 @@ def validate_rendezvous_compatibility_excision_contract(sources):
     )
 
 
+def validate_peer_presence_excision_contract(sources):
+    for text, label in (
+        ("static ref ONLINE:", "peer-presence latency map"),
+        ("fn get_online_state(", "peer-presence state reader"),
+        ("fn reset_online(", "peer-presence state reset"),
+        ("fn update_latency(", "peer-presence latency writer"),
+    ):
+        require_absent(sources["config_source"], text, label)
+    require_absent(sources["ipc_source"], "OnlineStatus", "generic online-status IPC")
+    for text, label in (
+        ("peer_online", "peer-presence backend module"),
+        ("query_online_states", "peer-presence backend query"),
+    ):
+        require_absent(sources["client_source"], text, label)
+    for text, label in (
+        ("async_tasks", "peer-presence runner"),
+        ("query_onlines", "peer-presence runner query"),
+        ("callback_query_onlines", "peer-presence callback event"),
+    ):
+        require_absent(sources["flutter_source"], text, label)
+    for text, label in (
+        ("main_get_connect_status", "generic connect-status FFI getter"),
+        ("main_check_connect_status", "generic connect-status FFI starter"),
+        ("query_onlines", "peer-presence FFI query"),
+    ):
+        require_absent(sources["flutter_ffi_source"], text, label)
+    require_text(
+        sources["flutter_ffi_source"],
+        "pub fn main_start_status_sync()",
+        "typed main status-sync FFI",
+    )
+    require_text(
+        sources["flutter_ffi_source"],
+        "start_main_status_sync();",
+        "typed main status-sync FFI dispatch",
+    )
+
+    for text, label in (
+        ("status_num", "generic rendezvous status payload"),
+        ("start_option_status_sync", "misnamed status-sync entry"),
+        ("check_connect_status", "misnamed status-sync worker"),
+    ):
+        require_absent(sources["ui_interface_source"], text, label)
+    for text, label in (
+        ("pub fn start_main_status_sync()", "typed main status-sync entry"),
+        (".spawn(sync_main_status)", "owned main status-sync worker"),
+        ("async fn sync_main_status()", "typed main status-sync worker"),
+        ("ipc::get_main_status_snapshot(1000).await", "typed main status snapshot"),
+    ):
+        require_text(sources["ui_interface_source"], text, label)
+    require_exact_count(
+        sources["core_main"],
+        "crate::ui_interface::start_main_status_sync();",
+        2,
+        "connection-manager main status-sync callers",
+    )
+
+    for text, label in (
+        ("bool online", "peer online field"),
+        ("callback_query_onlines", "Dart peer-presence callback"),
+        ("_updateOnlineState", "Dart peer-presence updater"),
+        ("_getOnlineStates", "Dart peer-presence snapshot"),
+        ("UpdateEvent.online", "Dart peer-presence update discriminator"),
+    ):
+        require_absent(sources["peer_model_dart"], text, label)
+    for text, label in (
+        ("PeerSortType.status", "peer-presence sort"),
+        ("_startCheckOnlines", "peer-presence polling loop"),
+        ("_queryOnlines", "peer-presence polling query"),
+        ("getOnline(", "peer-presence dot"),
+        ("VisibilityDetector", "peer-presence card visibility tracking"),
+        ("WindowListener", "peer-presence window polling lifecycle"),
+        ("_curPeers", "peer-presence visible-peer set"),
+        ("_lastQueryPeers", "peer-presence query cache"),
+    ):
+        require_absent(sources["peers_view_dart"], text, label)
+    for text, label in (
+        ("_connectStatus", "mobile rendezvous status state"),
+        ("connectStatus", "mobile rendezvous status getter"),
+        ("status_num", "mobile rendezvous status payload"),
+        ("mainGetConnectStatus", "mobile rendezvous status bridge"),
+    ):
+        require_absent(sources["server_model_dart"], text, label)
+
+    connection_page = sources["connection_page_dart"]
+    require_absent(connection_page, "OnlineStatusWidget", "generic online-status widget")
+    for text, label in (
+        (
+            "class DirectListenerStatusWidget extends StatefulWidget",
+            "explicit direct-listener status widget",
+        ),
+        ("mainGetCommon(key: 'direct-listener-bound')", "actual listener-bound status fact"),
+        (
+            "mainGetCommon(key: 'local-permanent-password-set')",
+            "password-provisioning status reason",
+        ),
+        ('translate("Reachable on :21118")', "direct-listener reachable label"),
+    ):
+        require_text(connection_page, text, label)
+    require_exact_count(
+        connection_page + sources["desktop_home_dart"],
+        "DirectListenerStatusWidget(",
+        3,
+        "direct-listener status widget sites",
+    )
+    require_absent(
+        sources["desktop_home_dart"],
+        "OnlineStatusWidget",
+        "desktop-home generic online-status widget",
+    )
+
+    main_status_start = "if (isDesktop) {\n    await bind.mainStartStatusSync();\n  }"
+    require_text(sources["main_dart"], main_status_start, "desktop-only main status-sync trigger")
+    require_absent(
+        sources["main_dart"],
+        "mainCheckConnectStatus",
+        "generic Dart connect-status trigger",
+    )
+    require_text(
+        sources["web_bridge_dart"],
+        "Future<void> mainStartStatusSync({dynamic hint})",
+        "typed web bridge status-sync shape",
+    )
+    require_absent(
+        sources["web_bridge_dart"],
+        "mainCheckConnectStatus",
+        "generic web connect-status compatibility method",
+    )
+
+    for source_key, text, label in (
+        (
+            "verify",
+            "R-SV6c rendezvous peer-presence structural excision",
+            "shared peer-presence source gate",
+        ),
+        (
+            "dart_verify",
+            "R-SV6c rendezvous peer-presence and compatibility status plane",
+            "Dart peer-presence source gate",
+        ),
+        (
+            "apple",
+            "R-SV6c peer-presence excision and retained local status authority",
+            "Apple peer-presence source gate",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+    require_text(
+        sources["dart_verify"],
+        'flutter/lib/generated_bridge.dart; then\n  echo "  FAIL R-SV6c: freshly generated bridge',
+        "fresh-generated bridge peer-presence negative gate",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-SV6c", "peer-presence excision requirement"
+    )
+    for text, label in (
+        ("no rendezvous peer-presence", "peer-presence structural deletion requirement"),
+        ("constant-false result", "constant-false compatibility refusal"),
+        ("main status sync", "retained main-status operation identity"),
+        ("Android/iOS/web", "mobile and web main-daemon exclusion"),
+        ("direct-listener-bound", "retained listener-bound authority"),
+    ):
+        require_text(requirement, text, label)
+    require_text(sources["requirements"], "<tr><td>187</td>", "peer-presence Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-SV6c — rendezvous peer-presence and compatibility status plane deleted",
+        "peer-presence hardening ledger",
+    )
+
+
 def validate_structured_proxy_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -11866,6 +12037,7 @@ def validate_sources(sources):
     validate_direct_address_cli_contract(sources)
     validate_account_control_plane_excision_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
+    validate_peer_presence_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
@@ -22545,6 +22717,156 @@ def run_source_mutations(sources):
             "rendezvous-compatibility hardening ledger",
         ),
         (
+            "config_source",
+            "    static ref CONFIG2: RwLock<Config2> = RwLock::new(Config2::load());",
+            "    static ref CONFIG2: RwLock<Config2> = RwLock::new(Config2::load());\n    static ref ONLINE: Mutex<HashMap<String, i64>> = Default::default();",
+            "peer-presence latency map",
+        ),
+        (
+            "ipc_source",
+            "    ClickTime(i64),",
+            "    ClickTime(i64),\n    OnlineStatus(Option<(i64, bool)>),",
+            "generic online-status IPC",
+        ),
+        (
+            "client_source",
+            "// R-D4/R-SV/§8: the rendezvous HEALTH-CHECK heartbeat",
+            "pub mod peer_online {}\n\n// R-D4/R-SV/§8: the rendezvous HEALTH-CHECK heartbeat",
+            "peer-presence backend module",
+        ),
+        (
+            "flutter_source",
+            "        sessions::clear_for_test();\n    }\n}",
+            "        sessions::clear_for_test();\n    }\n}\n\npub mod async_tasks {}",
+            "peer-presence runner",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_start_status_sync()",
+            "pub fn main_check_connect_status()",
+            "generic connect-status FFI starter",
+        ),
+        (
+            "ui_interface_source",
+            "pub fn start_main_status_sync()",
+            "pub fn start_option_status_sync()",
+            "misnamed status-sync entry",
+        ),
+        (
+            "ui_interface_source",
+            ".spawn(sync_main_status)",
+            ".spawn(check_connect_status)",
+            "misnamed status-sync worker",
+        ),
+        (
+            "core_main",
+            "crate::ui_interface::start_main_status_sync();",
+            "crate::ui_interface::start_option_status_sync();",
+            "connection-manager main status-sync callers",
+        ),
+        (
+            "peer_model_dart",
+            "  String note;\n  bool? sameServer;",
+            "  String note;\n  bool online = false;\n  bool? sameServer;",
+            "peer online field",
+        ),
+        (
+            "peer_model_dart",
+            "  final GetInitPeers? getInitPeers;",
+            "  final GetInitPeers? getInitPeers;\n  static const _cbQueryOnlines = 'callback_query_onlines';",
+            "Dart peer-presence callback",
+        ),
+        (
+            "peers_view_dart",
+            "  static const String username = 'Username';",
+            "  static const String username = 'Username';\n  static const String status = 'Status';\n  static List<String> retired = [PeerSortType.status];",
+            "peer-presence sort",
+        ),
+        (
+            "peers_view_dart",
+            "class _PeersViewState extends State<_PeersView> {",
+            "class _PeersViewState extends State<_PeersView> {\n  void _startCheckOnlines() {}",
+            "peer-presence polling loop",
+        ),
+        (
+            "server_model_dart",
+            "  int _zeroClientLengthCounter = 0;",
+            "  int _connectStatus = 0;\n  int _zeroClientLengthCounter = 0;",
+            "mobile rendezvous status state",
+        ),
+        (
+            "connection_page_dart",
+            "class DirectListenerStatusWidget extends StatefulWidget",
+            "class OnlineStatusWidget extends StatefulWidget",
+            "generic online-status widget",
+        ),
+        (
+            "connection_page_dart",
+            "mainGetCommon(key: 'direct-listener-bound')",
+            "mainGetCommon(key: 'status_num')",
+            "actual listener-bound status fact",
+        ),
+        (
+            "connection_page_dart",
+            "mainGetCommon(key: 'local-permanent-password-set')",
+            "mainGetCommon(key: 'peer-online')",
+            "password-provisioning status reason",
+        ),
+        (
+            "main_dart",
+            "if (isDesktop) {\n    await bind.mainStartStatusSync();\n  }",
+            "await bind.mainStartStatusSync();",
+            "desktop-only main status-sync trigger",
+        ),
+        (
+            "web_bridge_dart",
+            "Future<void> mainStartStatusSync({dynamic hint})",
+            "Future<void> mainCheckConnectStatus({dynamic hint})",
+            "typed web bridge status-sync shape",
+        ),
+        (
+            "verify",
+            "R-SV6c rendezvous peer-presence structural excision",
+            "R-SV6c peer-presence gate disabled",
+            "shared peer-presence source gate",
+        ),
+        (
+            "dart_verify",
+            "R-SV6c rendezvous peer-presence and compatibility status plane",
+            "R-SV6c Dart peer-presence gate disabled",
+            "Dart peer-presence source gate",
+        ),
+        (
+            "dart_verify",
+            'flutter/lib/generated_bridge.dart; then\n  echo "  FAIL R-SV6c: freshly generated bridge',
+            'flutter/lib/main.dart; then\n  echo "  FAIL R-SV6c: freshly generated bridge',
+            "fresh-generated bridge peer-presence negative gate",
+        ),
+        (
+            "apple",
+            "R-SV6c peer-presence excision and retained local status authority",
+            "R-SV6c Apple peer-presence gate disabled",
+            "Apple peer-presence source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV6c</span>',
+            '<span class="id">R-SV6c-disabled</span>',
+            "peer-presence excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>187</td>",
+            "<tr><td>187-disabled</td>",
+            "peer-presence Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV6c — rendezvous peer-presence and compatibility status plane deleted",
+            "R-SV6c — rendezvous peer-presence closure deferred",
+            "peer-presence hardening ledger",
+        ),
+        (
             "socket_client_source",
             "FramedStream::new(target, local, ms_timeout).await?",
             "FramedStream::connect(target, local, ms_timeout).await?",
@@ -23464,6 +23786,22 @@ def main():
             "cli_source": (repo / "src/cli.rs").read_text(encoding="utf-8"),
             "ui_interface_source": (repo / "src/ui_interface.rs").read_text(encoding="utf-8"),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
+            "peer_model_dart": (repo / "flutter/lib/models/peer_model.dart").read_text(
+                encoding="utf-8"
+            ),
+            "server_model_dart": (repo / "flutter/lib/models/server_model.dart").read_text(
+                encoding="utf-8"
+            ),
+            "peers_view_dart": (
+                repo / "flutter/lib/common/widgets/peers_view.dart"
+            ).read_text(encoding="utf-8"),
+            "connection_page_dart": (
+                repo / "flutter/lib/desktop/pages/connection_page.dart"
+            ).read_text(encoding="utf-8"),
+            "desktop_home_dart": (
+                repo / "flutter/lib/desktop/pages/desktop_home_page.dart"
+            ).read_text(encoding="utf-8"),
+            "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),
             "dart_verify": (repo / "scripts/dart-verify.sh").read_text(encoding="utf-8"),
             "frb_codegen": (repo / "scripts/frb-codegen.sh").read_text(encoding="utf-8"),

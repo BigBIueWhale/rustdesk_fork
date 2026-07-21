@@ -104,7 +104,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     if (isIncomingOnly) {
       children.addAll([
         Divider(),
-        OnlineStatusWidget(
+        DirectListenerStatusWidget(
           onSvcStatusChanged: () {
             if (isInHomePage()) {
               Future.delayed(Duration(milliseconds: 300), () {

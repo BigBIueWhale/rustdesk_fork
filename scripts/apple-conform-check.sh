@@ -242,6 +242,56 @@ else
   note "ok  R-SV6b Apple source has exact direct-address identity and no rendezvous/NAT compatibility actuator"
 fi
 
+echo "== (2a-0a) R-SV6c peer-presence excision and retained local status authority =="
+r_sv6c=
+if grep -qE 'static ref ONLINE[[:space:]]*:|fn (get_online_state|reset_online|update_latency)\(' "$REPO/libs/hbb_common/src/config.rs"; then
+  r_sv6c="$r_sv6c config-latency-state-present"
+fi
+grep -qF 'OnlineStatus' "$REPO/src/ipc.rs" && r_sv6c="$r_sv6c online-status-ipc-present"
+grep -qE 'peer_online|query_online_states' "$REPO/src/client.rs" && r_sv6c="$r_sv6c peer-query-backend-present"
+grep -qE 'async_tasks|query_onlines|callback_query_onlines' "$REPO/src/flutter.rs" \
+  && r_sv6c="$r_sv6c flutter-query-runner-present"
+grep -qE 'main_get_connect_status|main_check_connect_status|query_onlines' "$REPO/src/flutter_ffi.rs" \
+  && r_sv6c="$r_sv6c retired-status-ffi-present"
+grep -qE 'status_num|start_option_status_sync|check_connect_status' "$REPO/src/ui_interface.rs" \
+  && r_sv6c="$r_sv6c retired-main-status-vocabulary-present"
+grep -qF 'pub fn main_start_status_sync()' "$REPO/src/flutter_ffi.rs" \
+  || r_sv6c="$r_sv6c typed-status-sync-ffi-missing"
+grep -qF 'pub fn start_main_status_sync()' "$REPO/src/ui_interface.rs" \
+  || r_sv6c="$r_sv6c main-status-sync-entry-missing"
+grep -qF '.spawn(sync_main_status)' "$REPO/src/ui_interface.rs" \
+  || r_sv6c="$r_sv6c main-status-worker-owner-missing"
+grep -qF 'async fn sync_main_status()' "$REPO/src/ui_interface.rs" \
+  || r_sv6c="$r_sv6c main-status-worker-missing"
+if grep -qE 'queryOnlines|query_onlines|callback_query_onlines|_updateOnlineState|_getOnlineStates|PeerSortType\.status|_startCheckOnlines|_queryOnlines|getOnline\(|mainGetConnectStatus|mainCheckConnectStatus|OnlineStatusWidget|connectStatus|status_num' \
+  "$REPO/flutter/lib/models/peer_model.dart" \
+  "$REPO/flutter/lib/models/server_model.dart" \
+  "$REPO/flutter/lib/common/widgets/peers_view.dart" \
+  "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+  "$REPO/flutter/lib/desktop/pages/desktop_home_page.dart" \
+  "$REPO/flutter/lib/main.dart" \
+  "$REPO/flutter/lib/web/bridge.dart"; then
+  r_sv6c="$r_sv6c Dart-peer-presence-or-compatibility-surface-present"
+fi
+grep -qE 'VisibilityDetector|WindowListener|_curPeers|_lastQueryPeers' "$REPO/flutter/lib/common/widgets/peers_view.dart" \
+  && r_sv6c="$r_sv6c peer-list-presence-lifecycle-tracking-present"
+grep -qE 'bool[[:space:]]+online([[:space:]]|=)' "$REPO/flutter/lib/models/peer_model.dart" \
+  && r_sv6c="$r_sv6c Dart-peer-online-state-present"
+grep -qF 'class DirectListenerStatusWidget extends StatefulWidget' "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+  || r_sv6c="$r_sv6c direct-listener-widget-missing"
+grep -qF "mainGetCommon(key: 'direct-listener-bound')" "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+  || r_sv6c="$r_sv6c direct-listener-bound-fact-missing"
+grep -qF "mainGetCommon(key: 'local-permanent-password-set')" "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+  || r_sv6c="$r_sv6c password-provisioning-reason-missing"
+grep -qF 'await bind.mainStartStatusSync();' "$REPO/flutter/lib/main.dart" \
+  || r_sv6c="$r_sv6c desktop-status-sync-trigger-missing"
+if [ -n "$r_sv6c" ]; then
+  echo "  FAIL R-SV6c Apple peer-presence/status source closure:$r_sv6c"
+  rc=1
+else
+  note "ok  R-SV6c Apple source has no peer-presence plane and retains only typed local status sync"
+fi
+
 echo "== (2a) R-S11e-17 typed CM file response authority =="
 r_s11e17=
 if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \

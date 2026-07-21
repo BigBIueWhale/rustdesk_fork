@@ -3206,12 +3206,6 @@ pub fn check_if_retry(
 // rendezvous server to keep a connection alive to; the local resolver and its compatibility state
 // are also absent after R-SV6b — gone, not merely disabled.
 
-// R-SV / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query (`peer_online::query_online_states`)
-// is REMOVED with the rest of the online-status pipeline. Upstream asked the rendezvous server which
-// peers are online — a box-id + peer-list LEAK to upstream on every peer-list refresh; the fork is
-// direct-IP only with no rendezvous (R-SV4), so there was nothing to ask and its no-egress stub had
-// no caller left once the Flutter peer-online pipeline was excised.
-
 #[cfg(test)]
 mod tests {
     // R-T15c: the viewer-persistence DECISIONS in `handle_peer_info` are plain config-layer Rust (no

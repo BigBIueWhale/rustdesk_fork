@@ -131,8 +131,9 @@ void runMainApp(bool startService) async {
   await initEnv(kAppTypeMain);
   // R-G4 / R-SV3 / §18: no startup version-check — the updater + version fetch are excised
   // (sovereign: dial nobody). (Was checkUpdate().)
-  // trigger connection status updater
-  await bind.mainCheckConnectStatus();
+  if (isDesktop) {
+    await bind.mainStartStatusSync();
+  }
   if (startService) {
     gFFI.serverModel.startService();
   }

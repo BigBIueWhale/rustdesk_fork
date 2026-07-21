@@ -18,12 +18,9 @@ typedef PeerFilter = bool Function(Peer peer);
 typedef PeerCardBuilder = Widget Function(Peer peer);
 
 class PeerSortType {
-  // I-5: the identity is a direct address, not a numeric rendezvous ID — label it "Remote address".
   static const String remoteId = 'Remote address';
   static const String remoteHost = 'Remote Host';
   static const String username = 'Username';
-  // I-4: the "Status" sort is removed — `peer.online` is always false (the rendezvous online query
-  // is excised), so sorting by it was a visible no-op.
 
   static List<String> values = [
     PeerSortType.remoteId,
@@ -78,10 +75,6 @@ class _PeersView extends StatefulWidget {
 
 /// State for the peer widget.
 class _PeersViewState extends State<_PeersView> {
-  // I-1 / R-G2 / §18: the rendezvous peer-online pipeline is excised — the 300ms poll loop, its
-  // throttle state, and the window/lifecycle listeners that only gated it are gone. A direct-IP fork
-  // has no rendezvous to ask which peers are online (`bind.queryOnlines` was a no-egress stub) and
-  // the online dot already renders nothing, so the peer cards no longer need visibility tracking.
   final HashMap<String, String> _emptyMessages = HashMap.from({
     LoadEvent.recent: 'empty_recent_tip',
     LoadEvent.favorite: 'empty_favorite_tip',

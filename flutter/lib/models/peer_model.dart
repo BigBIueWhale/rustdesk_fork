@@ -196,9 +196,6 @@ class Peers extends ChangeNotifier {
     return peers.length;
   }
 
-  // I-1 / R-G2 / §18: the rendezvous peer-online pipeline is excised. `_updateOnlineState` (fed by
-  // the `callback_query_onlines` event that never fires) and `_getOnlineStates` (which preserved the
-  // always-false online flag across reloads) are gone; `_updatePeers` just decodes the peer list.
   void _updatePeers(Map<String, dynamic> evt) {
     if (getInitPeers != null) {
       peers = getInitPeers?.call() ?? [];

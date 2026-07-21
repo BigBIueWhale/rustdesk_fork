@@ -99,9 +99,6 @@ class ServerModel with ChangeNotifier {
     */
 
     timerCallback() async {
-      // I-1 / R-G2: the rendezvous `status_num` poll is removed (the mediator is excised; the
-      // service-listening indicator is driven by the `stop-service` flag). Only the live CM-window
-      // bookkeeping + password model refresh remain.
       if (desktopType == DesktopType.cm) {
         final res = await bind.cmCheckClientsLength(length: _clients.length);
         if (res != null) {

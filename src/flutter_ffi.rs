@@ -1053,9 +1053,9 @@ pub fn main_get_peer_sync(id: String) -> SyncReturn<String> {
     SyncReturn(serde_json::to_string(&conf).unwrap_or("".to_string()))
 }
 
-pub fn main_check_connect_status() {
+pub fn main_start_status_sync() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    start_option_status_sync(); // avoid multi calls
+    start_main_status_sync();
 }
 
 pub fn main_get_local_option(key: String) -> SyncReturn<String> {

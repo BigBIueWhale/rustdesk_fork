@@ -24,8 +24,6 @@ use crate::ipc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
 
-// I-1 / R-G2: `status_num` (the rendezvous connecting/ready state, always 0 here — the mediator is
-// excised) and `key_confirmed` (the rendezvous register_pk ACK, never flips true) are removed.
 #[derive(Clone, Debug, Serialize)]
 pub struct UiStatus {
     #[cfg(not(feature = "flutter"))]
@@ -871,11 +869,11 @@ pub fn new_remote(id: String, remote_type: String) {
 
 #[inline]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn start_option_status_sync() {
+pub fn start_main_status_sync() {
     OPTION_STATUS_SYNC.call_once(|| {
         if let Err(err) = std::thread::Builder::new()
             .name("main-ipc-status".to_owned())
-            .spawn(check_connect_status)
+            .spawn(sync_main_status)
         {
             log::error!("Failed to start main IPC status synchronization: {err}");
         }
@@ -911,7 +909,7 @@ pub fn get_login_device_info_json() -> String {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-async fn check_connect_status() {
+async fn sync_main_status() {
     let is_cm = crate::common::is_cm();
     let mut was_connected = false;
 

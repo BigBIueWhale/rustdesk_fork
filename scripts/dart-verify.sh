@@ -258,11 +258,29 @@ dg_clean 'SettingsTabKey\.account' 'R-G4 desktop Account settings tab'
 # its tabKeys include + both switch cases. (The plugin_feature_is_enabled FFI stub stays — a
 # flutter-verify trim follow-on.) No desktop Plugin tab may reappear.
 dg_clean 'SettingsTabKey\.plugin|class _Plugin\b' 'R-X2/R-G4 dead Plugin settings tab'
-# R-G / R-D / §18 (dial nobody): the peer-list ONLINE-STATUS query trigger is removed — a
-# direct-IP fork has no rendezvous server to ask which peers are online, and the backend query is
-# a no-egress stub (cebfdf2). The `bind.queryOnlines` calls are gone (peers_view) and the online
-# dot (`getOnline`) renders nothing; no `bind.queryOnlines` call may reappear.
-dg_clean 'bind\.queryOnlines' 'R-G/R-D online-status query trigger'
+# R-SV6c / R-G / R-D: no authored or generated Dart surface may carry rendezvous peer-presence
+# state, queries, callbacks, timers, sorting, or the retired generic connect-status bridge.
+dg_clean 'queryOnlines|query_onlines|callback_query_onlines|_updateOnlineState|_getOnlineStates|UpdateEvent\.online|PeerSortType\.status|_startCheckOnlines|_queryOnlines|getOnline\(|mainGetConnectStatus|mainCheckConnectStatus|OnlineStatusWidget|connectStatus|status_num' 'R-SV6c rendezvous peer-presence and compatibility status plane'
+if grep -qE 'queryOnlines|query_onlines|callback_query_onlines|mainGetConnectStatus|mainCheckConnectStatus|status_num' \
+  flutter/lib/generated_bridge.dart; then
+  echo "  FAIL R-SV6c: freshly generated bridge regained a retired peer-presence/status operation"; exit 1
+fi
+if grep -qE 'VisibilityDetector|WindowListener|_curPeers|_lastQueryPeers' flutter/lib/common/widgets/peers_view.dart; then
+  echo "  FAIL R-SV6c: peer list regained presence-only visibility or lifecycle tracking"; exit 1
+fi
+if grep -qE 'bool[[:space:]]+online([[:space:]]|=)' flutter/lib/models/peer_model.dart; then
+  echo "  FAIL R-SV6c: saved-peer model regained rendezvous online state"; exit 1
+fi
+grep -qF 'Future<void> mainStartStatusSync' flutter/lib/generated_bridge.dart \
+  || { echo "  FAIL R-SV6c: generated bridge lacks typed main status-sync operation"; exit 1; }
+grep -qF 'await bind.mainStartStatusSync();' flutter/lib/main.dart \
+  || { echo "  FAIL R-SV6c: desktop main does not start typed status synchronization"; exit 1; }
+grep -qF 'class DirectListenerStatusWidget extends StatefulWidget' flutter/lib/desktop/pages/connection_page.dart \
+  || { echo "  FAIL R-SV6c: explicit direct-listener status widget is missing"; exit 1; }
+grep -qF "mainGetCommon(key: 'direct-listener-bound')" flutter/lib/desktop/pages/connection_page.dart \
+  || { echo "  FAIL R-SV6c: status widget lost real listener-bound authority"; exit 1; }
+grep -qF "mainGetCommon(key: 'local-permanent-password-set')" flutter/lib/desktop/pages/connection_page.dart \
+  || { echo "  FAIL R-SV6c: status widget lost password-provisioning reason"; exit 1; }
 # R-G8 / §19 (de-brand): a sovereign fork advertises no upstream brand — the user-facing
 # rustdesk.com links are removed (the About/website "rustdesk.com" + "powered by" badge, the
 # Privacy Statement / EULA privacy.html links, the macOS/Linux permission-card docs "Help"
@@ -323,7 +341,7 @@ grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/id_formatter.dart \
 echo "  ok  R-G6/R-X6/R-SV4a relay suffixes rejected and relay-choice ABI absent"
 # R-G2 / R-G8 / §19: the connection-status row's rendezvous strings — connecting_status ("Connecting
 # to the RustDesk network…") and not_ready_status — are repurposed away: the controlled side just
-# shows "Listening on :21118", so neither is rendered on desktop (OnlineStatusWidget) or mobile
+# shows direct-listener reachability, so neither is rendered on desktop (DirectListenerStatusWidget) or mobile
 # (server_page ConnectionStateNotification). Neither may reappear as a rendered string (the keys carry
 # the R-G8 upstream-brand "RustDesk network" nomenclature). Closes the audit's P3 dead-lang-key gap.
 dg_clean 'connecting_status|not_ready_status' 'R-G2/R-G8 rendezvous status-row strings'

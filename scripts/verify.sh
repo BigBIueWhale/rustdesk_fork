@@ -10294,12 +10294,45 @@ fi
 # Client::_start's rendezvous branch" so a regression cannot silently re-introduce one. (The
 # proto setter set_request_relay is intentionally NOT gated — it lives in generated code.)
 ra6_clean 'create_relay_connection|_start_inner|secure_connection|udp_nat_connect' 'R-SV4(b)/R-SV10 rendezvous/relay connect cluster' || rc=1
-# R-SV / R-D / §18 (dial nobody): the viewer's peer-list ONLINE-STATUS query is removed — it
-# connected to get_rendezvous_server() (defaulting to the built-in rs-ny.rustdesk.com) and sent an
-# OnlineRequest carrying Config::get_id() + the peer ids (a box-id + peer-list leak on every list
-# refresh). The egress fns (create_online_stream / the OnlineRequest send) are gone; peer_online
-# now reports every peer offline with no network call. (Only `//` comments name them, filtered.)
+# R-SV / R-D / §18 (dial nobody): the viewer's peer-list online query is absent. It formerly sent
+# the local box ID and peer list to a rendezvous server on every refresh.
 ra6_clean 'create_online_stream|set_online_request' 'R-SV viewer online-status egress' || rc=1
+# R-SV6c: the direct-address product has no rendezvous peer-presence authority. Bind the complete
+# Rust half of the deletion and distinguish it from the retained main-IPC status snapshot worker.
+r_sv6c=""
+if grep -qE 'static ref ONLINE[[:space:]]*:|fn (get_online_state|reset_online|update_latency)\(' libs/hbb_common/src/config.rs; then
+  r_sv6c="$r_sv6c config-latency-state-present"
+fi
+grep -qF 'OnlineStatus' src/ipc.rs && r_sv6c="$r_sv6c online-status-ipc-present"
+grep -qE 'peer_online|query_online_states' src/client.rs && r_sv6c="$r_sv6c peer-query-backend-present"
+grep -qE 'async_tasks|query_onlines|callback_query_onlines' src/flutter.rs && r_sv6c="$r_sv6c flutter-query-runner-present"
+grep -qE 'main_get_connect_status|main_check_connect_status|query_onlines' src/flutter_ffi.rs \
+  && r_sv6c="$r_sv6c retired-status-ffi-present"
+grep -qE 'status_num|start_option_status_sync|check_connect_status' src/ui_interface.rs \
+  && r_sv6c="$r_sv6c retired-main-status-vocabulary-present"
+grep -qF 'pub fn main_start_status_sync()' src/flutter_ffi.rs \
+  || r_sv6c="$r_sv6c typed-status-sync-ffi-missing"
+grep -qF 'pub fn start_main_status_sync()' src/ui_interface.rs \
+  || r_sv6c="$r_sv6c main-status-sync-entry-missing"
+grep -qF '.spawn(sync_main_status)' src/ui_interface.rs \
+  || r_sv6c="$r_sv6c main-status-worker-owner-missing"
+grep -qF 'async fn sync_main_status()' src/ui_interface.rs \
+  || r_sv6c="$r_sv6c main-status-worker-missing"
+grep -qF 'ipc::get_main_status_snapshot(1000).await' src/ui_interface.rs \
+  || r_sv6c="$r_sv6c typed-main-status-snapshot-missing"
+[ "$(grep -Fc 'crate::ui_interface::start_main_status_sync();' src/core_main.rs)" -eq 2 ] \
+  || r_sv6c="$r_sv6c connection-manager-status-sync-callers-not-exact"
+grep -qF '<span class="id">R-SV6c</span>' requirements.html \
+  || r_sv6c="$r_sv6c requirement-missing"
+grep -qF '<tr><td>187</td>' requirements.html \
+  || r_sv6c="$r_sv6c appendix-disposition-missing"
+grep -qF 'R-SV6c — rendezvous peer-presence and compatibility status plane deleted' HARDENING_STATUS.md \
+  || r_sv6c="$r_sv6c ledger-disposition-missing"
+if [ -n "$r_sv6c" ]; then
+  echo "  FAIL R-SV6c rendezvous peer-presence structural excision:$r_sv6c"; rc=1
+else
+  echo "  ok  R-SV6c rendezvous peer-presence plane absent; typed main status sync retained"
+fi
 # R-SV4/R-SV6b / §18 (dial nobody): the fallback list and resolver are absent, not empty compatibility
 # objects. Keep the independent hardwired-host search so a broker literal cannot regrow elsewhere.
 ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/R-SV6b/§18 hardwired rs-*.rustdesk.com rendezvous host' || rc=1

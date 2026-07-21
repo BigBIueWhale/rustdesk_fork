@@ -2824,9 +2824,3 @@ mod mobile_session_lifecycle_tests {
         sessions::clear_for_test();
     }
 }
-
-// I-1 / R-G2 / §18: the `async_tasks` module (a single-worker runner whose ONLY job was
-// `query_online_states` — the rendezvous peer-online query) is removed with the peer-online
-// pipeline. It dialed nobody in the fork (the query is a no-egress stub) and its `callback_query_onlines`
-// event never fired, so the runner thread blocked idle forever. The Flutter side no longer calls
-// `queryOnlines`.

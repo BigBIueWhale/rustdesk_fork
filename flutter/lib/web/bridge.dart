@@ -778,8 +778,8 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetPeerSync");
   }
 
-  Future<void> mainCheckConnectStatus({dynamic hint}) {
-    throw UnimplementedError("mainCheckConnectStatus");
+  Future<void> mainStartStatusSync({dynamic hint}) {
+    throw UnimplementedError("mainStartStatusSync");
   }
 
 

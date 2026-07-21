@@ -8449,6 +8449,47 @@ if [ -n "$r_sv5a" ]; then
 else
   echo "  ok  R-SV5a --get-id handler absent and excluded from installed-root Unix user-main IPC scope"
 fi
+# R-G2/R-SV5: the viewer's only route identity is the exact direct address. The old formatter and
+# controller vocabulary space-grouped numeric IDs, while its trim helper deleted every space before
+# validation. Reject that API and require raw address display plus outer-whitespace-only normalization.
+r_g2_address=""
+[ ! -e flutter/lib/common/formatter/id_formatter.dart ] \
+  || r_g2_address="$r_g2_address legacy-id-formatter-file-present"
+if grep -RInE --include='*.dart' 'IDTextEditingController|IDTextInputFormatter|formatID|trimID' \
+  flutter/lib >/dev/null; then
+  r_g2_address="$r_g2_address legacy-numeric-id-api-present"
+fi
+grep -qF 'class DirectAddressTextEditingController extends TextEditingController' \
+  flutter/lib/common/formatter/direct_address.dart \
+  || r_g2_address="$r_g2_address direct-address-controller-missing"
+grep -qF 'String normalizeDirectAddress(String address) => address.trim();' \
+  flutter/lib/common/formatter/direct_address.dart \
+  || r_g2_address="$r_g2_address outer-whitespace-only-normalizer-missing"
+if grep -nF "replaceAll(' ', '')" flutter/lib/common.dart \
+  flutter/lib/common/formatter/direct_address.dart flutter/lib/desktop/pages/connection_page.dart \
+  flutter/lib/mobile/pages/connection_page.dart >/dev/null \
+  || grep -nF 'replaceAll(" ", "")' flutter/lib/common.dart \
+  flutter/lib/common/formatter/direct_address.dart flutter/lib/desktop/pages/connection_page.dart \
+  flutter/lib/mobile/pages/connection_page.dart >/dev/null; then
+  r_g2_address="$r_g2_address all-space-deletion-present"
+fi
+grep -qF 'connect(BuildContext context, String address,' flutter/lib/common.dart \
+  || r_g2_address="$r_g2_address address-choke-point-signature-missing"
+grep -qF 'address = normalizeDirectAddress(address);' flutter/lib/common.dart \
+  || r_g2_address="$r_g2_address pre-validation-normalization-missing"
+grep -qF '? widget.peer.id' flutter/lib/common/widgets/autocomplete.dart \
+  || r_g2_address="$r_g2_address raw-autocomplete-address-display-missing"
+[ "$(grep -Fc 'peer.alias.isEmpty ? peer.id : peer.alias' flutter/lib/common/widgets/peer_card.dart)" -eq 3 ] \
+  || r_g2_address="$r_g2_address raw-peer-address-display-inventory-wrong"
+grep -qF "const malformedIpv4 = '192. 168.1.10';" flutter/test/address_validator_test.dart \
+  || r_g2_address="$r_g2_address interior-whitespace-regression-missing"
+grep -qF 'Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5)' HARDENING_STATUS.md \
+  || r_g2_address="$r_g2_address hardening-ledger-not-closed"
+if [ -n "$r_g2_address" ]; then
+  echo "  FAIL R-G2/R-SV5 direct-address UI model and exact-target preservation:$r_g2_address"; rc=1
+else
+  echo "  ok  R-G2/R-SV5 exact direct-address controller/choke point + raw peer rendering; numeric-ID formatter absent"
+fi
 # R-G6 ADDITIVE copy — the half the deletion-only greps never asserted (so it silently slipped): the
 # direct-only failure/status semantics MUST be REWRITTEN, not merely have the relay copy deleted. Two
 # MUST clauses: (a) a peer that DISABLED a capability surfaces a SPECIFIC "disabled on the peer"

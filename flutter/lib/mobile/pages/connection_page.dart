@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:auto_size_text_field/auto_size_text_field.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common/formatter/id_formatter.dart';
+import 'package:flutter_hbb/common/formatter/direct_address.dart';
 import 'package:flutter_hbb/common/widgets/connection_page_title.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -35,12 +35,13 @@ class ConnectionPage extends StatefulWidget implements PageShape {
 
 /// State for the connection page.
 class _ConnectionPageState extends State<ConnectionPage> {
-  /// Controller for the id input bar.
-  final _idController = IDTextEditingController();
-  final RxBool _idEmpty = true.obs;
+  /// Controller for the direct-address input bar.
+  final _addressController = DirectAddressTextEditingController();
+  final RxBool _addressEmpty = true.obs;
 
-  final FocusNode _idFocusNode = FocusNode();
-  final TextEditingController _idEditingController = TextEditingController();
+  final FocusNode _addressFocusNode = FocusNode();
+  final TextEditingController _addressEditingController =
+      TextEditingController();
 
   final AllPeersLoader _allPeersLoader = AllPeersLoader();
 
@@ -51,28 +52,28 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   _ConnectionPageState() {
     if (!isWeb) _uniLinksSubscription = listenUniLinks();
-    _idController.addListener(() {
-      _idEmpty.value = _idController.text.isEmpty;
+    _addressController.addListener(() {
+      _addressEmpty.value = _addressController.text.isEmpty;
     });
-    Get.put<IDTextEditingController>(_idController);
+    Get.put<DirectAddressTextEditingController>(_addressController);
   }
 
   @override
   void initState() {
     super.initState();
     _allPeersLoader.init(setState);
-    _idFocusNode.addListener(onFocusChanged);
-    if (_idController.text.isEmpty) {
+    _addressFocusNode.addListener(onFocusChanged);
+    if (_addressController.text.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final lastRemoteId = await bind.mainGetLastRemoteId();
-        if (lastRemoteId != _idController.id) {
+        final lastRemoteAddress = await bind.mainGetLastRemoteId();
+        if (lastRemoteAddress != _addressController.address) {
           setState(() {
-            _idController.id = lastRemoteId;
+            _addressController.address = lastRemoteAddress;
           });
         }
       });
     }
-    Get.put<TextEditingController>(_idEditingController);
+    Get.put<TextEditingController>(_addressEditingController);
   }
 
   @override
@@ -82,7 +83,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
       slivers: [
         SliverList(
             delegate: SliverChildListDelegate([
-          _buildRemoteIDTextField(),
+          _buildRemoteAddressTextField(),
         ])),
         SliverFillRemaining(
           hasScrollBody: true,
@@ -95,27 +96,27 @@ class _ConnectionPageState extends State<ConnectionPage> {
   /// Callback for the connect button.
   /// Connects to the selected peer.
   void onConnect() {
-    var id = _idController.id;
-    connect(context, id);
+    final address = _addressController.address;
+    connect(context, address);
   }
 
   void onFocusChanged() {
-    _idEmpty.value = _idEditingController.text.isEmpty;
-    if (_idFocusNode.hasFocus) {
+    _addressEmpty.value = _addressEditingController.text.isEmpty;
+    if (_addressFocusNode.hasFocus) {
       if (_allPeersLoader.needLoad) {
         _allPeersLoader.getAllPeers();
       }
 
-      final textLength = _idEditingController.value.text.length;
+      final textLength = _addressEditingController.value.text.length;
       // Select all to facilitate removing text, just following the behavior of address input of chrome.
-      _idEditingController.selection =
+      _addressEditingController.selection =
           TextSelection(baseOffset: 0, extentOffset: textLength);
     }
   }
 
-  /// UI for the remote ID TextField.
-  /// Search for a peer and connect to it if the id exists.
-  Widget _buildRemoteIDTextField() {
+  /// UI for the remote direct-address TextField.
+  /// Search for a peer and connect to its address.
+  Widget _buildRemoteAddressTextField() {
     final w = SizedBox(
       height: 84,
       child: Padding(
@@ -153,15 +154,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         );
                         _autocompleteOpts = [emptyPeer];
                       } else {
-                        String textWithoutSpaces =
-                            textEditingValue.text.replaceAll(" ", "");
-                        if (int.tryParse(textWithoutSpaces) != null) {
-                          textEditingValue = TextEditingValue(
-                            text: textWithoutSpaces,
-                            selection: textEditingValue.selection,
-                          );
-                        }
-                        String textToFind = textEditingValue.text.toLowerCase();
+                        final textToFind =
+                            textEditingValue.text.toLowerCase();
 
                         _autocompleteOpts = _allPeersLoader.peers
                             .where((peer) =>
@@ -177,14 +171,14 @@ class _ConnectionPageState extends State<ConnectionPage> {
                       }
                       return _autocompleteOpts;
                     },
-                    focusNode: _idFocusNode,
-                    textEditingController: _idEditingController,
+                    focusNode: _addressFocusNode,
+                    textEditingController: _addressEditingController,
                     fieldViewBuilder: (BuildContext context,
                         TextEditingController fieldTextEditingController,
                         FocusNode fieldFocusNode,
                         VoidCallback onFieldSubmitted) {
                       updateTextAndPreserveSelection(
-                          fieldTextEditingController, _idController.text);
+                          fieldTextEditingController, _addressController.text);
                       return AutoSizeTextField(
                         controller: fieldTextEditingController,
                         focusNode: fieldFocusNode,
@@ -194,7 +188,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         keyboardType: TextInputType.visiblePassword,
                         // keyboardType: TextInputType.number,
                         onChanged: (String text) {
-                          _idController.id = text;
+                          _addressController.address = text;
                         },
                         style: const TextStyle(
                           fontFamily: 'WorkSans',
@@ -218,8 +212,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
                             color: MyTheme.darkGray,
                           ),
                         ),
-                        // R-G2: no numeric ID grouping — the connect box takes a direct address
-                        // (IP/host:port), validated at connect() (isDirectAddress), not formatted.
                         onSubmitted: (_) {
                           onConnect();
                         },
@@ -227,7 +219,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     },
                     onSelected: (option) {
                       setState(() {
-                        _idController.id = option.id;
+                        _addressController.address = option.id;
                         FocusScope.of(context).unfocus();
                       });
                     },
@@ -292,11 +284,11 @@ class _ConnectionPageState extends State<ConnectionPage> {
                 ),
               ),
               Obx(() => Offstage(
-                    offstage: _idEmpty.value,
+                    offstage: _addressEmpty.value,
                     child: IconButton(
                         onPressed: () {
                           setState(() {
-                            _idController.clear();
+                            _addressController.clear();
                           });
                         },
                         icon: Icon(Icons.clear, color: MyTheme.darkGray)),
@@ -329,13 +321,13 @@ class _ConnectionPageState extends State<ConnectionPage> {
   @override
   void dispose() {
     _uniLinksSubscription?.cancel();
-    _idController.dispose();
-    _idFocusNode.removeListener(onFocusChanged);
+    _addressController.dispose();
+    _addressFocusNode.removeListener(onFocusChanged);
     _allPeersLoader.clear();
-    _idFocusNode.dispose();
-    _idEditingController.dispose();
-    if (Get.isRegistered<IDTextEditingController>()) {
-      Get.delete<IDTextEditingController>();
+    _addressFocusNode.dispose();
+    _addressEditingController.dispose();
+    if (Get.isRegistered<DirectAddressTextEditingController>()) {
+      Get.delete<DirectAddressTextEditingController>();
     }
     if (Get.isRegistered<TextEditingController>()) {
       Get.delete<TextEditingController>();

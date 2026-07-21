@@ -11,7 +11,6 @@ import 'package:get/get.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../common.dart';
-import '../common/formatter/id_formatter.dart';
 import '../desktop/pages/server_page.dart' as desktop;
 import '../desktop/pages/desktop_home_page.dart' show setPasswordDialog;
 import '../desktop/widgets/tabbar_widget.dart';

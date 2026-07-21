@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_hbb/common/formatter/id_formatter.dart';
+import 'package:flutter_hbb/common/formatter/direct_address.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/main.dart';
@@ -2453,7 +2453,7 @@ List<String>? urlLinkToCmdArgs(Uri uri) {
   return null;
 }
 
-connectMainDesktop(String id,
+connectMainDesktop(String address,
     {required bool isFileTransfer,
     required bool isViewCamera,
     required bool isTerminal,
@@ -2463,37 +2463,37 @@ connectMainDesktop(String id,
     String? connToken,
     bool? isSharedPassword}) async {
   if (isFileTransfer) {
-    await rustDeskWinManager.newFileTransfer(id,
+    await rustDeskWinManager.newFileTransfer(address,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken);
   } else if (isViewCamera) {
-    await rustDeskWinManager.newViewCamera(id,
+    await rustDeskWinManager.newViewCamera(address,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken);
   } else if (isTcpTunneling || isRDP) {
-    await rustDeskWinManager.newPortForward(id, isRDP,
+    await rustDeskWinManager.newPortForward(address, isRDP,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken);
   } else if (isTerminal) {
-    await rustDeskWinManager.newTerminal(id,
+    await rustDeskWinManager.newTerminal(address,
         password: password,
         isSharedPassword: isSharedPassword,
         connToken: connToken);
   } else {
-    await rustDeskWinManager.newRemoteDesktop(id,
+    await rustDeskWinManager.newRemoteDesktop(address,
         password: password, isSharedPassword: isSharedPassword);
   }
 }
 
-/// Connect to a peer with [id].
+/// Connect to a peer at [address].
 /// If [isFileTransfer], starts a session only for file transfer.
 /// If [isViewCamera], starts a session only for view camera.
 /// If [isTcpTunneling], starts a session only for tcp tunneling.
 /// If [isRDP], starts a session only for rdp.
-connect(BuildContext context, String id,
+connect(BuildContext context, String address,
     {bool isFileTransfer = false,
     bool isViewCamera = false,
     bool isTerminal = false,
@@ -2502,31 +2502,29 @@ connect(BuildContext context, String id,
     String? password,
     String? connToken,
     bool? isSharedPassword}) async {
-  if (id == '') return;
+  address = normalizeDirectAddress(address);
+  if (address.isEmpty) return;
   if (!isDesktop && (isTcpTunneling || isRDP)) {
     showToast(translate('Unsupported'));
     return;
   }
   if (!isDesktop || desktopType == DesktopType.main) {
-    try {
-      if (Get.isRegistered<IDTextEditingController>()) {
-        final idController = Get.find<IDTextEditingController>();
-        idController.text = trimID(id);
-      }
-      if (Get.isRegistered<TextEditingController>()) {
-        final fieldTextEditingController = Get.find<TextEditingController>();
-        fieldTextEditingController.text = trimID(id);
-      }
-    } catch (_) {}
+    if (Get.isRegistered<DirectAddressTextEditingController>()) {
+      final addressController = Get.find<DirectAddressTextEditingController>();
+      addressController.address = address;
+    }
+    if (Get.isRegistered<TextEditingController>()) {
+      final fieldTextEditingController = Get.find<TextEditingController>();
+      fieldTextEditingController.text = address;
+    }
   }
-  id = id.replaceAll(' ', '');
   // R-G2/R-SV10: the fork is direct-IP-only — the connect target MUST be a direct address
   // (<ipv4>[:port] / <ipv6> / [<ipv6>]:port / <domain>:port), never a bare numeric RustDesk ID (the
   // relay/rendezvous addressing the fork deleted). Reject anything else HERE, at the single choke
   // every connect path funnels through (the connect box, peer cards, home, toolbar), with no
   // relay-id strip — so a "<addr>/r" form is rejected too and no rendezvous lookup is ever attempted.
   // The Rust core (client.rs:353) independently bails; this is the UI half R-G2/R-SV10 mandate.
-  if (!isDirectAddress(id)) {
+  if (!isDirectAddress(address)) {
     showToast(translate('Direct address required (IP or host:port)'));
     return;
   }
@@ -2536,7 +2534,7 @@ connect(BuildContext context, String id,
   if (isDesktop) {
     if (desktopType == DesktopType.main) {
       await connectMainDesktop(
-        id,
+        address,
         isFileTransfer: isFileTransfer,
         isViewCamera: isViewCamera,
         isTerminal: isTerminal,
@@ -2547,7 +2545,7 @@ connect(BuildContext context, String id,
       );
     } else {
       await rustDeskWinManager.call(WindowType.Main, kWindowConnect, {
-        'id': id,
+        'id': address,
         'isFileTransfer': isFileTransfer,
         'isViewCamera': isViewCamera,
         'isTerminal': isTerminal,
@@ -2573,7 +2571,7 @@ connect(BuildContext context, String id,
           MaterialPageRoute(
             builder: (BuildContext context) =>
                 desktop_file_manager.FileManagerPage(
-                    id: id,
+                    id: address,
                     password: password,
                     isSharedPassword: isSharedPassword),
           ),
@@ -2583,7 +2581,7 @@ connect(BuildContext context, String id,
           context,
           MaterialPageRoute(
             builder: (BuildContext context) => FileManagerPage(
-                id: id,
+                id: address,
                 password: password,
                 isSharedPassword: isSharedPassword),
           ),
@@ -2596,8 +2594,8 @@ connect(BuildContext context, String id,
           MaterialPageRoute(
             builder: (BuildContext context) =>
                 desktop_view_camera.ViewCameraPage(
-              key: ValueKey(id),
-              id: id,
+              key: ValueKey(address),
+              id: address,
               toolbarState: ToolbarState(),
               password: password,
               isSharedPassword: isSharedPassword,
@@ -2609,7 +2607,7 @@ connect(BuildContext context, String id,
           context,
           MaterialPageRoute(
             builder: (BuildContext context) => ViewCameraPage(
-                id: id,
+                id: address,
                 password: password,
                 isSharedPassword: isSharedPassword),
           ),
@@ -2620,7 +2618,7 @@ connect(BuildContext context, String id,
         context,
         MaterialPageRoute(
           builder: (BuildContext context) => TerminalPage(
-            id: id,
+            id: address,
             password: password,
             isSharedPassword: isSharedPassword,
           ),
@@ -2632,8 +2630,8 @@ connect(BuildContext context, String id,
           context,
           MaterialPageRoute(
             builder: (BuildContext context) => desktop_remote.RemotePage(
-              key: ValueKey(id),
-              id: id,
+              key: ValueKey(address),
+              id: address,
               toolbarState: ToolbarState(),
               password: password,
               isSharedPassword: isSharedPassword,
@@ -2645,7 +2643,7 @@ connect(BuildContext context, String id,
           context,
           MaterialPageRoute(
             builder: (BuildContext context) => RemotePage(
-                id: id,
+                id: address,
                 password: password,
                 isSharedPassword: isSharedPassword),
           ),

@@ -7207,10 +7207,20 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   cannot select the installed-root Unix `UserMainIpcScope`; focused/source/mutation gates bind both absences.
   Internal side-effect-free stored-ID reads remain separately audited compatibility metadata, not a supported CLI
   identity capability. Exact packaged-artifact evidence remains R-B2.
-- **Misc:** the unshown my-numeric-ID machinery (`server_model.dart` `_serverId`/`fetchID`, fetched
-  and never rendered); the serialized-but-unread `forceAlwaysRelay`/`sameServer`/`recording`/
-  `block_input`/`restart` fields; the `formatID` numeric-grouping passthrough; the `switch_sides()`
-  empty stub; and `logOut(apiServer)`. Delete.
+- **Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5):** the obsolete
+  `id_formatter.dart`, `formatID`, `trimID`, `IDTextEditingController`, and the desktop/mobile
+  numeric-only autocomplete normalization are deleted. The replacement `direct_address.dart` API
+  trims only surrounding whitespace, preserves malformed interior whitespace for fail-closed
+  validation, and names its controller/accessor for the direct-address authority. The shared
+  `connect()` choke point normalizes once and validates the same exact target; peer cards,
+  autocomplete, and delete confirmation render the persisted address verbatim instead of
+  space-grouping numeric-looking values. The already-deleted `server_model.dart` `_serverId`/
+  `fetchID` machinery leaves no stale formatter import. Focused Flutter tests cover normalization,
+  malformed interior whitespace, controller semantics, bare-ID rejection, and the valid address
+  forms; shared, Dart, Apple, semantic, and deliberate-mutation gates bind the source closure.
+- **Misc still requiring per-consumer proof:** the serialized-but-unread `forceAlwaysRelay`/
+  `sameServer`/`recording`/`block_input`/`restart` fields; the `switch_sides()` empty stub; and
+  `logOut(apiServer)`. Delete only after proving each exact producer/consumer path.
 
 ### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
 

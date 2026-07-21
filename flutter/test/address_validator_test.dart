@@ -4,9 +4,40 @@
 // the connect choke point (common.dart connect()) uses to fail closed on a non-address — so a
 // regression that re-admitted bare IDs (and thus a rendezvous lookup) would turn this gate red.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_hbb/common/formatter/id_formatter.dart';
+import 'package:flutter_hbb/common/formatter/direct_address.dart';
 
 void main() {
+  group('direct-address normalization (R-G2/R-SV5)', () {
+    test('trims only surrounding whitespace', () {
+      expect(normalizeDirectAddress('  192.168.1.10:21118  '),
+          '192.168.1.10:21118');
+      expect(normalizeDirectAddress('  host.example.com:21118\n'),
+          'host.example.com:21118');
+    });
+
+    test('preserves malformed interior whitespace for fail-closed validation', () {
+      const malformedIpv4 = '192. 168.1.10';
+      const groupedNumericId = '123 456 789';
+      expect(normalizeDirectAddress(malformedIpv4), malformedIpv4);
+      expect(normalizeDirectAddress(groupedNumericId), groupedNumericId);
+      expect(isDirectAddress(normalizeDirectAddress(malformedIpv4)), isFalse);
+      expect(isDirectAddress(normalizeDirectAddress(groupedNumericId)), isFalse);
+    });
+
+    test('controller exposes address semantics without rewriting the target', () {
+      final controller = DirectAddressTextEditingController();
+      addTearDown(controller.dispose);
+
+      controller.address = '  host.example.com:21118  ';
+      expect(controller.address, 'host.example.com:21118');
+      expect(controller.text, 'host.example.com:21118');
+
+      controller.address = 'host. example.com:21118';
+      expect(controller.address, 'host. example.com:21118');
+      expect(isDirectAddress(controller.address), isFalse);
+    });
+  });
+
   group('isDirectAddress (R-G2/R-SV10 bare-ID rejection)', () {
     test('rejects a bare numeric RustDesk ID', () {
       expect(isDirectAddress('123456789'), isFalse);

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common/formatter/id_formatter.dart';
 import '../../../models/platform_model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/common.dart';
@@ -153,8 +152,7 @@ class AutocompletePeerTileState extends State<AutocompletePeerTile> {
                                                     Expanded(
                                                         child: Text(
                                                       widget.peer.alias.isEmpty
-                                                          ? formatID(
-                                                              widget.peer.id)
+                                                          ? widget.peer.id
                                                           : widget.peer.alias,
                                                       overflow:
                                                           TextOverflow.ellipsis,

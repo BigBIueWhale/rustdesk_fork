@@ -245,6 +245,45 @@ dg_clean 'showServerSettingsWithValue|showServerSettingFromQr|ServerConfigImport
 # R-G1: the server/proxy visibility, Change-ID, and deep-link server-setting controls are gone.
 # Their Dart aliases are not compatibility API: reject renamed raw-string replacements too.
 dg_clean 'kOption(HideServerSetting|HideProxySetting|DisableChangeId|AllowDeepLinkServerSettings)|hide-server-settings|hide-proxy-settings|disable-change-id|allow-deep-link-server-settings' 'R-G1 dead Dart policy-option aliases'
+# R-G2/R-SV5: numeric IDs are not viewer identities. Keep the authored Flutter API, connect choke
+# point, autocomplete, and peer rendering on one exact direct-address model. In particular, never
+# delete interior spaces: doing so changes an invalid target into a different target before validation.
+echo "== R-G2/R-SV5 direct-address UI model and exact-target preservation =="
+direct_address_fail=
+[ ! -e flutter/lib/common/formatter/id_formatter.dart ] \
+  || direct_address_fail="$direct_address_fail legacy-id-formatter-file-present"
+if grep -RInE --include='*.dart' 'IDTextEditingController|IDTextInputFormatter|formatID|trimID' \
+  flutter/lib >/dev/null; then
+  direct_address_fail="$direct_address_fail legacy-numeric-id-api-present"
+fi
+grep -qF 'class DirectAddressTextEditingController extends TextEditingController' \
+  flutter/lib/common/formatter/direct_address.dart \
+  || direct_address_fail="$direct_address_fail direct-address-controller-missing"
+grep -qF 'String normalizeDirectAddress(String address) => address.trim();' \
+  flutter/lib/common/formatter/direct_address.dart \
+  || direct_address_fail="$direct_address_fail outer-whitespace-only-normalizer-missing"
+if grep -nF "replaceAll(' ', '')" flutter/lib/common.dart \
+  flutter/lib/common/formatter/direct_address.dart flutter/lib/desktop/pages/connection_page.dart \
+  flutter/lib/mobile/pages/connection_page.dart >/dev/null \
+  || grep -nF 'replaceAll(" ", "")' flutter/lib/common.dart \
+  flutter/lib/common/formatter/direct_address.dart flutter/lib/desktop/pages/connection_page.dart \
+  flutter/lib/mobile/pages/connection_page.dart >/dev/null; then
+  direct_address_fail="$direct_address_fail all-space-deletion-present"
+fi
+grep -qF 'connect(BuildContext context, String address,' flutter/lib/common.dart \
+  || direct_address_fail="$direct_address_fail address-choke-point-signature-missing"
+grep -qF 'address = normalizeDirectAddress(address);' flutter/lib/common.dart \
+  || direct_address_fail="$direct_address_fail pre-validation-normalization-missing"
+grep -qF '? widget.peer.id' flutter/lib/common/widgets/autocomplete.dart \
+  || direct_address_fail="$direct_address_fail raw-autocomplete-address-display-missing"
+[ "$(grep -Fc 'peer.alias.isEmpty ? peer.id : peer.alias' flutter/lib/common/widgets/peer_card.dart)" -eq 3 ] \
+  || direct_address_fail="$direct_address_fail raw-peer-address-display-inventory-wrong"
+grep -qF "const malformedIpv4 = '192. 168.1.10';" flutter/test/address_validator_test.dart \
+  || direct_address_fail="$direct_address_fail interior-whitespace-regression-missing"
+if [ -n "$direct_address_fail" ]; then
+  echo "  FAIL R-G2/R-SV5 direct-address UI closure:$direct_address_fail"; exit 1
+fi
+echo "  ok  R-G2/R-SV5 direct-address controller/choke point preserve exact targets and peer UI shows raw addresses"
 # R-G4 / R-SV6a / §18: Android device deployment is structurally absent through UI and bridge.
 dg_clean 'showDeployDialog|showDeployPromptDialog|deploy_dialog|android_needs_deploy|mainDeployDevice' 'R-G4/R-SV6a Android device-deploy UI and bridge ABI'
 # R-G4 / R-SV6 / §19: the desktop "Account" settings tab is deleted — the _Account/_AccountState
@@ -359,7 +398,7 @@ if grep -RInE '"forceRelay"|'\''forceRelay'\''' flutter/lib --include='*.dart' 2
 fi
 grep -qF "uri.path == '/r' || uri.path.startsWith('/r@')" flutter/lib/common.dart \
   || { echo "  FAIL R-G6/R-X6: urlLinkToCmdArgs no longer rejects /r and /r@ relay deep links"; exit 1; }
-grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/id_formatter.dart \
+grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/direct_address.dart \
   || { echo "  FAIL R-G6/R-SV4: direct-address validator lost relay-route rejection"; exit 1; }
 echo "  ok  R-G6/R-X6/R-SV4a relay suffixes rejected and relay-choice ABI absent"
 # R-G2 / R-G8 / §19: the connection-status row's rendezvous strings — connecting_status ("Connecting

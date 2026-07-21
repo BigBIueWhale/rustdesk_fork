@@ -10999,6 +10999,182 @@ def validate_direct_address_cli_contract(sources):
     )
 
 
+def validate_direct_address_ui_contract(sources):
+    production = "\n".join(
+        sources[key]
+        for key in (
+            "direct_address_dart",
+            "common_dart",
+            "connection_page_dart",
+            "mobile_connection_dart",
+            "autocomplete_dart",
+            "peer_card_dart",
+            "server_model_dart",
+        )
+    )
+    for text, label in (
+        ("IDTextEditingController", "legacy numeric-ID controller API"),
+        ("IDTextInputFormatter", "legacy numeric-ID input formatter API"),
+        ("formatID", "legacy numeric-ID display formatter API"),
+        ("trimID", "legacy all-space-deleting ID normalizer API"),
+        ("formatter/id_formatter.dart", "legacy numeric-ID formatter import"),
+    ):
+        require_absent(production, text, label)
+
+    direct_address = sources["direct_address_dart"]
+    for text, label in (
+        (
+            "class DirectAddressTextEditingController extends TextEditingController",
+            "direct-address controller",
+        ),
+        (
+            "String get address => normalizeDirectAddress(value.text);",
+            "direct-address controller getter",
+        ),
+        (
+            "set address(String newAddress) => text = normalizeDirectAddress(newAddress);",
+            "direct-address controller setter",
+        ),
+        (
+            "String normalizeDirectAddress(String address) => address.trim();",
+            "outer-whitespace-only direct-address normalization",
+        ),
+    ):
+        require_text(direct_address, text, label)
+    for text in ("replaceAll(' ', '')", 'replaceAll(" ", "")'):
+        require_absent(
+            direct_address,
+            text,
+            "direct-address normalizer that preserves malformed interior whitespace",
+        )
+
+    connect_scope = extract_between(
+        sources["common_dart"],
+        "connect(BuildContext context, String address,",
+        "\n// Simple wrapper of built-in types for reference use.",
+        "direct-address connect choke point",
+    )
+    for text, label in (
+        (
+            "address = normalizeDirectAddress(address);",
+            "pre-validation direct-address normalization",
+        ),
+        ("if (address.isEmpty) return;", "normalized-empty direct-address refusal"),
+        ("if (!isDirectAddress(address)) {", "direct-address validation choke point"),
+        (
+            "final addressController = Get.find<DirectAddressTextEditingController>();",
+            "direct-address UI controller lookup",
+        ),
+        ("addressController.address = address;", "direct-address UI synchronization"),
+    ):
+        require_text(connect_scope, text, label)
+    require_text(
+        sources["dart_verify"],
+        'grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/direct_address.dart',
+        "relay-route gate direct-address source path",
+    )
+    for text in ("replaceAll(' ', '')", 'replaceAll(" ", "")'):
+        require_absent(
+            connect_scope,
+            text,
+            "connect choke point that preserves malformed interior whitespace",
+        )
+
+    for source_key, label in (
+        ("connection_page_dart", "desktop connection page"),
+        ("mobile_connection_dart", "mobile connection page"),
+    ):
+        source = sources[source_key]
+        require_text(
+            source,
+            "DirectAddressTextEditingController()",
+            f"{label} direct-address controller",
+        )
+        require_text(
+            source,
+            "_addressController.address",
+            f"{label} address accessor",
+        )
+        for text in ("replaceAll(' ', '')", 'replaceAll(" ", "")'):
+            require_absent(source, text, f"{label} numeric-ID search normalization")
+
+    require_text(
+        sources["autocomplete_dart"],
+        "? widget.peer.id",
+        "raw autocomplete peer-address display",
+    )
+    require_exact_count(
+        sources["peer_card_dart"],
+        "peer.alias.isEmpty ? peer.id : peer.alias",
+        3,
+        "raw peer-card address display inventory",
+    )
+    for text, label in (
+        (
+            "const malformedIpv4 = '192. 168.1.10';",
+            "interior-whitespace address regression",
+        ),
+        (
+            "expect(normalizeDirectAddress(malformedIpv4), malformedIpv4);",
+            "interior-whitespace normalization assertion",
+        ),
+        (
+            "expect(isDirectAddress(normalizeDirectAddress(malformedIpv4)), isFalse);",
+            "interior-whitespace fail-closed assertion",
+        ),
+        (
+            "final controller = DirectAddressTextEditingController();",
+            "direct-address controller regression",
+        ),
+    ):
+        require_text(sources["address_validator_test"], text, label)
+
+    for source_key, token, label in (
+        (
+            "verify",
+            "R-G2/R-SV5 direct-address UI model and exact-target preservation",
+            "shared direct-address UI source gate",
+        ),
+        (
+            "dart_verify",
+            "R-G2/R-SV5 direct-address UI model and exact-target preservation",
+            "Dart direct-address UI source gate",
+        ),
+        (
+            "apple",
+            "R-G2/R-SV5 direct-address UI model and exact-target preservation",
+            "Apple direct-address UI source gate",
+        ),
+    ):
+        require_text(sources[source_key], token, label)
+
+    r_sv5 = extract_html_requirement(
+        sources["requirements"], "R-SV5", "direct-address viewer requirement"
+    )
+    for text, label in (
+        ("Direct-IP only, all platforms", "direct-address-only viewer title"),
+        ("move to the address model", "direct-address widget migration requirement"),
+        ("reject a bare RustDesk-ID input", "bare-ID refusal requirement"),
+    ):
+        require_text(r_sv5, text, label)
+    r_g2 = extract_html_requirement(
+        sources["requirements"], "R-G2", "direct-address GUI requirement"
+    )
+    for text, label in (
+        (
+            "Rebuild the ID-centric home screen on the direct-address model",
+            "direct-address GUI title",
+        ),
+        ("replaced by host:port validation", "host-port validation requirement"),
+    ):
+        require_text(r_g2, text, label)
+    require_text(
+        sources["hardening"],
+        "Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5)",
+        "direct-address UI hardening ledger",
+    )
+
+
 def validate_account_control_plane_excision_contract(sources):
     core_main = extract_between(
         sources["core_main"],
@@ -12260,6 +12436,7 @@ def validate_sources(sources):
     validate_smoke_container_authority_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
+    validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
@@ -22764,6 +22941,78 @@ def run_source_mutations(sources):
             "numeric-ID hardening ledger",
         ),
         (
+            "direct_address_dart",
+            "String normalizeDirectAddress(String address) => address.trim();",
+            "String normalizeDirectAddress(String address) => address.replaceAll(' ', '');",
+            "outer-whitespace-only direct-address normalization",
+        ),
+        (
+            "direct_address_dart",
+            "class DirectAddressTextEditingController extends TextEditingController",
+            "class NumericIdTextEditingController extends TextEditingController",
+            "direct-address controller",
+        ),
+        (
+            "autocomplete_dart",
+            "? widget.peer.id",
+            "? formatID(widget.peer.id)",
+            "legacy numeric-ID display formatter API",
+        ),
+        (
+            "common_dart",
+            "connect(BuildContext context, String address,",
+            "connect(BuildContext context, String id,",
+            "direct-address connect choke point",
+        ),
+        (
+            "address_validator_test",
+            "const malformedIpv4 = '192. 168.1.10';",
+            "const malformedIpv4RegressionRemoved = '192. 168.1.10';",
+            "interior-whitespace address regression",
+        ),
+        (
+            "verify",
+            "R-G2/R-SV5 direct-address UI model and exact-target preservation",
+            "R-G2/R-SV5 direct-address UI gate disabled",
+            "shared direct-address UI source gate",
+        ),
+        (
+            "dart_verify",
+            "R-G2/R-SV5 direct-address UI model and exact-target preservation",
+            "R-G2/R-SV5 direct-address UI gate disabled",
+            "Dart direct-address UI source gate",
+        ),
+        (
+            "dart_verify",
+            'grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/direct_address.dart',
+            'grep -qF "hasRelayRouteSyntax" flutter/lib/common/formatter/id_formatter.dart',
+            "relay-route gate direct-address source path",
+        ),
+        (
+            "apple",
+            "R-G2/R-SV5 direct-address UI model and exact-target preservation",
+            "R-G2/R-SV5 direct-address UI gate disabled",
+            "Apple direct-address UI source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV5</span>',
+            '<span class="id">R-SV5-disabled</span>',
+            "direct-address viewer requirement",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-G2</span>',
+            '<span class="id">R-G2-disabled</span>',
+            "direct-address GUI requirement",
+        ),
+        (
+            "hardening",
+            "Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5)",
+            "Numeric-ID address formatter/controller — OPEN (R-G2/R-SV5)",
+            "direct-address UI hardening ledger",
+        ),
+        (
             "core_main",
             '} else if args[0] == "--option" {',
             '} else if args[0] == "--assign" {\n            let header = "Authorization: Bearer ";\n            return None;\n        } else if args[0] == "--option" {',
@@ -24256,6 +24505,22 @@ def main():
             "consts_dart": (repo / "flutter/lib/consts.dart").read_text(encoding="utf-8"),
             "connection_page_dart": (
                 repo / "flutter/lib/desktop/pages/connection_page.dart"
+            ).read_text(encoding="utf-8"),
+            "mobile_connection_dart": (
+                repo / "flutter/lib/mobile/pages/connection_page.dart"
+            ).read_text(encoding="utf-8"),
+            "direct_address_dart": (
+                repo / "flutter/lib/common/formatter/direct_address.dart"
+            ).read_text(encoding="utf-8"),
+            "common_dart": (repo / "flutter/lib/common.dart").read_text(encoding="utf-8"),
+            "autocomplete_dart": (
+                repo / "flutter/lib/common/widgets/autocomplete.dart"
+            ).read_text(encoding="utf-8"),
+            "peer_card_dart": (
+                repo / "flutter/lib/common/widgets/peer_card.dart"
+            ).read_text(encoding="utf-8"),
+            "address_validator_test": (
+                repo / "flutter/test/address_validator_test.dart"
             ).read_text(encoding="utf-8"),
             "desktop_home_dart": (
                 repo / "flutter/lib/desktop/pages/desktop_home_page.dart"

@@ -358,6 +358,46 @@ else
   note "ok  R-G1 Apple source has no dead server/proxy/Change-ID/deep-link option aliases"
 fi
 
+echo "== (2a-0d) R-G2/R-SV5 direct-address UI model and exact-target preservation =="
+r_g2_address=
+[ ! -e "$REPO/flutter/lib/common/formatter/id_formatter.dart" ] \
+  || r_g2_address="$r_g2_address legacy-id-formatter-file-present"
+if grep -RInE --include='*.dart' 'IDTextEditingController|IDTextInputFormatter|formatID|trimID' \
+  "$REPO/flutter/lib" >/dev/null; then
+  r_g2_address="$r_g2_address legacy-numeric-id-api-present"
+fi
+grep -qF 'class DirectAddressTextEditingController extends TextEditingController' \
+  "$REPO/flutter/lib/common/formatter/direct_address.dart" \
+  || r_g2_address="$r_g2_address direct-address-controller-missing"
+grep -qF 'String normalizeDirectAddress(String address) => address.trim();' \
+  "$REPO/flutter/lib/common/formatter/direct_address.dart" \
+  || r_g2_address="$r_g2_address outer-whitespace-only-normalizer-missing"
+if grep -nF "replaceAll(' ', '')" "$REPO/flutter/lib/common.dart" \
+  "$REPO/flutter/lib/common/formatter/direct_address.dart" \
+  "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+  "$REPO/flutter/lib/mobile/pages/connection_page.dart" >/dev/null \
+  || grep -nF 'replaceAll(" ", "")' "$REPO/flutter/lib/common.dart" \
+  "$REPO/flutter/lib/common/formatter/direct_address.dart" \
+  "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+  "$REPO/flutter/lib/mobile/pages/connection_page.dart" >/dev/null; then
+  r_g2_address="$r_g2_address all-space-deletion-present"
+fi
+grep -qF 'connect(BuildContext context, String address,' "$REPO/flutter/lib/common.dart" \
+  || r_g2_address="$r_g2_address address-choke-point-signature-missing"
+grep -qF '? widget.peer.id' "$REPO/flutter/lib/common/widgets/autocomplete.dart" \
+  || r_g2_address="$r_g2_address raw-autocomplete-address-display-missing"
+[ "$(grep -Fc 'peer.alias.isEmpty ? peer.id : peer.alias' "$REPO/flutter/lib/common/widgets/peer_card.dart")" -eq 3 ] \
+  || r_g2_address="$r_g2_address raw-peer-address-display-inventory-wrong"
+grep -qF 'Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5)' \
+  "$REPO/HARDENING_STATUS.md" \
+  || r_g2_address="$r_g2_address hardening-ledger-not-closed"
+if [ -n "$r_g2_address" ]; then
+  echo "  FAIL R-G2/R-SV5 Apple direct-address UI closure:$r_g2_address"
+  rc=1
+else
+  note "ok  R-G2/R-SV5 Apple Flutter source uses exact direct addresses with no numeric-ID formatter"
+fi
+
 echo "== (2a) R-S11e-17 typed CM file response authority =="
 r_s11e17=
 if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \

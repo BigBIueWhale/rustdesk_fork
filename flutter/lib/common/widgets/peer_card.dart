@@ -8,7 +8,6 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 
 import '../../common.dart';
-import '../../common/formatter/id_formatter.dart';
 import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
@@ -195,7 +194,7 @@ class _PeerCardState extends State<_PeerCard>
                       Row(children: [
                         Expanded(
                             child: Text(
-                          peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
+                          peer.alias.isEmpty ? peer.id : peer.alias,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         )),
@@ -320,7 +319,7 @@ class _PeerCardState extends State<_PeerCard>
                           child: Row(children: [
                         Expanded(
                             child: Text(
-                          peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
+                          peer.alias.isEmpty ? peer.id : peer.alias,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         )),
@@ -694,7 +693,7 @@ abstract class BasePeerCard extends StatelessWidget {
         }
 
         deleteConfirmDialog(onSubmit,
-            '${translate('Delete')} "${peer.alias.isEmpty ? formatID(peer.id) : peer.alias}"?');
+            '${translate('Delete')} "${peer.alias.isEmpty ? peer.id : peer.alias}"?');
       },
       padding: menuPadding,
       dismissOnClicked: true,

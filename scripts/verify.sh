@@ -800,6 +800,15 @@ else
   rc=1
 fi
 
+echo "== (3b-iii-a1a1) Android APK builder container/source authority (R-S11bj/R-S11e-76) =="
+if python3 scripts/verify-android-build-source.py --self-test \
+    && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
+  echo "  ok  R-S11e-76 Android APK builds use private exact-commit source, narrow mounts, and confined existing-image launches"
+else
+  echo "  FAIL R-S11e-76 Android APK builder regained live-tree, output-tree, pull, network, root, or ambient container authority"
+  rc=1
+fi
+
 echo "== (3b-iii-a1b) credential-bearing local stores use one durable transactional writer (R-S11b-4d) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::config_transaction --color never
@@ -8574,7 +8583,7 @@ grep -qF -- '--aapt2 /online/android-sdk/build-tools/' scripts/build-android.sh 
 grep -qF 'ANDROID_MIN_SDK="24"' scripts/pins.env || android_manifest_hardening="$android_manifest_hardening min-sdk-pin"
 grep -qE 'minSdkVersion[[:space:]]+24\b' flutter/android/app/build.gradle || android_manifest_hardening="$android_manifest_hardening min-sdk-gradle"
 grep -qF 'MIN_SDK_VERSION = 24' scripts/verify-android-apk-manifest.py || android_manifest_hardening="$android_manifest_hardening min-sdk-helper"
-grep -qF -- '-e ANDROID_MIN_SDK="$ANDROID_MIN_SDK"' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening min-sdk-container-env"
+grep -qF -- '--env ANDROID_MIN_SDK="$ANDROID_MIN_SDK"' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening min-sdk-container-env"
 grep -qF -- '--min-sdk-version "$ANDROID_MIN_SDK"' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening min-sdk-sign"
 grep -qF -- '--v1-signing-enabled false' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening v1-disabled"
 grep -qF -- '--v2-signing-enabled true' scripts/build-android.sh || android_manifest_hardening="$android_manifest_hardening v2-enabled"

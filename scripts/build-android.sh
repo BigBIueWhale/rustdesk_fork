@@ -20,6 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+export PATH=/usr/bin:/bin
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # The pinned .apk build image: the digest-pinned ubuntu:24.04 baseline + the android
@@ -40,10 +41,16 @@ KEYSTORE_PASS_FILE="${ANDROID_KEYSTORE_PASS_FILE:-$DEFAULT_ANDROID_KEYSTORE_PASS
 KEY_ALIAS="rustdesk-fork"
 BUILD_UID="$(id -u)"
 BUILD_GID="$(id -g)"
+readonly DOCKER_BIN=/usr/bin/docker
+readonly PYTHON_BIN=/usr/bin/python3
 VERIFY_APK=""
 RELEASE_CHILD=0
 ONLINE_SNAPSHOT_PARENT=""
 OWNED_WORKSPACE=""
+SOURCE_COMMIT=""
+SOURCE_ARCHIVE=""
+SOURCE_AUTHORITY_ROOT=""
+BUILD_SOURCE_ROOT=""
 
 case "${ANDROID_KEY_ALIAS:-rustdesk-fork}" in
     rustdesk-fork) ;;
@@ -122,12 +129,17 @@ assert_private_online_snapshot() {
 
 prepare_execution_contract() {
     local current
+    current="$(git -c core.hooksPath=/dev/null -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+        || die "cannot resolve the exact Android source commit"
+    [[ "$current" =~ ^[0-9a-f]{40}$ ]] \
+        || die "Android source commit must be one full lowercase commit ID"
+    OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX)" \
+        || die "cannot create private Android build workspace"
+    chmod 0700 "$OWNED_WORKSPACE"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             || die "RELEASE_SRC_COMMIT must be one full lowercase commit ID"
-        current="$(git -c core.hooksPath=/dev/null -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
-            || die "cannot resolve release-child source commit"
         [ "$current" = "$RELEASE_SRC_COMMIT" ] || die "release-child source commit does not equal HEAD"
         [ -n "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ] \
             || die "release child requires RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
@@ -141,15 +153,102 @@ prepare_execution_contract() {
         [ -z "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
             || die "RELEASE_DOCKER_IMAGE_ID is release-internal"
         [ -z "${DOCKER_CONFIG+x}" ] || die "DOCKER_CONFIG must not influence a direct Android build"
-        OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX)" \
-            || die "cannot create private Android build workspace"
-        chmod 0700 "$OWNED_WORKSPACE"
         install -d -m 0700 "$OWNED_WORKSPACE/docker-config"
         printf '{}\n' > "$OWNED_WORKSPACE/docker-config/config.json"
         chmod 0600 "$OWNED_WORKSPACE/docker-config/config.json"
         export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"
         assert_private_docker_config
     fi
+    SOURCE_COMMIT="$current"
+}
+
+prepare_source_snapshot() {
+    local invalid_tree_entry
+    SOURCE_ARCHIVE="$OWNED_WORKSPACE/source.tar"
+    SOURCE_AUTHORITY_ROOT="$OWNED_WORKSPACE/source-authority"
+    invalid_tree_entry="$(
+        git -c core.hooksPath=/dev/null -C "$REPO_ROOT" ls-tree -rz --full-tree "$SOURCE_COMMIT" \
+            | "$PYTHON_BIN" -c '
+import sys
+
+for entry in sys.stdin.buffer.read().split(b"\0"):
+    if not entry:
+        continue
+    metadata, path = entry.split(b"\t", 1)
+    mode = metadata.split(b" ", 1)[0]
+    if mode not in (b"100644", b"100755"):
+        print("{} {}".format(mode.decode("ascii", "replace"), path.decode("utf-8", "replace")))
+        break
+'
+    )" || die "cannot inspect the exact Android source tree"
+    [ -z "$invalid_tree_entry" ] \
+        || die "Android source commit contains a symlink or special entry: $invalid_tree_entry"
+    install -d -m 0700 "$SOURCE_AUTHORITY_ROOT"
+    git -c core.hooksPath=/dev/null -C "$REPO_ROOT" archive --format=tar "$SOURCE_COMMIT" \
+        >"$SOURCE_ARCHIVE" \
+        || die "cannot archive the exact Android source commit"
+    [ -s "$SOURCE_ARCHIVE" ] && [ ! -L "$SOURCE_ARCHIVE" ] \
+        || die "Android source archive is missing or invalid"
+    chmod 0400 "$SOURCE_ARCHIVE"
+    tar --extract --file="$SOURCE_ARCHIVE" --directory="$SOURCE_AUTHORITY_ROOT" \
+        || die "cannot extract the Android source authority snapshot"
+    invalid_tree_entry="$(find "$SOURCE_AUTHORITY_ROOT" \
+        \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit \
+    )" || die "cannot inspect the Android source authority snapshot"
+    [ -z "$invalid_tree_entry" ] \
+        || die "Android source authority contains a symlink or special file: $invalid_tree_entry"
+    chmod -R a-w "$SOURCE_AUTHORITY_ROOT"
+}
+
+prepare_build_source() {
+    local invalid_tree_entry
+    BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-build"
+    [ ! -e "$BUILD_SOURCE_ROOT" ] && [ ! -L "$BUILD_SOURCE_ROOT" ] \
+        || die "Android writable source path was not freshly absent"
+    install -d -m 0700 "$BUILD_SOURCE_ROOT"
+    tar --extract --file="$SOURCE_ARCHIVE" --directory="$BUILD_SOURCE_ROOT" \
+        || die "cannot extract a fresh Android writable build snapshot"
+    invalid_tree_entry="$(find "$BUILD_SOURCE_ROOT" \
+        \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit \
+    )" || die "cannot inspect the Android writable build snapshot"
+    [ -z "$invalid_tree_entry" ] \
+        || die "Android writable source contains a symlink or special file: $invalid_tree_entry"
+    "$PYTHON_BIN" "$SOURCE_AUTHORITY_ROOT/scripts/verify-android-build-source.py" \
+        --reference "$SOURCE_AUTHORITY_ROOT" --candidate "$BUILD_SOURCE_ROOT" \
+        || die "Android writable source does not match the exact commit snapshot"
+}
+
+verify_build_source_unchanged() {
+    "$PYTHON_BIN" "$SOURCE_AUTHORITY_ROOT/scripts/verify-android-build-source.py" \
+        --reference "$SOURCE_AUTHORITY_ROOT" --candidate "$BUILD_SOURCE_ROOT" --allow-extras \
+        || die "Android build changed an exact-commit source input"
+}
+
+remove_build_source() {
+    [ -n "$BUILD_SOURCE_ROOT" ] && [ -d "$BUILD_SOURCE_ROOT" ] \
+        || die "Android writable source is unavailable for cleanup"
+    chmod -R u+rwX "$BUILD_SOURCE_ROOT" \
+        || die "cannot make the private Android writable source removable"
+    rm -rf -- "$BUILD_SOURCE_ROOT" \
+        || die "cannot remove the private Android writable source"
+    [ ! -e "$BUILD_SOURCE_ROOT" ] && [ ! -L "$BUILD_SOURCE_ROOT" ] \
+        || die "private Android writable source survived cleanup"
+    BUILD_SOURCE_ROOT=""
+}
+
+android_docker_run() {
+    "$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+        --user "$BUILD_UID:$BUILD_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        "$@"
+}
+
+prepare_pass_output() {
+    local output="$1"
+    [ ! -e "$output" ] && [ ! -L "$output" ] \
+        || die "Android private pass output already exists: $output"
+    install -d -m 0700 "$output"
+    assert_private_directory "$output" "Android private pass output"
 }
 
 resolve_image() {
@@ -175,7 +274,7 @@ verify_active_online_snapshot() {
 }
 
 assert_private_signing_files() {
-    python3 - "$KEYSTORE" "$KEYSTORE_PASS_FILE" "$BUILD_UID" <<'PY'
+    "$PYTHON_BIN" - "$KEYSTORE" "$KEYSTORE_PASS_FILE" "$BUILD_UID" <<'PY'
 import os
 import stat
 import sys
@@ -214,11 +313,16 @@ certificate_fingerprint_from_keytool() {
 }
 
 preflight() {
-    require_cmd cmp docker git python3 find install readlink stat
+    require_cmd cmp git find grep install readlink sha256sum stat tar
+    [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
+    [ -x "$PYTHON_BIN" ] || die "trusted Python interpreter is unavailable at $PYTHON_BIN"
+    [ "${ALLOW_DIRTY_TREE:-0}" = 0 ] \
+        || die "the Android artifact builder accepts only an exact clean commit; use a developer check for working-tree experiments"
     assert_repo_state
     assert_clean_worktree
     assert_source_date_epoch
     prepare_execution_contract
+    prepare_source_snapshot
     resolve_image
     activate_online_snapshot
     # §12.3 / R-B10 (trust nobody): re-verify the exact ./online tarballs this offline build extracts
@@ -247,10 +351,14 @@ preflight() {
 assert_keystore_properties() {
     local info fingerprint
     assert_private_docker_config
-    info="$(docker run --rm --network=none \
-        --user "$BUILD_UID:$BUILD_GID" \
-        -v "$KEYSTORE:/ks/keystore.jks:ro" -v "$KEYSTORE_PASS_FILE:/ks/pass:ro" "$IMAGE_ID" \
-        bash -c 'keytool -J-Duser.language=en -J-Duser.country=US -list -v -keystore /ks/keystore.jks -alias "'"$KEY_ALIAS"'" 2>/dev/null < /ks/pass')" \
+    info="$(android_docker_run \
+        --pids-limit=32 --memory=512m --memory-swap=512m --cpus=1 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
+        --env HOME=/tmp/home \
+        --mount "type=bind,source=$KEYSTORE,target=/ks/keystore.jks,readonly" \
+        --mount "type=bind,source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly" \
+        "$IMAGE_ID" /bin/bash --noprofile --norc -c \
+        'mkdir -p "$HOME"; keytool -J-Duser.language=en -J-Duser.country=US -list -v -keystore /ks/keystore.jks -alias "'"$KEY_ALIAS"'" 2>/dev/null < /ks/pass')" \
         || die "android keystore: alias '$KEY_ALIAS' not found, or wrong password (R-B2) — regenerate with scripts/gen-android-keystore.sh"
     printf '%s' "$info" | grep -qE 'Signature algorithm name:[[:space:]]*SHA256withRSA' \
         || die "android keystore signature algorithm is not SHA256withRSA (R-B2) — regenerate: scripts/gen-android-keystore.sh"
@@ -270,14 +378,18 @@ verify_apk_artifact() {
     [ -f "$resolved" ] && [ ! -L "$apk" ] && [ -s "$resolved" ] \
         || die "APK must be a regular non-empty non-symlink file"
     verify_active_online_snapshot
-    if ! docker run --rm --network=none \
-        --user "$BUILD_UID:$BUILD_GID" \
-        -e ANDROID_MIN_SDK="$ANDROID_MIN_SDK" \
-        -e ANDROID_SIGNING_CERT_SHA256="$ANDROID_SIGNING_CERT_SHA256" \
-        -v "$resolved:/verify/app.apk:ro" \
-        -v "$REPO_ROOT:/src:ro" \
-        -v "$ONLINE_DIR:/online:ro" \
-        "$IMAGE_ID" bash -euo pipefail -c '
+    if ! android_docker_run \
+        --pids-limit=128 --memory=4g --memory-swap=4g --cpus=2 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=2g \
+        --env HOME=/tmp/home \
+        --env ANDROID_MIN_SDK="$ANDROID_MIN_SDK" \
+        --env ANDROID_SIGNING_CERT_SHA256="$ANDROID_SIGNING_CERT_SHA256" \
+        --mount "type=bind,source=$resolved,target=/verify/app.apk,readonly" \
+        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly" \
+        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-mobile-key-artifact.py,target=/checks/verify-android-mobile-key-artifact.py,readonly" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+        "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+            mkdir -p "$HOME"
             export PATH="/online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/:$PATH"
             output="$(apksigner verify -Werr --min-sdk-version "$ANDROID_MIN_SDK" --print-certs /verify/app.apk)"
             observed="$(printf "%s\n" "$output" | awk -F: '\''
@@ -290,10 +402,10 @@ verify_apk_artifact() {
                 END { if (count != 1) exit 1 }
             '\'')"
             [ "$observed" = "$ANDROID_SIGNING_CERT_SHA256" ]
-            python3 /src/scripts/verify-android-apk-manifest.py \
+            python3 /checks/verify-android-apk-manifest.py \
                 --apk /verify/app.apk \
                 --aapt2 /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/aapt2
-            python3 /src/scripts/verify-android-mobile-key-artifact.py \
+            python3 /checks/verify-android-mobile-key-artifact.py \
                 --apk /verify/app.apk \
                 --dexdump /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/dexdump \
                 --readelf /usr/bin/readelf
@@ -305,51 +417,62 @@ verify_apk_artifact() {
 }
 
 build_apk() {
+    local pass_output="$1"
     log "building unsigned aarch64 .apk (features flutter — software codec, §3.2 arm64-android)"
     verify_active_online_snapshot
-    if ! docker run --rm \
-        --name rustdesk-fork-harness-apk \
-        --network=none \
-        --user "$BUILD_UID:$BUILD_GID" \
-        -e SOURCE_DATE_EPOCH \
-        -e RUSTDESK_CANARY_OFFLINE=1 \
-        -e APK_MODE=offline \
-        -v "$REPO_ROOT:/src" \
-        -v "$ONLINE_DIR:/online:ro" \
-        -w /src \
+    prepare_build_source
+    verify_build_source_unchanged
+    if ! android_docker_run \
+        --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
+        --env SOURCE_DATE_EPOCH \
+        --env RUSTDESK_CANARY_OFFLINE=1 \
+        --env APK_MODE=offline \
+        --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src" \
+        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+        --workdir /src \
         "$IMAGE_ID" \
-        bash /src/scripts/android-apk-build.sh; then
+        /bin/bash /authority/android-apk-build.sh; then
         verify_active_online_snapshot
         die "Android build container failed"
     fi
     verify_active_online_snapshot
-    mkdir -p "$OUT_DIR"
+    verify_build_source_unchanged
     # The docker run built into the bind-mounted flutter/build (android-apk-build.sh wiped it up front,
     # so no prior-run APK survives to be mispicked). Assert the produced APK explicitly: the old
     # `apk="$(ls…)" || die` was DEAD CODE (the assignment's exit status is `head`'s = always 0), so a
     # missing APK fell through to a confusing `cp ''` under set -e instead of this loud message.
-    local apk; apk="$(ls -1 "$REPO_ROOT"/flutter/build/app/outputs/flutter-apk/*arm64*release*.apk 2>/dev/null | head -1)"
-    [ -n "$apk" ] && [ -f "$apk" ] || die "no arm64 release APK produced by the in-container build — see the build output above (android-apk-build.sh / gradle failure)"
-    cp "$apk" "$OUT_DIR/rustdesk-arm64-unsigned.apk"
+    local -a apks=()
+    mapfile -t apks < <(find "$BUILD_SOURCE_ROOT/flutter/build/app/outputs/flutter-apk" \
+        -maxdepth 1 -type f -name '*arm64*release*.apk' -print 2>/dev/null | LC_ALL=C sort)
+    [ "${#apks[@]}" -eq 1 ] \
+        || die "expected exactly one arm64 release APK from the in-container build, found ${#apks[@]}"
+    install -m 0400 "${apks[0]}" "$pass_output/rustdesk-arm64-unsigned.apk"
+    remove_build_source
 }
 
 sign_apk() {
+    local pass_output="$1"
     # Android 7+ only: v2/v3 protect the whole APK, including runtime META-INF resources.
     # Password from the mounted file, never on argv: apksigner reads it via the file: provider.
     log "signing the APK with the stable local key (alias $KEY_ALIAS, R-B2)"
     verify_active_online_snapshot
-    if ! docker run --rm \
-        --network=none \
-        --user "$BUILD_UID:$BUILD_GID" \
-        -v "$REPO_ROOT:/src:ro" \
-        -v "$OUT_DIR:/out" \
-        -v "$KEYSTORE:/ks/keystore.jks:ro" \
-        -v "$KEYSTORE_PASS_FILE:/ks/pass:ro" \
-        -v "$ONLINE_DIR:/online:ro" \
-        -e ANDROID_MIN_SDK="$ANDROID_MIN_SDK" \
-        -e ANDROID_SIGNING_CERT_SHA256="$ANDROID_SIGNING_CERT_SHA256" \
+    if ! android_docker_run \
+        --pids-limit=128 --memory=4g --memory-swap=4g --cpus=2 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=2g \
+        --env HOME=/tmp/home \
+        --env ANDROID_MIN_SDK="$ANDROID_MIN_SDK" \
+        --env ANDROID_SIGNING_CERT_SHA256="$ANDROID_SIGNING_CERT_SHA256" \
+        --mount "type=bind,source=$pass_output,target=/out" \
+        --mount "type=bind,source=$KEYSTORE,target=/ks/keystore.jks,readonly" \
+        --mount "type=bind,source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly" \
+        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly" \
+        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-mobile-key-artifact.py,target=/checks/verify-android-mobile-key-artifact.py,readonly" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
         "$IMAGE_ID" \
-        bash -euo pipefail -c '
+        /bin/bash --noprofile --norc -euo pipefail -c '
+            mkdir -p "$HOME"
             export PATH="/online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/:$PATH"
             apksigner sign --ks /ks/keystore.jks --ks-key-alias '"$KEY_ALIAS"' \
                 --ks-pass file:/ks/pass \
@@ -375,10 +498,10 @@ sign_apk() {
                 END { if (count != 1) exit 1 }
             '\'')"
             [ "$cert_sha256" = "$ANDROID_SIGNING_CERT_SHA256" ]
-            python3 /src/scripts/verify-android-apk-manifest.py \
+            python3 /checks/verify-android-apk-manifest.py \
                 --apk /out/rustdesk-arm64.apk \
                 --aapt2 /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/aapt2
-            python3 /src/scripts/verify-android-mobile-key-artifact.py \
+            python3 /checks/verify-android-mobile-key-artifact.py \
                 --apk /out/rustdesk-arm64.apk \
                 --dexdump /online/android-sdk/build-tools/'"${ANDROID_BUILD_TOOLS}"'/dexdump \
                 --readelf /usr/bin/readelf
@@ -387,14 +510,42 @@ sign_apk() {
         die "Android signing container failed"
     fi
     verify_active_online_snapshot
-    rm -f "$OUT_DIR/rustdesk-arm64-unsigned.apk"
-    sha256sum "$OUT_DIR/rustdesk-arm64.apk" | tee "$OUT_DIR/rustdesk-arm64.apk.sha256"
+    rm -f "$pass_output/rustdesk-arm64-unsigned.apk"
+    (
+        cd "$pass_output"
+        sha256sum rustdesk-arm64.apk >rustdesk-arm64.apk.sha256
+    )
+    verify_apk_artifact "$pass_output/rustdesk-arm64.apk"
+}
+
+publish_apk() {
+    local pass_output="$1" resolved_out
+    mkdir -p "$OUT_DIR"
+    [ -d "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ] \
+        || die "Android output must be a real directory"
+    resolved_out="$(readlink -f -- "$OUT_DIR")" \
+        || die "cannot resolve Android output directory"
+    [ "$resolved_out" = "$OUT_DIR" ] \
+        || die "Android output directory must be canonical"
+    [ "$(stat -c '%u' -- "$OUT_DIR")" = "$BUILD_UID" ] \
+        || die "Android output directory must be owned by the invoking user"
+    install -m 0400 "$pass_output/rustdesk-arm64.apk" "$OUT_DIR/rustdesk-arm64.apk"
+    install -m 0400 "$pass_output/rustdesk-arm64.apk.sha256" "$OUT_DIR/rustdesk-arm64.apk.sha256"
+    cmp -s "$pass_output/rustdesk-arm64.apk" "$OUT_DIR/rustdesk-arm64.apk" \
+        || die "published Android APK differs from the verified private artifact"
+    cmp -s "$pass_output/rustdesk-arm64.apk.sha256" "$OUT_DIR/rustdesk-arm64.apk.sha256" \
+        || die "published Android checksum differs from the verified private checksum"
+    (cd "$OUT_DIR" && sha256sum -c rustdesk-arm64.apk.sha256) \
+        || die "published Android APK does not match its checksum"
 }
 
 main() {
     if [ -n "$VERIFY_APK" ]; then
-        require_cmd cmp docker git python3 find install readlink stat
+        require_cmd cmp git find grep install readlink sha256sum stat tar
+        [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
+        [ -x "$PYTHON_BIN" ] || die "trusted Python interpreter is unavailable at $PYTHON_BIN"
         prepare_execution_contract
+        prepare_source_snapshot
         resolve_image
         activate_online_snapshot
         verify_apk_artifact "$VERIFY_APK"
@@ -402,26 +553,28 @@ main() {
         return 0
     fi
     preflight
-    build_apk
-    sign_apk
+    local pass_a="$OWNED_WORKSPACE/pass-a"
+    prepare_pass_output "$pass_a"
+    build_apk "$pass_a"
+    sign_apk "$pass_a"
     # R-B2 double-build determinism (DEFAULT — the correct build proves its OWN reproducibility).
     # A second build of identical source MUST produce a byte-identical SIGNED APK, or the recorded
     # SHA is unfalsifiable. build-debian.sh makes this assertion for the .deb; mirror it here so the
     # DEFAULT `build-android.sh` invocation self-proves A==B and DIES on any drift — assume nothing,
-    # trust nothing. Each pass self-cleans flutter/build (android-apk-build.sh, R-B9), so this is
-    # safe on any tree state / any run order. (Set DOUBLE_BUILD=0 only for a deliberate single pass.)
+    # trust nothing. Each pass gets a freshly extracted exact-commit writable tree; the inner R-B9 cleanup
+    # remains defense in depth. (Set DOUBLE_BUILD=0 only for an explicit single-pass diagnostic or when the
+    # enclosing release transaction supplies the two independent exact-commit snapshots.)
     if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
-        local first saved_out second
-        first="$(awk '{print $1}' "$OUT_DIR/rustdesk-arm64.apk.sha256")"
-        saved_out="$OUT_DIR"
-        OUT_DIR="$saved_out/_rebuild"; rm -rf "$OUT_DIR"; mkdir -p "$OUT_DIR"
-        build_apk
-        sign_apk
-        second="$(awk '{print $1}' "$OUT_DIR/rustdesk-arm64.apk.sha256")"
-        rm -rf "$OUT_DIR"; OUT_DIR="$saved_out"
+        local first second pass_b="$OWNED_WORKSPACE/pass-b"
+        first="$(awk '{print $1}' "$pass_a/rustdesk-arm64.apk.sha256")"
+        prepare_pass_output "$pass_b"
+        build_apk "$pass_b"
+        sign_apk "$pass_b"
+        second="$(awk '{print $1}' "$pass_b/rustdesk-arm64.apk.sha256")"
         [ "$first" = "$second" ] || die "R-B2 double-build APK SHA mismatch ($first vs $second) — the APK is NOT reproducible; fix SOURCE_DATE_EPOCH / apksigner determinism before release"
         log "R-B2 double-build determinism OK (A==B): $first"
     fi
+    publish_apk "$pass_a"
     verify_apk_artifact "$OUT_DIR/rustdesk-arm64.apk"
     log "build-android.sh complete: $OUT_DIR/rustdesk-arm64.apk"
     log "NOTE: integrity to the device is the pinned SHA-256 over the trusted channel"

@@ -292,13 +292,13 @@ assert_repo_state() {
 
 # assert_clean_worktree: a RELEASE build MUST compile committed HEAD, not a dirty / stale /
 # concurrently-edited worktree — else the artifact matches no commit and its recorded SHA (R-B2) is
-# meaningless. The deb/apk builds mount the LIVE tree (-v $REPO_ROOT:/src), so assert it is clean and
-# fail LOUD on any uncommitted tracked change or untracked non-ignored file (gitignored build output —
+# meaningless. The Debian build still mounts the live tree, while the Android artifact builder archives
+# exact HEAD into a private source authority plus a fresh writable copy for each pass. Assert cleanliness
+# before either path and fail LOUD on any uncommitted tracked change or untracked non-ignored file (ignored output —
 # dist/, target/, flutter/build, the regenerated FRB bridges — is NOT flagged; git status --porcelain
-# excludes it). Set ALLOW_DIRTY_TREE=1 for a deliberate LOCAL (non-release) build of the working tree.
-# (The Windows build already has this immunity structurally via WINDOWS_BUILD_SOURCE=head — a clean
-# `git archive HEAD` snapshot; giving deb/apk the same snapshot is the stronger follow-up, immune even
-# to a mid-build edit. This assert + the double-build A==B are the current backstop for that race.)
+# excludes it). Set ALLOW_DIRTY_TREE=1 only for a deliberate LOCAL Debian build of the working tree;
+# Android artifact builds reject that override. Windows likewise has snapshot immunity through
+# WINDOWS_BUILD_SOURCE=head. The Debian live-tree mount remains the narrower source-race follow-up.
 assert_clean_worktree() {
     if [ "${ALLOW_DIRTY_TREE:-0}" = "1" ]; then
         log "ALLOW_DIRTY_TREE=1 — building the WORKING TREE, not committed HEAD (NOT a reproducible release build)"

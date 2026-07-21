@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#198",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#199",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -10891,7 +10891,7 @@ def validate_macos_launchd_lifecycle_contract(sources):
         ('["bootstrap", &domain, agent_plist_file]', "macOS LaunchAgent bootstrap contract"),
         (
             'legacy_script_command = re.compile(r"/bin/launchctl (?:list|load|unload|remove)(?: |\\\")")',
-            "macOS privileged-script legacy-command rejection",
+            "macOS privileged-script legacy-command rejection semantics",
         ),
         ("MUTATIONS: Tuple[Mutation, ...]", "macOS launchd mutation inventory"),
         ("run_mutations(sources)", "macOS launchd mutation dispatch"),
@@ -10921,6 +10921,60 @@ def validate_macos_launchd_lifecycle_contract(sources):
         sources["hardening"],
         "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
         "macOS launchd lifecycle hardening ledger",
+    )
+
+
+def validate_android_builder_authority_contract(sources):
+    focused = sources["android_builder_authority_verifier"]
+    comparator = sources["android_build_source_verifier"]
+    for text, label in (
+        ('require_count(build, "if ! android_docker_run", 3', "Android builder four-launch inventory"),
+        ('forbid(build, token, label)', "Android builder forbidden-authority enforcement"),
+        ('source=$BUILD_SOURCE_ROOT,target=/src"', "Android builder private-source mount contract"),
+        ('source=$pass_output,target=/out"', "Android builder private-output mount contract"),
+        ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
+        ('run_mutations(sources)', "Android builder mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ('getattr(os, "O_NOFOLLOW", 0)', "Android source descriptor no-follow open"),
+        ('before.st_nlink != 1', "Android source hardlink refusal"),
+        ('identity_before != identity_after', "Android source stable-read proof"),
+        ('if not allow_extras:', "Android initial extra-input refusal semantics"),
+        ('reference_digest != candidate_digest', "Android source byte comparison"),
+        ('reference_exec != candidate_exec', "Android source executable-mode comparison"),
+        ('self_test()', "Android source comparator self-test"),
+    ):
+        require_text(comparator, text, label)
+    require_text(
+        sources["android"],
+        '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+        "Android builder common confinement wrapper",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-android-build-source.py --self-test",
+        "Android source-comparator shared self-test wiring",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-android-builder-authority.py --repo . --self-test",
+        "Android builder shared focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bj</span>',
+        "Android builder authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>199</td>",
+        "Android builder authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bj/R-S11e-76 — Android APK builder container and source authority",
+        "Android builder authority hardening ledger",
     )
 
 
@@ -13179,6 +13233,7 @@ def validate_sources(sources):
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
+    validate_android_builder_authority_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
@@ -25094,8 +25149,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#198",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#197",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#199",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#198",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25181,6 +25236,48 @@ def run_source_mutations(sources):
             "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
             "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses implicit legacy commands",
             "macOS launchd lifecycle hardening ledger",
+        ),
+        (
+            "android_builder_authority_verifier",
+            'forbid(build, token, label)',
+            'return # forbidden Android builder authority accepted',
+            "Android builder forbidden-authority enforcement",
+        ),
+        (
+            "android_build_source_verifier",
+            "if not allow_extras:",
+            "if False:",
+            "Android initial extra-input refusal semantics",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-android-build-source.py --self-test",
+            "true # Android source-comparator self-test removed",
+            "Android source-comparator shared self-test wiring",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-android-builder-authority.py --repo . --self-test",
+            "true # Android builder authority verifier removed",
+            "Android builder shared focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bj</span>',
+            '<span class="id">R-S11bj-disabled</span>',
+            "Android builder authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>199</td>",
+            "<tr><td>199-disabled</td>",
+            "Android builder authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bj/R-S11e-76 — Android APK builder container and source authority",
+            "R-S11bj/R-S11e-76 — Android APK builder ambient authority",
+            "Android builder authority hardening ledger",
         ),
         (
             "github_automation_authority_verifier",
@@ -25925,6 +26022,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "macos_launchd_lifecycle_verifier": (
                 repo / "scripts/verify-macos-launchd-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "android_build_source_verifier": (
+                repo / "scripts/verify-android-build-source.py"
+            ).read_text(encoding="utf-8"),
+            "android_builder_authority_verifier": (
+                repo / "scripts/verify-android-builder-authority.py"
             ).read_text(encoding="utf-8"),
             "github_automation_authority_verifier": (
                 repo / "scripts/verify-github-automation-authority.py"

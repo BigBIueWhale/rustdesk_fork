@@ -6879,6 +6879,45 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Linux-side rustfmt/source checks and mutation tests do not compile or execute macOS launchd. No native Mac,
   signed application, installed LaunchDaemon/LaunchAgent, or artifact was exercised; native Apple and exact R-B2
   lifecycle evidence remain open.
+- **R-S11bj/R-S11e-76 — Android APK builder container and source authority — SOURCE CLOSED/GATED
+  2026-07-21; EXACT CURRENT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android artifact
+  construction, signing, and verification. Endpoint/action: the four local Docker launches used for keystore
+  inspection, offline compilation, signing, and signed-APK verification. Boundary: checked-in exact-commit source,
+  signing secrets, verified offline inputs, and private intermediate artifacts ↔ an already-present pinned builder
+  image and the final host-side artifact publication. Before this correction, compilation mounted the real repository
+  read-write, signing mounted the final output directory read-write, verification mounted the repository read-only for
+  two checker scripts, and the compile used a fixed daemon-global container name. The launches were networkless and
+  numeric-nonroot, but did not explicitly refuse pulls, make the container root read-only, remove all capabilities,
+  set no-new-privileges, or bound processes, memory, CPU, and scratch space. A clean-tree check occurred before the
+  live mount, so a concurrent edit could also make consumed source differ from the named commit. This is source-proven
+  excessive build authority and a reproducibility race; it is not evidence that Docker gained root, changed a host
+  service or firewall, exposed a port, escaped, exploited anything, or compromised a host or device.
+
+  `scripts/build-android.sh` now rejects `ALLOW_DIRTY_TREE`, resolves one full clean `HEAD`, rejects symlink/gitlink/
+  special tree entries, archives the commit once into a mode-protected private workspace, and retains a non-writable
+  authority extraction. Each build pass creates a freshly absent writable extraction; the new descriptor-based
+  `scripts/verify-android-build-source.py` requires the initial inventory to contain no extras and match every
+  committed regular file/directory, owner, byte digest, and executable bit, rejects symlink/hardlink substitution and
+  unstable reads, and after compilation proves every committed input still matches while allowing generated outputs.
+  The writable tree is removed before signing, so the second pass starts from a fresh extraction rather than prior
+  generated state. Neither the real repository nor final output directory is mounted into a container.
+
+  One common launcher now binds every keytool/build/sign/verify invocation to `/usr/bin/docker`, the existing immutable
+  image ID, `--pull=never`, `--network=none`, a read-only root, the invoking numeric uid/gid, all capabilities dropped,
+  no-new-privileges, explicit PID/memory/CPU limits, and bounded task-specific tmpfs. The compile sees only its private
+  writable source plus the immutable inner script and verified online closure; signing sees only private pass output,
+  read-only signing files, exact-commit verifier scripts, and online inputs; verification sees only the APK and those
+  read-only checker/input files. There is no port publication, host namespace, Docker socket, privileged/cap-add path,
+  image build, or image pull. Signed private output passes signature/certificate, manifest, mobile-key, and checksum
+  validation before host-side publication; final APK/checksum bytes are compared to the private result and the
+  published hash is checked again. Standalone builds retain their default A/B comparison, while `build-release.sh`
+  retains its stronger independent-snapshot A/B authority.
+
+  `scripts/verify-android-builder-authority.py` binds the shell topology, forbidden mounts/flags, comparator semantics,
+  requirement/disposition/ledger, and shared-gate wiring and rejects deliberate weakening mutations. The independent
+  workspace verifier also binds that focused verifier and its policy anchors. This slice does not run the Android
+  builder, build/sign an APK, exercise Android, or promote the older 2026-07-18 APK evidence to current commit. Exact
+  current APK, full R-B2/R-B10 release, and real-device behavior remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7594,9 +7633,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-63d09d58e4e26a7fe2f3d29280622846f0bf43f9cad97681436246544c1651e4  requirements.html
+95351840da596fce2cc588d4c23e1cda5ad07d459669d93f5491f657cb2fe2ab  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bi, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#198. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bj, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#199. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -10628,6 +10628,101 @@ def validate_smoke_container_authority_contract(sources):
     )
 
 
+def validate_wayland_capture_source_excision_contract(sources):
+    expected_states = (
+        ("scrap_wayland_directory_state", "scrap-wayland-directory-absent", "scrap Wayland directory absence"),
+        ("scrap_wayland_root_source_state", "scrap-wayland-root-source-absent", "scrap root Wayland source absence"),
+        ("scrap_wayland_common_source_state", "scrap-wayland-common-source-absent", "scrap common Wayland source absence"),
+    )
+    for key, expected, label in expected_states:
+        if sources[key] != expected:
+            raise VerificationError(f"{label}: forbidden source path remains present")
+
+    try:
+        root_manifest = tomllib.loads(sources["root_cargo"])
+        scrap_manifest = tomllib.loads(sources["scrap_cargo"])
+    except tomllib.TOMLDecodeError as exc:
+        raise VerificationError(f"Wayland capture Cargo policy: manifest does not parse: {exc}") from exc
+    root_scrap_dependency = root_manifest.get("dependencies", {}).get("scrap")
+    root_scrap_features = (
+        root_scrap_dependency.get("features", [])
+        if isinstance(root_scrap_dependency, dict)
+        else []
+    )
+    if "wayland" in root_scrap_features:
+        raise VerificationError("root scrap Wayland feature: forbidden feature activation remains present")
+    if "wayland" in scrap_manifest.get("features", {}):
+        raise VerificationError("scrap Wayland feature declaration: forbidden feature remains present")
+    if re.search(
+        r"(?m)^\s*(?:pub\s+)?mod\s+wayland\s*;",
+        sources["scrap_lib"] + "\n" + sources["scrap_common_mod"],
+    ):
+        raise VerificationError("scrap Wayland module declaration: forbidden module remains present")
+
+    for text, label in (
+        (
+            "[ -e libs/scrap/src/wayland ] || [ -L libs/scrap/src/wayland ]",
+            "shared scrap Wayland directory source gate",
+        ),
+        (
+            "[ -e libs/scrap/src/wayland.rs ] || [ -L libs/scrap/src/wayland.rs ]",
+            "shared scrap root Wayland source gate",
+        ),
+        (
+            "[ -e libs/scrap/src/common/wayland.rs ] || [ -L libs/scrap/src/common/wayland.rs ]",
+            "shared scrap common Wayland source gate",
+        ),
+        (
+            "R-X12/R-X12a Wayland/pipewire capture feature, module declarations, directory, and orphaned source files absent",
+            "shared Wayland source-excision success marker",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-X12a", "Wayland capture source deletion requirement"
+    )
+    for text, label in (
+        ("Delete the uncompiled Wayland capture source residue", "Wayland source deletion title"),
+        ("libs/scrap/src/wayland.rs", "root Wayland source path requirement"),
+        ("libs/scrap/src/common/wayland.rs", "common Wayland source path requirement"),
+        ("MUST</span> remain absent", "Wayland source absence requirement"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>192</td>",
+        "Wayland capture source residue Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-X12a — orphaned Wayland capture source files deleted",
+        "Wayland capture source residue hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Wayland source deletion deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("root scrap Wayland feature", "root feature mutation"),
+        ("scrap Wayland feature declaration", "crate feature mutation"),
+        ("scrap Wayland module declaration", "module declaration mutation"),
+        ("scrap Wayland directory absence", "directory-state mutation"),
+        ("scrap root Wayland source absence", "root-source-state mutation"),
+        ("scrap common Wayland source absence", "common-source-state mutation"),
+        ("shared scrap Wayland directory source gate", "directory-gate mutation"),
+        ("shared scrap root Wayland source gate", "root-source-gate mutation"),
+        ("shared scrap common Wayland source gate", "common-source-gate mutation"),
+        ("Wayland capture source deletion requirement", "requirement mutation"),
+        ("Wayland capture source residue Appendix C row", "Appendix mutation"),
+        ("Wayland capture source residue hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_direct_only_viewer_contract(sources):
     client = sources["client_source"]
     start = extract_between(
@@ -12816,6 +12911,7 @@ def validate_sources(sources):
         sources["hardening"],
     )
     validate_smoke_container_authority_contract(sources)
+    validate_wayland_capture_source_excision_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
@@ -24620,6 +24716,78 @@ def run_source_mutations(sources):
             "fn cli_server_parser_regression_removed()",
             "CLI server parser regression",
         ),
+        (
+            "root_cargo",
+            'scrap = { path = "libs/scrap" }',
+            'scrap = { path = "libs/scrap", features = ["wayland"] }',
+            "root scrap Wayland feature",
+        ),
+        (
+            "scrap_cargo",
+            'mediacodec = ["ndk"]',
+            'wayland = []\nmediacodec = ["ndk"]',
+            "scrap Wayland feature declaration",
+        ),
+        (
+            "scrap_lib",
+            "pub mod x11;",
+            "pub mod x11;\npub mod wayland;",
+            "scrap Wayland module declaration",
+        ),
+        (
+            "scrap_wayland_directory_state",
+            "scrap-wayland-directory-absent",
+            "scrap-wayland-directory-present",
+            "scrap Wayland directory absence",
+        ),
+        (
+            "scrap_wayland_root_source_state",
+            "scrap-wayland-root-source-absent",
+            "scrap-wayland-root-source-present",
+            "scrap root Wayland source absence",
+        ),
+        (
+            "scrap_wayland_common_source_state",
+            "scrap-wayland-common-source-absent",
+            "scrap-wayland-common-source-present",
+            "scrap common Wayland source absence",
+        ),
+        (
+            "verify",
+            "[ -e libs/scrap/src/wayland ] || [ -L libs/scrap/src/wayland ]",
+            "false # Wayland directory absence gate removed",
+            "shared scrap Wayland directory source gate",
+        ),
+        (
+            "verify",
+            "[ -e libs/scrap/src/wayland.rs ] || [ -L libs/scrap/src/wayland.rs ]",
+            "false # root Wayland source absence gate removed",
+            "shared scrap root Wayland source gate",
+        ),
+        (
+            "verify",
+            "[ -e libs/scrap/src/common/wayland.rs ] || [ -L libs/scrap/src/common/wayland.rs ]",
+            "false # common Wayland source absence gate removed",
+            "shared scrap common Wayland source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-X12a</span>',
+            '<span class="id">R-X12a-disabled</span>',
+            "Wayland capture source deletion requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>192</td>",
+            "<tr><td>192-disabled</td>",
+            "Wayland capture source residue Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-X12a — orphaned Wayland capture source files deleted",
+            "R-X12a — orphaned Wayland capture source files retained",
+            "Wayland capture source residue hardening ledger",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -25314,6 +25482,24 @@ def main():
             ),
             "clipboard_fuse": (repo / "libs/clipboard/src/platform/unix/fuse/mod.rs").read_text(encoding="utf-8"),
             "scrap_hwcodec": (repo / "libs/scrap/src/common/hwcodec.rs").read_text(encoding="utf-8"),
+            "scrap_cargo": (repo / "libs/scrap/Cargo.toml").read_text(encoding="utf-8"),
+            "scrap_lib": (repo / "libs/scrap/src/lib.rs").read_text(encoding="utf-8"),
+            "scrap_common_mod": (repo / "libs/scrap/src/common/mod.rs").read_text(encoding="utf-8"),
+            "scrap_wayland_directory_state": (
+                "scrap-wayland-directory-present"
+                if os.path.lexists(repo / "libs/scrap/src/wayland")
+                else "scrap-wayland-directory-absent"
+            ),
+            "scrap_wayland_root_source_state": (
+                "scrap-wayland-root-source-present"
+                if os.path.lexists(repo / "libs/scrap/src/wayland.rs")
+                else "scrap-wayland-root-source-absent"
+            ),
+            "scrap_wayland_common_source_state": (
+                "scrap-wayland-common-source-present"
+                if os.path.lexists(repo / "libs/scrap/src/common/wayland.rs")
+                else "scrap-wayland-common-source-absent"
+            ),
             "gitignore": (repo / ".gitignore").read_text(encoding="utf-8"),
             "android_rust": (repo / "scripts/android-rust-check.sh").read_text(encoding="utf-8"),
             "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),

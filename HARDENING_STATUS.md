@@ -7046,20 +7046,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   bounds, PortForward disabled, no live Rust HTTP client, chat renders plain `Text`,
   pre-auth CPace bounded) confirmed this was the **only** sibling.
 - **Inert dead-code leftovers (optional hygiene, no reachable path).** The same
-  review enumerated confirmed-inert residue retained for now to avoid multi-file
-  regression risk at the completion boundary: orphaned uncompiled
+  review enumerated confirmed-inert residue retained at that completion boundary: orphaned uncompiled
   `libs/scrap/src/wayland.rs` + `libs/scrap/src/common/wayland.rs` (the `mod` is
   excised, the files linger beside cfg-gated `common/linux.rs` WAYLAND arms);
   dead `--quick_support` plumbing in `libs/portable`;
   and, at the time of this earlier note, `enable_trusted_devices` viewer plumbing plus
   `Dialog2FaField`/`kUseTemporaryPassword` Dart stubs. The trusted-device/2FA cluster was
   subsequently excised and is closed/gated by I-11 below; it is no longer retained residue.
-  The account-assignment residue was subsequently deleted and is closed/gated by R-SV6a above. The other listed
-  leftovers do not affect behavior or open a security path (reviewer + local re-confirm) and remain candidates for
-  focused excision with their own build re-prove.
+  The account-assignment residue was subsequently deleted and is closed/gated by R-SV6a above. The two orphaned
+  Wayland capture files were subsequently deleted and are closed/gated by R-X12a below. The remaining portable
+  `--quick_support` plumbing does not affect behavior or open a security path (reviewer + local re-confirm) and
+  remains a candidate for focused excision with its own build re-prove.
   **⤷ NOTE: this bullet sampled ~5 items; it is SUPERSEDED by the `## Incomplete`
   section immediately below (2026-07-03 full sweep = ~80 sites, incl. 7 user-visible
   defects + 1 live race this earlier note missed).**
+- **R-X12a — orphaned Wayland capture source files deleted — CLOSED/GATED 2026-07-21.** The June 22 R-X12
+  change removed the root and common `mod wayland` declarations, the Cargo feature, every active consumer, and
+  the seven-file `libs/scrap/src/wayland/` implementation, but two upstream-imported alternate module files
+  remained uncompiled at `libs/scrap/src/wayland.rs` and `libs/scrap/src/common/wayland.rs`. Rust's module
+  contract confirms an external source file enters a crate only through a module item, so neither file was
+  reachable; Cargo likewise had no feature capable of selecting them. This was therefore source-coherence and
+  future-reactivation debt, not a runtime Wayland/PipeWire capture path, listener, credential exposure,
+  privilege escalation, exploitation incident, host mutation, or evidence of compromise. Both files are now
+  deleted. The R-X12 gate rejects the old directory and both exact file paths (including dangling symlinks), and
+  the independent workspace validator interprets the Cargo/module/path boundary and rejects deliberate feature,
+  module, path, gate, requirement, disposition, or ledger mutations. The live X11 capture implementation and the
+  separately compiled platform/session compatibility code are unchanged; exact packaged-artifact proof remains
+  R-B2/R-B10.
 - **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
   correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
   `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
@@ -7376,9 +7389,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-76388201fe3dd4d056b1032b1d4f4162fbd7ae6b07505db85a3ed47a1b27e7f1  requirements.html
+724894f56d7a48804905e4d6062ce43031fb81f61055320a7bd5ddd265c06406  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, and Appendix C #191. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, and Appendix C #192. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

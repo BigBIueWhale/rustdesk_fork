@@ -3643,11 +3643,12 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn send_url_scheme(url: String) -> ResultType<()> {
-    connect(1_000, "_url")
-        .await?
-        .send(&Data::UrlLink(url))
-        .await?;
-    Ok(())
+    let mut connection = connect(1_000, "_url").await?;
+    connection.send(&Data::UrlLink(url)).await?;
+    match connection.next_timeout(1_000).await? {
+        Some(Data::Empty) => Ok(()),
+        _ => bail!("URL IPC server did not acknowledge the request"),
+    }
 }
 
 // Emit `close` events to ipc.

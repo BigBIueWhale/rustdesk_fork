@@ -1397,6 +1397,8 @@ class VirtualMouseMode with ChangeNotifier {
 }
 
 class ImageModel with ChangeNotifier {
+  static const _rgbaDecodeTimeout = Duration(seconds: 5);
+
   ui.Image? _image;
 
   ui.Image? get image => _image;
@@ -1442,16 +1444,24 @@ class ImageModel with ChangeNotifier {
     _webDecodingRgba = false;
   }
 
-  onRgba(int display, Uint8List rgba) async {
+  Future<bool> onRgba(int display, Uint8List rgba) async {
     try {
-      await decodeAndUpdate(display, rgba);
+      return await decodeAndUpdate(display, rgba).timeout(_rgbaDecodeTimeout);
+    } on TimeoutException {
+      debugPrint(
+          'Timed out decoding remote frame for display $display; releasing the native frame buffer');
+      return false;
     } catch (e) {
       debugPrint('onRgba error: $e');
+      return false;
+    } finally {
+      // Rust only publishes the next software-rendered frame after this slot is
+      // released. Always release it, even if Flutter's image decoder wedges.
+      platformFFI.nextRgba(sessionId, display);
     }
-    platformFFI.nextRgba(sessionId, display);
   }
 
-  decodeAndUpdate(int display, Uint8List rgba) async {
+  Future<bool> decodeAndUpdate(int display, Uint8List rgba) async {
     final pid = parent.target?.id;
     final rect = parent.target?.ffiModel.pi.getDisplayRect(display);
     final image = await img.decodeImageFromPixels(
@@ -1462,8 +1472,13 @@ class ImageModel with ChangeNotifier {
           ? ui.PixelFormat.rgba8888
           : ui.PixelFormat.bgra8888,
     );
-    if (parent.target?.id != pid) return;
+    if (image == null) return false;
+    if (parent.target?.id != pid) {
+      image.dispose();
+      return false;
+    }
     await update(image);
+    return true;
   }
 
   update(ui.Image? image) async {
@@ -3185,6 +3200,7 @@ class FFI {
   var version = '';
   var connType = ConnType.defaultConn;
   var closed = false;
+  VoidCallback? onRemoteFrame;
 
   /// dialogManager use late to ensure init after main page binding [globalKey]
   late final dialogManager = OverlayDialogManager();
@@ -3424,7 +3440,9 @@ class FFI {
           final rgba = platformFFI.getRgba(sessionId, display, sz);
           if (rgba != null) {
             onEvent2UIRgba();
-            await imageModel.onRgba(display, rgba);
+            if (await imageModel.onRgba(display, rgba)) {
+              onRemoteFrame?.call();
+            }
           } else {
             platformFFI.nextRgba(sessionId, display);
           }
@@ -3439,6 +3457,7 @@ class FFI {
           }
           textureModel.setTextureType(display: display, gpuTexture: gpuTexture);
           onEvent2UIRgba();
+          onRemoteFrame?.call();
         }
       }();
     });

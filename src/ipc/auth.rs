@@ -964,22 +964,27 @@ fn peer_pid_from_fd(fd: RawFd) -> Option<u32> {
     }
     #[cfg(target_os = "macos")]
     {
-        let mut pid = 0;
-        let mut len = std::mem::size_of::<libc::pid_t>() as _;
-        let rc = unsafe {
-            libc::getsockopt(
-                fd,
-                libc::SOL_LOCAL,
-                libc::LOCAL_PEEREPID,
-                &mut pid as *mut _ as *mut libc::c_void,
-                &mut len,
-            )
-        };
-        if rc == 0 && pid > 0 {
-            Some(pid as _)
-        } else {
-            None
+        // LOCAL_PEEREPID is preferred because it follows effective-identity
+        // delegation, but some macOS Unix sockets only expose LOCAL_PEERPID.
+        // Both values are kernel-authenticated and the caller still verifies
+        // the peer UID, audit token, and executable identity.
+        for option in [libc::LOCAL_PEEREPID, libc::LOCAL_PEERPID] {
+            let mut pid = 0;
+            let mut len = std::mem::size_of::<libc::pid_t>() as _;
+            let rc = unsafe {
+                libc::getsockopt(
+                    fd,
+                    libc::SOL_LOCAL,
+                    option,
+                    &mut pid as *mut _ as *mut libc::c_void,
+                    &mut len,
+                )
+            };
+            if rc == 0 && pid > 0 {
+                return Some(pid as _);
+            }
         }
+        None
     }
 }
 
@@ -1616,7 +1621,16 @@ fn ensure_peer_executable_matches_current_macos_identity(
     let code = macos_peer_code(identity, "IPC peer")?;
     let peer_exe = macos_peer_code_path(&code, "IPC peer")?;
     let current_exe = current_exe_canonical_path()?;
-    if executable_paths_match(&peer_exe, &current_exe) {
+    // SecCode returns the bundle root for an app process, whereas
+    // std::env::current_exe() returns Contents/MacOS/<name>. Treat those as
+    // the same identity only for this app's exact installed paths.
+    let matches_current = executable_paths_match(&peer_exe, &current_exe)
+        || (macos_executable_matches_expected_path(&peer_exe, &macos_installed_app_bundle_path())
+            && macos_executable_matches_expected_path(
+                &current_exe,
+                &macos_installed_app_executable_path(),
+            ));
+    if matches_current {
         if postfix != crate::POSTFIX_SERVICE
             || (macos_peer_code_satisfies_requirement(
                 &code,

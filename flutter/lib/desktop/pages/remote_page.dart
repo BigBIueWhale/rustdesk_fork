@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_hbb/models/state_model.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../consts.dart';
 import '../../common/widgets/overlay.dart';
@@ -19,6 +20,7 @@ import '../../models/input_model.dart';
 import '../../models/platform_model.dart';
 import '../../common/shared_state.dart';
 import '../../utils/image.dart';
+import '../remote_frame_watchdog.dart';
 import '../widgets/remote_toolbar.dart';
 import '../widgets/kb_layout_type_chooser.dart';
 import '../widgets/tabbar_widget.dart';
@@ -36,19 +38,23 @@ class RemotePage extends StatefulWidget {
     Key? key,
     required this.id,
     required this.toolbarState,
-    this.sessionId,
+    SessionID? sessionId,
     this.tabWindowId,
     this.password,
     this.display,
     this.displays,
     this.tabController,
     this.isSharedPassword,
-  }) : super(key: key) {
+  })  : sessionId = sessionId ?? Uuid().v4obj(),
+        super(key: key) {
     initSharedStates(id);
   }
 
   final String id;
-  final SessionID? sessionId;
+  // Keep the native session identity on the widget itself. Window teardown can
+  // run after Flutter has already detached (or before it has built) the page
+  // state, so reaching through `ffi` here is not safe.
+  final SessionID sessionId;
   final int? tabWindowId;
   final int? display;
   final List<int>? displays;
@@ -97,6 +103,7 @@ class _RemotePageState extends State<RemotePage>
   Function(bool)? _onEnterOrLeaveImage4Toolbar;
 
   late FFI _ffi;
+  late final RemoteFrameWatchdog _frameWatchdog;
 
   SessionID get sessionId => _ffi.sessionId;
 
@@ -115,6 +122,20 @@ class _RemotePageState extends State<RemotePage>
   void initState() {
     super.initState();
     _ffi = FFI(widget.sessionId);
+    _frameWatchdog = RemoteFrameWatchdog(
+      isConnected: () =>
+          mounted && !_ffi.closed && _ffi.ffiModel.pi.isSet.isTrue,
+      refresh: () {
+        debugPrint('Verifying remote frame after window focus: ${widget.id}');
+        unawaited(sessionRefreshVideo(sessionId, _ffi.ffiModel.pi));
+      },
+      reconnect: () {
+        if (!mounted || _ffi.closed) return;
+        debugPrint('Remote refresh timed out; reconnecting ${widget.id}');
+        _ffi.ffiModel.reconnect(_ffi.dialogManager, sessionId);
+      },
+    );
+    _ffi.onRemoteFrame = _frameWatchdog.onFrame;
     Get.put<FFI>(_ffi, tag: widget.id);
     _ffi.imageModel.addCallbackOnFirstImage((String peerId) {
       _ffi.canvasModel.activateLocalCursor();
@@ -184,6 +205,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowBlur() {
     super.onWindowBlur();
+    _frameWatchdog.onBlur();
     // On windows, we use `focus` way to handle keyboard better.
     // Now on Linux, there's some rdev issues which will break the input.
     // We disable the `focus` way for non-Windows temporarily.
@@ -206,6 +228,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowFocus() {
     super.onWindowFocus();
+    _frameWatchdog.onFocus();
     // See [onWindowBlur].
     if (isWindows) {
       _isWindowBlur = false;
@@ -313,6 +336,8 @@ class _RemotePageState extends State<RemotePage>
 
     _pointerLockCenterDebounceTimer?.cancel();
     _pointerLockCenterDebounceTimer = null;
+    _frameWatchdog.dispose();
+    _ffi.onRemoteFrame = null;
     // Clear callback reference to prevent memory leaks and stale references
     _ffi.inputModel.onRelativeMouseModeDisabled = null;
     // Relative mouse mode cleanup is centralized in FFI.close(closeSession: ...).

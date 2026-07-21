@@ -387,7 +387,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         .toList(growable: false);
     for (final page in pages) {
       try {
-        await bind.sessionClose(sessionId: page.ffi.sessionId);
+        await bind.sessionClose(sessionId: page.sessionId);
       } catch (e) {
         debugPrint('Failed to close remote session ${page.id}: $e');
       }

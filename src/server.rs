@@ -821,6 +821,9 @@ pub async fn start_ipc_url_server() {
                                 None => log::warn!("No main window app found!"),
                                 Some(..) => {}
                             }
+                            if let Err(err) = conn.send(&Data::Empty).await {
+                                log::warn!("Failed to acknowledge URL IPC request: {err}");
+                            }
                         }
                         _ => {
                             log::warn!("An unexpected data was sent to the ipc url server.")

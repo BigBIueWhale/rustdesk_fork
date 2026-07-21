@@ -87,10 +87,19 @@ pub struct ChangeDisplayRecord {
     height: i32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ConnectionState {
     Connecting,
     Connected,
     Disconnected,
+}
+
+/// Port-forward workers own local listening sockets, so the replacement must
+/// wait until the previous worker releases them. Remote desktop workers own no
+/// local listener and must not let a stuck TCP/decoder teardown block the new
+/// connection indefinitely.
+fn serialize_connection_worker_handoff(conn_type: ConnType) -> bool {
+    matches!(conn_type, ConnType::PORT_FORWARD | ConnType::RDP)
 }
 
 /// ConnectionRoundState is used to control the reconnecting logic.
@@ -148,7 +157,8 @@ impl Default for ConnectionRoundState {
 
 #[cfg(test)]
 mod connection_round_tests {
-    use super::{ConnectionRoundState, ConnectionState};
+    use super::{serialize_connection_worker_handoff, ConnectionRoundState, ConnectionState};
+    use hbb_common::rendezvous_proto::ConnType;
 
     #[test]
     fn stale_round_cannot_replace_current_connection_state() {
@@ -160,6 +170,16 @@ mod connection_round_tests {
         assert!(matches!(state.state, ConnectionState::Connecting));
         assert!(state.set_connected(current_round));
         assert!(matches!(state.state, ConnectionState::Connected));
+    }
+
+    #[test]
+    fn only_local_listener_workers_use_serialized_handoff() {
+        assert!(serialize_connection_worker_handoff(ConnType::PORT_FORWARD));
+        assert!(serialize_connection_worker_handoff(ConnType::RDP));
+        assert!(!serialize_connection_worker_handoff(ConnType::DEFAULT_CONN));
+        assert!(!serialize_connection_worker_handoff(
+            ConnType::FILE_TRANSFER
+        ));
     }
 }
 
@@ -1287,6 +1307,8 @@ impl<T: InvokeUiSession> Session<T> {
         // 1. If current session is connecting, do not reconnect.
         // 2. If the connection is established, send `Data::Close`.
         // 3. If the connection is disconnected, do nothing.
+        let conn_type = self.lc.read().unwrap().conn_type;
+        let serialize_handoff = serialize_connection_worker_handoff(conn_type);
         let mut connection_round_state_lock = self.connection_round_state.lock().unwrap();
         if self.thread.lock().unwrap().is_some() {
             match connection_round_state_lock.state {
@@ -1298,6 +1320,11 @@ impl<T: InvokeUiSession> Session<T> {
         let round = connection_round_state_lock.new_round();
         drop(connection_round_state_lock);
 
+        log::info!(
+            "Scheduling reconnect for {} ({conn_type:?}), round {round}, serialized handoff: {serialize_handoff}",
+            self.get_id()
+        );
+
         let cloned = self.clone();
 
         self.lc.write().unwrap().peer_info = None;
@@ -1305,14 +1332,19 @@ impl<T: InvokeUiSession> Session<T> {
         let mut lock = self.thread.lock().unwrap();
         let previous = lock.take();
         *lock = Some(std::thread::spawn(move || {
-            // The previous round owns the old TCP stream (and, for tunneling,
-            // the local listener). Wait for its close path before creating the
-            // replacement so two rounds cannot race on the shared sender or
-            // local port.
-            if let Some(previous) = previous {
-                if previous.join().is_err() {
-                    log::warn!("Previous connection thread panicked during reconnect");
+            if serialize_handoff {
+                // A port-forward round owns the local listener. It must release
+                // that port before its replacement starts listening.
+                if let Some(previous) = previous {
+                    if previous.join().is_err() {
+                        log::warn!("Previous connection thread panicked during reconnect");
+                    }
                 }
+            } else {
+                // Dropping a JoinHandle detaches the stale remote-desktop
+                // worker. Connection-round checks prevent it from publishing
+                // state after the replacement becomes current.
+                drop(previous);
             }
             io_loop(cloned, round);
         }));
@@ -1882,6 +1914,12 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
         );
         return;
     }
+    log::info!(
+        "Connection worker started for {} ({:?}), round {}",
+        handler.get_id(),
+        handler.lc.read().unwrap().conn_type,
+        round
+    );
     *handler.sender.write().unwrap() = Some(sender.clone());
     let token = LocalConfig::get_option("access_token");
     let key = crate::get_key(false).await;
@@ -2005,6 +2043,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let mut remote = Remote::new(handler, receiver, sender);
     remote.io_loop(&key, &token, round).await;
     let _ = remote.sync_jobs_status_to_local().await;
+    log::info!("Connection worker finished, round {round}");
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

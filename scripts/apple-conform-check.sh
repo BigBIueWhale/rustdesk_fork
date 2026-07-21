@@ -1201,13 +1201,16 @@ grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).a
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' "$REPO/src/ui_cm_interface.rs" || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
 grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
+grep -q 'let args = macos_process_cmdline_args(peer_pid)?;' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-process-argv-not-read"
+grep -q 'if !cm_process_argv_is_expected(&args, expected_arg)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-process-role-not-exact"
 if grep -q 'pub(crate) async fn send_to_cm' "$REPO/src/ui_interface.rs" || grep -q 'ipc::connect(1000, "_cm")' "$REPO/src/ui_interface.rs"; then
   r_s11c11="$r_s11c11 raw-cm-ui-notification-helper-present"
 fi
 if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)' "$REPO/src" >/dev/null; then
   r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
 fi
-grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
+grep -q 'match main_server_cmdline_args(peer_pid)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-argv-not-read"
+grep -q 'Ok(args) => helper_server_argv_is_expected(&args)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-not-exact-server-role-bound"
 grep -q 'Refusing root-to-user connection-manager launch; the user-context service must own it' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-root-to-user-cm-not-fail-closed"
 if grep -q 'fn run_as_user' "$REPO/src/platform/macos.rs"; then
   r_s11c11="$r_s11c11 macos-root-to-user-launcher-present"
@@ -2639,6 +2642,14 @@ if python3 scripts/verify-installed-service-classifier.py --repo . --self-test; 
   note "ok  R-S11bn Linux/macOS installed-service ownership uses exact supported executable identities"
 else
   echo "  FAIL R-S11bn installed-service ownership regained ambient path-prefix authority"
+  rc=1
+fi
+
+echo "== (2g-b) R-S11bo Unix desktop helper exact process roles =="
+if python3 scripts/verify-unix-helper-process-role.py --repo . --self-test; then
+  note "ok  R-S11bo Unix desktop helper IPC accepts only complete case-sensitive process-role vectors"
+else
+  echo "  FAIL R-S11bo Unix desktop helper IPC regained ambient first-argument process-role authority"
   rc=1
 fi
 

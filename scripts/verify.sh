@@ -808,6 +808,14 @@ else
   rc=1
 fi
 
+echo "== (3b-iii-a1a00) Unix desktop helper exact process roles (R-S11bo/R-S11e-81) =="
+if python3 scripts/verify-unix-helper-process-role.py --repo . --self-test; then
+  echo "  ok  R-S11e-81 Unix desktop helper IPC accepts only complete case-sensitive process-role vectors"
+else
+  echo "  FAIL R-S11e-81 Unix desktop helper IPC regained ambient first-argument process-role authority"
+  rc=1
+fi
+
 echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
@@ -5711,7 +5719,8 @@ grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/conne
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
 grep -q 'pub(crate) fn authenticate_windows_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-auth-helper-missing"
 grep -q 'windows_named_pipe_server_pid(stream.inner.get_ref())' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-pipe-server-pid-not-checked"
-grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg)' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-process-shape-not-checked"
+grep -q 'let args = macos_process_cmdline_args(peer_pid)?;' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-process-argv-not-read"
+grep -q 'if !cm_process_argv_is_expected(&args, expected_arg)' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-process-role-not-exact"
 grep -q 'connect_authenticated_windows_cm(ms_timeout, expected_arg, cm_launch_token()).await' src/server/connection.rs || r_s11c11="$r_s11c11 windows-server-cm-connect-not-authenticated"
 grep -q 'connect_authenticated_windows_cm(' src/server/clipboard_service.rs || r_s11c11="$r_s11c11 windows-clipboard-cm-connect-not-authenticated"
 grep -q 'connect_authenticated_windows_cm(' src/privacy_mode.rs || r_s11c11="$r_s11c11 windows-privacy-cm-connect-not-authenticated"
@@ -5721,7 +5730,8 @@ fi
 if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)' src >/dev/null; then
   r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
 fi
-grep -q 'peer_process_is_current_exe_with_first_arg(peer_pid, "--server")' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-not-server-arg-bound"
+grep -q 'match main_server_cmdline_args(peer_pid)' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-argv-not-read"
+grep -q 'Ok(args) => helper_server_argv_is_expected(&args)' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-not-exact-server-role-bound"
 grep -q 'Refusing root-to-user connection-manager launch; the user-context service must own it' src/server/connection.rs || r_s11c11="$r_s11c11 unix-root-to-user-cm-not-fail-closed"
 grep -q 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11c11="$r_s11c11 windows-typed-cm-launch-missing"
 grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-typed-helper-launcher-missing"

@@ -1207,9 +1207,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   file-authority messages, chat, voice-call state, and future downstream helper leases. Boundary: same-UID
   local process ↔ connection-manager endpoint. Attack surface closed: macOS and Windows no longer accept a raw
   fixed-path `_cm` connect as endpoint identity. The server authenticates the selected CM process shape
-  (`--cm`, current executable; on Windows through the named-pipe server PID), proves the server launch token
+  (current executable and the complete exact selected `--cm`/`--cm-no-ui` role on Unix; on Windows through
+  the named-pipe server PID), proves the server launch token
   to the CM over a server-proof HMAC context, and then sends a fresh endpoint challenge; the CM listener only
-  answers after accepting a current-executable `--server` peer and verifying that peer's launch-token proof,
+  answers after accepting a current-executable peer with the complete exact `--server` or
+  service-owned `--server --service-owned-server` role and verifying that peer's launch-token proof,
   and answers with an endpoint-proof HMAC keyed by the server-minted launch token inherited through the CM
   launch environment. Windows CM launch paths now pass that token environment through both the active-session
   launcher and same-user launcher, and the Windows server-side secondary `_cm` clients for clipboard-file sync
@@ -1222,7 +1224,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   sent. Verification closure: `scripts/verify.sh` runs the `cm_endpoint_proof_*` unit test and asserts the
   server/endpoint challenge/proof variants, directional HMAC proof/verify helpers, server-side proof before
   CM stream use, CM listener server-proof verification before endpoint proof and before spawning the normal
-  IPC loop, macOS and Windows process-shape checks, macOS and Windows launch-token environment propagation,
+  IPC loop, complete exact macOS process-role and Windows process-shape checks, macOS and Windows
+  launch-token environment propagation,
   authenticated Windows clipboard/privacy `_cm` clients, absence of the old generic theme/language `_cm`
   notification channel, and absence of raw Linux/macOS/Windows `_cm` connects;
   `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
@@ -7167,6 +7170,50 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   test execution use the existing pinned Rust 1.75 offline container. The Apple checker proves source
   shape only; no native Mac, signed app, installed service, or exact release artifact is claimed, and
   those evidence obligations remain R-R2/R-B2.
+- **R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles — SOURCE
+  IMPLEMENTED/GATED 2026-07-22; NATIVE MACOS AND EXACT PACKAGED-ARTIFACT EVIDENCE REMAIN
+  R-R2/R-B2.** Platforms: Linux and macOS desktop connection-manager and helper-listener IPC.
+  Endpoint/action: the server authenticates the selected `_cm` endpoint's `--cm` or `--cm-no-ui`
+  role before the mutual launch-token proof and any helper authority disclosure; CM and whiteboard
+  listeners authenticate the connected main server's `--server` role before answering an endpoint
+  challenge or accepting typed traffic. Boundary: the already-connected local peer PID ↔ receiver-owned
+  classification of that process's complete launch role. The inherited shared predicate enumerated all
+  processes with the current executable name, lowercased only `argv[1]`, accepted any command line with
+  at least two elements, and then searched the result for the connected PID. A same-image process with
+  `--CM`, `--SERVER`, or any arbitrary suffix therefore satisfied a claimed first-argument role. Git
+  history traces the global first-argument helper to imported baseline `c2abd3b3` and the macOS endpoint
+  wrapper's reuse of it to `806fce15`. This is a source-proven receiver role-confusion/assurance defect,
+  not a demonstrated local-to-root write or evidence of host compromise: exact connected-peer PID,
+  current executable, UID/session where applicable, server-parent ancestry, launch-token HMAC, endpoint
+  challenge, typed connection authority, and privileged service authorization remain separate proofs.
+
+  Receiver authority is now explicit and closed. After arbitrary `argv[0]`, the CM classifier accepts
+  exactly one case-sensitive argument matching the selected `--cm` or `--cm-no-ui` mode. The helper
+  server classifier accepts only exact `--server` or exact
+  `--server --service-owned-server`, preserving both the user-supervised and installed-service-owned
+  server contracts without admitting a prefix, suffix, duplicate, case variant, reordered marker, or
+  wrong role. Linux reads `/proc/<connected-pid>/cmdline`; macOS reads that connected PID's process argv.
+  Acquisition failure denies the connection. The unused global same-name process scan helpers are
+  deleted. No executable, UID/session, parent, token, HMAC, endpoint-challenge, capability, or service
+  authorization check is weakened or merged into argv classification.
+
+  The focused Rust regression accepts all four legitimate vectors and rejects missing, case-varied,
+  suffixed, wrong-role, and service-marker-plus-suffix forms. The standalone
+  `scripts/verify-unix-helper-process-role.py` parses the exact-length and case-sensitive predicate,
+  the closed CM/server inventories, direct peer-PID readers, fail-closed branches, removal of ambient
+  scan helpers, test negatives, R-S11bo, Appendix C #208, this row, and shared/Apple gate wiring, and
+  rejects 18 deliberate semantic mutations. The independent workspace verifier passes its complete
+  current-tree source-mutation matrix with the new focused verifier sealed as an input. The shared and
+  Apple gates also replace their former greps
+  for the weak first-argument helper with direct-argv and exact-role assertions. Linux compilation and
+  tests use the exact installed Rust 1.75 toolchain and reviewed offline Cargo/vcpkg inputs in a bounded
+  non-root, network-disabled, read-only-source container: the focused regression passes 1/1 with 339
+  unrelated tests filtered. Rustfmt reports no slice-owned difference; two pre-existing unrelated
+  `auth.rs` hunks remain outside this change. The repository-pinned main-verifier image is absent locally,
+  so the already-present content-addressed dev-check image supplies diagnostic evidence only and is not
+  substituted for release provenance. The Apple result is source shape only: no native Mac, signed app,
+  installed service, exact release artifact, or end-to-end helper connection is claimed, and those
+  evidence obligations remain R-R2/R-B2.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7882,9 +7929,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ddf021b62f3f1ff2d701d76ed48fc9045ba608b5e32143d50c2e63a6d20311dd  requirements.html
+ae0ae3becc31ac47e08fcc37fe8a2b34096eb104a88b04b1fc4974c1a7ebd483  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bo, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

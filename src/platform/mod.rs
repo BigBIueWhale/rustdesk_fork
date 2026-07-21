@@ -25,9 +25,7 @@ pub mod linux;
 pub mod linux_desktop_manager;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::sysinfo::System;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::{message_proto::CursorData, sysinfo::Pid, ResultType};
+use hbb_common::{message_proto::CursorData, ResultType};
 use std::sync::{Arc, Mutex};
 #[cfg(not(any(target_os = "macos", target_os = "android", target_os = "ios")))]
 pub const SERVICE_INTERVAL: u64 = 300;
@@ -166,52 +164,6 @@ pub fn is_headless_no_console_user() -> bool {
     {
         false
     }
-}
-
-// Note: This method is inefficient on Windows. It will get all the processes.
-// It should only be called when performance is not critical.
-// If we wanted to get the command line ourselves, there would be a lot of new code.
-#[allow(dead_code)]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) fn get_pids_of_process_with_args<S1: AsRef<str>, S2: AsRef<str>>(
-    name: S1,
-    args: &[S2],
-) -> Vec<Pid> {
-    let name = name.as_ref().to_lowercase();
-    let system = System::new_all();
-    system
-        .processes()
-        .iter()
-        .filter(|(_, process)| {
-            process.name().to_lowercase() == name
-                && process.cmd().len() == args.len() + 1
-                && args.iter().enumerate().all(|(i, arg)| {
-                    process.cmd()[i + 1].to_lowercase() == arg.as_ref().to_lowercase()
-                })
-        })
-        .map(|(&pid, _)| pid)
-        .collect()
-}
-
-// Note: This method is inefficient on Windows. It will get all the processes.
-// It should only be called when performance is not critical.
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_pids_of_process_with_first_arg<S1: AsRef<str>, S2: AsRef<str>>(
-    name: S1,
-    arg: S2,
-) -> Vec<Pid> {
-    let name = name.as_ref().to_lowercase();
-    let system = System::new_all();
-    system
-        .processes()
-        .iter()
-        .filter(|(_, process)| {
-            process.name().to_lowercase() == name
-                && process.cmd().len() >= 2
-                && process.cmd()[1].to_lowercase() == arg.as_ref().to_lowercase()
-        })
-        .map(|(&pid, _)| pid)
-        .collect()
 }
 
 #[cfg(test)]

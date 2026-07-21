@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11224,6 +11224,58 @@ def validate_installed_service_classifier_contract(sources):
         sources["hardening"],
         "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
         "installed-service classifier hardening ledger",
+    )
+
+
+def validate_unix_helper_process_role_contract(sources):
+    focused = sources["unix_helper_process_role_verifier"]
+    for text, label in (
+        ("def extract_rust_function(", "Unix helper Rust function parser"),
+        ("def validate(sources", "Unix helper semantic entry"),
+        (
+            '"args.len() == expected_args.len() + 1"',
+            "complete Unix helper argv-length contract",
+        ),
+        (
+            '".all(|(index, expected)| args[index + 1] == *expected)"',
+            "case-sensitive Unix helper argv equality contract",
+        ),
+        (
+            'raise VerificationError(f"ambient process-scan helper remains: {weak}")',
+            "ambient process-scan rejection semantics",
+        ),
+        (
+            'for forbidden in (">=", "eq_ignore_ascii_case", "to_lowercase", "starts_with"):',
+            "non-exact argv-operation rejection inventory",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Unix helper mutation inventory"),
+        ("run_mutations(sources)", "Unix helper mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-unix-helper-process-role.py --repo . --self-test",
+        "Unix helper shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-unix-helper-process-role.py --repo . --self-test",
+        "Unix helper Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bo</span>',
+        "exact Unix helper process-role requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>208</td>",
+        "Unix helper process-role Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
+        "Unix helper process-role hardening ledger",
     )
 
 
@@ -14141,6 +14193,7 @@ def validate_sources(sources):
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
+    validate_unix_helper_process_role_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -26167,8 +26220,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#206",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -26296,6 +26349,48 @@ def run_source_mutations(sources):
             "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
             "R-S11bn/R-S11e-80 — installed-service ownership uses path prefixes",
             "installed-service classifier hardening ledger",
+        ),
+        (
+            "unix_helper_process_role_verifier",
+            'raise VerificationError(f"ambient process-scan helper remains: {weak}")',
+            "return # ambient first-argument process scans accepted",
+            "ambient process-scan rejection semantics",
+        ),
+        (
+            "unix_helper_process_role_verifier",
+            'for forbidden in (">=", "eq_ignore_ascii_case", "to_lowercase", "starts_with"):',
+            "for forbidden in ():",
+            "non-exact argv-operation rejection inventory",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-unix-helper-process-role.py --repo . --self-test",
+            "true # Unix helper process-role verifier removed",
+            "Unix helper shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-unix-helper-process-role.py --repo . --self-test",
+            "true # Unix helper process-role verifier removed",
+            "Unix helper Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bo</span>',
+            '<span class="id">R-S11bo-disabled</span>',
+            "exact Unix helper process-role requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>208</td>",
+            "<tr><td>208-disabled</td>",
+            "Unix helper process-role Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
+            "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts process-role prefixes",
+            "Unix helper process-role hardening ledger",
         ),
         (
             "android_builder_authority_verifier",
@@ -27349,6 +27444,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "installed_service_classifier_verifier": (
                 repo / "scripts/verify-installed-service-classifier.py"
+            ).read_text(encoding="utf-8"),
+            "unix_helper_process_role_verifier": (
+                repo / "scripts/verify-unix-helper-process-role.py"
             ).read_text(encoding="utf-8"),
             "android_build_source_verifier": (
                 repo / "scripts/verify-android-build-source.py"

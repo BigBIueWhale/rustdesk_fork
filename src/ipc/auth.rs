@@ -3727,17 +3727,23 @@ pub(crate) fn authorize_windows_url_ipc_connection(stream: &Connection, postfix:
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn peer_process_is_current_exe_with_first_arg(peer_pid: u32, expected_arg: &str) -> bool {
-    let Some(exe_name) = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.file_name().map(|name| name.to_owned()))
-    else {
-        return false;
-    };
-    let exe_name = exe_name.to_string_lossy();
-    crate::platform::get_pids_of_process_with_first_arg(exe_name.as_ref(), expected_arg)
-        .iter()
-        .any(|pid| pid.as_u32() == peer_pid)
+fn process_argv_is_exact(args: &[String], expected_args: &[&str]) -> bool {
+    args.len() == expected_args.len() + 1
+        && expected_args
+            .iter()
+            .enumerate()
+            .all(|(index, expected)| args[index + 1] == *expected)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cm_process_argv_is_expected(args: &[String], expected_arg: &str) -> bool {
+    process_argv_is_exact(args, &[expected_arg])
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn helper_server_argv_is_expected(args: &[String]) -> bool {
+    process_argv_is_exact(args, &["--server"])
+        || process_argv_is_exact(args, &["--server", crate::common::SERVICE_OWNED_SERVER_ARG])
 }
 
 #[cfg(target_os = "windows")]
@@ -3828,7 +3834,17 @@ fn peer_process_is_current_exe_server(peer_pid: u32) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        peer_process_is_current_exe_with_first_arg(peer_pid, "--server")
+        match main_server_cmdline_args(peer_pid) {
+            Ok(args) => helper_server_argv_is_expected(&args),
+            Err(err) => {
+                log::debug!(
+                    "Failed direct Unix main-server role check: pid={}, err={}",
+                    peer_pid,
+                    err
+                );
+                false
+            }
+        }
     }
 }
 
@@ -3849,7 +3865,8 @@ where
         .peer_pid()
         .ok_or_else(|| anyhow::anyhow!("Failed to resolve peer pid on ipc channel '_cm'"))?;
     ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?;
-    if !peer_process_is_current_exe_with_first_arg(peer_pid, expected_arg) {
+    let args = macos_process_cmdline_args(peer_pid)?;
+    if !cm_process_argv_is_expected(&args, expected_arg) {
         bail!("_cm endpoint mode mismatch: expected {}", expected_arg);
     }
     Ok(())
@@ -4247,6 +4264,56 @@ mod tests {
         assert!(super::windows_identity_is_main_server(&user));
         assert!(super::windows_identity_is_main_server(&service_owned));
         assert!(!super::windows_identity_is_main_server(&extra));
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn r_s11e81_unix_helper_process_roles_require_exact_argument_vectors() {
+        let cm = ["rustdesk".to_owned(), "--cm".to_owned()];
+        let headless_cm = ["rustdesk".to_owned(), "--cm-no-ui".to_owned()];
+        assert!(super::cm_process_argv_is_expected(&cm, "--cm"));
+        assert!(super::cm_process_argv_is_expected(
+            &headless_cm,
+            "--cm-no-ui"
+        ));
+        for rejected in [
+            vec!["rustdesk".to_owned()],
+            vec!["rustdesk".to_owned(), "--CM".to_owned()],
+            vec![
+                "rustdesk".to_owned(),
+                "--cm".to_owned(),
+                "--unexpected".to_owned(),
+            ],
+        ] {
+            assert!(!super::cm_process_argv_is_expected(&rejected, "--cm"));
+        }
+
+        let user_server = ["rustdesk".to_owned(), "--server".to_owned()];
+        let service_server = [
+            "rustdesk".to_owned(),
+            "--server".to_owned(),
+            crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+        ];
+        assert!(super::helper_server_argv_is_expected(&user_server));
+        assert!(super::helper_server_argv_is_expected(&service_server));
+        for rejected in [
+            vec!["rustdesk".to_owned()],
+            vec!["rustdesk".to_owned(), "--SERVER".to_owned()],
+            vec![
+                "rustdesk".to_owned(),
+                "--server".to_owned(),
+                "--unexpected".to_owned(),
+            ],
+            vec![
+                "rustdesk".to_owned(),
+                "--server".to_owned(),
+                crate::common::SERVICE_OWNED_SERVER_ARG.to_owned(),
+                "--unexpected".to_owned(),
+            ],
+            vec!["rustdesk".to_owned(), "--cm".to_owned()],
+        ] {
+            assert!(!super::helper_server_argv_is_expected(&rejected));
+        }
     }
 
     #[test]

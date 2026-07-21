@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Confiar en este dispositivo"),
         ("Verification code", "Código de verificación"),
         ("verification_tip", "Se ha detectado un nuevo dispositivo y se ha enviado un código de verificación a la dirección de correo registrada. Introduzca el código de verificación para continuar con el inicio de sesión."),
-        ("Logout", "Salir"),
         ("Tags", "Tags"),
         ("Search ID", "Buscar ID"),
         ("whitelist_sep", "Separados por coma, punto y coma, espacio o nueva línea"),

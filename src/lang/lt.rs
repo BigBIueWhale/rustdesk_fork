@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Pasitikėk šiuo įrenginiu"),
         ("Verification code", "Patvirtinimo kodas"),
         ("verification_tip", "Aptiktas naujas įrenginys ir registruotu el. pašto adresu išsiųstas patvirtinimo kodas. Įveskite jį norėdami tęsti prisijungimą."),
-        ("Logout", "Atsijungti"),
         ("Tags", "Žymos"),
         ("Search ID", "Paieškos ID"),
         ("whitelist_sep", "Atskirti kableliu, kabliataškiu, tarpu arba nauja eilute"),

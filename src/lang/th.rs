@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "เชื่อถืออุปกรณ์นี้"),
         ("Verification code", "รหัสยืนยันความถูกต้อง"),
         ("verification_tip", "รหัสยืนยันความถูกต้องได้ถูกส่งไปยังอีเมล์ที่ลงทะเบียนแล้ว กรุณากรอกรหัสยืนยันความถูกต้องเพื่อดำเนินการเข้าสู่ระบบต่อ"),
-        ("Logout", "ออกจากระบบ"),
         ("Tags", "แท็ก"),
         ("Search ID", "ค้นหา ID"),
         ("whitelist_sep", "คั่นโดยเครื่องหมาย comma semicolon เว้นวรรค หรือ ขึ้นบรรทัดใหม่"),

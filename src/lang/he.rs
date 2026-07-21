@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "סמוך על מכשיר זה"),
         ("Verification code", "קוד אימות"),
         ("verification_tip", "קוד אימות נשלח לכתובת האימייל הרשומה, הזן את קוד האימות כדי להמשיך בהתחברות."),
-        ("Logout", "התנתק"),
         ("Tags", "תגים"),
         ("Search ID", "חפש מזהה"),
         ("whitelist_sep", "מופרד על ידי פסיק, נקודה פסיק, רווחים או שורה חדשה"),

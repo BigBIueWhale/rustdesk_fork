@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Dôverovať tomuto zariadeniu"),
         ("Verification code", "Overovací kód"),
         ("verification_tip", "Na vašu registrovanú e-mailovú adresu bol odoslaný overovací kód, zadajte ho a pokračujte v prihlasovaní."),
-        ("Logout", "Odhlásenie"),
         ("Tags", "Štítky"),
         ("Search ID", "Hľadať ID"),
         ("whitelist_sep", "Oddelené čiarkou, bodkočiarkou, medzerou alebo koncom riadku"),

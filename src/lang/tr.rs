@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Bu cihaza güvenin"),
         ("Verification code", "Doğrulama kodu"),
         ("verification_tip", "doğrulama tipi"),
-        ("Logout", "Çıkış yap"),
         ("Tags", "Etiketler"),
         ("Search ID", "ID Arama"),
         ("whitelist_sep", "Virgül, noktalı virgül, boşluk veya yeni satır ile ayrılmış"),

@@ -9317,13 +9317,28 @@ fi
 grep -qF 'LocalConfig::get_option("user_info")' src/client.rs && r_sv6a="$r_sv6a stale-user-info-consumer-present"
 grep -Eq 'no_register_device|OPTION_REGISTER_DEVICE|OPTION_ALLOW_HTTPS_21114' libs/hbb_common/src/config.rs && r_sv6a="$r_sv6a account-config-key-present"
 grep -qF 'let avatar = get_builtin_option(keys::OPTION_AVATAR).trim().to_owned();' src/client.rs || r_sv6a="$r_sv6a local-avatar-source-not-exact"
+r_sv6a_status_options=$(awk '/^pub enum MainStatusOptionKey \{/{capture=1} capture{print} capture && /^pub struct MainStatusOption \{/{exit}' src/ipc.rs)
+if grep -qE 'ApiServer|OPTION_API_SERVER' <<<"$r_sv6a_status_options"; then
+  r_sv6a="$r_sv6a api-server-main-status-contract-present"
+fi
+if git grep -nE 'logOut|log_out|apiServer|/api/logout' -- 'flutter/lib/*.dart' 'flutter/lib/**/*.dart' >/dev/null 2>&1; then
+  r_sv6a="$r_sv6a Flutter-logout-compatibility-present"
+fi
+if git grep -nF '("Logout",' -- 'src/lang/*.rs' >/dev/null 2>&1; then
+  r_sv6a="$r_sv6a logout-localization-key-present"
+fi
+r_sv6a_status_test=$(awk '/fn main_status_options_are_explicitly_allowlisted_and_bounded\(\)/{capture=1} capture{print} capture && /^    }$/{exit}' src/ipc.rs)
+echo "$r_sv6a_status_test" | grep -qF 'keys::OPTION_API_SERVER.to_owned(),' || r_sv6a="$r_sv6a api-server-IPC-rejection-regression-missing"
+grep -qF '(OPTION_API_SERVER, ""),' libs/hbb_common/src/config.rs || r_sv6a="$r_sv6a api-server-stale-value-mask-missing"
 grep -qF '<span class="id">R-SV6a</span>' requirements.html || r_sv6a="$r_sv6a requirement-missing"
 grep -qF '<tr><td>179</td>' requirements.html || r_sv6a="$r_sv6a appendix-disposition-missing"
+grep -qF '<tr><td>191</td>' requirements.html || r_sv6a="$r_sv6a logout-appendix-disposition-missing"
 grep -qF 'R-SV6a — account/control-plane compatibility surface deleted' HARDENING_STATUS.md || r_sv6a="$r_sv6a ledger-disposition-missing"
+grep -qF 'R-SV6a-1 — logout and API-server presentation residue' HARDENING_STATUS.md || r_sv6a="$r_sv6a logout-ledger-disposition-missing"
 if [ -n "$r_sv6a" ]; then
   echo "  FAIL R-SV6a account/control-plane structural excision:$r_sv6a"; rc=1
 else
-  echo "  ok  R-SV6a account/control-plane authority absent; profile metadata is build-local only"
+  echo "  ok  R-SV6a account/control-plane authority absent; logout/API-server presentation contracts are deleted and the empty stale-config mask remains"
 fi
 ra6_clean 'api/devices/deploy|api/devices/cli|admin\.rustdesk\.com' 'R-SV6/R-SV6a account endpoint and hardwired API host literals' || rc=1
 # R-SV6b/R-SV4/R-X6: direct-IP routing and login identity have no dormant rendezvous resolver,

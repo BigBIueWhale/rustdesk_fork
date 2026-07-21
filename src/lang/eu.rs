@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Gailu honetaz fidatu"),
         ("Verification code", "Egiaztapen-kodea"),
         ("verification_tip", "Egiaztapen-kode bat bidali da erregistratutako helbide elektronikora. Sartu egiaztapen-kodea saio-hasiera jarraitzeko."),
-        ("Logout", "Saioa bukatu"),
         ("Tags", "Etiketak"),
         ("Search ID", "Bilatu IDa"),
         ("whitelist_sep", "Koma, puntu koma, zuriune edo lerro berriengatik banatuta"),

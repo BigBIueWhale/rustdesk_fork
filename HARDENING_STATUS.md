@@ -4786,6 +4786,54 @@ unreachable and a source/test/AST gate prevents reintroduction.
   slice-owned stalled disposable bridge containers were stopped. No host RustDesk process, service, binary,
   configuration, listener, firewall, UFW/nftables/iptables state, or host-network state was inspected or changed.
 
+- **R-SV6a-1 — logout and API-server presentation residue — SOURCE IMPLEMENTED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: shared desktop IPC plus the Flutter and
+  localization sources included by desktop, Android, iOS, and future Apple artifacts. Boundary: deleted account
+  control plane ↔ local presentation/status compatibility. Upstream `UserModel.logOut({apiServer})` posted the
+  local ID/UUID and bearer header to `$apiServer/api/logout`, then reset account/address-book state. History proves
+  that `ee5bb33` removed the server-config-change caller, `bf0878d` removed the visible caller, `f90f197` removed
+  the HTTP request but retained a caller-less reset stub, `d5aec5b` deleted the stub, and `3309b49` deleted the
+  complete account model. Current Flutter/Android/iOS/Rust protocol source therefore had no logout operation,
+  endpoint, caller, or account principal. A later typed main-IPC allowlist in `57bcb52` nevertheless admitted
+  `MainStatusOptionKey::ApiServer` in both directions with no Dart consumer, while the template and all 49 full
+  translation maps retained the caller-less `Logout` key. This was dead presentation/reactivation debt—not a
+  current account request, egress path, authorization bypass, local-to-root path, privilege escalation, exploitation
+  incident, host mutation, public listener, or evidence of compromise.
+
+  Authority model and source closure: a binary with no account principal has no login/logout lifecycle and does not
+  present an account-server address through IPC. `ApiServer` and both `OPTION_API_SERVER` mappings are removed from
+  `MainStatusOptionKey`, so a desktop status/options message carrying `api-server` is unallowlisted and rejected.
+  The dead `Logout` localization entry is deleted from the master and every translation map; authored/generated
+  Flutter retains no `logOut`/`log_out`, `apiServer`, or `/api/logout` vocabulary. The
+  `(OPTION_API_SERVER, "")` `PINNED_SETTINGS` entry deliberately remains: it masks stale persisted/default/signed-
+  custom configuration at the central read/write funnel but is no longer an IPC presentation or mutation contract.
+
+  Verification evidence and exact limitations before publication: the complete `scripts/dart-verify.sh` transaction
+  passed with canonical offline closure
+  `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac`, freshly generated Flutter Rust Bridge
+  output, zero Flutter analyzer errors, all address/saved-peer/retired-role-swap tests, the exact locked/offline
+  `flutter,unix-file-copy-paste` Rust library check, every Dart source gate including the expanded account/logout
+  family, and an unchanged source worktree. The focused Rust allowlist regression then passed under the default
+  library surface: 1 passed, 0 failed, 326 filtered. Its only accommodation was a container-tmpfs compatibility
+  object delegating the old builder's missing libc `renameat2` wrapper to `SYS_renameat2`; it changed no repository
+  or image bytes. The first two diagnostic attempts are not counted green: the checked-in stale generated bridge
+  failed its expected ABI comparison when `flutter` was enabled without regeneration, and the non-Flutter test
+  binary compiled but could not link until that old-glibc compatibility object was supplied.
+
+  The shared and Apple exact source-gate blocks passed; the focused independent semantic validator passed normally
+  and rejected all 17 declared deliberate reintroductions across IPC, authored/freshly-generated Flutter,
+  localization, retained pin, gates,
+  requirement, Appendix C #191, and ledger. Edited-shell Bash parsing, Python parsing, `git diff --check`, Rustfmt
+  for `src/ipc.rs` with child modules excluded, and native-codec watch in normal and deliberate-mutation self-test
+  modes passed. A whole-module Rustfmt diagnostic reported only pre-existing formatting differences in unchanged
+  `src/ipc/auth.rs` and `src/ipc/fs.rs`; it did not report this slice's `src/ipc.rs` edit and is not counted as a
+  whole-module pass. The full `scripts/verify.sh` transaction remains unavailable because its exact pinned
+  dev-check image is absent, and the complete Apple script was deliberately not invoked because its preflight
+  builds Docker images. This source slice does not claim the still-pending clean cold release, Apple artifacts,
+  mobile on-device storage-key proof, refreshed advisory data, or R-V3 external review. No host RustDesk
+  process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host-network state was
+  inspected or changed.
+
 - **R-SV6b — dormant rendezvous/NAT compatibility authority deleted — SOURCE CLOSED/GATED;
   EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: the shared Rust viewer and
   configuration source used by desktop, Android, iOS, and future Apple artifacts. Boundary: operator-supplied direct
@@ -7289,8 +7337,12 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   CM-only copies of `recording`/`block_input`/`restart` are deleted after exact producer/consumer history and source
   proof; the real connection capability fields and viewer permission protocol remain. `forceAlwaysRelay` was
   already deleted and gated by R-G6 and was stale in this row.
-- **Misc still requiring per-consumer proof:** `logOut(apiServer)` only. The stale `switch_sides()` entry is closed
-  by R-G4a after source/history proof expanded it to, and deleted, the complete residual role-swap state chain.
+- **Miscellaneous named residue — CLOSED/GATED:** `logOut(apiServer)` is closed by R-SV6a-1 after history proved
+  that its callers, network sink, stub, and containing account model were already deleted; the later API-server IPC
+  presentation arm and the dead localization key are now deleted and gated as the actual surviving residue. The
+  stale `switch_sides()` entry is closed by R-G4a after source/history proof expanded it to, and deleted, the complete
+  residual role-swap state chain. This closes only this itemized Tier 4 row, not the independent release/artifact,
+  device, advisory, Apple-toolchain, or external-audit residuals above.
 
 ### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
 
@@ -7324,9 +7376,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d9d8882a10b4684464f78465da8872cdb79f559d84d3bb7e4038d5013ccd4558  requirements.html
+76388201fe3dd4d056b1032b1d4f4162fbd7ae6b07505db85a3ed47a1b27e7f1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, and Appendix C #190. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, and Appendix C #191. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

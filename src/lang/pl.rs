@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Dodaj to urządzenie do zaufanych"),
         ("Verification code", "Kod weryfikacyjny"),
         ("verification_tip", "Nastąpiło logowanie z nowego urządzenia, kod weryfikacyjny został wysłany na podany adres email, wprowadź kod by kontynuować proces logowania"),
-        ("Logout", "Wyloguj"),
         ("Tags", "Tagi"),
         ("Search ID", "Szukaj ID"),
         ("whitelist_sep", "Oddzielone przecinkiem, średnikiem, spacją lub w nowej linii"),

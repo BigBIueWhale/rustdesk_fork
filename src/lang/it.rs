@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Registra questo dispositivo come attendibile"),
         ("Verification code", "Codice di verifica"),
         ("verification_tip", "È stato inviato un codice di verifica all'indirizzo email registrato, per accedere inserisci il codice di verifica."),
-        ("Logout", "Esci"),
         ("Tags", "Etichette"),
         ("Search ID", "Cerca ID"),
         ("whitelist_sep", "Separati da virgola, punto e virgola, spazio o a capo"),

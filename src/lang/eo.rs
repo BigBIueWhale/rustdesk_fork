@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Fidu ĉi tiun aparaton"),
         ("Verification code", "Konfirmkodo"),
         ("verification_tip", "Konfirmkodo estis sendita al la registrita retpoŝta adreso, enigu la konfirmkodon por daŭrigi ensaluti."),
-        ("Logout", "Elsaluti"),
         ("Tags", "Etikedi"),
         ("Search ID", "Serĉi ID"),
         ("whitelist_sep", "Vi povas uzi komon, punktokomon, spacon aŭ linsalton kiel apartigilo"),

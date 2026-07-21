@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Tin tưởng thiết bị này"),
         ("Verification code", "Mã xác thực"),
         ("verification_tip", "Bạn đang đăng nhập trên thiết bị mới. Một mã xác thực đã được gửi đến email của bạn, vui lòng nhập mã để tiếp tục."),
-        ("Logout", "Đăng xuất"),
         ("Tags", "Thẻ"),
         ("Search ID", "Tìm ID"),
         ("whitelist_sep", "Phân cách bởi dấu phẩy, dấu chấm phẩy, khoảng trắng hoặc dòng mới"),

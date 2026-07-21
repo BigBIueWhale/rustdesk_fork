@@ -342,6 +342,34 @@ else
   note "ok  R-SV6d Apple source has no public/custom-rendezvous predicate and retains direct-only UI semantics"
 fi
 
+echo "== (2a-0b1) R-SV6a Apple account logout/API-server presentation excision =="
+r_sv6a_logout=
+r_sv6a_status_options=$(awk '/^pub enum MainStatusOptionKey \{/{capture=1} capture{print} capture && /^pub struct MainStatusOption \{/{exit}' "$REPO/src/ipc.rs")
+if grep -qE 'ApiServer|OPTION_API_SERVER' <<<"$r_sv6a_status_options"; then
+  r_sv6a_logout="$r_sv6a_logout api-server-main-status-contract-present"
+fi
+if grep -RInE --include='*.dart' 'logOut|log_out|apiServer|/api/logout' "$REPO/flutter/lib" >/dev/null; then
+  r_sv6a_logout="$r_sv6a_logout Flutter-logout-compatibility-present"
+fi
+if grep -RInF --include='*.rs' '("Logout",' "$REPO/src/lang" >/dev/null; then
+  r_sv6a_logout="$r_sv6a_logout logout-localization-key-present"
+fi
+r_sv6a_status_test=$(awk '/fn main_status_options_are_explicitly_allowlisted_and_bounded\(\)/{capture=1} capture{print} capture && /^    }$/{exit}' "$REPO/src/ipc.rs")
+echo "$r_sv6a_status_test" | grep -qF 'keys::OPTION_API_SERVER.to_owned(),' \
+  || r_sv6a_logout="$r_sv6a_logout api-server-IPC-rejection-regression-missing"
+grep -qF '(OPTION_API_SERVER, ""),' "$REPO/libs/hbb_common/src/config.rs" \
+  || r_sv6a_logout="$r_sv6a_logout api-server-stale-value-mask-missing"
+grep -qF '<tr><td>191</td>' "$REPO/requirements.html" \
+  || r_sv6a_logout="$r_sv6a_logout appendix-disposition-missing"
+grep -qF 'R-SV6a-1 — logout and API-server presentation residue' "$REPO/HARDENING_STATUS.md" \
+  || r_sv6a_logout="$r_sv6a_logout ledger-disposition-missing"
+if [ -n "$r_sv6a_logout" ]; then
+  echo "  FAIL R-SV6a Apple account logout/API-server presentation closure:$r_sv6a_logout"
+  rc=1
+else
+  note "ok  R-SV6a Apple shared source has no logout API/localization or API-server IPC presentation contract; the empty stale-config mask remains"
+fi
+
 echo "== (2a-0c) R-G1 dead Dart policy-option aliases stay excised =="
 r_g1_dead_dart=
 if grep -RInE --include='*.dart' \

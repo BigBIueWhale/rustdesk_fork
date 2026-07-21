@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Vjeruj ovom uređaju"),
         ("Verification code", "Kontrolni kôd"),
         ("verification_tip", "Kontrolni kôd je poslan na registriranu adresu e-pošte, unesite ga i nastavite s prijavom."),
-        ("Logout", "Odjava"),
         ("Tags", "Oznake"),
         ("Search ID", "Traži ID"),
         ("whitelist_sep", "Odvojeno zarezima, točka zarezima, praznim mjestima ili novim redovima"),

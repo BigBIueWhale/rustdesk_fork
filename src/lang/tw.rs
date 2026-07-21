@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "信任這部裝置"),
         ("Verification code", "驗證碼"),
         ("verification_tip", "驗證碼已傳送到註冊的電子郵件地址，請輸入驗證碼以繼續登入。"),
-        ("Logout", "登出"),
         ("Tags", "標籤"),
         ("Search ID", "搜尋 ID"),
         ("whitelist_sep", "使用逗號、分號、空格，或是換行來分隔"),

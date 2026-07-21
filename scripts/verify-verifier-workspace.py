@@ -11253,6 +11253,45 @@ def validate_account_control_plane_excision_contract(sources):
     ):
         require_absent(sources["config_source"], token, label)
 
+    status_option_contract = extract_between(
+        sources["ipc_source"],
+        "pub enum MainStatusOptionKey {",
+        "\npub struct MainStatusOption {",
+        "main status option contract",
+    )
+    for token, label in (
+        ("\n    ApiServer,", "API-server main status variant"),
+        (
+            "Self::ApiServer => keys::OPTION_API_SERVER",
+            "API-server main status serializer mapping",
+        ),
+        (
+            "keys::OPTION_API_SERVER => Self::ApiServer",
+            "API-server main status parser mapping",
+        ),
+    ):
+        require_absent(status_option_contract, token, label)
+    for token, label in (
+        ("logOut", "Flutter logout compatibility method"),
+        ("log_out", "Flutter logout compatibility alias"),
+        ("apiServer", "Flutter logout API-server argument"),
+        ("/api/logout", "Flutter logout endpoint"),
+    ):
+        require_absent(sources["flutter_authored_dart"], token, label)
+    require_absent(
+        sources["lang_sources"], '("Logout",', "account logout localization key"
+    )
+    require_text(
+        sources["ipc_source"],
+        'keys::OPTION_API_SERVER.to_owned(),\n            "retired".to_owned(),\n        )]))\n        .is_err());',
+        "API-server main IPC rejection regression",
+    )
+    require_text(
+        sources["config_source"],
+        '(OPTION_API_SERVER, ""),',
+        "API-server stale-value config-funnel mask",
+    )
+
     for source_key, token, label in (
         ("verify", "R-SV6a account/control-plane structural excision", "shared account source gate"),
         ("dart_verify", "R-G4/R-SV6a Android device-deploy UI and bridge ABI", "Dart account bridge gate"),
@@ -11260,6 +11299,26 @@ def validate_account_control_plane_excision_contract(sources):
             "apple",
             'need("cli", "account-assignment-command-present"',
             "Apple account CLI gate",
+        ),
+        (
+            "verify",
+            "logout/API-server presentation contracts are deleted",
+            "shared account logout source gate",
+        ),
+        (
+            "dart_verify",
+            "Flutter account/address-book/logout HTTP client family",
+            "Dart account logout source gate",
+        ),
+        (
+            "dart_verify",
+            "freshly generated bridge regained account logout/API-server presentation vocabulary",
+            "fresh generated Dart account logout source gate",
+        ),
+        (
+            "apple",
+            "R-SV6a Apple account logout/API-server presentation excision",
+            "Apple account logout source gate",
         ),
     ):
         require_text(sources[source_key], token, label)
@@ -11273,14 +11332,56 @@ def validate_account_control_plane_excision_contract(sources):
         ("stale account cache", "stale account-profile requirement"),
         ("account-only", "account-only configuration-key requirement"),
         ("build-local", "local profile metadata authority"),
+        ("Account logout is part of the deleted control plane", "account logout deletion requirement"),
+        ("Desktop <code>MainStatusOptionKey</code>", "API-server IPC presentation requirement"),
+        ("solely to mask stale", "retained API-server config-funnel mask requirement"),
     ):
         require_text(requirement, text, label)
     require_text(sources["requirements"], "<tr><td>179</td>", "account control-plane Appendix C row")
+    require_text(
+        sources["requirements"],
+        "<tr><td>191</td>",
+        "account logout presentation Appendix C row",
+    )
     require_text(
         sources["hardening"],
         "R-SV6a — account/control-plane compatibility surface deleted",
         "account control-plane hardening ledger",
     )
+    require_text(
+        sources["hardening"],
+        "R-SV6a-1 — logout and API-server presentation residue",
+        "account logout presentation hardening ledger",
+    )
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "account logout deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("API-server main status variant", "API-server status-variant mutation"),
+        ("API-server main status serializer mapping", "API-server serializer mutation"),
+        ("API-server main status parser mapping", "API-server parser mutation"),
+        ("API-server main IPC rejection regression", "API-server rejection-test mutation"),
+        ("API-server stale-value config-funnel mask", "API-server mask mutation"),
+        ("Flutter logout compatibility method", "Flutter logout-method mutation"),
+        ("Flutter logout compatibility alias", "Flutter logout-alias mutation"),
+        ("Flutter logout API-server argument", "Flutter logout-argument mutation"),
+        ("Flutter logout endpoint", "Flutter logout-endpoint mutation"),
+        ("account logout localization key", "logout-localization mutation"),
+        ("shared account logout source gate", "shared logout-gate mutation"),
+        ("Dart account logout source gate", "Dart logout-gate mutation"),
+        (
+            "fresh generated Dart account logout source gate",
+            "fresh generated Dart logout-gate mutation",
+        ),
+        ("Apple account logout source gate", "Apple logout-gate mutation"),
+        ("account logout deletion requirement", "logout-requirement mutation"),
+        ("account logout presentation Appendix C row", "logout-Appendix mutation"),
+        ("account logout presentation hardening ledger", "logout-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
 
 
 def validate_rendezvous_compatibility_excision_contract(sources):
@@ -23392,6 +23493,108 @@ def run_source_mutations(sources):
             "account control-plane hardening ledger",
         ),
         (
+            "ipc_source",
+            "    CustomRendezvousServer,\n    AllowWebsocket,",
+            "    CustomRendezvousServer,\n    ApiServer,\n    AllowWebsocket,",
+            "API-server main status variant",
+        ),
+        (
+            "ipc_source",
+            "            Self::CustomRendezvousServer => keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,\n            Self::AllowWebsocket",
+            "            Self::CustomRendezvousServer => keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,\n            Self::ApiServer => keys::OPTION_API_SERVER,\n            Self::AllowWebsocket",
+            "API-server main status serializer mapping",
+        ),
+        (
+            "ipc_source",
+            "            keys::OPTION_CUSTOM_RENDEZVOUS_SERVER => Self::CustomRendezvousServer,\n            keys::OPTION_ALLOW_WEBSOCKET",
+            "            keys::OPTION_CUSTOM_RENDEZVOUS_SERVER => Self::CustomRendezvousServer,\n            keys::OPTION_API_SERVER => Self::ApiServer,\n            keys::OPTION_ALLOW_WEBSOCKET",
+            "API-server main status parser mapping",
+        ),
+        (
+            "ipc_source",
+            'keys::OPTION_API_SERVER.to_owned(),\n            "retired".to_owned(),\n        )]))\n        .is_err());',
+            'keys::OPTION_API_SERVER.to_owned(),\n            "retired".to_owned(),\n        )]))\n        .is_ok());',
+            "API-server main IPC rejection regression",
+        ),
+        (
+            "config_source",
+            '(OPTION_API_SERVER, ""),',
+            '(OPTION_API_SERVER, "https://account.invalid"),',
+            "API-server stale-value config-funnel mask",
+        ),
+        (
+            "flutter_authored_dart",
+            "// FILE flutter/lib/web/bridge.dart\n",
+            "// FILE flutter/lib/web/bridge.dart\nFuture<void> logOut() async {}\n",
+            "Flutter logout compatibility method",
+        ),
+        (
+            "flutter_authored_dart",
+            "// FILE flutter/lib/web/bridge.dart\n",
+            "// FILE flutter/lib/web/bridge.dart\nFuture<void> log_out() async {}\n",
+            "Flutter logout compatibility alias",
+        ),
+        (
+            "flutter_authored_dart",
+            "// FILE flutter/lib/web/bridge.dart\n",
+            "// FILE flutter/lib/web/bridge.dart\nconst String apiServer = '';\n",
+            "Flutter logout API-server argument",
+        ),
+        (
+            "flutter_authored_dart",
+            "// FILE flutter/lib/web/bridge.dart\n",
+            "// FILE flutter/lib/web/bridge.dart\nconst String retiredLogoutEndpoint = '/api/logout';\n",
+            "Flutter logout endpoint",
+        ),
+        (
+            "lang_sources",
+            "// FILE src/lang/template.rs\n",
+            "// FILE src/lang/template.rs\n        (\"Logout\", \"\"),\n",
+            "account logout localization key",
+        ),
+        (
+            "verify",
+            "logout/API-server presentation contracts are deleted",
+            "logout/API-server presentation gate disabled",
+            "shared account logout source gate",
+        ),
+        (
+            "dart_verify",
+            "Flutter account/address-book/logout HTTP client family",
+            "Flutter account/address-book HTTP client family",
+            "Dart account logout source gate",
+        ),
+        (
+            "dart_verify",
+            "freshly generated bridge regained account logout/API-server presentation vocabulary",
+            "freshly generated bridge account logout check disabled",
+            "fresh generated Dart account logout source gate",
+        ),
+        (
+            "apple",
+            "R-SV6a Apple account logout/API-server presentation excision",
+            "R-SV6a Apple account logout compatibility gate disabled",
+            "Apple account logout source gate",
+        ),
+        (
+            "requirements",
+            "Account logout is part of the deleted control plane",
+            "Account logout compatibility may remain",
+            "account logout deletion requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>191</td>",
+            "<tr><td>191-disabled</td>",
+            "account logout presentation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV6a-1 — logout and API-server presentation residue",
+            "R-SV6a-1 — account compatibility cleanup deferred",
+            "account logout presentation hardening ledger",
+        ),
+        (
             "client_source",
             "    pub custom_fps: Arc<Mutex<Option<usize>>>,",
             "    pub other_server: Option<(String, String, String)>,\n    pub custom_fps: Arc<Mutex<Option<usize>>>,",
@@ -24994,6 +25197,20 @@ def main():
             "flutter_ffi_source": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8"),
             "cli_source": (repo / "src/cli.rs").read_text(encoding="utf-8"),
             "ui_interface_source": (repo / "src/ui_interface.rs").read_text(encoding="utf-8"),
+            "flutter_authored_dart": "\n".join(
+                f"// FILE {path.relative_to(repo).as_posix()}\n{path.read_text(encoding='utf-8')}"
+                for path in sorted(
+                    (repo / "flutter/lib").rglob("*.dart"),
+                    key=lambda path: path.as_posix(),
+                )
+            ),
+            "lang_sources": "\n".join(
+                f"// FILE {path.relative_to(repo).as_posix()}\n{path.read_text(encoding='utf-8')}"
+                for path in sorted(
+                    (repo / "src/lang").glob("*.rs"),
+                    key=lambda path: path.as_posix(),
+                )
+            ),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
             "peer_model_dart": (repo / "flutter/lib/models/peer_model.dart").read_text(
                 encoding="utf-8"

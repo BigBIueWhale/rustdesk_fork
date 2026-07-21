@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Acest dispozitiv este de încredere"),
         ("Verification code", "Cod de verificare"),
         ("verification_tip", "Introdu codul de verificare trimis la adresa ta de e-mail sau generat de aplicația de autentificare."),
-        ("Logout", "Deconectează-te"),
         ("Tags", "Etichete"),
         ("Search ID", "Caută după ID"),
         ("whitelist_sep", "Poți folosi ca separator virgula, punctul și virgula, spațiul sau linia nouă"),

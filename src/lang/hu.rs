@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Megbízom ebben az eszközben"),
         ("Verification code", "Ellenőrző kód"),
         ("verification_tip", "A regisztrált e-mail-címre egy ellenőrző kód lesz elküldve. Adja meg az ellenőrző kódot az újbóli bejelentkezéshez."),
-        ("Logout", "Kilépés"),
         ("Tags", "Címkék"),
         ("Search ID", "Azonosító keresése..."),
         ("whitelist_sep", "A címeket vesszővel, pontosvesszővel, szóközzel vagy új sorral kell elválasztani"),

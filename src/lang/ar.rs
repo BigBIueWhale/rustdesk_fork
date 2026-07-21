@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "الوثوق بهذا الجهاز"),
         ("Verification code", "رمز التحقق"),
         ("verification_tip", "رمز التحقق ارسل الى بريدك الالكتروني المسجل. ادخل رمز التحقق للاستمرار بتسجيل الدخول."),
-        ("Logout", "تسجيل الخروج"),
         ("Tags", "العلامات"),
         ("Search ID", "البحث المعرف"),
         ("whitelist_sep", "مفصولة بفاصلة او فاصلة منقوطة او سطر جديد"),

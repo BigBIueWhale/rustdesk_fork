@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Lita på denna enhet"),
         ("Verification code", "Verifikationskod"),
         ("verification_tip", "verifikation_tips"),
-        ("Logout", "Logga ut"),
         ("Tags", "Taggar"),
         ("Search ID", "Sök ID"),
         ("whitelist_sep", "Separerat av ett comma, semikolon, mellanslag eller ny linje"),

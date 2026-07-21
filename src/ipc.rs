@@ -1809,7 +1809,6 @@ pub enum MainStatusOptionKey {
     ApproveMode,
     VerificationMethod,
     CustomRendezvousServer,
-    ApiServer,
     AllowWebsocket,
     PresetAddressBookName,
     PresetAddressBookTag,
@@ -1856,7 +1855,6 @@ impl MainStatusOptionKey {
             Self::ApproveMode => keys::OPTION_APPROVE_MODE,
             Self::VerificationMethod => keys::OPTION_VERIFICATION_METHOD,
             Self::CustomRendezvousServer => keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,
-            Self::ApiServer => keys::OPTION_API_SERVER,
             Self::AllowWebsocket => keys::OPTION_ALLOW_WEBSOCKET,
             Self::PresetAddressBookName => keys::OPTION_PRESET_ADDRESS_BOOK_NAME,
             Self::PresetAddressBookTag => keys::OPTION_PRESET_ADDRESS_BOOK_TAG,
@@ -1906,7 +1904,6 @@ impl MainStatusOptionKey {
             keys::OPTION_APPROVE_MODE => Self::ApproveMode,
             keys::OPTION_VERIFICATION_METHOD => Self::VerificationMethod,
             keys::OPTION_CUSTOM_RENDEZVOUS_SERVER => Self::CustomRendezvousServer,
-            keys::OPTION_API_SERVER => Self::ApiServer,
             keys::OPTION_ALLOW_WEBSOCKET => Self::AllowWebsocket,
             keys::OPTION_PRESET_ADDRESS_BOOK_NAME => Self::PresetAddressBookName,
             keys::OPTION_PRESET_ADDRESS_BOOK_TAG => Self::PresetAddressBookTag,
@@ -7956,6 +7953,11 @@ mod test {
         assert!(MainStatusOptions::from_map(HashMap::from([(
             keys::OPTION_PROXY_PASSWORD.to_owned(),
             "secret".to_owned(),
+        )]))
+        .is_err());
+        assert!(MainStatusOptions::from_map(HashMap::from([(
+            keys::OPTION_API_SERVER.to_owned(),
+            "retired".to_owned(),
         )]))
         .is_err());
         assert!(MainStatusOptions::from_map(HashMap::from([(

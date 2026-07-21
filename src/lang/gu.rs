@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "આ ઉપકરણ પર વિશ્વાસ કરો"),
         ("Verification code", "વેરિફિકેશન કોડ"),
         ("verification_tip", "વેરિફિકેશન કોડ તમારા ઇમેઇલ પર મોકલવામાં આવ્યો છે"),
-        ("Logout", "લોગઆઉટ"),
         ("Tags", "ટેગ્સ"),
         ("Search ID", "ID શોધો"),
         ("whitelist_sep", "અલ્પવિરામ, અર્ધવિરામ અથવા સ્પેસ દ્વારા અલગ કરો"),

@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Registra custu dispositivu comente de fidùtzia"),
         ("Verification code", "Còdighe de verìfica"),
         ("verification_tip", "Amus imbiadu unu còdighe de averguada a s'indiritzu de posta eletrònica registradu, pro intrare inserta·lu."),
-        ("Logout", "Essi"),
         ("Tags", "Etichetas"),
         ("Search ID", "Chirca ID"),
         ("whitelist_sep", "Separados dae vìrgulas, puntu e vìrgula, ispatziu o riga a suta"),

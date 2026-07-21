@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "このデバイスを信頼する"),
         ("Verification code", "認証コード"),
         ("verification_tip", "登録されたメールアドレスに認証コードが送信されました。認証コードを入力して、ログインを続行してください。"),
-        ("Logout", "ログアウト"),
         ("Tags", "タグ"),
         ("Search ID", "ID を検索"),
         ("whitelist_sep", "コンマやセミコロン、空白、改行で区切ってください"),

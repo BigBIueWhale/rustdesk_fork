@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Usalda seda seadet"),
         ("Verification code", "Kinnituskood"),
         ("verification_tip", "Registreeritud e-posti aadressile on saadetud kinnituskood, sisselogimise jätkamiseks sisesta kinnituskood."),
-        ("Logout", "Logi välja"),
         ("Tags", "Sildid"),
         ("Search ID", "Otsi ID-d"),
         ("whitelist_sep", "Eraldatud koma, semikooloni, tühikute või uue reaga"),

@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "இந்த சாதனத்தை நம்பு"),
         ("Verification code", "சரிபார்ப்பு குறியீடு"),
         ("verification_tip", "சரிபார்ப்பு_குறிப்பு"),
-        ("Logout", "வெளியேறு"),
         ("Tags", "குறிச்சொற்கள்"),
         ("Search ID", "ஐடி தேடு"),
         ("whitelist_sep", "அனுமதிப்பட்டியல்_sep"),

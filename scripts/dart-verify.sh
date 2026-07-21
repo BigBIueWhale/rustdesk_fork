@@ -228,7 +228,12 @@ dg_clean 'Download new version|Click to upgrade|Auto update|Check for software u
 dg_clean 'LoginWidgetOP|kOpSvgList|kAuthReqTypeOidc|queryOidcLoginOptions' 'R-G4 OIDC SSO provider-login widgets'
 # R-G4 / R-SV6 / §18: the Flutter account/address-book API HTTP client family is deleted, not
 # pointed at an empty host. This catches both the old account login methods and generic HTTP bridges.
-dg_clean 'utils/http_service|package:http/http\.dart|http\.(get|post|put|delete|Client)|mainGetApiServer|mainAccountAuth|mainPostRequest|mainHttpRequest|mainGetHttpStatus|class LoginRequest|class LoginResponse|class RequestException|enum HttpType|/api/login|/api/logout|/api/currentUser|/api/ab|/api/users|/api/peers|device-group/accessible|getHttpHeaders|decode_http_response' 'R-G4/R-SV6 Flutter account/address-book HTTP client family'
+dg_clean 'utils/http_service|package:http/http\.dart|http\.(get|post|put|delete|Client)|mainGetApiServer|mainAccountAuth|mainPostRequest|mainHttpRequest|mainGetHttpStatus|class LoginRequest|class LoginResponse|class RequestException|enum HttpType|logOut|log_out|apiServer|/api/login|/api/logout|/api/currentUser|/api/ab|/api/users|/api/peers|device-group/accessible|getHttpHeaders|decode_http_response' 'R-G4/R-SV6 Flutter account/address-book/logout HTTP client family'
+if grep -qE 'logOut|log_out|apiServer|/api/logout' \
+  flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; then
+  echo "  FAIL R-SV6a: freshly generated bridge regained account logout/API-server presentation vocabulary"; exit 1
+fi
+echo "  ok  R-SV6a freshly generated bridge has no account logout/API-server presentation vocabulary"
 # R-G4 / §19: the "Network"/server-config UI is deleted — config UI for the rendezvous / relay /
 # api-server infrastructure the fork structurally removed. Desktop: the _Network/_NetworkState
 # classes ("ID/Relay Server" editor + SOCKS proxy + WebSocket switch) + the SettingsTabKey.network

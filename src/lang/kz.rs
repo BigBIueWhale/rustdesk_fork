@@ -196,7 +196,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Trust this device", "Бұл құрылғыға сену"),
         ("Verification code", "Тексеру коды"),
         ("verification_tip", "Тіркелген эл. пошта мекенжайына тексеру коды жіберілді, кіруді жалғастыру үшін тексеру кодын еңгізіңіз."),
-        ("Logout", "Шығу"),
         ("Tags", "Тақтар"),
         ("Search ID", "ID Іздеу"),
         ("whitelist_sep", "Үтір, нүктелі үтір, бос орын және жаңа жолал арқылы бөлінеді"),

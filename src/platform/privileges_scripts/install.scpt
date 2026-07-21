@@ -15,6 +15,7 @@ on run {daemon_file, agent_file, bundled_service_exec}
   set support_dir to "/Library/Application Support/RustDesk"
   set root_prefs_dir to "/var/root/Library/Preferences/com.carriez.RustDesk"
   set service_label to "com.carriez.RustDesk_service"
+  set service_target to "system/" & service_label
 
   set reject_symlinks to "if [ -L " & quoted form of daemon_plist & " ] || [ -L " & quoted form of agent_plist & " ] || [ -L " & quoted form of app_bundle & " ] || [ -L " & quoted form of expected_bundled_service_exec & " ] || [ -L " & quoted form of helper_dir & " ] || [ -L " & quoted form of service_exec & " ] || [ -L " & quoted form of temp_service_exec & " ] || [ -L " & quoted form of bundled_service_exec & " ] || [ -L " & quoted form of log_dir & " ] || [ -L " & quoted form of log_stderr & " ] || [ -L " & quoted form of log_stdout & " ] || [ -L " & quoted form of support_dir & " ] || [ -L " & quoted form of root_prefs_dir & " ]; then exit 1; fi;"
 
@@ -44,9 +45,9 @@ on run {daemon_file, agent_file, bundled_service_exec}
 
   set write_agent_plist to "/usr/bin/printf %s " & quoted form of agent_file & " > " & quoted form of agent_plist & " && /bin/chmod -N " & quoted form of agent_plist & " && /usr/sbin/chown root:wheel " & quoted form of agent_plist & " && /bin/chmod 0644 " & quoted form of agent_plist & ";"
 
-  set unload_existing_service to "if /bin/launchctl list " & quoted form of service_label & " >/dev/null 2>&1; then /bin/launchctl unload -w " & quoted form of daemon_plist & "; fi;"
+  set unload_existing_service to "/bin/launchctl print system >/dev/null 2>&1; if /bin/launchctl print " & quoted form of service_target & " >/dev/null 2>&1; then /bin/launchctl bootout " & quoted form of service_target & "; fi; /bin/launchctl print system >/dev/null 2>&1; if /bin/launchctl print " & quoted form of service_target & " >/dev/null 2>&1; then exit 1; fi;"
 
-  set load_service to "/bin/launchctl load -w " & quoted form of daemon_plist & " && /bin/launchctl list " & quoted form of service_label & " >/dev/null 2>&1;"
+  set load_service to "/bin/launchctl enable " & quoted form of service_target & " && /bin/launchctl bootstrap system " & quoted form of daemon_plist & " && /bin/launchctl print " & quoted form of service_target & " >/dev/null 2>&1;"
 
   set sh to "set -e;" & cleanup_temp & reject_symlinks & verify_installed_app & verify_bundled_service_exec & create_helper_dir & secure_helper_dir & install_service_exec & verify_service_exec & create_dirs & secure_dirs & prepare_logs & write_daemon_plist & write_agent_plist & verify_service_exec & verify_current_build_binding & unload_existing_service & load_service
 

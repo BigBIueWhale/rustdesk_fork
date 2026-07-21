@@ -394,60 +394,92 @@ fn macos_privileged_service_script_command() -> Command {
     command
 }
 
-fn launchctl_label_loaded(label: &str) -> Option<bool> {
+fn launchctl_query_succeeds(target: &str) -> Option<bool> {
     let mut command = Command::new(MACOS_LAUNCHCTL);
-    command.args(&["list", label]);
+    command
+        .arg("print")
+        .arg(target)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     if let Err(err) =
         hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
     {
-        log::error!("Failed to constrain launchctl label query descriptors: {err}");
+        log::error!("Failed to constrain launchctl query descriptors: {err}");
         return None;
     }
     match command.status() {
         Ok(status) => Some(status.success()),
         Err(err) => {
-            log::error!("Failed to query launchctl label {label}: {err}");
+            log::error!("Failed to query launchctl target {target}: {err}");
             None
         }
     }
 }
 
-fn ensure_launchctl_label_removed(label: &str) -> bool {
-    let Some(loaded) = launchctl_label_loaded(label) else {
+fn launchctl_service_loaded(domain: &str, service_target: &str) -> Option<bool> {
+    match launchctl_query_succeeds(domain) {
+        Some(true) => {}
+        Some(false) => {
+            log::error!("macOS launchctl domain is unavailable: {domain}");
+            return None;
+        }
+        None => return None,
+    }
+    launchctl_query_succeeds(service_target)
+}
+
+fn ensure_launchctl_service_removed(domain: &str, service_target: &str) -> bool {
+    let Some(loaded) = launchctl_service_loaded(domain, service_target) else {
         return false;
     };
     if loaded
         && !run_checked_command(
-            Command::new(MACOS_LAUNCHCTL).args(&["remove", label]),
-            "remove macOS launchctl label",
+            Command::new(MACOS_LAUNCHCTL).args(&["bootout", service_target]),
+            "boot out macOS launchd service",
         )
     {
         return false;
     }
-    match launchctl_label_loaded(label) {
+    match launchctl_service_loaded(domain, service_target) {
         Some(false) => true,
         Some(true) => {
-            log::error!("macOS launchctl label remained loaded after remove: {label}");
+            log::error!("macOS launchd service remained loaded after bootout: {service_target}");
             false
         }
         None => false,
     }
 }
 
+fn launch_agent_domain(effective_uid: u32) -> String {
+    format!("gui/{effective_uid}")
+}
+
+fn launchctl_service_target(domain: &str, label: &str) -> String {
+    format!("{domain}/{label}")
+}
+
 fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool {
-    if !ensure_launchctl_label_removed(label) {
+    let domain = launch_agent_domain(unsafe { hbb_common::libc::geteuid() as u32 });
+    let service_target = launchctl_service_target(&domain, label);
+    if !ensure_launchctl_service_removed(&domain, &service_target) {
         return false;
     }
     if !run_checked_command(
-        Command::new(MACOS_LAUNCHCTL).args(&["load", "-w", agent_plist_file]),
-        "load macOS LaunchAgent",
+        Command::new(MACOS_LAUNCHCTL).args(&["enable", &service_target]),
+        "enable macOS LaunchAgent",
     ) {
         return false;
     }
-    match launchctl_label_loaded(label) {
+    if !run_checked_command(
+        Command::new(MACOS_LAUNCHCTL).args(&["bootstrap", &domain, agent_plist_file]),
+        "bootstrap macOS LaunchAgent",
+    ) {
+        return false;
+    }
+    match launchctl_service_loaded(&domain, &service_target) {
         Some(true) => true,
         Some(false) => {
-            log::error!("macOS LaunchAgent did not load: {label}");
+            log::error!("macOS LaunchAgent did not bootstrap: {service_target}");
             false
         }
         None => false,
@@ -556,7 +588,11 @@ pub fn uninstall_service(show_new_window: bool, sync: bool) -> bool {
             // leave ipc a little time
             std::thread::sleep(std::time::Duration::from_millis(300));
         }
-        if !ensure_launchctl_label_removed(&server_launch_agent_label()) {
+        let launch_agent_domain =
+            launch_agent_domain(unsafe { hbb_common::libc::geteuid() as u32 });
+        let launch_agent_target =
+            launchctl_service_target(&launch_agent_domain, &server_launch_agent_label());
+        if !ensure_launchctl_service_removed(&launch_agent_domain, &launch_agent_target) {
             return false;
         }
         if show_new_window {
@@ -1067,6 +1103,16 @@ mod root_principal_tests {
         assert!(!service_installation_is_current(true, false));
         assert!(!service_installation_is_current(false, true));
         assert!(!service_installation_is_current(false, false));
+    }
+
+    #[test]
+    fn r_s11e75_macos_launch_agent_target_is_bound_to_effective_uid_domain() {
+        let domain = launch_agent_domain(501);
+        assert_eq!(domain, "gui/501");
+        assert_eq!(
+            launchctl_service_target(&domain, "com.example.RustDesk_server"),
+            "gui/501/com.example.RustDesk_server"
+        );
     }
 }
 

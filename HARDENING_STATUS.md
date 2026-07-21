@@ -882,7 +882,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the temp and final helper signatures, byte-compares the final helper to the bundled source, requires the deployed
   helper directory and helper executable to be non-symlinks, `root:wheel`, non-group/world-writable, ACL-free,
   executable, and signed by the same requirement, and re-verifies the helper after plist writes and immediately
-  before `launchctl load`. `uninstall.scpt` unloads the daemon and removes the deployed helper plus any install-temp
+  before `launchctl bootstrap`. `uninstall.scpt` boots out the daemon and removes the deployed helper plus any install-temp
   helper before verifying absence. The dormant privileged updater is deleted rather than retained: `update.scpt`,
   `update_daemon_agent`, `.rustdeskupdate-*` helpers, and the macOS startup cleanup for the old update temp
   tree are absent. The Rust-side launcher path remains closed against caller-controlled `PATH`: local
@@ -998,9 +998,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   socket-bound polkit path.
   `systemctl enable`, `start`, `disable`, and `stop` failures are fatal wrapper failures with logged status.
   macOS checks AppleScript exit status, verifies both daemon and agent plist
-  postconditions, propagates synchronous uninstall result, verifies current-session
-  LaunchAgent label removal/reload, and the privileged scripts verify daemon unload/load state plus final plist
-  removal instead of masking `launchctl unload` with `|| true`. The Flutter daemon install card keeps its
+  postconditions, propagates synchronous uninstall result, and verifies current-session
+  LaunchAgent plus privileged-daemon lifecycle completion. R-S11bi subsequently replaces the initially used
+  implicit-domain legacy launchctl verbs with explicit-domain `print`/`bootout`/`enable`/`bootstrap` state proof.
+  The Flutter daemon install card keeps its
   prompt-and-return-immediately shape: the prompt path starts the checked install worker and the UI's next state
   observation is still the ordinary installed-state query. Verification closure: `scripts/verify.sh` asserts the
   cross-desktop CLI, Linux, and macOS invariants; `scripts/apple-conform-check.sh` mirrors the macOS source
@@ -6845,6 +6846,39 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   this source slice. The existing older Android signed-artifact result below predates this correction and is not
   promoted to exact-current evidence; live Android/iOS storage behavior, iOS artifact proof, and the exact clean
   R-B2 release transaction remain open.
+- **R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains — SOURCE CLOSED/GATED
+  2026-07-21; NATIVE APPLE AND EXACT SIGNED-ARTIFACT LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: macOS
+  service installation, restart, and uninstallation. Endpoint/action: the root LaunchDaemon lifecycle inside
+  `install.scpt`/`uninstall.scpt` and the current-user LaunchAgent lifecycle in `src/platform/macos.rs`. Boundary:
+  a successful local/admin wrapper result ↔ the exact launchd domain and service definition reaching the requested
+  loaded or absent state. The first R-S11c-16 correction (commit `8ef29da804ecea6878e77ab88fdb7bca64638df3`)
+  used `launchctl list <label>`, legacy `load -w`/`unload -w`, and legacy `remove`. Apple's current launchctl
+  contract classifies those commands as legacy, says load/unload return nonzero only for improper usage and
+  otherwise return zero, and says remove returns without waiting for the job to stop. The code additionally mapped
+  every nonzero label query to absence without proving that its intended domain was reachable. Its postconditions
+  could therefore be false after a domain/query or lifecycle failure. This is a source-proven local lifecycle
+  finality and availability defect, not evidence of exploitation, a stopped host service, host mutation, a public
+  listener, Docker root, privilege escalation, or compromise.
+
+  The correction keeps the existing service topology and changes only lifecycle authority. Privileged scripts
+  derive the exact `system/<service-label>` target. The Rust path derives `gui/<numeric-effective-uid>` from
+  `geteuid()` and appends the exact server label. `launchctl_service_loaded` first requires a successful
+  `launchctl print <domain>`; only then may a failed `print <service-target>` mean absence. A present service is
+  removed only by checked `bootout <service-target>`, followed by the same domain-aware negative proof. Install and
+  restart clear the persistent disabled override left by older `unload -w` runs with checked `enable`, use checked
+  `bootstrap <domain> <plist>`, and require the exact service target to print successfully. The privileged uninstall
+  proves its system target absent before deleting the root plist/helper, and Rust proves the current GUI target
+  absent before wrapper success. Legacy `list`, `load`, `unload`, and `remove` are absent from these lifecycle paths;
+  fixed `/bin/launchctl` provenance, administrator-script environment closure, non-stdio descriptor closure,
+  helper/plist identity checks, and outer return propagation remain unchanged.
+
+  The focused Rust regression pins GUI-domain and service-target derivation. The standalone
+  `scripts/verify-macos-launchd-lifecycle.py` parses the relevant Rust functions and both privileged scripts,
+  enforces operation ordering and legacy-command absence, binds requirement/disposition/ledger and shared/Apple
+  wiring, and rejects 16 deliberate mutations. R-S11bi and Appendix C #198 make the corrected contract normative.
+  Linux-side rustfmt/source checks and mutation tests do not compile or execute macOS launchd. No native Mac,
+  signed application, installed LaunchDaemon/LaunchAgent, or artifact was exercised; native Apple and exact R-B2
+  lifecycle evidence remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7560,9 +7594,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-70e5b8f3602a079ff7a501fdef3bee74825eb67c50b6f1bcb8c21fc16f01e5f5  requirements.html
+63d09d58e4e26a7fe2f3d29280622846f0bf43f9cad97681436246544c1651e4  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bh, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#197. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bi, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#198. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

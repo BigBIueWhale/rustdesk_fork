@@ -6111,23 +6111,23 @@ def validate_macos_descriptor_contract(sources):
         ("command.status()", 2, "macOS platform status execution inventory"),
         ("command.spawn()", 1, "macOS platform spawn execution inventory"),
         ("command.output()", 3, "macOS platform output execution inventory"),
-        ("run_checked_command(", 5, "macOS checked-command inventory"),
+        ("run_checked_command(", 6, "macOS checked-command inventory"),
     ):
         require_exact_count(platform, text, expected, label)
     helper_contracts = (
         (
             platform,
             "fn run_checked_command(command: &mut Command, description: &str) -> bool {",
-            "\nfn launchctl_label_loaded",
+            "\nfn launchctl_query_succeeds",
             "macOS checked command descriptor policy",
             "configure_command_close_nonstdio_on_exec(command)",
             "command.status()",
         ),
         (
             platform,
-            "fn launchctl_label_loaded(label: &str) -> Option<bool> {",
-            "\nfn ensure_launchctl_label_removed",
-            "macOS launchctl label query descriptor policy",
+            "fn launchctl_query_succeeds(target: &str) -> Option<bool> {",
+            "\nfn launchctl_service_loaded",
+            "macOS launchctl target query descriptor policy",
             "configure_command_close_nonstdio_on_exec(&mut command)",
             "command.status()",
         ),
@@ -6247,7 +6247,7 @@ def validate_macos_privileged_script_environment_contract(sources):
     creator = extract_between(
         platform,
         "fn macos_privileged_service_script_command() -> Command {",
-        "\nfn launchctl_label_loaded",
+        "\nfn launchctl_query_succeeds",
         "macOS privileged service-script command constructor",
     )
     require_exact_count(
@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#197",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#198",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -10875,6 +10875,52 @@ def validate_mobile_at_rest_fail_closed_contract(sources):
         sources["hardening"],
         "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
         "mobile at-rest unavailable-key hardening ledger",
+    )
+
+
+def validate_macos_launchd_lifecycle_contract(sources):
+    focused = sources["macos_launchd_lifecycle_verifier"]
+    for text, label in (
+        ("def extract_rust_function(", "macOS launchd Rust function parser"),
+        ("def validate(sources", "macOS launchd semantic entry"),
+        (
+            '"match launchctl_query_succeeds(domain)"',
+            "macOS launchd containing-domain proof contract",
+        ),
+        ('["bootout", service_target]', "macOS launchd modern removal contract"),
+        ('["bootstrap", &domain, agent_plist_file]', "macOS LaunchAgent bootstrap contract"),
+        (
+            'legacy_script_command = re.compile(r"/bin/launchctl (?:list|load|unload|remove)(?: |\\\")")',
+            "macOS privileged-script legacy-command rejection",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "macOS launchd mutation inventory"),
+        ("run_mutations(sources)", "macOS launchd mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test",
+        "macOS launchd shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test",
+        "macOS launchd Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bi</span>',
+        "macOS launchd explicit-domain requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>198</td>",
+        "macOS launchd lifecycle Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
+        "macOS launchd lifecycle hardening ledger",
     )
 
 
@@ -13132,6 +13178,7 @@ def validate_sources(sources):
     validate_portable_quick_support_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
+    validate_macos_launchd_lifecycle_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
@@ -25047,8 +25094,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#197",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#196",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#198",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#197",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25098,6 +25145,42 @@ def run_source_mutations(sources):
             "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
             "R-S11bh/R-S11e-74 — mobile legacy at-rest migration accepts missing OS-key authority",
             "mobile at-rest unavailable-key hardening ledger",
+        ),
+        (
+            "macos_launchd_lifecycle_verifier",
+            'legacy_script_command = re.compile(r"/bin/launchctl (?:list|load|unload|remove)(?: |\\\")")',
+            'legacy_script_command = re.compile(r"$^")',
+            "macOS privileged-script legacy-command rejection semantics",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test",
+            "true # macOS launchd lifecycle verifier removed",
+            "macOS launchd shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test",
+            "true # macOS launchd lifecycle verifier removed",
+            "macOS launchd Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bi</span>',
+            '<span class="id">R-S11bi-disabled</span>',
+            "macOS launchd explicit-domain requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>198</td>",
+            "<tr><td>198-disabled</td>",
+            "macOS launchd lifecycle Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses explicit modern domains",
+            "R-S11bi/R-S11e-75 — macOS launchd lifecycle uses implicit legacy commands",
+            "macOS launchd lifecycle hardening ledger",
         ),
         (
             "github_automation_authority_verifier",
@@ -25839,6 +25922,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "mobile_at_rest_fail_closed_verifier": (
                 repo / "scripts/verify-mobile-at-rest-fail-closed.py"
+            ).read_text(encoding="utf-8"),
+            "macos_launchd_lifecycle_verifier": (
+                repo / "scripts/verify-macos-launchd-lifecycle.py"
             ).read_text(encoding="utf-8"),
             "github_automation_authority_verifier": (
                 repo / "scripts/verify-github-automation-authority.py"

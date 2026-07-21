@@ -792,6 +792,14 @@ else
   echo "  ok  mobile at-rest encryption uses an injected OS-protected storage key; get_uuid is separated; legacy config-keypair ciphertext is decrypt-only and rewrapped"
 fi
 
+echo "== (3b-iii-a1a) macOS launchd explicit-domain lifecycle authority (R-S11bi/R-S11e-75) =="
+if python3 scripts/verify-macos-launchd-lifecycle.py --repo . --self-test; then
+  echo "  ok  R-S11e-75 macOS daemon/agent lifecycle uses explicit modern launchd domains and status-authoritative state proof"
+else
+  echo "  FAIL R-S11e-75 macOS launchd lifecycle retains implicit-domain or legacy completion authority"
+  rc=1
+fi
+
 echo "== (3b-iii-a1b) credential-bearing local stores use one durable transactional writer (R-S11b-4d) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_raw_config_bytes --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::config_transaction --color never
@@ -4776,7 +4784,7 @@ if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched helper
 echo "== (3b-iii-d9cp) macOS administrator-script environment finality (R-S11az/R-S11e-66) =="
 r_s11e66=
 macos_privileged_policy=$(awk '/fn configure_macos_privileged_script_command/,/fn macos_privileged_service_script_command/' src/platform/macos.rs)
-macos_privileged_creator=$(awk '/fn macos_privileged_service_script_command/,/fn launchctl_label_loaded/' src/platform/macos.rs)
+macos_privileged_creator=$(awk '/fn macos_privileged_service_script_command/,/fn launchctl_query_succeeds/' src/platform/macos.rs)
 macos_privileged_install=$(awk '/fn run_service_install/,/fn render_macos_service_template/' src/platform/macos.rs)
 macos_privileged_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/platform/macos.rs)
 for binding in \
@@ -5153,8 +5161,8 @@ echo "== (3b-iii-d13) macOS child inherited descriptor authority (R-S11t/R-S11e-
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' libs/hbb_common/src/platform/macos.rs)
 macos_platform_source=$(cat src/platform/macos.rs)
-macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_label_loaded/' src/platform/macos.rs)
-macos_launchctl_query=$(awk '/fn launchctl_label_loaded/,/fn ensure_launchctl_label_removed/' src/platform/macos.rs)
+macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_query_succeeds/' src/platform/macos.rs)
+macos_launchctl_query=$(awk '/fn launchctl_query_succeeds/,/fn launchctl_service_loaded/' src/platform/macos.rs)
 macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/platform/macos.rs)
 macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' src/platform/macos.rs)
 macos_lock_screen=$(awk '/pub fn lock_screen/,/pub fn start_os_service/' src/platform/macos.rs)
@@ -5212,7 +5220,7 @@ check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configur
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
 [ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 3 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
-[ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 5 ] \
+[ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 6 ] \
   || r_s11e34="$r_s11e34 macos-checked-command-inventory-drift"
 for pty_policy_binding in \
   'const MAX_UNIX_DESCRIPTOR_LIMIT: u64 = 1_048_576;' \
@@ -5946,8 +5954,8 @@ if grep -Fq 'let _ = systemctl_service' src/platform/linux.rs; then
 fi
 grep -q 'fn run_checked_command(command: &mut Command, description: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-checked-command-helper"
 grep -q 'Ok(status) if status.success() => true' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-status-success-not-explicit"
-grep -q 'fn launchctl_label_loaded(label: &str) -> Option<bool>' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launchctl-label-query"
-grep -q 'fn ensure_launchctl_label_removed(label: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launchctl-remove-verifier"
+grep -q 'fn launchctl_service_loaded(domain: &str, service_target: &str) -> Option<bool>' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-domain-aware-launchctl-query"
+grep -q 'fn ensure_launchctl_service_removed(domain: &str, service_target: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launchctl-bootout-verifier"
 grep -q 'fn restart_launch_agent(agent_plist_file: &str, label: &str) -> bool' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-no-launch-agent-restart-verifier"
 macos_install_service_body=$(awk '/pub fn install_service\(\) -> bool/,/^}/' src/platform/macos.rs)
 echo "$macos_install_service_body" | grep -Fq 'run_service_install(context)' || r_s11c16="$r_s11c16 macos-install-wrapper-not-checked-install"
@@ -5956,19 +5964,20 @@ if echo "$macos_install_service_body" | grep -Fq 'service_plists_exist'; then
 fi
 grep -q 'restart_launch_agent(&context.agent_plist_file, &server_launch_agent_label())' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-install-agent-load-not-authoritative"
 grep -q 'return func();' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-sync-uninstall-return-not-propagated"
-grep -q 'if !ensure_launchctl_label_removed(&server_launch_agent_label())' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-uninstall-agent-remove-not-authoritative"
+grep -q 'if !ensure_launchctl_service_removed(&launch_agent_domain, &launch_agent_target)' src/platform/macos.rs || r_s11c16="$r_s11c16 macos-uninstall-agent-bootout-not-authoritative"
 if perl -0ne 'exit(/\.status\(\)\s*\.ok\(\)/ ? 0 : 1)' src/platform/macos.rs; then
   r_s11c16="$r_s11c16 macos-status-result-discard"
 fi
-grep -q 'set unload_existing_service to "if /bin/launchctl list " & quoted form of service_label' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-no-existing-daemon-unload"
-grep -q '&& /bin/launchctl list " & quoted form of service_label' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-daemon-load-not-verified"
+grep -q 'set unload_existing_service to "/bin/launchctl print system' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-no-domain-aware-daemon-bootout"
+grep -q 'set load_service to "/bin/launchctl enable ' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-daemon-enable-missing"
+grep -q '/bin/launchctl bootstrap system ' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-daemon-bootstrap-missing"
 grep -q 'unload_existing_service.*load_service' "$install_scpt" || r_s11c16="$r_s11c16 macos-install-order-not-pinned"
-grep -q 'set unload_service to "if /bin/launchctl list " & quoted form of service_label' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-no-daemon-loaded-branch"
-grep -q 'set verify_unloaded to "if /bin/launchctl list " & quoted form of service_label' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-daemon-unload-not-verified"
+grep -q 'set unload_service to "/bin/launchctl print system' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-no-domain-aware-daemon-bootout"
+grep -q 'set verify_unloaded to "/bin/launchctl print system' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-daemon-bootout-not-verified"
 grep -q 'set verify_removed to "if \[ -e " & quoted form of daemon_plist' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-plist-removal-not-verified"
 grep -q 'set sh to "set -e;"' "$uninstall_scpt" || r_s11c16="$r_s11c16 macos-uninstall-not-set-e"
-if grep -qF '|| true' "$uninstall_scpt"; then
-  r_s11c16="$r_s11c16 macos-uninstall-masks-launchctl-failure"
+if grep -qE '/bin/launchctl (list|load|unload|remove)( |")' "$install_scpt" "$uninstall_scpt"; then
+  r_s11c16="$r_s11c16 macos-legacy-launchctl-lifecycle-present"
 fi
 grep -q 'R-S11c-16 and R-S11c-10j make service lifecycle completion status-authoritative' requirements.html || r_s11c16="$r_s11c16 requirements-disposition-missing"
 grep -q 'R-S11c-16 — Desktop service lifecycle completion authority' HARDENING_STATUS.md || r_s11c16="$r_s11c16 hardening-ledger-missing"

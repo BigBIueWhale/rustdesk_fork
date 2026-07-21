@@ -1123,6 +1123,42 @@ else
   note "ok  R-G9 shared CM/peer DTOs omit dead fields while authenticated Connection and viewer permission paths remain live"
 fi
 
+echo "== (2b-iii-a3) R-G4a Apple switch-sides compatibility state excision =="
+r_g4a=
+for path in \
+  src/client.rs src/client/io_loop.rs src/server/connection.rs src/ipc.rs \
+  src/ui_cm_interface.rs src/ui_session_interface.rs src/flutter.rs src/flutter_ffi.rs; do
+  if sed '/^#\[cfg(test)\]/,$d' "$REPO/$path" \
+    | grep -qE 'SwitchSides|SwitchBack|switch_sides|switchSides|switch_back|switchBack|switch_uuid|switchUuid|from_switch|fromSwitch'; then
+    r_g4a="$r_g4a $path-role-swap-residue"
+  fi
+done
+if grep -RInE --include='*.dart' \
+  'SwitchSides|SwitchBack|switch_sides|switchSides|switch_back|switchBack|switch_uuid|switchUuid|from_switch|fromSwitch' \
+  "$REPO/flutter/lib" >/dev/null; then
+  r_g4a="$r_g4a authored-Dart-role-swap-residue"
+fi
+grep -qF 'assert!(!login_payload.contains_key("from_switch"));' "$REPO/src/ui_cm_interface.rs" \
+  || r_g4a="$r_g4a cm-login-serialization-regression-missing"
+grep -qF 'assert!(!client_payload.contains_key("from_switch"));' "$REPO/src/ui_cm_interface.rs" \
+  || r_g4a="$r_g4a cm-client-serialization-regression-missing"
+grep -qF "expect(serialized, isNot(contains('from_switch')));" "$REPO/flutter/test/server_model_test.dart" \
+  || r_g4a="$r_g4a Flutter-legacy-key-regression-missing"
+[ "$(grep -cF 'self.authorized = true;' "$REPO/src/server/connection.rs")" -eq 1 ] \
+  || r_g4a="$r_g4a sole-PAKE-authorization-edge-not-preserved"
+grep -qF '.get("keyboard")' "$REPO/src/ui_cm_interface.rs" \
+  || r_g4a="$r_g4a retained-CM-capability-fact-not-proven"
+grep -qF '<span class="id">R-G4a</span>' "$REPO/requirements.html" || r_g4a="$r_g4a requirement-missing"
+grep -qF '<tr><td>190</td>' "$REPO/requirements.html" || r_g4a="$r_g4a appendix-row-missing"
+grep -qF 'R-G4a — switch-sides role-swap compatibility state excision' "$REPO/HARDENING_STATUS.md" \
+  || r_g4a="$r_g4a hardening-ledger-missing"
+if [ -n "$r_g4a" ]; then
+  echo "  FAIL R-G4a Apple switch-sides compatibility closure:$r_g4a"
+  rc=1
+else
+  note "ok  R-G4a shared Apple source has no switch-sides role-swap API/state; legacy JSON is ignored and sole PAKE authorization remains"
+fi
+
 echo "== (2b-iii-b) R-S11c-11 macOS CM endpoint-selection proof =="
 r_s11c11=
 grep -q 'CmEndpointChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"

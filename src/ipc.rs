@@ -1632,7 +1632,6 @@ pub enum Data {
         file: bool,
         file_transfer_enabled: bool,
         privacy_mode: bool,
-        from_switch: bool,
         cm_auth_token: String,
     },
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

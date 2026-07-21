@@ -4917,6 +4917,39 @@ unreachable and a source/test/AST gate prevents reintroduction.
   configuration, listener, firewall, UFW/nftables/iptables state, or host-network state was inspected or changed for
   this source slice.
 
+- **R-G4a — switch-sides role-swap compatibility state excision — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: shared viewer/server Rust,
+  desktop/Android/iOS Flutter presentation, generated Flutter Rust Bridge, and retained Apple source. Boundary: the
+  deleted switch-sides/session-role transition ↔ compatibility state and local CM presentation. History proves the
+  removal was intentionally staged: `79c261d` deleted the Flutter triggers, confirmation, switch-back listener, and
+  CM button; `2bdd516` deleted the FRB operations; `9d617e7` deleted Rust orchestration but explicitly deferred the
+  lower-case Sciter compatibility surface; `f8717e7` deleted the wire messages and responder, with the historical
+  true assignment to `from_switch`, while its case-sensitive gate still deferred lower-case names; `0d2c882`
+  deleted Sciter; and `d5aec5b` deleted the empty `switch_sides()` stub. Current source nevertheless still accepted
+  and stored an unread viewer `switch_uuid`, initialized the server `from_switch` flag only to false, serialized that
+  flag through CM IPC and Rust/Flutter controlled-client DTOs, and exposed a `switch_back` trait/event with no Dart
+  listener. This was misleading compatibility API/state and future-reactivation debt—not a current authorization
+  bypass, network request, credential disclosure, local-to-root path, privilege escalation, exploitation incident,
+  host mutation, public listener, or evidence of compromise.
+
+  Authority model and source closure: this fork has no switch-sides role transition. `LoginConfigHandler` has no
+  switch UUID; the server `Connection` has no role-switch flag; local CM `Data::Login`, serialized Rust `Client`, and
+  Flutter `Client` carry no role-switch state; and `InvokeUiSession`/`FlutterHandler` expose no switch-back callback
+  or event. Historical Flutter CM JSON containing `from_switch` is ignored and never serialized back. The deletion
+  does not substitute a new authority: `self.authorized = true` remains a single assignment at the CPace-keyed
+  authorization edge, while ordinary consumed CM capability facts such as `keyboard` remain serialized and tested.
+
+  Verification closure: the focused Rust serialization regression proves `from_switch` absent from both local CM
+  payloads while positively retaining `keyboard`; the focused Flutter regression feeds historical `from_switch`
+  input and proves output omission. `scripts/verify.sh`, `scripts/dart-verify.sh`, and
+  `scripts/apple-conform-check.sh` bind the production Rust, authored/generated Dart, serialization regressions,
+  sole authorization assignment, R-G4a, Appendix C #190, and this ledger. The independent workspace semantic
+  validator and deliberate mutations cover every state/API source family and all three gates. Exact current-commit
+  native/platform package evidence, installed-device behavior, refreshed advisory data, independently archived
+  verifier-image provenance, and R-V3 external review remain open under their existing rows. No host RustDesk
+  process, service, binary, configuration, listener, firewall, UFW/nftables/iptables state, or host-network state was
+  inspected or changed for this source slice.
+
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -7256,8 +7289,8 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   CM-only copies of `recording`/`block_input`/`restart` are deleted after exact producer/consumer history and source
   proof; the real connection capability fields and viewer permission protocol remain. `forceAlwaysRelay` was
   already deleted and gated by R-G6 and was stale in this row.
-- **Misc still requiring per-consumer proof:** the `switch_sides()` empty stub and `logOut(apiServer)`. Delete only
-  after proving each exact producer/consumer path.
+- **Misc still requiring per-consumer proof:** `logOut(apiServer)` only. The stale `switch_sides()` entry is closed
+  by R-G4a after source/history proof expanded it to, and deleted, the complete residual role-swap state chain.
 
 ### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
 
@@ -7291,9 +7324,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-beb6ffeb0bb19e5e0e44b4e272afa7b7125823915c18c452d592dd823e718cb1  requirements.html
+d9d8882a10b4684464f78465da8872cdb79f559d84d3bb7e4038d5013ccd4558  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, and Appendix C #189. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, and Appendix C #190. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

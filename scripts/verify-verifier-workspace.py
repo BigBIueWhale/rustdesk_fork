@@ -11882,6 +11882,160 @@ def validate_minimal_presentation_serialization_contract(sources):
     )
 
 
+def validate_role_swap_compatibility_excision_contract(sources):
+    retired_tokens = (
+        "SwitchSides",
+        "SwitchBack",
+        "switch_sides",
+        "switchSides",
+        "switch_back",
+        "switchBack",
+        "switch_uuid",
+        "switchUuid",
+        "from_switch",
+        "fromSwitch",
+    )
+    rust_sources = (
+        ("client_source", "viewer login"),
+        ("client_io_loop", "viewer I/O"),
+        ("connection_source", "server connection"),
+        ("ipc_source", "local IPC"),
+        ("ui_cm_source", "Rust CM presentation"),
+        ("ui_session_source", "Rust UI-session trait"),
+        ("flutter_source", "Rust Flutter event implementation"),
+        ("flutter_ffi_source", "Rust Flutter FFI"),
+    )
+    for source_key, source_label in rust_sources:
+        production = sources[source_key].split("\n#[cfg(test)]", 1)[0]
+        for token in retired_tokens:
+            require_absent(
+                production,
+                token,
+                f"{source_label} role-swap token {token}",
+            )
+
+    for source_key, source_label in (
+        ("server_model_dart", "controlled-client Dart"),
+        ("model_dart", "viewer model Dart"),
+        ("web_bridge_dart", "web bridge Dart"),
+        ("android_main_service", "Android foreground service"),
+    ):
+        for token in retired_tokens:
+            require_absent(
+                sources[source_key],
+                token,
+                f"{source_label} role-swap token {token}",
+            )
+    for token in retired_tokens:
+        require_absent(
+            sources["message_proto"], token, f"wire role-swap token {token}"
+        )
+
+    cm_test = extract_between(
+        sources["ui_cm_source"],
+        "fn cm_presentation_contract_omits_connection_only_permissions()",
+        "\n    #[test]",
+        "CM role-swap serialization regression",
+    )
+    for text, label in (
+        (
+            'assert!(!login_payload.contains_key("from_switch"));',
+            "CM login role-swap field absence",
+        ),
+        (
+            'assert!(!client_payload.contains_key("from_switch"));',
+            "CM Client role-swap field absence",
+        ),
+        ('get("keyboard")', "retained ordinary CM capability fact"),
+    ):
+        require_text(cm_test, text, label)
+
+    flutter_test = sources["server_model_test"]
+    for text, label in (
+        ("controlled clients ignore retired role-swap state", "Flutter role-swap regression"),
+        ("'from_switch': true", "historical Flutter role-swap JSON fixture"),
+        (
+            "expect(serialized, isNot(contains('from_switch')));",
+            "Flutter role-swap serialization absence",
+        ),
+    ):
+        require_text(flutter_test, text, label)
+
+    require_exact_count(
+        sources["connection_source"],
+        "self.authorized = true;",
+        1,
+        "sole PAKE authorization assignment",
+    )
+    for source_key, text, label in (
+        ("verify", "R-G4a switch-sides compatibility closure", "shared R-G4a gate"),
+        (
+            "dart_verify",
+            "R-G4a authored/generated Flutter has no role-swap API/state",
+            "Dart R-G4a gate",
+        ),
+        (
+            "apple",
+            "== (2b-iii-a3) R-G4a Apple switch-sides compatibility state excision ==",
+            "Apple R-G4a gate",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-G4a", "role-swap compatibility excision requirement"
+    )
+    for text, label in (
+        ("no switch-sides/session-role-reversal operation", "absent role-transition authority"),
+        ("Historical local CM JSON", "legacy role-swap input disposition"),
+        ("single CPace-keyed", "retained authorization authority"),
+        ("ordinary consumed CM capability facts", "retained CM semantics"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>190</td>",
+        "role-swap compatibility Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-G4a — switch-sides role-swap compatibility state excision",
+        "role-swap compatibility hardening ledger",
+    )
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "role-swap deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("viewer login role-swap token switch_uuid", "viewer-login mutation"),
+        ("viewer I/O role-swap token switch_back", "viewer-I/O mutation"),
+        ("server connection role-swap token from_switch", "server-state mutation"),
+        ("local IPC role-swap token from_switch", "local-IPC mutation"),
+        ("Rust CM presentation role-swap token from_switch", "Rust-CM mutation"),
+        ("Rust UI-session trait role-swap token switch_back", "UI-trait mutation"),
+        (
+            "Rust Flutter event implementation role-swap token switch_back",
+            "Flutter-event mutation",
+        ),
+        ("Rust Flutter FFI role-swap token switch_sides", "Flutter-FFI mutation"),
+        ("wire role-swap token SwitchBack", "wire mutation"),
+        ("controlled-client Dart role-swap token fromSwitch", "Dart-state mutation"),
+        ("CM login role-swap field absence", "CM-login regression mutation"),
+        ("CM Client role-swap field absence", "CM-Client regression mutation"),
+        ("Flutter role-swap serialization absence", "Flutter-regression mutation"),
+        ("sole PAKE authorization assignment", "positive-authorization mutation"),
+        ("shared R-G4a gate", "shared-gate mutation"),
+        ("Dart R-G4a gate", "Dart-gate mutation"),
+        ("Apple R-G4a gate", "Apple-gate mutation"),
+        ("role-swap compatibility excision requirement", "requirement mutation"),
+        ("role-swap compatibility Appendix C row", "Appendix mutation"),
+        ("role-swap compatibility hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_structured_proxy_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -12570,6 +12724,7 @@ def validate_sources(sources):
     validate_public_server_selection_excision_contract(sources)
     validate_dead_dart_policy_alias_excision_contract(sources)
     validate_minimal_presentation_serialization_contract(sources)
+    validate_role_swap_compatibility_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
@@ -23801,6 +23956,126 @@ def run_source_mutations(sources):
             "minimal presentation serialization hardening ledger",
         ),
         (
+            "client_source",
+            "    pub received: bool,\n    pub save_ab_password_to_recent: bool,",
+            "    pub received: bool,\n    switch_uuid: Option<String>,\n    pub save_ab_password_to_recent: bool,",
+            "viewer login role-swap token switch_uuid",
+        ),
+        (
+            "client_io_loop",
+            '#[cfg(not(any(target_os = "android", target_os = "ios")))]\nuse crate::clipboard',
+            'fn switch_back() {}\n\n#[cfg(not(any(target_os = "android", target_os = "ios")))]\nuse crate::clipboard',
+            "viewer I/O role-swap token switch_back",
+        ),
+        (
+            "connection_source",
+            "    #[cfg(windows)]\n    portable: PortableState,\n    voice_call_request_timestamp:",
+            "    #[cfg(windows)]\n    portable: PortableState,\n    from_switch: bool,\n    voice_call_request_timestamp:",
+            "server connection role-swap token from_switch",
+        ),
+        (
+            "ipc_source",
+            "        file_transfer_enabled: bool,\n        privacy_mode: bool,\n        cm_auth_token: String,",
+            "        file_transfer_enabled: bool,\n        privacy_mode: bool,\n        from_switch: bool,\n        cm_auth_token: String,",
+            "local IPC role-swap token from_switch",
+        ),
+        (
+            "ui_cm_source",
+            "    pub file: bool,\n    pub privacy_mode: bool,\n    pub in_voice_call: bool,",
+            "    pub file: bool,\n    pub privacy_mode: bool,\n    pub from_switch: bool,\n    pub in_voice_call: bool,",
+            "Rust CM presentation role-swap token from_switch",
+        ),
+        (
+            "ui_session_source",
+            "    fn cancel_msgbox(&self, tag: &str);\n    // R-X9",
+            "    fn cancel_msgbox(&self, tag: &str);\n    fn switch_back(&self, id: &str);\n    // R-X9",
+            "Rust UI-session trait role-swap token switch_back",
+        ),
+        (
+            "flutter_source",
+            '    fn on_voice_call_started(&self) {\n        self.push_event::<&str>("on_voice_call_started", &[], &[]);',
+            '    fn switch_back(&self, peer_id: &str) {\n        self.push_event("switch_back", &[("peer_id", peer_id)], &[]);\n    }\n\n    fn on_voice_call_started(&self) {\n        self.push_event::<&str>("on_voice_call_started", &[], &[]);',
+            "Rust Flutter event implementation role-swap token switch_back",
+        ),
+        (
+            "flutter_ffi_source",
+            "        self, session_add, session_add_existed, session_start_, sessions, try_sync_peer_option,",
+            "        self, session_add, session_add_existed, session_start_, sessions, switch_sides, try_sync_peer_option,",
+            "Rust Flutter FFI role-swap token switch_sides",
+        ),
+        (
+            "message_proto",
+            "message BackNotification {",
+            "message SwitchBack {}\n\nmessage BackNotification {",
+            "wire role-swap token SwitchBack",
+        ),
+        (
+            "server_model_dart",
+            "  bool disconnected = false;\n  bool inVoiceCall = false;",
+            "  bool disconnected = false;\n  bool fromSwitch = false;\n  bool inVoiceCall = false;",
+            "controlled-client Dart role-swap token fromSwitch",
+        ),
+        (
+            "ui_cm_source",
+            'assert!(!login_payload.contains_key("from_switch"));',
+            'assert!(login_payload.contains_key("from_switch"));',
+            "CM login role-swap field absence",
+        ),
+        (
+            "ui_cm_source",
+            'assert!(!client_payload.contains_key("from_switch"));',
+            'assert!(client_payload.contains_key("from_switch"));',
+            "CM Client role-swap field absence",
+        ),
+        (
+            "server_model_test",
+            "expect(serialized, isNot(contains('from_switch')));",
+            "expect(serialized, contains('from_switch'));",
+            "Flutter role-swap serialization absence",
+        ),
+        (
+            "connection_source",
+            "self.authorized = true;",
+            "self.authorized = is_secured();",
+            "sole PAKE authorization assignment",
+        ),
+        (
+            "verify",
+            "R-G4a switch-sides compatibility closure",
+            "R-G4a switch-sides compatibility gate disabled",
+            "shared R-G4a gate",
+        ),
+        (
+            "dart_verify",
+            "R-G4a authored/generated Flutter has no role-swap API/state",
+            "R-G4a Flutter compatibility gate disabled",
+            "Dart R-G4a gate",
+        ),
+        (
+            "apple",
+            "== (2b-iii-a3) R-G4a Apple switch-sides compatibility state excision ==",
+            "== (2b-iii-a3) R-G4a Apple compatibility gate disabled ==",
+            "Apple R-G4a gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-G4a</span>',
+            '<span class="id">R-G4a-disabled</span>',
+            "role-swap compatibility excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>190</td>",
+            "<tr><td>190-disabled</td>",
+            "role-swap compatibility Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-G4a — switch-sides role-swap compatibility state excision",
+            "R-G4a — switch-sides compatibility cleanup deferred",
+            "role-swap compatibility hardening ledger",
+        ),
+        (
             "socket_client_source",
             "FramedStream::new(target, local, ms_timeout).await?",
             "FramedStream::connect(target, local, ms_timeout).await?",
@@ -24755,6 +25030,9 @@ def main():
             "peer_model_test": (repo / "flutter/test/peer_model_test.dart").read_text(
                 encoding="utf-8"
             ),
+            "server_model_test": (repo / "flutter/test/server_model_test.dart").read_text(
+                encoding="utf-8"
+            ),
             "desktop_home_dart": (
                 repo / "flutter/lib/desktop/pages/desktop_home_page.dart"
             ).read_text(encoding="utf-8"),
@@ -24796,6 +25074,9 @@ def main():
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
             ).read_text(encoding="utf-8"),
+            "message_proto": (repo / "libs/hbb_common/protos/message.proto").read_text(
+                encoding="utf-8"
+            ),
             "whiteboard_client": (repo / "src/whiteboard/client.rs").read_text(encoding="utf-8"),
             "portable_source": (repo / "libs/portable/src/main.rs").read_text(encoding="utf-8"),
             "privacy_broker_source": (

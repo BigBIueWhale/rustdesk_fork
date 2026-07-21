@@ -713,7 +713,6 @@ class Client {
   bool file = false;
   bool privacyMode = false;
   bool disconnected = false;
-  bool fromSwitch = false;
   bool inVoiceCall = false;
   bool incomingVoiceCall = false;
 
@@ -739,7 +738,6 @@ class Client {
     file = json['file'];
     privacyMode = json['privacy_mode'] ?? privacyMode;
     disconnected = json['disconnected'];
-    fromSwitch = json['from_switch'];
     inVoiceCall = json['in_voice_call'];
     incomingVoiceCall = json['incoming_voice_call'];
   }
@@ -761,7 +759,6 @@ class Client {
     data['file'] = file;
     data['privacy_mode'] = privacyMode;
     data['disconnected'] = disconnected;
-    data['from_switch'] = fromSwitch;
     data['in_voice_call'] = inVoiceCall;
     data['incoming_voice_call'] = incomingVoiceCall;
     return data;

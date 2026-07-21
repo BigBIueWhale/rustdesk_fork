@@ -1364,7 +1364,6 @@ pub struct LoginConfigHandler {
     pub supported_encoding: SupportedEncoding,
     pub restarting_remote_device: bool,
     pub received: bool,
-    switch_uuid: Option<String>,
     pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub custom_fps: Arc<Mutex<Option<usize>>>,
     pub last_auto_fps: Option<usize>,
@@ -1397,7 +1396,6 @@ impl LoginConfigHandler {
         &mut self,
         id: String,
         conn_type: ConnType,
-        switch_uuid: Option<String>,
         adapter_luid: Option<i64>,
         shared_password: Option<String>,
         conn_token: Option<String>,
@@ -1428,7 +1426,6 @@ impl LoginConfigHandler {
         self.supported_encoding = Default::default();
         self.restarting_remote_device = false;
         self.received = false;
-        self.switch_uuid = switch_uuid;
         self.adapter_luid = adapter_luid;
         self.selected_windows_session_id = None;
         self.shared_password = shared_password;
@@ -3268,7 +3265,6 @@ mod tests {
         handler.initialize(
             address.to_owned(),
             ConnType::DEFAULT_CONN,
-            None,
             None,
             None,
             None,

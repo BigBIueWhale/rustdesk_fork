@@ -155,7 +155,6 @@ pub struct Client {
     pub audio: bool,
     pub file: bool,
     pub privacy_mode: bool,
-    pub from_switch: bool,
     pub in_voice_call: bool,
     pub incoming_voice_call: bool,
     #[serde(skip)]
@@ -346,7 +345,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         audio: bool,
         file: bool,
         privacy_mode: bool,
-        from_switch: bool,
         #[cfg(not(any(target_os = "ios")))] tx: mpsc::UnboundedSender<Data>,
     ) {
         let client = Client {
@@ -365,7 +363,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             audio,
             file,
             privacy_mode,
-            from_switch,
             #[cfg(not(any(target_os = "ios")))]
             tx,
             in_voice_call: false,
@@ -587,7 +584,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                         }
                         Ok(Some(data)) => {
                             match data {
-                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, from_switch, cm_auth_token} => {
+                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, cm_auth_token} => {
                                     log::debug!("conn_id: {}", id);
                                     let connection_authority = match ipc::validate_cm_connection_authority(
                                         id,
@@ -620,7 +617,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         file,
                                         connection_authority,
                                     );
-                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, from_switch, self.tx.clone());
+                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, self.tx.clone());
                                     self.conn_id = id;
                                     self.file_authority = file_authority;
                                     self.cm_auth_token = cm_auth_token;
@@ -1022,7 +1019,6 @@ pub async fn start_listen<T: InvokeUiCM>(
                 audio,
                 file,
                 privacy_mode,
-                from_switch,
                 cm_auth_token,
                 ..
             }) => {
@@ -1055,7 +1051,6 @@ pub async fn start_listen<T: InvokeUiCM>(
                     audio,
                     file,
                     privacy_mode,
-                    from_switch,
                     tx.clone(),
                 );
             }
@@ -2208,7 +2203,6 @@ mod tests {
             file: true,
             file_transfer_enabled: true,
             privacy_mode: true,
-            from_switch: false,
             cm_auth_token: "token".to_owned(),
         };
         let login_json = serde_json::to_value(login).unwrap();
@@ -2228,6 +2222,7 @@ mod tests {
                 "CM login unexpectedly serialized {key}"
             );
         }
+        assert!(!login_payload.contains_key("from_switch"));
 
         let (tx, _rx) = unbounded_channel();
         let client = Client {
@@ -2246,7 +2241,6 @@ mod tests {
             audio: true,
             file: true,
             privacy_mode: true,
-            from_switch: false,
             in_voice_call: false,
             incoming_voice_call: false,
             tx,
@@ -2265,6 +2259,7 @@ mod tests {
                 "CM client unexpectedly serialized {key}"
             );
         }
+        assert!(!client_payload.contains_key("from_switch"));
     }
 
     #[test]

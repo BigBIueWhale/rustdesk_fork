@@ -2520,7 +2520,6 @@ pub struct Connection {
     file_transferred: bool,
     #[cfg(windows)]
     portable: PortableState,
-    from_switch: bool,
     voice_call_request_timestamp: Option<NonZeroI64>,
     voice_calling: bool,
     options_in_login: Option<OptionMessage>,
@@ -2712,7 +2711,6 @@ impl Connection {
             file_transferred: false,
             #[cfg(windows)]
             portable: Default::default(),
-            from_switch: false,
             audio_sender: None,
             audio_format: None,
             voice_call_request_timestamp: None,
@@ -4005,7 +4003,6 @@ impl Connection {
             file: self.file,
             file_transfer_enabled: self.file,
             privacy_mode: self.privacy_mode,
-            from_switch: self.from_switch,
             cm_auth_token: self.cm_auth_token.clone(),
         });
     }

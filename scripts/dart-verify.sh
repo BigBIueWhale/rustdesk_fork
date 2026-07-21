@@ -169,6 +169,8 @@ docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/address_validator_test.dart
     echo "  == R-G9 flutter test: saved-peer serialization contract =="
     flutter test --no-pub test/peer_model_test.dart
+    echo "  == R-G4a flutter test: retired role-swap state is ignored =="
+    flutter test --no-pub test/server_model_test.dart
     cd /src
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
     cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
@@ -330,6 +332,19 @@ for field in restart recording block_input; do
   fi
 done
 echo "  ok  R-G9 saved-peer cloud provenance and duplicate CM policy fields are absent"
+# R-G4a: switch-sides was deleted, so authored/generated Flutter must not preserve an event,
+# method, UUID, or CM presentation field for that nonexistent role transition. Historical CM JSON
+# is ignored and never reserialized.
+dg_clean 'SwitchSides|SwitchBack|switch_sides|switchSides|switch_back|switchBack|switch_uuid|switchUuid|from_switch|fromSwitch' 'R-G4a retired switch-sides role-swap state and API'
+if grep -qE 'SwitchSides|SwitchBack|switch_sides|switchSides|switch_back|switchBack|switch_uuid|switchUuid|from_switch|fromSwitch' \
+  flutter/lib/generated_bridge.dart; then
+  echo "  FAIL R-G4a: freshly generated bridge regained retired switch-sides role-swap state"; exit 1
+fi
+grep -qF "'from_switch': true" flutter/test/server_model_test.dart \
+  || { echo "  FAIL R-G4a: historical role-swap JSON fixture is missing"; exit 1; }
+grep -qF "expect(serialized, isNot(contains('from_switch')));" flutter/test/server_model_test.dart \
+  || { echo "  FAIL R-G4a: role-swap serialization-absence regression is missing"; exit 1; }
+echo "  ok  R-G4a authored/generated Flutter has no role-swap API/state and ignores historical from_switch JSON"
 grep -qF 'Future<void> mainStartStatusSync' flutter/lib/generated_bridge.dart \
   || { echo "  FAIL R-SV6c: generated bridge lacks typed main status-sync operation"; exit 1; }
 grep -qF 'await bind.mainStartStatusSync();' flutter/lib/main.dart \

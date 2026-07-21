@@ -9222,19 +9222,54 @@ if [ -n "$r_g7" ]; then
 else
   echo "  ok  R-G7 Android: login click-to-accept dropped (null accept -> no button, no Enter) + Start-on-boot toggle removed, boot re-homed on RECEIVE_BOOT_COMPLETED alone (battery-opt onboarding relocated to service-start)"
 fi
-# R-A6 / R-S2 / R-G4: the switch-sides role-swap feature is FULLY excised. SwitchSidesResponse
+# R-A6 / R-S2 / R-G4a: the switch-sides role-swap feature is FULLY excised. SwitchSidesResponse
 # was a password-bypass + 2FA-skip authorization path (R-S2) — the resume itself was deleted by
 # R-A2 (2cf3ad6), and this removes the rest for structural absence: the 3 proto messages
 # (SwitchSidesRequest/SwitchSidesResponse/SwitchBack) + their Misc/Message Union arms, the ipc
 # Data variants + relay handlers, the connection.rs UUID statics/helpers + the LIVE responder
 # handler (the run_me("--switch_uuid") process-spawn), the client.rs consume/send_switch_login/
-# handle_hash flow, the io_loop SwitchBack handler, and the whole flutter switch_sides FFI+UI.
-# Case-sensitive, so the R-B6-deferred sciter `switch_sides` {} stub + `switch_back` trait method
-# (lowercase) are not matched. The proto twin is gated just below.
+# handle_hash flow, the io_loop SwitchBack handler, and the whole Flutter switch_sides FFI+UI.
 ra6_clean 'SwitchSides|SwitchBack'                                       'R-A6/R-S2 switch-sides role-swap' || rc=1
 if grep -qE 'SwitchSides|SwitchBack' libs/hbb_common/protos/message.proto 2>/dev/null; then
   echo "  FAIL R-A6: switch-sides proto messages/arms must be absent from message.proto"; rc=1
 else echo "  ok  R-A6/R-S2 switch-sides proto absent"; fi
+# R-G4a closes the lower-case compatibility residue that the original R-A6 gate did not match.
+# Strip each Rust file's trailing test module before scanning because the regressions below name the
+# retired historical JSON key as an adversarial input/assertion. Production code and authored Dart
+# must retain no role-swap API, state, event, UUID, or presentation field.
+r_g4a=""
+for path in \
+  src/client.rs src/client/io_loop.rs src/server/connection.rs src/ipc.rs \
+  src/ui_cm_interface.rs src/ui_session_interface.rs src/flutter.rs src/flutter_ffi.rs; do
+  role_swap_hits="$(sed '/^#\[cfg(test)\]/,$d' "$path" | grep -nE 'SwitchSides|SwitchBack|switch_sides|switchSides|switch_back|switchBack|switch_uuid|switchUuid|from_switch|fromSwitch' || true)"
+  [ -z "$role_swap_hits" ] || r_g4a="$r_g4a $path-role-swap-residue"
+done
+if grep -RInE --include='*.dart' \
+  'SwitchSides|SwitchBack|switch_sides|switchSides|switch_back|switchBack|switch_uuid|switchUuid|from_switch|fromSwitch' \
+  flutter/lib >/dev/null; then
+  r_g4a="$r_g4a authored-Dart-role-swap-residue"
+fi
+grep -qF 'assert!(!login_payload.contains_key("from_switch"));' src/ui_cm_interface.rs \
+  || r_g4a="$r_g4a cm-login-serialization-regression-missing"
+grep -qF 'assert!(!client_payload.contains_key("from_switch"));' src/ui_cm_interface.rs \
+  || r_g4a="$r_g4a cm-client-serialization-regression-missing"
+grep -qF "expect(serialized, isNot(contains('from_switch')));" flutter/test/server_model_test.dart \
+  || r_g4a="$r_g4a Flutter-legacy-key-regression-missing"
+[ "$(grep -cF 'self.authorized = true;' src/server/connection.rs)" -eq 1 ] \
+  || r_g4a="$r_g4a sole-PAKE-authorization-edge-not-preserved"
+grep -qF '.get("keyboard")' src/ui_cm_interface.rs \
+  || r_g4a="$r_g4a retained-CM-capability-fact-not-proven"
+grep -qF '<span class="id">R-G4a</span>' requirements.html \
+  || r_g4a="$r_g4a requirement-missing"
+grep -qF '<tr><td>190</td>' requirements.html \
+  || r_g4a="$r_g4a appendix-row-missing"
+grep -qF 'R-G4a — switch-sides role-swap compatibility state excision' HARDENING_STATUS.md \
+  || r_g4a="$r_g4a hardening-ledger-missing"
+if [ -n "$r_g4a" ]; then
+  echo "  FAIL R-G4a switch-sides compatibility closure:$r_g4a"; rc=1
+else
+  echo "  ok  R-G4a switch-sides role-swap API/state is absent end-to-end; legacy CM JSON is ignored and sole PAKE authorization remains"
+fi
 # R-S2 FSM-collapse: the post-keying salted-hash password oracle is deleted. With CPace
 # (R-P14) every connection is mutually password-authenticated at keying, and R-A1 (now
 # unconditional) refuses unkeyed streams before Connection::start, so the inherited

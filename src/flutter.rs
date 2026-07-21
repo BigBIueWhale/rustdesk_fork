@@ -1155,10 +1155,6 @@ impl InvokeUiSession for FlutterHandler {
         self.push_event("clipboard", &[("content", &content)], &[]);
     }
 
-    fn switch_back(&self, peer_id: &str) {
-        self.push_event("switch_back", &[("peer_id", peer_id)], &[]);
-    }
-
     fn on_voice_call_started(&self) {
         self.push_event::<&str>("on_voice_call_started", &[], &[]);
     }
@@ -1463,7 +1459,6 @@ pub fn session_add(
     session.lc.write().unwrap().initialize(
         id.to_owned(),
         conn_type,
-        None,
         get_adapter_luid(),
         shared_password,
         conn_token,

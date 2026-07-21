@@ -766,6 +766,8 @@ grep -qF 'rustdesk_set_mobile_at_rest_storage_key' flutter/ios/Runner/AppDelegat
 awk '/installMobileAtRestStorageKey\(\)/{seen=1} /GeneratedPluginRegistrant.register/{if (!seen) exit 1; found=1} END{exit found ? 0 : 1}' \
   flutter/ios/Runner/AppDelegate.swift \
   || mobile_at_rest_bad="$mobile_at_rest_bad ios-key-not-installed-before-plugin-init"
+python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test \
+  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-unavailable-os-key-not-fail-closed"
 grep -qF 'Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage' HARDENING_STATUS.md \
   || mobile_at_rest_bad="$mobile_at_rest_bad hardening-ledger-missing"
 if grep -RInF 'Generated mobile at-rest keypair' libs/hbb_common/src/config.rs; then

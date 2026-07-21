@@ -242,30 +242,21 @@ fn secretbox_key_from_storage_key(mut storage_key: Vec<u8>) -> Result<secretbox:
     Ok(secretbox::Key(storage_key.try_into().map_err(|_| ())?))
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn open_with_existing_key_pair(
-    data: &[u8],
-    primary_key: Option<&[u8]>,
-) -> Result<DecryptedStorage, ()> {
-    let Some(key_pair) = Config::get_existing_key_pair() else {
-        return Err(());
-    };
-    let pk = key_pair.1;
-    if primary_key == Some(pk.as_slice()) {
-        return Err(());
-    }
-    let key = secretbox_key_from_storage_key(pk)?;
-    open_secretbox_payload(data, &key).map(|value| DecryptedStorage {
-        value,
-        should_rewrap: false,
-    })
+fn legacy_key_pair_fallback_authorized(storage_key_available: bool, mobile: bool) -> bool {
+    // On mobile, the config keypair is migration material, not an alternative storage
+    // authority. Only try it after the OS-protected key was installed and failed to open
+    // old ciphertext. If the OS key is unavailable, encrypted reads must stay fail-closed.
+    storage_key_available || !mobile
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
 fn open_with_existing_key_pair(
     data: &[u8],
     primary_key: Option<&[u8]>,
 ) -> Result<DecryptedStorage, ()> {
+    let mobile = cfg!(any(target_os = "android", target_os = "ios"));
+    if !legacy_key_pair_fallback_authorized(primary_key.is_some(), mobile) {
+        return Err(());
+    }
     let Some(key_pair) = Config::get_existing_key_pair() else {
         return Err(());
     };
@@ -276,7 +267,7 @@ fn open_with_existing_key_pair(
     let key = secretbox_key_from_storage_key(pk)?;
     open_secretbox_payload(data, &key).map(|value| DecryptedStorage {
         value,
-        should_rewrap: true,
+        should_rewrap: mobile,
     })
 }
 
@@ -593,6 +584,13 @@ mod test {
         use super::*;
 
         assert!(secretbox_key_from_storage_key(Vec::new()).is_err());
+    }
+
+    #[test]
+    fn test_mobile_legacy_keypair_fallback_requires_os_storage_key() {
+        assert!(!super::legacy_key_pair_fallback_authorized(false, true));
+        assert!(super::legacy_key_pair_fallback_authorized(true, true));
+        assert!(super::legacy_key_pair_fallback_authorized(false, false));
     }
 
     #[test]

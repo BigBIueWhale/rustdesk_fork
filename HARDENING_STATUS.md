@@ -563,7 +563,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   legacy desktop blobs encrypted under a previously stored keypair public key remain decryptable through
   `Config::get_existing_key_pair()`, which is read-only and never generates. Mobile `key_pair` generation is
   cfg-isolated to Android/iOS as device-id metadata; after the 2026-07-18 OS-key slice it is also only a
-  decrypt-only migration fallback for old mobile at-rest ciphertext, not the primary wrapper key. Verification
+  decrypt-only migration fallback for old mobile at-rest ciphertext after a live OS key has been installed and
+  tried, not the primary wrapper key or an unavailable-OS-key fallback. Verification
   closure: `scripts/verify.sh` runs the pk-fallback tests and
   asserts desktop `get_uuid()` does not call the keypair generator, the generator is mobile-cfg-only,
   `get_cached_pk` is absent, `symmetric_crypt` uses the fallible at-rest key API rather than `get_uuid()`,
@@ -6813,6 +6814,37 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
+- **R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority — SOURCE
+  CLOSED/GATED 2026-07-21; NATIVE FAILURE INJECTION, iOS ARTIFACT, REAL-DEVICE, AND EXACT-RELEASE
+  EVIDENCE REMAIN OPEN.** Platforms: Android and iOS, with desktop compatibility preserved. Endpoint/action:
+  `password_security::open_at_rest_payload` and `open_with_existing_key_pair`, reached by permanent-password,
+  PRS, ID, peer-password, and encrypted JSON config reads. Boundary: transiently unavailable or rejected
+  AndroidKeyStore/iOS Keychain key ↔ plaintext config-keypair legacy migration authority. The initial OS-key
+  implementation in `09a7409912ed15e0422cdad65a4bb34e8c3f6af3` correctly made the OS key primary but sent
+  both current-key mismatch and total OS-key unavailability through `Config::get_existing_key_pair()`. On an
+  older mobile config, the latter branch could decrypt a credential without the intended OS authority. The
+  peer-config loader would also receive `should_rewrap=true` and immediately store the decrypted password and
+  password-equivalent PRS; because encryption could not obtain the missing OS key, the vector encryptor returned
+  empty fields, risking destructive credential replacement. This contradicted both startup diagnostics that said
+  encrypted reads fail closed. It is a source-proven local storage-authority and credential-availability defect,
+  not evidence of device/host compromise, a public listener, a host RustDesk/service/firewall mutation, Docker
+  escape, or privilege escalation.
+
+  The correction is one platform decision at the sole legacy-keypair read boundary. On Android/iOS,
+  `legacy_key_pair_fallback_authorized` returns true only when `primary_key.is_some()`: the OS-protected key was
+  installed and tried, but the payload is old. If the OS key is unavailable, authorization returns before
+  `Config::get_existing_key_pair()`, so no legacy plaintext, rewrap marker, or migration write can result. With a
+  live OS key, genuine legacy ciphertext still decrypts and sets `should_rewrap=true`. Desktop preserves its
+  existing machine-UID-unavailable keypair recovery and keeps `should_rewrap=false`. The focused Rust regression
+  pins all three decisions (mobile missing-key denial, mobile live-key migration, desktop recovery). The standalone
+  `scripts/verify-mobile-at-rest-fail-closed.py` binds the policy expression, platform classifier, authorization
+  before keypair access, sole keypair-read inventory, dispatcher edges, rewrap result, immediate peer migration
+  sink, Android/iOS startup order and diagnostics, requirement/disposition/ledger, and shared/Apple wiring; its
+  12 deliberate mutations must all fail. R-S11bh and Appendix C #197 make the corrected authority normative.
+  No device/emulator, AndroidKeyStore/Keychain failure injection, iOS compile/sign, or new APK build occurred in
+  this source slice. The existing older Android signed-artifact result below predates this correction and is not
+  promoted to exact-current evidence; live Android/iOS storage behavior, iOS artifact proof, and the exact clean
+  R-B2 release transaction remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -6841,8 +6873,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   are unchanged; only the storage wrapper's key source changes. The `#[no_mangle]` C entry point is intentionally
   private in the Rust namespace: Rust still exports the C symbol, while pinned FRB 1.80.1 ignores non-public
   functions instead of trying to expose its raw pointer through the Dart bridge. Existing mobile ciphertext encrypted under
-  the legacy config keypair is still accepted only as a read-only decrypt fallback through
-  `Config::get_existing_key_pair()`; when that fallback succeeds, `decrypt_str_or_original` /
+  the legacy config keypair is accepted only after the OS key was installed and tried, as a read-only decrypt fallback through
+  `Config::get_existing_key_pair()`; OS-key unavailability returns an error before that read. When the authorized fallback succeeds, `decrypt_str_or_original` /
   `decrypt_vec_or_original` mark the value for re-store so the next write rewraps under the OS key. The Android packaging/native-linkage
   half is artifact-validated; the overall mobile item remains open. The Android release path keeps `MainApplication` and
   `MobileAtRestStorageKey` structurally auditable through R8 and runs
@@ -7528,9 +7560,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-0faba3ad6b99b16bf7b03d9386c64562bf4078c11e1cdd00d1e141c3d7c6e274  requirements.html
+70e5b8f3602a079ff7a501fdef3bee74825eb67c50b6f1bcb8c21fc16f01e5f5  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#196. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bh, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#197. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

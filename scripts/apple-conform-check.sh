@@ -2606,7 +2606,7 @@ PY
 
 echo "== (2e) R-X6 iOS twin: config-store backup exclusion wired in AppDelegate.swift =="
 # The iOS analog of Android's allowBackup="false": the config store (the Documents dir holding the
-# per-peer connect-equivalent Argon2id PRS and the machine-UUID wrapper key) must be excluded from
+# per-peer connect-equivalent Argon2id PRS ciphertext and device-ID metadata) must be excluded from
 # iCloud/iTunes device backups via NSURLIsExcludedFromBackupKey. This is a source-presence assertion —
 # the Swift is not built on this Linux host (no Xcode), like the fork's other Apple source-conformance
 # items — so it proves the exclusion stays WIRED, not that it runs.
@@ -2614,6 +2614,14 @@ if grep -q 'isExcludedFromBackup' "$REPO/flutter/ios/Runner/AppDelegate.swift"; 
   note "ok  R-X6 iOS: AppDelegate sets NSURLIsExcludedFromBackupKey on the config store (source-layer; Swift not built here)"
 else
   echo "  FAIL R-X6 iOS: AppDelegate.swift no longer excludes the config store from backup (isExcludedFromBackup absent)"
+  rc=1
+fi
+
+echo "== (2f) R-S11bh mobile legacy at-rest migration requires live OS-key authority =="
+if python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test; then
+  note "ok  R-S11bh Android/iOS legacy decrypt is migration-only after successful OS-key installation"
+else
+  echo "  FAIL R-S11bh mobile legacy at-rest fallback can bypass unavailable OS-key authority"
   rc=1
 fi
 

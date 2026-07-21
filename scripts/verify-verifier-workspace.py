@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#196",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#197",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -10827,6 +10827,54 @@ def validate_mobile_build_authority_verifier_contract(sources):
         sources["verify"],
         "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
         "mobile authority focused-verifier wiring",
+    )
+
+
+def validate_mobile_at_rest_fail_closed_contract(sources):
+    focused = sources["mobile_at_rest_fail_closed_verifier"]
+    for text, label in (
+        ("def extract_rust_function(", "mobile at-rest Rust function parser"),
+        ("def validate(sources", "mobile at-rest semantic entry"),
+        (
+            '"if !legacy_key_pair_fallback_authorized(primary_key.is_some(), mobile)"',
+            "mobile at-rest pre-keypair authorization contract",
+        ),
+        (
+            '"Config::get_existing_key_pair()",\n        1,',
+            "mobile at-rest sole legacy-key read inventory",
+        ),
+        (
+            "test_mobile_legacy_keypair_fallback_requires_os_storage_key",
+            "mobile at-rest focused Rust regression",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "mobile at-rest mutation inventory"),
+        ("run_mutations(sources)", "mobile at-rest mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
+        "mobile at-rest shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
+        "mobile at-rest Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bh</span>',
+        "mobile at-rest live-OS-key requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>197</td>",
+        "mobile at-rest unavailable-key Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
+        "mobile at-rest unavailable-key hardening ledger",
     )
 
 
@@ -13083,6 +13131,7 @@ def validate_sources(sources):
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
+    validate_mobile_at_rest_fail_closed_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
@@ -24998,8 +25047,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#196",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#197",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#196",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25013,6 +25062,42 @@ def run_source_mutations(sources):
             "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
             "true # mobile authority focused verifier removed",
             "mobile authority focused-verifier wiring",
+        ),
+        (
+            "mobile_at_rest_fail_closed_verifier",
+            '"if !legacy_key_pair_fallback_authorized(primary_key.is_some(), mobile)"',
+            '"if legacy_key_pair_fallback_authorized(primary_key.is_some(), mobile)"',
+            "mobile at-rest pre-keypair authorization contract",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
+            "true # mobile at-rest fail-closed verifier removed",
+            "mobile at-rest shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
+            "true # mobile at-rest fail-closed verifier removed",
+            "mobile at-rest Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bh</span>',
+            '<span class="id">R-S11bh-disabled</span>',
+            "mobile at-rest live-OS-key requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>197</td>",
+            "<tr><td>197-disabled</td>",
+            "mobile at-rest unavailable-key Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
+            "R-S11bh/R-S11e-74 — mobile legacy at-rest migration accepts missing OS-key authority",
+            "mobile at-rest unavailable-key hardening ledger",
         ),
         (
             "github_automation_authority_verifier",
@@ -25751,6 +25836,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"
+            ).read_text(encoding="utf-8"),
+            "mobile_at_rest_fail_closed_verifier": (
+                repo / "scripts/verify-mobile-at-rest-fail-closed.py"
             ).read_text(encoding="utf-8"),
             "github_automation_authority_verifier": (
                 repo / "scripts/verify-github-automation-authority.py"

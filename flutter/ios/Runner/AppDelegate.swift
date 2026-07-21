@@ -26,8 +26,9 @@ import Security
   /// The mobile at-rest wrapper key is app/device state, not RustDesk config state. Store one
   /// random 32-byte key in the iOS Keychain as this-device-only data and inject it into Rust before
   /// Flutter/Rust config initialization. Existing config-keypair ciphertext is handled in Rust as a
-  /// read-only legacy decrypt fallback and then re-stored under this key; new encryption never uses
-  /// the config keypair as its primary key.
+  /// read-only legacy decrypt fallback only after this key was installed and tried, then re-stored
+  /// under this key. If this key is unavailable, encrypted reads stay fail-closed; new encryption
+  /// never uses the config keypair as its primary key.
   private func installMobileAtRestStorageKey() {
     guard let key = loadOrCreateMobileAtRestStorageKey() else {
       NSLog("RustDesk: mobile at-rest storage key unavailable; encrypted config reads fail closed")

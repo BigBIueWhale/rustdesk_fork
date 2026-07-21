@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#199",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#200",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -10942,7 +10942,12 @@ def validate_android_builder_authority_contract(sources):
         ('identity_before != identity_after', "Android source stable-read proof"),
         ('if not allow_extras:', "Android initial extra-input refusal semantics"),
         ('reference_digest != candidate_digest', "Android source byte comparison"),
-        ('reference_exec != candidate_exec', "Android source executable-mode comparison"),
+        ('reference_root_mode != REFERENCE_DIRECTORY_MODE', "Android authority-root exact-mode comparison"),
+        ('candidate_root_mode != CANDIDATE_DIRECTORY_MODE', "Android writable-root exact-mode comparison"),
+        ('reference_mode != REFERENCE_DIRECTORY_MODE', "Android authority-directory exact-mode comparison"),
+        ('candidate_mode != CANDIDATE_DIRECTORY_MODE', "Android writable-directory exact-mode comparison"),
+        ('reference file has noncanonical mode', "Android authority-file exact-mode comparison"),
+        ('candidate_mode != expected_candidate_mode', "Android source exact-mode comparison"),
         ('self_test()', "Android source comparator self-test"),
     ):
         require_text(comparator, text, label)
@@ -10968,13 +10973,28 @@ def validate_android_builder_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11bk</span>',
+        "Android snapshot-mode authority requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>199</td>",
         "Android builder authority Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>200</td>",
+        "Android snapshot-mode authority Appendix C row",
     )
     require_text(
         sources["hardening"],
         "R-S11bj/R-S11e-76 — Android APK builder container and source authority",
         "Android builder authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority",
+        "Android snapshot-mode authority hardening ledger",
     )
 
 
@@ -25149,8 +25169,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#199",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#198",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#200",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#199",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25250,6 +25270,12 @@ def run_source_mutations(sources):
             "Android initial extra-input refusal semantics",
         ),
         (
+            "android_build_source_verifier",
+            "if candidate_mode != expected_candidate_mode:",
+            "if False:",
+            "Android source exact-mode comparison",
+        ),
+        (
             "verify",
             "python3 scripts/verify-android-build-source.py --self-test",
             "true # Android source-comparator self-test removed",
@@ -25269,15 +25295,33 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<span class="id">R-S11bk</span>',
+            '<span class="id">R-S11bk-disabled</span>',
+            "Android snapshot-mode authority requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>199</td>",
             "<tr><td>199-disabled</td>",
             "Android builder authority Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>200</td>",
+            "<tr><td>200-disabled</td>",
+            "Android snapshot-mode authority Appendix C row",
         ),
         (
             "hardening",
             "R-S11bj/R-S11e-76 — Android APK builder container and source authority",
             "R-S11bj/R-S11e-76 — Android APK builder ambient authority",
             "Android builder authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority",
+            "R-S11bk/R-S11e-77 — Android archive umask authority",
+            "Android snapshot-mode authority hardening ledger",
         ),
         (
             "github_automation_authority_verifier",

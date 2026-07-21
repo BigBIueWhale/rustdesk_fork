@@ -13,6 +13,14 @@ class SourceError(Exception):
     pass
 
 
+REFERENCE_DIRECTORY_MODE = 0o555
+REFERENCE_FILE_MODE = 0o444
+REFERENCE_EXECUTABLE_MODE = 0o555
+CANDIDATE_DIRECTORY_MODE = 0o755
+CANDIDATE_FILE_MODE = 0o644
+CANDIDATE_EXECUTABLE_MODE = 0o755
+
+
 def canonical_directory(path, label):
     absolute = os.path.abspath(path)
     if absolute != path or os.path.realpath(path) != path:
@@ -70,7 +78,7 @@ def stable_file(path, expected_uid, label):
         )
         if identity_before != identity_after:
             raise SourceError("{} changed while it was read".format(label))
-        return digest.hexdigest(), stat.S_IMODE(before.st_mode) & 0o111
+        return digest.hexdigest(), stat.S_IMODE(before.st_mode)
     finally:
         os.close(descriptor)
 
@@ -103,6 +111,13 @@ def validate(reference, candidate, allow_extras=False):
     if reference == candidate:
         raise SourceError("reference and candidate source must be distinct")
 
+    reference_root_mode = stat.S_IMODE(os.lstat(reference).st_mode)
+    candidate_root_mode = stat.S_IMODE(os.lstat(candidate).st_mode)
+    if reference_root_mode != REFERENCE_DIRECTORY_MODE:
+        raise SourceError("reference source root has noncanonical mode")
+    if candidate_root_mode != CANDIDATE_DIRECTORY_MODE:
+        raise SourceError("candidate source root has noncanonical mode")
+
     uid = os.getuid()
     entries = reference_entries(reference)
     if not entries:
@@ -124,15 +139,27 @@ def validate(reference, candidate, allow_extras=False):
         if kind == "directory":
             if not stat.S_ISDIR(candidate_metadata.st_mode):
                 raise SourceError("candidate directory changed type: {}".format(relative))
+            reference_mode = stat.S_IMODE(os.lstat(reference_path).st_mode)
+            candidate_mode = stat.S_IMODE(candidate_metadata.st_mode)
+            if reference_mode != REFERENCE_DIRECTORY_MODE:
+                raise SourceError("reference directory has noncanonical mode: {}".format(relative))
+            if candidate_mode != CANDIDATE_DIRECTORY_MODE:
+                raise SourceError("candidate directory has noncanonical mode: {}".format(relative))
             continue
         if not stat.S_ISREG(candidate_metadata.st_mode):
             raise SourceError("candidate file changed type: {}".format(relative))
-        reference_digest, reference_exec = stable_file(reference_path, uid, relative)
-        candidate_digest, candidate_exec = stable_file(candidate_path, uid, relative)
+        reference_digest, reference_mode = stable_file(reference_path, uid, relative)
+        candidate_digest, candidate_mode = stable_file(candidate_path, uid, relative)
         if reference_digest != candidate_digest:
             raise SourceError("candidate source bytes changed: {}".format(relative))
-        if reference_exec != candidate_exec:
-            raise SourceError("candidate source executable mode changed: {}".format(relative))
+        if reference_mode == REFERENCE_FILE_MODE:
+            expected_candidate_mode = CANDIDATE_FILE_MODE
+        elif reference_mode == REFERENCE_EXECUTABLE_MODE:
+            expected_candidate_mode = CANDIDATE_EXECUTABLE_MODE
+        else:
+            raise SourceError("reference file has noncanonical mode: {}".format(relative))
+        if candidate_mode != expected_candidate_mode:
+            raise SourceError("candidate source mode changed: {}".format(relative))
 
 
 def expect_failure(reference, candidate, label):
@@ -162,8 +189,30 @@ def self_test():
             handle.write(b"exact source\n")
         os.chmod(reference_file, 0o444)
         os.chmod(candidate_file, 0o644)
+        os.chmod(os.path.join(reference, "nested"), 0o555)
+        os.chmod(os.path.join(reference, "empty"), 0o555)
+        os.chmod(reference, 0o555)
+        os.chmod(os.path.join(candidate, "nested"), 0o755)
+        os.chmod(os.path.join(candidate, "empty"), 0o755)
+        os.chmod(candidate, 0o755)
         validate(reference, candidate)
         expect_failure(reference, reference, "identical source roots")
+
+        os.chmod(reference, 0o575)
+        expect_failure(reference, candidate, "group-writable reference root")
+        os.chmod(reference, 0o555)
+
+        os.chmod(candidate, 0o775)
+        expect_failure(reference, candidate, "group-writable candidate root")
+        os.chmod(candidate, 0o755)
+
+        os.chmod(os.path.join(reference, "nested"), 0o575)
+        expect_failure(reference, candidate, "group-writable reference directory")
+        os.chmod(os.path.join(reference, "nested"), 0o555)
+
+        os.chmod(os.path.join(candidate, "nested"), 0o775)
+        expect_failure(reference, candidate, "group-writable candidate directory")
+        os.chmod(os.path.join(candidate, "nested"), 0o755)
 
         candidate_empty = os.path.join(candidate, "empty")
         os.rmdir(candidate_empty)
@@ -172,6 +221,7 @@ def self_test():
         expect_failure(reference, candidate, "changed directory type")
         os.unlink(candidate_empty)
         os.mkdir(candidate_empty, 0o700)
+        os.chmod(candidate_empty, 0o755)
 
         extra_file = os.path.join(candidate, "extra-input")
         with open(extra_file, "wb") as handle:
@@ -195,12 +245,26 @@ def self_test():
         os.unlink(candidate_file)
         with open(candidate_file, "wb") as handle:
             handle.write(b"exact source\n")
+
+        os.chmod(reference_file, 0o464)
+        expect_failure(reference, candidate, "group-writable reference source")
+        os.chmod(reference_file, 0o444)
+
+        os.chmod(candidate_file, 0o664)
+        expect_failure(reference, candidate, "group-writable candidate source")
+
         os.chmod(candidate_file, 0o755)
         expect_failure(reference, candidate, "changed executable mode")
 
         os.unlink(candidate_file)
         expect_failure(reference, candidate, "missing source")
     finally:
+        for current, directories, _files in os.walk(root, topdown=True, followlinks=False):
+            os.chmod(current, 0o700)
+            for name in directories:
+                path = os.path.join(current, name)
+                if not os.path.islink(path):
+                    os.chmod(path, 0o700)
         shutil.rmtree(root)
 
 

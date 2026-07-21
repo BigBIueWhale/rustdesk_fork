@@ -6897,7 +6897,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   special tree entries, archives the commit once into a mode-protected private workspace, and retains a non-writable
   authority extraction. Each build pass creates a freshly absent writable extraction; the new descriptor-based
   `scripts/verify-android-build-source.py` requires the initial inventory to contain no extras and match every
-  committed regular file/directory, owner, byte digest, and executable bit, rejects symlink/hardlink substitution and
+  committed regular file/directory, owner, byte digest, and canonical full mode, rejects symlink/hardlink substitution and
   unstable reads, and after compilation proves every committed input still matches while allowing generated outputs.
   The writable tree is removed before signing, so the second pass starts from a fresh extraction rather than prior
   generated state. Neither the real repository nor final output directory is mounted into a container.
@@ -6918,6 +6918,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   workspace verifier also binds that focused verifier and its policy anchors. This slice does not run the Android
   builder, build/sign an APK, exercise Android, or promote the older 2026-07-18 APK evidence to current commit. Exact
   current APK, full R-B2/R-B10 release, and real-device behavior remain open.
+- **R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority — SOURCE CLOSED/GATED
+  2026-07-21; EXACT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android artifact source staging.
+  Endpoint/action: exact clean commit archive extraction into the immutable authority and per-pass writable build
+  copy. Boundary: Git's committed regular/executable distinction ↔ filesystem permissions consumed by the offline
+  build and its independently strict Gradle-init authority. The first exact-current target-local attempt at clean
+  commit `d8d9ddafe4e406c3bd46d17b8d286961a81ecb15` verified its private 25-GiB online snapshot, every Android input
+  pin, immutable builder image, and signing certificate, then stopped before compilation: the comparator accepted
+  `0664` checked-in files inherited from archive extraction, but `scripts/android-gradle-cache.py` correctly
+  refused group-writable `scripts/android-gradle-offline.init.gradle`. No APK was signed or published. This was a
+  fail-closed source-mode coherence defect, not execution of the file, weakened Gradle authority, root/container
+  escape, host/service/firewall mutation, port exposure, exploitation, or compromise.
+
+  `scripts/build-android.sh` now maps the already-closed Git inventory deterministically after each extraction. The
+  immutable root, every directory, and every executable are exactly `0555`; immutable ordinary files are `0444`.
+  Each private writable root, directory, and executable is exactly `0755`; writable ordinary files are `0644`.
+  Archive-producer and extractor umasks are no longer semantic inputs. `scripts/verify-android-build-source.py`
+  binds those complete modes on both roots, all committed directories, and all committed files in addition to its
+  existing owner/type/link/stable-read/digest checks. Its self-test rejects noncanonical authority and candidate
+  roots, directories, regular files, and executable transitions. The strict Gradle-init ownership/mode policy is
+  unchanged. `scripts/verify-android-builder-authority.py`, the shared R-S11e-76/R-S11e-77 gate, and the independent
+  workspace meta-gate bind both normalization operations, every comparison level, the negative tests, R-S11bk,
+  Appendix C #200, and this ledger row with deliberate mutations. This source correction does not promote the
+  failed attempt into artifact evidence; a clean committed rerun, full R-B2/R-B10 release, and device behavior
+  remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7633,9 +7657,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-95351840da596fce2cc588d4c23e1cda5ad07d459669d93f5491f657cb2fe2ab  requirements.html
+b12d13bb2ebc5663cff37fed0e151df3a37b6559789a539f5ed93b1bf663e192  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bj, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#199. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bk, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#200. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

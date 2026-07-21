@@ -47,9 +47,10 @@ def validate(sources: Dict[str, str]) -> None:
         ('archive --format=tar "$SOURCE_COMMIT"', "commit-object source archive"),
         ('SOURCE_AUTHORITY_ROOT="$OWNED_WORKSPACE/source-authority"', "immutable source authority"),
         ('BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-build"', "private writable source"),
-        ('chmod -R a-w "$SOURCE_AUTHORITY_ROOT"', "read-only source authority"),
+        ('chmod -R a=rX "$SOURCE_AUTHORITY_ROOT"', "canonical read-only source authority modes"),
         ('prepare_build_source() {', "fresh writable-source constructor"),
         ('Android writable source path was not freshly absent', "fresh writable-source precondition"),
+        ('chmod -R u=rwX,go=rX "$BUILD_SOURCE_ROOT"', "canonical writable source modes"),
         ('--reference "$SOURCE_AUTHORITY_ROOT" --candidate "$BUILD_SOURCE_ROOT" --allow-extras', "post-build source comparator wiring"),
         ('remove_build_source() {', "writable-source cleanup"),
         ('private Android writable source survived cleanup', "writable-source cleanup postcondition"),
@@ -116,13 +117,24 @@ def validate(sources: Dict[str, str]) -> None:
         ('before.st_nlink != 1', "hardlink refusal"),
         ('identity_before != identity_after', "stable-read identity proof"),
         ('reference_digest != candidate_digest', "exact byte comparison"),
-        ('reference_exec != candidate_exec', "executable-mode comparison"),
+        ('reference_root_mode != REFERENCE_DIRECTORY_MODE', "canonical authority-root mode"),
+        ('candidate_root_mode != CANDIDATE_DIRECTORY_MODE', "canonical writable-root mode"),
+        ('reference_mode != REFERENCE_DIRECTORY_MODE', "canonical authority-directory mode"),
+        ('candidate_mode != CANDIDATE_DIRECTORY_MODE', "canonical writable-directory mode"),
+        ('reference file has noncanonical mode', "canonical authority-file mode"),
+        ('candidate_mode != expected_candidate_mode', "canonical writable-file mode"),
         ('if not allow_extras:', "initial extra-input control"),
         ('candidate source contains an extra input', "initial extra-input refusal"),
         ('allow_extras=args.allow_extras', "post-build generated-output allowance"),
         ('candidate source is missing', "missing-input refusal"),
         ('expect_failure(reference, candidate, "changed directory type")', "directory-type negative test"),
         ('expect_failure(reference, candidate, "hardlink substitution")', "hardlink negative test"),
+        ('expect_failure(reference, candidate, "group-writable reference root")', "authority-root-mode negative test"),
+        ('expect_failure(reference, candidate, "group-writable candidate root")', "writable-root-mode negative test"),
+        ('expect_failure(reference, candidate, "group-writable reference directory")', "authority-directory-mode negative test"),
+        ('expect_failure(reference, candidate, "group-writable candidate directory")', "writable-directory-mode negative test"),
+        ('expect_failure(reference, candidate, "group-writable reference source")', "authority-file-mode negative test"),
+        ('expect_failure(reference, candidate, "group-writable candidate source")', "writable-file-mode negative test"),
         ('expect_failure(reference, candidate, "changed executable mode")', "executable-mode negative test"),
         ('self_test()', "source comparator self-test"),
     ):
@@ -139,11 +151,18 @@ def validate(sources: Dict[str, str]) -> None:
         "shared verifier wiring",
     )
     require(sources["requirements"], '<span class="id">R-S11bj</span>', "R-S11bj requirement")
+    require(sources["requirements"], '<span class="id">R-S11bk</span>', "R-S11bk requirement")
     require(sources["requirements"], '<tr><td>199</td>', "Appendix C #199 disposition")
+    require(sources["requirements"], '<tr><td>200</td>', "Appendix C #200 disposition")
     require(
         sources["hardening"],
         'R-S11bj/R-S11e-76 — Android APK builder container and source authority',
         "hardening ledger row",
+    )
+    require(
+        sources["hardening"],
+        'R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority',
+        "snapshot-mode hardening ledger row",
     )
 
 
@@ -160,7 +179,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("build", "source=$pass_output,target=/out", "source=$OUT_DIR,target=/out", "final output bind"),
     Mutation("build", 'archive --format=tar "$SOURCE_COMMIT"', 'archive --format=tar HEAD~1', "source commit binding"),
     Mutation("build", 'mode not in (b"100644", b"100755")', 'mode not in (b"100644", b"100755", b"120000")', "regular-only source tree"),
-    Mutation("build", 'chmod -R a-w "$SOURCE_AUTHORITY_ROOT"', 'chmod -R u+w "$SOURCE_AUTHORITY_ROOT"', "immutable source authority"),
+    Mutation("build", 'chmod -R a=rX "$SOURCE_AUTHORITY_ROOT"', 'chmod -R a=rwX "$SOURCE_AUTHORITY_ROOT"', "canonical immutable source modes"),
+    Mutation("build", 'chmod -R u=rwX,go=rX "$BUILD_SOURCE_ROOT"', 'chmod -R u=rwX,g=rwX,o=rX "$BUILD_SOURCE_ROOT"', "canonical writable source modes"),
     Mutation("build", "    prepare_build_source\n", "    true # fresh source construction removed\n", "fresh build source"),
     Mutation("build", "    verify_build_source_unchanged\n    # The docker run built", "    true # post-build source comparison removed\n    # The docker run built", "post-build source comparison"),
     Mutation("build", "    remove_build_source\n", "    true # build-source cleanup removed\n", "build-source cleanup"),
@@ -172,14 +192,29 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("checker", 'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)', 'flags = os.O_RDONLY', "source no-follow open"),
     Mutation("checker", "if reference_digest != candidate_digest:", "if False:", "source digest comparison"),
     Mutation("checker", "if before.st_nlink != 1:", "if False:", "source hardlink refusal"),
+    Mutation("checker", "if reference_root_mode != REFERENCE_DIRECTORY_MODE:", "if False:", "canonical authority-root comparison"),
+    Mutation("checker", "if candidate_root_mode != CANDIDATE_DIRECTORY_MODE:", "if False:", "canonical writable-root comparison"),
+    Mutation("checker", "if reference_mode != REFERENCE_DIRECTORY_MODE:", "if False:", "canonical authority-directory comparison"),
+    Mutation("checker", "if candidate_mode != CANDIDATE_DIRECTORY_MODE:", "if False:", "canonical writable-directory comparison"),
+    Mutation("checker", 'raise SourceError("reference file has noncanonical mode: {}".format(relative))', "expected_candidate_mode = CANDIDATE_FILE_MODE", "canonical authority-file comparison"),
+    Mutation("checker", "if candidate_mode != expected_candidate_mode:", "if False:", "canonical file-mode comparison"),
     Mutation("checker", "if not allow_extras:", "if False:", "initial extra-input refusal"),
     Mutation("checker", 'expect_failure(reference, candidate, "hardlink substitution")', 'validate(reference, candidate) # hardlink negative test removed', "hardlink negative test"),
+    Mutation("checker", 'expect_failure(reference, candidate, "group-writable reference root")', 'validate(reference, candidate) # authority-root-mode negative test removed', "authority-root-mode negative test"),
+    Mutation("checker", 'expect_failure(reference, candidate, "group-writable candidate root")', 'validate(reference, candidate) # writable-root-mode negative test removed', "writable-root-mode negative test"),
+    Mutation("checker", 'expect_failure(reference, candidate, "group-writable reference directory")', 'validate(reference, candidate) # authority-directory-mode negative test removed', "authority-directory-mode negative test"),
+    Mutation("checker", 'expect_failure(reference, candidate, "group-writable candidate directory")', 'validate(reference, candidate) # writable-directory-mode negative test removed', "writable-directory-mode negative test"),
+    Mutation("checker", 'expect_failure(reference, candidate, "group-writable reference source")', 'validate(reference, candidate) # authority-file-mode negative test removed', "authority-file-mode negative test"),
+    Mutation("checker", 'expect_failure(reference, candidate, "group-writable candidate source")', 'validate(reference, candidate) # writable-file-mode negative test removed', "writable-file-mode negative test"),
     Mutation("checker", 'expect_failure(reference, candidate, "changed executable mode")', 'validate(reference, candidate) # executable-mode negative test removed', "executable-mode negative test"),
     Mutation("verify", "python3 scripts/verify-android-build-source.py --self-test", "true # Android source comparator self-test removed", "source-comparator self-test wiring"),
     Mutation("verify", "python3 scripts/verify-android-builder-authority.py --repo . --self-test", "true # Android builder authority verifier removed", "shared gate wiring"),
     Mutation("requirements", '<span class="id">R-S11bj</span>', '<span class="id">R-S11bj-disabled</span>', "requirement"),
+    Mutation("requirements", '<span class="id">R-S11bk</span>', '<span class="id">R-S11bk-disabled</span>', "snapshot-mode requirement"),
     Mutation("requirements", '<tr><td>199</td>', '<tr><td>199-disabled</td>', "Appendix disposition"),
+    Mutation("requirements", '<tr><td>200</td>', '<tr><td>200-disabled</td>', "snapshot-mode Appendix disposition"),
     Mutation("hardening", 'R-S11bj/R-S11e-76 — Android APK builder container and source authority', 'R-S11bj/R-S11e-76 — Android APK builder ambient authority', "ledger"),
+    Mutation("hardening", 'R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority', 'R-S11bk/R-S11e-77 — Android archive umask authority', "snapshot-mode ledger"),
 )
 
 

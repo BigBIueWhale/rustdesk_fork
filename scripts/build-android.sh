@@ -197,7 +197,10 @@ for entry in sys.stdin.buffer.read().split(b"\0"):
     )" || die "cannot inspect the Android source authority snapshot"
     [ -z "$invalid_tree_entry" ] \
         || die "Android source authority contains a symlink or special file: $invalid_tree_entry"
-    chmod -R a-w "$SOURCE_AUTHORITY_ROOT"
+    # The admitted Git tree distinguishes only regular versus executable files. Do not let the
+    # archive producer's or extractor's umask decide whether source is writable:
+    # directories/executables are 0555 and ordinary files are 0444.
+    chmod -R a=rX "$SOURCE_AUTHORITY_ROOT"
 }
 
 prepare_build_source() {
@@ -208,6 +211,9 @@ prepare_build_source() {
     install -d -m 0700 "$BUILD_SOURCE_ROOT"
     tar --extract --file="$SOURCE_ARCHIVE" --directory="$BUILD_SOURCE_ROOT" \
         || die "cannot extract a fresh Android writable build snapshot"
+    # The build copy has one canonical Git-derived mode policy too:
+    # directories/executables are 0755 and ordinary files are 0644.
+    chmod -R u=rwX,go=rX "$BUILD_SOURCE_ROOT"
     invalid_tree_entry="$(find "$BUILD_SOURCE_ROOT" \
         \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit \
     )" || die "cannot inspect the Android writable build snapshot"

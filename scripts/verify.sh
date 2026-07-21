@@ -800,12 +800,12 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a1) Android APK builder container/source authority (R-S11bj/R-S11e-76) =="
+echo "== (3b-iii-a1a1) Android APK builder container/source/mode authority (R-S11bj/R-S11bk/R-S11e-76/R-S11e-77) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
-  echo "  ok  R-S11e-76 Android APK builds use private exact-commit source, narrow mounts, and confined existing-image launches"
+  echo "  ok  R-S11e-76/R-S11e-77 Android APK builds use canonical-mode private exact-commit source, narrow mounts, and confined existing-image launches"
 else
-  echo "  FAIL R-S11e-76 Android APK builder regained live-tree, output-tree, pull, network, root, or ambient container authority"
+  echo "  FAIL R-S11e-76/R-S11e-77 Android APK builder regained live-tree, archive-mode, output-tree, pull, network, root, or ambient container authority"
   rc=1
 fi
 

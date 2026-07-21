@@ -29,6 +29,8 @@ use crate::{
 use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::tokio::sync::oneshot;
 use hbb_common::{
     config::{self, keys, Config},
     fs::{self, can_enable_overwrite_detection, JobType},
@@ -2406,6 +2408,7 @@ struct StartCmIpcPara {
     tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
     rx_desktop_ready: mpsc::Receiver<()>,
     tx_cm_stream_ready: mpsc::Sender<()>,
+    owner_closed: oneshot::Receiver<()>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -2534,6 +2537,8 @@ pub struct Connection {
     closed: bool,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     start_cm_ipc_para: Option<StartCmIpcPara>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    cm_ipc_owner: Option<oneshot::Sender<()>>,
     cm_auth_token: String,
     auto_disconnect_timer: Option<(Instant, u64)>,
     authed_conn_id: Option<self::raii::AuthedConnID>,
@@ -2657,6 +2662,8 @@ impl Connection {
         let (tx_cm_stream_ready, _rx_cm_stream_ready) = mpsc::channel(1);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (_tx_desktop_ready, rx_desktop_ready) = mpsc::channel(1);
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let (cm_ipc_owner, cm_ipc_owner_closed) = oneshot::channel();
         #[cfg(target_os = "linux")]
         let linux_headless_handle =
             LinuxHeadlessHandle::new(_rx_cm_stream_ready, _tx_desktop_ready);
@@ -2732,7 +2739,10 @@ impl Connection {
                 tx_from_cm,
                 rx_desktop_ready,
                 tx_cm_stream_ready,
+                owner_closed: cm_ipc_owner_closed,
             }),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            cm_ipc_owner: Some(cm_ipc_owner),
             cm_auth_token,
             auto_disconnect_timer: None,
             authed_conn_id: None,
@@ -4274,21 +4284,47 @@ impl Connection {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn run_cm_ipc_until_owner_closed<F, T>(
+        owner_closed: oneshot::Receiver<()>,
+        bootstrap_complete: oneshot::Receiver<()>,
+        task: F,
+    ) -> Option<T>
+    where
+        F: std::future::Future<Output = T>,
+    {
+        let mut owner_closed = owner_closed;
+        let mut bootstrap_complete = bootstrap_complete;
+        let mut task = Box::pin(task);
+        tokio::select! {
+            biased;
+            result = &mut task => Some(result),
+            _ = &mut bootstrap_complete => Some(task.await),
+            _ = &mut owner_closed => None,
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn try_start_cm_ipc(&mut self) {
         if let Some(p) = self.start_cm_ipc_para.take() {
             tokio::spawn(async move {
                 #[cfg(windows)]
                 let tx_from_cm_clone = p.tx_from_cm.clone();
-                if let Err(err) = start_ipc(
-                    p.rx_to_cm,
-                    p.tx_from_cm,
-                    p.rx_desktop_ready,
-                    p.tx_cm_stream_ready,
-                    p.conn_id,
-                    p.cm_auth_token,
+                let (bootstrap_complete, bootstrap_completed) = oneshot::channel();
+                let result = Self::run_cm_ipc_until_owner_closed(
+                    p.owner_closed,
+                    bootstrap_completed,
+                    start_ipc(
+                        p.rx_to_cm,
+                        p.tx_from_cm,
+                        p.rx_desktop_ready,
+                        p.tx_cm_stream_ready,
+                        p.conn_id,
+                        p.cm_auth_token,
+                        bootstrap_complete,
+                    ),
                 )
-                .await
-                {
+                .await;
+                if let Some(Err(err)) = result {
                     log::warn!("ipc to connection manager exit: {}", err);
                     // https://github.com/rustdesk/rustdesk-server-pro/discussions/382#discussioncomment-10525725, cm may start failed
                     #[cfg(windows)]
@@ -8248,6 +8284,106 @@ async fn uid_for_username(username: &str) -> ResultType<String> {
     Ok(uid.to_string())
 }
 
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LinuxDesktopReadyWait {
+    Wake,
+    OwnerClosed,
+}
+
+#[cfg(target_os = "linux")]
+async fn wait_for_linux_desktop_ready(
+    receiver: &mut mpsc::Receiver<()>,
+    ms_timeout: u64,
+) -> LinuxDesktopReadyWait {
+    match timeout(ms_timeout, receiver.recv()).await {
+        Ok(None) => LinuxDesktopReadyWait::OwnerClosed,
+        Ok(Some(())) | Err(_) => LinuxDesktopReadyWait::Wake,
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod cm_startup_lifecycle_tests {
+    use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn closed_desktop_readiness_is_terminal() {
+        let (sender, mut receiver) = mpsc::channel(1);
+        drop(sender);
+
+        assert_eq!(
+            wait_for_linux_desktop_ready(&mut receiver, 5_000).await,
+            LinuxDesktopReadyWait::OwnerClosed
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn desktop_readiness_signal_remains_a_wake_only() {
+        let (sender, mut receiver) = mpsc::channel(1);
+        sender.send(()).await.unwrap();
+
+        assert_eq!(
+            wait_for_linux_desktop_ready(&mut receiver, 5_000).await,
+            LinuxDesktopReadyWait::Wake
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn connection_owner_closure_cancels_pending_cm_bootstrap() {
+        let (owner, owner_closed) = oneshot::channel::<()>();
+        let (_bootstrap, bootstrap_complete) = oneshot::channel::<()>();
+        drop(owner);
+
+        assert_eq!(
+            Connection::run_cm_ipc_until_owner_closed(
+                owner_closed,
+                bootstrap_complete,
+                std::future::pending::<()>(),
+            )
+            .await,
+            None
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn live_connection_allows_cm_bootstrap_completion() {
+        let (owner, owner_closed) = oneshot::channel::<()>();
+        let (_bootstrap, bootstrap_complete) = oneshot::channel::<()>();
+        let result =
+            Connection::run_cm_ipc_until_owner_closed(owner_closed, bootstrap_complete, async {
+                7
+            })
+            .await;
+        drop(owner);
+
+        assert_eq!(result, Some(7));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn completed_bootstrap_drains_bridge_after_owner_closure() {
+        let (owner, owner_closed) = oneshot::channel::<()>();
+        let (bootstrap, bootstrap_complete) = oneshot::channel::<()>();
+        let (bridge_started, bridge_is_running) = oneshot::channel::<()>();
+        let (finish_bridge, bridge_finished) = oneshot::channel::<()>();
+        bootstrap.send(()).unwrap();
+
+        let task = tokio::spawn(Connection::run_cm_ipc_until_owner_closed(
+            owner_closed,
+            bootstrap_complete,
+            async move {
+                bridge_started.send(()).unwrap();
+                bridge_finished.await.unwrap();
+                7
+            },
+        ));
+        bridge_is_running.await.unwrap();
+        drop(owner);
+        finish_bridge.send(()).unwrap();
+
+        assert_eq!(task.await.unwrap(), Some(7));
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn cm_launch_token() -> &'static str {
     &CM_LAUNCH_TOKEN
@@ -8318,6 +8454,7 @@ async fn start_ipc(
     tx_stream_ready: mpsc::Sender<()>,
     conn_id: i32,
     cm_auth_token: String,
+    bootstrap_complete: oneshot::Sender<()>,
 ) -> ResultType<()> {
     use hbb_common::anyhow::anyhow;
 
@@ -8331,6 +8468,9 @@ async fn start_ipc(
     // matching same-user launch. An installed Linux service or macOS LaunchAgent owns the exact
     // user-context server; an unexpected root server must not invent a second privilege transition.
     let headless_service_user = loop {
+        if rx_to_cm.is_closed() {
+            bail!("connection owner closed before connection-manager target selection");
+        }
         if crate::platform::is_headless_no_console_user() {
             break true;
         }
@@ -8397,17 +8537,21 @@ async fn start_ipc(
         if headless_cm {
             let mut username = linux_desktop_manager::get_username();
             loop {
+                if rx_to_cm.is_closed() {
+                    bail!("connection owner closed while waiting for headless connection-manager user");
+                }
                 if !username.is_empty() {
                     break;
                 }
                 // `_rx_desktop_ready` is used as a wake-up signal from desktop/session state changes
                 // (for example wait_desktop_cm_ready paths). It is not itself a proof of CM readiness.
-                // TODO:
-                // When `_rx_desktop_ready` is closed, `recv()` returns
-                // `None` immediately and this loop may spin if `username` remains empty.
-                // Keep behavior unchanged for now; if field reports appear, handle `Ok(None)` by
-                // breaking/returning to avoid hot-looping.
-                let _res = timeout(1_000, _rx_desktop_ready.recv()).await;
+                if wait_for_linux_desktop_ready(&mut _rx_desktop_ready, 1_000).await
+                    == LinuxDesktopReadyWait::OwnerClosed
+                {
+                    bail!(
+                        "desktop readiness owner closed before headless connection-manager startup"
+                    );
+                }
                 username = linux_desktop_manager::get_username();
             }
             let uid = uid_for_username(&username).await?;
@@ -8435,6 +8579,9 @@ async fn start_ipc(
             }
         }
         if stream.is_none() {
+            if rx_to_cm.is_closed() {
+                bail!("connection owner closed before connection-manager launch");
+            }
             // The headless path and ordinary user-owned server start the CM without crossing a
             // credential boundary. Windows is the sole exception: its installed LocalSystem server
             // needs the typed current-image helper transition into the active desktop session.
@@ -8484,6 +8631,9 @@ async fn start_ipc(
                     .push(crate::run_me(args)?);
             }
             for _ in 0..20 {
+                if rx_to_cm.is_closed() {
+                    bail!("connection owner closed while waiting for connection-manager startup");
+                }
                 sleep(0.3).await;
                 #[cfg(target_os = "linux")]
                 {
@@ -8559,6 +8709,9 @@ async fn start_ipc(
         conn_id,
         cm_peer_identity.ok_or_else(|| anyhow!("missing authenticated _cm peer identity"))?,
     )?;
+    bootstrap_complete
+        .send(())
+        .map_err(|_| anyhow!("connection-manager bootstrap owner disappeared"))?;
     let _res = tx_stream_ready.send(()).await;
     let mut cm_file_response_enabled = false;
     loop {
@@ -8851,6 +9004,8 @@ impl Default for PortableState {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        drop(self.cm_ipc_owner.take());
         if self.voice_calling {
             crate::audio_service::set_voice_call_input_device(None, true);
             self.voice_calling = false;

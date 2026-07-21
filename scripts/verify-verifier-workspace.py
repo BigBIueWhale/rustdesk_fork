@@ -7224,6 +7224,261 @@ def validate_linux_headless_cm_parent_contract(sources):
         "headless CM parent hardening ledger",
     )
 
+    require_text(
+        verify,
+        "Linux CM bootstrap owner-loss cancellation (R-T4/R-S11c-27t)",
+        "Linux CM bootstrap cancellation source gate",
+    )
+    startup_lifecycle = extract_between(
+        connection_source,
+        "enum LinuxDesktopReadyWait {",
+        "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\", target_os = \"windows\"))]",
+        "Linux CM bootstrap readiness lifecycle",
+    )
+    for text, label in (
+        ("Wake,", "readiness wake outcome"),
+        ("OwnerClosed,", "readiness owner-closed outcome"),
+        (
+            "Ok(None) => LinuxDesktopReadyWait::OwnerClosed",
+            "closed readiness receiver terminal outcome",
+        ),
+        (
+            "Ok(Some(())) | Err(_) => LinuxDesktopReadyWait::Wake",
+            "signal-or-timeout wake outcome",
+        ),
+        (
+            "fn closed_desktop_readiness_is_terminal()",
+            "closed-readiness regression",
+        ),
+        (
+            "fn desktop_readiness_signal_remains_a_wake_only()",
+            "readiness-signal regression",
+        ),
+        (
+            "fn connection_owner_closure_cancels_pending_cm_bootstrap()",
+            "CM owner-cancellation regression",
+        ),
+        (
+            "fn live_connection_allows_cm_bootstrap_completion()",
+            "live-owner CM completion regression",
+        ),
+        (
+            "fn completed_bootstrap_drains_bridge_after_owner_closure()",
+            "post-bootstrap bridge-drain regression",
+        ),
+    ):
+        require_text(startup_lifecycle, text, label)
+
+    task_owner = extract_between(
+        connection_source,
+        "async fn run_cm_ipc_until_owner_closed<F, T>(",
+        "\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n    fn try_start_cm_ipc",
+        "connection-manager task owner",
+    )
+    for text, label in (
+        ("owner_closed: oneshot::Receiver<()>", "typed CM owner receiver"),
+        (
+            "bootstrap_complete: oneshot::Receiver<()>",
+            "typed CM bootstrap-complete receiver",
+        ),
+        ("F: std::future::Future<Output = T>", "owned CM task future"),
+        ("let mut task = Box::pin(task);", "pinned CM task future"),
+        ("tokio::select! {", "CM owner/task race"),
+        ("biased;", "CM completed-state precedence"),
+        ("result = &mut task => Some(result)", "CM task completion outcome"),
+        (
+            "_ = &mut bootstrap_complete => Some(task.await)",
+            "post-bootstrap bridge drain outcome",
+        ),
+        ("_ = &mut owner_closed => None", "CM owner-loss outcome"),
+    ):
+        require_text(task_owner, text, label)
+    task_start = extract_between(
+        connection_source,
+        "fn try_start_cm_ipc(&mut self) {",
+        "\n    async fn on_message",
+        "connection-manager task launch",
+    )
+    require_order(
+        task_start,
+        (
+            "tokio::spawn(async move {",
+            "let (bootstrap_complete, bootstrap_completed) = oneshot::channel();",
+            "Self::run_cm_ipc_until_owner_closed(",
+            "p.owner_closed,",
+            "bootstrap_completed,",
+            "start_ipc(",
+            "bootstrap_complete,",
+            ".await;",
+            "if let Some(Err(err)) = result",
+        ),
+        "CM task owner wrapper ordering",
+    )
+    require_exact_count(
+        connection_source,
+        "let (cm_ipc_owner, cm_ipc_owner_closed) = oneshot::channel();",
+        1,
+        "CM owner channel construction",
+    )
+    for text, label in (
+        ("owner_closed: oneshot::Receiver<()>", "CM owner receiver field and task input"),
+        ("cm_ipc_owner: Option<oneshot::Sender<()>>", "Connection CM owner sender field"),
+        ("owner_closed: cm_ipc_owner_closed", "CM owner receiver wiring"),
+        ("cm_ipc_owner: Some(cm_ipc_owner)", "Connection CM owner sender wiring"),
+    ):
+        expected = 2 if text == "owner_closed: oneshot::Receiver<()>" else 1
+        require_exact_count(connection_source, text, expected, label)
+    connection_drop = extract_between(
+        connection_source,
+        "impl Drop for Connection {",
+        "\n#[cfg(target_os = \"linux\")]\nstruct LinuxHeadlessHandle",
+        "Connection CM owner drop",
+    )
+    require_order(
+        connection_drop,
+        (
+            "drop(self.cm_ipc_owner.take());",
+            "if self.voice_calling {",
+            "self.tx_to_cm.send(ipc::Data::Close)",
+        ),
+        "CM task cancellation-before-connection cleanup ordering",
+    )
+
+    startup = extract_between(
+        connection_source,
+        "async fn start_ipc(",
+        "\n// in case screen is sleep and blank",
+        "connection-manager IPC bootstrap",
+    )
+    require_exact_count(
+        startup,
+        "if rx_to_cm.is_closed() {",
+        4,
+        "connection-owner closure checks",
+    )
+    require_order(
+        startup,
+        (
+            "bootstrap_complete: oneshot::Sender<()>",
+            "bootstrap_complete",
+            ".send(())",
+            "connection-manager bootstrap owner disappeared",
+            "tx_stream_ready.send(()).await",
+            "loop {\n        tokio::select! {",
+        ),
+        "CM bootstrap-complete-before-live-bridge ordering",
+    )
+    prelogin_wait = extract_between(
+        startup,
+        "let headless_service_user = loop {",
+        "\n    #[cfg(target_os = \"linux\")]\n    let headless_cm",
+        "connection-manager prelogin wait",
+    )
+    require_order(
+        prelogin_wait,
+        (
+            "if rx_to_cm.is_closed() {",
+            "connection owner closed before connection-manager target selection",
+            "crate::platform::is_headless_no_console_user()",
+            "crate::platform::is_prelogin()",
+            "sleep(1.).await;",
+        ),
+        "prelogin owner-loss-before-retry ordering",
+    )
+    headless_user_wait = extract_between(
+        startup,
+        "if headless_cm {\n            let mut username",
+        "\n            let uid = uid_for_username(&username).await?;",
+        "headless connection-manager user wait",
+    )
+    require_order(
+        headless_user_wait,
+        (
+            "if rx_to_cm.is_closed() {",
+            "connection owner closed while waiting for headless connection-manager user",
+            "if !username.is_empty() {",
+            "wait_for_linux_desktop_ready(&mut _rx_desktop_ready, 1_000).await",
+            "== LinuxDesktopReadyWait::OwnerClosed",
+            "desktop readiness owner closed before headless connection-manager startup",
+            "username = linux_desktop_manager::get_username();",
+        ),
+        "headless-user owner/readiness cancellation ordering",
+    )
+    launch_wait = extract_between(
+        startup,
+        "if stream.is_none() {\n            if rx_to_cm.is_closed() {",
+        "\n            for _ in 0..20 {",
+        "connection-manager launch boundary",
+    )
+    require_order(
+        launch_wait,
+        (
+            "if rx_to_cm.is_closed() {",
+            "connection owner closed before connection-manager launch",
+            "The headless path and ordinary user-owned server start the CM",
+            "run_me_with_env_and_parent_death(args, cm_launch_env())?",
+        ),
+        "owner-loss-before-CM-launch ordering",
+    )
+    startup_retry = extract_between(
+        startup,
+        "for _ in 0..20 {",
+        "\n        }\n    }\n    if stream.is_none() {",
+        "connection-manager startup retry",
+    )
+    require_order(
+        startup_retry,
+        (
+            "if rx_to_cm.is_closed() {",
+            "connection owner closed while waiting for connection-manager startup",
+            "sleep(0.3).await;",
+            "connect_authenticated_cm(1000",
+        ),
+        "owner-loss-before-CM-retry ordering",
+    )
+    for forbidden in (
+        "let _res = timeout(1_000, _rx_desktop_ready.recv()).await",
+        "Keep behavior unchanged for now",
+    ):
+        require_absent(startup, forbidden, "obsolete closed-readiness retry behavior")
+
+    requirement = extract_html_requirement(
+        requirements, "R-T4", "per-connection cleanup requirement"
+    )
+    for text, label in (
+        (
+            "Every pre-bridge connection-manager wait",
+            "CM pre-bridge wait cancellation requirement",
+        ),
+        (
+            "a closed desktop-readiness receiver is terminal",
+            "closed readiness normative outcome",
+        ),
+        (
+            "dedicated per-connection cancellation receiver",
+            "dedicated CM owner cancellation requirement",
+        ),
+        (
+            "drain its command receiver rather than race owner cancellation",
+            "post-bootstrap CM drain requirement",
+        ),
+        (
+            "must perform no further bootstrap work once owner closure is observed",
+            "post-owner-loss CM work prohibition",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        requirements,
+        "<tr><td>204</td>",
+        "Linux CM bootstrap cancellation Appendix C row",
+    )
+    require_text(
+        hardening,
+        "R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership",
+        "Linux CM bootstrap cancellation hardening ledger",
+    )
+
 
 def validate_linux_current_image_lifecycle_contract(sources):
     verify = sources["verify"]
@@ -10765,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -19646,6 +19901,114 @@ def run_source_mutations(sources):
             "headless CM parent hardening ledger",
         ),
         (
+            "connection_source",
+            "if rx_to_cm.is_closed() {",
+            "if false {",
+            "connection-owner closure checks",
+        ),
+        (
+            "connection_source",
+            "Ok(None) => LinuxDesktopReadyWait::OwnerClosed",
+            "Ok(None) => LinuxDesktopReadyWait::Wake",
+            "closed readiness receiver terminal outcome",
+        ),
+        (
+            "connection_source",
+            "== LinuxDesktopReadyWait::OwnerClosed",
+            "== LinuxDesktopReadyWait::Wake",
+            "headless-user owner/readiness cancellation ordering",
+        ),
+        (
+            "connection_source",
+            "fn closed_desktop_readiness_is_terminal()",
+            "fn closed_desktop_readiness_is_a_retry()",
+            "closed-readiness regression",
+        ),
+        (
+            "connection_source",
+            "_ = &mut owner_closed => None",
+            "_ = &mut owner_closed => Some(task.await)",
+            "CM owner-loss outcome",
+        ),
+        (
+            "connection_source",
+            "_ = &mut bootstrap_complete => Some(task.await)",
+            "_ = &mut bootstrap_complete => None",
+            "post-bootstrap bridge drain outcome",
+        ),
+        (
+            "connection_source",
+            "            biased;\n            result = &mut task => Some(result),",
+            "            result = &mut task => Some(result),",
+            "CM completed-state precedence",
+        ),
+        (
+            "connection_source",
+            "owner_closed: cm_ipc_owner_closed",
+            "owner_closed: oneshot::channel().1",
+            "CM owner receiver wiring",
+        ),
+        (
+            "connection_source",
+            "drop(self.cm_ipc_owner.take());",
+            "let _ = self.cm_ipc_owner.take();",
+            "CM task cancellation-before-connection cleanup ordering",
+        ),
+        (
+            "connection_source",
+            "fn connection_owner_closure_cancels_pending_cm_bootstrap()",
+            "fn connection_owner_closure_keeps_pending_cm_bootstrap()",
+            "CM owner-cancellation regression",
+        ),
+        (
+            "connection_source",
+            "fn completed_bootstrap_drains_bridge_after_owner_closure()",
+            "fn completed_bootstrap_cancels_bridge_after_owner_closure()",
+            "post-bootstrap bridge-drain regression",
+        ),
+        (
+            "connection_source",
+            "bootstrap_complete\n        .send(())",
+            "let _ = bootstrap_complete;\n    Ok(())",
+            "CM bootstrap-complete-before-live-bridge ordering",
+        ),
+        (
+            "verify",
+            "Linux CM bootstrap owner-loss cancellation (R-T4/R-S11c-27t)",
+            "Linux CM bootstrap owner-loss compatibility (R-T4/R-S11c-27t)",
+            "Linux CM bootstrap cancellation source gate",
+        ),
+        (
+            "requirements",
+            "Every pre-bridge connection-manager wait",
+            "Some pre-bridge connection-manager waits",
+            "CM pre-bridge wait cancellation requirement",
+        ),
+        (
+            "requirements",
+            "dedicated per-connection cancellation receiver",
+            "optional per-connection cancellation receiver",
+            "dedicated CM owner cancellation requirement",
+        ),
+        (
+            "requirements",
+            "drain its command receiver rather than race owner cancellation",
+            "drop its command receiver after owner cancellation",
+            "post-bootstrap CM drain requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>204</td>",
+            "<tr><td>204-disabled</td>",
+            "Linux CM bootstrap cancellation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership",
+            "R-S11c-27t/R-T4 — Linux headless CM bootstrap retry compatibility",
+            "Linux CM bootstrap cancellation hardening ledger",
+        ),
+        (
             "verify",
             'echo "== (3b-iii-d9c4) Linux current-image lifecycle authority deletion (R-S11ae/R-S11e-45) =="',
             'echo "== (3b-iii-d9c4) Linux current-image lifecycle compatibility (R-S11ae/R-S11e-45) =="',
@@ -25234,8 +25597,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202",
             "current GitHub-automation requirements-hash scope",
         ),
         (

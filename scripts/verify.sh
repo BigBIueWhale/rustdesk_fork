@@ -3540,6 +3540,130 @@ grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARD
 if [ -n "$r_s11e44" ]; then echo "  FAIL R-S11e-44 Linux headless CM parent authority:$r_s11e44"; rc=1; else
   echo "  ok  R-S11e-44 no root process-table sweep owns headless CMs; the exact server launch arms kernel parent-death authority before exec"; fi
 
+# (3b-iii-d9c3a) R-T4/R-S11c-27t: the per-connection CM bridge may be
+# started before the CM endpoint exists. Loss of the owning connection is a
+# terminal cancellation signal throughout bootstrap; a closed desktop-ready
+# channel is not a wake event that can spin the headless-user loop.
+echo "== (3b-iii-d9c3a) Linux CM bootstrap owner-loss cancellation (R-T4/R-S11c-27t) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config cm_startup_lifecycle_tests --color never
+r_s11c27t=
+cm_startup_lifecycle=$(awk '/enum LinuxDesktopReadyWait \{/,/pub\(crate\) fn cm_launch_token/' src/server/connection.rs)
+cm_task_owner=$(awk '/async fn run_cm_ipc_until_owner_closed/,/fn try_start_cm_ipc/' src/server/connection.rs)
+cm_task_start=$(awk '/fn try_start_cm_ipc/,/async fn on_message/' src/server/connection.rs)
+cm_connection_drop=$(awk '/impl Drop for Connection \{/,/struct LinuxHeadlessHandle/' src/server/connection.rs)
+cm_ipc_bootstrap=$(awk '/async fn start_ipc\(/,/\/\/ in case screen is sleep and blank/' src/server/connection.rs)
+cm_prelogin_wait=$(awk '/let headless_service_user = loop \{/,/let headless_cm = crate::is_server\(\)/' src/server/connection.rs)
+cm_headless_user_wait=$(awk 'index($0, "        if headless_cm {") {capture=1} capture{print} capture && index($0, "let uid = uid_for_username(&username).await?;") {exit}' src/server/connection.rs)
+cm_launch_boundary=$(awk '/if stream.is_none\(\) \{/{capture=1} capture{print} /for _ in 0\.\.20 \{/{exit}' src/server/connection.rs)
+cm_startup_retry=$(awk '/for _ in 0\.\.20 \{/,/if stream.is_none\(\) \{/' src/server/connection.rs)
+for binding in \
+  'enum LinuxDesktopReadyWait {' \
+  'Wake,' \
+  'OwnerClosed,' \
+  'Ok(None) => LinuxDesktopReadyWait::OwnerClosed' \
+  'Ok(Some(())) | Err(_) => LinuxDesktopReadyWait::Wake' \
+  'fn closed_desktop_readiness_is_terminal()' \
+  'fn desktop_readiness_signal_remains_a_wake_only()' \
+  'fn connection_owner_closure_cancels_pending_cm_bootstrap()' \
+  'fn live_connection_allows_cm_bootstrap_completion()' \
+  'fn completed_bootstrap_drains_bridge_after_owner_closure()'; do
+  grep -qF "$binding" <<<"$cm_startup_lifecycle" || r_s11c27t="$r_s11c27t readiness-lifecycle-binding-missing"
+done
+for binding in \
+  'owner_closed: oneshot::Receiver<()>' \
+  'bootstrap_complete: oneshot::Receiver<()>' \
+  'F: std::future::Future<Output = T>' \
+  'let mut task = Box::pin(task);' \
+  'tokio::select! {' \
+  'biased;' \
+  'result = &mut task => Some(result)' \
+  '_ = &mut bootstrap_complete => Some(task.await)' \
+  '_ = &mut owner_closed => None'; do
+  grep -qF "$binding" <<<"$cm_task_owner" || r_s11c27t="$r_s11c27t task-owner-binding-missing"
+done
+for binding in \
+  'let (bootstrap_complete, bootstrap_completed) = oneshot::channel();' \
+  'Self::run_cm_ipc_until_owner_closed(' \
+  'p.owner_closed,' \
+  'bootstrap_completed,' \
+  'bootstrap_complete,' \
+  'if let Some(Err(err)) = result'; do
+  grep -qF "$binding" <<<"$cm_task_start" || r_s11c27t="$r_s11c27t task-owner-wrapper-missing"
+done
+[ "$(grep -cF 'owner_closed: oneshot::Receiver<()>' src/server/connection.rs)" = 2 ] \
+  || r_s11c27t="$r_s11c27t owner-receiver-topology-invalid"
+for binding in \
+  'let (cm_ipc_owner, cm_ipc_owner_closed) = oneshot::channel();' \
+  'cm_ipc_owner: Option<oneshot::Sender<()>>' \
+  'owner_closed: cm_ipc_owner_closed' \
+  'cm_ipc_owner: Some(cm_ipc_owner)'; do
+  [ "$(grep -cF "$binding" src/server/connection.rs)" = 1 ] \
+    || r_s11c27t="$r_s11c27t owner-channel-wiring-invalid"
+done
+drop_owner_line=$(grep -nF -m 1 'drop(self.cm_ipc_owner.take());' <<<"$cm_connection_drop" | cut -d: -f1)
+drop_voice_line=$(grep -nF -m 1 'if self.voice_calling {' <<<"$cm_connection_drop" | cut -d: -f1)
+drop_cm_line=$(grep -nF -m 1 'self.tx_to_cm.send(ipc::Data::Close)' <<<"$cm_connection_drop" | cut -d: -f1)
+if [ -z "$drop_owner_line" ] || [ -z "$drop_voice_line" ] || [ -z "$drop_cm_line" ] \
+  || [ "$drop_owner_line" -ge "$drop_voice_line" ] || [ "$drop_voice_line" -ge "$drop_cm_line" ]; then
+  r_s11c27t="$r_s11c27t owner-cancellation-not-first-in-drop"
+fi
+[ "$(grep -cF 'if rx_to_cm.is_closed() {' <<<"$cm_ipc_bootstrap")" = 4 ] \
+  || r_s11c27t="$r_s11c27t connection-owner-check-count-invalid"
+bootstrap_signal_line=$(grep -nF -m 1 'bootstrap_complete' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+bootstrap_send_line=$(grep -nF -m 1 '.send(())' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+stream_ready_line=$(grep -nF -m 1 'tx_stream_ready.send(()).await' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+live_bridge_line=$(grep -nF -m 1 'let mut cm_file_response_enabled = false;' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+if [ -z "$bootstrap_signal_line" ] || [ -z "$bootstrap_send_line" ] || [ -z "$stream_ready_line" ] || [ -z "$live_bridge_line" ] \
+  || [ "$bootstrap_signal_line" -ge "$bootstrap_send_line" ] \
+  || [ "$bootstrap_send_line" -ge "$stream_ready_line" ] \
+  || [ "$stream_ready_line" -ge "$live_bridge_line" ]; then
+  r_s11c27t="$r_s11c27t bootstrap-complete-live-bridge-order-invalid"
+fi
+prelogin_owner_line=$(grep -nF -m 1 'if rx_to_cm.is_closed() {' <<<"$cm_prelogin_wait" | cut -d: -f1)
+prelogin_state_line=$(grep -nF -m 1 'crate::platform::is_headless_no_console_user()' <<<"$cm_prelogin_wait" | cut -d: -f1)
+prelogin_sleep_line=$(grep -nF -m 1 'sleep(1.).await;' <<<"$cm_prelogin_wait" | cut -d: -f1)
+if [ -z "$prelogin_owner_line" ] || [ -z "$prelogin_state_line" ] || [ -z "$prelogin_sleep_line" ] \
+  || [ "$prelogin_owner_line" -ge "$prelogin_state_line" ] \
+  || [ "$prelogin_state_line" -ge "$prelogin_sleep_line" ]; then
+  r_s11c27t="$r_s11c27t prelogin-owner-cancellation-order-invalid"
+fi
+headless_owner_line=$(grep -nF -m 1 'if rx_to_cm.is_closed() {' <<<"$cm_headless_user_wait" | cut -d: -f1)
+headless_ready_line=$(grep -nF -m 1 'wait_for_linux_desktop_ready(&mut _rx_desktop_ready, 1_000).await' <<<"$cm_headless_user_wait" | cut -d: -f1)
+headless_refresh_line=$(grep -nF 'username = linux_desktop_manager::get_username();' <<<"$cm_headless_user_wait" | tail -n1 | cut -d: -f1)
+if [ -z "$headless_owner_line" ] || [ -z "$headless_ready_line" ] || [ -z "$headless_refresh_line" ] \
+  || [ "$headless_owner_line" -ge "$headless_ready_line" ] \
+  || [ "$headless_ready_line" -ge "$headless_refresh_line" ]; then
+  r_s11c27t="$r_s11c27t headless-user-cancellation-order-invalid"
+fi
+for binding in \
+  '== LinuxDesktopReadyWait::OwnerClosed' \
+  'desktop readiness owner closed before headless connection-manager startup'; do
+  grep -qF "$binding" <<<"$cm_headless_user_wait" || r_s11c27t="$r_s11c27t closed-readiness-terminal-branch-missing"
+done
+launch_owner_line=$(grep -nF -m 1 'connection owner closed before connection-manager launch' <<<"$cm_launch_boundary" | cut -d: -f1)
+launch_exec_line=$(grep -nF -m 1 'run_me_with_env_and_parent_death(args, cm_launch_env())?' <<<"$cm_launch_boundary" | cut -d: -f1)
+if [ -z "$launch_owner_line" ] || [ -z "$launch_exec_line" ] || [ "$launch_owner_line" -ge "$launch_exec_line" ]; then
+  r_s11c27t="$r_s11c27t owner-check-not-before-cm-launch"
+fi
+retry_owner_line=$(grep -nF -m 1 'connection owner closed while waiting for connection-manager startup' <<<"$cm_startup_retry" | cut -d: -f1)
+retry_sleep_line=$(grep -nF -m 1 'sleep(0.3).await;' <<<"$cm_startup_retry" | cut -d: -f1)
+if [ -z "$retry_owner_line" ] || [ -z "$retry_sleep_line" ] || [ "$retry_owner_line" -ge "$retry_sleep_line" ]; then
+  r_s11c27t="$r_s11c27t owner-check-not-before-cm-retry"
+fi
+if grep -qF 'let _res = timeout(1_000, _rx_desktop_ready.recv()).await' <<<"$cm_ipc_bootstrap" \
+  || grep -qF 'Keep behavior unchanged for now' <<<"$cm_ipc_bootstrap"; then
+  r_s11c27t="$r_s11c27t obsolete-closed-readiness-retry-present"
+fi
+grep -qF 'Every pre-bridge connection-manager wait' requirements.html \
+  || r_s11c27t="$r_s11c27t normative-cancellation-clause-missing"
+grep -qF 'dedicated per-connection cancellation receiver' requirements.html \
+  || r_s11c27t="$r_s11c27t normative-owner-channel-clause-missing"
+grep -qF '<tr><td>204</td>' requirements.html || r_s11c27t="$r_s11c27t appendix-row-missing"
+grep -qF 'R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership' HARDENING_STATUS.md \
+  || r_s11c27t="$r_s11c27t hardening-ledger-missing"
+if [ -n "$r_s11c27t" ]; then echo "  FAIL R-T4/R-S11c-27t Linux CM bootstrap owner-loss cancellation:$r_s11c27t"; rc=1; else
+  echo "  ok  R-T4/R-S11c-27t connection-owner loss terminates every CM pre-bridge retry and a closed headless readiness channel cannot spin"; fi
+
 # (3b-iii-d9c4) R-S11ae/R-S11e-45: the final current-image process-table
 # consumers are deleted. Selected logind state and the retained Child own
 # service replacement; a newly spawned tray performs only its own singleton check.

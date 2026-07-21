@@ -6705,6 +6705,55 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     until the next clean exact-commit cold transaction emits the bound marker. Exact-commit four-artifact evidence
     and external expert R-V3 review also remain open; the parent item and upcoming release remain **OPEN**.
 
+  - **R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership — SOURCE IMPLEMENTED/GATED
+    2026-07-21; FINAL NATIVE/RELEASE/DEVICE ITEMS REMAIN OPEN.** Endpoint/action: the per-connection
+    `try_start_cm_ipc()` task selects or starts the connection manager and bridges that connection's typed CM
+    messages. Boundary: the owning `Connection` and its lifetime/command/readiness senders ↔ the asynchronously
+    spawned CM bootstrap/bridge. The ordinary connected bridge already terminated when its command receiver closed,
+    but no dedicated future made owner loss independently selectable throughout bootstrap, and two
+    inherited pre-bridge paths did not carry that owner lifetime consistently. The desktop prelogin loop could wait
+    indefinitely after the connection disappeared. On Linux, the headless-user loop deliberately used the
+    connection-owned desktop-readiness receiver as a wake-only hint, yet treated `Ok(None)` exactly like a timeout
+    or signal. Dropping `LinuxHeadlessHandle` permanently closed that receiver; with no selected username, each
+    subsequent receive was immediately ready and the detached bootstrap could hot-loop. A connection could also
+    disappear immediately before CM launch or during the bounded endpoint retry without stopping those actions.
+
+    Every desktop `Connection` now owns the sole sender of a dedicated one-shot lifetime channel. The bootstrap
+    future is raced against its receiver, and `Connection::Drop` closes that lifetime before any other connection
+    cleanup; owner loss therefore cancels an async pre-bridge wait without requiring command traffic. Once
+    authenticated bootstrap signals completion, biased selection transitions to draining the live bridge instead
+    of cancelling it, so the queued graceful/hard-Drop CM close notification is forwarded before command-receiver
+    closure terminates the bridge. The command receiver remains an additional fail-closed authority before each
+    target/prelogin selection, headless-user iteration, CM launch, and post-launch endpoint attempt. A small
+    Linux-only readiness result distinguishes
+    `OwnerClosed` from `Wake`: timeout and an actual signal remain bounded state-recheck events, while sender closure
+    is terminal before username refresh. Five current-thread async regressions prove closed/signaled readiness,
+    closed/live connection-owner outcomes, and post-bootstrap bridge drain after owner closure. The source gate and independent semantic mutation verifier bind the
+    lifetime channel construction/wiring, owner/task `select!`, cancellation-before-cleanup order, four command
+    checks and their state/launch/retry ordering, terminal closed-readiness handling, removal of the inherited
+    TODO/ignored timeout shape, R-T4, Appendix C #204, and this row.
+
+    Focused verification used the existing Rust 1.75 devcheck image as numeric UID/GID 1000 with the reviewed
+    vendor snapshot, no network, a read-only source mount, and a fresh disposable target: the complete library test
+    target compiled and all five lifecycle regressions passed (5 passed, 0 failed, 328 filtered). Exact Rust 1.75
+    rustfmt passed for `src/server/connection.rs`; the extracted shell gate, Bash parse, normal independent semantic
+    verifier, and complete deliberate source-mutation matrix passed in separate non-root networkless containers.
+    The newly pinned exact verifier image is not locally present, so the repository-wide `scripts/verify.sh` entry
+    point and a full release transaction are not claimed green; the existing image supplied focused diagnostic
+    evidence only.
+
+    Evidence boundary: this is a source-level lifecycle and local availability correction. It does not claim that
+    the Tokio bridge task is synchronously joined by `Connection::Drop`; owner loss cancels its future at the outer
+    `select!` only before authenticated bootstrap completes, after which command closure drains it. A bounded
+    synchronous launch already admitted before concurrent owner loss may finish before that future is polled, after
+    which no remaining bootstrap work continues. R-S11ad separately kernel-binds any
+    launched no-UI CM child to its exact server parent. No native packaged artifact, Android swipe/relaunch device
+    sequence, long cold release transaction, or external R-V3 review is claimed here. The defect is not evidence of
+    host RustDesk modification, a public
+    listener, firewall change, root/container escape, exploitation, or compromise, and it is not a source-proven
+    cause of the reported Android outgoing-viewer symptom. The broader R-B2/R-B10/device and parent release items
+    remain **OPEN**.
+
   Required implementation and release closure:
 
   - The `--service` supervisor must retain direct ownership of every server child
@@ -7763,9 +7812,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ff46f54d1e64db3142de6df05bb7e4cb2050c7bbf3857cb666d084b26d119204  requirements.html
+1c4b559cde3115b93d97935dd4226e6e6c67ece455714c96c3391ba6f6d1dea9  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

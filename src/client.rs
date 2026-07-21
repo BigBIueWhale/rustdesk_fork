@@ -2277,17 +2277,108 @@ pub enum MediaData {
 
 pub type MediaSender = mpsc::SyncSender<MediaData>;
 
+const MEDIA_WORKER_REAPER_THREADS: usize = 4;
+const MEDIA_WORKER_REAPER_CAPACITY: usize = 256;
+
+struct MediaWorkerJoinRequest {
+    workers: Vec<(&'static str, std::thread::JoinHandle<()>)>,
+    completed: Option<hbb_common::tokio::sync::oneshot::Sender<()>>,
+}
+
+lazy_static::lazy_static! {
+    static ref MEDIA_WORKER_REAPER: mpsc::SyncSender<MediaWorkerJoinRequest> = {
+        let (sender, receiver) = mpsc::sync_channel(MEDIA_WORKER_REAPER_CAPACITY);
+        let receiver = Arc::new(Mutex::new(receiver));
+        for index in 0..MEDIA_WORKER_REAPER_THREADS {
+            let receiver = Arc::clone(&receiver);
+            if std::thread::Builder::new()
+                .name(format!("rustdesk-media-worker-reaper-{index}"))
+                .spawn(move || run_media_worker_reaper(receiver))
+                .is_err()
+            {
+                std::process::abort();
+            }
+        }
+        sender
+    };
+}
+
+fn run_media_worker_reaper(receiver: Arc<Mutex<mpsc::Receiver<MediaWorkerJoinRequest>>>) {
+    loop {
+        let request = {
+            let receiver = match receiver.lock() {
+                Ok(receiver) => receiver,
+                Err(_) => {
+                    log::error!("media worker reaper queue lock was poisoned");
+                    std::process::abort();
+                }
+            };
+            receiver.recv()
+        };
+        let Ok(request) = request else {
+            return;
+        };
+        for (role, worker) in request.workers {
+            if worker.join().is_err() {
+                log::error!("{role} worker terminated by panic");
+            }
+        }
+        if let Some(completed) = request.completed {
+            let _ = completed.send(());
+        }
+    }
+}
+
+fn handoff_media_workers(request: MediaWorkerJoinRequest) {
+    if MEDIA_WORKER_REAPER.try_send(request).is_err() {
+        log::error!("media worker reaper queue exhausted");
+        std::process::abort();
+    }
+}
+
+pub(crate) async fn join_media_workers_off_runtime(
+    workers: Vec<(&'static str, std::thread::JoinHandle<()>)>,
+) {
+    if workers.is_empty() {
+        return;
+    }
+    let (completed, result) = hbb_common::tokio::sync::oneshot::channel();
+    handoff_media_workers(MediaWorkerJoinRequest {
+        workers,
+        completed: Some(completed),
+    });
+    if result.await.is_err() {
+        log::error!("media worker reaper dropped completion authority");
+        std::process::abort();
+    }
+}
+
+pub(crate) fn reap_media_worker(role: &'static str, worker: std::thread::JoinHandle<()>) {
+    handoff_media_workers(MediaWorkerJoinRequest {
+        workers: vec![(role, worker)],
+        completed: None,
+    });
+}
+
 /// Owns one decoder worker and the only sender that keeps its input channel open.
-/// Dropping the owner closes admission first and then joins the exact worker, so
-/// a later viewer session cannot overlap stale native decoder/audio resources.
+/// Graceful teardown closes admission and joins the exact worker on the fixed
+/// completion pool. Hard-drop teardown transfers that same join authority to the
+/// pool without blocking the dropping thread.
 pub struct OwnedMediaThread {
+    role: &'static str,
     sender: Option<MediaSender>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl OwnedMediaThread {
-    pub(crate) fn new(sender: MediaSender, thread: std::thread::JoinHandle<()>) -> Self {
+    pub(crate) fn new(
+        role: &'static str,
+        sender: MediaSender,
+        thread: std::thread::JoinHandle<()>,
+    ) -> Self {
+        lazy_static::initialize(&MEDIA_WORKER_REAPER);
         Self {
+            role,
             sender: Some(sender),
             thread: Some(thread),
         }
@@ -2300,23 +2391,23 @@ impl OwnedMediaThread {
         }
     }
 
-    pub(crate) fn close(&mut self) -> Option<std::thread::JoinHandle<()>> {
+    pub(crate) fn close(&mut self) -> Option<(&'static str, std::thread::JoinHandle<()>)> {
         drop(self.sender.take());
-        self.thread.take()
+        self.thread.take().map(|thread| (self.role, thread))
     }
 
-    fn close_and_join(&mut self) {
-        if let Some(thread) = self.close() {
-            if thread.join().is_err() {
-                log::error!("media decoder worker terminated by panic");
-            }
-        }
+    pub(crate) async fn close_and_join(mut self) {
+        let workers = self.close().into_iter().collect();
+        drop(self);
+        join_media_workers_off_runtime(workers).await;
     }
 }
 
 impl Drop for OwnedMediaThread {
     fn drop(&mut self) {
-        self.close_and_join();
+        if let Some((role, worker)) = self.close() {
+            reap_media_worker(role, worker);
+        }
     }
 }
 
@@ -2512,16 +2603,10 @@ fn new_audio_thread() -> (MediaSender, std::thread::JoinHandle<()>) {
     (audio_sender, thread)
 }
 
-/// Start an audio thread for legacy call sites that do not yet own worker teardown.
-pub fn start_audio_thread() -> MediaSender {
-    let (audio_sender, _thread) = new_audio_thread();
-    audio_sender
-}
-
-/// Start an audio thread whose sender and worker are owned by one viewer session.
-pub fn start_owned_audio_thread() -> OwnedMediaThread {
+/// Start an audio thread whose channel admission and exact worker have one owner.
+pub fn start_audio_thread() -> OwnedMediaThread {
     let (audio_sender, thread) = new_audio_thread();
-    OwnedMediaThread::new(audio_sender, thread)
+    OwnedMediaThread::new("audio decoder", audio_sender, thread)
 }
 
 #[inline]
@@ -3209,6 +3294,7 @@ mod tests {
     // PRS-persistence behaviour the legacy-`Hash`-challenge collapse depends on (the same assurance
     // layer the landed viewer-CPace keying accepted). Run with --test-threads=1 (the verify.sh gate).
     use super::*;
+    use hbb_common::tokio;
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Once,
@@ -3443,8 +3529,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn owned_media_thread_closes_admission_before_join() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn owned_media_thread_closes_admission_before_join() {
         let (sender, receiver) = mpsc::sync_channel::<MediaData>(1);
         let finished = Arc::new(AtomicBool::new(false));
         let finished_by_worker = finished.clone();
@@ -3452,13 +3538,44 @@ mod tests {
             while receiver.recv().is_ok() {}
             finished_by_worker.store(true, Ordering::Release);
         });
-        let mut owner = OwnedMediaThread::new(sender, worker);
+        let owner = OwnedMediaThread::new("test decoder", sender, worker);
 
-        let worker = owner
-            .close()
-            .expect("the owner must retain its exact worker");
-        worker.join().unwrap();
+        owner.close_and_join().await;
         assert!(finished.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn owned_media_thread_hard_drop_never_joins_inline() {
+        let (sender, receiver) = mpsc::sync_channel::<MediaData>(1);
+        let (release_sender, release_receiver) = mpsc::channel();
+        let (finished_sender, finished_receiver) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            while receiver.recv().is_ok() {}
+            let _ = release_receiver.recv();
+            let _ = finished_sender.send(());
+        });
+        let owner = OwnedMediaThread::new("test decoder", sender, worker);
+        let (dropped_sender, dropped_receiver) = mpsc::channel();
+        let dropper = std::thread::spawn(move || {
+            drop(owner);
+            let _ = dropped_sender.send(());
+        });
+
+        let dropped_without_join = dropped_receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .is_ok();
+        let _ = release_sender.send(());
+        assert!(
+            finished_receiver
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .is_ok(),
+            "the reaper must retain the exact worker through completion"
+        );
+        dropper.join().unwrap();
+        assert!(
+            dropped_without_join,
+            "hard-drop teardown must hand the worker to the fixed reaper"
+        );
     }
 
     fn login_port_forward_target(message: Message) -> (String, i32) {

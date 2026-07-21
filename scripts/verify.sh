@@ -8923,6 +8923,8 @@ flutter_main=flutter/lib/main.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   flutter::mobile_session_lifecycle_tests::android_owner_transition_joins_outgoing_worker_before_replacement \
   --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  client::tests::owned_media_thread_ -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
 grep -qF 'external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean' "$ffi_kt" \
@@ -8963,14 +8965,30 @@ grep -qF 'outgoing viewer I/O worker terminated by panic during reconnect' src/u
   || android_client_owner_bad="$android_client_owner_bad reconnect-worker-join-missing"
 grep -qF 'self.shutdown_workers().await;' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad media-worker-shutdown-missing"
-grep -qF 'tokio::task::spawn_blocking' src/client/io_loop.rs \
-  || android_client_owner_bad="$android_client_owner_bad media-worker-join-blocks-async-runtime"
+grep -qF 'const MEDIA_WORKER_REAPER_THREADS: usize = 4;' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad fixed-media-reaper-missing"
+grep -qF 'crate::client::join_media_workers_off_runtime(workers).await;' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad media-worker-fixed-pool-join-missing"
+grep -qF 'crate::client::reap_media_worker("voice-call", thread);' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad voice-hard-drop-handoff-missing"
 grep -qF 'media_thread: OwnedMediaThread' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad video-worker-owner-missing"
 grep -qF 'voice_call_thread: Option<VoiceCallThread>' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad voice-worker-owner-missing"
 grep -qF 'owned_media_thread_closes_admission_before_join' src/client.rs \
   || android_client_owner_bad="$android_client_owner_bad media-owner-regression-test-missing"
+grep -qF 'owned_media_thread_hard_drop_never_joins_inline' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad media-hard-drop-regression-test-missing"
+grep -qF 'pub fn start_audio_thread() -> OwnedMediaThread' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad sole-audio-owner-constructor-missing"
+grep -qF 'struct ControlledAudioThread {' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-owner-missing"
+grep -qF 'self.stop_controlled_audio().await;' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-join-sink-missing"
+if grep -qF 'start_owned_audio_thread' src/client.rs src/client/io_loop.rs \
+    || grep -qF 'let (audio_sender, _thread)' src/client.rs; then
+  android_client_owner_bad="$android_client_owner_bad detached-audio-constructor-present"
+fi
 if grep -qF 'No need to join the previous thread' src/ui_session_interface.rs; then
   android_client_owner_bad="$android_client_owner_bad detached-reconnect-worker-present"
 fi
@@ -8978,6 +8996,10 @@ grep -qF 'Outgoing viewer owner completion and replacement' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad requirements-disposition-missing"
 grep -qF 'Android outgoing-viewer I/O and media-worker completion ownership' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad hardening-ledger-missing"
+grep -qF 'shared controlled-audio and hard-drop completion ownership' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-ledger-missing"
+grep -qF 'The shared audio-worker API still exposed a sender-only constructor' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-disposition-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path
@@ -9050,6 +9072,85 @@ raise SystemExit(0 if ok else 1)
 PY
 then
   android_client_owner_bad="$android_client_owner_bad lifecycle-or-admission-order-regressed"
+fi
+if ! python3 - src/client.rs src/client/io_loop.rs src/server/connection.rs requirements.html <<'PY'
+import sys
+from pathlib import Path
+
+client, io_loop, connection, requirements = (Path(path).read_text() for path in sys.argv[1:])
+
+audio_constructor = client[
+    client.index("pub fn start_audio_thread() -> OwnedMediaThread"):
+    client.index("fn fps_calculate(")
+]
+media_drop = client[
+    client.index("impl Drop for OwnedMediaThread"):
+    client.index("/// Start video thread.")
+]
+voice_drop = io_loop[
+    io_loop.index("impl Drop for VoiceCallThread"):
+    io_loop.index("pub struct Remote")
+]
+controlled_fields = connection[
+    connection.index("struct ControlledAudioThread"):
+    connection.index("pub struct Connection")
+]
+handle_voice = connection[
+    connection.index("pub async fn handle_voice_call"):
+    connection.index("async fn stop_controlled_audio")
+]
+close_voice = connection[
+    connection.index("pub async fn close_voice_call"):
+    connection.index("async fn update_options")
+]
+update_options = connection[
+    connection.index("async fn update_options"):
+    connection.index("async fn turn_on_privacy")
+]
+on_close = connection[
+    connection.index("async fn on_close"):
+    connection.index("async fn send_close_reason_no_retry")
+]
+connection_drop = connection[
+    connection.index("impl Drop for Connection"):
+    connection.index("struct LinuxHeadlessHandle")
+]
+audio_format = connection[
+    connection.index("Some(misc::Union::AudioFormat(format))"):
+    connection.index("Some(misc::Union::ChangeResolution")
+]
+
+ok = (
+    "OwnedMediaThread::new(\"audio decoder\"" in audio_constructor
+    and "_thread" not in audio_constructor
+    and "reap_media_worker(role, worker)" in media_drop
+    and ".join()" not in media_drop
+    and "reap_media_worker(\"voice-call\", thread)" in voice_drop
+    and ".join()" not in voice_drop
+    and "format: (u32, u32)" in controlled_fields
+    and "decoder: OwnedMediaThread" in controlled_fields
+    and "audio_sender" not in connection
+    and "self.controlled_audio.as_ref().map(|audio| audio.format)" in audio_format
+    and "self.controlled_audio = Some(ControlledAudioThread" in audio_format
+    and handle_voice.index("self.voice_calling = accepted")
+        < handle_voice.index("set_voice_call_input_device(")
+        < handle_voice.index("self.send(msg).await")
+    and close_voice.index("self.voice_calling = false")
+        < close_voice.index("self.stop_controlled_audio().await")
+    and "self.stop_controlled_audio().await" in update_options
+    and on_close.index("set_voice_call_input_device(None, true)")
+        < on_close.index("self.voice_calling = false")
+        < on_close.index("self.stop_controlled_audio().await")
+        < on_close.index("self.tx_to_cm.send(data).ok()")
+        < on_close.index("self.closed = true")
+    and "drop(self.controlled_audio.take())" in connection_drop
+    and "A worker-owning constructor" in requirements
+    and "<tr><td>203</td>" in requirements
+)
+raise SystemExit(0 if ok else 1)
+PY
+then
+  android_client_owner_bad="$android_client_owner_bad media-owner-or-controlled-audio-order-regressed"
 fi
 if [ -n "$android_client_owner_bad" ]; then
   echo "  FAIL R-D7a/R-T4: Android outgoing-client Activity/isolate ownership regressed:$android_client_owner_bad"; rc=1

@@ -101,9 +101,7 @@ impl VoiceCallThread {
 impl Drop for VoiceCallThread {
     fn drop(&mut self) {
         if let Some(thread) = self.stop() {
-            if thread.join().is_err() {
-                log::error!("voice-call worker terminated by panic");
-            }
+            crate::client::reap_media_worker("voice-call", thread);
         }
     }
 }
@@ -454,7 +452,7 @@ impl<T: InvokeUiSession> Remote<T> {
     ) -> Self {
         Self {
             handler,
-            audio_thread: crate::client::start_owned_audio_thread(),
+            audio_thread: crate::client::start_audio_thread(),
             receiver,
             sender,
             read_jobs: Vec::new(),
@@ -791,20 +789,7 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn join_workers(workers: Vec<(&'static str, std::thread::JoinHandle<()>)>) {
-        if workers.is_empty() {
-            return;
-        }
-        if let Err(err) = tokio::task::spawn_blocking(move || {
-            for (name, worker) in workers {
-                if worker.join().is_err() {
-                    log::error!("{name} worker terminated by panic");
-                }
-            }
-        })
-        .await
-        {
-            log::error!("failed to join outgoing session workers: {err}");
-        }
+        crate::client::join_media_workers_off_runtime(workers).await;
     }
 
     async fn stop_voice_call(&mut self) {
@@ -828,11 +813,11 @@ impl<T: InvokeUiSession> Remote<T> {
         for (_, mut video_thread) in self.video_threads.drain() {
             *video_thread.discard_queue.write().unwrap() = true;
             if let Some(worker) = video_thread.media_thread.close() {
-                workers.push(("video decoder", worker));
+                workers.push(worker);
             }
         }
         if let Some(worker) = self.audio_thread.close() {
-            workers.push(("audio decoder", worker));
+            workers.push(worker);
         }
         Self::join_workers(workers).await;
     }
@@ -2863,7 +2848,7 @@ impl<T: InvokeUiSession> Remote<T> {
         );
         let video_thread = VideoThread {
             video_queue,
-            media_thread: OwnedMediaThread::new(video_sender, thread),
+            media_thread: OwnedMediaThread::new("video decoder", video_sender, thread),
             decode_fps,
             frame_count,
             fps_control: Default::default(),

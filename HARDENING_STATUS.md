@@ -305,10 +305,26 @@ Force Stop terminated the process. Git history places these detach shapes in the
 recent owner-generation work; this is a source-proven mechanism consistent with the report, not yet an on-device
 causal reproduction. Initial start now retains the exact I/O worker. Reconnect and final owner teardown serialize
 through that worker slot, request close, join the old round, and only then admit replacement. The I/O worker in
-turn owns its exact video/audio decoder and voice-capture workers, closes their channels/signals, and joins them
-through Tokio blocking delegation before it marks the round disconnected. Explicit session close and test cleanup
-use the same completion sink. The incoming `MainService`, controlled listener, projection grant, and capture
-resources are deliberately unchanged.
+turn owns its exact video/audio decoder and voice-capture workers, closes their channels/signals, and transfers
+their exact handles to a bounded fixed completion pool before awaiting them and marking the round disconnected.
+Explicit session close and test cleanup use the same completion sink. The incoming `MainService`, controlled
+listener, projection grant, and capture resources are deliberately unchanged.
+Follow-up correction (2026-07-21), **shared controlled-audio and hard-drop completion ownership**: the broader
+worker audit found one exception to that closure. `start_audio_thread()` still returned only its channel sender and
+discarded the controlled-side voice decoder's `JoinHandle`; accepted format and sender were separate connection
+fields; call close retained both; audio disable merely dropped them; and `OwnedMediaThread::Drop` plus
+`VoiceCallThread::Drop` joined inline. The sender-only and compatibility-named constructors are deleted.
+`start_audio_thread()` is now the sole owning constructor. A controlled connection owns accepted format plus exact
+decoder as one `ControlledAudioThread`, refuses overlapping call requests, clears voice authority first, and
+closes/awaits that owner on call close, audio disable, format-start failure, and connection close. Normal viewer
+and controlled teardown transfer handles to a bounded four-thread completion pool before awaiting; cancellation
+after transfer cannot orphan them, while hard `Drop` closes admission and uses a nonblocking handoff to the same
+pool. Accepted calls establish Drop-visible global-input ownership before their first await, and close disables
+that global input before clearing the flag, so cancellation cannot strand it. Exhaustion or completion-authority
+loss aborts instead of detaching. Moving `Connection.closed = true` until after its synchronous CM notification
+also preserves the existing Drop fallback if cancellation lands during a
+worker wait. This controlled-side defect is shared across platforms and could overlap peer-audio native state; it
+is adjacent to, but not claimed as the cause of, the Android outgoing-viewer screen-control report.
 Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
 drain, delayed-callback ABA rejection, admission/transition lock exclusion, and stopped-Activity ownership
 resumption without generation reuse. They now also hold a synthetic outgoing worker open, prove an owner transition
@@ -316,7 +332,8 @@ cannot report completion before releasing and joining it, and prove a media owne
 its exact worker. `scripts/verify.sh` gates the typed JNI surface, absence of
 argument-free/global drain APIs, registration-before-UI-or-exit order, owner-scoped Activity/service teardown,
 started-Activity resumption, lock-held add/start/resume/retire ordering, initial I/O-handle retention,
-reconnect/final joins, child-worker ownership, and off-executor joining. A disposable tracked-file candidate snapshot completed one
+reconnect/final joins, child-worker ownership, the fixed completion pool, nonblocking hard-drop handoff, the sole
+owning audio constructor, and controlled voice-audio close/join sinks. A disposable tracked-file candidate snapshot completed one
 offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
 1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
 was checked for nonzero size and then discarded with the scratch tree. This is target-integration evidence, not the
@@ -7746,9 +7763,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3f0562555e830a3af1e76fbb6c907ecfbd94ebe217870a9ebc24066ed6e9eedb  requirements.html
+ff46f54d1e64db3142de6df05bb7e4cb2050c7bbf3857cb666d084b26d119204  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

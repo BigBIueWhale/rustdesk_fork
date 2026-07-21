@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -25234,8 +25234,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#202",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#201",
             "current GitHub-automation requirements-hash scope",
         ),
         (

@@ -26,9 +26,12 @@ esac
     || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
 
 # Android SDK preferences are distinct from shell HOME: AGP runs in a JVM whose
-# user.home comes from the image account. Keep that per-pass state on the existing
-# bounded tmpfs instead of falling through to the read-only container root.
+# user.home comes from the image account. ANDROID_USER_HOME is the current tools
+# contract, while AGP 7.3.1's pinned analytics-library 30.3.1 predates it and checks
+# ANDROID_PREFS_ROOT first. Bind both contracts to one per-pass directory on the
+# existing bounded tmpfs instead of falling through to the read-only container root.
 export ANDROID_USER_HOME=/tmp/android-user-home
+export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"
 if [ -e "$ANDROID_USER_HOME" ] || [ -L "$ANDROID_USER_HOME" ]; then
     echo "[FATAL] Android user home was not freshly absent" >&2
     exit 1

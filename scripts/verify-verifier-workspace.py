@@ -10942,8 +10942,13 @@ def validate_android_builder_authority_contract(sources):
             '(\'export ANDROID_USER_HOME=/tmp/android-user-home\', "explicit Android preferences scratch")',
             "Android preferences scratch enforcement",
         ),
+        (
+            '(\'export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"\', "AGP 7.3.1 analytics preferences compatibility")',
+            "Android legacy analytics preferences enforcement",
+        ),
         ('Android user home was not freshly absent', "Android preferences freshness enforcement"),
         ('Android user home is not private to the build identity', "Android preferences owner/mode enforcement"),
+        ('forbid(inner, token, label)', "Android broad-home-override refusal enforcement"),
         ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
         ('run_mutations(sources)', "Android builder mutation dispatch"),
     ):
@@ -25316,6 +25321,18 @@ def run_source_mutations(sources):
             '(\'export ANDROID_USER_HOME=/tmp/android-user-home\', "explicit Android preferences scratch")',
             '(\'export ANDROID_USER_HOME=/home/ubuntu/.android\', "ambient Android preferences home")',
             "Android preferences scratch enforcement",
+        ),
+        (
+            "android_builder_authority_verifier",
+            '(\'export ANDROID_PREFS_ROOT="$ANDROID_USER_HOME"\', "AGP 7.3.1 analytics preferences compatibility")',
+            '(\'export ANDROID_PREFS_ROOT=/home/ubuntu/.android\', "ambient AGP analytics preferences home")',
+            "Android legacy analytics preferences enforcement",
+        ),
+        (
+            "android_builder_authority_verifier",
+            'forbid(inner, token, label)',
+            'return # broad Android/JVM home override accepted',
+            "Android broad-home-override refusal enforcement",
         ),
         (
             "android_build_source_verifier",

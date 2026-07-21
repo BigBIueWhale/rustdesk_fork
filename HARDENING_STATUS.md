@@ -6971,8 +6971,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   deliberate mutations for each closure edge. The independent workspace verifier and shared source gate retain
   their existing enforcement roles. These measurements and source gates are not APK evidence: an exact clean
   committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
-- **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CLOSED/GATED 2026-07-21;
-  EXACT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
+- **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CORRECTION UPDATED/GATED
+  2026-07-21; CLEAN CORRECTED-COMMIT A/B, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
   Endpoint/action: Android SDK/AGP user-preference state created during final Flutter/Gradle packaging. Boundary:
   numeric non-root build identity and the existing bounded ephemeral `/tmp` tmpfs ↔ the deliberately read-only
   container root and image-account home. The first exact build at pushed commit
@@ -6983,16 +6983,29 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   a separate hermetic-state ownership/availability defect, not ENOSPC, root execution, a host write, container
   escape, host service or firewall mutation, port exposure, exploitation, or compromise.
 
-  The correction uses Android's official `ANDROID_USER_HOME` preference-directory contract. Before any extracted
-  toolchain or Android/Gradle consumer runs, each fresh container selects `/tmp/android-user-home`, requires it to
-  be absent, creates it as a real mode-0700 directory, and proves current numeric-UID ownership and mode. The path
-  is on the already-authorized 10-GiB tmpfs and is discarded with the pass. It does not add a host mount, writable
-  root, broad JVM `user.home` override, scratch or memory increase, persistence fallback, image operation,
-  privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds the exact path,
-  freshness, private construction/postcondition, ordering before tool consumers, R-S11bm, Appendix C #202, and
-  this row with deliberate mutations; the shared verifier and independent workspace meta-gate retain their
-  enforcement roles. These source gates do not promote the failed attempt into APK evidence: an exact clean
-  committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
+  The initial correction at pushed commit `ba29c955ea61a374318f94ad7a24699c987256a6` used Android's official
+  `ANDROID_USER_HOME` preference-directory contract. Its clean default A/B transaction completed successfully:
+  both passes produced the same signed and externally validated APK SHA-256
+  `918456d08bb6b7a5ef3bf767ce7aa1395afb30dfefea56fca23cca0699d9e603`, with manifest, mobile at-rest bootstrap,
+  v2/v3 signing, checksum, exact-source postconditions, and offline cache projection all green. Both passes also
+  emitted the same nonfatal warning for `/home/ubuntu/.android/analytics.settings`, so that result is retained as
+  baseline artifact evidence but is not misrepresented as complete preference ownership. Direct `javap` inspection
+  inside the pinned non-root, networkless, read-only-root builder established that AGP 7.3.1's exact
+  `com.android.tools.analytics-library:shared:30.3.1` dependency predates `ANDROID_USER_HOME`: its
+  `AnalyticsPaths.getAndEnsureAndroidSettingsHome()` checks `ANDROID_PREFS_ROOT`, then `ANDROID_SDK_HOME`, then JVM
+  `user.home`.
+
+  The completed source correction binds both `ANDROID_USER_HOME` and the narrower version-compatible
+  `ANDROID_PREFS_ROOT` to the same `/tmp/android-user-home` before any extracted toolchain or Android/Gradle
+  consumer. Each fresh container still requires that path absent, creates it as a real mode-0700 directory, and
+  proves current numeric-UID ownership and mode. The path remains on the already-authorized 10-GiB tmpfs and is
+  discarded with the pass. `ANDROID_SDK_HOME` and JVM-wide Java options/home overrides are now explicitly refused;
+  there is still no host mount, writable root, scratch or memory increase, persistence fallback, image operation,
+  privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds both exact aligned
+  contracts, the broad-fallback refusals, freshness, private construction/postcondition, ordering before tool
+  consumers, R-S11bm, Appendix C #202, and this row with deliberate mutations; the shared verifier and independent
+  workspace meta-gate retain their enforcement roles. A clean exact corrected-commit A/B proof must now show the
+  legacy metrics warning absent; the complete release transaction and device behavior remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7708,7 +7721,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7b1166b3cf04ad549265b06737d8664c46eea47948b9e1a71fc0b67d770f3221  requirements.html
+9cab9fa66789006db429f003ab03e3d101c8305e3724242520162495baa35d53  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,

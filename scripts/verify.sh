@@ -11669,25 +11669,61 @@ fi
 # MainService.onStartCommand returning START_NOT_STICKY (not START_STICKY): a restart never resumes
 # capture on its own. The Android foreground service also owns every MediaProjection-derived capture
 # resource, so explicit Stop and Service.onDestroy must converge on one idempotent teardown sink.
+# MediaProjection itself is a revocable exact owner: its callback must be registered before a
+# VirtualDisplay is created, onStop must invalidate only that exact owner and fully release its
+# pipeline, and active state may commit only after a non-null VirtualDisplay exists. Capture demand
+# is the live authorized Remote set; file transfer, view-camera, and terminal sessions do not count.
+echo "== Android MediaProjection lifecycle finality (R-S14/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_missing=
 grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null || r_s14_missing="$r_s14_missing android-not-not-sticky"
 grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null && r_s14_missing="$r_s14_missing android-sticky-return"
 on_destroy_block=$(sed -n '/override fun onDestroy()/,/super.onDestroy()/p' "$r_s14_kt")
 destroy_block=$(sed -n '/fun destroy()/,/stopSelf()/p' "$r_s14_kt")
-teardown_block=$(sed -n '/private fun releaseCaptureResources()/,/private fun releaseMediaProjection()/p' "$r_s14_kt")
-stop_capture_block=$(sed -n '/fun stopCapture()/,/private fun releaseCaptureResources()/p' "$r_s14_kt")
+request_capture_block=$(sed -n '/private fun requestCapture()/,/fun startCapture()/p' "$r_s14_kt")
+start_capture_block=$(sed -n '/fun startCapture()/,/fun stopCapture()/p' "$r_s14_kt")
+stop_capture_block=$(sed -n '/fun stopCapture()/,/private fun stopCapturePipeline/p' "$r_s14_kt")
+pipeline_block=$(sed -n '/private fun stopCapturePipeline/,/private fun releaseCaptureResources/p' "$r_s14_kt")
+teardown_block=$(sed -n '/private fun releaseCaptureResources/,/private fun releaseMediaProjection/p' "$r_s14_kt")
+projection_release_block=$(sed -n '/private fun releaseMediaProjection/,/private fun installMediaProjection/p' "$r_s14_kt")
+projection_install_block=$(sed -n '/private fun installMediaProjection/,/private fun onMediaProjectionStopped/p' "$r_s14_kt")
+projection_stop_block=$(sed -n '/private fun onMediaProjectionStopped/,/fun destroy()/p' "$r_s14_kt")
+virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private fun initNotification/p' "$r_s14_kt")
 printf '%s\n' "$on_destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing onDestroy-no-capture-resource-teardown"
 printf '%s\n' "$destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-capture-resource-teardown"
-printf '%s\n' "$teardown_block" | grep -qF 'stopCapture()' || r_s14_missing="$r_s14_missing teardown-no-stopCapture"
-printf '%s\n' "$teardown_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing teardown-no-reused-virtual-display-release"
+printf '%s\n' "$request_capture_block" | grep -qF 'captureRequested = true' || r_s14_missing="$r_s14_missing remote-demand-not-recorded"
+printf '%s\n' "$request_capture_block" | grep -qF 'return startCapture()' || r_s14_missing="$r_s14_missing remote-demand-not-started"
+printf '%s\n' "$start_capture_block" | grep -qF 'val projection = mediaProjection' || r_s14_missing="$r_s14_missing start-no-exact-projection"
+printf '%s\n' "$start_capture_block" | grep -qF 'if (!startRawVideoRecorder(projection))' || r_s14_missing="$r_s14_missing start-no-virtual-display-commit-gate"
+printf '%s\n' "$start_capture_block" | grep -qF 'releaseCaptureResources(clearCaptureRequest = false)' || r_s14_missing="$r_s14_missing failed-start-does-not-preserve-live-demand"
+printf '%s\n' "$start_capture_block" | grep -qF 'requestMediaProjection()' || r_s14_missing="$r_s14_missing failed-start-no-fresh-consent"
+printf '%s\n' "$start_capture_block" | grep -qF '_isStart = true' || r_s14_missing="$r_s14_missing active-state-commit-missing"
+printf '%s\n' "$start_capture_block" | grep -qF 'mediaProjection!!' && r_s14_missing="$r_s14_missing projection-force-unwrap"
+printf '%s\n' "$stop_capture_block" | grep -qF 'captureRequested = false' || r_s14_missing="$r_s14_missing explicit-stop-retains-demand"
+printf '%s\n' "$stop_capture_block" | grep -qF 'stopCapturePipeline()' || r_s14_missing="$r_s14_missing explicit-stop-skips-pipeline"
+printf '%s\n' "$pipeline_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing pipeline-no-virtual-display-release"
+printf '%s\n' "$pipeline_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing pipeline-surface-not-nulled"
+printf '%s\n' "$teardown_block" | grep -qF 'stopCapturePipeline(keepReusableDisplay = false)' || r_s14_missing="$r_s14_missing teardown-keeps-reusable-display"
 printf '%s\n' "$teardown_block" | grep -qF 'releaseMediaProjection()' || r_s14_missing="$r_s14_missing teardown-no-mediaProjection-stop"
-printf '%s\n' "$stop_capture_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing stopCapture-surface-not-nulled"
+printf '%s\n' "$projection_release_block" | grep -qF 'projection.unregisterCallback(callback)' || r_s14_missing="$r_s14_missing projection-callback-not-unregistered"
+printf '%s\n' "$projection_install_block" | grep -qF 'object : MediaProjection.Callback()' || r_s14_missing="$r_s14_missing projection-callback-owner-missing"
+printf '%s\n' "$projection_install_block" | grep -qF 'projection.registerCallback(' || r_s14_missing="$r_s14_missing projection-callback-not-registered"
+printf '%s\n' "$projection_install_block" | grep -qF 'if (captureRequested)' || r_s14_missing="$r_s14_missing fresh-grant-not-demand-gated"
+printf '%s\n' "$projection_stop_block" | grep -qF 'mediaProjection !== projection || mediaProjectionCallback !== callback' || r_s14_missing="$r_s14_missing stale-callback-identity-gate-missing"
+printf '%s\n' "$projection_stop_block" | grep -qF 'stopCapturePipeline(keepReusableDisplay = false)' || r_s14_missing="$r_s14_missing projection-stop-retains-pipeline"
+printf '%s\n' "$virtual_display_block" | grep -qF 'virtualDisplay != null' || r_s14_missing="$r_s14_missing virtual-display-null-treated-active"
+printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: SecurityException)' || r_s14_missing="$r_s14_missing revoked-projection-not-failed"
+printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: IllegalStateException)' || r_s14_missing="$r_s14_missing stopped-projection-not-failed"
+grep -qF 'fn android_connection_requires_desktop_capture(' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-classifier-missing"
+grep -qF 'authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-not-live-authorized-remote-only"
+grep -qF 'fn android_capture_demand_is_remote_desktop_only()' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-regression-missing"
 if [ -n "$r_s14_missing" ]; then
-  echo "  FAIL R-S14: Android capture service restart/teardown invariant is incomplete:$r_s14_missing"; rc=1
+  echo "  FAIL R-S14/R-T4: Android capture/projection owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14 Android capture service is START_NOT_STICKY and service destruction releases ImageReader/Surface/VirtualDisplay/MediaProjection through one shared teardown sink"
+  echo "  ok  R-S14/R-T4 Android capture commits only after VirtualDisplay creation; exact MediaProjection stop invalidates the pipeline; only live Remote sessions retain demand"
 fi
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config \
+  ui_cm_interface::tests::android_capture_demand_is_remote_desktop_only --color never
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them
 # is the exact "defaulted-off-but-present" hazard R-G1 forbids — the funnel overrides the write and

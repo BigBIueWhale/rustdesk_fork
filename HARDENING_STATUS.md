@@ -257,20 +257,34 @@ plus the empty iOS entitlement map. This is not a root/LPE path; it removes an u
 hardening-runtime executable-memory exception from Profile/Release while preserving the Debug-only
 JIT case.
 
-**R-S14 Android service-destroy capture-resource teardown — CLOSED / GATED (2026-07-11).**
-Platform: Android controlled-side foreground service. Endpoint/action: `MainService.onDestroy()`,
-explicit app Stop (`destroy()`), and the `MediaProjection`/`VirtualDisplay`/`ImageReader`/`Surface`
-objects created for screen capture. Boundary: foreground-service lifetime ↔ all capture resources
-derived from the user-granted projection token. Attack surface closed: service destruction no longer
-stops only the `MediaProjection` while leaving the rest of the capture pipeline to process death or
-implicit projection invalidation. `MainService.onDestroy()` and explicit `destroy()` both call
-`releaseCaptureResources()`, which runs `stopCapture()`, releases the retained reusable
-`VirtualDisplay`, and stops/clears `MediaProjection`; `stopCapture()` now nulls the released `Surface`
-so the shared teardown is idempotent when explicit Stop later reaches `onDestroy()`. Verification
-closure: `scripts/verify.sh` gates both lifecycle callers, the shared teardown sink, the
-`stopCapture()`/`VirtualDisplay.release()`/`releaseMediaProjection()` chain, the nulled `Surface`, and
-the retained `START_NOT_STICKY` restart barrier. This is not a root/LPE path; it completes the Android
-R-D7a/R-S14 resource-lifetime invariant for retained capture grants.
+**R-S14/R-T4 Android MediaProjection owner and capture-demand finality — SOURCE CLOSED / GATED;
+EXACT APK/DEVICE VALIDATION PENDING (2026-07-21).** Platform: Android controlled-side foreground
+service. Endpoint/action: authorized connection admission/removal, projection consent/replacement/
+revocation, `MainService.onDestroy()`, explicit app Stop (`destroy()`), and the `MediaProjection`/
+`VirtualDisplay`/`ImageReader`/`Surface` objects created for screen capture. Boundary: one exact
+foreground-service projection/callback owner plus live PAKE-authorized Remote demand ↔ every capture
+resource derived from the user-granted projection token. The 2026-07-11 correction made service
+destruction and explicit Stop share complete resource teardown, but the inherited start path still
+registered no `MediaProjection.Callback`, swallowed a revoked-grant `SecurityException`, and then
+reported capture active even if no `VirtualDisplay` existed. Fresh consent replaced projection state
+without an exact callback transition. Native last-connection teardown also treated view-camera,
+unauthorized, and disconnected rows as desktop-capture demand.
+
+Source closure: installation now retires the old projection while preserving only live capture demand,
+registers one exact callback before display creation, and resumes only if that demand remains. Exact
+`onStop()` ignores a replaced callback, clears readiness, and fully releases the display, reader,
+surface, raw-video, and audio pipeline. Start propagates a Boolean display result and commits active
+state only after a non-null `VirtualDisplay`; revoked/stopped/null state fails, fully retires the bad
+owner, and asks for fresh consent. Explicit stop clears demand, while service teardown also unregisters
+and stops the exact projection. The native classifier now defines demand as an authorized,
+non-disconnected Remote desktop connection only—never file transfer, view-camera, or terminal—and a
+focused Rust regression covers all exclusions. `scripts/verify.sh` and the semantic mutation verifier
+bind the owner/callback order, transactional active-state commit, delayed-consent demand gate, full
+teardown, native classifier, requirement, disposition, and this ledger. The persistent foreground
+service/listener design remains intact; file transfer remains independent. This controlled-side
+defect is not source proof of the reported Android outgoing-viewer hang and is not a root/LPE,
+host-modification, public-exposure, container-escape, exploitation, or compromise finding. Exact APK
+compilation and the original swipe/relaunch sequence remain R-B2/R-B10 device-validation obligations.
 
 **R-D7a/R-T4 Android outgoing-client Activity/isolate ownership — SOURCE IMPLEMENTED / GATED;
 ANDROID ARM64 RELEASE TARGET BUILD VALIDATED; ON-DEVICE VALIDATION PENDING
@@ -7812,9 +7826,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-1c4b559cde3115b93d97935dd4226e6e6c67ece455714c96c3391ba6f6d1dea9  requirements.html
+0f19384a35720c2043ddd511b74c61e4ed3d42a2a1dbcfdfb081c2dd826c37b0  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

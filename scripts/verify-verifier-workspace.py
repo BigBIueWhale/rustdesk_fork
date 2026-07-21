@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11316,6 +11316,299 @@ def validate_android_builder_authority_contract(sources):
         ("R-S11e-79 remaining release/device obligations", "Android R-S11e-79 open-obligation enforcement"),
     ):
         require_text(focused, text, label)
+
+
+def validate_android_media_projection_finality_contract(sources):
+    android = sources["android_main_service"]
+    cm = sources["ui_cm_source"]
+
+    add_connection = extract_between(
+        android,
+        '            "add_connection" -> {',
+        '            "update_voice_call_state" -> {',
+        "Android authorized-connection capture dispatch",
+    )
+    require_absent(
+        add_connection,
+        "&& !isStart",
+        "Android capture demand must be recorded while already active",
+    )
+    require_order(
+        add_connection,
+        (
+            'val authorized = jsonObject["authorized"] as Boolean',
+            "if (authorized)",
+            "if (!isFileTransfer && !isViewCamera && !isTerminal)",
+            "requestCapture()",
+        ),
+        "Android authorized Remote capture demand",
+    )
+    require_text(
+        android,
+        "@Volatile\n    private var captureRequested = false",
+        "Android cross-thread capture-demand state",
+    )
+    for state in ("_isReady", "_isStart", "_isAudioStart"):
+        require_text(
+            android,
+            f"@Volatile\n        private var {state} = false",
+            f"Android cross-thread {state} state",
+        )
+
+    request_capture = extract_between(
+        android,
+        "private fun requestCapture(): Boolean",
+        "fun startCapture(): Boolean",
+        "Android capture-demand entry",
+    )
+    require_order(
+        request_capture,
+        ("captureRequested = true", "return startCapture()"),
+        "Android capture demand before start attempt",
+    )
+
+    start_capture = extract_between(
+        android,
+        "fun startCapture(): Boolean",
+        "fun stopCapture()",
+        "Android transactional capture start",
+    )
+    require_order(
+        start_capture,
+        (
+            "val projection = mediaProjection",
+            "if (projection == null)",
+            "requestMediaProjection()",
+            "return false",
+            "surface = createSurface()",
+            "if (!startRawVideoRecorder(projection))",
+            "releaseCaptureResources(clearCaptureRequest = false)",
+            "requestMediaProjection()",
+            "return false",
+            "_isStart = true",
+            'FFI.setFrameRawEnable("video",true)',
+        ),
+        "Android VirtualDisplay-before-active transactional start",
+    )
+    require_absent(
+        start_capture,
+        "mediaProjection!!",
+        "Android capture projection force unwrap",
+    )
+
+    stop_capture = extract_between(
+        android,
+        "fun stopCapture()",
+        "private fun stopCapturePipeline",
+        "Android explicit capture stop",
+    )
+    require_order(
+        stop_capture,
+        ("captureRequested = false", "stopCapturePipeline()"),
+        "Android explicit stop clears capture demand",
+    )
+    capture_pipeline = extract_between(
+        android,
+        "private fun stopCapturePipeline",
+        "private fun releaseCaptureResources",
+        "Android capture-pipeline teardown",
+    )
+    for text, label in (
+        ('FFI.setFrameRawEnable("video",false)', "raw-video disable"),
+        ("_isStart = false", "active-state clear"),
+        ("virtualDisplay?.release()", "VirtualDisplay release"),
+        ("virtualDisplay = null", "VirtualDisplay clear"),
+        ("imageReader?.close()", "ImageReader close"),
+        ("imageReader = null", "ImageReader clear"),
+        ("surface?.release()", "Surface release"),
+        ("surface = null", "Surface clear"),
+        ("audioRecordHandle.tryReleaseAudio()", "audio release"),
+    ):
+        require_text(capture_pipeline, text, f"Android capture pipeline {label}")
+
+    release_resources = extract_between(
+        android,
+        "private fun releaseCaptureResources",
+        "private fun releaseMediaProjection",
+        "Android complete capture-resource teardown",
+    )
+    require_order(
+        release_resources,
+        (
+            "if (clearCaptureRequest)",
+            "captureRequested = false",
+            "stopCapturePipeline(keepReusableDisplay = false)",
+            "releaseMediaProjection()",
+        ),
+        "Android complete resource teardown order",
+    )
+
+    release_projection = extract_between(
+        android,
+        "private fun releaseMediaProjection",
+        "private fun installMediaProjection",
+        "Android MediaProjection release",
+    )
+    require_order(
+        release_projection,
+        (
+            "val projection = mediaProjection",
+            "val callback = mediaProjectionCallback",
+            "mediaProjection = null",
+            "mediaProjectionCallback = null",
+            "_isReady = false",
+            "projection.unregisterCallback(callback)",
+            "it.stop()",
+        ),
+        "Android MediaProjection clear-unregister-stop order",
+    )
+
+    install_projection = extract_between(
+        android,
+        "private fun installMediaProjection",
+        "private fun onMediaProjectionStopped",
+        "Android MediaProjection installation",
+    )
+    require_order(
+        install_projection,
+        (
+            "releaseCaptureResources(clearCaptureRequest = false)",
+            "object : MediaProjection.Callback()",
+            "onMediaProjectionStopped(projection, this)",
+            "mediaProjection = projection",
+            "mediaProjectionCallback = callback",
+            "projection.registerCallback(",
+            "requestMediaProjection()",
+            "_isReady = true",
+            "if (captureRequested)",
+            "startCapture()",
+        ),
+        "Android exact projection owner installation and demand-gated resume",
+    )
+
+    stopped_projection = extract_between(
+        android,
+        "private fun onMediaProjectionStopped",
+        "fun destroy()",
+        "Android MediaProjection stop callback",
+    )
+    require_order(
+        stopped_projection,
+        (
+            "mediaProjection !== projection || mediaProjectionCallback !== callback",
+            "return",
+            "mediaProjection = null",
+            "mediaProjectionCallback = null",
+            "_isReady = false",
+            "stopCapturePipeline(keepReusableDisplay = false)",
+            "checkMediaPermission()",
+        ),
+        "Android exact projection stop invalidation",
+    )
+
+    raw_recorder = extract_between(
+        android,
+        "private fun startRawVideoRecorder",
+        "private fun createOrSetVirtualDisplay",
+        "Android raw-video start result",
+    )
+    require_text(
+        raw_recorder,
+        "private fun startRawVideoRecorder(mp: MediaProjection): Boolean",
+        "Android raw-video Boolean result",
+    )
+    require_order(
+        raw_recorder,
+        ("if (targetSurface == null)", "return false", "return createOrSetVirtualDisplay"),
+        "Android raw-video start failure propagation",
+    )
+    virtual_display = extract_between(
+        android,
+        "private fun createOrSetVirtualDisplay",
+        "private fun initNotification",
+        "Android VirtualDisplay creation result",
+    )
+    for text, label in (
+        ("private fun createOrSetVirtualDisplay(mp: MediaProjection, s: Surface): Boolean", "Boolean creation result"),
+        ("virtualDisplay = mp.createVirtualDisplay(", "MediaProjection display creation"),
+        ("virtualDisplay != null", "non-null active-state proof"),
+        ("catch (e: SecurityException)", "revoked-grant failure"),
+        ("catch (e: IllegalStateException)", "stopped-grant failure"),
+    ):
+        require_text(virtual_display, text, f"Android VirtualDisplay {label}")
+    require_absent(
+        virtual_display,
+        "requestMediaProjection()",
+        "Android VirtualDisplay helper may not hide consent replacement",
+    )
+
+    require_text(
+        cm,
+        "authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal",
+        "Android live authorized Remote capture-demand classifier",
+    )
+    remove_connection = extract_between(
+        cm,
+        "fn remove_connection(&self, id: i32, close: bool)",
+        "fn voice_call_started(&self, id: i32)",
+        "Android connection-removal capture demand",
+    )
+    require_order(
+        remove_connection,
+        (
+            "android_connection_requires_desktop_capture(",
+            "client.authorized",
+            "client.disconnected",
+            "client.is_file_transfer",
+            "client.is_view_camera",
+            "client.is_terminal",
+            'call_main_service_set_by_name("stop_capture", None, None)',
+        ),
+        "Android last-live-Remote capture teardown",
+    )
+    demand_test = extract_between(
+        cm,
+        "fn android_capture_demand_is_remote_desktop_only()",
+        "fn cm_authority(valid: bool, file: bool)",
+        "Android capture-demand regression",
+    )
+    require_count(
+        demand_test,
+        "assert!(!android_connection_requires_desktop_capture(",
+        5,
+        "Android non-Remote capture-demand exclusions",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S14", "Android MediaProjection finality requirement"
+    )
+    for text, label in (
+        ("exact registered lifecycle callback", "exact callback ownership"),
+        ("non-null <code>VirtualDisplay</code>", "transactional active-state proof"),
+        ("live, authorized, non-disconnected Remote desktop session", "live Remote demand"),
+        ("file-transfer, view-camera, and terminal sessions", "non-capture connection exclusions"),
+    ):
+        require_text(requirement, text, f"Android R-S14 {label}")
+    require_text(
+        sources["requirements"],
+        "<tr><td>205</td>",
+        "Android MediaProjection finality Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S14/R-T4 Android MediaProjection owner and capture-demand finality",
+        "Android MediaProjection finality hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "Android MediaProjection lifecycle finality (R-S14/R-T4)",
+        "Android MediaProjection shared source gate",
+    )
+    require_text(
+        sources["verify"],
+        "ui_cm_interface::tests::android_capture_demand_is_remote_desktop_only",
+        "Android capture-demand shared regression wiring",
+    )
 
 
 def validate_github_automation_authority_verifier_contract(sources):
@@ -13574,6 +13867,7 @@ def validate_sources(sources):
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
     validate_android_builder_authority_contract(sources)
+    validate_android_media_projection_finality_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
@@ -25597,8 +25891,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#205",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#204",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#203",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25822,6 +26116,90 @@ def run_source_mutations(sources):
             "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
             "R-S11bm/R-S11e-79 — Android tool preferences ambient ownership",
             "Android preferences scratch hardening ledger",
+        ),
+        (
+            "android_main_service",
+            "@Volatile\n    private var captureRequested = false",
+            "private var captureRequested = false",
+            "Android cross-thread capture-demand state",
+        ),
+        (
+            "android_main_service",
+            "@Volatile\n        private var _isStart = false",
+            "private var _isStart = false",
+            "Android cross-thread _isStart state",
+        ),
+        (
+            "android_main_service",
+            "if (!isFileTransfer && !isViewCamera && !isTerminal) {\n                            requestCapture()",
+            "if (!isFileTransfer && !isViewCamera && !isTerminal && !isStart) {\n                            requestCapture()",
+            "Android capture demand must be recorded while already active",
+        ),
+        (
+            "android_main_service",
+            "if (!startRawVideoRecorder(projection))",
+            "if (startRawVideoRecorder(projection))",
+            "Android VirtualDisplay-before-active transactional start",
+        ),
+        (
+            "android_main_service",
+            "mediaProjection !== projection || mediaProjectionCallback !== callback",
+            "mediaProjection !== projection && mediaProjectionCallback !== callback",
+            "Android exact projection stop invalidation",
+        ),
+        (
+            "android_main_service",
+            "            checkMediaPermission()\n            requestMediaProjection()\n            return\n        }\n        _isReady = true",
+            "            checkMediaPermission()\n            return\n        }\n        _isReady = true",
+            "Android exact projection owner installation and demand-gated resume",
+        ),
+        (
+            "android_main_service",
+            "            virtualDisplay != null\n        } catch (e: SecurityException)",
+            "            true\n        } catch (e: SecurityException)",
+            "Android VirtualDisplay non-null active-state proof",
+        ),
+        (
+            "ui_cm_source",
+            "authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal",
+            "authorized && !is_file_transfer && !is_view_camera && !is_terminal",
+            "Android live authorized Remote capture-demand classifier",
+        ),
+        (
+            "ui_cm_source",
+            "                client.authorized,\n                client.disconnected,\n                client.is_file_transfer,",
+            "                client.authorized,\n                false,\n                client.is_file_transfer,",
+            "Android last-live-Remote capture teardown",
+        ),
+        (
+            "ui_cm_source",
+            "fn android_capture_demand_is_remote_desktop_only()",
+            "fn android_capture_demand_regression_removed()",
+            "Android capture-demand regression",
+        ),
+        (
+            "verify",
+            "Android MediaProjection lifecycle finality (R-S14/R-T4)",
+            "Android MediaProjection lifecycle compatibility (R-S14/R-T4)",
+            "Android MediaProjection shared source gate",
+        ),
+        (
+            "requirements",
+            "exact registered lifecycle callback",
+            "best-effort lifecycle callback",
+            "Android R-S14 exact callback ownership",
+        ),
+        (
+            "requirements",
+            "<tr><td>205</td>",
+            "<tr><td>205-disabled</td>",
+            "Android MediaProjection finality Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S14/R-T4 Android MediaProjection owner and capture-demand finality",
+            "R-S14/R-T4 Android MediaProjection owner compatibility",
+            "Android MediaProjection finality hardening ledger",
         ),
         (
             "github_automation_authority_verifier",

@@ -162,6 +162,17 @@ pub struct Client {
     tx: UnboundedSender<Data>,
 }
 
+#[cfg(any(target_os = "android", test))]
+fn android_connection_requires_desktop_capture(
+    authorized: bool,
+    disconnected: bool,
+    is_file_transfer: bool,
+    is_view_camera: bool,
+    is_terminal: bool,
+) -> bool {
+    authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct IpcTaskRunner<T: InvokeUiCM> {
     stream: Connection,
@@ -404,14 +415,15 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         }
 
         #[cfg(any(target_os = "android"))]
-        if CLIENTS
-            .read()
-            .unwrap()
-            .iter()
-            .filter(|(_k, v)| !v.is_file_transfer && !v.is_terminal)
-            .next()
-            .is_none()
-        {
+        if !CLIENTS.read().unwrap().values().any(|client| {
+            android_connection_requires_desktop_capture(
+                client.authorized,
+                client.disconnected,
+                client.is_file_transfer,
+                client.is_view_camera,
+                client.is_terminal,
+            )
+        }) {
             if let Err(e) =
                 scrap::android::call_main_service_set_by_name("stop_capture", None, None)
             {
@@ -2066,6 +2078,28 @@ mod tests {
     use crate::ipc::Data;
     use hbb_common::tokio::{runtime::Runtime, sync::mpsc::unbounded_channel};
     use std::fs;
+
+    #[test]
+    fn android_capture_demand_is_remote_desktop_only() {
+        assert!(android_connection_requires_desktop_capture(
+            true, false, false, false, false
+        ));
+        assert!(!android_connection_requires_desktop_capture(
+            false, false, false, false, false
+        ));
+        assert!(!android_connection_requires_desktop_capture(
+            true, true, false, false, false
+        ));
+        assert!(!android_connection_requires_desktop_capture(
+            true, false, true, false, false
+        ));
+        assert!(!android_connection_requires_desktop_capture(
+            true, false, false, true, false
+        ));
+        assert!(!android_connection_requires_desktop_capture(
+            true, false, false, false, true
+        ));
+    }
 
     #[cfg(not(any(target_os = "ios")))]
     fn cm_authority(valid: bool, file: bool) -> ipc::CmConnectionAuthority {

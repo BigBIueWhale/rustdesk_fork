@@ -131,8 +131,8 @@ class MainService : Service() {
                         translate("Share screen")
                     }
                     if (authorized) {
-                        if (!isFileTransfer && !isViewCamera && !isTerminal && !isStart) {
-                            startCapture()
+                        if (!isFileTransfer && !isViewCamera && !isTerminal) {
+                            requestCapture()
                         }
                         onClientAuthorizedNotification(id, type, username, peerId)
                     } else {
@@ -218,8 +218,11 @@ class MainService : Service() {
     }
 
     companion object {
+        @Volatile
         private var _isReady = false // media permission ready status
+        @Volatile
         private var _isStart = false // screen capture start status
+        @Volatile
         private var _isAudioStart = false // audio capture start status
         val isReady: Boolean
             get() = _isReady
@@ -236,6 +239,9 @@ class MainService : Service() {
 
     // video
     private var mediaProjection: MediaProjection? = null
+    private var mediaProjectionCallback: MediaProjection.Callback? = null
+    @Volatile
+    private var captureRequested = false
     private var surface: Surface? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -396,9 +402,11 @@ class MainService : Service() {
                 SCREEN_INFO.scale = scale
                 SCREEN_INFO.dpi = dpi
                 if (isStart) {
-                    stopCapture()
+                    stopCapturePipeline()
                     FFI.refreshScreen()
-                    startCapture()
+                    if (captureRequested) {
+                        startCapture()
+                    }
                 } else {
                     FFI.refreshScreen()
                 }
@@ -432,10 +440,18 @@ class MainService : Service() {
                 getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
             intent.getParcelableExtra<Intent>(EXT_MEDIA_PROJECTION_RES_INTENT)?.let {
-                mediaProjection =
+                val projection = try {
                     mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, it)
-                checkMediaPermission()
-                _isReady = true
+                } catch (e: RuntimeException) {
+                    Log.e(logTag, "Failed to obtain MediaProjection from fresh consent", e)
+                    null
+                }
+                if (projection == null) {
+                    Log.e(logTag, "Fresh MediaProjection consent returned no projection")
+                    checkMediaPermission()
+                } else {
+                    installMediaProjection(projection)
+                }
             } ?: let {
                 // BR-17 / R-D7a: honor the boot/start split that was plumbed (EXT_INIT_FROM_BOOT,
                 // set by BootReceiver) but never read. On BOOT, start the foreground service + the
@@ -507,12 +523,21 @@ class MainService : Service() {
         return audioRecordHandle.onVoiceCallClosed(mediaProjection)
     }
 
+    @Synchronized
+    private fun requestCapture(): Boolean {
+        captureRequested = true
+        return startCapture()
+    }
+
+    @Synchronized
     fun startCapture(): Boolean {
         if (isStart) {
             return true
         }
-        if (mediaProjection == null) {
+        val projection = mediaProjection
+        if (projection == null) {
             Log.w(logTag, "startCapture fail,mediaProjection is null")
+            requestMediaProjection()
             return false
         }
         
@@ -520,14 +545,25 @@ class MainService : Service() {
         Log.d(logTag, "Start Capture")
         surface = createSurface()
 
-        startRawVideoRecorder(mediaProjection!!)
+        if (!startRawVideoRecorder(projection)) {
+            Log.w(logTag, "startCapture failed before VirtualDisplay became active")
+            releaseCaptureResources(clearCaptureRequest = false)
+            requestMediaProjection()
+            return false
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!audioRecordHandle.createAudioRecorder(false, mediaProjection)) {
-                Log.d(logTag, "createAudioRecorder fail")
-            } else {
-                Log.d(logTag, "audio recorder start")
-                audioRecordHandle.startAudioRecorder()
+            try {
+                if (!audioRecordHandle.createAudioRecorder(false, projection)) {
+                    Log.d(logTag, "createAudioRecorder fail")
+                } else {
+                    Log.d(logTag, "audio recorder start")
+                    audioRecordHandle.startAudioRecorder()
+                }
+            } catch (e: RuntimeException) {
+                // Audio is optional. A device-specific audio failure must not leave an already
+                // active VirtualDisplay recorded as an inactive screen-capture pipeline.
+                Log.w(logTag, "Audio capture failed; continuing with screen capture", e)
             }
         }
         checkMediaPermission()
@@ -539,20 +575,30 @@ class MainService : Service() {
 
     @Synchronized
     fun stopCapture() {
+        captureRequested = false
+        stopCapturePipeline()
+    }
+
+    @Synchronized
+    private fun stopCapturePipeline(keepReusableDisplay: Boolean = reuseVirtualDisplay) {
         Log.d(logTag, "Stop Capture")
         FFI.setFrameRawEnable("video",false)
         _isStart = false
         MainActivity.rdClipboardManager?.setCaptureStarted(_isStart)
-        if (reuseVirtualDisplay) {
-            virtualDisplay?.setSurface(null)
+        if (keepReusableDisplay) {
+            try {
+                virtualDisplay?.setSurface(null)
+            } catch (e: RuntimeException) {
+                Log.w(logTag, "Failed to detach stopped VirtualDisplay; releasing it", e)
+                virtualDisplay?.release()
+                virtualDisplay = null
+            }
         } else {
             virtualDisplay?.release()
+            virtualDisplay = null
         }
         imageReader?.close()
         imageReader = null
-        if (!reuseVirtualDisplay) {
-            virtualDisplay = null
-        }
         // The surface must be released after `imageReader.close()`.
         // https://github.com/rustdesk/rustdesk/issues/4118#issuecomment-1515666629
         surface?.release()
@@ -563,23 +609,88 @@ class MainService : Service() {
     }
 
     @Synchronized
-    private fun releaseCaptureResources() {
-        stopCapture()
-        if (reuseVirtualDisplay) {
-            virtualDisplay?.release()
-            virtualDisplay = null
+    private fun releaseCaptureResources(clearCaptureRequest: Boolean = true) {
+        if (clearCaptureRequest) {
+            captureRequested = false
         }
+        stopCapturePipeline(keepReusableDisplay = false)
         releaseMediaProjection()
     }
 
     @Synchronized
     private fun releaseMediaProjection() {
-        mediaProjection?.let {
-            Log.d(logTag, "stopping MediaProjection")
-            it.stop()
-        }
+        val projection = mediaProjection
+        val callback = mediaProjectionCallback
         mediaProjection = null
+        mediaProjectionCallback = null
         _isReady = false
+        if (projection != null && callback != null) {
+            try {
+                projection.unregisterCallback(callback)
+            } catch (e: RuntimeException) {
+                Log.w(logTag, "Failed to unregister MediaProjection callback during teardown", e)
+            }
+        }
+        projection?.let {
+            Log.d(logTag, "stopping MediaProjection")
+            try {
+                it.stop()
+            } catch (e: RuntimeException) {
+                Log.w(logTag, "Failed to stop MediaProjection during teardown", e)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun installMediaProjection(projection: MediaProjection) {
+        releaseCaptureResources(clearCaptureRequest = false)
+        val callback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                onMediaProjectionStopped(projection, this)
+            }
+        }
+        mediaProjection = projection
+        mediaProjectionCallback = callback
+        try {
+            projection.registerCallback(
+                callback,
+                serviceHandler ?: Handler(Looper.getMainLooper())
+            )
+        } catch (e: RuntimeException) {
+            Log.e(logTag, "Failed to register MediaProjection lifecycle callback", e)
+            mediaProjection = null
+            mediaProjectionCallback = null
+            try {
+                projection.stop()
+            } catch (stopError: RuntimeException) {
+                Log.w(logTag, "Failed to stop rejected MediaProjection", stopError)
+            }
+            checkMediaPermission()
+            requestMediaProjection()
+            return
+        }
+        _isReady = true
+        checkMediaPermission()
+        if (captureRequested) {
+            startCapture()
+        }
+    }
+
+    @Synchronized
+    private fun onMediaProjectionStopped(
+        projection: MediaProjection,
+        callback: MediaProjection.Callback
+    ) {
+        if (mediaProjection !== projection || mediaProjectionCallback !== callback) {
+            Log.d(logTag, "Ignoring stop callback from a replaced MediaProjection")
+            return
+        }
+        Log.i(logTag, "MediaProjection stopped; invalidating capture state")
+        mediaProjection = null
+        mediaProjectionCallback = null
+        _isReady = false
+        stopCapturePipeline(keepReusableDisplay = false)
+        checkMediaPermission()
     }
 
     fun destroy() {
@@ -611,19 +722,20 @@ class MainService : Service() {
         return isReady
     }
 
-    private fun startRawVideoRecorder(mp: MediaProjection) {
+    private fun startRawVideoRecorder(mp: MediaProjection): Boolean {
         Log.d(logTag, "startRawVideoRecorder,screen info:$SCREEN_INFO")
-        if (surface == null) {
+        val targetSurface = surface
+        if (targetSurface == null) {
             Log.d(logTag, "startRawVideoRecorder failed,surface is null")
-            return
+            return false
         }
-        createOrSetVirtualDisplay(mp, surface!!)
+        return createOrSetVirtualDisplay(mp, targetSurface)
     }
 
     // https://github.com/bk138/droidVNC-NG/blob/b79af62db5a1c08ed94e6a91464859ffed6f4e97/app/src/main/java/net/christianbeier/droidvnc_ng/MediaProjectionService.java#L250
     // Reuse virtualDisplay if it exists, to avoid media projection confirmation dialog every connection.
-    private fun createOrSetVirtualDisplay(mp: MediaProjection, s: Surface) {
-        try {
+    private fun createOrSetVirtualDisplay(mp: MediaProjection, s: Surface): Boolean {
+        return try {
             virtualDisplay?.let {
                 it.resize(SCREEN_INFO.width, SCREEN_INFO.height, SCREEN_INFO.dpi)
                 it.setSurface(s)
@@ -634,10 +746,13 @@ class MainService : Service() {
                     s, null, null
                 )
             }
+            virtualDisplay != null
         } catch (e: SecurityException) {
-            Log.w(logTag, "createOrSetVirtualDisplay: got SecurityException, re-requesting confirmation");
-            // This initiates a prompt dialog for the user to confirm screen projection.
-            requestMediaProjection()
+            Log.w(logTag, "MediaProjection was no longer authorized for capture", e)
+            false
+        } catch (e: IllegalStateException) {
+            Log.w(logTag, "MediaProjection was no longer in a capturable state", e)
+            false
         }
     }
 

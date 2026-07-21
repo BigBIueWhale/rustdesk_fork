@@ -6051,7 +6051,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "855 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 74 files",
+            "855 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, and Appendix C #192–#193",
+        "R-X12a, R-X9, R-R2c, and Appendix C #192–#194",
         "current portable Quick Support requirements-hash scope",
     )
 
@@ -10785,6 +10785,49 @@ def validate_portable_quick_support_excision_contract(sources):
         ("current portable Quick Support requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
+
+
+def validate_mobile_build_authority_verifier_contract(sources):
+    focused = sources["mobile_build_authority_verifier"]
+    for text, label in (
+        ("FORBIDDEN_PATHS: Tuple[str, ...]", "mobile forbidden-path inventory"),
+        ("flutter/build_android.sh", "generic Android builder absence contract"),
+        ("flutter/build_android_deps.sh", "alternate Android dependency builder absence contract"),
+        ("flutter/build_fdroid.sh", "F-Droid builder absence contract"),
+        ("flutter/build_ios.sh", "generic iOS builder absence contract"),
+        ("flutter/ios_arm64.sh", "iOS arm64 helper absence contract"),
+        ("flutter/ios_x64.sh", "iOS x64 helper absence contract"),
+        ("flutter/ndk_arm.sh", "Android armv7 helper absence contract"),
+        ("flutter/ndk_x64.sh", "Android x64 helper absence contract"),
+        ("flutter/ndk_x86.sh", "Android x86 helper absence contract"),
+        ("flutter/run.sh", "generic host runner absence contract"),
+        (
+            'if sources[f"path:{relative}"] != "absent":',
+            "mobile path-state rejection semantics",
+        ),
+        (
+            'sources["flutter_shell_inventory"] != "flutter/ndk_arm64.sh"',
+            "sole Flutter shell inventory semantics",
+        ),
+        ('sources["helper"] != EXPECTED_HELPER', "exact arm64 helper semantics"),
+        (
+            "commands != (EXPECTED_FLUTTER_COMMAND,)",
+            "exact arm64 Flutter command semantics",
+        ),
+        ("historical_on:", "schema-demoted workflow trigger semantics"),
+        ("historical_jobs:", "schema-demoted workflow jobs semantics"),
+        ('re.search(r"(?m)^(?:on|jobs):", disabled)', "active workflow schema rejection"),
+        ("--network=host", "host-network rejection semantics"),
+        ("--user 0:0", "root-container rejection semantics"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "mobile authority mutation inventory"),
+        ("run_mutations(sources)", "mobile authority mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
+        "mobile authority focused-verifier wiring",
+    )
 
 
 def validate_direct_only_viewer_contract(sources):
@@ -12977,6 +13020,7 @@ def validate_sources(sources):
     validate_smoke_container_authority_contract(sources)
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
+    validate_mobile_build_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
@@ -18662,7 +18706,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "855 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 74 files",
+            "855 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -24891,9 +24935,21 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R2c, and Appendix C #192–#194",
             "R-X12a, R-X9, and Appendix C #192–#193",
-            "R-X12a and Appendix C #192",
             "current portable Quick Support requirements-hash scope",
+        ),
+        (
+            "mobile_build_authority_verifier",
+            'if sources[f"path:{relative}"] != "absent":',
+            "if False:",
+            "mobile path-state rejection semantics",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
+            "true # mobile authority focused verifier removed",
+            "mobile authority focused-verifier wiring",
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
@@ -25551,6 +25607,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_input_provenance": (
                 repo / "scripts/online-input-provenance.py"
+            ).read_text(encoding="utf-8"),
+            "mobile_build_authority_verifier": (
+                repo / "scripts/verify-mobile-build-authority.py"
             ).read_text(encoding="utf-8"),
             "service_source": (repo / "src/service.rs").read_text(encoding="utf-8"),
             "common_source": (repo / "src/common.rs").read_text(encoding="utf-8"),

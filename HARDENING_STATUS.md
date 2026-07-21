@@ -19,7 +19,7 @@ zero enabled definitions, seven inert `.disabled` reference definitions, one doc
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
 there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 855 lexical `unsafe {`
-blocks across 249 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
+blocks across 247 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -618,7 +618,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   regression proves the table and its credential strings are never serialized again. `scripts/verify.sh` gates
   the complete source/module/dependency absence, the direct-only connector shape, the retained stale-value pins,
   and the focused regression. The synchronized machine inventory proves 905 Cargo packages, 36 Git records from
-  26 source URLs (26 rustdesk-org records from 20 URLs), and 855 lexical unsafe blocks across 249 Rust files.
+  26 source URLs (26 rustdesk-org records from 20 URLs), and 855 lexical unsafe blocks across 247 Rust files.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -7093,6 +7093,53 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   gate, existing R-X9 requirement, Appendix C #193, and this ledger. Focused portable-crate tests and a locked,
   offline nonroot Linux check provide source/build evidence; native Windows and exact setup-artifact execution remain
   part of R-B2/R-B10.
+- **R-R2c — alternate mobile build authorities deleted — SOURCE CLOSED/GATED 2026-07-21; EXACT CURRENT-COMMIT
+  APK EVIDENCE REMAINS R-B2/R-B10.** History and current caller tracing establish two different layers. The ten
+  top-level Flutter scripts imported with the upstream tree were standalone entry points: `flutter/run.sh` fetched
+  tools and ran a generic host build; `flutter/build_android.sh` emitted multi-ABI APKs and an AAB;
+  `flutter/build_android_deps.sh` offered a second vcpkg acquisition model; `flutter/build_fdroid.sh` fetched and
+  built four Android ABIs; the iOS pair plus generic iOS builder emitted Apple artifacts; and the armv7/x86/x86_64
+  NDK helpers compiled unshipped Android targets. None had a live caller in the fork's release scripts. Commit
+  `e323e09` had already marked the F-Droid, iOS arm64, and Android armv7 scripts for deletion with target pruning,
+  but the imported executable files remained.
+
+  The actual authority was already singular: `scripts/online-fetch.sh` authenticates and stages the complete pinned
+  Android closure, including classic-mode `arm64-android` vcpkg natives; `scripts/build-android.sh` starts the
+  networkless nonroot build/signing containers; `scripts/android-apk-build.sh` invokes exactly
+  `flutter/ndk_arm64.sh` and one `flutter build apk --target-platform android-arm64 --split-per-abi`; and only the
+  exact arm64 helper is consumed from the Flutter directory. The upstream full matrix exists only at the
+  non-workflow `.github/workflows/flutter-build.yml.disabled` path. Its marker now makes that historical role
+  explicit, its top-level trigger/job keys are schema-demoted to `historical_on`/`historical_jobs`, and its
+  references to deleted helpers intentionally remain dangling. Renaming the file alone therefore cannot activate
+  the reference, let alone silently revive an alternate build. Apple compilation remains source-conformance-only
+  through the separate checker required by R-R2.
+
+  All ten obsolete scripts are deleted. R-R2c makes the exact negative inventory, sole top-level Flutter shell,
+  arm64 command chain, cache-staging authority, and inert-workflow boundary normative. The shared verifier rejects
+  every deleted path including dangling symlinks, rejects any second top-level Flutter shell, checks the retained
+  helper's regular executable type, and runs `scripts/verify-mobile-build-authority.py --self-test`. The focused
+  semantic validator independently checks the exact helper bytes, one caller, one arm64 split-APK command,
+  networkless/nonroot outer harness, arm64-only native staging, absent enabled workflow, schema-demoted inert
+  reference, requirement, Appendix C #194, and this ledger, with a deliberate mutation for every deleted path and
+  each positive authority edge. This closes conflicting source/build authority and future-reactivation debt; it is
+  not evidence that any obsolete script ran, the host was mutated, a listener existed, a non-arm64 artifact shipped,
+  privilege escalation occurred, or a system was compromised. A clean cold exact-commit Android double build,
+  signed-APK verification on the release artifact, and device behavior remain owned by R-B2/R-B10 and are not
+  inferred from this source closure.
+
+  Focused verification used the already-present immutable Apple/Rust/Python image
+  `sha256:612145fabd0c603417ab5e689e84d5b5a619f4edf31efceb3ecbe2813da2199c` as numeric UID/GID
+  1000:1000 with networking disabled, a read-only root/source mount, all capabilities dropped,
+  no-new-privileges, bounded CPU/memory/PIDs, no published ports, no Docker socket, and disposable tmpfs. The mobile
+  validator passed its baseline and rejected all 32 deliberate mutations. The complete workspace source-mutation
+  matrix, the 103-case dependency-inventory self-test and current inventory, the 63-case main-verifier authority
+  suite, native-codec/hash normal and mutation gates, Python parsing, edited-shell Bash parsing, and diff hygiene
+  passed. The inventory check also found and corrected a pre-existing stale post-R-X12a expectation: deleting the
+  two orphaned Wayland Rust modules had reduced the tracked Rust source count from 249 to 247 and changed its
+  per-file identity digest, while the measured 855 lexical unsafe blocks/74 matching files remained unchanged.
+  No project build, APK build/sign, Android/device execution, full `scripts/verify.sh`, whole Apple checker, or R-B2
+  release was run for this source-only slice. The complete verifier still lacks its exact pinned dev-check image,
+  and the whole Apple checker would build images in preflight; neither boundary was bypassed or represented green.
 - **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
   correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
   `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
@@ -7409,9 +7456,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-93ed189b4c8d0ec0f74fa009618c6d2c8db7b506902f7d608c610e0d667d0ba4  requirements.html
+9ed51549359ec5470d87f29642d83f31e7be4c248a4ff498f968d665559d8bcd  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, and Appendix C #192–#193. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R2c, and Appendix C #192–#194. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

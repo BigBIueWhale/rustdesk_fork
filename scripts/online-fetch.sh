@@ -639,9 +639,9 @@ stage_android_ndk() {
 # aarch64-linux-android) links the codecs STATICALLY from VCPKG_ROOT/installed/arm64-android.
 # vcpkg's arm64-android triplet cross-compiles them with the NDK clang (ANDROID_NDK_HOME) — no
 # host gcc-8 needed (ARM NEON, not x86 AVX2). CLASSIC mode (--overlay-ports + explicit ports),
-# NOT the manifest mode of flutter/build_android_deps.sh: manifest mode needs the vcpkg tree to
-# be a git checkout (to resolve the builtin-baseline), but ./online stages the pinned TARBALL
-# (no .git) — classic mode over the tarball baseline ports + the overlay is equivalent + git-free.
+# not manifest mode: manifest mode needs the vcpkg tree to be a git checkout (to resolve the
+# builtin-baseline), but ./online stages the pinned TARBALL (no .git) — classic mode over the
+# tarball baseline ports + the overlay is equivalent + git-free.
 stage_vcpkg_natives_arm64() {
     require_cmd docker
     local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"

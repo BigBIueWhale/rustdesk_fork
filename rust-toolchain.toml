@@ -1,13 +1,12 @@
 # In-tree Rust toolchain pin — the one pin upstream omits (R-R1, §3.2, §16).
 #
-# Upstream fixes the Rust version only in CI (.github/workflows/flutter-build.yml
-# `RUST_VERSION`). The hardened fork commits it in-tree so a `--locked` build is
-# reproducible from the repository alone, never from CI env vars.
+# Upstream fixed the Rust version in its Flutter workflow. That matrix survives here
+# only as a `.disabled` historical reference; the hardened fork commits the release pin
+# in `scripts/pins.env` and this in-tree default so no enabled CI definition is authority.
 #
-# Pinned to 1.75 — the exact version upstream verified for all shipped targets
-# (flutter-build.yml `RUST_VERSION`/`SCITER_RUST_VERSION`). macOS's 1.81
-# (`MAC_RUST_VERSION`) leaves with the macOS target (R-R2), so it is not pinned
-# here.
+# Pinned to 1.75 — the exact upstream release version retained by `scripts/pins.env`
+# for all three shipped targets. The historical macOS 1.81 pin is not a release target
+# pin (R-R2), so it is not selected here.
 #
 # NOTE (R-B6): 1.75 is forced by the 32-bit Sciter path (Rust 1.78's i128 ABI
 # change breaks Sciter). Once Sciter is dropped (R-B6) this channel SHOULD be
@@ -20,8 +19,8 @@ profile = "minimal"
 components = ["rustfmt", "clippy"]
 targets = [
     # The three shipped build targets (R-R2). Apple check-only triples
-    # (x86_64/aarch64-apple-darwin, aarch64-apple-ios) are added by the
-    # dedicated R-R2 `cargo check` CI job, not installed on every host.
+    # (x86_64/aarch64-apple-darwin, aarch64-apple-ios) are supplied only to the
+    # dedicated source-conformance checker, not installed on every build host.
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
     "aarch64-linux-android",

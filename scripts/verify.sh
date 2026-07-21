@@ -11029,14 +11029,55 @@ if [ -n "$rr2a_bad" ]; then
 else
   echo "  ok  R-R2a non-.deb Linux packaging/runtime launch paths excised — AppImage/Flatpak + PKGBUILD/rpm (the .deb is the sole Linux package/update artifact)"
 fi
+
+# R-R2/R-R2c: one executable mobile build authority. The release scripts own the
+# networked cache and networkless Android container; Flutter contributes only the exact
+# arm64 cargo-ndk helper they invoke. Imported host runners, alternate ABI/package
+# builders, F-Droid, and iOS helpers are deleted, not left as unsupported shortcuts.
+echo "== (6c-a3) exact mobile build authority (R-R2/R-R2c) =="
+rr2c_bad=
+rr2c_obsolete_paths=(
+  flutter/build_android.sh
+  flutter/build_android_deps.sh
+  flutter/build_fdroid.sh
+  flutter/build_ios.sh
+  flutter/ios_arm64.sh
+  flutter/ios_x64.sh
+  flutter/ndk_arm.sh
+  flutter/ndk_x64.sh
+  flutter/ndk_x86.sh
+  flutter/run.sh
+)
+for path in "${rr2c_obsolete_paths[@]}"; do
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    rr2c_bad="$rr2c_bad obsolete:$path"
+  fi
+done
+mapfile -t rr2c_flutter_shells < <(
+  find flutter -maxdepth 1 \( -type f -o -type l \) -name '*.sh' -print | LC_ALL=C sort
+)
+if [ "${#rr2c_flutter_shells[@]}" -ne 1 ] \
+  || [ "${rr2c_flutter_shells[0]:-}" != flutter/ndk_arm64.sh ]; then
+  rr2c_bad="$rr2c_bad flutter-shell-inventory"
+fi
+[ -f flutter/ndk_arm64.sh ] && [ ! -L flutter/ndk_arm64.sh ] && [ -x flutter/ndk_arm64.sh ] \
+  || rr2c_bad="$rr2c_bad arm64-helper-type-or-mode"
+if ! python3 scripts/verify-mobile-build-authority.py --repo . --self-test; then
+  rr2c_bad="$rr2c_bad semantic-contract"
+fi
+if [ -n "$rr2c_bad" ]; then
+  echo "  FAIL R-R2/R-R2c: mobile build authority is not the exact script-owned Android arm64 path:$rr2c_bad"; rc=1
+else
+  echo "  ok  R-R2/R-R2c obsolete host/multi-target mobile helpers absent; sole Flutter shell is the container-consumed arm64 cargo-ndk helper"
+fi
 # R-SV8 (§18 sovereignty, MUST): no Firebase / FCM / Google-services on ANY artifact (iOS source +
 # Android). The iOS GoogleService-Info.plist shipped LIVE Google creds (API_KEY / GCM_SENDER_ID /
 # GOOGLE_APP_ID) + DATABASE_URL https://rustdesk.firebaseio.com, bundled at the Xcode/CocoaPods
 # layer — invisible to cargo/cfg. The push entitlements (aps-environment APNs + wifi-info SSID
 # fingerprint) are already stripped (Runner.entitlements is an empty dict) and Android is
-# google-services-free; this locks in the residual creds-plist deletion. (build_fdroid.sh's
-# gms/firebase STRIP sed, the spec, and the entitlements R-SV8 comment legitimately NAME the
-# tokens — the checks below target the actual creds/endpoint/entitlement, not those mentions.)
+# google-services-free; this locks in the residual creds-plist deletion. (The former F-Droid-only
+# gms/firebase strip, the spec, and the entitlements R-SV8 comment legitimately NAME the tokens —
+# the checks below target the actual creds/endpoint/entitlement, not those mentions.)
 rsv8_bad=
 [ -e flutter/ios/Runner/GoogleService-Info.plist ] && rsv8_bad="$rsv8_bad ios-creds-plist"
 [ -n "$(find flutter/android -name google-services.json 2>/dev/null)" ] && rsv8_bad="$rsv8_bad android-google-services"

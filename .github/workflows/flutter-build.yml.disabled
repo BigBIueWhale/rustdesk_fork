@@ -1,13 +1,13 @@
 name: Build the flutter version of the RustDesk
 
-# TODO(one-binary): this is upstream's full CI matrix. The fork builds OFF GitHub-hosted
-# runners via scripts/ (R-B2) and ships exactly three targets (R-R2): Debian x86_64,
-# Windows x86_64, Android aarch64. Prune to those three jobs; delete the iOS / macOS /
-# 32-bit Sciter (i686) / fdroid / nightly / playground jobs. The hwcodec/vram drop
-# (software codec only, R-R2b) is now DONE here and in every build path — enforced by
-# scripts/verify.sh; the remaining TODO is pruning the matrix to those three jobs.
+# HISTORICAL INERT REFERENCE ONLY (R-R2/R-R2c): the `.disabled` suffix means GitHub
+# does not load this upstream matrix. The fork has zero enabled workflow definitions;
+# its three release targets are owned only by the checked-in scripts/ harness. Several
+# commands below deliberately name deleted upstream helpers. The top-level trigger and
+# job keys are also schema-demoted, so renaming this file cannot activate it.
+# It MUST NOT become a build authority.
 
-on:
+historical_on:
   workflow_call:
     inputs:
       upload-artifact:
@@ -17,12 +17,7 @@ on:
         type: string
         default: "nightly"
 
-# NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
-# variables from this workflow!
-#
-# It does NOT read build steps, however, so please fix 'flutter/build_fdroid.sh
-# whenever you add changes to Android CI build action ('build-rustdesk-android')
-# in this file!
+# Historical note: upstream's deleted F-Droid helper read variables from this matrix.
 
 env:
   SCITER_RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
@@ -54,7 +49,7 @@ env:
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
 
-jobs:
+historical_jobs:
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
 

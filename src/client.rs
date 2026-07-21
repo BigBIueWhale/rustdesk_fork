@@ -1776,7 +1776,6 @@ impl LoginConfigHandler {
                 config.custom_image_quality[0]
             };
             msg.custom_image_quality = quality << 8;
-            #[cfg(feature = "flutter")]
             if let Some(custom_fps) = self.options.get("custom-fps") {
                 let custom_fps = custom_fps.parse().unwrap_or(30);
                 msg.custom_fps = custom_fps;
@@ -3246,7 +3245,6 @@ mod tests {
         let mut config = PeerConfig::default();
         config.image_quality = "custom".to_owned();
         config.custom_image_quality = vec![180];
-        #[cfg(feature = "flutter")]
         config
             .options
             .insert("custom-fps".to_owned(), "90".to_owned());
@@ -3259,7 +3257,6 @@ mod tests {
             .expect("a remote-control session must produce its option message");
 
         assert_eq!(options.custom_image_quality, 180 << 8);
-        #[cfg(feature = "flutter")]
         assert_eq!(options.custom_fps, 90);
     }
 

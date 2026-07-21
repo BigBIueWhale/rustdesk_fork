@@ -281,6 +281,26 @@ grep -qF "mainGetCommon(key: 'direct-listener-bound')" flutter/lib/desktop/pages
   || { echo "  FAIL R-SV6c: status widget lost real listener-bound authority"; exit 1; }
 grep -qF "mainGetCommon(key: 'local-permanent-password-set')" flutter/lib/desktop/pages/connection_page.dart \
   || { echo "  FAIL R-SV6c: status widget lost password-provisioning reason"; exit 1; }
+# R-SV6d / R-G / R-D: public/custom rendezvous classification has no meaning in a direct-only
+# product. Reject authored comments/aliases as well as code, then inspect the freshly generated ABI.
+dg_clean 'using_public_server|usingPublicServer|mainIsUsingPublicServer|is_using_public_server' 'R-SV6d public/custom-rendezvous selection state'
+if grep -RInE --include='*.dart' --exclude='generated_bridge.dart' \
+  'using_public_server|usingPublicServer|mainIsUsingPublicServer|is_using_public_server' flutter/lib >/dev/null; then
+  echo "  FAIL R-SV6d: authored Dart regained public/custom-rendezvous state or an explanatory scar"; exit 1
+fi
+if grep -qE 'using_public_server|usingPublicServer|mainIsUsingPublicServer|is_using_public_server' \
+  flutter/lib/generated_bridge.dart; then
+  echo "  FAIL R-SV6d: freshly generated bridge regained public/custom-rendezvous state"; exit 1
+fi
+grep -qF "bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;" \
+  flutter/lib/common/widgets/dialog.dart \
+  || { echo "  FAIL R-SV6d: custom-FPS presentation is not peer-version-only"; exit 1; }
+grep -qF "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;" \
+  flutter/lib/common/widgets/dialog.dart \
+  || { echo "  FAIL R-SV6d: extended-quality presentation is not peer-version-only"; exit 1; }
+if grep -qE '_queryInterval|Duration\(seconds: (6|20)\)' flutter/lib/common/widgets/peers_view.dart; then
+  echo "  FAIL R-SV6d: saved peers regained a public/custom rendezvous polling cadence"; exit 1
+fi
 # R-G8 / §19 (de-brand): a sovereign fork advertises no upstream brand — the user-facing
 # rustdesk.com links are removed (the About/website "rustdesk.com" + "powered by" badge, the
 # Privacy Statement / EULA privacy.html links, the macOS/Linux permission-card docs "Help"

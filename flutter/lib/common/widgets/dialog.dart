@@ -472,10 +472,8 @@ customImageQualityDialog(SessionID sessionId, String id, FFI ffi) async {
   bool qualitySet = false;
   bool fpsSet = false;
 
-  // R-G3/R-SV4: the fork is direct-only (relay/rendezvous removed), so a session is ALWAYS direct.
-  // The inherited `mainIsUsingPublicServer() && !direct` caveat is therefore provably always false
-  // (`!direct` can never hold), so it collapses to the version gate alone — and the removed
-  // ConnectionType.direct/strDirect state no longer needs consulting here.
+  // Direct-only capability presentation depends only on the peer version. There is no
+  // server-selection or relay/direct state to consult.
   bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;
   bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;
 

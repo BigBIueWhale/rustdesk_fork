@@ -292,6 +292,56 @@ else
   note "ok  R-SV6c Apple source has no peer-presence plane and retains only typed local status sync"
 fi
 
+echo "== (2a-0b) R-SV6d public/custom-rendezvous selection-state excision =="
+r_sv6d=
+if grep -qE 'using_public_server|main_is_using_public_server' \
+  "$REPO/src/common.rs" "$REPO/src/flutter_ffi.rs" "$REPO/src/client.rs"; then
+  r_sv6d="$r_sv6d Rust-public-server-predicate-or-ffi-present"
+fi
+if grep -RInE --include='*.dart' \
+  'using_public_server|usingPublicServer|mainIsUsingPublicServer|is_using_public_server' \
+  "$REPO/flutter/lib" >/dev/null; then
+  r_sv6d="$r_sv6d Dart-public-server-predicate-or-compatibility-surface-present"
+fi
+grep -qF 'fn direct_only_custom_quality_is_not_relay_capped_before_login()' "$REPO/src/client.rs" \
+  || r_sv6d="$r_sv6d direct-quality-regression-missing"
+grep -qF 'assert_eq!(options.custom_image_quality, 180 << 8);' "$REPO/src/client.rs" \
+  || r_sv6d="$r_sv6d direct-quality-assertion-missing"
+grep -qF 'assert_eq!(options.custom_fps, 90);' "$REPO/src/client.rs" \
+  || r_sv6d="$r_sv6d direct-fps-assertion-missing"
+r_sv6d_policy_scope=$(awk '
+  $0 == "        } else if q == \"custom\" {" { capture=1 }
+  capture { print }
+  capture && $0 == "        }" { exit }
+' "$REPO/src/client.rs")
+if [ -z "$r_sv6d_policy_scope" ]; then
+  r_sv6d="$r_sv6d custom-fps-policy-source-scope-missing"
+elif echo "$r_sv6d_policy_scope" | grep -qF '#[cfg(feature = "flutter")]'; then
+  r_sv6d="$r_sv6d custom-fps-policy-remains-flutter-feature-gated"
+fi
+r_sv6d_test_scope=$(awk '
+  $0 == "    fn direct_only_custom_quality_is_not_relay_capped_before_login() {" { capture=1 }
+  capture { print }
+  capture && $0 == "    }" { exit }
+' "$REPO/src/client.rs")
+if [ -z "$r_sv6d_test_scope" ]; then
+  r_sv6d="$r_sv6d custom-fps-regression-source-scope-missing"
+elif echo "$r_sv6d_test_scope" | grep -qF '#[cfg(feature = "flutter")]'; then
+  r_sv6d="$r_sv6d custom-fps-regression-remains-flutter-feature-gated"
+fi
+grep -qF "bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;" \
+  "$REPO/flutter/lib/common/widgets/dialog.dart" || r_sv6d="$r_sv6d version-only-fps-gate-missing"
+grep -qF "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;" \
+  "$REPO/flutter/lib/common/widgets/dialog.dart" || r_sv6d="$r_sv6d version-only-quality-gate-missing"
+grep -qE '_queryInterval|Duration\(seconds: (6|20)\)' "$REPO/flutter/lib/common/widgets/peers_view.dart" \
+  && r_sv6d="$r_sv6d retired-public-custom-peer-cadence-present"
+if [ -n "$r_sv6d" ]; then
+  echo "  FAIL R-SV6d Apple public/custom-rendezvous source closure:$r_sv6d"
+  rc=1
+else
+  note "ok  R-SV6d Apple source has no public/custom-rendezvous predicate and retains direct-only UI semantics"
+fi
+
 echo "== (2a) R-S11e-17 typed CM file response authority =="
 r_s11e17=
 if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \

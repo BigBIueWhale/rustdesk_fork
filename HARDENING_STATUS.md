@@ -4851,6 +4851,38 @@ unreachable and a source/test/AST gate prevents reintroduction.
   provenance, and R-V3 external review remain open. No host RustDesk process/service/binary/configuration/listener,
   firewall, UFW/nftables/iptables state, or host-network state was inspected or changed for this source slice.
 
+- **R-SV6d — public/custom-rendezvous selection state deleted — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: shared Rust, desktop/Android/iOS Flutter,
+  generated Flutter Rust Bridge, web compatibility implementation, and retained Apple source. Boundary: the
+  direct-only viewer's actual connection semantics ↔ a retired boolean that classified a nonexistent rendezvous
+  deployment. History proves `d5aec5b` deleted `using_public_server`, `main_is_using_public_server`, the generated/
+  web `mainIsUsingPublicServer` operation, and the saved-peer loop's 20-second-public/6-second-custom cadence choice;
+  `9ff2ac1` then removed the last quality-policy dependency together with late relay/direct state and added the
+  direct-only custom-quality regression. Current source already contained none of those live paths, but the Tier 4
+  row still cited the former `src/common.rs:1133`, source gates did not bind this exact predicate/API family, and the
+  custom-quality dialog retained an explanatory compatibility scar. This was misleading API, regression-boundary,
+  and audit-coherence debt—not a live rendezvous request, credential disclosure, local-to-root path, privilege
+  escalation, exploitation incident, host mutation, public listener, or evidence of compromise.
+
+  Authority model and source closure: direct-address routing has no public/custom-server classification. No Rust
+  predicate, FFI/generated/authored/web method, JavaScript compatibility key, constant result, renamed boolean, or
+  explanatory source scar exists. The pinned-empty `custom-rendezvous-server` option remains only R-SV6a's stale
+  persisted-value mask and has no classifier or actuator. The retained pre-login option builder carries configured
+  custom quality/FPS under the unconditional direct policy, with no UI-feature compile guard and with the focused
+  `180`/`90` regression proving no public/relay cap. The custom-quality dialog derives FPS and extended-quality
+  availability only from the peer version. R-SV6c's saved-peer presence loop remains absent, so there is no
+  public/custom polling cadence to select.
+
+  Verification closure: `scripts/verify.sh` binds the complete Rust/API absence plus the positive direct-quality,
+  version-only dialog, and no-cadence semantics and executes the UI-feature-independent direct-quality/FPS
+  regression; `scripts/dart-verify.sh` checks authored and freshly generated Dart; the Apple source checker binds the
+  shared Rust and Flutter closure. The independent workspace semantic validator
+  and deliberate mutations bind every source family, both former-consumer outcomes, all three gates, R-SV6d,
+  Appendix C #188, and this ledger. Exact current-commit packaged artifacts remain R-B2/R-B10; installed-platform
+  evidence, refreshed advisory data, independent image provenance, and R-V3 external review remain open. No host
+  RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host-network state
+  was inspected or changed for this source slice.
+
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -7133,10 +7165,10 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   compatibility names are absent. The separately retained typed main-status synchronizer is native-desktop-only;
   the local status widget is explicitly direct-listener reachability and is gated to the real listener-bound fact.
   Exact artifact evidence remains R-B2/R-B10.
-- **`using_public_server()` returns the semantic OPPOSITE of its name** —
-  `get_custom_rendezvous_server(...).is_empty()` (`src/common.rs:1133`) is always `true` in a fork
-  with no rendezvous, so it reports "using the public server" when there is no server at all; its
-  callers (a quality cap, a peer-loop cadence) are inert. Delete the function + FFI.
+- **Public/custom-server predicate — CLOSED/GATED (R-SV6d):** `using_public_server`, its Rust FFI,
+  generated/authored/web/JavaScript spellings, and both caller dependencies are absent. Direct pre-login custom
+  quality/FPS has no public/relay cap; custom-quality presentation is peer-version-only; and the saved-peer
+  rendezvous-presence cadence loop is absent. Exact artifact evidence remains R-B2/R-B10.
 - **Viewer `direct`/relay residue — CLOSED/GATED 2026-07-20 (R-SV4a):** the keyed connection
   constructor returns only its stream and fixed `TCP` label; login state and interfaces carry no
   direct/relay discriminator; custom quality/FPS is unconditionally direct before login; FPS control
@@ -7207,7 +7239,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-95635392cb24dcc8458453b11d37721ea31b666d004a7a88ec9e6dedcf4ac188  requirements.html
+56dc7c4ff44293d978448b2c9cc132ff32082daa7316167d762d0c237a3c425d  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,

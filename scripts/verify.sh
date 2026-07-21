@@ -10333,6 +10333,63 @@ if [ -n "$r_sv6c" ]; then
 else
   echo "  ok  R-SV6c rendezvous peer-presence plane absent; typed main status sync retained"
 fi
+# R-SV6d: direct-address routing has no public/custom rendezvous classification. Bind the deleted
+# predicate/API family and the actual semantics of its two former consumers instead of accepting a
+# constant result or compatibility alias.
+echo "== R-SV6d direct-only custom-quality behavior regression =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config \
+  client::tests::direct_only_custom_quality_is_not_relay_capped_before_login --color never
+r_sv6d=""
+if grep -qE 'using_public_server|main_is_using_public_server' src/common.rs src/flutter_ffi.rs src/client.rs; then
+  r_sv6d="$r_sv6d Rust-public-server-predicate-or-ffi-present"
+fi
+if grep -RInE --include='*.dart' \
+  'using_public_server|usingPublicServer|mainIsUsingPublicServer|is_using_public_server' flutter/lib >/dev/null; then
+  r_sv6d="$r_sv6d Dart-public-server-predicate-or-compatibility-surface-present"
+fi
+grep -qF 'fn direct_only_custom_quality_is_not_relay_capped_before_login()' src/client.rs \
+  || r_sv6d="$r_sv6d direct-quality-regression-missing"
+grep -qF 'assert_eq!(options.custom_image_quality, 180 << 8);' src/client.rs \
+  || r_sv6d="$r_sv6d direct-quality-assertion-missing"
+grep -qF 'assert_eq!(options.custom_fps, 90);' src/client.rs \
+  || r_sv6d="$r_sv6d direct-fps-assertion-missing"
+r_sv6d_policy_scope=$(awk '
+  $0 == "        } else if q == \"custom\" {" { capture=1 }
+  capture { print }
+  capture && $0 == "        }" { exit }
+' src/client.rs)
+if [ -z "$r_sv6d_policy_scope" ]; then
+  r_sv6d="$r_sv6d custom-fps-policy-source-scope-missing"
+elif echo "$r_sv6d_policy_scope" | grep -qF '#[cfg(feature = "flutter")]'; then
+  r_sv6d="$r_sv6d custom-fps-policy-remains-flutter-feature-gated"
+fi
+r_sv6d_test_scope=$(awk '
+  $0 == "    fn direct_only_custom_quality_is_not_relay_capped_before_login() {" { capture=1 }
+  capture { print }
+  capture && $0 == "    }" { exit }
+' src/client.rs)
+if [ -z "$r_sv6d_test_scope" ]; then
+  r_sv6d="$r_sv6d custom-fps-regression-source-scope-missing"
+elif echo "$r_sv6d_test_scope" | grep -qF '#[cfg(feature = "flutter")]'; then
+  r_sv6d="$r_sv6d custom-fps-regression-remains-flutter-feature-gated"
+fi
+grep -qF "bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;" \
+  flutter/lib/common/widgets/dialog.dart || r_sv6d="$r_sv6d version-only-fps-gate-missing"
+grep -qF "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;" \
+  flutter/lib/common/widgets/dialog.dart || r_sv6d="$r_sv6d version-only-quality-gate-missing"
+grep -qE '_queryInterval|Duration\(seconds: (6|20)\)' flutter/lib/common/widgets/peers_view.dart \
+  && r_sv6d="$r_sv6d retired-public-custom-peer-cadence-present"
+grep -qF '<span class="id">R-SV6d</span>' requirements.html \
+  || r_sv6d="$r_sv6d requirement-missing"
+grep -qF '<tr><td>188</td>' requirements.html \
+  || r_sv6d="$r_sv6d appendix-disposition-missing"
+grep -qF 'R-SV6d — public/custom-rendezvous selection state deleted' HARDENING_STATUS.md \
+  || r_sv6d="$r_sv6d ledger-disposition-missing"
+if [ -n "$r_sv6d" ]; then
+  echo "  FAIL R-SV6d public/custom-rendezvous selection-state excision:$r_sv6d"; rc=1
+else
+  echo "  ok  R-SV6d public/custom-rendezvous predicate absent; direct quality and version-only UI retained"
+fi
 # R-SV4/R-SV6b / §18 (dial nobody): the fallback list and resolver are absent, not empty compatibility
 # objects. Keep the independent hardwired-host search so a broker literal cannot regrow elsewhere.
 ra6_clean 'rs-[a-z]+\.rustdesk\.com' 'R-SV4/R-SV6b/§18 hardwired rs-*.rustdesk.com rendezvous host' || rc=1

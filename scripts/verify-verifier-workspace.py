@@ -10761,6 +10761,34 @@ def validate_direct_only_viewer_contract(sources):
         ),
     ):
         require_text(client, text, label)
+    custom_policy = extract_between(
+        client,
+        '        } else if q == "custom" {',
+        "        let view_only =",
+        "direct custom-quality policy",
+    )
+    for text, label in (
+        ('if let Some(custom_fps) = self.options.get("custom-fps") {', "custom-FPS option policy"),
+        ("msg.custom_fps = custom_fps;", "custom-FPS protocol assignment"),
+    ):
+        require_text(custom_policy, text, label)
+    require_absent(
+        custom_policy,
+        '#[cfg(feature = "flutter")]',
+        "direct custom-FPS policy UI-feature independence",
+    )
+    custom_policy_test_match = re.search(
+        r"(?ms)^    fn direct_only_custom_quality_is_not_relay_capped_before_login\(\) \{.*?^    \}",
+        client,
+    )
+    if custom_policy_test_match is None:
+        raise VerificationError("direct custom-quality regression body: required contract is absent")
+    custom_policy_test = custom_policy_test_match.group(0)
+    require_absent(
+        custom_policy_test,
+        '#[cfg(feature = "flutter")]',
+        "direct custom-FPS regression UI-feature independence",
+    )
 
     io_loop = sources["client_io_loop"]
     require_text(
@@ -11351,6 +11379,158 @@ def validate_peer_presence_excision_contract(sources):
         sources["hardening"],
         "R-SV6c — rendezvous peer-presence and compatibility status plane deleted",
         "peer-presence hardening ledger",
+    )
+
+
+def validate_public_server_selection_excision_contract(sources):
+    for source_key, text, label in (
+        ("common_source", "using_public_server", "public-server Rust predicate"),
+        ("flutter_ffi_source", "main_is_using_public_server", "public-server Rust FFI"),
+        ("client_source", "using_public_server", "public-server quality-policy caller"),
+    ):
+        require_absent(sources[source_key], text, label)
+
+    for source_key in (
+        "dialog_dart",
+        "peers_view_dart",
+        "model_dart",
+        "main_dart",
+        "web_bridge_dart",
+    ):
+        for text, label in (
+            ("using_public_server", "snake-case public-server Dart state"),
+            ("usingPublicServer", "camel-case public-server Dart state"),
+            ("mainIsUsingPublicServer", "public-server Dart bridge operation"),
+            ("is_using_public_server", "public-server JavaScript compatibility key"),
+        ):
+            require_absent(sources[source_key], text, f"{source_key} {label}")
+
+    client = sources["client_source"]
+    for text, label in (
+        (
+            "fn direct_only_custom_quality_is_not_relay_capped_before_login()",
+            "direct-only custom-quality regression",
+        ),
+        (
+            "assert_eq!(options.custom_image_quality, 180 << 8);",
+            "uncapped direct custom-quality assertion",
+        ),
+        ("assert_eq!(options.custom_fps, 90);", "uncapped direct custom-FPS assertion"),
+    ):
+        require_text(client, text, label)
+
+    dialog = sources["dialog_dart"]
+    for text, label in (
+        (
+            "bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;",
+            "peer-version-only FPS presentation",
+        ),
+        (
+            "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;",
+            "peer-version-only extended-quality presentation",
+        ),
+    ):
+        require_text(dialog, text, label)
+    for text, label in (
+        ("ConnectionType.direct", "dialog relay/direct discriminator"),
+        ("strDirect", "dialog textual direct-state discriminator"),
+    ):
+        require_absent(dialog, text, label)
+
+    for text, label in (
+        ("_queryInterval", "public/custom peer-presence cadence state"),
+        ("Duration(seconds: 6)", "custom-server peer-presence cadence"),
+        ("Duration(seconds: 20)", "public-server peer-presence cadence"),
+    ):
+        require_absent(sources["peers_view_dart"], text, label)
+
+    for source_key, text, label in (
+        (
+            "verify",
+            "R-SV6d public/custom-rendezvous selection-state excision",
+            "shared public-server selection source gate",
+        ),
+        (
+            "dart_verify",
+            "R-SV6d public/custom-rendezvous selection state",
+            "Dart public-server selection source gate",
+        ),
+        (
+            "apple",
+            "R-SV6d public/custom-rendezvous selection-state excision",
+            "Apple public-server selection source gate",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+    require_text(
+        sources["verify"],
+        "client::tests::direct_only_custom_quality_is_not_relay_capped_before_login --color never",
+        "shared direct-only custom-quality behavior execution",
+    )
+    for source_key in ("verify", "apple"):
+        for text, label in (
+            (
+                "custom-fps-policy-source-scope-missing",
+                "production custom-FPS nonempty source-scope gate",
+            ),
+            (
+                "custom-fps-policy-remains-flutter-feature-gated",
+                "production custom-FPS feature-independence gate",
+            ),
+            (
+                "custom-fps-regression-source-scope-missing",
+                "custom-FPS regression nonempty source-scope gate",
+            ),
+            (
+                "custom-fps-regression-remains-flutter-feature-gated",
+                "custom-FPS regression feature-independence gate",
+            ),
+        ):
+            require_text(sources[source_key], text, f"{source_key} {label}")
+        for text, label in (
+            (
+                '$0 == "        } else if q == \\"custom\\" {" { capture=1 }',
+                "production custom-FPS source-scope start",
+            ),
+            (
+                'capture && $0 == "        }" { exit }',
+                "production custom-FPS source-scope end",
+            ),
+            (
+                '$0 == "    fn direct_only_custom_quality_is_not_relay_capped_before_login() {" { capture=1 }',
+                "custom-FPS regression source-scope start",
+            ),
+            (
+                'capture && $0 == "    }" { exit }',
+                "custom-FPS regression source-scope end",
+            ),
+        ):
+            require_text(sources[source_key], text, f"{source_key} {label}")
+    require_text(
+        sources["dart_verify"],
+        'flutter/lib/generated_bridge.dart; then\n  echo "  FAIL R-SV6d: freshly generated bridge',
+        "fresh-generated bridge public-server negative gate",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-SV6d", "public-server selection excision requirement"
+    )
+    for text, label in (
+        ("no rendezvous server to classify", "absent classification authority"),
+        ("constant result", "constant-result compatibility refusal"),
+        ("custom image quality and FPS", "direct custom-quality authority"),
+        ("UI compile-feature", "UI-feature-independent custom-FPS policy"),
+        ("peer version", "peer-version-only presentation authority"),
+        ("freshly-generated Dart", "generated bridge deletion requirement"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"], "<tr><td>188</td>", "public-server selection Appendix C row"
+    )
+    require_text(
+        sources["hardening"],
+        "R-SV6d — public/custom-rendezvous selection state deleted",
+        "public-server selection hardening ledger",
     )
 
 
@@ -12038,6 +12218,7 @@ def validate_sources(sources):
     validate_account_control_plane_excision_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
+    validate_public_server_selection_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
@@ -22867,6 +23048,204 @@ def run_source_mutations(sources):
             "peer-presence hardening ledger",
         ),
         (
+            "common_source",
+            "pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {",
+            "pub fn using_public_server() -> bool { false }\n\npub fn rustdesk_interval(i: Interval) -> ThrottledInterval {",
+            "public-server Rust predicate",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_start_status_sync() {",
+            "pub fn main_is_using_public_server() -> bool { false }\n\npub fn main_start_status_sync() {",
+            "public-server Rust FFI",
+        ),
+        (
+            "client_source",
+            "        } else if q == \"custom\" {\n            let config = self.load_config();",
+            "        } else if q == \"custom\" {\n            let _public = crate::using_public_server();\n            let config = self.load_config();",
+            "public-server quality-policy caller",
+        ),
+        (
+            "dialog_dart",
+            "  bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;",
+            "  final public = bind.mainIsUsingPublicServer();\n  bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;",
+            "public-server Dart bridge operation",
+        ),
+        (
+            "peers_view_dart",
+            "class _PeersViewState extends State<_PeersView> {",
+            "class _PeersViewState extends State<_PeersView> {\n  var _queryInterval = const Duration(seconds: 20);",
+            "public/custom peer-presence cadence state",
+        ),
+        (
+            "web_bridge_dart",
+            "  Future<void> mainStartStatusSync({dynamic hint}) {",
+            "  Future<bool> mainIsUsingPublicServer({dynamic hint}) => Future.value(false);\n\n  Future<void> mainStartStatusSync({dynamic hint}) {",
+            "web_bridge_dart public-server Dart bridge operation",
+        ),
+        (
+            "client_source",
+            "fn direct_only_custom_quality_is_not_relay_capped_before_login()",
+            "fn direct_only_custom_quality_regression_removed()",
+            "direct-only pre-login quality regression",
+        ),
+        (
+            "client_source",
+            "assert_eq!(options.custom_image_quality, 180 << 8);",
+            "assert_eq!(options.custom_image_quality, 100 << 8);",
+            "direct-only custom quality assertion",
+        ),
+        (
+            "client_source",
+            "assert_eq!(options.custom_fps, 90);",
+            "assert_eq!(options.custom_fps, 30);",
+            "direct-only custom FPS assertion",
+        ),
+        (
+            "client_source",
+            '            if let Some(custom_fps) = self.options.get("custom-fps") {',
+            '            #[cfg(feature = "flutter")]\n            if let Some(custom_fps) = self.options.get("custom-fps") {',
+            "direct custom-FPS policy UI-feature independence",
+        ),
+        (
+            "client_source",
+            '        config\n            .options\n            .insert("custom-fps".to_owned(), "90".to_owned());',
+            '        #[cfg(feature = "flutter")]\n        config\n            .options\n            .insert("custom-fps".to_owned(), "90".to_owned());',
+            "direct custom-FPS regression UI-feature independence",
+        ),
+        (
+            "dialog_dart",
+            "bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.2.0') < 0;",
+            "bool hideFps = versionCmp(ffi.ffiModel.pi.version, '1.3.0') < 0;",
+            "peer-version-only FPS presentation",
+        ),
+        (
+            "dialog_dart",
+            "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 0;",
+            "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.3.0') < 0;",
+            "peer-version-only extended-quality presentation",
+        ),
+        (
+            "verify",
+            "R-SV6d public/custom-rendezvous selection-state excision",
+            "R-SV6d public-server selection gate disabled",
+            "shared public-server selection source gate",
+        ),
+        (
+            "verify",
+            "client::tests::direct_only_custom_quality_is_not_relay_capped_before_login --color never",
+            "client::tests::direct_only_custom_quality_regression_removed --color never",
+            "shared direct-only custom-quality behavior execution",
+        ),
+        (
+            "verify",
+            "custom-fps-policy-source-scope-missing",
+            "custom-fps-policy-source-scope-check-disabled",
+            "verify production custom-FPS nonempty source-scope gate",
+        ),
+        (
+            "verify",
+            "custom-fps-policy-remains-flutter-feature-gated",
+            "custom-fps-policy-feature-gate-disabled",
+            "verify production custom-FPS feature-independence gate",
+        ),
+        (
+            "verify",
+            "custom-fps-regression-source-scope-missing",
+            "custom-fps-regression-source-scope-check-disabled",
+            "verify custom-FPS regression nonempty source-scope gate",
+        ),
+        (
+            "verify",
+            "custom-fps-regression-remains-flutter-feature-gated",
+            "custom-fps-regression-feature-gate-disabled",
+            "verify custom-FPS regression feature-independence gate",
+        ),
+        (
+            "verify",
+            '$0 == "        } else if q == \\"custom\\" {" { capture=1 }',
+            '$0 == "        } else if q == \\"custom-disabled\\" {" { capture=1 }',
+            "verify production custom-FPS source-scope start",
+        ),
+        (
+            "verify",
+            '$0 == "    fn direct_only_custom_quality_is_not_relay_capped_before_login() {" { capture=1 }',
+            '$0 == "    fn direct_only_custom_quality_regression_removed() {" { capture=1 }',
+            "verify custom-FPS regression source-scope start",
+        ),
+        (
+            "apple",
+            "custom-fps-policy-source-scope-missing",
+            "custom-fps-policy-source-scope-check-disabled",
+            "apple production custom-FPS nonempty source-scope gate",
+        ),
+        (
+            "apple",
+            "custom-fps-policy-remains-flutter-feature-gated",
+            "custom-fps-policy-feature-gate-disabled",
+            "apple production custom-FPS feature-independence gate",
+        ),
+        (
+            "apple",
+            "custom-fps-regression-source-scope-missing",
+            "custom-fps-regression-source-scope-check-disabled",
+            "apple custom-FPS regression nonempty source-scope gate",
+        ),
+        (
+            "apple",
+            "custom-fps-regression-remains-flutter-feature-gated",
+            "custom-fps-regression-feature-gate-disabled",
+            "apple custom-FPS regression feature-independence gate",
+        ),
+        (
+            "apple",
+            '$0 == "        } else if q == \\"custom\\" {" { capture=1 }',
+            '$0 == "        } else if q == \\"custom-disabled\\" {" { capture=1 }',
+            "apple production custom-FPS source-scope start",
+        ),
+        (
+            "apple",
+            '$0 == "    fn direct_only_custom_quality_is_not_relay_capped_before_login() {" { capture=1 }',
+            '$0 == "    fn direct_only_custom_quality_regression_removed() {" { capture=1 }',
+            "apple custom-FPS regression source-scope start",
+        ),
+        (
+            "dart_verify",
+            "R-SV6d public/custom-rendezvous selection state",
+            "R-SV6d Dart public-server selection gate disabled",
+            "Dart public-server selection source gate",
+        ),
+        (
+            "dart_verify",
+            'flutter/lib/generated_bridge.dart; then\n  echo "  FAIL R-SV6d: freshly generated bridge',
+            'flutter/lib/main.dart; then\n  echo "  FAIL R-SV6d: freshly generated bridge',
+            "fresh-generated bridge public-server negative gate",
+        ),
+        (
+            "apple",
+            "R-SV6d public/custom-rendezvous selection-state excision",
+            "R-SV6d Apple public-server selection gate disabled",
+            "Apple public-server selection source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-SV6d</span>',
+            '<span class="id">R-SV6d-disabled</span>',
+            "public-server selection excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>188</td>",
+            "<tr><td>188-disabled</td>",
+            "public-server selection Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-SV6d — public/custom-rendezvous selection state deleted",
+            "R-SV6d — public/custom-rendezvous selection closure deferred",
+            "public-server selection hardening ledger",
+        ),
+        (
             "socket_client_source",
             "FramedStream::new(target, local, ms_timeout).await?",
             "FramedStream::connect(target, local, ms_timeout).await?",
@@ -23795,6 +24174,9 @@ def main():
             "peers_view_dart": (
                 repo / "flutter/lib/common/widgets/peers_view.dart"
             ).read_text(encoding="utf-8"),
+            "dialog_dart": (repo / "flutter/lib/common/widgets/dialog.dart").read_text(
+                encoding="utf-8"
+            ),
             "connection_page_dart": (
                 repo / "flutter/lib/desktop/pages/connection_page.dart"
             ).read_text(encoding="utf-8"),

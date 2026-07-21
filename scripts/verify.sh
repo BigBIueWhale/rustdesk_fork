@@ -9060,6 +9060,8 @@ grep -RInE 'send\(&Data::Authorize([^[:alnum:]_]|$)|msgbox\("(input-password|re-
   && r_live_dead="$r_live_dead retired-login-prompt-or-2fa-sender"
 grep -RInE 'buildUnAuthorized|showLoginDialog|cmLoginRes|^[[:space:]]*(void|Future[^[:space:]]*|Widget)[[:space:]]+(enterPasswordDialog|wrongPasswordDialog)\b|class[[:space:]]+(Dialog2FaField|DialogEmailCodeField|DialogVerificationCodeField)\b|trust-this-device' flutter/lib >/dev/null \
   && r_live_dead="$r_live_dead retired-flutter-auth-affordance"
+grep -RInE --include='*.dart' 'kOption(HideServerSetting|HideProxySetting|DisableChangeId|AllowDeepLinkServerSettings)|hide-server-settings|hide-proxy-settings|disable-change-id|allow-deep-link-server-settings' flutter/lib >/dev/null \
+  && r_live_dead="$r_live_dead retired-dart-policy-option-alias"
 grep -qE '^[[:space:]]*bool[[:space:]]+enable_trusted_devices[[:space:]]*=' libs/hbb_common/protos/message.proto && r_live_dead="$r_live_dead proto-enable-trusted-devices-field"
 grep -qE '^[[:space:]]*reserved[[:space:]]+3;' libs/hbb_common/protos/message.proto || r_live_dead="$r_live_dead proto-loginresponse-tag3-not-reserved"
 grep -qE '^[[:space:]]*message[[:space:]]+IdPk\b' libs/hbb_common/protos/message.proto && r_live_dead="$r_live_dead proto-idpk-present"
@@ -9067,6 +9069,8 @@ grep -RInE '\bfn[[:space:]]+decode_id_pk\b|decode_id_pk[[:space:]]*\(' src libs 
   && r_live_dead="$r_live_dead decode-id-pk-present"
 grep -qE '\[I-(9|10|11|12)\].*\*\*FIX:\*\*|Data::SwitchPermission` from the connection|wired end-to-end behind a trigger that|enable_trusted_devices` viewer plumbing \(wired login-response' HARDENING_STATUS.md \
   && r_live_dead="$r_live_dead stale-hardening-live-dead-ledger"
+grep -qF 'Dead Dart policy-option aliases — CLOSED/GATED (R-G1)' HARDENING_STATUS.md \
+  || r_live_dead="$r_live_dead dead-dart-policy-alias-ledger-not-closed"
 if [ -n "$r_live_dead" ]; then
   echo "  FAIL live-looking-dead audit surfaces: retired authority-looking scaffolding returned or stale ledger says it is pending:$r_live_dead"; rc=1
 else

@@ -342,6 +342,22 @@ else
   note "ok  R-SV6d Apple source has no public/custom-rendezvous predicate and retains direct-only UI semantics"
 fi
 
+echo "== (2a-0c) R-G1 dead Dart policy-option aliases stay excised =="
+r_g1_dead_dart=
+if grep -RInE --include='*.dart' \
+  'kOption(HideServerSetting|HideProxySetting|DisableChangeId|AllowDeepLinkServerSettings)|hide-server-settings|hide-proxy-settings|disable-change-id|allow-deep-link-server-settings' \
+  "$REPO/flutter/lib" >/dev/null; then
+  r_g1_dead_dart="$r_g1_dead_dart retired-Dart-policy-option-vocabulary-present"
+fi
+grep -qF 'Dead Dart policy-option aliases — CLOSED/GATED (R-G1)' "$REPO/HARDENING_STATUS.md" \
+  || r_g1_dead_dart="$r_g1_dead_dart hardening-ledger-not-closed"
+if [ -n "$r_g1_dead_dart" ]; then
+  echo "  FAIL R-G1 Apple dead Dart policy-option alias closure:$r_g1_dead_dart"
+  rc=1
+else
+  note "ok  R-G1 Apple source has no dead server/proxy/Change-ID/deep-link option aliases"
+fi
+
 echo "== (2a) R-S11e-17 typed CM file response authority =="
 r_s11e17=
 if verify_scan_capture "$APPLE_CHECK_TMP/r_s11e17_forbidden.txt" -nE 'RawMessage|ReadJobInitResult|FileBlockFromCM|FileReadDone|FileReadError|FileDigestFromCM|AllFilesResult|WriteJobRejected' \

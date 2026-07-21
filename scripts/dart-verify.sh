@@ -242,6 +242,9 @@ dg_clean 'SettingsTabKey\.network|changeSocks5Proxy|void showServerSettings\(' '
 # gone; this closes the last config-injection surface on any shipped front-end (the writes were
 # already inert under the R-S16 pins / R-X4 baked anchor — editable-but-inert is the R-S12/R-G1 trap).
 dg_clean 'showServerSettingsWithValue|showServerSettingFromQr|ServerConfigImportExportWidgets|setServerConfig|ID/Relay Server' 'R-G4 mobile server-config editor + config-QR (trust-anchor injection)'
+# R-G1: the server/proxy visibility, Change-ID, and deep-link server-setting controls are gone.
+# Their Dart aliases are not compatibility API: reject renamed raw-string replacements too.
+dg_clean 'kOption(HideServerSetting|HideProxySetting|DisableChangeId|AllowDeepLinkServerSettings)|hide-server-settings|hide-proxy-settings|disable-change-id|allow-deep-link-server-settings' 'R-G1 dead Dart policy-option aliases'
 # R-G4 / R-SV6a / §18: Android device deployment is structurally absent through UI and bridge.
 dg_clean 'showDeployDialog|showDeployPromptDialog|deploy_dialog|android_needs_deploy|mainDeployDevice' 'R-G4/R-SV6a Android device-deploy UI and bridge ABI'
 # R-G4 / R-SV6 / §19: the desktop "Account" settings tab is deleted — the _Account/_AccountState

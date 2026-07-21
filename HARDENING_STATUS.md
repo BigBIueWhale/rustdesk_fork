@@ -7184,9 +7184,14 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   current-source re-audit; R-SV6b additionally deletes the independently surviving Config resolver, cross-server
   client grammar, and persisted rendezvous/NAT/serial state. The separately listed Dart constants and address-display
   formatting are not covered by this Rust-backend closure.
-- **Dead Dart option constants:** `kOptionHideServerSetting`, `kOptionHideProxySetting`,
-  `kOptionDisableChangeId`, `kOptionAllowDeepLinkServerSettings` (`flutter/lib/consts.dart:171-187`) —
-  zero consumers. Delete.
+- **Dead Dart policy-option aliases — CLOSED/GATED (R-G1):** `kOptionHideServerSetting`,
+  `kOptionHideProxySetting`, `kOptionDisableChangeId`, and `kOptionAllowDeepLinkServerSettings` were
+  deleted from `flutter/lib/consts.dart` by `d5aec5b`; no authored Dart file retains those names or
+  the corresponding `hide-server-settings`, `hide-proxy-settings`, `disable-change-id`, or
+  `allow-deep-link-server-settings` string vocabulary. The native built-in-key inventory is a
+  separate stale-value/config-input boundary and is not represented as a Flutter control. The shared,
+  Dart, and Apple source gates reject both the retired aliases and raw Dart string replacements; the
+  independent verifier binds those gates and deliberately regrows an alias to prove rejection.
 - **The attended-accept IPC pipeline (8 sites, A1–A8) — CLOSED/GATED 2026-07-18:** because
   `approve-mode` is pinned to `"password"` (`config.rs` `PINNED_SETTINGS`), every connection is
   authorized before the CM sees it. `buildUnAuthorized`, `showLoginDialog`, `cmLoginRes`, the CM

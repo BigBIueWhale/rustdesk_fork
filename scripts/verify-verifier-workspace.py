@@ -11534,6 +11534,51 @@ def validate_public_server_selection_excision_contract(sources):
     )
 
 
+def validate_dead_dart_policy_alias_excision_contract(sources):
+    retired_tokens = (
+        "kOptionHideServerSetting",
+        "kOptionHideProxySetting",
+        "kOptionDisableChangeId",
+        "kOptionAllowDeepLinkServerSettings",
+        "hide-server-settings",
+        "hide-proxy-settings",
+        "disable-change-id",
+        "allow-deep-link-server-settings",
+    )
+    for token in retired_tokens:
+        require_absent(
+            sources["consts_dart"], token, f"retired Dart policy-option token {token}"
+        )
+
+    for source_key, text, label in (
+        (
+            "verify",
+            "retired-dart-policy-option-alias",
+            "shared dead Dart policy-option alias gate",
+        ),
+        (
+            "dart_verify",
+            "R-G1 dead Dart policy-option aliases",
+            "Dart dead policy-option alias gate",
+        ),
+        (
+            "apple",
+            "R-G1 dead Dart policy-option aliases stay excised",
+            "Apple dead Dart policy-option alias gate",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+    require_text(
+        sources["hardening"],
+        "Dead Dart policy-option aliases — CLOSED/GATED (R-G1)",
+        "dead Dart policy-option hardening disposition",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-G1", "dead-or-inert UI control requirement"
+    )
+    require_text(requirement, "removed from the UI", "dead-control removal authority")
+
+
 def validate_structured_proxy_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -12219,6 +12264,7 @@ def validate_sources(sources):
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
     validate_public_server_selection_excision_contract(sources)
+    validate_dead_dart_policy_alias_excision_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
@@ -23246,6 +23292,36 @@ def run_source_mutations(sources):
             "public-server selection hardening ledger",
         ),
         (
+            "consts_dart",
+            'const String kOptionHideWebSocketSetting = "hide-websocket-settings";',
+            'const String kOptionHideServerSetting = "hide-server-settings";\nconst String kOptionHideWebSocketSetting = "hide-websocket-settings";',
+            "retired Dart policy-option token",
+        ),
+        (
+            "verify",
+            "retired-dart-policy-option-alias",
+            "retired-dart-policy-option-gate-disabled",
+            "shared dead Dart policy-option alias gate",
+        ),
+        (
+            "dart_verify",
+            "R-G1 dead Dart policy-option aliases",
+            "R-G1 dead Dart policy-option gate disabled",
+            "Dart dead policy-option alias gate",
+        ),
+        (
+            "apple",
+            "R-G1 dead Dart policy-option aliases stay excised",
+            "R-G1 Apple dead Dart policy-option gate disabled",
+            "Apple dead Dart policy-option alias gate",
+        ),
+        (
+            "hardening",
+            "Dead Dart policy-option aliases — CLOSED/GATED (R-G1)",
+            "Dead Dart policy-option aliases — OPEN (R-G1)",
+            "dead Dart policy-option hardening disposition",
+        ),
+        (
             "socket_client_source",
             "FramedStream::new(target, local, ms_timeout).await?",
             "FramedStream::connect(target, local, ms_timeout).await?",
@@ -24177,6 +24253,7 @@ def main():
             "dialog_dart": (repo / "flutter/lib/common/widgets/dialog.dart").read_text(
                 encoding="utf-8"
             ),
+            "consts_dart": (repo / "flutter/lib/consts.dart").read_text(encoding="utf-8"),
             "connection_page_dart": (
                 repo / "flutter/lib/desktop/pages/connection_page.dart"
             ).read_text(encoding="utf-8"),

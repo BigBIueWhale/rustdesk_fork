@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R-R2/R-R2d retained GitHub Actions reference-authority verifier."""
+"""R-R1a/R-R2/R-R2d GitHub-hosted automation-authority verifier."""
 
 from __future__ import annotations
 
@@ -24,6 +24,15 @@ DISABLED_WORKFLOWS: Tuple[str, ...] = (
     "third-party-RustDeskTempTopMostWindow.yml.disabled",
     "wf-cliprdr-ci.yml.disabled",
 )
+
+FORBIDDEN_DEPENDABOT_PATHS: Tuple[str, ...] = (
+    ".github/dependabot.yml",
+    ".github/dependabot.yaml",
+    ".github/dependabot.yml.disabled",
+    ".github/dependabot.yaml.disabled",
+)
+
+LEGACY_VERIFIER_PATH = "scripts/verify-disabled-workflow-authority.py"
 
 EXPECTED_TOP_LEVEL_KEYS = {
     "bridge.yml.disabled": ("name", "historical_on", "env", "historical_jobs"),
@@ -127,7 +136,11 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
+        "gitmodules_state": regular_file_state(repo / ".gitmodules"),
+        "legacy_verifier_state": regular_file_state(repo / LEGACY_VERIFIER_PATH),
     }
+    for relative in FORBIDDEN_DEPENDABOT_PATHS:
+        sources[f"path:{relative}"] = regular_file_state(repo / relative)
     for name in DISABLED_WORKFLOWS:
         path = workflows / name
         sources[f"state:{name}"] = regular_file_state(path)
@@ -136,6 +149,16 @@ def load_sources(repo: Path) -> Dict[str, str]:
 
 
 def validate(sources: Dict[str, str]) -> None:
+    if sources["gitmodules_state"] != "absent":
+        raise VerificationError("absorbed hbb_common unexpectedly regained .gitmodules authority")
+    if sources["legacy_verifier_state"] != "absent":
+        raise VerificationError("legacy narrow workflow-authority verifier remains present")
+    for relative in FORBIDDEN_DEPENDABOT_PATHS:
+        if sources[f"path:{relative}"] != "absent":
+            raise VerificationError(
+                f"Dependabot dependency-update authority remains present: {relative}"
+            )
+
     if sources["entry_inventory"] != EXPECTED_ENTRY_INVENTORY:
         raise VerificationError("workflow directory inventory differs from the closed reference set")
     if sources["enabled_inventory"] != "<none>":
@@ -177,6 +200,17 @@ def validate(sources: Dict[str, str]) -> None:
             "Restoring `on` and `jobs` is an explicit release-authority change",
             "explicit workflow reactivation ceremony",
         ),
+        (
+            sources["documentation"],
+            "No Dependabot configuration or disabled copy is retained",
+            "absent Dependabot authority documentation",
+        ),
+        (sources["requirements"], '<span class="id">R-R1a</span>', "R-R1a requirement"),
+        (
+            sources["requirements"],
+            "No automated dependency rewrite authority",
+            "R-R1a dependency-authority title",
+        ),
         (sources["requirements"], '<span class="id">R-R2d</span>', "R-R2d requirement"),
         (
             sources["requirements"],
@@ -184,6 +218,12 @@ def validate(sources: Dict[str, str]) -> None:
             "R-R2d semantic-inertia title",
         ),
         (sources["requirements"], "<tr><td>195</td>", "Appendix C #195"),
+        (sources["requirements"], "<tr><td>196</td>", "Appendix C #196"),
+        (
+            sources["hardening"],
+            "R-R1a — obsolete Dependabot submodule updater deleted",
+            "R-R1a hardening ledger",
+        ),
         (
             sources["hardening"],
             "R-R2d — retained GitHub Actions references made schema-inert",
@@ -191,13 +231,13 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         (
             sources["verify"],
-            'echo "== (6c-a4) semantically inert GitHub Actions references (R-R2/R-R2d) =="',
-            "shared disabled-workflow gate",
+            'echo "== (6c-a4) absent/inert GitHub automation authority (R-R1a/R-R2/R-R2d) =="',
+            "shared GitHub-automation gate",
         ),
         (
             sources["verify"],
-            "python3 scripts/verify-disabled-workflow-authority.py --repo . --self-test",
-            "focused disabled-workflow mutation gate",
+            "python3 scripts/verify-github-automation-authority.py --repo . --self-test",
+            "focused GitHub-automation mutation gate",
         ),
     ):
         require(source, needle, label)
@@ -223,7 +263,27 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
             f"reactivated jobs schema in {name}",
         ),
     )
+) + tuple(
+    (
+        f"path:{relative}",
+        "absent",
+        "regular",
+        f"restored Dependabot path {relative}",
+    )
+    for relative in FORBIDDEN_DEPENDABOT_PATHS
 ) + (
+    (
+        "gitmodules_state",
+        "absent",
+        "regular",
+        "restored absorbed submodule manifest",
+    ),
+    (
+        "legacy_verifier_state",
+        "absent",
+        "regular",
+        "retained narrow workflow-authority verifier",
+    ),
     (
         "entry_inventory",
         EXPECTED_ENTRY_INVENTORY,
@@ -251,6 +311,12 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
     ),
     (
         "requirements",
+        '<span class="id">R-R1a</span>',
+        '<span class="id">R-R1a-disabled</span>',
+        "R-R1a requirement",
+    ),
+    (
+        "requirements",
         '<span class="id">R-R2d</span>',
         '<span class="id">R-R2d-disabled</span>',
         "R-R2d requirement",
@@ -262,6 +328,18 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
         "Appendix C #195",
     ),
     (
+        "requirements",
+        "<tr><td>196</td>",
+        "<tr><td>196-disabled</td>",
+        "Appendix C #196",
+    ),
+    (
+        "hardening",
+        "R-R1a — obsolete Dependabot submodule updater deleted",
+        "R-R1a — obsolete Dependabot submodule updater retained",
+        "R-R1a hardening ledger",
+    ),
+    (
         "hardening",
         "R-R2d — retained GitHub Actions references made schema-inert",
         "R-R2d — retained GitHub Actions references remain executable",
@@ -269,9 +347,9 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
     ),
     (
         "verify",
-        "python3 scripts/verify-disabled-workflow-authority.py --repo . --self-test",
-        "true # disabled-workflow authority validator removed",
-        "focused disabled-workflow mutation gate",
+        "python3 scripts/verify-github-automation-authority.py --repo . --self-test",
+        "true # GitHub-automation authority validator removed",
+        "focused GitHub-automation mutation gate",
     ),
 )
 
@@ -299,7 +377,7 @@ def main() -> int:
     if args.self_test:
         run_mutations(sources)
     print(
-        "disabled workflow-authority semantic validation: OK"
+        "GitHub automation-authority semantic validation: OK"
         + (f" ({len(MUTATIONS)} mutations)" if args.self_test else "")
     )
     return 0
@@ -310,7 +388,7 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (OSError, UnicodeError, VerificationError) as error:
         print(
-            f"disabled workflow-authority verification failed: {error}",
+            f"GitHub automation-authority verification failed: {error}",
             file=__import__("sys").stderr,
         )
         raise SystemExit(1)

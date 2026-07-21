@@ -1,4 +1,4 @@
-# GitHub Actions — DISABLED (this fork builds locally)
+# GitHub-hosted automation — DISABLED (this fork builds locally)
 
 This hardened, direct-IP-only fork does **not** use GitHub Actions for CI/CD. GitHub Actions provides
 no build, verification, or release evidence. The authoritative local release transaction is
@@ -17,8 +17,12 @@ and every retained file schema-demotes its top-level `on` and `jobs` keys to `hi
 `historical_jobs`. Renaming a reference alone cannot enable it: it still has neither a workflow trigger nor an
 executable job graph. This means the references trigger **nothing** (no push / PR / tag / schedule, no reusable
 call, and no manual dispatch).
-`dependabot.yml` is likewise disabled: this fork's dependency world is **exactly pinned**
-(`Cargo.lock` + `scripts/pins.env`, R-R1/R-B12), not auto-bumped.
+No Dependabot configuration or disabled copy is retained. The obsolete upstream updater targeted the sole
+`hbb_common` git submodule, which this fork absorbed in-tree; `.gitmodules` and every gitlink are absent. This
+fork's dependency world is **exactly pinned** (`Cargo.lock` + `pubspec.lock` + `vcpkg.json` + `scripts/pins.env`,
+R-R1/R-R1a/R-B12), so dependency changes require an explicit reviewed pin/provenance transaction rather than an
+automated pull-request configuration. GitHub's separate repository-level alert/security-update settings are not
+controlled by this source file and are not represented as a source guarantee.
 
 Disabled workflows: `bridge`, `ci`, `flutter-build`, `flutter-ci`, `flutter-tag`,
 `third-party-RustDeskTempTopMostWindow`, `wf-cliprdr-ci`.

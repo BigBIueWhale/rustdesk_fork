@@ -7161,7 +7161,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   an explicit R-R2/R-R2d release-authority change. Local repository scripts remain the only build, verification,
   and release transaction authority.
 
-  `scripts/verify-disabled-workflow-authority.py` checks that complete inventory and every file's regular type,
+  `scripts/verify-github-automation-authority.py` checks that complete inventory and every file's regular type,
   marker, top-level-key absence, and demoted-key cardinality, then binds R-R2d, Appendix C #195, documentation, the
   shared verifier, and this ledger. Its self-test applies separate trigger and jobs reactivation mutations to every
   retained reference, quoted/space-delimited YAML key variants, and inventory, enabled-definition, documentation,
@@ -7183,6 +7183,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   that incomplete run is not represented as a pass. Verification and publication evidence for this loop are
   recorded in `/tmp/privilege_securiry_deep_audit.md`. No project build, artifact build/signing, Android/device
   execution, full `scripts/verify.sh`, whole Apple checker, or R-B2 release is claimed by this source-only change.
+- **R-R1a — obsolete Dependabot submodule updater deleted — SOURCE CLOSED/GATED 2026-07-21; REPOSITORY-SETTING
+  STATE REMAINS SEPARATE EXTERNAL EVIDENCE.** Commit `16252a9` suffix-renamed the imported
+  `.github/dependabot.yml` while disabling GitHub-hosted CI/CD. Unlike the seven workflow bodies retained for build
+  provenance, this file configured only the supported `gitsubmodule` ecosystem: daily version checks and update
+  pull requests targeting `master`. R-R1 had already absorbed the sole `hbb_common` submodule in-tree; current
+  source and index inspection found no `.gitmodules` and no gitlink. GitHub ignored the `.disabled` filename, so
+  no version-update configuration was active and there was no current dependency for it to update. This was
+  obsolete supply-chain automation plus rename/copy reactivation debt, not evidence that Dependabot ran, changed a
+  pin, opened or merged a pull request, executed a workflow, modified the host, exposed a listener, crossed a
+  privilege boundary, or compromised a system.
+
+  The obsolete file is deleted rather than schema-wrapped. R-R1a makes the recognized `.github/dependabot.yml` and
+  `.yaml` names plus both suffix-hidden variants source-forbidden. Dependency changes remain deliberate reviewed
+  transactions that update the applicable lockfile/manifest, authenticated acquisition pins, provenance, advisory
+  policy, and reproducibility evidence together. `DISABLED.md` no longer claims that a Dependabot reference is
+  retained and distinguishes source configuration from GitHub's repository-level vulnerability-alert and security-
+  update settings. A read-only live API check during this audit reported Dependabot security updates
+  `enabled=false, paused=false` and vulnerability alerts disabled; that observation is time-bound external evidence,
+  not a source invariant. The repository Actions setting remained enabled while the R-R2d source inventory had zero
+  recognized workflow definitions; no repository setting was changed in this source slice.
+
+  The R-R2d checker is renamed to `scripts/verify-github-automation-authority.py` because its authority contract now
+  covers both workflow execution and dependency-rewrite automation. It rejects all four Dependabot path spellings,
+  a restored `.gitmodules`, the retired narrow-verifier path, enabled/extra/nonregular workflows, every active or
+  alternate trigger/job spelling, and normative/gate drift. Its full self-test applies 32 deliberate mutations.
+  The shared verifier and independent workspace meta-gate bind the generalized name, absence semantics, R-R1a,
+  Appendix C #196, the existing R-R2d contract, documentation, and both hardening ledgers. This closes tracked
+  source automation only; it does not claim external settings immutability, current dependency-advisory evidence,
+  or exact artifact/release proof.
 - **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
   correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
   `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent
@@ -7499,9 +7528,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-37d9d7e840dccfb147eebb217c5a2ebd4b5268bcac3a36416817421fad3459df  requirements.html
+0faba3ad6b99b16bf7b03d9386c64562bf4078c11e1cdd00d1e141c3d7c6e274  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#196. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

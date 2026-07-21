@@ -10765,8 +10765,8 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195",
-        "current portable Quick Support requirements-hash scope",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#196",
+        "current GitHub-automation requirements-hash scope",
     )
 
     mutation_matrix = extract_between(
@@ -10782,7 +10782,7 @@ def validate_portable_quick_support_excision_contract(sources):
         ("Windows run-mode excision requirement", "requirement mutation"),
         ("portable Quick Support residue Appendix C row", "Appendix mutation"),
         ("portable Quick Support residue hardening ledger", "hardening-ledger mutation"),
-        ("current portable Quick Support requirements-hash scope", "hash-scope mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -10830,9 +10830,13 @@ def validate_mobile_build_authority_verifier_contract(sources):
     )
 
 
-def validate_disabled_workflow_authority_verifier_contract(sources):
-    focused = sources["disabled_workflow_authority_verifier"]
+def validate_github_automation_authority_verifier_contract(sources):
+    focused = sources["github_automation_authority_verifier"]
     for text, label in (
+        ("FORBIDDEN_DEPENDABOT_PATHS: Tuple[str, ...]", "Dependabot forbidden-path inventory"),
+        ('if sources[f"path:{relative}"] != "absent":', "Dependabot path-state rejection semantics"),
+        ('sources["gitmodules_state"] != "absent"', "absorbed-submodule manifest rejection semantics"),
+        ('sources["legacy_verifier_state"] != "absent"', "retired narrow-verifier rejection semantics"),
         ("DISABLED_WORKFLOWS: Tuple[str, ...]", "disabled-workflow closed inventory"),
         ("EXPECTED_ENTRY_INVENTORY", "disabled-workflow exact entry inventory"),
         ("EXPECTED_TOP_LEVEL_KEYS", "disabled-workflow exact top-level key inventories"),
@@ -10851,8 +10855,8 @@ def validate_disabled_workflow_authority_verifier_contract(sources):
         require_text(focused, text, label)
     require_text(
         sources["verify"],
-        "python3 scripts/verify-disabled-workflow-authority.py --repo . --self-test",
-        "disabled-workflow focused-verifier wiring",
+        "python3 scripts/verify-github-automation-authority.py --repo . --self-test",
+        "GitHub-automation focused-verifier wiring",
     )
     require_text(
         sources["workflow_disabled_docs"],
@@ -10860,11 +10864,27 @@ def validate_disabled_workflow_authority_verifier_contract(sources):
         "rename-resistant workflow documentation",
     )
     require_text(
+        sources["workflow_disabled_docs"],
+        "No Dependabot configuration or disabled copy is retained",
+        "absent Dependabot authority documentation",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-R1a</span>',
+        "dependency-rewrite authority requirement",
+    )
+    require_text(
         sources["requirements"],
         '<span class="id">R-R2d</span>',
         "semantic-inertia workflow requirement",
     )
     require_text(sources["requirements"], "<tr><td>195</td>", "workflow authority Appendix C row")
+    require_text(sources["requirements"], "<tr><td>196</td>", "Dependabot authority Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-R1a — obsolete Dependabot submodule updater deleted",
+        "Dependabot authority hardening ledger",
+    )
     require_text(
         sources["hardening"],
         "R-R2d — retained GitHub Actions references made schema-inert",
@@ -13063,7 +13083,7 @@ def validate_sources(sources):
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
-    validate_disabled_workflow_authority_verifier_contract(sources)
+    validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
@@ -24978,9 +24998,9 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#196",
             "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#195",
-            "R-X12a, R-X9, R-R2c, and Appendix C #192–#194",
-            "current portable Quick Support requirements-hash scope",
+            "current GitHub-automation requirements-hash scope",
         ),
         (
             "mobile_build_authority_verifier",
@@ -24995,22 +25015,52 @@ def run_source_mutations(sources):
             "mobile authority focused-verifier wiring",
         ),
         (
-            "disabled_workflow_authority_verifier",
+            "github_automation_authority_verifier",
+            'if sources[f"path:{relative}"] != "absent":',
+            "if False:",
+            "Dependabot path-state rejection semantics",
+        ),
+        (
+            "github_automation_authority_verifier",
+            'sources["gitmodules_state"] != "absent"',
+            "False",
+            "absorbed-submodule manifest rejection semantics",
+        ),
+        (
+            "github_automation_authority_verifier",
+            'sources["legacy_verifier_state"] != "absent"',
+            "False",
+            "retired narrow-verifier rejection semantics",
+        ),
+        (
+            "github_automation_authority_verifier",
             're.search(r"(?m)^(?:on|jobs):", workflow)',
             "False",
             "active workflow-schema rejection semantics",
         ),
         (
             "verify",
-            "python3 scripts/verify-disabled-workflow-authority.py --repo . --self-test",
-            "true # disabled-workflow authority focused verifier removed",
-            "disabled-workflow focused-verifier wiring",
+            "python3 scripts/verify-github-automation-authority.py --repo . --self-test",
+            "true # GitHub-automation authority focused verifier removed",
+            "GitHub-automation focused-verifier wiring",
         ),
         (
             "workflow_disabled_docs",
             "Renaming a reference alone cannot enable it",
             "Renaming a reference enables it",
             "rename-resistant workflow documentation",
+        ),
+        (
+            "workflow_disabled_docs",
+            "No Dependabot configuration or disabled copy is retained",
+            "A disabled Dependabot configuration is retained",
+            "absent Dependabot authority documentation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-R1a</span>',
+            '<span class="id">R-R1a-disabled</span>',
+            "dependency-rewrite authority requirement",
         ),
         (
             "requirements",
@@ -25023,6 +25073,18 @@ def run_source_mutations(sources):
             "<tr><td>195</td>",
             "<tr><td>195-disabled</td>",
             "workflow authority Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>196</td>",
+            "<tr><td>196-disabled</td>",
+            "Dependabot authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-R1a — obsolete Dependabot submodule updater deleted",
+            "R-R1a — obsolete Dependabot submodule updater retained",
+            "Dependabot authority hardening ledger",
         ),
         (
             "hardening",
@@ -25690,8 +25752,8 @@ def main():
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"
             ).read_text(encoding="utf-8"),
-            "disabled_workflow_authority_verifier": (
-                repo / "scripts/verify-disabled-workflow-authority.py"
+            "github_automation_authority_verifier": (
+                repo / "scripts/verify-github-automation-authority.py"
             ).read_text(encoding="utf-8"),
             "workflow_disabled_docs": (
                 repo / ".github/workflows/DISABLED.md"

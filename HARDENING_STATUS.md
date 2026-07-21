@@ -6971,8 +6971,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   deliberate mutations for each closure edge. The independent workspace verifier and shared source gate retain
   their existing enforcement roles. These measurements and source gates are not APK evidence: an exact clean
   committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
-- **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CORRECTION UPDATED/GATED
-  2026-07-21; CLEAN CORRECTED-COMMIT A/B, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
+- **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CORRECTION AND EXACT
+  CORRECTED-COMMIT A/B CLOSED/GATED 2026-07-21; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
   Endpoint/action: Android SDK/AGP user-preference state created during final Flutter/Gradle packaging. Boundary:
   numeric non-root build identity and the existing bounded ephemeral `/tmp` tmpfs ↔ the deliberately read-only
   container root and image-account home. The first exact build at pushed commit
@@ -7017,9 +7017,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   operation, privilege, capability, network, or port. `scripts/verify-android-builder-authority.py` binds the exact
   single root, competing-input clearing/refusal, freshness, both private constructions/postconditions, ordering
   before tool consumers, R-S11bm, Appendix C #202, and this row with deliberate mutations; the shared verifier and
-  independent workspace meta-gate retain their enforcement roles. A clean exact corrected-commit A/B proof must
-  now show both the legacy metrics warning and location ambiguity absent; the complete release transaction and
-  device behavior remain open.
+  independent workspace meta-gate retain their enforcement roles.
+
+  Exact target-local artifact evidence: clean pushed commit
+  `36ed7a621496ed470cad5347f7598c18858de827` ran the default A/B transaction in the already-present immutable
+  builder image `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121` against independently reverified
+  online closure `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac`. Both passes completed the native
+  release build, produced the same Gradle projection
+  `d125106b46b68b91618ca0c612f163098c1a3141d9bbe47bf7cf07d6353d7dab`, and emitted byte-identical v2/v3-signed
+  APKs with SHA-256 `918456d08bb6b7a5ef3bf767ce7aa1395afb30dfefea56fca23cca0699d9e603`. Manifest, mobile at-rest bootstrap,
+  certificate, checksum, exact-source pre/postconditions, and host publication checks passed. The complete retained
+  log contained neither the legacy `/home/ubuntu/.android/analytics.settings` warning nor the conflicting-location
+  and debug-keystore diagnostics, and the wrapper reported `ANDROID_PREFERENCES_RESULT=clean`. This is exact
+  named-commit target-local A/B evidence. It is not the independent-snapshot full R-B2/R-B10 release transaction
+  and does not prove Android device behavior; those obligations remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7735,7 +7746,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7e527d7617cfda0b04fee0d1c70b159cab7b5c36898996450bf6f5bee03562a7  requirements.html
+3f0562555e830a3af1e76fbb6c907ecfbd94ebe217870a9ebc24066ed6e9eedb  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bm, R-SV4a,

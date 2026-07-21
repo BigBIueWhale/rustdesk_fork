@@ -11052,6 +11052,15 @@ def validate_android_builder_authority_contract(sources):
         "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
         "Android preferences scratch hardening ledger",
     )
+    for text, label in (
+        ("R-S11bm exact corrected-commit evidence", "Android R-S11bm evidence enforcement"),
+        ("Appendix C #202 exact corrected-commit evidence", "Android Appendix C #202 evidence enforcement"),
+        ("R-S11e-79 exact corrected-commit evidence", "Android R-S11e-79 evidence enforcement"),
+        ("R-S11bm remaining release/device obligations", "Android R-S11bm open-obligation enforcement"),
+        ("Appendix C #202 remaining release/device obligations", "Android Appendix C #202 open-obligation enforcement"),
+        ("R-S11e-79 remaining release/device obligations", "Android R-S11e-79 open-obligation enforcement"),
+    ):
+        require_text(focused, text, label)
 
 
 def validate_github_automation_authority_verifier_contract(sources):

@@ -236,6 +236,36 @@ def validate(sources: Dict[str, str]) -> None:
         'R-S11bm/R-S11e-79 — Android tool preferences scratch ownership',
         "Android-preferences hardening ledger row",
     )
+    require(
+        sources["requirements"],
+        'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied the exact corrected-commit target-local A/B proof',
+        "R-S11bm exact corrected-commit evidence",
+    )
+    require(
+        sources["requirements"],
+        'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied exact target-local A/B evidence',
+        "Appendix C #202 exact corrected-commit evidence",
+    )
+    require(
+        sources["hardening"],
+        "Exact target-local artifact evidence: clean pushed commit\n  `36ed7a621496ed470cad5347f7598c18858de827`",
+        "R-S11e-79 exact corrected-commit evidence",
+    )
+    require(
+        sources["requirements"],
+        "The complete independent-snapshot R-B2/R-B10 transaction and device behavior remain separate open obligations.",
+        "R-S11bm remaining release/device obligations",
+    )
+    require(
+        sources["requirements"],
+        "The full independent-snapshot R-B2/R-B10 release and device evidence remain open.",
+        "Appendix C #202 remaining release/device obligations",
+    )
+    require(
+        sources["hardening"],
+        "It is not the independent-snapshot full R-B2/R-B10 release transaction\n  and does not prove Android device behavior; those obligations remain open.",
+        "R-S11e-79 remaining release/device obligations",
+    )
 
 
 MUTATIONS: Tuple[Mutation, ...] = (
@@ -312,6 +342,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("hardening", 'R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority', 'R-S11bk/R-S11e-77 — Android archive umask authority', "snapshot-mode ledger"),
     Mutation("hardening", 'R-S11bl/R-S11e-78 — Android bounded scratch lifecycle', 'R-S11bl/R-S11e-78 — Android unbounded scratch lifecycle', "scratch-lifecycle ledger"),
     Mutation("hardening", 'R-S11bm/R-S11e-79 — Android tool preferences scratch ownership', 'R-S11bm/R-S11e-79 — Android tool preferences ambient ownership', "Android-preferences ledger"),
+    Mutation("requirements", 'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied the exact corrected-commit target-local A/B proof', 'Clean pushed commit <code>0000000000000000000000000000000000000000</code> supplied the exact corrected-commit target-local A/B proof', "R-S11bm exact corrected-commit evidence"),
+    Mutation("requirements", 'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied exact target-local A/B evidence', 'Clean pushed commit <code>0000000000000000000000000000000000000000</code> supplied exact target-local A/B evidence', "Appendix C #202 exact corrected-commit evidence"),
+    Mutation("hardening", "Exact target-local artifact evidence: clean pushed commit\n  `36ed7a621496ed470cad5347f7598c18858de827`", "Exact target-local artifact evidence: clean pushed commit\n  `0000000000000000000000000000000000000000`", "R-S11e-79 exact corrected-commit evidence"),
+    Mutation("requirements", "The complete independent-snapshot R-B2/R-B10 transaction and device behavior remain separate open obligations.", "The complete independent-snapshot R-B2/R-B10 transaction and device behavior are closed.", "R-S11bm remaining release/device obligations"),
+    Mutation("requirements", "The full independent-snapshot R-B2/R-B10 release and device evidence remain open.", "The full independent-snapshot R-B2/R-B10 release and device evidence are closed.", "Appendix C #202 remaining release/device obligations"),
+    Mutation("hardening", "It is not the independent-snapshot full R-B2/R-B10 release transaction\n  and does not prove Android device behavior; those obligations remain open.", "It is the independent-snapshot full R-B2/R-B10 release transaction\n  and proves Android device behavior; those obligations are closed.", "R-S11e-79 remaining release/device obligations"),
 )
 
 

@@ -10765,7 +10765,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#200",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#201",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -10932,6 +10932,12 @@ def validate_android_builder_authority_contract(sources):
         ('forbid(build, token, label)', "Android builder forbidden-authority enforcement"),
         ('source=$BUILD_SOURCE_ROOT,target=/src"', "Android builder private-source mount contract"),
         ('source=$pass_output,target=/out"', "Android builder private-output mount contract"),
+        ('ordered_tokens = (', "Android builder scratch phase ordering"),
+        ('if positions != tuple(sorted(positions))', "Android builder scratch-order rejection semantics"),
+        ('consumed Rust installer payload survived scratch retirement', "Android Rust-installer retirement postcondition"),
+        ('consumed LLVM payload survived scratch retirement', "Android LLVM retirement postcondition"),
+        ('single deferred Gradle-cache call', "Android late Gradle projection cardinality"),
+        ('Gradle Cargo-metadata consumer', "Android retained Cargo final consumer"),
         ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
         ('run_mutations(sources)', "Android builder mutation dispatch"),
     ):
@@ -10978,6 +10984,11 @@ def validate_android_builder_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11bl</span>',
+        "Android scratch-lifecycle requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>199</td>",
         "Android builder authority Appendix C row",
     )
@@ -10985,6 +10996,11 @@ def validate_android_builder_authority_contract(sources):
         sources["requirements"],
         "<tr><td>200</td>",
         "Android snapshot-mode authority Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>201</td>",
+        "Android scratch-lifecycle Appendix C row",
     )
     require_text(
         sources["hardening"],
@@ -10995,6 +11011,11 @@ def validate_android_builder_authority_contract(sources):
         sources["hardening"],
         "R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority",
         "Android snapshot-mode authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bl/R-S11e-78 — Android bounded scratch lifecycle",
+        "Android scratch-lifecycle hardening ledger",
     )
 
 
@@ -25169,8 +25190,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#200",
-            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#199",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#201",
+            "R-X12a, R-X9, R-R2c, R-R2d, and Appendix C #192–#200",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -25264,6 +25285,12 @@ def run_source_mutations(sources):
             "Android builder forbidden-authority enforcement",
         ),
         (
+            "android_builder_authority_verifier",
+            'if positions != tuple(sorted(positions))',
+            'if False',
+            "Android builder scratch-order rejection semantics",
+        ),
+        (
             "android_build_source_verifier",
             "if not allow_extras:",
             "if False:",
@@ -25301,6 +25328,12 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<span class="id">R-S11bl</span>',
+            '<span class="id">R-S11bl-disabled</span>',
+            "Android scratch-lifecycle requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>199</td>",
             "<tr><td>199-disabled</td>",
             "Android builder authority Appendix C row",
@@ -25310,6 +25343,12 @@ def run_source_mutations(sources):
             "<tr><td>200</td>",
             "<tr><td>200-disabled</td>",
             "Android snapshot-mode authority Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>201</td>",
+            "<tr><td>201-disabled</td>",
+            "Android scratch-lifecycle Appendix C row",
         ),
         (
             "hardening",
@@ -25322,6 +25361,12 @@ def run_source_mutations(sources):
             "R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority",
             "R-S11bk/R-S11e-77 — Android archive umask authority",
             "Android snapshot-mode authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11bl/R-S11e-78 — Android bounded scratch lifecycle",
+            "R-S11bl/R-S11e-78 — Android unbounded scratch lifecycle",
+            "Android scratch-lifecycle hardening ledger",
         ),
         (
             "github_automation_authority_verifier",

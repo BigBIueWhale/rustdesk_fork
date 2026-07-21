@@ -25,13 +25,16 @@ esac
 [ -z "${RUSTDESK_GRADLE_OFFLINE+x}" ] \
     || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
 
-if [ "$APK_MODE" = offline ]; then
+prepare_offline_gradle_cache() {
+    [ "$APK_MODE" = offline ] || return 0
     python3 -I -S /src/scripts/android-gradle-cache.py materialize \
         --source /online/gradle-home \
         --init-script /src/scripts/android-gradle-offline.init.gradle
     export GRADLE_USER_HOME=/tmp/gradle-home
     export RUSTDESK_GRADLE_OFFLINE=1
-elif [ "$APK_MODE" = warm ]; then
+}
+
+if [ "$APK_MODE" = warm ]; then
     if [ -e /online/gradle-home ] || [ -L /online/gradle-home ]; then
         [ -d /online/gradle-home ] && [ ! -L /online/gradle-home ] \
             || { echo "[FATAL] warm Gradle cache is not a real directory" >&2; exit 1; }
@@ -42,16 +45,28 @@ elif [ "$APK_MODE" = warm ]; then
 fi
 
 TC=/tmp/tc; mkdir -p "$TC"
-# Host rust (rust-1.* ONLY — a bare rust-* glob would also grab the android cross-std),
-# flutter, LLVM; then the aarch64-linux-android cross-std as an extra rust component.
-for t in /online/rust-1.*.tar.xz /online/flutter-*.tar.xz /online/llvm-*.tar.xz; do
-    [ -e "$t" ] && tar -C "$TC" -xf "$t"
-done
+# Install Rust and its Android cross-std before expanding Flutter and LLVM. The installer
+# payloads have no consumer after installation and must not overlap those larger toolchains.
+tar -C "$TC" -xf /online/rust-1.75.tar.xz
 tar -C "$TC" -xf /online/rust-std-1.75-aarch64-linux-android.tar.xz
-"$TC"/rust-1.*/install.sh --prefix="$TC/r" --disable-ldconfig \
+RUST_INSTALLER_ROOT="$TC/rust-1.75.0-x86_64-unknown-linux-gnu"
+ANDROID_STD_INSTALLER_ROOT="$TC/rust-std-1.75.0-aarch64-linux-android"
+"$RUST_INSTALLER_ROOT/install.sh" --prefix="$TC/r" --disable-ldconfig \
     --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
-"$TC"/rust-std-1.75.0-aarch64-linux-android/install.sh --prefix="$TC/r" --disable-ldconfig >/dev/null
-LLVM_ROOT="$(echo "$TC"/clang+llvm-*)"; export LIBCLANG_PATH="$LLVM_ROOT/lib"
+"$ANDROID_STD_INSTALLER_ROOT/install.sh" --prefix="$TC/r" --disable-ldconfig >/dev/null
+rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"
+if [ -e "$RUST_INSTALLER_ROOT" ] || [ -L "$RUST_INSTALLER_ROOT" ] \
+    || [ -e "$ANDROID_STD_INSTALLER_ROOT" ] || [ -L "$ANDROID_STD_INSTALLER_ROOT" ]; then
+    echo "[FATAL] consumed Rust installer payload survived scratch retirement" >&2
+    exit 1
+fi
+
+tar -C "$TC" -xf /online/flutter-3.24.5.tar.xz
+tar -C "$TC" -xf /online/llvm-15.0.6.tar.xz
+LLVM_ROOT="$TC/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04"
+[ -d "$TC/flutter" ] && [ -d "$LLVM_ROOT" ] \
+    || { echo "[FATAL] pinned Flutter or LLVM extraction is incomplete" >&2; exit 1; }
+export LIBCLANG_PATH="$LLVM_ROOT/lib"
 export ANDROID_NDK_HOME=/online/android-ndk
 # bindgen (scrap) must parse the NDK android sysroot, not the host glibc headers.
 export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot --target=aarch64-linux-android21"
@@ -118,4 +133,13 @@ cp ./target/aarch64-linux-android/release/liblibrustdesk.so \
     ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
 cp "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so \
     ./flutter/android/app/src/main/jniLibs/arm64-v8a/
+# LLVM is required by bridge generation and the Rust JNI build, but not by the final Flutter/
+# Gradle packaging phase. Gradle still needs the installed Cargo for its tracked metadata query.
+rm -rf -- "$LLVM_ROOT"
+if [ -e "$LLVM_ROOT" ] || [ -L "$LLVM_ROOT" ]; then
+    echo "[FATAL] consumed LLVM payload survived scratch retirement" >&2
+    exit 1
+fi
+unset LIBCLANG_PATH BINDGEN_EXTRA_CLANG_ARGS
+prepare_offline_gradle_cache
 cd flutter && flutter build apk --release --target-platform android-arm64 --split-per-abi

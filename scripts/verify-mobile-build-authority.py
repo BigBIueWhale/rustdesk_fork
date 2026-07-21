@@ -313,14 +313,14 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
     ),
     (
         "android_outer",
-        "--name rustdesk-fork-harness-apk \\\n        --network=none",
-        "--name rustdesk-fork-harness-apk \\\n        --network=host",
+        '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+        '"$DOCKER_BIN" run --rm --pull=never --network=host --read-only',
         "host-network Android container",
     ),
     (
         "android_outer",
-        '--network=none \\\n        --user "$BUILD_UID:$BUILD_GID" \\\n        -e SOURCE_DATE_EPOCH',
-        '--network=none \\\n        --user 0:0 \\\n        -e SOURCE_DATE_EPOCH',
+        '--user "$BUILD_UID:$BUILD_GID"',
+        '--user 0:0',
         "root Android container",
     ),
     (

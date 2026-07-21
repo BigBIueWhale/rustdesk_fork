@@ -36,6 +36,7 @@ def forbid(source: str, token: str, label: str) -> None:
 def validate(sources: Dict[str, str]) -> None:
     build = sources["build"]
     checker = sources["checker"]
+    inner = sources["inner"]
 
     for token, label in (
         ('export PATH=/usr/bin:/bin', "closed host command path"),
@@ -96,6 +97,42 @@ def validate(sources: Dict[str, str]) -> None:
         raise AuthorityError("signing and verification do not each carry explicit resource bounds")
 
     for token, label in (
+        ('prepare_offline_gradle_cache() {', "deferred Gradle-cache constructor"),
+        ('tar -C "$TC" -xf /online/rust-1.75.tar.xz', "pinned Rust installer extraction"),
+        ('tar -C "$TC" -xf /online/rust-std-1.75-aarch64-linux-android.tar.xz', "pinned Android std extraction"),
+        ('rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"', "consumed Rust-installer retirement"),
+        ('consumed Rust installer payload survived scratch retirement', "Rust-installer retirement postcondition"),
+        ('tar -C "$TC" -xf /online/flutter-3.24.5.tar.xz', "pinned Flutter extraction"),
+        ('tar -C "$TC" -xf /online/llvm-15.0.6.tar.xz', "pinned LLVM extraction"),
+        ('rm -rf -- "$LLVM_ROOT"', "consumed LLVM retirement"),
+        ('consumed LLVM payload survived scratch retirement', "LLVM retirement postcondition"),
+        ('unset LIBCLANG_PATH BINDGEN_EXTRA_CLANG_ARGS', "retired LLVM environment"),
+        ('prepare_offline_gradle_cache\ncd flutter && flutter build apk', "late Gradle projection before packaging"),
+        ('commandLine("cargo", "metadata", "--format-version", "1")', "Gradle Cargo-metadata consumer"),
+    ):
+        require(inner, token, label)
+
+    require_count(inner, 'android-gradle-cache.py materialize', 1, "single Gradle-cache projection")
+    require_count(inner, 'rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"', 1, "single Rust-installer retirement")
+    require_count(inner, 'rm -rf -- "$LLVM_ROOT"', 1, "single LLVM retirement")
+    require_count(inner, 'prepare_offline_gradle_cache\n', 1, "single deferred Gradle-cache call")
+
+    ordered_tokens = (
+        '"$ANDROID_STD_INSTALLER_ROOT/install.sh"',
+        'rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"',
+        'tar -C "$TC" -xf /online/flutter-3.24.5.tar.xz',
+        'tar -C "$TC" -xf /online/llvm-15.0.6.tar.xz',
+        'flutter_rust_bridge_codegen --rust-input',
+        'bash ./flutter/ndk_arm64.sh',
+        'rm -rf -- "$LLVM_ROOT"',
+        'prepare_offline_gradle_cache\n',
+        'cd flutter && flutter build apk',
+    )
+    positions = tuple(inner.index(token) for token in ordered_tokens)
+    if positions != tuple(sorted(positions)) or len(set(positions)) != len(positions):
+        raise AuthorityError("Android scratch consumers and retirement phases are misordered")
+
+    for token, label in (
         ('$REPO_ROOT:/src', "real repository bind"),
         ('source=$REPO_ROOT,target=/src', "real repository mount"),
         ('$OUT_DIR:/out', "final output directory bind"),
@@ -152,8 +189,10 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(sources["requirements"], '<span class="id">R-S11bj</span>', "R-S11bj requirement")
     require(sources["requirements"], '<span class="id">R-S11bk</span>', "R-S11bk requirement")
+    require(sources["requirements"], '<span class="id">R-S11bl</span>', "R-S11bl requirement")
     require(sources["requirements"], '<tr><td>199</td>', "Appendix C #199 disposition")
     require(sources["requirements"], '<tr><td>200</td>', "Appendix C #200 disposition")
+    require(sources["requirements"], '<tr><td>201</td>', "Appendix C #201 disposition")
     require(
         sources["hardening"],
         'R-S11bj/R-S11e-76 — Android APK builder container and source authority',
@@ -163,6 +202,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         'R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority',
         "snapshot-mode hardening ledger row",
+    )
+    require(
+        sources["hardening"],
+        'R-S11bl/R-S11e-78 — Android bounded scratch lifecycle',
+        "scratch-lifecycle hardening ledger row",
     )
 
 
@@ -175,6 +219,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("build", "--cap-drop=ALL --security-opt=no-new-privileges", "--cap-drop=ALL", "no-new-privileges"),
     Mutation("build", "--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4", "--memory=12g --memory-swap=12g --cpus=4", "build PID bound"),
     Mutation("build", "--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4", "--pids-limit=512 --memory=12g --memory-swap=12g", "build CPU bound"),
+    Mutation("inner", 'rm -rf -- "$RUST_INSTALLER_ROOT" "$ANDROID_STD_INSTALLER_ROOT"', 'true # consumed Rust installers retained', "Rust-installer retirement"),
+    Mutation("inner", 'consumed Rust installer payload survived scratch retirement', 'consumed Rust installer payload accepted', "Rust-installer retirement postcondition"),
+    Mutation("inner", 'rm -rf -- "$LLVM_ROOT"', 'true # consumed LLVM retained', "LLVM retirement"),
+    Mutation("inner", 'consumed LLVM payload survived scratch retirement', 'consumed LLVM payload accepted', "LLVM retirement postcondition"),
+    Mutation("inner", 'prepare_offline_gradle_cache\ncd flutter && flutter build apk', 'cd flutter && flutter build apk', "late Gradle projection"),
+    Mutation("inner", 'unset LIBCLANG_PATH BINDGEN_EXTRA_CLANG_ARGS', 'true # stale LLVM environment retained', "LLVM environment retirement"),
+    Mutation("inner", 'commandLine("cargo", "metadata", "--format-version", "1")', 'commandLine("true")', "Gradle Cargo-metadata consumer"),
     Mutation("build", "source=$BUILD_SOURCE_ROOT,target=/src", "source=$REPO_ROOT,target=/src", "real source bind"),
     Mutation("build", "source=$pass_output,target=/out", "source=$OUT_DIR,target=/out", "final output bind"),
     Mutation("build", 'archive --format=tar "$SOURCE_COMMIT"', 'archive --format=tar HEAD~1', "source commit binding"),
@@ -211,10 +262,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("verify", "python3 scripts/verify-android-builder-authority.py --repo . --self-test", "true # Android builder authority verifier removed", "shared gate wiring"),
     Mutation("requirements", '<span class="id">R-S11bj</span>', '<span class="id">R-S11bj-disabled</span>', "requirement"),
     Mutation("requirements", '<span class="id">R-S11bk</span>', '<span class="id">R-S11bk-disabled</span>', "snapshot-mode requirement"),
+    Mutation("requirements", '<span class="id">R-S11bl</span>', '<span class="id">R-S11bl-disabled</span>', "scratch-lifecycle requirement"),
     Mutation("requirements", '<tr><td>199</td>', '<tr><td>199-disabled</td>', "Appendix disposition"),
     Mutation("requirements", '<tr><td>200</td>', '<tr><td>200-disabled</td>', "snapshot-mode Appendix disposition"),
+    Mutation("requirements", '<tr><td>201</td>', '<tr><td>201-disabled</td>', "scratch-lifecycle Appendix disposition"),
     Mutation("hardening", 'R-S11bj/R-S11e-76 — Android APK builder container and source authority', 'R-S11bj/R-S11e-76 — Android APK builder ambient authority', "ledger"),
     Mutation("hardening", 'R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority', 'R-S11bk/R-S11e-77 — Android archive umask authority', "snapshot-mode ledger"),
+    Mutation("hardening", 'R-S11bl/R-S11e-78 — Android bounded scratch lifecycle', 'R-S11bl/R-S11e-78 — Android unbounded scratch lifecycle', "scratch-lifecycle ledger"),
 )
 
 
@@ -246,6 +300,8 @@ def read_regular(repo: pathlib.Path, relative: str) -> str:
 def load_sources(repo: pathlib.Path) -> Dict[str, str]:
     return {
         "build": read_regular(repo, "scripts/build-android.sh"),
+        "inner": read_regular(repo, "scripts/android-apk-build.sh")
+        + read_regular(repo, "flutter/android/app/build.gradle"),
         "checker": read_regular(repo, "scripts/verify-android-build-source.py"),
         "verify": read_regular(repo, "scripts/verify.sh"),
         "requirements": read_regular(repo, "requirements.html"),
@@ -264,7 +320,7 @@ def main() -> None:
     if args.self_test:
         run_mutations(sources)
     print(
-        "ANDROID-BUILDER-AUTHORITY: private exact-commit source, private signing output, and four confined launches are GREEN ({} mutations)".format(
+        "ANDROID-BUILDER-AUTHORITY: private exact-commit source, phased bounded scratch, private signing output, and four confined launches are GREEN ({} mutations)".format(
             len(MUTATIONS) if args.self_test else 0
         )
     )

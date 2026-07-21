@@ -6942,6 +6942,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Appendix C #200, and this ledger row with deliberate mutations. This source correction does not promote the
   failed attempt into artifact evidence; a clean committed rerun, full R-B2/R-B10 release, and device behavior
   remain open.
+- **R-S11bl/R-S11e-78 — Android bounded scratch lifecycle — SOURCE CLOSED/GATED 2026-07-21;
+  EXACT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
+  Endpoint/action: the pinned toolchain extraction, native JNI compilation, and private Gradle-cache projection
+  inside the existing non-root networkless Android compile container. Boundary: verified immutable offline inputs
+  and disposable build state ↔ the explicit 10-GiB <code>/tmp</code> tmpfs and 12-GiB memory/no-swap ceiling.
+  The first exact build at pushed commit <code>fea99e583a560736771606a39f58a309ad550a2a</code> passed both
+  exact-source comparisons and strict Gradle authority, then failed closed with <code>ENOSPC</code> while extracting
+  LLVM. The inner harness had already projected 4,694,925,312 allocated bytes of Gradle state before retaining
+  9,093,156,864 bytes of expanded Rust-installer, Android cross-std, Flutter, and LLVM payloads and adding the
+  645,922,816-byte installed Rust toolchain. This was a deterministic resource-lifecycle contradiction before
+  compilation, not an unbounded host write, partial-toolchain execution, root/container escape, host service or
+  firewall mutation, port exposure, exploitation, or compromise.
+
+  The correction keeps every outer authority bound unchanged and shortens inner ownership instead. Host Rust and
+  Android cross-std installers are installed first, removed immediately, and proven absent before Flutter or LLVM
+  extraction. LLVM remains available for bridge generation and native JNI compilation; after the JNI library and
+  NDK runtime are copied into the private source output, LLVM is removed and proven absent and its environment is
+  cleared. Only then does offline mode materialize the writable Gradle cache exactly once for final packaging.
+  Installed Cargo deliberately remains because <code>flutter/android/app/build.gradle</code> executes
+  <code>cargo metadata</code> while configuring the final build. Direct measurement in the already-present pinned
+  image gives an 8,133,832,704-byte toolchain live set after installer retirement, a 2,352,091,136-byte base after
+  LLVM retirement, and about 7.05 GB after adding the 4,694,925,312-byte Gradle projection. No larger tmpfs/cgroup,
+  host scratch, extra mount, image operation, privilege, capability, network, or persistence fallback was added.
+
+  <code>scripts/verify-android-builder-authority.py</code> binds the exact phase inputs, ordering, retirement
+  postconditions, retained Cargo consumer, unchanged outer limits, R-S11bl, Appendix C #201, and this row, with
+  deliberate mutations for each closure edge. The independent workspace verifier and shared source gate retain
+  their existing enforcement roles. These measurements and source gates are not APK evidence: an exact clean
+  committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7657,9 +7686,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b12d13bb2ebc5663cff37fed0e151df3a37b6559789a539f5ed93b1bf663e192  requirements.html
+00a05b4f8ab3560531b9d4ad822798b859e49958b54931833da5e56b02c138f4  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bk, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#200. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bl, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, and Appendix C #192–#201. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

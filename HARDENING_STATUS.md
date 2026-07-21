@@ -4883,6 +4883,40 @@ unreachable and a source/test/AST gate prevents reintroduction.
   RustDesk process/service/binary/configuration/listener, firewall, UFW/nftables/iptables state, or host-network state
   was inspected or changed for this source slice.
 
+- **R-G9 — minimal presentation and compatibility serialization contracts — SOURCE CLOSED/GATED;
+  EXACT PACKAGED-ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: shared Rust CM IPC and server
+  connection code, desktop/Android/iOS Flutter presentation models, Android's foreground service consumer, and
+  retained Apple source. Boundary: authenticated connection capability authority ↔ local CM presentation data; and
+  deleted account/address-book provenance ↔ locally saved peer JSON. Source and history prove that
+  `sameServer`/`same_server` had exactly one semantic consumer: the account/address-book `syncFromRecent` path
+  deleted in `3309b49`. Current source had no producer or consumer, only parse/copy/reserialize plumbing. Separately,
+  the server copied `restart`, `recording`, and `block_input` from the live `Connection` into `Data::Login`, then
+  into the serialized CM `Client`; neither Flutter's controlled-side `Client.fromJson` nor Android
+  `MainService` read those keys. This was dead compatibility-contract and future-reactivation debt—not a live
+  permission bypass, network request, credential disclosure, local-to-root path, privilege escalation, exploitation
+  incident, host mutation, public listener, or evidence of compromise.
+
+  Authority model and source closure: the saved-peer DTO no longer declares, parses, copies, or serializes the
+  cloud-provenance field; historical JSON containing `same_server` is ignored and a Flutter regression proves it is
+  not serialized back. CM login IPC, `ConnectionManager::add_connection`, and the serialized CM `Client` no longer
+  carry the three unread policy booleans. The authenticated server `Connection` remains their sole controlled-side
+  authority: initialization still derives them from the pinned policy, `confine_capabilities_to_conn_type` removes
+  them from narrower session types, restart and block-input remain gated at their native sinks, and the server still
+  reports disabled values through `Permission::Restart`, `Permission::Recording`, and `Permission::BlockInput`.
+  The viewer still consumes those permission messages and its retained actions remain permission-gated. R-G6's
+  `forceAlwaysRelay` field/action was already absent and directly gated; it was not a current serialized field.
+
+  Verification closure: the focused Rust serialization regression constructs both `Data::Login` and `Client`,
+  proves the three keys are absent, and positively proves a consumed CM field remains. The focused Flutter
+  regression feeds legacy `same_server` input and proves output omission. `scripts/verify.sh`,
+  `scripts/dart-verify.sh`, and `scripts/apple-conform-check.sh` bind the negative DTO surfaces and positive live
+  capability path. The independent workspace semantic validator and deliberate mutations cover each producer,
+  consumer, regression, gate, R-G9, Appendix C #189, and this ledger. Exact current-commit native/platform package
+  evidence, installed-device behavior, refreshed advisory data, independently archived verifier-image provenance,
+  and R-V3 external review remain open under their existing rows. No host RustDesk process, service, binary,
+  configuration, listener, firewall, UFW/nftables/iptables state, or host-network state was inspected or changed for
+  this source slice.
+
 - **R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization — CLOSED 2026-07-11.**
   Platforms: Windows/macOS desktop URL forwarding. Endpoint/action: `listenUniLinks(handleByFlutter: false)`
   to `bind.sendUrlScheme` to Rust `_url` IPC. Boundary: OS-delivered deep-link material ↔ local IPC handoff
@@ -7218,9 +7252,12 @@ Safe at runtime, but each is R-G1 debt a from-scratch direct-IP fork would never
   `fetchID` machinery leaves no stale formatter import. Focused Flutter tests cover normalization,
   malformed interior whitespace, controller semantics, bare-ID rejection, and the valid address
   forms; shared, Dart, Apple, semantic, and deliberate-mutation gates bind the source closure.
-- **Misc still requiring per-consumer proof:** the serialized-but-unread `forceAlwaysRelay`/
-  `sameServer`/`recording`/`block_input`/`restart` fields; the `switch_sides()` empty stub; and
-  `logOut(apiServer)`. Delete only after proving each exact producer/consumer path.
+- **Serialized-but-unread presentation fields — CLOSED/GATED (R-G9):** `sameServer`/`same_server` and the
+  CM-only copies of `recording`/`block_input`/`restart` are deleted after exact producer/consumer history and source
+  proof; the real connection capability fields and viewer permission protocol remain. `forceAlwaysRelay` was
+  already deleted and gated by R-G6 and was stale in this row.
+- **Misc still requiring per-consumer proof:** the `switch_sides()` empty stub and `logOut(apiServer)`. Delete only
+  after proving each exact producer/consumer path.
 
 ### Verified CLEAN — do NOT re-open these (keeps the backlog honest)
 
@@ -7254,9 +7291,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-56dc7c4ff44293d978448b2c9cc132ff32082daa7316167d762d0c237a3c425d  requirements.html
+beb6ffeb0bb19e5e0e44b4e272afa7b7125823915c18c452d592dd823e718cb1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, and Appendix C #187. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, and Appendix C #189. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

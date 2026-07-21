@@ -167,6 +167,8 @@ docker run --rm --pull=never --network=none --read-only \
     fi
     echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
     flutter test --no-pub test/address_validator_test.dart
+    echo "  == R-G9 flutter test: saved-peer serialization contract =="
+    flutter test --no-pub test/peer_model_test.dart
     cd /src
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
     cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
@@ -313,6 +315,21 @@ fi
 if grep -qE 'bool[[:space:]]+online([[:space:]]|=)' flutter/lib/models/peer_model.dart; then
   echo "  FAIL R-SV6c: saved-peer model regained rendezvous online state"; exit 1
 fi
+# R-G9: the account/address-book synchronizer was the only same-server provenance consumer.
+# Historical peer JSON may contain the key, but the local saved-peer DTO ignores it and never
+# reserializes it. The controlled-side Client parser likewise has no duplicate policy booleans;
+# those live only on the authenticated Rust Connection and in the viewer Permission protocol.
+if grep -qE 'sameServer|same_server' flutter/lib/models/peer_model.dart; then
+  echo "  FAIL R-G9: saved-peer model retained retired cloud provenance"; exit 1
+fi
+grep -qF "expect(serialized, isNot(contains('same_server')));" flutter/test/peer_model_test.dart \
+  || { echo "  FAIL R-G9: saved-peer legacy-key serialization regression is missing"; exit 1; }
+for field in restart recording block_input; do
+  if grep -qF "json['$field']" flutter/lib/models/server_model.dart; then
+    echo "  FAIL R-G9: controlled-side Flutter Client parses duplicate $field policy"; exit 1
+  fi
+done
+echo "  ok  R-G9 saved-peer cloud provenance and duplicate CM policy fields are absent"
 grep -qF 'Future<void> mainStartStatusSync' flutter/lib/generated_bridge.dart \
   || { echo "  FAIL R-SV6c: generated bridge lacks typed main status-sync operation"; exit 1; }
 grep -qF 'await bind.mainStartStatusSync();' flutter/lib/main.dart \

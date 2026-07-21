@@ -11755,6 +11755,133 @@ def validate_dead_dart_policy_alias_excision_contract(sources):
     require_text(requirement, "removed from the UI", "dead-control removal authority")
 
 
+def validate_minimal_presentation_serialization_contract(sources):
+    peer_model = sources["peer_model_dart"]
+    for text, label in (
+        ("sameServer", "saved-peer same-server field"),
+        ("same_server", "saved-peer same-server JSON key"),
+    ):
+        require_absent(peer_model, text, label)
+    peer_test = sources["peer_model_test"]
+    for text, label in (
+        ("saved peers ignore retired cloud provenance", "saved-peer regression"),
+        ("'same_server': true", "historical saved-peer fixture"),
+        (
+            "expect(serialized, isNot(contains('same_server')));",
+            "saved-peer serialization absence",
+        ),
+    ):
+        require_text(peer_test, text, label)
+
+    ipc_source = sources["ipc_source"]
+    cm_source = sources["ui_cm_source"]
+    connection_source = sources["connection_source"]
+    for field in ("restart", "recording", "block_input"):
+        require_absent(
+            ipc_source,
+            f"        {field}: bool,",
+            f"CM login duplicate {field} field",
+        )
+        require_absent(
+            cm_source,
+            f"    pub {field}: bool,",
+            f"CM Client duplicate {field} field",
+        )
+        require_absent(
+            connection_source,
+            f"            {field}: self.{field},",
+            f"CM login duplicate {field} producer",
+        )
+        require_exact_count(
+            connection_source,
+            f"    {field}: bool,",
+            1,
+            f"authenticated Connection {field} authority",
+        )
+        require_absent(
+            sources["server_model_dart"],
+            f"json['{field}']",
+            f"Flutter CM duplicate {field} consumer",
+        )
+        require_absent(
+            sources["android_main_service"],
+            f'jsonObject["{field}"]',
+            f"Android CM duplicate {field} consumer",
+        )
+
+    cm_test = extract_between(
+        cm_source,
+        "fn cm_presentation_contract_omits_connection_only_permissions()",
+        "\n    #[test]",
+        "CM presentation serialization regression",
+    )
+    for text, label in (
+        ("let login = Data::Login {", "CM login serialization fixture"),
+        ("let client = Client {", "CM Client serialization fixture"),
+        (
+            'for key in ["restart", "recording", "block_input"]',
+            "connection-only permission absence assertion",
+        ),
+        ("!login_payload.contains_key(key)", "CM login field absence"),
+        ("!client_payload.contains_key(key)", "CM Client field absence"),
+        ('get("keyboard")', "retained consumed CM permission fact"),
+    ):
+        require_text(cm_test, text, label)
+
+    for permission in ("Restart", "Recording", "BlockInput"):
+        require_text(
+            connection_source,
+            f"conn.send_permission(Permission::{permission}, false).await;",
+            f"server {permission} permission path",
+        )
+        require_text(
+            sources["client_io_loop"],
+            f"Ok(Permission::{permission}) =>",
+            f"viewer {permission} permission path",
+        )
+    for text, label in (
+        ("if self.restart {", "restart native sink gate"),
+        ("if self.keyboard && self.block_input {", "block-input native sink gate"),
+        (
+            "fn confine_capabilities_to_conn_type(&mut self, conn_type: AuthConnType)",
+            "connection-type capability confinement",
+        ),
+    ):
+        require_text(connection_source, text, label)
+
+    for source_key, text, label in (
+        ("verify", "R-G9 minimal presentation serialization contracts", "shared R-G9 gate"),
+        ("dart_verify", "R-G9 saved-peer cloud provenance", "Dart R-G9 gate"),
+        (
+            "apple",
+            "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract ==",
+            "Apple R-G9 gate",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-G9", "minimal presentation serialization requirement"
+    )
+    for text, label in (
+        ("serialize only facts their receiver consumes", "minimal serialization rule"),
+        ("AuthConnType", "retained connection authority"),
+        ("post-PAKE", "retained viewer permission protocol"),
+        ("sameServer", "retired cloud provenance"),
+        ("forceAlwaysRelay", "already-closed relay field disposition"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>189</td>",
+        "minimal presentation serialization Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-G9 — minimal presentation and compatibility serialization contracts",
+        "minimal presentation serialization hardening ledger",
+    )
+
+
 def validate_structured_proxy_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -12442,6 +12569,7 @@ def validate_sources(sources):
     validate_peer_presence_excision_contract(sources)
     validate_public_server_selection_excision_contract(sources)
     validate_dead_dart_policy_alias_excision_contract(sources)
+    validate_minimal_presentation_serialization_contract(sources)
     validate_structured_proxy_excision_contract(sources)
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
@@ -23242,8 +23370,8 @@ def run_source_mutations(sources):
         ),
         (
             "peer_model_dart",
-            "  String note;\n  bool? sameServer;",
-            "  String note;\n  bool online = false;\n  bool? sameServer;",
+            "  String note;\n\n  String getId()",
+            "  String note;\n  bool online = false;\n\n  String getId()",
             "peer online field",
         ),
         (
@@ -23569,6 +23697,108 @@ def run_source_mutations(sources):
             "Dead Dart policy-option aliases — CLOSED/GATED (R-G1)",
             "Dead Dart policy-option aliases — OPEN (R-G1)",
             "dead Dart policy-option hardening disposition",
+        ),
+        (
+            "peer_model_dart",
+            "  String note;\n\n  String getId()",
+            "  String note;\n  bool? sameServer;\n\n  String getId()",
+            "saved-peer same-server field",
+        ),
+        (
+            "ipc_source",
+            "        file_transfer_enabled: bool,\n        privacy_mode: bool,",
+            "        file_transfer_enabled: bool,\n        restart: bool,\n        privacy_mode: bool,",
+            "CM login duplicate restart field",
+        ),
+        (
+            "ui_cm_source",
+            "    pub file: bool,\n    pub privacy_mode: bool,",
+            "    pub file: bool,\n    pub restart: bool,\n    pub privacy_mode: bool,",
+            "CM Client duplicate restart field",
+        ),
+        (
+            "connection_source",
+            "            file_transfer_enabled: self.file,\n            privacy_mode: self.privacy_mode,",
+            "            file_transfer_enabled: self.file,\n            restart: self.restart,\n            privacy_mode: self.privacy_mode,",
+            "CM login duplicate restart producer",
+        ),
+        (
+            "server_model_dart",
+            "    file = json['file'];\n    privacyMode = json['privacy_mode'] ?? privacyMode;",
+            "    file = json['file'];\n    final restart = json['restart'];\n    privacyMode = json['privacy_mode'] ?? privacyMode;",
+            "Flutter CM duplicate restart consumer",
+        ),
+        (
+            "android_main_service",
+            '                    val authorized = jsonObject["authorized"] as Boolean\n',
+            '                    val authorized = jsonObject["authorized"] as Boolean\n                    val restart = jsonObject["restart"] as Boolean\n',
+            "Android CM duplicate restart consumer",
+        ),
+        (
+            "ui_cm_source",
+            "fn cm_presentation_contract_omits_connection_only_permissions()",
+            "fn cm_presentation_contract_regression_removed()",
+            "CM presentation serialization regression",
+        ),
+        (
+            "peer_model_test",
+            "expect(serialized, isNot(contains('same_server')));",
+            "expect(serialized, contains('same_server'));",
+            "saved-peer serialization absence",
+        ),
+        (
+            "connection_source",
+            "    recording: bool,",
+            "    recording_disabled: bool,",
+            "authenticated Connection recording authority",
+        ),
+        (
+            "connection_source",
+            "conn.send_permission(Permission::Recording, false).await;",
+            "conn.send_permission(Permission::File, false).await;",
+            "server Recording permission path",
+        ),
+        (
+            "client_io_loop",
+            "Ok(Permission::BlockInput) =>",
+            "Ok(Permission::PrivacyMode) =>",
+            "viewer BlockInput permission path",
+        ),
+        (
+            "verify",
+            "R-G9 minimal presentation serialization contracts",
+            "R-G9 presentation serialization gate disabled",
+            "shared R-G9 gate",
+        ),
+        (
+            "dart_verify",
+            "R-G9 saved-peer cloud provenance",
+            "R-G9 Dart presentation gate disabled",
+            "Dart R-G9 gate",
+        ),
+        (
+            "apple",
+            "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract ==",
+            "== (2b-iii-a2) R-G9 Apple presentation gate disabled ==",
+            "Apple R-G9 gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-G9</span>',
+            '<span class="id">R-G9-disabled</span>',
+            "minimal presentation serialization requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>189</td>",
+            "<tr><td>189-disabled</td>",
+            "minimal presentation serialization Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-G9 — minimal presentation and compatibility serialization contracts",
+            "R-G9 — presentation serialization cleanup deferred",
+            "minimal presentation serialization hardening ledger",
         ),
         (
             "socket_client_source",
@@ -24522,6 +24752,9 @@ def main():
             "address_validator_test": (
                 repo / "flutter/test/address_validator_test.dart"
             ).read_text(encoding="utf-8"),
+            "peer_model_test": (repo / "flutter/test/peer_model_test.dart").read_text(
+                encoding="utf-8"
+            ),
             "desktop_home_dart": (
                 repo / "flutter/lib/desktop/pages/desktop_home_page.dart"
             ).read_text(encoding="utf-8"),
@@ -24559,6 +24792,10 @@ def main():
             "whiteboard_server": (repo / "src/whiteboard/server.rs").read_text(encoding="utf-8"),
             "direct_service": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
+            "android_main_service": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
+            ).read_text(encoding="utf-8"),
             "whiteboard_client": (repo / "src/whiteboard/client.rs").read_text(encoding="utf-8"),
             "portable_source": (repo / "libs/portable/src/main.rs").read_text(encoding="utf-8"),
             "privacy_broker_source": (

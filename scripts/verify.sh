@@ -9117,6 +9117,58 @@ if [ -n "$r_live_dead" ]; then
 else
   echo "  ok  live-looking-dead auth/permission/rendezvous scaffolding absent and ledger closed (I-9..I-12)"
 fi
+# R-G9: local presentation and compatibility DTOs carry only facts their receivers consume.
+# The three policy booleans remain live on the authenticated Connection and in the post-PAKE
+# viewer Permission protocol; only their unread CM IPC/JSON copies are forbidden here.
+echo "== (5g-iv) R-G9 minimal presentation serialization contracts =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  ui_cm_interface::tests::cm_presentation_contract_omits_connection_only_permissions --color never
+r_g9=
+cm_login_ipc=$(awk '/^[[:space:]]*Login \{/{capture=1} capture{print} capture && /^[[:space:]]*\},/{exit}' src/ipc.rs)
+cm_client_dto=$(awk '/^pub struct Client \{/{capture=1} capture{print} capture && /^}/{exit}' src/ui_cm_interface.rs)
+[ -n "$cm_login_ipc" ] || r_g9="$r_g9 cm-login-ipc-block-missing"
+[ -n "$cm_client_dto" ] || r_g9="$r_g9 cm-client-dto-block-missing"
+for field in restart recording block_input; do
+  if grep -qE "^[[:space:]]*$field:[[:space:]]*bool," <<<"$cm_login_ipc"; then
+    r_g9="$r_g9 cm-login-serialized-$field"
+  fi
+  if grep -qE "^[[:space:]]*pub[[:space:]]+$field:[[:space:]]*bool," <<<"$cm_client_dto"; then
+    r_g9="$r_g9 cm-client-serialized-$field"
+  fi
+  if grep -qF "json['$field']" flutter/lib/models/server_model.dart; then
+    r_g9="$r_g9 flutter-client-parses-$field"
+  fi
+  if grep -qF "jsonObject[\"$field\"]" flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then
+    r_g9="$r_g9 android-service-parses-$field"
+  fi
+done
+if grep -qE 'sameServer|same_server' flutter/lib/models/peer_model.dart; then
+  r_g9="$r_g9 saved-peer-cloud-provenance"
+fi
+grep -qF "expect(serialized, isNot(contains('same_server')));" flutter/test/peer_model_test.dart \
+  || r_g9="$r_g9 saved-peer-serialization-regression-missing"
+grep -qF 'fn cm_presentation_contract_omits_connection_only_permissions()' src/ui_cm_interface.rs \
+  || r_g9="$r_g9 cm-serialization-regression-missing"
+for field in restart recording block_input; do
+  grep -qE "^[[:space:]]*$field:[[:space:]]*bool," src/server/connection.rs \
+    || r_g9="$r_g9 connection-authority-missing-$field"
+done
+for permission in Restart Recording BlockInput; do
+  grep -qF "conn.send_permission(Permission::$permission, false).await;" src/server/connection.rs \
+    || r_g9="$r_g9 server-permission-path-missing-$permission"
+  grep -qF "Ok(Permission::$permission) =>" src/client/io_loop.rs \
+    || r_g9="$r_g9 viewer-permission-path-missing-$permission"
+done
+grep -qF 'if self.restart {' src/server/connection.rs || r_g9="$r_g9 restart-sink-gate-missing"
+grep -qF 'if self.keyboard && self.block_input {' src/server/connection.rs \
+  || r_g9="$r_g9 block-input-sink-gate-missing"
+grep -qF 'R-G9 — minimal presentation and compatibility serialization contracts' HARDENING_STATUS.md \
+  || r_g9="$r_g9 hardening-ledger-missing"
+if [ -n "$r_g9" ]; then
+  echo "  FAIL R-G9 presentation serialization contract:$r_g9"; rc=1
+else
+  echo "  ok  R-G9 CM/peer DTOs omit dead fields while authenticated Connection and viewer permissions remain live"
+fi
 # R-S16(d) / flutter UI correctness (the pinned-policy audit): a control whose write the policy funnel
 # rejects must not render as a live, mutating affordance that silently no-ops.
 #  - is_option_fixed() reports PINNED_SETTINGS keys as fixed, so every pinned control auto-greys (BUG4 root).

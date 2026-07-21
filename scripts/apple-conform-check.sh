@@ -1083,6 +1083,46 @@ else
   note "ok  R-S11c-4a macOS CM rejects forged desktop login/plain FS unless the main server validates the active connection id/type/token"
 fi
 
+echo "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract =="
+r_g9=
+cm_login_ipc=$(awk '/^[[:space:]]*Login \{/{capture=1} capture{print} capture && /^[[:space:]]*\},/{exit}' "$REPO/src/ipc.rs")
+cm_client_dto=$(awk '/^pub struct Client \{/{capture=1} capture{print} capture && /^}/{exit}' "$REPO/src/ui_cm_interface.rs")
+[ -n "$cm_login_ipc" ] || r_g9="$r_g9 cm-login-ipc-block-missing"
+[ -n "$cm_client_dto" ] || r_g9="$r_g9 cm-client-dto-block-missing"
+for field in restart recording block_input; do
+  if grep -qE "^[[:space:]]*$field:[[:space:]]*bool," <<<"$cm_login_ipc"; then
+    r_g9="$r_g9 cm-login-serialized-$field"
+  fi
+  if grep -qE "^[[:space:]]*pub[[:space:]]+$field:[[:space:]]*bool," <<<"$cm_client_dto"; then
+    r_g9="$r_g9 cm-client-serialized-$field"
+  fi
+  grep -qE "^[[:space:]]*$field:[[:space:]]*bool," "$REPO/src/server/connection.rs" \
+    || r_g9="$r_g9 connection-authority-missing-$field"
+done
+if grep -qE 'sameServer|same_server' "$REPO/flutter/lib/models/peer_model.dart"; then
+  r_g9="$r_g9 saved-peer-cloud-provenance"
+fi
+grep -qF 'fn cm_presentation_contract_omits_connection_only_permissions()' "$REPO/src/ui_cm_interface.rs" \
+  || r_g9="$r_g9 cm-serialization-regression-missing"
+grep -qF "expect(serialized, isNot(contains('same_server')));" "$REPO/flutter/test/peer_model_test.dart" \
+  || r_g9="$r_g9 saved-peer-serialization-regression-missing"
+for permission in Restart Recording BlockInput; do
+  grep -qF "conn.send_permission(Permission::$permission, false).await;" "$REPO/src/server/connection.rs" \
+    || r_g9="$r_g9 server-permission-path-missing-$permission"
+  grep -qF "Ok(Permission::$permission) =>" "$REPO/src/client/io_loop.rs" \
+    || r_g9="$r_g9 viewer-permission-path-missing-$permission"
+done
+grep -qF '<span class="id">R-G9</span>' "$REPO/requirements.html" || r_g9="$r_g9 requirement-missing"
+grep -qF '<tr><td>189</td>' "$REPO/requirements.html" || r_g9="$r_g9 appendix-row-missing"
+grep -qF 'R-G9 — minimal presentation and compatibility serialization contracts' "$REPO/HARDENING_STATUS.md" \
+  || r_g9="$r_g9 hardening-ledger-missing"
+if [ -n "$r_g9" ]; then
+  echo "  FAIL R-G9 Apple shared presentation serialization contract:$r_g9"
+  rc=1
+else
+  note "ok  R-G9 shared CM/peer DTOs omit dead fields while authenticated Connection and viewer permission paths remain live"
+fi
+
 echo "== (2b-iii-b) R-S11c-11 macOS CM endpoint-selection proof =="
 r_s11c11=
 grep -q 'CmEndpointChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"

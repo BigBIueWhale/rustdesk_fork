@@ -19,7 +19,6 @@ class Peer {
   String loginName; //login username
   String device_group_name;
   String note;
-  bool? sameServer;
 
   String getId() {
     if (alias != '') {
@@ -41,8 +40,7 @@ class Peer {
         rdpUsername = json['rdpUsername'] ?? '',
         loginName = json['loginName'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
-        note = json['note'] is String ? json['note'] : '',
-        sameServer = json['same_server'];
+        note = json['note'] is String ? json['note'] : '';
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -59,7 +57,6 @@ class Peer {
       'loginName': loginName,
       'device_group_name': device_group_name,
       'note': note,
-      'same_server': sameServer,
     };
   }
 
@@ -103,7 +100,6 @@ class Peer {
     required this.loginName,
     required this.device_group_name,
     required this.note,
-    this.sameServer,
   });
 
   Peer.loading()
@@ -152,8 +148,7 @@ class Peer {
             rdpUsername: other.rdpUsername,
             loginName: other.loginName,
             device_group_name: other.device_group_name,
-            note: other.note,
-            sameServer: other.sameServer);
+            note: other.note);
 }
 
 typedef GetInitPeers = RxList<Peer> Function();

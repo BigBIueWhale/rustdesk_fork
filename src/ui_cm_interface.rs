@@ -154,9 +154,6 @@ pub struct Client {
     pub clipboard: bool,
     pub audio: bool,
     pub file: bool,
-    pub restart: bool,
-    pub recording: bool,
-    pub block_input: bool,
     pub privacy_mode: bool,
     pub from_switch: bool,
     pub in_voice_call: bool,
@@ -348,9 +345,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         clipboard: bool,
         audio: bool,
         file: bool,
-        restart: bool,
-        recording: bool,
-        block_input: bool,
         privacy_mode: bool,
         from_switch: bool,
         #[cfg(not(any(target_os = "ios")))] tx: mpsc::UnboundedSender<Data>,
@@ -370,9 +364,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             clipboard,
             audio,
             file,
-            restart,
-            recording,
-            block_input,
             privacy_mode,
             from_switch,
             #[cfg(not(any(target_os = "ios")))]
@@ -596,7 +587,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                         }
                         Ok(Some(data)) => {
                             match data {
-                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, restart, recording, block_input, privacy_mode, from_switch, cm_auth_token} => {
+                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, from_switch, cm_auth_token} => {
                                     log::debug!("conn_id: {}", id);
                                     let connection_authority = match ipc::validate_cm_connection_authority(
                                         id,
@@ -629,7 +620,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         file,
                                         connection_authority,
                                     );
-                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, restart, recording, block_input, privacy_mode, from_switch, self.tx.clone());
+                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, from_switch, self.tx.clone());
                                     self.conn_id = id;
                                     self.file_authority = file_authority;
                                     self.cm_auth_token = cm_auth_token;
@@ -1030,9 +1021,6 @@ pub async fn start_listen<T: InvokeUiCM>(
                 clipboard,
                 audio,
                 file,
-                restart,
-                recording,
-                block_input,
                 privacy_mode,
                 from_switch,
                 cm_auth_token,
@@ -1066,9 +1054,6 @@ pub async fn start_listen<T: InvokeUiCM>(
                     clipboard,
                     audio,
                     file,
-                    restart,
-                    recording,
-                    block_input,
                     privacy_mode,
                     from_switch,
                     tx.clone(),
@@ -2201,6 +2186,85 @@ mod tests {
             cm_authority(false, true)
         )
         .allows_fs(true));
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn cm_presentation_contract_omits_connection_only_permissions() {
+        let login = Data::Login {
+            id: 7,
+            is_file_transfer: false,
+            is_view_camera: false,
+            is_terminal: false,
+            peer_id: "peer".to_owned(),
+            name: "owner".to_owned(),
+            avatar: String::new(),
+            authorized: true,
+            port_forward: String::new(),
+            conn_type: ipc::CmAuthConnType::Remote,
+            keyboard: true,
+            clipboard: true,
+            audio: true,
+            file: true,
+            file_transfer_enabled: true,
+            privacy_mode: true,
+            from_switch: false,
+            cm_auth_token: "token".to_owned(),
+        };
+        let login_json = serde_json::to_value(login).unwrap();
+        let login_payload = login_json
+            .get("c")
+            .and_then(serde_json::Value::as_object)
+            .unwrap();
+        assert_eq!(
+            login_payload
+                .get("keyboard")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        for key in ["restart", "recording", "block_input"] {
+            assert!(
+                !login_payload.contains_key(key),
+                "CM login unexpectedly serialized {key}"
+            );
+        }
+
+        let (tx, _rx) = unbounded_channel();
+        let client = Client {
+            id: 7,
+            authorized: true,
+            disconnected: false,
+            is_file_transfer: false,
+            is_view_camera: false,
+            is_terminal: false,
+            port_forward: String::new(),
+            name: "owner".to_owned(),
+            avatar: String::new(),
+            peer_id: "peer".to_owned(),
+            keyboard: true,
+            clipboard: true,
+            audio: true,
+            file: true,
+            privacy_mode: true,
+            from_switch: false,
+            in_voice_call: false,
+            incoming_voice_call: false,
+            tx,
+        };
+        let client_json = serde_json::to_value(client).unwrap();
+        let client_payload = client_json.as_object().unwrap();
+        assert_eq!(
+            client_payload
+                .get("keyboard")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        for key in ["restart", "recording", "block_input"] {
+            assert!(
+                !client_payload.contains_key(key),
+                "CM client unexpectedly serialized {key}"
+            );
+        }
     }
 
     #[test]

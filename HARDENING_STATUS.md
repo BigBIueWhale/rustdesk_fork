@@ -5239,7 +5239,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   bundle and emitted `.deb` are the dependency/plugin-output drift boundaries. It copies the exact four
   maintainer-script bodies without preserving checkout modes. The exact control inventory
   includes `conffiles` for `startwm.sh`/`xorg.conf` and `md5sums` covering every non-conffile data file. The finalizer
-  rejects unexpected entries, nested control directories, links, special files, and hardlinked regular files, then
+  rejects unexpected entries, nested control directories, every symlink except the exact package-owned relative data
+  symlink `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`, special files, and hardlinked regular files, then
   makes every directory `0755`, the runner and `startwm.sh` `0755`, all other data and ordinary control files `0644`,
   and all maintainer scripts `0755`. One `subprocess.run(..., check=True)` argv boundary invokes
   `dpkg-deb --root-owner-group -b`; AST validation admits only that archiver and the exact PE canonicalizer process,
@@ -5247,16 +5248,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   members, callable aliases, direct stores, dynamic namespace/evaluation APIs, function/module/frame namespace reach,
   and explicit early termination, and requires every package authority's loaded name/code origin to match its sole
   synchronous top-level definition. It resolves concatenated, joined, and interpolated constant strings, requires exact
-  shell-wrapper and FFI-helper bodies, the four-function shell-call ownership inventory, and the exact 21-operation
-  Flutter pre-finalization program,
+  shell-wrapper and FFI-helper bodies, the four-function shell-call ownership inventory, and the exact 26-statement
+  Flutter pre-control-staging program, including the sole command-symlink constructor,
   requires contiguous reachable direct staging/finalization/archive operations, and permits only the exact
   cleanup/versioned-rename/chdir publication tail afterward. The release
   wrapper validates the emitted archive and locale-independent exact extracted-script metadata before hashing it. The
   independent verifier reads raw tar headers and rejects duplicate, absolute, traversing, extended, parser-normalized,
   root-alias, wrong-prefix, wrong-trailing-slash, alternate regular/contiguous/sparse typeflags, nonempty regular-file
   link names, non-root owner names, nonzero name/linkname/uname/gname/prefix padding, or otherwise non-canonical
-  members; requires exact link-free data/control/conffile/md5 inventories; and checks every member's numeric ownership,
-  raw type, and mode.
+  members; requires exact data/control/conffile/md5 inventories, including exactly that one data symlink while
+  excluding it from `md5sums`; and checks every member's numeric ownership, raw type, and mode.
   Source tests construct the authority fixture from tracked inputs, prove success without generated plugin metadata,
   and prove stale or malformed ignored metadata has no effect. One-sided producer-library removal and rename,
   finalizer-level missing/extra plugin libraries, and archive-level missing/extra/substituted/non-ELF plugin libraries
@@ -6378,10 +6379,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     authority, systemd is the primary confined deployment, and package-owned init adapters are persistence backends
     for that same artifact and supervisor rather than alternate package, update, or sandbox models.
 
-    `build.py` stages the init conffile through the same exact, link-free, root-normalized package finalizer. The
-    artifact verifier binds its path, mode, conffile exclusion from `md5sums`, build-constructor copy, Git executable
-    mode, and negative mutation suite; the maintainer-script verifier separately seals backend selection, legal
-    helper syntax, lifecycle ordering, the singular exact SysV stop, and the absence of rediscovery fallbacks. The
+    At the recorded R-S11c-27l run, `build.py` staged the init conffile through the then-current exact, link-free,
+    root-normalized package finalizer. That run predates R-S11bz's sole package-owned relative
+    `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk` data symlink; the current finalizer admits exactly that link, and
+    the old run is not current artifact proof. The artifact verifier binds the init path, mode, conffile exclusion from
+    `md5sums`, build-constructor copy, Git executable mode, and negative mutation suite; the maintainer-script verifier
+    separately seals backend selection, legal helper syntax, lifecycle ordering, the singular exact SysV stop, and the
+    absence of rediscovery fallbacks. The
     release runtime smoke has a mounted `debian-sysv-installed-lifecycle` stage and preserves an explicit
     R-S11c-27l status.
 

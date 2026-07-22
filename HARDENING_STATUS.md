@@ -7536,6 +7536,71 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (<https://learn.microsoft.com/en-us/windows/win32/msi/using-windows-installer-with-uac>). No native MSI was built or
   executed by this source slice. Final WiX compilation, Windows install/repair/upgrade/uninstall behavior, service
   behavior, installed shortcut behavior, and exact signed-artifact proof remain the cold R-B2/R-B10 obligations.
+- **R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API — SOURCE IMPLEMENTED AND
+  CONFINED SOURCE/MUTATION/CROSS-TARGET VERIFIED 2026-07-22; NATIVE INSTALLER AND EXACT ARTIFACT EVIDENCE REMAIN
+  R-B2/R-B10.** Platform: the UAC-approved Windows setup bootstrapper in `libs/portable`. Endpoint/action: after
+  extracting the sole embedded `rustdesk-installer.msi` into the protected Program Files staging directory,
+  invoke Windows Installer and retain the exact completion status. Boundary: the user-selected setup process's
+  environment, working directory, inheritable process state, and child lifetime ↔ the administrator-authorized
+  per-machine MSI transaction.
+
+  The inherited protected leg derived a fully qualified, regular, non-reparse System32 `msiexec.exe`, constructed
+  the exact `/i <staged-msi> /norestart` argv (plus `/qn` for silent mode), spawned it through Rust `Command`, waited,
+  and accepted only 0 or 3010. The fixed executable, fixed one-file manifest, protected staging root, no-reparse
+  checks, and closed argv substantially constrained the path. However, Microsoft documents that a child process
+  inherits the parent's environment and current directory by default and that the standard DLL search path can
+  include the current directory and `PATH`. This setup is deliberately launched from a user-selected file location
+  and context before UAC. Source inspection did not prove a missing Windows Installer dependency, attacker-selected
+  DLL load, promptless LPE, exploitation, host compromise, or use of this path; the defect was an unnecessary
+  conceptual privileged child-process authority boundary.
+
+  Source closure deletes the System32 discovery helper and the entire `msiexec` spawn/wait abstraction. The already
+  elevated setup now enables the pinned Windows bindings for `ApplicationInstallationAndServicing` and calls
+  `MsiInstallProductW` directly with the already validated local MSI path and the sole property
+  `REBOOT=ReallySuppress`. Interactive mode explicitly selects `INSTALLUILEVEL_DEFAULT`; silent mode explicitly
+  selects `INSTALLUILEVEL_NONE`. `MsiSetInternalUI` returns the exact prior process UI level, which a non-cloneable
+  lexical owner restores on every normal/error return. The typed unsigned result accepts only `ERROR_SUCCESS` (0)
+  and `ERROR_SUCCESS_REBOOT_REQUIRED` (3010); `ERROR_SUCCESS_REBOOT_INITIATED` (1641) remains rejected because the
+  property forbids the installer from initiating a reboot. This removes only the bootstrapper-created child. It
+  does not claim that the Windows Installer service and this package's declarative/custom-action transaction create
+  no processes of their own.
+
+  R-S11bu and Appendix C #214 make that authority model normative. The shared R-S11e-20/R-S11e-87 gate binds the
+  exact Cargo API feature, Installer call, reboot property, both UI levels, prior-level owner/restoration, child-
+  process absence, and typed status regression. The independent workspace semantic validator binds the same source,
+  requirement, disposition, ledger, and current requirements-hash scope; its deliberate mutations independently
+  restore a child, weaken each UI/property/status decision, or remove each documentation/gate edge. Most confined
+  checks used the already-present immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`; the format-only check used the
+  already-present Debian image `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818`
+  with the read-only Rust 1.75 host toolchain mounted into the container. Every check ran as UID/GID 1000 with no
+  network, a read-only root and source, all capabilities dropped, `no-new-privileges`, bounded PID/memory use, and
+  private tmpfs-only writable state. Rust 1.75 formatting passed; all three Linux
+  `portable` unit tests passed offline, including the exact unsigned 0/3010 acceptance and 1641 rejection policy;
+  and Rust 1.75 `cargo check --locked --offline --target x86_64-pc-windows-msvc` type-checked the Windows-only API
+  path through `portable` and pinned `windows` 0.61.1. That cross-target check used a private read-only current-source
+  snapshot with empty compile-only `data.bin` and `app_metadata.toml` fixtures because those two generated inputs are
+  absent from the source tree; it is not a package or runtime test. The normal semantic validator, its complete
+  source-mutation matrix, shell syntax check, Python compile check, native-codec hash watch and its negative self-test,
+  and `git diff --check` also passed. An initial minimal Debian test container lacked `cc`, and an initial private
+  build tmpfs was mounted `noexec`; both attempts failed closed before validation, no root/network/host execution was
+  introduced, and the environment was corrected instead of weakening a gate. No image was pulled or built; no port,
+  Docker socket, host namespace, host service/config mount, added capability, or root process was used. No host
+  RustDesk process, service, listener, configuration, device, firewall, or network state was inspected or changed.
+  Native Windows interactive/silent
+  install, repair, upgrade, uninstall, reboot-required behavior, exact MSI service/custom-action behavior, and
+  signed-artifact proof remain the clean cold R-B2/R-B10 obligations; this source slice does not claim them.
+
+  Primary platform contracts: Microsoft documents default environment/current-directory inheritance for child
+  processes (<https://learn.microsoft.com/en-us/windows/win32/procthread/inheritance>) and DLL preloading risk from
+  current-directory/search-path resolution
+  (<https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-security>).
+  `MsiInstallProductW` is the application-facing typed install API and uses the current Installer UI settings
+  (<https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msiinstallproductw>);
+  `MsiSetInternalUI` defines the default and silent levels
+  (<https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msisetinternalui>); and
+  `REBOOT=ReallySuppress` suppresses every Installer-initiated restart/prompt
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/reboot>).
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8253,9 +8318,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c232fe6d7174b54f1b9caf095b4f71fd4d75694784894983c38cf78d519a9cde  requirements.html
+bfafae72b9388349b7ab051f4003217c524fea6ca89f10bd1c42b97ab3c2294f  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bt, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bu, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

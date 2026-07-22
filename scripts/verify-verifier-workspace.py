@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213",
+        "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11101,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213",
+        "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11121,6 +11121,191 @@ def validate_windows_installer_application_launch_excision_contract(sources):
         ("Windows installation application-authority requirement", "requirement mutation"),
         ("Windows MSI application-launch Appendix C row", "Appendix mutation"),
         ("Windows MSI application-launch hardening ledger", "hardening-ledger mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_installer_api_contract(sources):
+    portable = sources["portable_source"]
+    portable_cargo = sources["portable_cargo"]
+    installer = extract_between(
+        portable,
+        "    fn run_staged_msi(msi: &Path, silent: bool) -> Result<(), String> {",
+        "\n    pub(super) fn run_protected_installer(",
+        "protected Windows typed Installer invocation",
+    )
+    ui_guard = extract_between(
+        portable,
+        "    struct InstallerUiLevelGuard(INSTALLUILEVEL);",
+        "\n    fn run_staged_msi(",
+        "protected Windows Installer UI-level owner",
+    )
+
+    require_text(
+        portable_cargo,
+        '"Win32_System_ApplicationInstallationAndServicing",',
+        "typed Windows Installer API Cargo feature",
+    )
+    require_exact_count(
+        portable,
+        "MsiInstallProductW(",
+        1,
+        "sole typed Windows Installer API call",
+    )
+    require_exact_count(
+        portable,
+        "MsiSetInternalUI(",
+        2,
+        "scoped Windows Installer UI-level calls",
+    )
+    for text, label in (
+        (
+            "let _ = MsiSetInternalUI(self.0, None);",
+            "Windows Installer prior UI-level restoration",
+        ),
+        (
+            "let properties = wide_text(\"REBOOT=ReallySuppress\");",
+            "Windows Installer exact reboot-suppression property",
+        ),
+        ("INSTALLUILEVEL_NONE", "Windows Installer silent UI level"),
+        ("INSTALLUILEVEL_DEFAULT", "Windows Installer interactive UI level"),
+        (
+            "let previous_ui = unsafe { MsiSetInternalUI(requested_ui, None) };",
+            "Windows Installer prior UI-level capture",
+        ),
+        (
+            "let _ui_guard = InstallerUiLevelGuard(previous_ui);",
+            "Windows Installer scoped UI-level owner",
+        ),
+        (
+            "MsiInstallProductW(",
+            "Windows Installer typed package invocation",
+        ),
+        (
+            "if is_accepted_msi_exit_code(code) {",
+            "Windows Installer typed status decision",
+        ),
+    ):
+        require_text(ui_guard if "restoration" in label else installer, text, label)
+    require_order(
+        installer,
+        (
+            "let package_path = wide(msi.as_os_str());",
+            "let properties = wide_text(\"REBOOT=ReallySuppress\");",
+            "let requested_ui = if silent {",
+            "INSTALLUILEVEL_NONE",
+            "INSTALLUILEVEL_DEFAULT",
+            "let previous_ui = unsafe { MsiSetInternalUI(requested_ui, None) };",
+            "let _ui_guard = InstallerUiLevelGuard(previous_ui);",
+            "MsiInstallProductW(",
+            "PCWSTR(package_path.as_ptr())",
+            "PCWSTR(properties.as_ptr())",
+            "if is_accepted_msi_exit_code(code) {",
+        ),
+        "protected Windows Installer API operation order",
+    )
+    for forbidden in (
+        "msiexec.exe",
+        "trusted_system_tool_path(\"msiexec.exe\")",
+        "Command::new",
+        ".spawn(",
+        ".wait(",
+    ):
+        require_absent(
+            installer if forbidden not in ("msiexec.exe", 'trusted_system_tool_path("msiexec.exe")') else portable,
+            forbidden,
+            "protected Windows Installer child-process absence",
+        )
+    for text, label in (
+        (
+            "fn is_accepted_msi_exit_code(code: u32) -> bool",
+            "Windows Installer unsigned status type",
+        ),
+        (
+            "matches!(code, 0 | 3010)",
+            "Windows Installer exact accepted statuses",
+        ),
+        (
+            "for code in [1, 1603, 1641, 3011, u32::MAX]",
+            "Windows Installer rejected-status regression",
+        ),
+    ):
+        require_text(portable, text, label)
+
+    for text, label in (
+        (
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87)",
+            "Windows Installer API shared source gate",
+        ),
+        (
+            "elevated-installer-child-process-leftover",
+            "Windows Installer child-process shared rejection",
+        ),
+        (
+            "typed-windows-installer-api-feature-missing",
+            "Windows Installer typed-feature shared assertion",
+        ),
+        (
+            "installer-ui-level-not-restored",
+            "Windows Installer UI restoration shared assertion",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bu",
+        "protected Windows typed Installer API requirement",
+    )
+    for text, label in (
+        ("MsiInstallProductW", "Windows typed Installer API requirement"),
+        ("REBOOT=ReallySuppress", "Windows Installer reboot-property requirement"),
+        ("MsiSetInternalUI", "Windows Installer UI-state requirement"),
+        ("INSTALLUILEVEL_DEFAULT", "Windows Installer interactive-level requirement"),
+        ("INSTALLUILEVEL_NONE", "Windows Installer silent-level requirement"),
+        ("RAII owner", "Windows Installer UI-owner requirement"),
+        ("MUST NOT</span> spawn", "Windows Installer child-process prohibition"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>214</td>",
+        "Windows Installer API Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API",
+        "Windows Installer API hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows Installer API deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("typed Windows Installer API Cargo feature", "Cargo-feature mutation"),
+        ("sole typed Windows Installer API call", "typed-call mutation"),
+        ("Windows Installer exact reboot-suppression property", "property mutation"),
+        ("Windows Installer silent UI level", "silent-level mutation"),
+        ("Windows Installer interactive UI level", "interactive-level mutation"),
+        ("Windows Installer prior UI-level capture", "UI-capture mutation"),
+        ("Windows Installer scoped UI-level owner", "UI-owner mutation"),
+        ("Windows Installer prior UI-level restoration", "UI-restoration mutation"),
+        ("protected Windows Installer child-process absence", "child-process mutation"),
+        ("Windows Installer unsigned status type", "status-type mutation"),
+        ("Windows Installer rejected-status regression", "status-regression mutation"),
+        ("Windows Installer API shared source gate", "shared-gate mutation"),
+        ("protected Windows typed Installer API requirement", "requirement mutation"),
+        ("Windows Installer API Appendix C row", "Appendix mutation"),
+        ("Windows Installer API hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -14798,6 +14983,7 @@ def validate_sources(sources):
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
     validate_windows_installer_application_launch_excision_contract(sources)
+    validate_windows_installer_api_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
@@ -26832,7 +27018,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213",
+            "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -26889,6 +27075,96 @@ def run_source_mutations(sources):
             "R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application",
             "R-S11bt/R-S11e-86 — Windows Installer launches the remote-control application",
             "Windows MSI application-launch hardening ledger",
+        ),
+        (
+            "portable_cargo",
+            '"Win32_System_ApplicationInstallationAndServicing",',
+            '"Win32_System_ApplicationInstallationAndServicingDisabled",',
+            "typed Windows Installer API Cargo feature",
+        ),
+        (
+            "portable_source",
+            "MsiInstallProductW(",
+            "MsiInstallProductWDisabled(",
+            "sole typed Windows Installer API call",
+        ),
+        (
+            "portable_source",
+            'let properties = wide_text("REBOOT=ReallySuppress");',
+            'let properties = wide_text("REBOOT=Force");',
+            "Windows Installer exact reboot-suppression property",
+        ),
+        (
+            "portable_source",
+            "let requested_ui = if silent {\n            INSTALLUILEVEL_NONE",
+            "let requested_ui = if silent {\n            INSTALLUILEVEL_DEFAULT",
+            "Windows Installer silent UI level",
+        ),
+        (
+            "portable_source",
+            "        } else {\n            INSTALLUILEVEL_DEFAULT\n        };",
+            "        } else {\n            INSTALLUILEVEL_NONE\n        };",
+            "Windows Installer interactive UI level",
+        ),
+        (
+            "portable_source",
+            "let previous_ui = unsafe { MsiSetInternalUI(requested_ui, None) };",
+            "let previous_ui = unsafe { MsiSetInternalUI(INSTALLUILEVEL_DEFAULT, None) };",
+            "Windows Installer prior UI-level capture",
+        ),
+        (
+            "portable_source",
+            "let _ui_guard = InstallerUiLevelGuard(previous_ui);",
+            "let _ignored_ui_level = previous_ui;",
+            "Windows Installer scoped UI-level owner",
+        ),
+        (
+            "portable_source",
+            "let _ = MsiSetInternalUI(self.0, None);",
+            "let _ = MsiSetInternalUI(INSTALLUILEVEL_DEFAULT, None);",
+            "Windows Installer prior UI-level restoration",
+        ),
+        (
+            "portable_source",
+            "    fn run_staged_msi(msi: &Path, silent: bool) -> Result<(), String> {",
+            "    fn run_staged_msi(msi: &Path, silent: bool) -> Result<(), String> {\n        let _ambient_child = std::process::Command::new(\"msiexec.exe\").spawn();",
+            "protected Windows Installer child-process absence",
+        ),
+        (
+            "portable_source",
+            "fn is_accepted_msi_exit_code(code: u32) -> bool",
+            "fn is_accepted_msi_exit_code(code: i32) -> bool",
+            "Windows Installer unsigned status type",
+        ),
+        (
+            "portable_source",
+            "for code in [1, 1603, 1641, 3011, u32::MAX]",
+            "for code in [1, 1603, 3010, 3011, u32::MAX]",
+            "Windows Installer rejected-status regression",
+        ),
+        (
+            "verify",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20)",
+            "Windows Installer API shared source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bu</span>',
+            '<span class="id">R-S11bu-disabled</span>',
+            "protected Windows typed Installer API requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>214</td>",
+            "<tr><td>214-disabled</td>",
+            "Windows Installer API Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API",
+            "R-S11bu/R-S11e-87 — protected Windows setup uses an ambient child process",
+            "Windows Installer API hardening ledger",
         ),
         (
             "mobile_build_authority_verifier",
@@ -28579,6 +28855,7 @@ def main():
             ),
             "whiteboard_client": (repo / "src/whiteboard/client.rs").read_text(encoding="utf-8"),
             "portable_source": (repo / "libs/portable/src/main.rs").read_text(encoding="utf-8"),
+            "portable_cargo": (repo / "libs/portable/Cargo.toml").read_text(encoding="utf-8"),
             "privacy_broker_source": (
                 repo / "src/privacy_mode/win_topmost_window.rs"
             ).read_text(encoding="utf-8"),

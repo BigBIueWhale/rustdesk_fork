@@ -53,7 +53,7 @@ fn parse_installer_invocation(args: &[String]) -> Result<(bool, bool), String> {
     }
 }
 
-fn is_accepted_msi_exit_code(code: i32) -> bool {
+fn is_accepted_msi_exit_code(code: u32) -> bool {
     matches!(code, 0 | 3010)
 }
 
@@ -310,9 +310,8 @@ mod win {
     use std::{
         ffi::{OsStr, OsString},
         fs,
-        os::windows::{ffi::OsStrExt, ffi::OsStringExt, process::CommandExt},
+        os::windows::{ffi::OsStrExt, ffi::OsStringExt},
         path::{Path, PathBuf},
-        process::Command,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -322,8 +321,11 @@ mod win {
             Foundation::{CloseHandle, HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
             Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY},
             System::{
+                ApplicationInstallationAndServicing::{
+                    MsiInstallProductW, MsiSetInternalUI, INSTALLUILEVEL, INSTALLUILEVEL_DEFAULT,
+                    INSTALLUILEVEL_NONE,
+                },
                 Com::CoTaskMemFree,
-                SystemInformation::GetSystemDirectoryW,
                 Threading::{
                     GetCurrentProcess, GetExitCodeProcess, OpenProcessToken, WaitForSingleObject,
                     INFINITE,
@@ -346,44 +348,6 @@ mod win {
 
     const APP_INSTALL_DIR_NAME: &str = "RustDesk";
     const INSTALL_STAGING_PREFIX: &str = "RustDesk-staging";
-
-    fn trusted_system_dir() -> Result<PathBuf, String> {
-        let mut buffer = vec![0u16; 32768];
-        let len = unsafe { GetSystemDirectoryW(Some(&mut buffer)) } as usize;
-        if len == 0 {
-            return Err(format!(
-                "GetSystemDirectoryW failed: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-        if len >= buffer.len() {
-            return Err("GetSystemDirectoryW returned an oversized path".to_owned());
-        }
-        Ok(PathBuf::from(OsString::from_wide(&buffer[..len])))
-    }
-
-    fn trusted_system_tool_path(tool: &str) -> Result<PathBuf, String> {
-        if tool.contains('\\') || tool.contains('/') || tool.contains('"') || tool.trim() != tool {
-            return Err(format!("invalid trusted system tool name: {tool}"));
-        }
-        let path = trusted_system_dir()?.join(tool);
-        let metadata = fs::symlink_metadata(&path).map_err(|err| {
-            format!(
-                "failed to inspect trusted system tool {}: {err}",
-                path.display()
-            )
-        })?;
-        if !metadata.is_file()
-            || metadata.file_type().is_symlink()
-            || crate::has_reparse_point(&metadata)
-        {
-            return Err(format!(
-                "trusted system tool is not a regular non-reparse file: {}",
-                path.display()
-            ));
-        }
-        Ok(path)
-    }
 
     struct HandleGuard(HANDLE);
 
@@ -781,30 +745,33 @@ mod win {
         Ok(())
     }
 
-    fn run_staged_msi(msi: &Path, silent: bool) -> Result<(), String> {
-        let msiexec = trusted_system_tool_path("msiexec.exe")?;
-        let mut cmd = Command::new(&msiexec);
-        cmd.arg("/i").arg(msi).arg("/norestart");
-        if silent {
-            cmd.arg("/qn");
+    struct InstallerUiLevelGuard(INSTALLUILEVEL);
+
+    impl Drop for InstallerUiLevelGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = MsiSetInternalUI(self.0, None);
+            }
         }
-        cmd.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
-        let mut child = cmd.spawn().map_err(|err| {
-            format!(
-                "failed to start trusted Windows Installer {}: {err}",
-                msiexec.display()
-            )
-        })?;
-        let status = child
-            .wait()
-            .map_err(|err| format!("failed to wait for Windows Installer: {err}"))?;
-        let code = status
-            .code()
-            .ok_or_else(|| "Windows Installer exited without a status code".to_owned())?;
+    }
+
+    fn run_staged_msi(msi: &Path, silent: bool) -> Result<(), String> {
+        let package_path = wide(msi.as_os_str());
+        let properties = wide_text("REBOOT=ReallySuppress");
+        let requested_ui = if silent {
+            INSTALLUILEVEL_NONE
+        } else {
+            INSTALLUILEVEL_DEFAULT
+        };
+        let previous_ui = unsafe { MsiSetInternalUI(requested_ui, None) };
+        let _ui_guard = InstallerUiLevelGuard(previous_ui);
+        let code = unsafe {
+            MsiInstallProductW(PCWSTR(package_path.as_ptr()), PCWSTR(properties.as_ptr()))
+        };
         if is_accepted_msi_exit_code(code) {
             Ok(())
         } else {
-            Err(format!("Windows Installer exited with code {code}"))
+            Err(format!("Windows Installer failed with code {code}"))
         }
     }
 
@@ -856,7 +823,7 @@ mod tests {
         for code in [0, 3010] {
             assert!(is_accepted_msi_exit_code(code), "rejected {code}");
         }
-        for code in [-1, 1, 1603, 1641, 3011] {
+        for code in [1, 1603, 1641, 3011, u32::MAX] {
             assert!(!is_accepted_msi_exit_code(code), "accepted {code}");
         }
     }

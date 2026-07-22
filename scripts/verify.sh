@@ -1869,7 +1869,7 @@ if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance inva
   echo "  ok  retained Windows RDP, terminal shell, portable broker, Amyuni runtime, and IDD-excision invariants are source-gated"; fi
 
 
-echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20) =="
+echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87) =="
 r_s11e20=
 windows_msi=res/msi/Package/Components/RustDesk.wxs
 windows_ca=res/msi/Package/Fragments/CustomActions.wxs
@@ -1983,12 +1983,23 @@ grep -Fq 'if protected {' "$portable" || r_s11e20="$r_s11e20 protected-marker-no
 grep -Fq 'protected installer invocation requires an elevated process' "$portable" || r_s11e20="$r_s11e20 protected-marker-not-elevation-gated"
 grep -Fq 'const INSTALLER_MSI_NAME: &str = "rustdesk-installer.msi";' "$portable" || r_s11e20="$r_s11e20 fixed-msi-name-missing"
 grep -Fq 'if files.len() != 1 || files.first() != Some(&msi)' "$portable" || r_s11e20="$r_s11e20 setup-manifest-not-exactly-one-msi"
-grep -Fq 'let msiexec = trusted_system_tool_path("msiexec.exe")?;' "$portable" || r_s11e20="$r_s11e20 msiexec-not-system32-derived"
-grep -Fq 'cmd.arg("/i").arg(msi).arg("/norestart");' "$portable" || r_s11e20="$r_s11e20 msi-not-explicit-norestart-argv"
+grep -Fq '"Win32_System_ApplicationInstallationAndServicing",' libs/portable/Cargo.toml || r_s11e20="$r_s11e20 typed-windows-installer-api-feature-missing"
+grep -Fq 'MsiInstallProductW(' "$portable" || r_s11e20="$r_s11e20 typed-windows-installer-call-missing"
+grep -Fq 'let properties = wide_text("REBOOT=ReallySuppress");' "$portable" || r_s11e20="$r_s11e20 reboot-suppression-property-missing"
+grep -Fq 'INSTALLUILEVEL_NONE' "$portable" || r_s11e20="$r_s11e20 silent-installer-ui-level-missing"
+grep -Fq 'INSTALLUILEVEL_DEFAULT' "$portable" || r_s11e20="$r_s11e20 interactive-installer-ui-level-missing"
+grep -Fq 'let previous_ui = unsafe { MsiSetInternalUI(requested_ui, None) };' "$portable" || r_s11e20="$r_s11e20 installer-ui-level-not-scoped"
+grep -Fq 'let _ui_guard = InstallerUiLevelGuard(previous_ui);' "$portable" || r_s11e20="$r_s11e20 installer-ui-level-guard-missing"
+grep -Fq 'let _ = MsiSetInternalUI(self.0, None);' "$portable" || r_s11e20="$r_s11e20 installer-ui-level-not-restored"
+portable_msi_install=$(awk '/fn run_staged_msi\(/,/^    }/' "$portable")
+if printf '%s\n' "$portable_msi_install" | grep -Eq 'Command::new|\.spawn\(|\.wait\(|msiexec'; then
+  r_s11e20="$r_s11e20 elevated-installer-child-process-leftover"
+fi
+if grep -Fq 'trusted_system_tool_path("msiexec.exe")' "$portable"; then r_s11e20="$r_s11e20 msiexec-bootstrap-leftover"; fi
 grep -Fq 'crate::has_reparse_point(&metadata)' "$portable" || r_s11e20="$r_s11e20 setup-path-reparse-rejection-missing"
 grep -Fq 'ensure_non_reparse_dir(&root)?;' "$portable" || r_s11e20="$r_s11e20 program-files-root-not-proven"
 grep -Fq 'matches!(code, 0 | 3010)' "$portable" || r_s11e20="$r_s11e20 msi-status-policy-not-exact"
-grep -Fq 'for code in [-1, 1, 1603, 1641, 3011]' "$portable" || r_s11e20="$r_s11e20 reboot-initiated-rejection-test-missing"
+grep -Fq 'for code in [1, 1603, 1641, 3011, u32::MAX]' "$portable" || r_s11e20="$r_s11e20 reboot-initiated-rejection-test-missing"
 protected_installer=$(awk '/pub\(super\) fn run_protected_installer/,/^    }/' "$portable")
 printf '%s\n' "$protected_installer" | grep -Fq 'installer_msi_from_manifest' || r_s11e20="$r_s11e20 protected-leg-not-manifest-bound"
 printf '%s\n' "$protected_installer" | grep -Fq 'run_staged_msi' || r_s11e20="$r_s11e20 protected-leg-not-msi-only"
@@ -2057,8 +2068,11 @@ grep -Fq '<tr><td>125</td>' requirements.html || r_s11e20="$r_s11e20 appendix-di
 grep -Fq '<span class="id">R-S11bt</span>' requirements.html || r_s11e20="$r_s11e20 application-launch-excision-requirement-missing"
 grep -Fq 'R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application' HARDENING_STATUS.md || r_s11e20="$r_s11e20 application-launch-excision-ledger-missing"
 grep -Fq '<tr><td>213</td>' requirements.html || r_s11e20="$r_s11e20 application-launch-excision-disposition-missing"
+grep -Fq '<span class="id">R-S11bu</span>' requirements.html || r_s11e20="$r_s11e20 installer-api-requirement-missing"
+grep -Fq 'R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API' HARDENING_STATUS.md || r_s11e20="$r_s11e20 installer-api-ledger-missing"
+grep -Fq '<tr><td>214</td>' requirements.html || r_s11e20="$r_s11e20 installer-api-disposition-missing"
 if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
-  echo "  ok  R-S11e-20/R-S11e-86 setup elevates only an exact one-file MSI transaction; MSI owns service/firewall/machine state; post-install application/tray launches, application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
+  echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child or post-install application/tray launch exists; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
 fi
 
 echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="

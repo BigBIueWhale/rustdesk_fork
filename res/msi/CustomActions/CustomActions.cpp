@@ -5,8 +5,6 @@
 #include <shlwapi.h>
 #include <shlobj.h>
 
-#include "./Common.h"
-
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "Shell32.lib")
 
@@ -341,38 +339,6 @@ UINT __stdcall RemoveRuntimeGeneratedFiles(
 LExit:
     ReleaseStr(pwzData);
 
-    er = SUCCEEDED(hr) ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
-    return WcaFinalize(er);
-}
-
-UINT __stdcall RemoveAmyuniIdd(
-    __in MSIHANDLE hInstall)
-{
-    HRESULT hr = S_OK;
-    DWORD er = ERROR_SUCCESS;
-    BOOL rebootRequired = FALSE;
-    DriverUninstallStatus uninstallStatus = DriverUninstallNotPresent;
-
-    hr = WcaInitialize(hInstall, "RemoveAmyuniIdd");
-    ExitOnFailure(hr, "Failed to initialize");
-
-    hr = UninstallDriver(L"usbmmidd", uninstallStatus, rebootRequired);
-    ExitOnFailure(hr, "SetupAPI Amyuni IDD removal failed");
-    if (uninstallStatus == DriverUninstallNotPresent) {
-        WcaLog(LOGMSG_STANDARD, "Amyuni IDD device is not present");
-    } else {
-        WcaLog(LOGMSG_STANDARD, "Amyuni IDD device removed through SetupAPI");
-    }
-
-LExit:
-    if (rebootRequired && SUCCEEDED(hr)) {
-        WcaLog(LOGMSG_STANDARD, "Amyuni IDD removal requires reboot");
-        HRESULT rebootHr = WcaDeferredActionRequiresReboot();
-        if (FAILED(rebootHr)) {
-            WcaLog(LOGMSG_STANDARD, "Failed to signal Amyuni IDD reboot requirement: 0x%08lx", rebootHr);
-            hr = rebootHr;
-        }
-    }
     er = SUCCEEDED(hr) ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
     return WcaFinalize(er);
 }

@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
+        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11101,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
+        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11235,7 +11235,7 @@ def validate_windows_installer_api_contract(sources):
 
     for text, label in (
         (
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
             "Windows Installer API shared source gate",
         ),
         (
@@ -11280,7 +11280,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
+        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11316,7 +11316,6 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     custom_actions_wxs = sources["windows_custom_actions_wxs"]
     service_wxs = sources["windows_service_wxs"]
     custom_actions_cpp = sources["windows_custom_actions_cpp"]
-    custom_actions_header = sources["windows_custom_actions_header"]
     custom_actions_def = sources["windows_custom_actions_def"]
     custom_actions_project = sources["windows_custom_actions_project"]
     package_surface = "\n".join(
@@ -11325,7 +11324,6 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
             custom_actions_wxs,
             service_wxs,
             custom_actions_cpp,
-            custom_actions_header,
             custom_actions_def,
             custom_actions_project,
             build_rs,
@@ -11360,20 +11358,10 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
             "unowned Windows certificate cleanup/package state absence",
         )
 
-    require_exact_count(
-        custom_actions_wxs,
-        "<CustomAction Id=",
-        2,
-        "exact retained Windows custom-action declarations",
-    )
     for text, label in (
         (
             '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"',
             "retained exact runtime-broker cleanup declaration",
-        ),
-        (
-            '<CustomAction Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd" Impersonate="no" Execute="commit" Return="check"',
-            "retained exact Amyuni cleanup declaration",
         ),
     ):
         require_text(custom_actions_wxs, text, label)
@@ -11382,20 +11370,12 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
             '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
             "retained runtime-broker cleanup schedule",
         ),
-        (
-            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
-            "retained Amyuni cleanup schedule",
-        ),
     ):
         require_text(service_wxs, text, label)
     for text, label in (
         (
             "UINT __stdcall RemoveRuntimeGeneratedFiles(",
             "retained runtime-broker cleanup implementation",
-        ),
-        (
-            "UINT __stdcall RemoveAmyuniIdd(",
-            "retained Amyuni cleanup implementation",
         ),
     ):
         require_text(custom_actions_cpp, text, label)
@@ -11404,7 +11384,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
 
     for text, label in (
         (
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
             "Windows certificate cleanup shared source gate",
         ),
         (
@@ -11412,7 +11392,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
             "Windows certificate cleanup source shared rejection",
         ),
         (
-            "unowned certificate-store cleanup exists",
+            "no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, or unowned Amyuni device removal exists",
             "Windows certificate cleanup shared success disposition",
         ),
     ):
@@ -11459,7 +11439,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
+        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11473,19 +11453,244 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
         ("Windows application build without certificate cleanup", "application-build mutation"),
         ("Windows certificate cleanup source absence", "deleted-source mutation"),
         ("unowned Windows certificate cleanup/package state absence", "retired-surface mutation"),
-        ("exact retained Windows custom-action declarations", "custom-action inventory mutation"),
         ("retained exact runtime-broker cleanup declaration", "runtime-cleanup preservation mutation"),
-        ("retained exact Amyuni cleanup declaration", "Amyuni-cleanup preservation mutation"),
         ("retained runtime-broker cleanup schedule", "runtime-cleanup schedule mutation"),
-        ("retained Amyuni cleanup schedule", "Amyuni-cleanup schedule mutation"),
         ("retained runtime-broker cleanup implementation", "runtime-cleanup implementation mutation"),
-        ("retained Amyuni cleanup implementation", "Amyuni-cleanup implementation mutation"),
         ("retained runtime-broker cleanup implementation export", "runtime-cleanup export mutation"),
-        ("retained Amyuni cleanup implementation export", "Amyuni-cleanup export mutation"),
         ("Windows certificate cleanup source shared rejection", "shared-gate mutation"),
         ("unowned Windows certificate cleanup excision requirement", "requirement mutation"),
         ("unowned Windows certificate cleanup Appendix C row", "Appendix mutation"),
         ("unowned Windows certificate cleanup hardening ledger", "hardening-ledger mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_amyuni_cleanup_excision_contract(sources):
+    custom_actions_wxs = sources["windows_custom_actions_wxs"]
+    service_wxs = sources["windows_service_wxs"]
+    custom_actions_cpp = sources["windows_custom_actions_cpp"]
+    custom_actions_def = sources["windows_custom_actions_def"]
+    custom_actions_project = sources["windows_custom_actions_project"]
+    virtual_display = sources["virtual_display_manager_source"]
+    windows_device = sources["windows_device_source"]
+    active_surface = "\n".join(
+        (
+            custom_actions_wxs,
+            service_wxs,
+            custom_actions_cpp,
+            custom_actions_def,
+            custom_actions_project,
+            sources["windows_package_wxs"],
+            virtual_display,
+            windows_device,
+        )
+    )
+
+    require_text(
+        sources["windows_custom_actions_header_state"],
+        "windows-custom-actions-header-absent",
+        "Windows Amyuni removal header absence",
+    )
+    require_text(
+        sources["windows_device_utils_source_state"],
+        "windows-device-utils-source-absent",
+        "Windows Amyuni removal source absence",
+    )
+    for forbidden in (
+        "RemoveAmyuniIdd",
+        "DriverUninstallStatus",
+        "UninstallDriver",
+        "DeviceUtils.cpp",
+        "Common.h",
+        "DI_REMOVEDEVICE_GLOBAL",
+        "DIF_REMOVE",
+        "WcaDeferredActionRequiresReboot",
+        "remove usbmmidd",
+        "DeviceInstaller64RebootPolicy",
+        "pub fn uninstall_driver",
+        "pub unsafe fn uninstall_driver",
+    ):
+        require_absent(
+            active_surface,
+            forbidden,
+            "unowned Windows Amyuni device-removal surface absence",
+        )
+    require_absent(
+        "\n".join((custom_actions_wxs, service_wxs)),
+        'Execute="commit"',
+        "Windows MSI commit-action absence",
+    )
+
+    require_exact_count(
+        custom_actions_wxs,
+        "<CustomAction Id=",
+        1,
+        "exact sole Windows DLL custom-action declaration",
+    )
+    require_text(
+        custom_actions_wxs,
+        '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"',
+        "sole runtime-broker cleanup declaration after Amyuni excision",
+    )
+    require_text(
+        service_wxs,
+        '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+        "sole runtime-broker cleanup schedule after Amyuni excision",
+    )
+    require_exact_count(
+        custom_actions_cpp,
+        "UINT __stdcall ",
+        1,
+        "exact sole Windows DLL custom-action implementation",
+    )
+    require_text(
+        custom_actions_cpp,
+        "UINT __stdcall RemoveRuntimeGeneratedFiles(",
+        "sole runtime-broker cleanup implementation after Amyuni excision",
+    )
+    exports = tuple(
+        line.strip()
+        for line in custom_actions_def.splitlines()
+        if line.strip() and line.strip() not in ('LIBRARY "CustomActions"', "EXPORTS")
+    )
+    if exports != ("RemoveRuntimeGeneratedFiles",):
+        raise VerificationError("exact sole Windows DLL custom-action export")
+
+    require_text(
+        sources["build_py"],
+        "available_features = {}",
+        "current Windows release empty third-party resource catalog",
+    )
+    require_text(
+        sources["windows_build_script"],
+        "& $PYTHON_EXE build.py --flutter",
+        "current Windows release plain Flutter build invocation",
+    )
+    build_surface = "\n".join((sources["build_py"], sources["windows_build_script"]))
+    for forbidden in ("usbmmidd_v2", "usbmmIdd.inf", "deviceinstaller64.exe"):
+        require_absent(
+            build_surface,
+            forbidden,
+            "current Windows release Amyuni payload staging absence",
+        )
+    for text, label in (
+        ("fn trusted_install_dir() -> ResultType<PathBuf>", "retained Amyuni fixed-root install proof"),
+        (
+            "fn install_if_x86_on_x64(paths: &DeviceInstaller64Paths, args: &str) -> ResultType<()>",
+            "retained Amyuni install-helper call shape",
+        ),
+        ("install usbmmidd.inf usbmmidd", "retained Amyuni helper install mode"),
+        (
+            "win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required)?",
+            "retained Amyuni direct SetupAPI install",
+        ),
+        (
+            'bail!("SetupAPI driver install requires reboot before the driver can be used");',
+            "retained Amyuni fatal install reboot policy",
+        ),
+        (
+            "The virtual display driver may also be controlled by other processes.",
+            "retained Amyuni shared-driver lifecycle acknowledgement",
+        ),
+    ):
+        require_text(virtual_display, text, label)
+    require_text(
+        windows_device,
+        "pub unsafe fn device_io_control(",
+        "retained Amyuni device-I/O implementation",
+    )
+
+    for text, label in (
+        (
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
+            "Windows Amyuni cleanup shared source gate",
+        ),
+        (
+            "amyuni-device-removal-surface-leftover",
+            "Windows Amyuni cleanup shared rejection",
+        ),
+        (
+            "current-windows-release-amyuni-payload-staging-leftover",
+            "Windows Amyuni payload shared rejection",
+        ),
+        (
+            "the exact runtime-broker cleanup is the sole DLL custom action",
+            "Windows Amyuni cleanup shared success disposition",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+
+    installer_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11f",
+        "Windows Installer sole-authority requirement",
+    )
+    require_text(
+        installer_requirement,
+        "no exact Amyuni device-instance ownership record",
+        "Windows Installer no-Amyuni-device ownership rule",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bw",
+        "unowned Windows Amyuni cleanup excision requirement",
+    )
+    for text, label in (
+        ("RemoveAmyuniIdd", "retired Amyuni action requirement"),
+        ("DI_REMOVEDEVICE_GLOBAL", "global Amyuni device-removal requirement"),
+        ("MUST NOT</span> define, schedule, export, compile, or call", "complete Amyuni cleanup prohibition"),
+        ("MUST NOT</span> expose a generic Amyuni", "runtime Amyuni removal prohibition"),
+        ("Amyuni detection, use, monitor plug/unplug", "Amyuni install/use preservation rule"),
+        ("durably record and re-prove exact current-product ownership", "future exact-device ownership rule"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>216</td>",
+        "unowned Windows Amyuni cleanup Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bw/R-S11e-89 — Windows uninstall never removes an Amyuni device without exact device-instance ownership",
+        "unowned Windows Amyuni cleanup hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows Amyuni cleanup deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Windows Amyuni removal header absence", "deleted-header mutation"),
+        ("Windows Amyuni removal source absence", "deleted-source mutation"),
+        ("unowned Windows Amyuni device-removal surface absence", "retired-surface mutation"),
+        ("Windows MSI commit-action absence", "commit-action mutation"),
+        ("exact sole Windows DLL custom-action declaration", "custom-action inventory mutation"),
+        ("exact sole Windows DLL custom-action implementation", "implementation inventory mutation"),
+        ("exact sole Windows DLL custom-action export", "export inventory mutation"),
+        ("current Windows release empty third-party resource catalog", "feature-catalog mutation"),
+        ("current Windows release plain Flutter build invocation", "release-invocation mutation"),
+        ("current Windows release Amyuni payload staging absence", "payload-staging mutation"),
+        ("retained Amyuni fixed-root install proof", "fixed-root-install mutation"),
+        ("retained Amyuni install-helper call shape", "install-helper-shape mutation"),
+        ("retained Amyuni helper install mode", "helper-install mutation"),
+        ("retained Amyuni direct SetupAPI install", "direct-install mutation"),
+        ("retained Amyuni fatal install reboot policy", "install-reboot mutation"),
+        ("retained Amyuni shared-driver lifecycle acknowledgement", "shared-lifecycle mutation"),
+        ("retained Amyuni device-I/O implementation", "device-I/O mutation"),
+        ("Windows Amyuni cleanup shared rejection", "shared-gate mutation"),
+        ("Windows Amyuni payload shared rejection", "shared-payload-gate mutation"),
+        ("Windows Amyuni cleanup shared success disposition", "shared-success mutation"),
+        ("unowned Windows Amyuni cleanup excision requirement", "requirement mutation"),
+        ("unowned Windows Amyuni cleanup Appendix C row", "Appendix mutation"),
+        ("unowned Windows Amyuni cleanup hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -15165,6 +15370,7 @@ def validate_sources(sources):
     validate_windows_installer_application_launch_excision_contract(sources)
     validate_windows_installer_api_contract(sources)
     validate_windows_certificate_cleanup_excision_contract(sources)
+    validate_windows_amyuni_cleanup_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
@@ -27199,7 +27405,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
+            "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -27325,7 +27531,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
             "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20)",
             "Windows Installer API shared source gate",
         ),
@@ -27367,39 +27573,33 @@ def run_source_mutations(sources):
         ),
         (
             "windows_service_wxs",
-            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
-            '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>\n\t\t\t<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
+            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>\n\t\t\t<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
             "unowned Windows certificate cleanup/package state absence",
         ),
         (
             "windows_custom_actions_cpp",
-            "UINT __stdcall RemoveAmyuniIdd(\n",
-            "UINT __stdcall RemoveTestCertificates(__in MSIHANDLE hInstall) { return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveAmyuniIdd(\n",
-            "unowned Windows certificate cleanup/package state absence",
-        ),
-        (
-            "windows_custom_actions_header",
-            "enum DriverUninstallStatus {",
-            'extern "C" BOOL DeleteRustDeskTestCertsW();\n\nenum DriverUninstallStatus {',
+            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
+            "UINT __stdcall RemoveTestCertificates(__in MSIHANDLE hInstall) { return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveRuntimeGeneratedFiles(\n",
             "unowned Windows certificate cleanup/package state absence",
         ),
         (
             "windows_custom_actions_def",
-            "    RemoveAmyuniIdd",
-            "    RemoveTestCertificates\n    RemoveAmyuniIdd",
+            "    RemoveRuntimeGeneratedFiles",
+            "    RemoveTestCertificates\n    RemoveRuntimeGeneratedFiles",
             "unowned Windows certificate cleanup/package state absence",
         ),
         (
             "windows_custom_actions_project",
-            '    <ClCompile Include="DeviceUtils.cpp" />',
-            '    <ClCompile Include="DeviceUtils.cpp" />\n    <ClCompile Include="..\\..\\..\\src\\platform\\windows_delete_test_cert.cc" />',
+            '    <ClCompile Include="CustomActions.cpp" />',
+            '    <ClCompile Include="CustomActions.cpp" />\n    <ClCompile Include="..\\..\\..\\src\\platform\\windows_delete_test_cert.cc" />',
             "unowned Windows certificate cleanup/package state absence",
         ),
         (
             "windows_custom_actions_wxs",
             '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />',
             '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />\n\t\t<CustomAction Id="UnexpectedMachineMutation" Execute="deferred" BinaryRef="Custom_Actions_Dll"/>',
-            "exact retained Windows custom-action declarations",
+            "exact sole Windows DLL custom-action declaration",
         ),
         (
             "windows_custom_actions_wxs",
@@ -27408,22 +27608,10 @@ def run_source_mutations(sources):
             "retained exact runtime-broker cleanup declaration",
         ),
         (
-            "windows_custom_actions_wxs",
-            'Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd"',
-            'Id="RemoveAmyuniIddDisabled" DllEntry="RemoveAmyuniIdd"',
-            "retained exact Amyuni cleanup declaration",
-        ),
-        (
             "windows_service_wxs",
             '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
             '<Custom Action="RemoveRuntimeGeneratedFilesDisabled" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
             "retained runtime-broker cleanup schedule",
-        ),
-        (
-            "windows_service_wxs",
-            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
-            '<Custom Action="RemoveAmyuniIddDisabled" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
-            "retained Amyuni cleanup schedule",
         ),
         (
             "windows_custom_actions_cpp",
@@ -27432,22 +27620,10 @@ def run_source_mutations(sources):
             "retained runtime-broker cleanup implementation",
         ),
         (
-            "windows_custom_actions_cpp",
-            "UINT __stdcall RemoveAmyuniIdd(\n",
-            "UINT __stdcall RemoveAmyuniIddDisabled(\n",
-            "retained Amyuni cleanup implementation",
-        ),
-        (
             "windows_custom_actions_def",
             "    RemoveRuntimeGeneratedFiles",
             "    RemoveRuntimeGeneratedFilesDisabled",
             "retained runtime-broker cleanup implementation export",
-        ),
-        (
-            "windows_custom_actions_def",
-            "    RemoveAmyuniIdd",
-            "    RemoveAmyuniIddDisabled",
-            "retained Amyuni cleanup implementation export",
         ),
         (
             "verify",
@@ -27472,6 +27648,180 @@ def run_source_mutations(sources):
             "R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state",
             "R-S11bv/R-S11e-88 — Windows uninstall retains unowned certificate deletion",
             "unowned Windows certificate cleanup hardening ledger",
+        ),
+        (
+            "windows_custom_actions_header_state",
+            "windows-custom-actions-header-absent",
+            "windows-custom-actions-header-present",
+            "Windows Amyuni removal header absence",
+        ),
+        (
+            "windows_device_utils_source_state",
+            "windows-device-utils-source-absent",
+            "windows-device-utils-source-present",
+            "Windows Amyuni removal source absence",
+        ),
+        (
+            "windows_custom_actions_wxs",
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>',
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>\n\t\t<CustomAction Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd" Impersonate="no" Execute="commit" Return="check" BinaryRef="Custom_Actions_Dll"/>',
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "windows_service_wxs",
+            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>\n\t\t\t<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "windows_custom_actions_cpp",
+            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
+            'UINT __stdcall RemoveAmyuniIdd(__in MSIHANDLE) { UninstallDriver(L"usbmmidd"); return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveRuntimeGeneratedFiles(\n',
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "windows_custom_actions_def",
+            "    RemoveRuntimeGeneratedFiles",
+            "    RemoveAmyuniIdd\n    RemoveRuntimeGeneratedFiles",
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "windows_custom_actions_project",
+            '    <ClCompile Include="CustomActions.cpp" />',
+            '    <ClCompile Include="CustomActions.cpp" />\n    <ClCompile Include="DeviceUtils.cpp" />',
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "virtual_display_manager_source",
+            '"install usbmmidd.inf usbmmidd"',
+            '"remove usbmmidd"',
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "virtual_display_manager_source",
+            "    const IDD_DRIVER_DIR: &str = \"usbmmidd_v2\";",
+            "    enum DeviceInstaller64RebootPolicy { Install, Remove }\n    const IDD_DRIVER_DIR: &str = \"usbmmidd_v2\";",
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "windows_device_source",
+            "pub unsafe fn install_driver(\n",
+            "pub unsafe fn uninstall_driver() {}\n\npub unsafe fn install_driver(\n",
+            "unowned Windows Amyuni device-removal surface absence",
+        ),
+        (
+            "windows_custom_actions_wxs",
+            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />',
+            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />\n\t\t<CustomAction Id="UnexpectedCommitAction" Execute="commit" BinaryRef="Custom_Actions_Dll"/>',
+            "Windows MSI commit-action absence",
+        ),
+        (
+            "windows_custom_actions_cpp",
+            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
+            "UINT __stdcall UnexpectedCustomAction(__in MSIHANDLE) { return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveRuntimeGeneratedFiles(\n",
+            "exact sole Windows DLL custom-action implementation",
+        ),
+        (
+            "windows_custom_actions_def",
+            "    RemoveRuntimeGeneratedFiles",
+            "    UnexpectedCustomAction\n    RemoveRuntimeGeneratedFiles",
+            "exact sole Windows DLL custom-action export",
+        ),
+        (
+            "build_py",
+            "    available_features = {}",
+            '    available_features = {"amyuni": {"platform": "windows"}}',
+            "current Windows release empty third-party resource catalog",
+        ),
+        (
+            "windows_build_script",
+            "    & $PYTHON_EXE build.py --flutter",
+            "    & $PYTHON_EXE build.py --release",
+            "current Windows release plain Flutter build invocation",
+        ),
+        (
+            "windows_build_script",
+            "# python build.py --flutter; hwcodec/vram dropped",
+            "# python build.py --flutter; usbmmidd_v2 payload staged; hwcodec/vram dropped",
+            "current Windows release Amyuni payload staging absence",
+        ),
+        (
+            "virtual_display_manager_source",
+            "fn trusted_install_dir() -> ResultType<PathBuf>",
+            "fn untrusted_install_dir() -> ResultType<PathBuf>",
+            "retained Amyuni fixed-root install proof",
+        ),
+        (
+            "virtual_display_manager_source",
+            "fn install_if_x86_on_x64(paths: &DeviceInstaller64Paths, args: &str) -> ResultType<()>",
+            "fn install_if_x86_on_x64_disabled(paths: &DeviceInstaller64Paths, args: &str) -> ResultType<()>",
+            "retained Amyuni install-helper call shape",
+        ),
+        (
+            "virtual_display_manager_source",
+            "install usbmmidd.inf usbmmidd",
+            "install usbmmidd.inf disabled-hardware-id",
+            "retained Amyuni helper install mode",
+        ),
+        (
+            "virtual_display_manager_source",
+            "win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required)?",
+            "win_device::install_driver_disabled(inf_path, HARDWARE_ID, &mut reboot_required)?",
+            "retained Amyuni direct SetupAPI install",
+        ),
+        (
+            "virtual_display_manager_source",
+            'bail!("SetupAPI driver install requires reboot before the driver can be used");',
+            'log::warn!("SetupAPI driver install requires reboot");',
+            "retained Amyuni fatal install reboot policy",
+        ),
+        (
+            "virtual_display_manager_source",
+            "The virtual display driver may also be controlled by other processes.",
+            "The virtual display driver is always exclusively controlled by this process.",
+            "retained Amyuni shared-driver lifecycle acknowledgement",
+        ),
+        (
+            "windows_device_source",
+            "pub unsafe fn device_io_control(\n",
+            "pub unsafe fn device_io_control_disabled(\n",
+            "retained Amyuni device-I/O implementation",
+        ),
+        (
+            "verify",
+            "amyuni-device-removal-surface-leftover",
+            "amyuni-device-removal-gate-disabled",
+            "Windows Amyuni cleanup shared rejection",
+        ),
+        (
+            "verify",
+            "current-windows-release-amyuni-payload-staging-leftover",
+            "current-windows-release-amyuni-payload-gate-disabled",
+            "Windows Amyuni payload shared rejection",
+        ),
+        (
+            "verify",
+            "the exact runtime-broker cleanup is the sole DLL custom action",
+            "multiple machine-state DLL custom actions remain",
+            "Windows Amyuni cleanup shared success disposition",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bw</span>',
+            '<span class="id">R-S11bw-disabled</span>',
+            "unowned Windows Amyuni cleanup excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>216</td>",
+            "<tr><td>216-disabled</td>",
+            "unowned Windows Amyuni cleanup Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bw/R-S11e-89 — Windows uninstall never removes an Amyuni device without exact device-instance ownership",
+            "R-S11bw/R-S11e-89 — Windows uninstall retains hardware-ID-wide device deletion",
+            "unowned Windows Amyuni cleanup hardening ledger",
         ),
         (
             "mobile_build_authority_verifier",
@@ -28970,6 +29320,8 @@ def main():
             "publish": (repo / "scripts/publish-github-release.sh").read_text(encoding="utf-8"),
             "version": (repo / "scripts/fork-version.sh").read_text(encoding="utf-8"),
             "build_rs": (repo / "build.rs").read_text(encoding="utf-8"),
+            "build_py": (repo / "build.py").read_text(encoding="utf-8"),
+            "windows_build_script": (repo / "scripts/build-windows.ps1").read_text(encoding="utf-8"),
             "root_cargo": (repo / "Cargo.toml").read_text(encoding="utf-8"),
             "cargo_lock": (repo / "Cargo.lock").read_text(encoding="utf-8"),
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
@@ -29132,6 +29484,10 @@ def main():
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
+            "windows_device_source": (repo / "src/platform/win_device.rs").read_text(encoding="utf-8"),
+            "virtual_display_manager_source": (
+                repo / "src/virtual_display_manager.rs"
+            ).read_text(encoding="utf-8"),
             "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
             "ui_cm_source": (repo / "src/ui_cm_interface.rs").read_text(encoding="utf-8"),
             "whiteboard_server": (repo / "src/whiteboard/server.rs").read_text(encoding="utf-8"),
@@ -29219,9 +29575,16 @@ def main():
             "windows_custom_actions_cpp": (
                 repo / "res/msi/CustomActions/CustomActions.cpp"
             ).read_text(encoding="utf-8"),
-            "windows_custom_actions_header": (
-                repo / "res/msi/CustomActions/Common.h"
-            ).read_text(encoding="utf-8"),
+            "windows_custom_actions_header_state": (
+                "windows-custom-actions-header-present"
+                if os.path.lexists(repo / "res/msi/CustomActions/Common.h")
+                else "windows-custom-actions-header-absent"
+            ),
+            "windows_device_utils_source_state": (
+                "windows-device-utils-source-present"
+                if os.path.lexists(repo / "res/msi/CustomActions/DeviceUtils.cpp")
+                else "windows-device-utils-source-absent"
+            ),
             "windows_custom_actions_def": (
                 repo / "res/msi/CustomActions/CustomActions.def"
             ).read_text(encoding="utf-8"),

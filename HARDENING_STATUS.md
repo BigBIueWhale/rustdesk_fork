@@ -1267,34 +1267,43 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and this ledger/requirements disposition.
 - **R-S11d-1 — Windows Amyuni IDD helper launch provenance — CLOSED 2026-07-10; tightened 2026-07-12.** Platform:
   Windows runtime virtual-display helper path. Endpoint/action: `deviceinstaller64.exe` under `usbmmidd_v2`,
-  launched to install/remove the Amyuni virtual-display driver. Boundary: installed Program Files helper payload ↔
+  launched to install the Amyuni virtual-display driver. Boundary: installed Program Files helper payload ↔
   service/runtime helper execution. Attack surface closed: the runtime helper derives `usbmmidd_v2`,
   `deviceinstaller64.exe`, and `usbmmIdd.inf` only from the fixed
   Program Files service root returned by `fixed_service_install_path("")`, requires handle-level identity between
   the running executable directory and that fixed service root plus identity between the running executable and the
   fixed installed service executable, rejects reparse/symlink-backed helper directories, helper files, and INF
   files, propagates helper-path trust failures instead of falling through to SetupAPI, and executes
-  `paths.exe_path` as the `CreateProcessW` application path. MSI explicit-uninstall cleanup is self-contained
-  SetupAPI code and launches no installed helper. Verification closure: `scripts/verify.sh` asserts the runtime
+  `paths.exe_path` as the `CreateProcessW` application path. R-S11e-89 later deletes the MSI and dead runtime
+  device-removal surfaces because no exact device-instance ownership exists; no installed helper remove mode remains.
+  Verification closure: `scripts/verify.sh` asserts the runtime
   fixed-root file-identity proof, non-reparse helper/INF checks, absolute-path helper launch, and `paths.exe_path`
-  launch, rejects swallowed
+  install launch, rejects swallowed
   helper trust failures, lossy path/INF fallback, `ShellExecuteA`, and bare `INSTALLER_EXE_FILE` launch, and checks
-  this ledger/requirements disposition.
-- **R-S11d-2 — Windows Amyuni IDD cleanup completion authority — CLOSED 2026-07-10.** Platform:
+  complete removal-surface absence plus this ledger/requirements disposition.
+- **R-S11d-2 — Windows Amyuni IDD cleanup completion authority — INTERMEDIATE DESIGN CLOSED 2026-07-10;
+  SUPERSEDED AND EXCISED BY R-S11e-89 ON 2026-07-22.** Platform:
   Windows MSI commit-phase explicit-uninstall custom action. Endpoint/action:
   `RemoveAmyuniIdd` removing the `usbmmidd` Amyuni virtual-display device through SetupAPI. Boundary: installed
-  privileged driver state ↔ privileged MSI cleanup state. Attack surface closed: cleanup no longer hides native
-  SetupAPI failure from MSI. The native path returns a `DriverUninstallStatus` plus `HRESULT`:
+  privileged driver state ↔ privileged MSI cleanup state. The original closure made inherited cleanup completion
+  fail closed rather than hiding native SetupAPI failure from MSI. The native path returned a
+  `DriverUninstallStatus` plus `HRESULT`:
   complete enumeration proving no present matching hardware ID is a successful no-op, successful removal of all
   matching present devices is success, and enumeration/property/class-installer/remove failures are fatal. The
   commit action has no `CustomActionData`, install-root, installed-helper, or process-launch dependency. It signals
   SetupAPI reboot-required state through WiX, and the WiX action is `Return="check"`. The action is
-  scheduled only after a successful explicit uninstall transaction; upgrade preserves the installed driver. Stale
+  scheduled only after a successful explicit uninstall transaction; upgrade preserves the installed driver.
+
+  That completion proof did not establish deletion authority. The later ownership audit found that the current
+  package ships no Amyuni payload and records no durable current-MSI-product-to-exact-device-instance edge, while
+  the action enumerated every present display device and globally removed every shared-`usbmmidd` hardware-ID match.
+  R-S11e-89 therefore deletes the action, schedule, export, dedicated SetupAPI source/header and project inputs, and
+  both dead Rust removal functions; it preserves detection, use, monitor plug/unplug, and checked fixed-root install.
+  Uninstall now leaves separately owned device state untouched. Stale
   bare-`netsh` `ShellExecuteW` firewall helper examples and their
-  commented reactivation path are deleted. Verification closure: `scripts/verify.sh` asserts the native status
-  contract, HRESULT propagation, complete-enumeration/not-present branch, MultiSZ hardware-ID scan, reboot
-  signaling, explicit-uninstall commit scheduling, absence of installed-helper/caller-data dependencies,
-  `RemoveAmyuniIdd` `Return="check"`, and this ledger/requirements disposition.
+  commented reactivation path remain deleted. Verification closure: `scripts/verify.sh` and the independent
+  mutation-backed validator assert complete device-removal absence, exact sole-custom-action inventory, retained
+  install/use behavior, R-S11bw, Appendix C #216, and this superseding disposition.
 - **R-S11d-3 — Windows runtime process command provenance — CLOSED 2026-07-10; AUTHORITY MODEL SUPERSEDED BY
   R-S11e-36/R-S11e-37 ON 2026-07-19.** Platform: Windows runtime process probes in
   `src/platform/windows.rs`. The original slice removed `cmd`/`tasklist`/`taskkill` shell selection and deleted the
@@ -1453,8 +1462,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   can no longer report success when `UpdateDriverForPlugAndPlayDevicesW` sets `reboot_required`, because that state
   means the driver cannot be treated as immediately usable. The fallback now follows the same install/update policy
   as the checked helper path: reboot-required install fails closed before `check_install_driver()`
-  returns and before monitor plug-in proceeds. Remove/cleanup reboot-required remains accepted under the cleanup
-  policy; this entry is only the install/update fallback. Verification closure: `scripts/verify.sh` asserts the
+  returns and before monitor plug-in proceeds. This entry is only the install/update fallback; R-S11e-89 later
+  deletes every device-removal path rather than retaining a cleanup reboot policy without ownership. Verification
+  closure: `scripts/verify.sh` asserts the
   direct SetupAPI install call, the `reboot_required` branch, fatal install reboot-required error, absence of the old
   discarded install result shape, and this ledger/requirements disposition.
 - **R-S11d-26 — Windows app-name identity contract — CLOSED 2026-07-11.** Platform: Windows
@@ -1519,8 +1529,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   rejects empty/relative/root/path-too-long values, requires the install directory to be an immediate child of
   `FOLDERID_ProgramFiles` or `FOLDERID_ProgramFilesX86`, requires the Program Files parent and any existing install
   directory to be non-reparse directories, and uses the normalized install folder only for exact runtime broker
-  cleanup. Service state is declarative and Amyuni cleanup is a self-contained SetupAPI commit action after
-  R-S11e-20; neither consumes install-root custom action data. This is
+  cleanup. Service state is declarative, and R-S11e-89 deletes Amyuni device cleanup because the package owns no
+  exact device instance; neither service state nor any Amyuni path consumes install-root custom action data. This is
   privileged-state correctness hardening, not a newly proven low-privilege LPE in the
   current MSI: the package already keeps `App.InstallFolder` private under `ProgramFiles6432Folder` with no browse
   surface. Verification closure: `scripts/verify.sh` gates the Program Files directory declaration, absence of
@@ -1851,7 +1861,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11e-20 — Windows Installer sole machine-state authority — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Platform: Windows
   setup, install, repair, upgrade, and uninstall. Endpoint/action: UAC-approved setup bootstrap, Program Files
   payload deployment, LocalSystem service ownership, firewall authorization, machine registry/shortcuts, fixed
-  driver/runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
+  runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
   and generated command program ↔ administrator-approved machine-state mutation and future LocalSystem execution.
   Attack surface closed: the application no longer implements EXE install/uninstall, generated batch/VBS execution,
   prior-uninstall-string replay, caller-`current_exe` helper execution, public install/helper verbs, direct Windows
@@ -1876,9 +1886,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `fire:FirewallException` transactionally own service and firewall state. The basename process killer and custom
   service/firewall source, exports, and schedules are deleted. The package creates no certificate-store state, and
   R-S11e-88 deletes its inherited LocalSystem cross-user certificate scanner instead of retaining an unowned legacy
-  cleanup heuristic. Fixed-root Amyuni device cleanup runs only in the commit phase of explicit uninstall; upgrade
-  preserves it and a later package failure cannot roll back files/service/firewall around irreversible cleanup.
-  Exact runtime-generated broker cleanup remains a checked deferred action before package file
+  cleanup heuristic. The package also creates and owns no exact Amyuni device instance; R-S11e-89 deletes the
+  inherited hardware-ID-wide device-removal action and both dead runtime removal functions rather than treating
+  separately owned display-device state as uninstall residue. Exact runtime-generated broker cleanup is the sole
+  checked package custom action and runs deferred before package file
   removal. Runtime broker refresh now requires
   the fixed service image, a non-reparse System32 source, the fixed Program Files destination, and byte equality;
   replacement is atomic when a prior broker exists, and the launch path propagates verification failure. It uses no
@@ -1886,7 +1897,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   portable pure tests cover exact setup-name and 0/3010 status policy; the R-S11e-87 slice recorded an exact Rust 1.75
   Windows-MSVC cross-target type check for the current typed Installer API; `scripts/verify.sh` gates the sole-authority topology, deleted
   paths, declarative MSI resources, exact one-file build payload, broker provenance, R-S11f, this ledger entry,
-  Appendix C #125, and the later #213–#215 closures. Current Windows artifact evidence is authoritative only through
+  Appendix C #125, and the later #213–#216 closures. Current Windows artifact evidence is authoritative only through
   the exact-commit R-B2 manifest.
 - **R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED; NATIVE/ARTIFACT
   EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Ordinary main IPC remains a closed bounded
@@ -7632,15 +7643,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The closure is deletion-only. The WiX declaration and schedule, custom-action export and function, header symbol,
   Visual C++ project input, application `build.rs` input, and the entire registry/blob scanner are gone. There is no
-  migration, legacy-upgrade, best-effort, current-user-only, or reduced-fingerprint replacement. The two separately
-  justified fixed custom actions remain: checked deferred cleanup of the exact runtime-generated broker file under
-  the validated private Program Files root, and checked commit-phase SetupAPI removal of the exact Amyuni device on
-  explicit uninstall. R-S11f now requires exact current-package ownership for custom actions and forbids certificate
+  migration, legacy-upgrade, best-effort, current-user-only, or reduced-fingerprint replacement. This certificate
+  slice initially retained checked runtime-broker cleanup and Amyuni device cleanup. R-S11e-89's later ownership
+  audit deletes the Amyuni action as unowned too, so checked deferred cleanup of the exact runtime-generated broker
+  file under the validated private Program Files root is now the sole package custom action. R-S11f now requires
+  exact current-package ownership for custom actions and forbids certificate
   store mutation; R-S11bv and Appendix C #215 bind complete absence. The shared R-S11e-20/R-S11e-88 gate and the
   independent semantic validator cover source-file absence, application and custom-action build metadata, WiX
-  declaration/schedule, DLL header/implementation/export, certificate-store/package APIs, both retained actions,
+  declaration/schedule, DLL header/implementation/export, certificate-store/package APIs, the sole retained action,
   normative text, ledger, disposition, and requirements-hash scope. The active requirements SHA-256 is
-  `567cf97ab3335145fd64752a8e87281efe904890940fb2f7f09747b7cda840b0`.
+  `77d1066651f07c69081897fa06883f1c5415bc8f0bd5edd44b03a05d5da19dda`.
 
   Confined verification used the already-present immutable development image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with UID/GID 1000, no network, a
@@ -7656,8 +7668,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Exact Rust 1.75 formatting of `build.rs` passed in the already-present Debian image
   `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818` with the toolchain mounted read-only.
   Independent XML parsing accepted both changed WiX documents and the Visual C++ project; a direct production
-  inventory proved the source absent, every retired/API token absent, exactly two custom-action declarations and
-  exports retained, and both exact schedules/implementations present. Native-codec hash watch and its negative
+  inventory at the R-S11e-88 closure commit proved the source absent, every retired/API token absent, and the then-two
+  custom-action declarations, exports, schedules, and implementations present. R-S11e-89 separately revalidates the
+  current sole-action inventory after Amyuni removal. Native-codec hash watch and its negative
   self-test passed. No image was pulled or built; no port, Docker socket, host namespace, host service/config mount,
   added capability, or root process was used. No host RustDesk process, service, listener, configuration, device,
   firewall, or network state was inspected or changed. The custom-action DLL was not compiled and an MSI was not
@@ -7672,6 +7685,93 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (<https://learn.microsoft.com/en-us/windows-hardware/drivers/install/local-machine-and-current-user-certificate-stores>),
   and that test signatures are for development/test rather than production release
   (<https://learn.microsoft.com/en-us/windows-hardware/drivers/install/introduction-to-test-signing>).
+- **R-S11bw/R-S11e-89 — Windows uninstall never removes an Amyuni device without exact device-instance ownership —
+  SOURCE IMPLEMENTED AND CONFINED SOURCE/STRUCTURE/MUTATION VERIFIED 2026-07-22; NATIVE MSI TABLE/UNINSTALL AND
+  EXACT ARTIFACT EVIDENCE REMAIN R-B2/R-B10.** Platform: the per-machine Windows Installer custom-action DLL and
+  Windows runtime virtual-display manager. Endpoint/action: the explicit-uninstall commit phase's
+  `RemoveAmyuniIdd` action and the dormant Rust Amyuni removal helpers. Boundary: authority to uninstall this package
+  ↔ global mutation of display-device state that may have been provisioned and may still be used by another product
+  or administrator.
+
+  The inherited WiX declared `RemoveAmyuniIdd` with `Impersonate="no"`, `Execute="commit"`, and `Return="check"`,
+  scheduled after successful explicit uninstall. Its DLL called `UninstallDriver(L"usbmmidd", ...)`; the dedicated
+  SetupAPI source enumerated every present display device, read each `SPDRP_HARDWAREID` MultiSZ, and sent
+  `DIF_REMOVE` with `DI_REMOVEDEVICE_GLOBAL` for every entry containing `usbmmidd`. The checked completion work in
+  R-S11d-2 correctly stopped hiding enumeration, property, class-installer, removal, and reboot results, but it did
+  not prove that this MSI owned any matched device.
+
+  A complete creation/package/use/removal inventory found no such ownership edge. The active Windows release invokes
+  `build.py --flutter`; `build.py` has an empty third-party resource feature catalog, so the release distribution and
+  MSI contain no `usbmmidd_v2`, `usbmmIdd.inf`, or `deviceinstaller64.exe` payload. Schema-disabled workflow text is
+  only historical staging guidance. The runtime still supports a separately provisioned fixed-Program-Files payload,
+  detects and uses an existing driver, and explicitly notes that other processes may control it, but neither that
+  path nor the MSI records a durable current-product-to-exact-device-instance identifier. Both Rust removal functions
+  had no live caller. A shared hardware ID classifies a compatible device; it is not proof of lifecycle ownership.
+
+  Microsoft documents that `DI_REMOVEDEVICE_GLOBAL` removes a device globally from all hardware profiles and removes
+  device registry information
+  (<https://learn.microsoft.com/en-us/windows/win32/api/setupapi/ns-setupapi-sp_removedevice_params>), and that
+  `DIF_REMOVE` removes the devnode and its hardware/software/hardware-profile registry keys, distinct from deleting a
+  driver package
+  (<https://learn.microsoft.com/en-us/windows-hardware/drivers/install/dif-remove>,
+  <https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-setupapi-to-uninstall-devices-and-driver-packages>).
+  `SPDRP_HARDWAREID` is a `REG_MULTI_SZ` list of hardware IDs
+  (<https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceregistrypropertya>).
+  Commit actions run after successful script processing, while no-impersonation script actions execute outside the
+  installing user's impersonation context
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/commit-custom-actions>,
+  <https://learn.microsoft.com/en-us/windows/win32/msi/custom-action-security>).
+
+  This was unnecessary LocalSystem/administrator global cross-product device-deletion authority and a potential
+  administrative-state deletion or availability impact. It is not evidence of a remote trigger, promptless LPE,
+  attacker-selected target, exploitation, host compromise, or use of the path. The correct current lifecycle is
+  deletion-only: the WiX declaration and schedule, action implementation and export, dedicated SetupAPI source/header
+  and Visual C++ project inputs, runtime removal policy/mode, and both dead Rust removal functions are gone. Amyuni
+  detection, use, monitor plug/unplug, fixed-root/reparse-checked helper installation, direct SetupAPI installation,
+  and fatal install reboot-required handling remain unchanged. Uninstall leaves separately owned device state alone.
+  There is no friendly-name, hardware-ID, INF-name, current-presence, current-driver, best-effort, or narrower-scan
+  fallback. Any future removal feature must first define a reviewed lifecycle that durably records and re-proves
+  current-product ownership of an exact device instance.
+
+  R-S11f, R-S11bw, Appendix C #216, the shared R-S11e-20/R-S11e-89 gate, and the independent semantic/mutation
+  validator bind complete source/build/WiX/export/call absence, exact sole-custom-action inventory, retained install
+  helper signature/call shape and device-I/O behavior, current no-payload evidence, ledger/disposition, and
+  requirements-hash scope. The synchronized active requirements SHA-256 is
+  `77d1066651f07c69081897fa06883f1c5415bc8f0bd5edd44b03a05d5da19dda`.
+
+  Confined verification used the already-present immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`; the format-only check used the
+  already-present Debian image
+  `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818` with the exact host Rust 1.75
+  toolchain mounted read-only. Every test ran as UID/GID 1000 with no network, a read-only root and source, all
+  capabilities dropped, `no-new-privileges`, bounded PID/memory use, and private tmpfs-only writable state. Bash
+  syntax and Python byte-compilation passed. The normal independent semantic validator and its complete repository
+  source-mutation matrix returned `verify-verifier-workspace: ok`. The Amyuni mutation set restores the deleted
+  header/source, WiX declaration/schedule/commit action, DLL entry/export/project input, runtime and direct-SetupAPI
+  removal functions, helper remove mode and reboot policy, or weakens sole-action inventory, current no-payload
+  evidence, every retained install/device-I/O invariant, shared rejection/success text, requirement, Appendix row,
+  ledger, and synchronized hash scope. Two pre-green full mutation runs exposed fixture weaknesses: the first still
+  targeted a now-formatted string literal followed by a comma, and the second changed the build command by adding a
+  suffix while leaving the required command as a matching prefix. Both fixtures were made independently falsifiable
+  before the complete matrix passed.
+
+  Exact Rust 1.75 formatting passed for both changed Rust files after applying the formatter's sole import-layout
+  correction. A disposable, offline, vendor-backed Rust 1.75 Windows-MSVC crate type-checked the exact current
+  `src/platform/win_device.rs` with its pinned `winapi` 0.3.9 and `thiserror` 1.0.61 dependencies. A full root
+  Windows-MSVC `cargo check --lib` was also attempted with the current read-only tree and pinned 2.4-GB vendor input;
+  it stopped before reaching the RustDesk crate because this Linux verifier has neither a cross-configured
+  `libsodium` pkg-config sysroot nor MSVC `lib.exe` for `mozjpeg-sys`/`zstd-sys`. That attempt is not claimed as a
+  successful full application check. Independent XML parsing accepted both changed WiX files and the Visual C++
+  project. A direct production inventory proved both dedicated removal files and every retired token absent, exactly
+  one DLL custom-action declaration/export/entrypoint present, the install/use and fatal install-reboot paths retained,
+  and no Amyuni payload staged by the current release build. Native-codec hash watch and its negative self-test passed.
+
+  No image was pulled or built; no port, Docker socket, host namespace, host service/config mount, device mount, added
+  capability, or root process was used. No host RustDesk process, service, listener, configuration, device, firewall,
+  or network state was inspected or changed. The custom-action DLL was not compiled and an MSI was not built or
+  executed on this Linux source-verification host. Native MSI-table inspection, real installed explicit-uninstall
+  behavior, the clean cold exact-commit Windows release, and the current exact APK remain pending R-B2/R-B10
+  obligations; this source slice does not claim them.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8389,9 +8489,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-567cf97ab3335145fd64752a8e87281efe904890940fb2f7f09747b7cda840b0  requirements.html
+77d1066651f07c69081897fa06883f1c5415bc8f0bd5edd44b03a05d5da19dda  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bv, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bw, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

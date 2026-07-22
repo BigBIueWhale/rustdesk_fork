@@ -2,4 +2,3 @@ LIBRARY "CustomActions"
 
 EXPORTS
     RemoveRuntimeGeneratedFiles
-    RemoveAmyuniIdd

@@ -131,11 +131,6 @@ pub mod amyuni_idd {
         exe_path: Vec<u16>,
     }
 
-    enum DeviceInstaller64RebootPolicy {
-        Accept,
-        Reject,
-    }
-
     struct HandleGuard(HANDLE);
 
     impl Drop for HandleGuard {
@@ -348,34 +343,9 @@ pub mod amyuni_idd {
         Ok(inf_path)
     }
 
-    pub fn uninstall_driver() -> ResultType<()> {
-        if let Some(paths) = get_deviceinstaller64_paths()? {
-            if crate::platform::windows::is_x64() {
-                log::info!("Uninstalling driver by deviceinstaller64.exe");
-                install_if_x86_on_x64(
-                    &paths,
-                    "remove usbmmidd",
-                    DeviceInstaller64RebootPolicy::Accept,
-                )?;
-                // Sleep some time to wait for the driver to be uninstalled.
-                std::thread::sleep(Duration::from_secs(2));
-                return Ok(());
-            }
-        }
-
-        log::info!("Uninstalling driver by SetupAPI");
-        let mut reboot_required = false;
-        let _ = unsafe { win_device::uninstall_driver(HARDWARE_ID, &mut reboot_required)? };
-        Ok(())
-    }
-
     // SetupDiCallClassInstaller() will always fail if current_exe() is built as x86 and running on x64.
-    // So we need to call another x64 version exe to install and uninstall the driver.
-    fn install_if_x86_on_x64(
-        paths: &DeviceInstaller64Paths,
-        args: &str,
-        reboot_policy: DeviceInstaller64RebootPolicy,
-    ) -> ResultType<()> {
+    // So we need to call another x64 version exe to install the driver.
+    fn install_if_x86_on_x64(paths: &DeviceInstaller64Paths, args: &str) -> ResultType<()> {
         let mut command_line = deviceinstaller64_command_line(paths, args);
         let mut startup_info: STARTUPINFOW = unsafe { mem::zeroed() };
         startup_info.cb = mem::size_of::<STARTUPINFOW>() as u32;
@@ -422,14 +392,7 @@ pub mod amyuni_idd {
             );
         }
         if exit_code == ERROR_SUCCESS_REBOOT_REQUIRED {
-            match reboot_policy {
-                DeviceInstaller64RebootPolicy::Accept => {
-                    log::info!("deviceinstaller64.exe completed with reboot required");
-                }
-                DeviceInstaller64RebootPolicy::Reject => {
-                    bail!("deviceinstaller64.exe requires reboot before the driver can be used");
-                }
-            }
+            bail!("deviceinstaller64.exe requires reboot before the driver can be used");
         } else if exit_code != 0 {
             bail!("deviceinstaller64.exe failed with exit code {exit_code}");
         }
@@ -452,11 +415,7 @@ pub mod amyuni_idd {
         if let Some(paths) = get_deviceinstaller64_paths()? {
             if crate::platform::windows::is_x64() {
                 log::info!("Installing driver by deviceinstaller64.exe");
-                install_if_x86_on_x64(
-                    &paths,
-                    "install usbmmidd.inf usbmmidd",
-                    DeviceInstaller64RebootPolicy::Reject,
-                )?;
+                install_if_x86_on_x64(&paths, "install usbmmidd.inf usbmmidd")?;
                 *is_async = true;
                 return Ok(());
             }

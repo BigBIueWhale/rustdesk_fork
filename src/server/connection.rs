@@ -2528,7 +2528,7 @@ pub struct Connection {
     #[cfg(windows)]
     portable: PortableState,
     voice_call_request_timestamp: Option<NonZeroI64>,
-    voice_calling: bool,
+    voice_call_input: Option<audio_service::VoiceCallInputLease>,
     options_in_login: Option<OptionMessage>,
     #[cfg(target_os = "android")]
     pressed_modifiers: HashSet<rdev::Key>,
@@ -2724,7 +2724,7 @@ impl Connection {
             portable: Default::default(),
             controlled_audio: None,
             voice_call_request_timestamp: None,
-            voice_calling: false,
+            voice_call_input: None,
             options_in_login: None,
             #[cfg(target_os = "android")]
             pressed_modifiers: Default::default(),
@@ -5603,12 +5603,12 @@ impl Connection {
                         }
                     }
                     Some(misc::Union::AudioFormat(format)) => {
-                        // R-S19: peer->host audio playback is voice-call only. self.voice_calling is
-                        // set (for Remote AND ViewCamera) exactly when the operator accepts a voice
+                        // R-S19: peer->host audio playback is voice-call only. The input lease is
+                        // installed (for Remote AND ViewCamera) exactly when the operator accepts a voice
                         // call, and the honest client streams AudioFormat only after that accept — so
                         // this gate admits both legitimate voice flows while refusing stray host-audio
                         // playback from any session outside an accepted call.
-                        if !self.disable_audio && self.voice_calling {
+                        if !self.disable_audio && self.voice_call_input.is_some() {
                             if !native_opus_format_within_limit(format.sample_rate, format.channels)
                             {
                                 log::warn!(
@@ -5724,7 +5724,7 @@ impl Connection {
                 Some(message::Union::AudioFrame(frame)) => {
                     // R-S19: peer->host audio frames are voice-call only. The voice authority is
                     // cleared before controlled_audio admission closes and its exact decoder joins.
-                    if !self.disable_audio && self.voice_calling {
+                    if !self.disable_audio && self.voice_call_input.is_some() {
                         if let Some(audio) = &self.controlled_audio {
                             if let Err(err) = audio
                                 .decoder
@@ -5749,7 +5749,9 @@ impl Connection {
                         if !self.can_drive_voice_call() {
                             return true;
                         }
-                        if self.voice_calling || self.voice_call_request_timestamp.is_some() {
+                        if self.voice_call_input.is_some()
+                            || self.voice_call_request_timestamp.is_some()
+                        {
                             log::warn!(
                                 "dropping overlapping voice-call request before owner replacement"
                             );
@@ -6356,16 +6358,27 @@ impl Connection {
             return;
         }
         if let Some(ts) = self.voice_call_request_timestamp.take() {
-            let msg = new_voice_call_response(ts.get(), accepted);
             // Establish synchronous Drop-visible ownership before the first await.
-            // If response transmission is cancelled, Connection::drop must still
-            // disable the global voice input selected below.
-            self.voice_calling = accepted;
-            if accepted {
-                crate::audio_service::set_voice_call_input_device(
+            // If response transmission is cancelled, Connection::drop still releases
+            // this exact call without clearing another call's process-wide input.
+            let accepted = if accepted {
+                match crate::audio_service::acquire_voice_call_input(
                     crate::get_default_sound_input(),
-                    false,
-                );
+                ) {
+                    Ok(input_lease) => {
+                        self.voice_call_input = Some(input_lease);
+                        true
+                    }
+                    Err(err) => {
+                        log::error!("Failed to acquire controlled voice-call input: {err}");
+                        false
+                    }
+                }
+            } else {
+                false
+            };
+            let msg = new_voice_call_response(ts.get(), accepted);
+            if accepted {
                 self.send_to_cm(Data::StartVoiceCall);
             } else {
                 self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
@@ -6393,16 +6406,13 @@ impl Connection {
 
     pub async fn close_voice_call(&mut self) -> bool {
         if !self.can_drive_voice_call()
-            || (!self.voice_calling && self.voice_call_request_timestamp.is_none())
+            || (self.voice_call_input.is_none() && self.voice_call_request_timestamp.is_none())
         {
             return false;
         }
-        if self.voice_calling {
-            crate::audio_service::set_voice_call_input_device(None, true);
-        }
+        drop(self.voice_call_input.take());
         self.voice_call_request_timestamp = None;
         self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
-        self.voice_calling = false;
         if self.is_authed_view_camera_conn() {
             if let Some(s) = self.server.upgrade() {
                 s.write()
@@ -6496,7 +6506,7 @@ impl Connection {
                 }
                 if let Some(s) = self.server.upgrade() {
                     if self.is_authed_view_camera_conn() {
-                        if self.voice_calling || !self.audio_enabled() {
+                        if self.voice_call_input.is_some() || !self.audio_enabled() {
                             s.write().unwrap().subscribe(
                                 super::audio_service::NAME,
                                 self.inner.clone(),
@@ -6860,11 +6870,7 @@ impl Connection {
         if self.closed {
             return;
         }
-        let voice_calling = self.voice_calling;
-        if voice_calling {
-            crate::audio_service::set_voice_call_input_device(None, true);
-        }
-        self.voice_calling = false;
+        drop(self.voice_call_input.take());
         self.voice_call_request_timestamp = None;
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         self.stop_input_worker().await;
@@ -9006,10 +9012,7 @@ impl Drop for Connection {
     fn drop(&mut self) {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         drop(self.cm_ipc_owner.take());
-        if self.voice_calling {
-            crate::audio_service::set_voice_call_input_device(None, true);
-            self.voice_calling = false;
-        }
+        drop(self.voice_call_input.take());
         // OwnedMediaThread::drop closes peer-audio admission and transfers the
         // exact decoder handle to the fixed reaper; it never joins inline here.
         drop(self.controlled_audio.take());

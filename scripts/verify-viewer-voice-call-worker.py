@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify event-driven ownership of the outgoing voice-call capture worker."""
+"""Verify event-driven worker and exact voice-call input ownership."""
 
 from __future__ import annotations
 
@@ -54,6 +54,8 @@ def load_sources(repo: Path) -> Dict[str, str]:
     return {
         "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
         "client": (repo / "src/client.rs").read_text(encoding="utf-8"),
+        "audio": (repo / "src/server/audio_service.rs").read_text(encoding="utf-8"),
+        "connection": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
@@ -67,6 +69,7 @@ def validate(sources: Dict[str, str]) -> None:
     for needle, label in (
         ("stop_requested: Arc<AtomicBool>", "durable stop owner"),
         ("subscription: Option<ConnInner>", "exact subscription owner"),
+        ("input_lease: Option<audio_service::VoiceCallInputLease>", "exact input lease owner"),
         ("thread: Option<std::thread::JoinHandle<()>>", "exact worker owner"),
     ):
         require(owner, needle, label)
@@ -85,6 +88,7 @@ def validate(sources: Dict[str, str]) -> None:
             "audio_service::NAME",
             "subscription",
             "false",
+            "drop(self.input_lease.take());",
             "self.thread.take()",
         ),
         "durable stop, exact unsubscribe, and handle transfer",
@@ -127,6 +131,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         start,
         (
+            "let input_lease = match crate::audio_service::acquire_voice_call_input(",
+            "get_default_sound_input()",
             "let client_conn_inner = ConnInner::new(",
             "client_conn_inner.clone()",
             "true",
@@ -138,9 +144,8 @@ def validate(sources: Dict[str, str]) -> None:
             "recv_voice_call_audio(&mut rx_audio_data, &worker_stop_requested)",
             'log::debug!("Exit voice call audio service of client")',
             "cleanup_subscription",
-            "set_voice_call_input_device(None, true);",
         ),
-        "subscription, blocking worker, and idempotent cleanup",
+        "input lease, subscription, blocking worker, and idempotent cleanup",
     )
     require(
         start,
@@ -154,10 +159,9 @@ def validate(sources: Dict[str, str]) -> None:
             'log::error!("Failed to start voice-call audio worker: {err}")',
             "client_conn_inner",
             "false",
-            "set_voice_call_input_device(None, true);",
             "return None;",
         ),
-        "worker spawn rollback",
+        "worker spawn subscription rollback",
     )
     require(
         start,
@@ -170,6 +174,7 @@ def validate(sources: Dict[str, str]) -> None:
             "VoiceCallThread::new(",
             "stop_requested",
             "client_conn_inner",
+            "input_lease",
             "thread",
         ),
         "composite owner construction",
@@ -183,6 +188,8 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         if forbidden in start:
             raise VerificationError(f"voice-call start retains legacy polling shape {forbidden!r}")
+    if "set_voice_call_input_device(None" in start:
+        raise VerificationError("outgoing worker retains ambient global input cleanup")
 
     shutdown = extract_rust_item(io_loop, "async fn shutdown_workers", "viewer worker shutdown")
     require_exact_count(
@@ -228,13 +235,173 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(io_loop, needle, label)
 
+    audio = sources["audio"]
+    input_state = extract_rust_item(
+        audio, "struct VoiceCallInputState", "voice-call input state"
+    )
+    require(input_state, "device: Option<String>", "shared selected input")
+    require(input_state, "owners: usize", "active input owner count")
+    acquire_state = extract_rust_item(
+        audio,
+        "fn acquire(&mut self, default_device: Option<String>)",
+        "voice-call input state acquisition",
+    )
+    require_order(
+        acquire_state,
+        (
+            "self.owners.checked_add(1)",
+            "self.owners = owners;",
+            "if self.device.is_none() && default_device.is_some()",
+            "self.device = default_device;",
+        ),
+        "bounded owner acquisition and first-owner default",
+    )
+    release_state = extract_rust_item(
+        audio, "fn release(&mut self)", "voice-call input state release"
+    )
+    require_order(
+        release_state,
+        (
+            "self.owners.checked_sub(1)",
+            "self.owners = owners;",
+            "if owners == 0",
+            "self.device.take().is_some()",
+        ),
+        "final-owner-only input reset",
+    )
+    input_lease = extract_rust_item(
+        audio, "pub struct VoiceCallInputLease", "private voice-call input lease"
+    )
+    require(input_lease, "_private: ()", "non-forgeable input lease")
+    input_drop = extract_rust_item(
+        audio, "impl Drop for VoiceCallInputLease", "voice-call input lease Drop"
+    )
+    require_order(
+        input_drop,
+        (
+            "VOICE_CALL_INPUT_STATE.lock().unwrap().release()",
+            "std::process::abort();",
+            "if restart_required",
+            "restart();",
+        ),
+        "exact lease release and invariant failure",
+    )
+    acquire_input = extract_rust_item(
+        audio,
+        "pub fn acquire_voice_call_input(",
+        "voice-call input lease acquisition",
+    )
+    require_order(
+        acquire_input,
+        (
+            ".acquire(default_device)",
+            "if restart_required",
+            "restart();",
+            "Ok(VoiceCallInputLease { _private: () })",
+        ),
+        "state acquisition before private lease construction",
+    )
+    setter = extract_rust_item(
+        audio,
+        "pub fn set_voice_call_input_device(device: String)",
+        "voice-call device selection",
+    )
+    require(setter, ".select_device(device)", "device selection without owner mutation")
+    select_device = extract_rust_item(
+        audio,
+        "fn select_device(&mut self, device: String)",
+        "non-clearing voice-call device selection",
+    )
+    require(
+        select_device,
+        "self.device = Some(device);",
+        "selected voice-call device installation",
+    )
+    if "set_if_present" in audio:
+        raise VerificationError("voice-call input retains boolean ownership ambiguity")
+    for test_name in (
+        "r_s11e83_voice_call_input_remains_selected_until_the_final_owner_releases",
+        "r_s11e83_voice_call_input_owner_count_fails_closed",
+    ):
+        require_exact_count(audio, f"fn {test_name}()", 1, f"focused test {test_name}")
+
+    connection = sources["connection"]
+    require(
+        connection,
+        "voice_call_input: Option<audio_service::VoiceCallInputLease>",
+        "controlled exact input owner",
+    )
+    if "voice_calling" in connection:
+        raise VerificationError("controlled call retains parallel boolean ownership")
+    handle_voice = extract_rust_item(
+        connection,
+        "pub async fn handle_voice_call(&mut self, accepted: bool)",
+        "controlled voice-call acceptance",
+    )
+    require_order(
+        handle_voice,
+        (
+            "crate::audio_service::acquire_voice_call_input(",
+            "self.voice_call_input = Some(input_lease);",
+            "let msg = new_voice_call_response(ts.get(), accepted);",
+            "self.send(msg).await;",
+        ),
+        "lease-before-response acceptance ownership",
+    )
+    close_voice = extract_rust_item(
+        connection,
+        "pub async fn close_voice_call(&mut self)",
+        "controlled voice-call close",
+    )
+    require_order(
+        close_voice,
+        (
+            "drop(self.voice_call_input.take());",
+            "self.voice_call_request_timestamp = None;",
+            "self.stop_controlled_audio().await;",
+        ),
+        "exact input release before decoder drain",
+    )
+    on_close = extract_rust_item(connection, "async fn on_close", "connection close")
+    require_order(
+        on_close,
+        (
+            "drop(self.voice_call_input.take());",
+            "self.stop_controlled_audio().await;",
+        ),
+        "connection close input release before await",
+    )
+    connection_drop = extract_rust_item(
+        connection, "impl Drop for Connection", "connection Drop"
+    )
+    require(
+        connection_drop,
+        "drop(self.voice_call_input.take());",
+        "cancellation-safe controlled input release",
+    )
+    require_exact_count(
+        connection,
+        "drop(self.voice_call_input.take());",
+        3,
+        "controlled input release sinks",
+    )
+    if "set_voice_call_input_device(None" in connection:
+        raise VerificationError("controlled call retains ambient global input cleanup")
+
     for key, needle, label in (
         ("requirements", '<span class="id">R-S11bp</span>', "R-S11bp requirement"),
         ("requirements", "<tr><td>209</td>", "Appendix C #209"),
+        ("requirements", '<span class="id">R-S11bq</span>', "R-S11bq requirement"),
+        ("requirements", "<tr><td>210</td>", "Appendix C #210"),
         (
             "hardening",
             "R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned",
             "voice-call worker hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners",
+            "voice-call input ownership ledger",
         ),
         (
             "verify",
@@ -255,8 +422,10 @@ Mutation = Tuple[str, str, str, str]
 MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "stop_requested: Arc<AtomicBool>", "stop_requested_removed: Arc<AtomicBool>", "stop owner"),
     ("io_loop", "subscription: Option<ConnInner>", "subscription_removed: Option<ConnInner>", "subscription owner"),
+    ("io_loop", "input_lease: Option<audio_service::VoiceCallInputLease>", "input_lease_removed: Option<audio_service::VoiceCallInputLease>", "input lease owner"),
     ("io_loop", "self.stop_requested.store(true, Ordering::Release);", "", "durable stop publication"),
     ("io_loop", "if let Some(subscription) = self.subscription.take()", "if false", "exact unsubscribe"),
+    ("io_loop", "drop(self.input_lease.take());", "", "exact input release"),
     ("io_loop", "receiver.blocking_recv()?", "receiver.try_recv().ok()?", "blocking receive"),
     ("io_loop", "if stop_requested.load(Ordering::Acquire) {\n        None", "if false {\n        None", "post-wake stop check"),
     ("io_loop", "let cleanup_subscription = ConnInner::new(conn_id, None, None);", "let cleanup_subscription = client_conn_inner.clone();", "sender-free cleanup identity"),
@@ -264,13 +433,27 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "cleanup_subscription,\n                        false", "cleanup_subscription,\n                        true", "worker cleanup unsubscribe"),
     ("io_loop", 'log::error!("Failed to start voice-call audio worker: {err}")', 'log::debug!("Failed to start voice-call audio worker: {err}")', "spawn failure diagnostic"),
     ("io_loop", "client_conn_inner,\n                        false", "client_conn_inner,\n                        true", "spawn rollback unsubscribe"),
-    ("io_loop", "set_voice_call_input_device(None, true);\n                    return None;", "return None;", "spawn rollback input reset"),
+    ("io_loop", "let input_lease = match crate::audio_service::acquire_voice_call_input(", "let input_lease = match crate::audio_service::acquire_voice_call_input_removed(", "outgoing input acquisition"),
     ("io_loop", "voice_call_thread.stop()", "voice_call_thread.thread.take()", "shutdown stop sink"),
     ("io_loop", "fn r_s11e82_voice_call_audio_wait_is_event_driven_and_stop_is_terminal()", "fn voice_call_audio_wait_is_event_driven_and_stop_is_terminal()", "terminal wait regression"),
     ("io_loop", "fn r_s11e82_voice_call_audio_wait_delivers_a_live_message()", "fn voice_call_audio_wait_delivers_a_live_message()", "live delivery regression"),
     ("requirements", '<span class="id">R-S11bp</span>', '<span class="id">R-S11bp-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>209</td>", "<tr><td>209-disabled</td>", "Appendix disposition"),
     ("hardening", "R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned", "R-S11bp/R-S11e-82 — outgoing voice-call capture polls", "hardening ledger"),
+    ("audio", "self.owners.checked_add(1)", "self.owners.saturating_add(1)", "bounded owner acquisition"),
+    ("audio", "if owners == 0", "if owners <= 1", "final-owner-only reset"),
+    ("audio", "pub fn set_voice_call_input_device(device: String)", "pub fn set_voice_call_input_device(device: Option<String>)", "non-clearing explicit selection API"),
+    ("audio", "self.device = Some(device);", "self.device = None;", "selected device installation"),
+    ("audio", "pub struct VoiceCallInputLease {\n    _private: (),", "pub struct VoiceCallInputLease;\n//", "non-forgeable lease"),
+    ("audio", "VOICE_CALL_INPUT_STATE.lock().unwrap().release()", "Ok(false)", "lease Drop release"),
+    ("audio", "fn r_s11e83_voice_call_input_remains_selected_until_the_final_owner_releases()", "fn voice_call_input_remains_selected_until_the_final_owner_releases()", "concurrent-owner regression"),
+    ("audio", "fn r_s11e83_voice_call_input_owner_count_fails_closed()", "fn voice_call_input_owner_count_fails_closed()", "owner-bound regression"),
+    ("connection", "voice_call_input: Option<audio_service::VoiceCallInputLease>", "voice_call_input_removed: Option<audio_service::VoiceCallInputLease>", "controlled lease owner"),
+    ("connection", "self.voice_call_input = Some(input_lease);", "drop(input_lease);", "controlled lease installation"),
+    ("connection", "drop(self.voice_call_input.take());", "self.voice_call_input.take();", "controlled exact release"),
+    ("requirements", '<span class="id">R-S11bq</span>', '<span class="id">R-S11bq-disabled</span>', "input ownership requirement"),
+    ("requirements", "<tr><td>210</td>", "<tr><td>210-disabled</td>", "input ownership Appendix disposition"),
+    ("hardening", "R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners", "R-S11bq/R-S11e-83 — voice-call input selection is ambient", "input ownership ledger"),
     ("verify", "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test", "python3 scripts/verify-viewer-voice-call-worker.py --repo .", "shared gate self-test"),
     ("apple", "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test", "python3 scripts/verify-viewer-voice-call-worker.py --repo .", "Apple gate self-test"),
 )

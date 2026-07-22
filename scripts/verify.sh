@@ -816,12 +816,13 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a01) Outgoing voice-call worker lifecycle (R-S11bp/R-S11e-82) =="
+echo "== (3b-iii-a1a01) Voice-call worker and exact input ownership (R-S11bp/R-S11bq/R-S11e-82/R-S11e-83) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e82_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e83_ --color never
 if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
-  echo "  ok  R-S11e-82 outgoing voice-call capture blocks on audio and tears down through its exact subscription owner"
+  echo "  ok  R-S11e-82/R-S11e-83 voice-call capture blocks on audio and tears down through exact subscription and input owners"
 else
-  echo "  FAIL R-S11e-82 outgoing voice-call capture regained polling or detached subscription lifecycle"
+  echo "  FAIL R-S11e-82/R-S11e-83 voice-call capture regained polling, detached subscription lifecycle, or ambient input ownership"
   rc=1
 fi
 
@@ -3626,7 +3627,7 @@ for binding in \
     || r_s11c27t="$r_s11c27t owner-channel-wiring-invalid"
 done
 drop_owner_line=$(grep -nF -m 1 'drop(self.cm_ipc_owner.take());' <<<"$cm_connection_drop" | cut -d: -f1)
-drop_voice_line=$(grep -nF -m 1 'if self.voice_calling {' <<<"$cm_connection_drop" | cut -d: -f1)
+drop_voice_line=$(grep -nF -m 1 'drop(self.voice_call_input.take());' <<<"$cm_connection_drop" | cut -d: -f1)
 drop_cm_line=$(grep -nF -m 1 'self.tx_to_cm.send(ipc::Data::Close)' <<<"$cm_connection_drop" | cut -d: -f1)
 if [ -z "$drop_owner_line" ] || [ -z "$drop_voice_line" ] || [ -z "$drop_cm_line" ] \
   || [ "$drop_owner_line" -ge "$drop_voice_line" ] || [ "$drop_voice_line" -ge "$drop_cm_line" ]; then
@@ -9307,22 +9308,26 @@ ok = (
     and "format: (u32, u32)" in controlled_fields
     and "decoder: OwnedMediaThread" in controlled_fields
     and "audio_sender" not in connection
+    and "voice_calling" not in connection
     and "self.controlled_audio.as_ref().map(|audio| audio.format)" in audio_format
     and "self.controlled_audio = Some(ControlledAudioThread" in audio_format
-    and handle_voice.index("self.voice_calling = accepted")
-        < handle_voice.index("set_voice_call_input_device(")
+    and handle_voice.index("acquire_voice_call_input(")
+        < handle_voice.index("self.voice_call_input = Some(input_lease)")
         < handle_voice.index("self.send(msg).await")
-    and close_voice.index("self.voice_calling = false")
+    and close_voice.index("drop(self.voice_call_input.take())")
         < close_voice.index("self.stop_controlled_audio().await")
     and "self.stop_controlled_audio().await" in update_options
-    and on_close.index("set_voice_call_input_device(None, true)")
-        < on_close.index("self.voice_calling = false")
+    and on_close.index("drop(self.voice_call_input.take())")
         < on_close.index("self.stop_controlled_audio().await")
         < on_close.index("self.tx_to_cm.send(data).ok()")
         < on_close.index("self.closed = true")
+    and connection_drop.index("drop(self.voice_call_input.take())")
+        < connection_drop.index("drop(self.controlled_audio.take())")
     and "drop(self.controlled_audio.take())" in connection_drop
     and "A worker-owning constructor" in requirements
     and "<tr><td>203</td>" in requirements
+    and '<span class="id">R-S11bq</span>' in requirements
+    and "<tr><td>210</td>" in requirements
 )
 raise SystemExit(0 if ok else 1)
 PY
@@ -10518,7 +10523,8 @@ fi
 #      transiently re-grant a cleared capability (the ordering window behind CVE-2026-58056);
 #  (b) the on_message dispatcher is a 3-way AuthConnType allowlist — INPUT + remote-CONTROL
 #      (reboot / privacy-toggle / virtual-display) Remote-only, desktop CAPTURE Remote-or-ViewCamera;
-#  (c) the flag-gated sinks the guard's message set does not cover key on AuthConnType / voice_calling:
+#  (c) the flag-gated sinks the guard's message set does not cover key on AuthConnType / exact
+#      voice-call input ownership:
 #      host clipboard-TEXT write (Remote-only), peer->host audio and voice-call state
 #      (Remote/ViewCamera voice owner only), cursor/window capture (Remote-only).
 rs19=
@@ -10555,9 +10561,9 @@ if echo "$capset" | grep -q 'TogglePrivacyMode';   then rs19="$rs19 privacy-stil
 # MessageQuery answers make_display_changed_msg (monitor geometry/resolution), so it MUST sit in the
 # Remote-or-ViewCamera capture allowlist — else a FileTransfer/Terminal/PortForward peer reads display metadata.
 echo "$capset" | grep -q 'MessageQuery'            || rs19="$rs19 messagequery-not-capture-gated"
-# (c) flag-gated sinks key on AuthConnType / voice_calling
+# (c) flag-gated sinks key on AuthConnType / exact voice-call input ownership
 grep -q 'self.clipboard && self.is_authed_remote_conn()' "$conn"       || rs19="$rs19 clipboard-text-not-remote-gated"
-grep -q '!self.disable_audio && self.voice_calling' "$conn"            || rs19="$rs19 audio-not-voice-gated"
+grep -q '!self.disable_audio && self.voice_call_input.is_some()' "$conn" || rs19="$rs19 audio-not-voice-gated"
 grep -q 'q == BoolOption::Yes && self.is_authed_remote_conn()' "$conn" || rs19="$rs19 cursor-window-not-remote-gated"
 grep -q 'fn can_drive_voice_call(&self) -> bool' "$conn"               || rs19="$rs19 voice-call-authority-helper-missing"
 grep -q 'self.is_authed_remote_conn() || self.is_authed_view_camera_conn()' "$conn" || rs19="$rs19 voice-call-not-remote-viewcamera-gated"
@@ -10567,11 +10573,13 @@ voice_close_body=$(awk '/pub async fn close_voice_call/,/^    }/' "$conn")
 echo "$voice_close_body" | grep -q 'pub async fn close_voice_call(&mut self) -> bool' || rs19="$rs19 voice-close-not-result-bearing"
 echo "$voice_close_body" | grep -q 'if !self.can_drive_voice_call()'    || rs19="$rs19 voice-close-not-authtype-gated"
 echo "$voice_close_body" | grep -q 'self.voice_call_request_timestamp.is_none()' || rs19="$rs19 voice-close-not-state-owned"
-echo "$voice_close_body" | grep -q 'if self.voice_calling {'            || rs19="$rs19 voice-close-global-reset-not-owner-gated"
+echo "$voice_close_body" | grep -q 'self.voice_call_input.is_none()'    || rs19="$rs19 voice-close-not-lease-state-owned"
+echo "$voice_close_body" | grep -q 'drop(self.voice_call_input.take())' || rs19="$rs19 voice-close-exact-owner-release-missing"
 ipc_voice_close_body=$(awk '/ipc::Data::CloseVoiceCall\(_reason\)/,/_ => \{\}/' "$conn")
 echo "$ipc_voice_close_body" | grep -q 'if conn.close_voice_call().await' || rs19="$rs19 cm-voice-close-not-result-gated"
 on_close_voice_reset=$(awk '/async fn on_close/,/log::info!/' "$conn")
-echo "$on_close_voice_reset" | grep -q 'if self.voice_calling {'        || rs19="$rs19 connection-close-global-voice-reset-not-owner-gated"
+echo "$on_close_voice_reset" | grep -q 'drop(self.voice_call_input.take())' || rs19="$rs19 connection-close-exact-owner-release-missing"
+if grep -q 'voice_calling' "$conn"; then rs19="$rs19 parallel-voice-owner-state-remains"; fi
 if [ -z "$rs19" ]; then
   echo "  ok  R-S19/CVE-2026-58056/CWE-863: capabilities confined by AuthConnType (derivation-before-options + 3-way guard + sink gates)"
 else

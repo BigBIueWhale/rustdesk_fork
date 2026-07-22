@@ -3361,7 +3361,7 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
             };
             let applied = match tokio::task::spawn_blocking(move || {
                 let _permit = permit;
-                crate::audio_service::set_voice_call_input_device(Some(value), true);
+                crate::audio_service::set_voice_call_input_device(value);
             })
             .await
             {
@@ -3846,10 +3846,9 @@ impl Drop for CheckIfRestart {
             crate::audio_service::restart();
         }
         if self.voice_call_input != Config::get_option("voice-call-input") {
-            crate::audio_service::set_voice_call_input_device(
-                Some(Config::get_option("voice-call-input")),
-                true,
-            )
+            crate::audio_service::set_voice_call_input_device(Config::get_option(
+                "voice-call-input",
+            ))
         }
     }
 }

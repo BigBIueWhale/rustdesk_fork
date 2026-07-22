@@ -23,7 +23,67 @@ pub const AUDIO_DATA_SIZE_U8: usize = 960 * 4; // 10ms in 48000 stereo
 static RESTARTING: AtomicBool = AtomicBool::new(false);
 
 lazy_static::lazy_static! {
-    static ref VOICE_CALL_INPUT_DEVICE: Arc::<Mutex::<Option<String>>> = Default::default();
+    static ref VOICE_CALL_INPUT_STATE: Arc<Mutex<VoiceCallInputState>> = Default::default();
+}
+
+#[derive(Default)]
+struct VoiceCallInputState {
+    device: Option<String>,
+    owners: usize,
+}
+
+impl VoiceCallInputState {
+    fn acquire(&mut self, default_device: Option<String>) -> Result<bool, &'static str> {
+        let Some(owners) = self.owners.checked_add(1) else {
+            return Err("voice-call input owner count exhausted");
+        };
+        self.owners = owners;
+        if self.device.is_none() && default_device.is_some() {
+            self.device = default_device;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn release(&mut self) -> Result<bool, &'static str> {
+        let Some(owners) = self.owners.checked_sub(1) else {
+            return Err("voice-call input owner count underflow");
+        };
+        self.owners = owners;
+        if owners == 0 {
+            Ok(self.device.take().is_some())
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn select_device(&mut self, device: String) -> bool {
+        if self.device.as_deref() == Some(device.as_str()) {
+            return false;
+        }
+        self.device = Some(device);
+        true
+    }
+}
+
+pub struct VoiceCallInputLease {
+    _private: (),
+}
+
+impl Drop for VoiceCallInputLease {
+    fn drop(&mut self) {
+        let restart_required = match VOICE_CALL_INPUT_STATE.lock().unwrap().release() {
+            Ok(restart_required) => restart_required,
+            Err(err) => {
+                log::error!("voice-call input ownership invariant failed: {err}");
+                std::process::abort();
+            }
+        };
+        if restart_required {
+            restart();
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -181,27 +241,43 @@ pub fn new() -> GenericService {
 
 #[inline]
 pub fn get_voice_call_input_device() -> Option<String> {
-    VOICE_CALL_INPUT_DEVICE.lock().unwrap().clone()
+    VOICE_CALL_INPUT_STATE.lock().unwrap().device.clone()
 }
 
 #[inline]
-pub fn set_voice_call_input_device(device: Option<String>, set_if_present: bool) {
-    if !set_if_present && VOICE_CALL_INPUT_DEVICE.lock().unwrap().is_some() {
-        return;
+pub fn set_voice_call_input_device(device: String) {
+    let restart_required = VOICE_CALL_INPUT_STATE
+        .lock()
+        .unwrap()
+        .select_device(device);
+    if restart_required {
+        restart();
     }
+}
 
-    if *VOICE_CALL_INPUT_DEVICE.lock().unwrap() == device {
-        return;
+pub fn acquire_voice_call_input(
+    default_device: Option<String>,
+) -> ResultType<VoiceCallInputLease> {
+    let restart_required = match VOICE_CALL_INPUT_STATE
+        .lock()
+        .unwrap()
+        .acquire(default_device)
+    {
+        Ok(restart_required) => restart_required,
+        Err(err) => bail!(err),
+    };
+    if restart_required {
+        restart();
     }
-    *VOICE_CALL_INPUT_DEVICE.lock().unwrap() = device;
-    restart();
+    Ok(VoiceCallInputLease { _private: () })
 }
 
 #[inline]
 fn get_audio_input() -> String {
-    VOICE_CALL_INPUT_DEVICE
+    VOICE_CALL_INPUT_STATE
         .lock()
         .unwrap()
+        .device
         .clone()
         .unwrap_or(Config::get_option("audio-input"))
 }
@@ -666,6 +742,46 @@ mod test {
 
         assert!(install_pa_capture_authority(Vec::new()).is_err());
         assert!(install_pa_capture_authority(vec![0, -7]).is_err());
+    }
+
+    #[test]
+    fn r_s11e83_voice_call_input_remains_selected_until_the_final_owner_releases() {
+        let mut state = VoiceCallInputState::default();
+
+        assert_eq!(state.acquire(Some("first".to_owned())), Ok(true));
+        assert_eq!(state.owners, 1);
+        assert_eq!(state.device.as_deref(), Some("first"));
+
+        assert_eq!(state.acquire(Some("second".to_owned())), Ok(false));
+        assert_eq!(state.owners, 2);
+        assert_eq!(state.device.as_deref(), Some("first"));
+
+        assert!(state.select_device("operator-selected".to_owned()));
+        assert_eq!(state.release(), Ok(false));
+        assert_eq!(state.owners, 1);
+        assert_eq!(state.device.as_deref(), Some("operator-selected"));
+
+        assert_eq!(state.release(), Ok(true));
+        assert_eq!(state.owners, 0);
+        assert_eq!(state.device, None);
+    }
+
+    #[test]
+    fn r_s11e83_voice_call_input_owner_count_fails_closed() {
+        let mut state = VoiceCallInputState::default();
+        assert_eq!(
+            state.release(),
+            Err("voice-call input owner count underflow")
+        );
+
+        state.owners = usize::MAX;
+        state.device = Some("unchanged".to_owned());
+        assert_eq!(
+            state.acquire(Some("replacement".to_owned())),
+            Err("voice-call input owner count exhausted")
+        );
+        assert_eq!(state.owners, usize::MAX);
+        assert_eq!(state.device.as_deref(), Some("unchanged"));
     }
 }
 

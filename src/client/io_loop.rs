@@ -80,6 +80,8 @@ struct VoiceCallThread {
     stop_requested: Arc<AtomicBool>,
     #[cfg(not(target_os = "ios"))]
     subscription: Option<ConnInner>,
+    #[cfg(not(target_os = "ios"))]
+    input_lease: Option<audio_service::VoiceCallInputLease>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -88,11 +90,13 @@ impl VoiceCallThread {
     fn new(
         stop_requested: Arc<AtomicBool>,
         subscription: ConnInner,
+        input_lease: audio_service::VoiceCallInputLease,
         thread: std::thread::JoinHandle<()>,
     ) -> Self {
         Self {
             stop_requested,
             subscription: Some(subscription),
+            input_lease: Some(input_lease),
             thread: Some(thread),
         }
     }
@@ -111,6 +115,7 @@ impl VoiceCallThread {
                     false,
                 );
             }
+            drop(self.input_lease.take());
         }
         self.thread.take()
     }
@@ -862,12 +867,15 @@ impl<T: InvokeUiSession> Remote<T> {
         // iOS does not have this server.
         #[cfg(not(any(target_os = "ios")))]
         {
-            // NOTE:
-            // The client server and --server both use the same sound input device.
-            // It's better to distinguish the server side and client side.
-            // But it' not necessary for now, because it's not a common case.
-            // And it is immediately known when the input device is changed.
-            crate::audio_service::set_voice_call_input_device(get_default_sound_input(), false);
+            let input_lease = match crate::audio_service::acquire_voice_call_input(
+                get_default_sound_input(),
+            ) {
+                Ok(input_lease) => input_lease,
+                Err(err) => {
+                    log::error!("Failed to acquire voice-call input: {err}");
+                    return None;
+                }
+            };
             let (tx_audio_data, mut rx_audio_data) =
                 hbb_common::tokio::sync::mpsc::unbounded_channel();
             // Create a stand-alone inner, add subscribe to audio service
@@ -909,7 +917,6 @@ impl<T: InvokeUiSession> Remote<T> {
                         cleanup_subscription,
                         false,
                     );
-                    crate::audio_service::set_voice_call_input_device(None, true);
                 })
             {
                 Ok(thread) => thread,
@@ -920,13 +927,13 @@ impl<T: InvokeUiSession> Remote<T> {
                         client_conn_inner,
                         false,
                     );
-                    crate::audio_service::set_voice_call_input_device(None, true);
                     return None;
                 }
             };
             return Some(VoiceCallThread::new(
                 stop_requested,
                 client_conn_inner,
+                input_lease,
                 thread,
             ));
         }

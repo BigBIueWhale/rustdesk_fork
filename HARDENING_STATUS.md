@@ -176,7 +176,8 @@ at authorization time — *before* any peer login-option is applied, closing a r
 window (a FileTransfer peer's `LoginRequest.option{block_input:Yes}` fired a Windows console-freeze
 once before the old in-branch clear landed); the `on_message` guard is a 3-way allowlist (input +
 remote-*control* reboot/privacy/virtual-display = Remote-only; desktop *capture* = Remote|ViewCamera);
-and the flag-gated sinks the guard's message set misses now key on `AuthConnType`/`voice_calling` —
+and the flag-gated sinks the guard's message set misses now key on `AuthConnType`/exact voice-call
+input ownership —
 host clipboard-*text* write (Remote-only; the FileTransfer *file*-clipboard stays), peer→host audio
 (voice-call only), cursor/window capture + whiteboard spawn + the Windows RDP session-switch
 (Remote-only). The research surfaced **two instances beyond the known set**, both closed: a **HIGH**
@@ -7248,7 +7249,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `scripts/verify-viewer-voice-call-worker.py` binds the composite owner, stop-before-unsubscribe
   ordering, blocking receive and post-wake check, worker cleanup, spawn-failure rollback, existing
   completion-pool sinks, polling-channel absence, R-S11bp, Appendix C #209, this row, and shared-gate
-  and Apple-gate wiring; its self-test rejects 20 deliberate semantic weakenings. The independent
+  and Apple-gate wiring; its combined R-S11bp/R-S11bq self-test now rejects 36 deliberate semantic
+  weakenings. The independent
   workspace verifier passes normally and its complete current-tree source-mutation matrix rejects the
   registered weakened contracts. Exact Rust 1.75 locked/offline compilation from the reviewed local
   vendor closure in a fresh bounded, non-root, network-disabled tmpfs target passes both focused tests:
@@ -7257,6 +7259,64 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The available diagnostic image has no Rustfmt component, so no formatter result is claimed. No current
   APK, native Android/desktop voice-call session, real device, exact release artifact, or R-B2/R-B10
   transaction is claimed here.
+- **R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners — SOURCE, FOCUSED RUST,
+  SOURCE GATE, AND MUTATION VERIFIED; ANDROID NATIVE OWNER AGGREGATION AND EXACT
+  NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAIN OPEN.** Platforms: the shared Rust audio service used by
+  non-iOS outgoing viewers and
+  controlled Remote/ViewCamera connections on Android and desktop. Endpoint/action: selecting and restarting
+  the one process-wide physical voice-call input while independently owned calls start, stop, reconnect, close,
+  or are cancelled. Boundary: each exact call owner ↔ the shared audio-input selection and capture-service
+  restart. The inherited `VOICE_CALL_INPUT_DEVICE: Option<String>` exposed one
+  `set_voice_call_input_device(device, set_if_present)` function for both selection and ownership. Every
+  outgoing worker and accepted controlled connection selected that global, while independent worker-exit,
+  explicit-close, asynchronous-close, and `Connection::Drop` paths unconditionally wrote `None`. The controlled
+  connection separately carried `voice_calling: bool`. Multiple outgoing sessions and multiple controlled
+  connection IDs are valid process state; no source invariant serialized them. One call could therefore clear
+  and restart input still required by another, and the boolean, worker, and global selection could diverge. This
+  is a source-proven shared resource-availability/lifecycle defect. It is not evidence of host RustDesk
+  modification, a public listener, firewall change, Docker privilege, exploitation, or compromise, and it is
+  not a device reproduction or proved cause of the reported one-host screen-control symptom.
+
+  `VoiceCallInputState` now owns the selected device plus a checked active-owner count. Only
+  `acquire_voice_call_input()` can construct the private, non-cloneable `VoiceCallInputLease`: the first owner
+  installs its default only when no selection exists, later owners share the one physical stream, and operator
+  device selection changes that stream without changing ownership; the public selection API accepts only a
+  concrete device, so it cannot clear the lease-owned state. Releasing a non-final lease does nothing to
+  the selection; final release alone clears it and requests restart. Acquisition overflow returns failure without
+  mutation, while impossible release underflow logs the invariant failure and aborts instead of silently
+  continuing with corrupt accounting. The obsolete `set_if_present` API is deleted.
+
+  `VoiceCallThread` now owns its lease alongside the exact subscription, durable stop flag, and worker handle.
+  Stop publishes retirement, removes the exact subscription, and then drops only that lease; the worker and its
+  spawn-failure branch have no global-`None` cleanup authority, so lexical lease drop supplies exact rollback.
+  Controlled `Connection` stores `Option<VoiceCallInputLease>` instead of `voice_calling`, acquires before its
+  first response await, reports refusal if acquisition fails, derives overlap/audio admission from lease
+  presence, and takes only its exact lease during explicit close, asynchronous close before its first cleanup
+  await, and hard `Drop`.
+
+  Evidence boundary: this Rust ownership slice deliberately does not claim the separate Android native recorder
+  state machine is correct. Source tracing found that `MainService.rustSetByName("update_voice_call_state")`
+  receives an exact controlled connection ID but switches the process-wide `AudioRecordHandle` directly for
+  each individual state event; a false event can switch out while another ID remains active, and ordinary
+  connection removal does not send an exact native owner-retirement event. Outgoing activity voice-call events
+  likewise reach `MainActivity` without a session owner and can cross the activity/service recorder handoff.
+  Exact per-connection/per-session aggregation and that handoff remain a separate open source/device slice. No
+  current APK, native Android/desktop voice-call transaction, real-device sequence, exact release artifact, or
+  R-B2/R-B10 transaction is claimed here.
+
+  Verification: exact Rust 1.75 locked/offline library tests compiled against the complete pinned read-only
+  `online/cargo-vendor` source map in a fresh non-root/network-disabled tmpfs target. Both R-S11e-83 ownership
+  regressions passed (`2 passed`, `0 failed`, `342 filtered`); the two adjacent R-S11e-82 event-driven worker
+  regressions also passed (`2 passed`, `0 failed`, `342 filtered`). Compilation completed with the repository's
+  existing warning set and is not claimed warning-free. The focused semantic verifier passed normally and rejected
+  all 36 registered R-S11bp/R-S11bq mutations. The independent workspace verifier passed normally and its complete
+  current-tree in-memory source-mutation matrix passed. Python byte-compilation, edited Bash syntax, retired-symbol
+  residue checks, `git diff --check`, requirements-hash equality, and native-codec normal/self-test gates passed.
+  The available image has no Rustfmt component, so no formatter result is claimed. The workspace verifier's broader
+  behavioral self-test was attempted but is not counted: its managed-command fixture requires a real current-UID
+  systemd user-bus socket, and the isolated container deliberately mounts no host runtime directory or bus. The
+  current repo-pinned full-verifier image is not locally present, and the binding loop excludes the long release
+  build, so no repository-wide `scripts/verify.sh` or release transaction result is claimed.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7972,9 +8032,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-45f7f885e6a5392e479db8aeb6544f4b85bcd2d0080ef13033b4c169076287eb  requirements.html
+7f6a1a5cef0ec6949a307ed0e2aa3ddb00ece3c563187a9b9b8f1cc59886661c  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bp, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bq, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#210. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

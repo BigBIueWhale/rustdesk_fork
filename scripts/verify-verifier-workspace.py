@@ -7338,7 +7338,7 @@ def validate_linux_headless_cm_parent_contract(sources):
         connection_drop,
         (
             "drop(self.cm_ipc_owner.take());",
-            "if self.voice_calling {",
+            "drop(self.voice_call_input.take());",
             "self.tx_to_cm.send(ipc::Data::Close)",
         ),
         "CM task cancellation-before-connection cleanup ordering",
@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
+        "R-S11n through R-S11bq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#210",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11281,6 +11281,12 @@ def validate_unix_helper_process_role_contract(sources):
 
 def validate_viewer_voice_call_worker_contract(sources):
     focused = sources["viewer_voice_call_worker_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "voice-call focused runtime validation",
+    )
     for text, label in (
         ("def extract_rust_item(", "voice-call Rust item parser"),
         ("def validate(sources", "voice-call semantic entry"),
@@ -11300,10 +11306,38 @@ def validate_viewer_voice_call_worker_contract(sources):
             '"subscription: Option<ConnInner>"',
             "voice-call exact subscription owner contract",
         ),
+        (
+            '"input_lease: Option<audio_service::VoiceCallInputLease>"',
+            "voice-call exact input lease contract",
+        ),
+        ('"owners: usize"', "voice-call checked owner-state contract"),
+        (
+            'if "voice_calling" in connection:',
+            "parallel controlled voice-call boolean rejection",
+        ),
+        (
+            '"pub fn set_voice_call_input_device(device: String)"',
+            "non-clearing explicit selection API contract",
+        ),
+        (
+            '"self.device = Some(device);"',
+            "selected device installation contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "voice-call mutation inventory"),
         ("run_self_test(sources)", "voice-call mutation dispatch"),
     ):
-        require_text(focused, text, label)
+        source = (
+            focused
+            if text
+            in {
+                "def extract_rust_item(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_self_test(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
     require_text(
         sources["verify"],
         "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test",
@@ -11328,6 +11362,21 @@ def validate_viewer_voice_call_worker_contract(sources):
         sources["hardening"],
         "R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned",
         "voice-call worker hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bq</span>',
+        "exact voice-call input ownership requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>210</td>",
+        "voice-call input ownership Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners",
+        "voice-call input ownership hardening ledger",
     )
 
 
@@ -26273,8 +26322,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208",
+            "R-S11n through R-S11bq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#210",
+            "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -26458,6 +26507,34 @@ def run_source_mutations(sources):
             "voice-call polling/runtime rejection inventory",
         ),
         (
+            "viewer_voice_call_worker_verifier",
+            '"owners: usize"',
+            '"owners_removed: usize"',
+            "voice-call checked owner-state contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            'if "voice_calling" in connection:',
+            "if False:",
+            "parallel controlled voice-call boolean rejection",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '        "pub fn set_voice_call_input_device(device: String)",\n'
+            '        "voice-call device selection",',
+            '        "pub fn set_voice_call_input_device(device: Option<String>)",\n'
+            '        "voice-call device selection",',
+            "non-clearing explicit selection API contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '        "self.device = Some(device);",\n'
+            '        "selected voice-call device installation",',
+            '        "self.device = None;",\n'
+            '        "selected voice-call device installation",',
+            "selected device installation contract",
+        ),
+        (
             "verify",
             "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test",
             "true # voice-call worker verifier removed",
@@ -26486,6 +26563,24 @@ def run_source_mutations(sources):
             "R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned",
             "R-S11bp/R-S11e-82 — outgoing voice-call capture polls",
             "voice-call worker hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bq</span>',
+            '<span class="id">R-S11bq-disabled</span>',
+            "exact voice-call input ownership requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>210</td>",
+            "<tr><td>210-disabled</td>",
+            "voice-call input ownership Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners",
+            "R-S11bq/R-S11e-83 — voice-call input selection is ambient",
+            "voice-call input ownership hardening ledger",
         ),
         (
             "android_builder_authority_verifier",

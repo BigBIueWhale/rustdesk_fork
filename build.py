@@ -66,6 +66,9 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "etc/init.d",
     "etc/rustdesk",
     "usr",
+    "usr/lib",
+    "usr/lib/systemd",
+    "usr/lib/systemd/system",
     "usr/share",
     "usr/share/applications",
     "usr/share/icons",
@@ -83,13 +86,13 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "usr/share/rustdesk/files/manual",
     "usr/share/rustdesk/files/openrc",
     "usr/share/rustdesk/files/runit",
-    "usr/share/rustdesk/files/systemd",
     "usr/share/rustdesk/lib",
 }
 DEBIAN_DATA_REQUIRED_FILES = {
     "etc/init.d/rustdesk",
     "etc/rustdesk/startwm.sh",
     "etc/rustdesk/xorg.conf",
+    "usr/lib/systemd/system/rustdesk.service",
     "usr/share/applications/rustdesk-link.desktop",
     "usr/share/applications/rustdesk.desktop",
     "usr/share/icons/hicolor/256x256/apps/rustdesk.png",
@@ -102,7 +105,6 @@ DEBIAN_DATA_REQUIRED_FILES = {
     "usr/share/rustdesk/files/manual/rustdesk-service",
     "usr/share/rustdesk/files/openrc/rustdesk",
     "usr/share/rustdesk/files/runit/run",
-    "usr/share/rustdesk/files/systemd/rustdesk.service",
     "usr/share/rustdesk/rustdesk",
 }
 DEBIAN_DATA_REQUIRED_FILES.update(DEBIAN_FLUTTER_LIBRARIES)
@@ -501,7 +503,7 @@ def build_flutter_deb(version, features):
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/etc/init.d/')
     system2('mkdir -p tmpdeb/etc/rustdesk/')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')
+    system2('mkdir -p tmpdeb/usr/lib/systemd/system/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
@@ -509,7 +511,7 @@ def build_flutter_deb(version, features):
     system2(
         f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
     system2(
-        'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')
+        'cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service')
     system2(
         'cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/')
     system2('cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk')

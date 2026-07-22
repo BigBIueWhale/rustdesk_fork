@@ -7856,6 +7856,74 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   install/repair/major-upgrade/uninstall behavior, the clean cold exact-commit Windows release, and the current exact
   APK remain open R-B2/R-B10 obligations; source
   conformance must not be reported as those native/artifact proofs.
+- **R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved — SOURCE
+  IMPLEMENTED AND CONFINED SOURCE/PACKAGE/MUTATION VERIFIED 2026-07-23; CLEAN EXACT-COMMIT PACKAGE AND INSTALLED
+  LIFECYCLE EVIDENCE REMAIN R-B2.** Platform: Debian package construction and systemd package lifecycle.
+  Endpoint/action: installation, upgrade, removal, and purge of `rustdesk.service`. Boundary: dpkg-owned vendor files
+  and Debian service-manager helper state ↔ administrator-owned primary unit, mask, replacement, and drop-in state
+  below `/etc/systemd/system`.
+
+  The inherited package did not ship the systemd unit at its installed vendor path. It shipped a private copy below
+  `/usr/share/rustdesk/files/systemd`; `postinst` unconditionally removed the exact `/etc/systemd/system/rustdesk.service`
+  object, removed both system and user vendor paths, recreated `/usr/lib/systemd/system`, and copied the private
+  template into place. `prerm` deleted the same three unit paths before dpkg's package-file removal phase and reloaded
+  systemd while the unit's ownership was still script-defined. Because an administrator mask is the exact `/etc`
+  object linked to `/dev/null`, this could erase a deliberate mask or replacement. This is local package-authority and
+  availability debt, not evidence that an administrator object existed or was deleted on a real host, that Docker
+  acquired root, that a public listener was opened, or that a machine was compromised.
+
+  The authority model is now conventional and closed. `build.py` places the byte-exact `res/rustdesk.service` directly
+  at `/usr/lib/systemd/system/rustdesk.service`; the exact package inventory admits that root/root mode-0644 ordinary
+  file and its three vendor directories, excludes the legacy `/usr/share` template, and includes the unit in generated
+  `md5sums`. Dpkg owns install, replacement, and removal. `postinst`, `prerm`, and `postrm` contain no primary systemd
+  unit path. They retain only checked `deb-systemd-helper`/`deb-systemd-invoke` lifecycle operations, the fixed manager
+  reload, and their own `/usr/bin/rustdesk` link. `prerm` stops/disables before removal; after dpkg removes the vendor
+  file, `postrm remove|purge` reloads the manager, while purge separately clears helper and root service-config state.
+  The exact upgrade-only `preinst` read predicate remains so an existing old unit is stopped before transition; it
+  neither writes nor removes any unit object. Administrator masks, replacement units, primary-unit links, and drop-ins
+  are not package-script state.
+
+  The focused semantic validator rejects every systemd search-path reference outside that one `preinst` predicate,
+  enforces the revised stop/disable/remove/reload order, and remains failure-propagating. The package authority
+  validator binds the direct constructor commands and exact inventory, byte-compares an emitted unit with source,
+  verifies its mode/link/owner and `md5sums` membership, and deliberately mutates the constructor back to the legacy
+  template, restores each of the three script deletions, removes the post-removal reload, corrupts the unit bytes, and
+  changes its mode. The release artifact gate independently extracts and compares the systemd unit. The disposable
+  installed-system fixture now creates an administrator-owned `/etc/systemd/system/rustdesk.service` link before
+  installation and requires that exact link to survive install, removal, and purge while the dpkg-owned vendor unit is
+  installed and removed normally. Debian's primary contracts are
+  <https://www.debian.org/doc/debian-policy/ch-opersys.html#starting-system-services>,
+  <https://www.debian.org/doc/debian-policy/ch-files.html#configuration-files>, and
+  <https://manpages.debian.org/unstable/systemd/systemd.unit.5.en.html>.
+
+  Confined focused verification used the already-present immutable Debian builder image
+  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776` as UID/GID 1000 with
+  `--pull=never`, no network, a read-only root and source, all capabilities dropped, `no-new-privileges`, bounded
+  PID/memory/no-swap/CPU use, and private tmpfs-only writable state. Bash syntax passed for all changed shell scripts;
+  in-memory Python compilation passed for all changed validators; the maintainer-script semantic validator passed;
+  and the package authority self-test returned `ok  Debian package tree is root-owned, exact-mode, link-free, and
+  source-gated`. Its production-constructor fixture, exact archive parser/inventory/mode/digest checks, legacy
+  constructor and maintainer-script mutations, wrong-unit-content mutation, and wrong-mode mutation all ran.
+
+  The complete independent semantic source-mutation matrix required Python `tomllib`, which the pinned Debian image's
+  Python 3.6 does not provide, so it ran in the already-present immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` under the same confinement and returned
+  `verify-verifier-workspace: ok`. A separate normal semantic pass returned the same result. Native-codec watch plus
+  its negative mutation self-test passed, `git diff --check` was clean, and the synchronized requirements digest is
+  `54d0f62a0a6e14b1ee4cadc660944bea16583d3c0ddf9678ae8b94e83a2a5f5a`. Two earlier confined syntax attempts
+  terminated before project validation because Python 3.6 first tried to write `__pycache__` beside the read-only
+  source and then decoded the large verifier as ASCII; the final in-memory UTF-8 compilation corrected both harness
+  invocations. Neither attempt wrote source or exercised package lifecycle code.
+
+  No image was built or pulled, no port or host namespace was used, and no container ran as root or received a host
+  service/configuration/device/Docker-socket mount. No `.deb` was built or installed and no maintainer script was
+  executed against a host root filesystem. No host RustDesk process, service, configuration, listener, firewall,
+  network, or device state was inspected or changed.
+
+  This source slice does not claim a newly built `.deb`, installation on this host, or execution of the privileged
+  systemd fixture. The current clean exact-commit Debian cold build and installed install/upgrade/removal/purge run
+  remain R-B2. No host RustDesk process, service, configuration, listener, firewall, network, or device state is in
+  scope for this source change.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8573,9 +8641,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7bf9c13e9dd2f1835e1a57c3f4f679c7482068b3258e2b789965c8edba4c7aa2  requirements.html
+54d0f62a0a6e14b1ee4cadc660944bea16583d3c0ddf9678ae8b94e83a2a5f5a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bx, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11by, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

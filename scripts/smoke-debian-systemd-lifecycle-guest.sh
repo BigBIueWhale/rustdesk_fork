@@ -206,21 +206,23 @@ build_package() {
     mkdir -p \
         "$staging/DEBIAN" \
         "$staging/etc/init.d" \
-        "$staging/usr/share/rustdesk/files/systemd"
+        "$staging/usr/lib/systemd/system" \
+        "$staging/usr/share/rustdesk"
     chmod 0755 \
         "$staging" \
         "$staging/DEBIAN" \
         "$staging/etc" \
         "$staging/etc/init.d" \
         "$staging/usr" \
+        "$staging/usr/lib" \
+        "$staging/usr/lib/systemd" \
+        "$staging/usr/lib/systemd/system" \
         "$staging/usr/share" \
-        "$staging/usr/share/rustdesk" \
-        "$staging/usr/share/rustdesk/files" \
-        "$staging/usr/share/rustdesk/files/systemd"
+        "$staging/usr/share/rustdesk"
     install -o root -g root -m 0755 "$BINARY" "$staging/usr/share/rustdesk/rustdesk"
     install -o root -g root -m 0755 "$INIT_SOURCE" "$staging/etc/init.d/rustdesk"
     install -o root -g root -m 0644 \
-        "$UNIT_SOURCE" "$staging/usr/share/rustdesk/files/systemd/rustdesk.service"
+        "$UNIT_SOURCE" "$staging/usr/lib/systemd/system/rustdesk.service"
     for script in preinst postinst prerm postrm; do
         install -o root -g root -m 0755 "$CONTROL_SOURCE/$script" "$staging/DEBIAN/$script"
     done
@@ -467,6 +469,8 @@ else
     # the artifact's real maintainer scripts in the disposable guest.
     install_argv=(--force-depends --install "$install_deb")
 fi
+mkdir -p /etc/systemd/system
+ln -s /usr/lib/systemd/system/rustdesk.service /etc/systemd/system/rustdesk.service
 dpkg "${install_argv[@]}" >"$FIXTURE/install.log" 2>&1 \
     || { sed -n '1,240p' "$FIXTURE/install.log" >&2; fail 'initial package install failed'; }
 [ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$PACKAGE" 2>/dev/null)" = 'ii ' ] \
@@ -486,6 +490,9 @@ fi
 }
 cmp -s "$UNIT_SOURCE" /usr/lib/systemd/system/rustdesk.service \
     || fail 'installed RustDesk unit differs from the production source fixture'
+[ -L /etc/systemd/system/rustdesk.service ] \
+    && [ "$(readlink /etc/systemd/system/rustdesk.service)" = /usr/lib/systemd/system/rustdesk.service ] \
+    || fail 'package install replaced the administrator-owned systemd unit link'
 systemd-analyze verify /usr/lib/systemd/system/rustdesk.service >/dev/null \
     || fail 'installed production RustDesk unit failed systemd-analyze verify'
 capture_unit
@@ -565,6 +572,9 @@ assert_process_gone "$removal_child" "$removal_child_start" 'package-removed ser
     || fail 'package-owned executable link survived removal'
 [ ! -e /usr/lib/systemd/system/rustdesk.service ] \
     || fail 'package-owned systemd unit survived removal'
+[ -L /etc/systemd/system/rustdesk.service ] \
+    && [ "$(readlink /etc/systemd/system/rustdesk.service)" = /usr/lib/systemd/system/rustdesk.service ] \
+    || fail 'package removal deleted the administrator-owned systemd unit link'
 [ ! -e /run/rustdesk ] && [ ! -L /run/rustdesk ] \
     || fail 'RuntimeDirectory survived package removal'
 assert_portable_alive
@@ -573,6 +583,10 @@ dpkg --purge "$PACKAGE" >"$FIXTURE/purge.log" 2>&1 \
     || { sed -n '1,160p' "$FIXTURE/purge.log" >&2; fail 'package purge failed'; }
 [ ! -e /etc/init.d/rustdesk ] && [ ! -L /etc/init.d/rustdesk ] \
     || fail 'SysV conffile survived package purge'
+[ -L /etc/systemd/system/rustdesk.service ] \
+    && [ "$(readlink /etc/systemd/system/rustdesk.service)" = /usr/lib/systemd/system/rustdesk.service ] \
+    || fail 'package purge deleted the administrator-owned systemd unit link'
+rm -f /etc/systemd/system/rustdesk.service
 assert_portable_alive
 
 systemctl stop "$PORTABLE_UNIT"

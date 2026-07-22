@@ -51,6 +51,9 @@ DATA_REQUIRED_DIRECTORIES = {
     "./etc/init.d",
     "./etc/rustdesk",
     "./usr",
+    "./usr/lib",
+    "./usr/lib/systemd",
+    "./usr/lib/systemd/system",
     "./usr/share",
     "./usr/share/applications",
     "./usr/share/icons",
@@ -68,13 +71,13 @@ DATA_REQUIRED_DIRECTORIES = {
     "./usr/share/rustdesk/files/manual",
     "./usr/share/rustdesk/files/openrc",
     "./usr/share/rustdesk/files/runit",
-    "./usr/share/rustdesk/files/systemd",
     "./usr/share/rustdesk/lib",
 }
 DATA_REQUIRED_FILES = {
     "./etc/init.d/rustdesk",
     "./etc/rustdesk/startwm.sh",
     "./etc/rustdesk/xorg.conf",
+    "./usr/lib/systemd/system/rustdesk.service",
     "./usr/share/applications/rustdesk-link.desktop",
     "./usr/share/applications/rustdesk.desktop",
     "./usr/share/icons/hicolor/256x256/apps/rustdesk.png",
@@ -87,7 +90,6 @@ DATA_REQUIRED_FILES = {
     "./usr/share/rustdesk/files/manual/rustdesk-service",
     "./usr/share/rustdesk/files/openrc/rustdesk",
     "./usr/share/rustdesk/files/runit/run",
-    "./usr/share/rustdesk/files/systemd/rustdesk.service",
     "./usr/share/rustdesk/rustdesk",
 }
 DATA_REQUIRED_FILES.update(FLUTTER_LIBRARIES)
@@ -691,7 +693,7 @@ def validate_md5sums(data_tar, data_members, control_tar, control_members, label
         raise ValidationError(f"{label}: failed to verify md5sums: {err}") from err
 
 
-def validate_deb(deb):
+def validate_deb(deb, expected_systemd_unit=None):
     data_tar = tar_stream_from_deb(deb, "--fsys-tarfile")
     data_members = tar_members_from_stream(data_tar, f"{deb}:--fsys-tarfile")
     control_tar = tar_stream_from_deb(deb, "--ctrl-tarfile")
@@ -703,6 +705,16 @@ def validate_deb(deb):
     for path, (kind, mode) in CONTROL_REQUIRED.items():
         require_member(control_members, path, kind, mode, f"{deb}:control")
     validate_conffiles(control_tar, control_members, f"{deb}:control")
+    if expected_systemd_unit is not None:
+        actual_systemd_unit = archive_member_bytes(
+            data_tar,
+            data_members["./usr/lib/systemd/system/rustdesk.service"],
+            f"{deb}:data:./usr/lib/systemd/system/rustdesk.service",
+        )
+        if actual_systemd_unit != expected_systemd_unit:
+            raise ValidationError(
+                f"{deb}:data:./usr/lib/systemd/system/rustdesk.service: bytes differ from res/rustdesk.service"
+            )
     validate_elf_runpaths(deb, data_tar, data_members)
     validate_md5sums(data_tar, data_members, control_tar, control_members, str(deb))
 
@@ -1274,7 +1286,7 @@ def validate_build_py(repo):
         "mkdir -p tmpdeb/usr/share/rustdesk",
         "mkdir -p tmpdeb/etc/init.d/",
         "mkdir -p tmpdeb/etc/rustdesk/",
-        "mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/",
+        "mkdir -p tmpdeb/usr/lib/systemd/system/",
         "mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/",
         "mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/",
         "mkdir -p tmpdeb/usr/share/applications/",
@@ -1297,7 +1309,7 @@ def validate_build_py(repo):
             )):
         raise ValidationError("build.py Flutter Debian bundle copy is not exact")
     resource_copy_commands = (
-        "cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/",
+        "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service",
         "cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/",
         "cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk",
         "cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png",
@@ -1426,6 +1438,26 @@ def validate_build_py(repo):
             "all Debian lifecycle scripts and service-manager templates must be tracked as executable regular files"
         )
 
+    lifecycle_validation = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts/verify-debian-maintainer-scripts.py"),
+            "--scripts-dir", str(repo / "res/DEBIAN"),
+            "--init-script", str(repo / "res/rustdesk.init"),
+            "--openrc-script", str(repo / "res/service-managers/openrc/rustdesk"),
+            "--runit-run", str(repo / "res/service-managers/runit/run"),
+            "--manual-run", str(repo / "res/service-managers/manual/rustdesk-service"),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    if lifecycle_validation.returncode != 0:
+        detail = lifecycle_validation.stderr.strip() or lifecycle_validation.stdout.strip()
+        raise ValidationError(
+            f"Debian maintainer-script lifecycle authority differs: {detail}"
+        )
+
 
 def write_file(path, contents, mode):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1453,7 +1485,7 @@ def make_synthetic_tree(root):
             contents = "#!/bin/sh\nset -e\nexit 0\n"
         elif name == "./usr/share/rustdesk/rustdesk":
             contents = "#!/bin/sh\nexit 0\n"
-        elif name == "./usr/share/rustdesk/files/systemd/rustdesk.service":
+        elif name == "./usr/lib/systemd/system/rustdesk.service":
             contents = "[Service]\nExecStart=/usr/bin/rustdesk --service\n"
         elif name == "./usr/share/polkit-1/actions/com.carriez.RustDesk.policy":
             contents = "<policyconfig/>\n"
@@ -1761,9 +1793,9 @@ def elf_dynamic_test_layout(contents):
     }
 
 
-def expect_validation_failure(deb, expected):
+def expect_validation_failure(deb, expected, expected_systemd_unit=None):
     try:
-        validate_deb(deb)
+        validate_deb(deb, expected_systemd_unit)
     except ValidationError as err:
         if expected in str(err):
             return
@@ -1815,6 +1847,7 @@ def run_source_gate_mutations(repo, tmp):
         "Cargo.toml",
         "flutter/linux/CMakeLists.txt",
         "scripts/build-debian.sh",
+        "scripts/verify-debian-maintainer-scripts.py",
         "res/DEBIAN/preinst",
         "res/DEBIAN/postinst",
         "res/DEBIAN/prerm",
@@ -2058,6 +2091,22 @@ def run_source_gate_mutations(repo, tmp):
         (
             replace_once(
                 baseline,
+                "    system2('mkdir -p tmpdeb/usr/lib/systemd/system/')",
+                "    system2('mkdir -p tmpdeb/usr/share/rustdesk/files/systemd/')",
+            ),
+            "setup operations are not exact",
+        ),
+        (
+            replace_once(
+                baseline,
+                "        'cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service')",
+                "        'cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/')",
+            ),
+            "resource copies are not exact",
+        ),
+        (
+            replace_once(
+                baseline,
                 '    "usr/share/rustdesk/lib/libwindow_size_plugin.so",\n',
                 "",
             ),
@@ -2076,6 +2125,42 @@ def run_source_gate_mutations(repo, tmp):
         build_path.write_text(mutated, encoding="utf-8")
         expect_source_validation_failure(lambda: validate_build_py(fixture), expected)
     build_path.write_text(baseline, encoding="utf-8")
+
+    for script, anchor, injected, expected in (
+        (
+            "postinst",
+            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n",
+            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
+            "\trm -f /etc/systemd/system/rustdesk.service\n",
+            "systemd unit paths must be package-owned",
+        ),
+        (
+            "prerm",
+            "        rm -f /usr/bin/rustdesk\n",
+            "        rm -f /usr/bin/rustdesk\n"
+            "        rm -f /usr/lib/systemd/system/rustdesk.service\n",
+            "systemd unit paths must be package-owned",
+        ),
+        (
+            "postrm",
+            "        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk\n",
+            "        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk\n"
+            "        rm -f /etc/systemd/system/rustdesk.service\n",
+            "systemd unit paths must be package-owned",
+        ),
+        (
+            "postrm",
+            "            /bin/systemctl --system daemon-reload >/dev/null\n",
+            "",
+            "must reload systemd exactly once after package-file removal",
+        ),
+    ):
+        script_path = fixture / f"res/DEBIAN/{script}"
+        original = script_path.read_text(encoding="utf-8")
+        script_path.write_text(replace_once(original, anchor, injected), encoding="utf-8")
+        expect_source_validation_failure(lambda: validate_build_py(fixture), expected)
+        script_path.write_text(original, encoding="utf-8")
+
     generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"
     if generated_plugins.exists():
         raise ValidationError("source-gate fixture unexpectedly contains generated Flutter plugin metadata")
@@ -2296,7 +2381,25 @@ def run_self_test(repo):
         populate_valid_synthetic_elves(good_tree)
         good_deb = tmp / "good.deb"
         build_deb(good_tree, good_deb, root_owner_group=True)
-        validate_deb(good_deb)
+        expected_systemd_unit = (
+            good_tree / "usr/lib/systemd/system/rustdesk.service"
+        ).read_bytes()
+        validate_deb(good_deb, expected_systemd_unit)
+
+        wrong_systemd_unit_deb = tmp / "wrong-systemd-unit.deb"
+        write_modified_deb(
+            good_deb,
+            wrong_systemd_unit_deb,
+            data_transform=replace_tar_member(
+                "./usr/lib/systemd/system/rustdesk.service",
+                contents=b"[Service]\nExecStart=/usr/bin/false\n",
+            ),
+        )
+        expect_validation_failure(
+            wrong_systemd_unit_deb,
+            "bytes differ from res/rustdesk.service",
+            expected_systemd_unit,
+        )
 
         bad_owner_tree = tmp / "bad-owner-tree"
         shutil.copytree(good_tree, bad_owner_tree)
@@ -2332,7 +2435,7 @@ def run_self_test(repo):
             good_deb,
             private_file_deb,
             data_transform=replace_tar_member(
-                "./usr/share/rustdesk/files/systemd/rustdesk.service", mode=0o600
+                "./usr/lib/systemd/system/rustdesk.service", mode=0o600
             ),
         )
         expect_validation_failure(private_file_deb, "mode 600, expected 644")
@@ -2989,8 +3092,9 @@ def main():
         validate_build_py(Path(args.repo).resolve())
         if args.self_test:
             run_self_test(Path(args.repo).resolve())
+        expected_systemd_unit = (Path(args.repo).resolve() / "res/rustdesk.service").read_bytes()
         for deb in args.deb:
-            validate_deb(Path(deb).resolve())
+            validate_deb(Path(deb).resolve(), expected_systemd_unit)
     except ValidationError as err:
         fail(str(err))
 

@@ -19,12 +19,6 @@ case "$1" in
             update-rc.d "$service" remove >/dev/null
         fi
         rm -f /usr/bin/rustdesk
-        rm -f /etc/systemd/system/rustdesk.service
-        rm -f /usr/lib/systemd/system/rustdesk.service
-        rm -f /usr/lib/systemd/user/rustdesk.service
-        if [ -d /run/systemd/system ]; then
-            /bin/systemctl --system daemon-reload >/dev/null
-        fi
         ;;
 esac
 

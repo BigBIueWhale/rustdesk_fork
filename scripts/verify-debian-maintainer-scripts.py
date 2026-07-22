@@ -8,6 +8,18 @@ import sys
 EXPECTED = ("preinst", "postinst", "prerm", "postrm")
 SYSTEMD_ACTIVE = "if [ -d /run/systemd/system ]; then"
 RELOAD = "/bin/systemctl --system daemon-reload >/dev/null"
+OLD_UNIT_PREDICATE = (
+    'if [ -e "/etc/systemd/system/$unit" ] || '
+    '[ -e "/usr/lib/systemd/system/$unit" ] || '
+    '[ -e "/lib/systemd/system/$unit" ]; then'
+)
+SYSTEMD_UNIT_PATH_FRAGMENTS = (
+    "/etc/systemd/system",
+    "/usr/lib/systemd/system",
+    "/usr/lib/systemd/user",
+    "/lib/systemd/system",
+    "/usr/share/rustdesk/files/systemd",
+)
 
 
 def stripped_lines(path):
@@ -77,6 +89,16 @@ def check_common(errors, script, path, lines):
             if not re.fullmatch(r'update-rc\.d "\$service" (defaults|remove) >/dev/null', line):
                 errors.append(f"{script}:{number}: invalid update-rc.d action")
 
+    unit_path_lines = [
+        line for line in lines
+        if any(fragment in line for fragment in SYSTEMD_UNIT_PATH_FRAGMENTS)
+    ]
+    expected_unit_path_lines = [OLD_UNIT_PREDICATE] if script == "preinst" else []
+    if unit_path_lines != expected_unit_path_lines:
+        errors.append(
+            f"{script}: systemd unit paths must be package-owned; only the exact preinst read predicate is allowed"
+        )
+
 
 def check_preinst(errors, lines):
     script = "preinst"
@@ -92,7 +114,7 @@ def check_preinst(errors, lines):
         lines,
         "upgrade)",
         SYSTEMD_ACTIVE,
-        'if [ -e "/etc/systemd/system/$unit" ] || [ -e "/usr/lib/systemd/system/$unit" ] || [ -e "/lib/systemd/system/$unit" ]; then',
+        OLD_UNIT_PREDICATE,
         'deb-systemd-invoke stop "$unit" >/dev/null',
         "elif [ -x /etc/init.d/rustdesk ]; then",
         'invoke-rc.d "$service" stop >/dev/null',
@@ -105,7 +127,6 @@ def check_postinst(errors, lines):
     script = "postinst"
     require_contains(errors, script, lines, "unit=rustdesk.service")
     require_contains(errors, script, lines, "service=rustdesk")
-    require_contains(errors, script, lines, "unit_path=/usr/lib/systemd/system/rustdesk.service")
     require_contains(errors, script, lines, 'if [ "$1" = configure ]; then')
     require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 1, "must select systemd exactly once")
     require(errors, script, count_contains(lines, 'invoke-rc.d "$service" start >/dev/null') == 1, "must start the SysV service exactly once")
@@ -113,7 +134,7 @@ def check_postinst(errors, lines):
         errors,
         script,
         lines,
-        'cp /usr/share/rustdesk/files/systemd/rustdesk.service "$unit_path"',
+        'ln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk',
         'update-rc.d "$service" defaults >/dev/null',
         SYSTEMD_ACTIVE,
         'deb-systemd-helper enable "$unit" >/dev/null',
@@ -129,7 +150,7 @@ def check_prerm(errors, lines):
     require_contains(errors, script, lines, "unit=rustdesk.service")
     require_contains(errors, script, lines, "service=rustdesk")
     require_contains(errors, script, lines, "remove|upgrade|deconfigure)")
-    require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 3, "must gate stop, disable, and reload on the active systemd backend")
+    require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 2, "must gate stop and disable on the active systemd backend")
     require(errors, script, count_contains(lines, 'invoke-rc.d "$service" stop >/dev/null') == 1, "must stop the SysV service exactly once")
     require_order(
         errors,
@@ -144,8 +165,6 @@ def check_prerm(errors, lines):
         'deb-systemd-helper disable "$unit" >/dev/null',
         'update-rc.d "$service" remove >/dev/null',
         "rm -f /usr/bin/rustdesk",
-        "rm -f /usr/lib/systemd/system/rustdesk.service",
-        RELOAD,
     )
 
 
@@ -154,6 +173,9 @@ def check_postrm(errors, lines):
     require_contains(errors, script, lines, "unit=rustdesk.service")
     require_contains(errors, script, lines, "service=rustdesk")
     require_contains(errors, script, lines, "purge)")
+    require_contains(errors, script, lines, "remove|purge)")
+    require(errors, script, count_contains(lines, SYSTEMD_ACTIVE) == 1, "must reload the active systemd backend exactly once after package-file removal")
+    require(errors, script, count_contains(lines, RELOAD) == 1, "must reload systemd exactly once after package-file removal")
     require_order(
         errors,
         script,
@@ -161,6 +183,9 @@ def check_postrm(errors, lines):
         'deb-systemd-helper purge "$unit" >/dev/null',
         'update-rc.d "$service" remove >/dev/null',
         "rm -rf -- /root/.config/RustDesk /root/.config/rustdesk",
+        "remove|purge)",
+        SYSTEMD_ACTIVE,
+        RELOAD,
     )
 
 

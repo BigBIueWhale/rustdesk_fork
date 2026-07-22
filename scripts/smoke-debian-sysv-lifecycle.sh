@@ -93,20 +93,22 @@ build_package() {
     mkdir -p \
         "$staging/DEBIAN" \
         "$staging/etc/init.d" \
-        "$staging/usr/share/rustdesk/files/systemd"
+        "$staging/usr/lib/systemd/system" \
+        "$staging/usr/share/rustdesk"
     chmod 0755 \
         "$staging" \
         "$staging/DEBIAN" \
         "$staging/etc" \
         "$staging/etc/init.d" \
         "$staging/usr" \
+        "$staging/usr/lib" \
+        "$staging/usr/lib/systemd" \
+        "$staging/usr/lib/systemd/system" \
         "$staging/usr/share" \
-        "$staging/usr/share/rustdesk" \
-        "$staging/usr/share/rustdesk/files" \
-        "$staging/usr/share/rustdesk/files/systemd"
+        "$staging/usr/share/rustdesk"
     install -o root -g root -m 0755 "$BINARY" "$staging/usr/share/rustdesk/rustdesk"
     install -o root -g root -m 0755 "$INIT_SOURCE" "$staging/etc/init.d/rustdesk"
-    install -o root -g root -m 0644 "$UNIT_SOURCE" "$staging/usr/share/rustdesk/files/systemd/rustdesk.service"
+    install -o root -g root -m 0644 "$UNIT_SOURCE" "$staging/usr/lib/systemd/system/rustdesk.service"
     for script in preinst postinst prerm postrm; do
         install -o root -g root -m 0755 "$CONTROL_SOURCE/$script" "$staging/DEBIAN/$script"
     done

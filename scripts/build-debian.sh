@@ -209,6 +209,21 @@ verify_deb_control_scripts() {
         rm -rf "$tmp_package"
         die "built .deb SysV init script differs from res/rustdesk.init"
     }
+    [ -f "$tmp_data/usr/lib/systemd/system/rustdesk.service" ] \
+      && [ ! -L "$tmp_data/usr/lib/systemd/system/rustdesk.service" ] \
+      && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/lib/systemd/system/rustdesk.service" 2>/dev/null)" = "$(id -u):$(id -g):644:1" ] || {
+        rm -rf "$tmp_package"
+        die "built .deb systemd unit is not a mode-0644 non-hardlinked regular file"
+    }
+    cmp -s "$REPO_ROOT/res/rustdesk.service" "$tmp_data/usr/lib/systemd/system/rustdesk.service" || {
+        rm -rf "$tmp_package"
+        die "built .deb systemd unit differs from res/rustdesk.service"
+    }
+    [ ! -e "$tmp_data/usr/share/rustdesk/files/systemd/rustdesk.service" ] \
+      && [ ! -L "$tmp_data/usr/share/rustdesk/files/systemd/rustdesk.service" ] || {
+        rm -rf "$tmp_package"
+        die "built .deb retains the legacy maintainer-script systemd unit template"
+    }
     local template
     for template in openrc/rustdesk runit/run manual/rustdesk-service; do
         [ -f "$tmp_data/usr/share/rustdesk/files/$template" ] \

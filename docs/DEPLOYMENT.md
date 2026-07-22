@@ -46,6 +46,10 @@ host) automatically:
 - installs `/usr/lib/systemd/system/rustdesk.service` (`ExecStart=/usr/bin/rustdesk --service`),
 - runs `systemctl daemon-reload`, `enable`, and `start`.
 
+The vendor unit is a dpkg-owned file. Package scripts do not replace or remove
+`/etc/systemd/system/rustdesk.service`, so an administrator replacement, primary-unit
+link, or `/dev/null` mask remains administrator-owned across install and removal.
+
 So the service is **already running after install** — but, being fail-closed, it will
 not listen until you complete step 2.
 

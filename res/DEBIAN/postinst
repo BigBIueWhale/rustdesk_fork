@@ -4,17 +4,11 @@ set -e
 
 unit=rustdesk.service
 service=rustdesk
-unit_path=/usr/lib/systemd/system/rustdesk.service
 
 if [ "$1" = configure ]; then
 
 	ln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk
 
-	rm -f /etc/systemd/system/rustdesk.service
-	rm -f /usr/lib/systemd/system/rustdesk.service
-	rm -f /usr/lib/systemd/user/rustdesk.service
-	mkdir -p /usr/lib/systemd/system
-	cp /usr/share/rustdesk/files/systemd/rustdesk.service "$unit_path"
 	update-rc.d "$service" defaults >/dev/null
 	if [ -d /run/systemd/system ]; then
 		deb-systemd-helper enable "$unit" >/dev/null

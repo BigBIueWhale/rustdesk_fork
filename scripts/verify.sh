@@ -7638,7 +7638,7 @@ fi
 if [ -n "$r_s11c10p" ]; then echo "  FAIL R-S11c-10p Linux self-relaunch AppImage fallback:$r_s11c10p"; rc=1; else
   echo "  ok  R-S11c-10p Linux self-relaunch uses current_exe only, with no APPDIR/AppRun fallback"; fi
 
-echo "== (3b-iii-h10) Debian package lifecycle uses service-manager helpers (R-S11c-10j/R-T9) =="
+echo "== (3b-iii-h10) Debian package lifecycle and vendor-unit ownership (R-S11c-10j/R-T9/R-S11by/R-S11e-91) =="
 r_s11c10j=
 for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
   grep -qE '^#!/bin/sh$' "$maintscript" || r_s11c10j="$r_s11c10j ${maintscript##*/}:not-posix-sh"
@@ -7651,8 +7651,8 @@ grep -q '/bin/systemctl --system daemon-reload >/dev/null' res/DEBIAN/postinst |
 grep -q 'deb-systemd-invoke start "$unit"' res/DEBIAN/postinst || r_s11c10j="$r_s11c10j postinst:no-helper-start"
 grep -q 'deb-systemd-invoke stop "$unit"' res/DEBIAN/prerm     || r_s11c10j="$r_s11c10j prerm:no-helper-stop"
 grep -q 'deb-systemd-helper disable "$unit"' res/DEBIAN/prerm  || r_s11c10j="$r_s11c10j prerm:no-helper-disable"
-grep -q '/bin/systemctl --system daemon-reload >/dev/null' res/DEBIAN/prerm || r_s11c10j="$r_s11c10j prerm:no-manager-daemon-reload"
 grep -q 'deb-systemd-helper purge "$unit"' res/DEBIAN/postrm   || r_s11c10j="$r_s11c10j postrm:no-helper-purge"
+grep -q '/bin/systemctl --system daemon-reload >/dev/null' res/DEBIAN/postrm || r_s11c10j="$r_s11c10j postrm:no-manager-daemon-reload"
 grep -q 'pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());' libs/hbb_common/src/config.rs || r_s11c10j="$r_s11c10j config:stock-app-name-not-rustdesk"
 grep -q 'directories_next::ProjectDirs::from("", &org, &APP_NAME.read().unwrap())' libs/hbb_common/src/config.rs || r_s11c10j="$r_s11c10j config:no-projectdirs-app-name-path"
 grep -q 'rm -rf -- /root/.config/RustDesk /root/.config/rustdesk' res/DEBIAN/postrm || r_s11c10j="$r_s11c10j postrm:no-stock-root-config-purge"
@@ -7679,6 +7679,18 @@ if grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' res/DEBIA
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_mask"
   r_s11c10j="$r_s11c10j maintscript:masked-lifecycle-failure"
 fi
+if grep -HnE '/etc/systemd/system|/usr/lib/systemd/(system|user)|/lib/systemd/system|/usr/share/rustdesk/files/systemd' \
+    res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm >"$VERIFY_TMP/rd_verify_r_s11by_unit_paths"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11by_unit_paths"
+  r_s11c10j="$r_s11c10j maintscript:package-or-admin-unit-path-mutation"
+fi
+grep -qF '"usr/lib/systemd/system/rustdesk.service"' build.py \
+  || r_s11c10j="$r_s11c10j package:vendor-unit-inventory-missing"
+grep -qF "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service" build.py \
+  || r_s11c10j="$r_s11c10j package:vendor-unit-direct-copy-missing"
+if grep -qF 'usr/share/rustdesk/files/systemd' build.py; then
+  r_s11c10j="$r_s11c10j package:legacy-unit-template-retained"
+fi
 python3 scripts/verify-debian-package-authority.py --repo . --self-test || r_s11c10j="$r_s11c10j package:tree-authority"
 generated_plugin_authority_refs=$(
   awk '
@@ -7701,6 +7713,12 @@ fi
 grep -qF 'R-S11c-10t closes the Linux Debian package tree authority' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j package:ledger-missing"
 grep -qF 'Linux Debian package tree authority' requirements.html || r_s11c10j="$r_s11c10j package:requirements-missing"
 grep -qF 'built .deb control script $script is not a mode-0755 non-hardlinked regular file' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-maintscript-mode-gate"
+grep -qF 'built .deb systemd unit differs from res/rustdesk.service' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-unit-byte-gate"
+grep -qF 'package install replaced the administrator-owned systemd unit link' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-admin-unit-install-proof"
+grep -qF 'package removal deleted the administrator-owned systemd unit link' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-admin-unit-remove-proof"
+grep -qF '<span class="id">R-S11by</span>' requirements.html || r_s11c10j="$r_s11c10j vendor-unit:requirement-missing"
+grep -qF '<tr><td>218</td>' requirements.html || r_s11c10j="$r_s11c10j vendor-unit:appendix-missing"
+grep -qF 'R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j vendor-unit:ledger-missing"
 if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"
   r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
@@ -7718,8 +7736,8 @@ linux_child_stop_block=$(
 if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
-if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9 Debian scripts use checked deb-systemd unit helpers plus fixed system manager reloads with no masked lifecycle failures and purge the stock root RustDesk config tree; one build.py constructor stages exact control scripts and finalizes the complete root-owned exact-mode package tree; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9/R-S11by/R-S11e-91 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
+  echo "  ok  R-S11c-10j/R-T9/R-S11by/R-S11e-91 Debian scripts use checked service-manager helpers with no masked failure, dpkg owns the exact vendor unit, administrator unit state is untouched, and post-removal reload follows dpkg file removal; one build.py constructor finalizes the exact root-owned package tree; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
 echo "== (3b-iii-h10v) obsolete generated Docker build helper is absent (R-S11c-10v) =="
 r_s11c10v=

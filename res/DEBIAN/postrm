@@ -13,4 +13,12 @@ case "$1" in
         ;;
 esac
 
+case "$1" in
+    remove|purge)
+        if [ -d /run/systemd/system ]; then
+            /bin/systemctl --system daemon-reload >/dev/null
+        fi
+        ;;
+esac
+
 exit 0

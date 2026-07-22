@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11101,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11280,7 +11280,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11414,7 +11414,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11582,7 +11582,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11778,7 +11778,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11805,6 +11805,176 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("Windows extension-owned action attribution requirement", "extension-action boundary mutation"),
         ("declarative Windows runtime-cleanup Appendix C row", "Appendix mutation"),
         ("declarative Windows runtime-cleanup hardening ledger", "hardening-ledger mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_debian_vendor_unit_ownership_contract(sources):
+    build_py = sources["build_py"]
+    postinst = sources["debian_postinst"]
+    prerm = sources["debian_prerm"]
+    postrm = sources["debian_postrm"]
+    maintainer_validator = sources["debian_maintainer_validator"]
+    package_validator = sources["debian_package_authority"]
+
+    for text, label in (
+        ('"usr/lib/systemd/system/rustdesk.service"', "Debian vendor unit package inventory"),
+        (
+            "mkdir -p tmpdeb/usr/lib/systemd/system/",
+            "Debian vendor unit constructor directory",
+        ),
+        (
+            "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service",
+            "Debian vendor unit direct constructor placement",
+        ),
+    ):
+        require_text(build_py, text, label)
+    require_absent(
+        build_py,
+        "usr/share/rustdesk/files/systemd",
+        "Debian legacy systemd template constructor",
+    )
+
+    forbidden_paths = (
+        "/etc/systemd/system",
+        "/usr/lib/systemd/system",
+        "/usr/lib/systemd/user",
+        "/lib/systemd/system",
+        "/usr/share/rustdesk/files/systemd",
+    )
+    for source, label in (
+        (postinst, "Debian postinst primary-unit path absence"),
+        (prerm, "Debian prerm primary-unit path absence"),
+        (postrm, "Debian postrm primary-unit path absence"),
+    ):
+        for path in forbidden_paths:
+            require_absent(source, path, label)
+    require_absent(prerm, "daemon-reload", "Debian prerm pre-removal reload absence")
+    require_text(
+        postrm,
+        'remove|purge)\n        if [ -d /run/systemd/system ]; then\n'
+        "            /bin/systemctl --system daemon-reload >/dev/null",
+        "Debian postrm post-removal reload",
+    )
+
+    for text, label in (
+        (
+            "SYSTEMD_UNIT_PATH_FRAGMENTS = (",
+            "Debian maintainer-script path semantic gate",
+        ),
+        (
+            'expected_unit_path_lines = [OLD_UNIT_PREDICATE] if script == "preinst" else []',
+            "Debian exact preinst read-only exception",
+        ),
+        (
+            "must reload systemd exactly once after package-file removal",
+            "Debian post-removal reload semantic gate",
+        ),
+    ):
+        require_text(maintainer_validator, text, label)
+    for text, label in (
+        (
+            '"./usr/lib/systemd/system/rustdesk.service"',
+            "Debian package vendor-unit artifact inventory",
+        ),
+        (
+            'f"{deb}:data:./usr/lib/systemd/system/rustdesk.service: bytes differ from res/rustdesk.service"',
+            "Debian package vendor-unit artifact byte gate",
+        ),
+        (
+            "systemd unit paths must be package-owned",
+            "Debian maintainer-script negative mutations",
+        ),
+        (
+            "wrong-systemd-unit.deb",
+            "Debian vendor-unit content mutation",
+        ),
+    ):
+        require_text(package_validator, text, label)
+    for text, label in (
+        (
+            "built .deb systemd unit differs from res/rustdesk.service",
+            "Debian emitted vendor-unit source binding",
+        ),
+        (
+            "built .deb retains the legacy maintainer-script systemd unit template",
+            "Debian emitted legacy-template absence",
+        ),
+    ):
+        require_text(sources["debian"], text, label)
+    for text, label in (
+        (
+            "package install replaced the administrator-owned systemd unit link",
+            "Debian installed administrator-unit install preservation",
+        ),
+        (
+            "package removal deleted the administrator-owned systemd unit link",
+            "Debian installed administrator-unit removal preservation",
+        ),
+        (
+            "package purge deleted the administrator-owned systemd unit link",
+            "Debian installed administrator-unit purge preservation",
+        ),
+    ):
+        require_text(sources["systemd_smoke_guest"], text, label)
+    for text, label in (
+        (
+            'echo "== (3b-iii-h10) Debian package lifecycle and vendor-unit ownership (R-S11c-10j/R-T9/R-S11by/R-S11e-91) =="',
+            "Debian vendor-unit shared source gate",
+        ),
+        (
+            "maintscript:package-or-admin-unit-path-mutation",
+            "Debian vendor-unit shared path rejection",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S11by", "Debian vendor-unit ownership requirement"
+    )
+    for text, label in (
+        ("Dpkg alone owns installation, replacement, and removal", "dpkg sole vendor-unit authority"),
+        ("administrator primary-unit link or mask", "administrator unit preservation requirement"),
+        ("postrm remove|purge", "post-removal reload requirement"),
+        ("R-B2 evidence", "Debian artifact-proof boundary"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>218</td>",
+        "Debian vendor-unit ownership Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved",
+        "Debian vendor-unit ownership hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Debian vendor-unit ownership deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Debian vendor unit direct constructor placement", "constructor mutation"),
+        ("Debian postinst primary-unit path absence", "postinst mutation"),
+        ("Debian prerm primary-unit path absence", "prerm mutation"),
+        ("Debian postrm primary-unit path absence", "postrm mutation"),
+        ("Debian postrm post-removal reload", "reload mutation"),
+        ("Debian maintainer-script path semantic gate", "maintainer gate mutation"),
+        ("Debian package vendor-unit artifact byte gate", "package gate mutation"),
+        ("Debian installed administrator-unit install preservation", "installed fixture mutation"),
+        ("Debian vendor-unit shared source gate", "shared-gate mutation"),
+        ("Debian vendor-unit ownership requirement", "requirement mutation"),
+        ("Debian vendor-unit ownership Appendix C row", "Appendix mutation"),
+        ("Debian vendor-unit ownership hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -15486,6 +15656,7 @@ def validate_sources(sources):
     validate_windows_certificate_cleanup_excision_contract(sources)
     validate_windows_amyuni_cleanup_excision_contract(sources)
     validate_windows_declarative_runtime_cleanup_contract(sources)
+    validate_debian_vendor_unit_ownership_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
@@ -27520,7 +27691,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -27841,6 +28012,81 @@ def run_source_mutations(sources):
             "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action",
             "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup uses a custom-action DLL",
             "declarative Windows runtime-cleanup hardening ledger",
+        ),
+        (
+            "build_py",
+            "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service",
+            "cp ../res/rustdesk.service tmpdeb/usr/share/rustdesk/files/systemd/",
+            "Debian vendor unit direct constructor placement",
+        ),
+        (
+            "debian_postinst",
+            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n",
+            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
+            "\trm -f /etc/systemd/system/rustdesk.service\n",
+            "Debian postinst primary-unit path absence",
+        ),
+        (
+            "debian_prerm",
+            "        rm -f /usr/bin/rustdesk\n",
+            "        rm -f /usr/bin/rustdesk\n"
+            "        rm -f /usr/lib/systemd/system/rustdesk.service\n",
+            "Debian prerm primary-unit path absence",
+        ),
+        (
+            "debian_postrm",
+            "        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk\n",
+            "        rm -rf -- /root/.config/RustDesk /root/.config/rustdesk\n"
+            "        rm -f /etc/systemd/system/rustdesk.service\n",
+            "Debian postrm primary-unit path absence",
+        ),
+        (
+            "debian_postrm",
+            "            /bin/systemctl --system daemon-reload >/dev/null",
+            "            : # daemon reload removed",
+            "Debian postrm post-removal reload",
+        ),
+        (
+            "debian_maintainer_validator",
+            "SYSTEMD_UNIT_PATH_FRAGMENTS = (",
+            "SYSTEMD_UNIT_PATH_FRAGMENTS_DISABLED = (",
+            "Debian maintainer-script path semantic gate",
+        ),
+        (
+            "debian_package_authority",
+            'f"{deb}:data:./usr/lib/systemd/system/rustdesk.service: bytes differ from res/rustdesk.service"',
+            'f"{deb}:data:./usr/lib/systemd/system/rustdesk.service: bytes are accepted independently of source"',
+            "Debian package vendor-unit artifact byte gate",
+        ),
+        (
+            "systemd_smoke_guest",
+            "package install replaced the administrator-owned systemd unit link",
+            "administrator-owned systemd unit link is not checked after install",
+            "Debian installed administrator-unit install preservation",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-h10) Debian package lifecycle and vendor-unit ownership (R-S11c-10j/R-T9/R-S11by/R-S11e-91) =="',
+            'echo "== (3b-iii-h10) Debian package lifecycle uses script-owned unit state (R-S11c-10j/R-T9) =="',
+            "Debian vendor-unit shared source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11by</span>',
+            '<span class="id">R-S11by-disabled</span>',
+            "Debian vendor-unit ownership requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>218</td>",
+            "<tr><td>218-disabled</td>",
+            "Debian vendor-unit ownership Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved",
+            "R-S11by/R-S11e-91 — Debian maintainer scripts replace administrator unit state",
+            "Debian vendor-unit ownership hardening ledger",
         ),
         (
             "build_py",
@@ -29675,6 +29921,15 @@ def main():
             "version_metadata_checker": (repo / "scripts/version-metadata-check.sh").read_text(encoding="utf-8"),
             "version_metadata_checker_mode": os.lstat(repo / "scripts/version-metadata-check.sh").st_mode,
             "debian": (repo / "scripts/build-debian.sh").read_text(encoding="utf-8"),
+            "debian_package_authority": (
+                repo / "scripts/verify-debian-package-authority.py"
+            ).read_text(encoding="utf-8"),
+            "debian_maintainer_validator": (
+                repo / "scripts/verify-debian-maintainer-scripts.py"
+            ).read_text(encoding="utf-8"),
+            "debian_postinst": (repo / "res/DEBIAN/postinst").read_text(encoding="utf-8"),
+            "debian_prerm": (repo / "res/DEBIAN/prerm").read_text(encoding="utf-8"),
+            "debian_postrm": (repo / "res/DEBIAN/postrm").read_text(encoding="utf-8"),
             "service_systemd": (repo / "res/rustdesk.service").read_text(encoding="utf-8"),
             "service_sysv": (repo / "res/rustdesk.init").read_text(encoding="utf-8"),
             "service_openrc": (repo / "res/service-managers/openrc/rustdesk").read_text(encoding="utf-8"),

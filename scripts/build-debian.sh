@@ -224,6 +224,12 @@ verify_deb_control_scripts() {
         rm -rf "$tmp_package"
         die "built .deb retains the legacy maintainer-script systemd unit template"
     }
+    [ -L "$tmp_data/usr/bin/rustdesk" ] \
+      && [ "$(readlink "$tmp_data/usr/bin/rustdesk")" = "../share/rustdesk/rustdesk" ] \
+      && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/bin/rustdesk" 2>/dev/null)" = "$(id -u):$(id -g):777:1" ] || {
+        rm -rf "$tmp_package"
+        die "built .deb command is not the exact mode-0777 non-hardlinked relative symlink"
+    }
     local template
     for template in openrc/rustdesk runit/run manual/rustdesk-service; do
         [ -f "$tmp_data/usr/share/rustdesk/files/$template" ] \

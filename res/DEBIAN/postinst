@@ -7,8 +7,6 @@ service=rustdesk
 
 if [ "$1" = configure ]; then
 
-	ln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk
-
 	update-rc.d "$service" defaults >/dev/null
 	if [ -d /run/systemd/system ]; then
 		deb-systemd-helper enable "$unit" >/dev/null

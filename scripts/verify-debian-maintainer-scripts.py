@@ -72,6 +72,8 @@ def check_common(errors, script, path, lines):
         errors.append(f"{script}: must use invoke-rc.d instead of executing an init script directly")
     if re.search(r"\b(start-stop-daemon|pidof|pgrep|pkill|killall|ps)\b", text):
         errors.append(f"{script}: must delegate exact process ownership to the selected init backend")
+    if re.search(r"/usr/bin\b", text):
+        errors.append(f"{script}: package-owned /usr/bin paths must not be mutated by maintainer scripts")
 
     for number, line in enumerate(lines, start=1):
         if "systemctl" in line and line != RELOAD:
@@ -119,8 +121,8 @@ def check_preinst(errors, lines):
         "elif [ -x /etc/init.d/rustdesk ]; then",
         'invoke-rc.d "$service" stop >/dev/null',
         "sleep 1",
-        "rm -f /usr/bin/libsciter-gtk.so",
     )
+    require(errors, script, "install)" not in lines, "must not retain an install-only legacy cleanup branch")
 
 
 def check_postinst(errors, lines):
@@ -134,7 +136,6 @@ def check_postinst(errors, lines):
         errors,
         script,
         lines,
-        'ln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk',
         'update-rc.d "$service" defaults >/dev/null',
         SYSTEMD_ACTIVE,
         'deb-systemd-helper enable "$unit" >/dev/null',
@@ -164,7 +165,6 @@ def check_prerm(errors, lines):
         'if [ "$1" = remove ] || [ "$1" = deconfigure ]; then',
         'deb-systemd-helper disable "$unit" >/dev/null',
         'update-rc.d "$service" remove >/dev/null',
-        "rm -f /usr/bin/rustdesk",
     )
 
 

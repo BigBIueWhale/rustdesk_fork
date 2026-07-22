@@ -7876,8 +7876,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   at `/usr/lib/systemd/system/rustdesk.service`; the exact package inventory admits that root/root mode-0644 ordinary
   file and its three vendor directories, excludes the legacy `/usr/share` template, and includes the unit in generated
   `md5sums`. Dpkg owns install, replacement, and removal. `postinst`, `prerm`, and `postrm` contain no primary systemd
-  unit path. They retain only checked `deb-systemd-helper`/`deb-systemd-invoke` lifecycle operations, the fixed manager
-  reload, and their own `/usr/bin/rustdesk` link. `prerm` stops/disables before removal; after dpkg removes the vendor
+  unit path. They retain only checked `deb-systemd-helper`/`deb-systemd-invoke` lifecycle operations and the fixed
+  manager reload. `prerm` stops/disables before removal; after dpkg removes the vendor
   file, `postrm remove|purge` reloads the manager, while purge separately clears helper and root service-config state.
   The exact upgrade-only `preinst` read predicate remains so an existing old unit is stopped before transition; it
   neither writes nor removes any unit object. Administrator masks, replacement units, primary-unit links, and drop-ins
@@ -7902,7 +7902,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   PID/memory/no-swap/CPU use, and private tmpfs-only writable state. Bash syntax passed for all changed shell scripts;
   in-memory Python compilation passed for all changed validators; the maintainer-script semantic validator passed;
   and the package authority self-test returned `ok  Debian package tree is root-owned, exact-mode, link-free, and
-  source-gated`. Its production-constructor fixture, exact archive parser/inventory/mode/digest checks, legacy
+  source-gated`. That result predates R-S11bz's package-owned command symlink and is retained only as evidence for
+  this earlier vendor-unit slice. Its production-constructor fixture, exact archive parser/inventory/mode/digest checks, legacy
   constructor and maintainer-script mutations, wrong-unit-content mutation, and wrong-mode mutation all ran.
 
   The complete independent semantic source-mutation matrix required Python `tomllib`, which the pinned Debian image's
@@ -7924,6 +7925,59 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   systemd fixture. The current clean exact-commit Debian cold build and installed install/upgrade/removal/purge run
   remain R-B2. No host RustDesk process, service, configuration, listener, firewall, network, or device state is in
   scope for this source change.
+- **R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin` —
+  SOURCE IMPLEMENTED AND CONFINED SOURCE/PACKAGE/MUTATION VERIFICATION PASSED 2026-07-23; CLEAN EXACT-COMMIT
+  PACKAGE AND INSTALLED LIFECYCLE EVIDENCE REMAIN R-B2.** Platform: Debian package construction and every package lifecycle
+  phase. Endpoint/action: install, upgrade, removal, and purge of `/usr/bin/rustdesk`, plus the inherited pre-install
+  cleanup of `/usr/bin/libsciter-gtk.so`. Boundary: dpkg-owned package data and conflict/error-unwind state ↔
+  administrator- or other-package-owned primary command paths executed by root maintainer scripts.
+
+  The inherited archive contained no `/usr/bin/rustdesk` member. `postinst configure` instead used `ln -f -s` to
+  replace that path after dpkg unpacked the package, and `prerm` deleted it before dpkg's own file-removal phase. The
+  link therefore had no package-database ownership, conflict, backup, or unwind record. `preinst` additionally
+  deleted `/usr/bin/libsciter-gtk.so` during install and upgrade even though the current Flutter package contains no
+  Sciter payload. Those actions could silently replace or delete a pathname owned by an administrator or another
+  package and could remove a program the package database never attributed to RustDesk. This is local package
+  authority and availability debt, not evidence that a conflicting host file existed, any path was actually
+  overwritten, Docker acquired root, a public listener was opened, the action was remotely triggered, or a machine
+  was compromised.
+
+  The corrected package has one command authority. `build.py` creates an exact relative symbolic-link data member
+  `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`; its target remains the sole mode-0755 executable payload at
+  `/usr/share/rustdesk/rustdesk`. The finalizer admits exactly that one single-link mode-0777 symlink, rejects every
+  other link/hardlink/special file, checks the exact target again after mode finalization, and excludes symlinks from
+  generated `md5sums`. The independent archive parser requires canonical raw link metadata, root/root ownership,
+  symbolic-link type, mode 0777, exact relative target bytes, a closed link inventory, and no symlink digest entry.
+  The emitted-package check and disposable installed-system fixtures are wired to prove the same target and require
+  `dpkg-query -S /usr/bin/rustdesk` to attribute it to the installed package when those artifact/lifecycle gates run.
+
+  `preinst`, `postinst`, `prerm`, and `postrm` now contain no `/usr/bin` path. The stale Sciter deletion and empty
+  install branch are deleted; no cleanup, migration, alternatives, diversion, absolute-link, copied-binary,
+  hardlink, or maintainer-script fallback remains. Service launchers keep the exact `/usr/bin/rustdesk --service`
+  protocol, but package files—not a root script—supply that entry. The focused maintainer validator, constructor and
+  archive self-tests, shared source gate, and independent workspace verifier bind wrong/missing/extra/absolute links,
+  regular-file substitution, wrong mode, hardlinked symlink, symlink `md5sums` drift, restoration of each retired
+  maintainer-script operation, R-S11bz, Appendix C #219, and this row. Debian Policy §6, §7.6, and §10.1 are the
+  primary packaging contracts.
+
+  Final confined verification used already-present immutable images only. In
+  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776`, Bash syntax passed for every changed
+  shell script, in-memory UTF-8 compilation passed for every changed Python file, the maintainer-script validator
+  passed, and `verify-debian-package-authority.py --self-test` returned
+  `ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, and source-gated`. In
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`, normal independent semantic validation
+  and the complete in-memory source-mutation matrix each returned `verify-verifier-workspace: ok`; native-codec watch
+  normal and negative self-test modes passed against requirements SHA-256
+  `cf3803de25034ebbdfa68d768a981992507e87dc4ff78bbbd260beb2d1533ca0`. Every project/test process ran as numeric
+  UID/GID 1000 with `--pull=never`, no network, a read-only root and source mount, all capabilities dropped,
+  no-new-privileges, bounded PIDs/CPU/memory/no-swap, and private tmpfs writes. No image was built or pulled; no port,
+  host namespace, Docker socket, host service/config/device path, or root identity entered a test container.
+
+  No `.deb` was built or installed for this source slice, no maintainer script ran against a host root filesystem,
+  and no host RustDesk process, service, configuration, listener, firewall, network, or device state was inspected or
+  changed. The exact cold Debian release artifact and installed install/upgrade/removal/purge run remain R-B2.
+  Current APK/device, native Apple/Windows installed-platform evidence, and external R-V3 review remain open; this
+  slice is not overall completion.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8641,9 +8695,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-54d0f62a0a6e14b1ee4cadc660944bea16583d3c0ddf9678ae8b94e83a2a5f5a  requirements.html
+cf3803de25034ebbdfa68d768a981992507e87dc4ff78bbbd260beb2d1533ca0  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11by, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bz, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

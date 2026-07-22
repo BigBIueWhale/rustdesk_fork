@@ -58,7 +58,7 @@ trap 'exit 143' TERM
 [ "${ID:-}" = debian ] || fail "container is not Debian: ${ID:-unknown}"
 [ "${VERSION_CODENAME:-}" = bookworm ] || fail "container is not the audited Debian bookworm fixture: ${VERSION_CODENAME:-unknown}"
 [ ! -e /run/systemd/system ] || fail 'systemd is active; the SysV backend was not selected'
-for command in dpkg dpkg-deb invoke-rc.d start-stop-daemon update-rc.d useradd; do
+for command in dpkg dpkg-deb dpkg-query invoke-rc.d start-stop-daemon update-rc.d useradd; do
     command -v "$command" >/dev/null || fail "required Debian command is absent: $command"
 done
 for path in "$BINARY" "$INIT_SOURCE" "$UNIT_SOURCE" "$READY" "$PROCESS_GUARD" "$LAUNCHER_SOURCE"; do
@@ -93,6 +93,7 @@ build_package() {
     mkdir -p \
         "$staging/DEBIAN" \
         "$staging/etc/init.d" \
+        "$staging/usr/bin" \
         "$staging/usr/lib/systemd/system" \
         "$staging/usr/share/rustdesk"
     chmod 0755 \
@@ -101,12 +102,14 @@ build_package() {
         "$staging/etc" \
         "$staging/etc/init.d" \
         "$staging/usr" \
+        "$staging/usr/bin" \
         "$staging/usr/lib" \
         "$staging/usr/lib/systemd" \
         "$staging/usr/lib/systemd/system" \
         "$staging/usr/share" \
         "$staging/usr/share/rustdesk"
     install -o root -g root -m 0755 "$BINARY" "$staging/usr/share/rustdesk/rustdesk"
+    ln -s ../share/rustdesk/rustdesk "$staging/usr/bin/rustdesk"
     install -o root -g root -m 0755 "$INIT_SOURCE" "$staging/etc/init.d/rustdesk"
     install -o root -g root -m 0644 "$UNIT_SOURCE" "$staging/usr/lib/systemd/system/rustdesk.service"
     for script in preinst postinst prerm postrm; do
@@ -219,11 +222,21 @@ assert_wrong_executable_alive() {
         || fail 'stale PID fixture changed executable identity'
 }
 
+assert_package_command_link() {
+    [ -L /usr/bin/rustdesk ] \
+        && [ "$(readlink /usr/bin/rustdesk)" = ../share/rustdesk/rustdesk ] \
+        || fail 'installed RustDesk command is not the exact package-owned relative link'
+    dpkg-query -S /usr/bin/rustdesk 2>/dev/null \
+        | grep -qFx "$PACKAGE: /usr/bin/rustdesk" \
+        || fail 'installed RustDesk command link is not owned by the package database'
+}
+
 build_package 1.0
 build_package 2.0
 
 dpkg -i "$FIXTURE/rustdesk-sysv-smoke-1.0.deb" >"$FIXTURE/install.log" 2>&1 \
     || { sed -n '1,200p' "$FIXTURE/install.log" >&2; fail 'initial package install failed'; }
+assert_package_command_link
 capture_service
 installed_pid=$SERVICE_PID
 installed_start=$SERVICE_START
@@ -241,6 +254,7 @@ restart_start=$SERVICE_START
 
 dpkg -i "$FIXTURE/rustdesk-sysv-smoke-2.0.deb" >"$FIXTURE/upgrade.log" 2>&1 \
     || { sed -n '1,240p' "$FIXTURE/upgrade.log" >&2; fail 'package upgrade failed'; }
+assert_package_command_link
 capture_service
 assert_prior_service_gone "$restart_pid" "$restart_start"
 [ "$SERVICE_PID:$SERVICE_START" != "$restart_pid:$restart_start" ] \

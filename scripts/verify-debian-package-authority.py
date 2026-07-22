@@ -51,6 +51,7 @@ DATA_REQUIRED_DIRECTORIES = {
     "./etc/init.d",
     "./etc/rustdesk",
     "./usr",
+    "./usr/bin",
     "./usr/lib",
     "./usr/lib/systemd",
     "./usr/lib/systemd/system",
@@ -93,6 +94,9 @@ DATA_REQUIRED_FILES = {
     "./usr/share/rustdesk/rustdesk",
 }
 DATA_REQUIRED_FILES.update(FLUTTER_LIBRARIES)
+DATA_REQUIRED_SYMLINKS = {
+    "./usr/bin/rustdesk": "../share/rustdesk/rustdesk",
+}
 DATA_VARIABLE_ROOT = "./usr/share/rustdesk/data/flutter_assets"
 MANDATORY_ELVES = {"./usr/share/rustdesk/rustdesk"} | FLUTTER_LIBRARIES
 DATA_REQUIRED = {
@@ -189,6 +193,13 @@ def raw_tar_member_name(archive, member, label):
     prefix_bytes = canonical_tar_text_field(header[345:500], f"{label}:prefix")
     if (member.isfile() or member.isdir()) and link_bytes:
         raise ValidationError(f"{label}: regular file or directory has a nonempty tar link name")
+    if member.issym():
+        try:
+            decoded_link = link_bytes.decode("utf-8")
+        except UnicodeDecodeError as err:
+            raise ValidationError(f"{label}: symbolic-link target is not UTF-8") from err
+        if member.linkname != decoded_link:
+            raise ValidationError(f"{label}: tar parser normalized the symbolic-link target")
     if user_bytes != b"root" or group_bytes != b"root":
         raise ValidationError(f"{label}: tar owner names are not canonical root/root")
     if prefix_bytes:
@@ -281,19 +292,44 @@ def require_member(members, path, expected_kind, expected_mode, label):
         raise ValidationError(f"{label}:{path}: mode {member.mode:o}, expected {expected_mode:o}")
 
 
+def require_symlink(members, path, expected_target, label):
+    member = members.get(path)
+    if member is None:
+        raise ValidationError(f"{label}: missing required archive member {path}")
+    require_root_owned(member, f"{label}:{path}")
+    if not member.issym():
+        raise ValidationError(f"{label}:{path}: expected symbolic link")
+    if member.mode != 0o777:
+        raise ValidationError(f"{label}:{path}: mode {member.mode:o}, expected 777")
+    if member.linkname != expected_target:
+        raise ValidationError(
+            f"{label}:{path}: target {member.linkname!r}, expected {expected_target!r}"
+        )
+
+
 def validate_data_members(members, label):
     for name, member in members.items():
         require_root_owned(member, f"{label}:{name}")
-        expected = 0o755 if member.isdir() or name in DATA_EXECUTABLES else 0o644
-        if not member.isfile() and not member.isdir():
-            raise ValidationError(f"{label}:{name}: package tree must contain only regular files and directories")
+        expected = (
+            0o777 if member.issym()
+            else 0o755 if member.isdir() or name in DATA_EXECUTABLES
+            else 0o644
+        )
+        if not member.isfile() and not member.isdir() and not member.issym():
+            raise ValidationError(
+                f"{label}:{name}: package tree must contain only regular files, directories, and the exact command symlink"
+            )
         if member.mode != expected:
             raise ValidationError(f"{label}:{name}: mode {member.mode:o}, expected {expected:o}")
 
     directories = {name for name, member in members.items() if member.isdir()}
     files = {name for name, member in members.items() if member.isfile()}
+    symlinks = {
+        name: member.linkname for name, member in members.items() if member.issym()
+    }
     missing_directories = DATA_REQUIRED_DIRECTORIES - directories
     missing_files = DATA_REQUIRED_FILES - files
+    missing_symlinks = set(DATA_REQUIRED_SYMLINKS) - set(symlinks)
     unexpected_directories = {
         name for name in directories
         if name not in DATA_REQUIRED_DIRECTORIES
@@ -304,13 +340,24 @@ def validate_data_members(members, label):
         if name not in DATA_REQUIRED_FILES
         and not is_under(name, DATA_VARIABLE_ROOT)
     }
-    if missing_directories or missing_files or unexpected_directories or unexpected_files:
+    unexpected_symlinks = set(symlinks) - set(DATA_REQUIRED_SYMLINKS)
+    wrong_symlinks = {
+        name: target
+        for name, target in symlinks.items()
+        if DATA_REQUIRED_SYMLINKS.get(name) != target
+    }
+    if (missing_directories or missing_files or missing_symlinks
+            or unexpected_directories or unexpected_files or unexpected_symlinks
+            or wrong_symlinks):
         raise ValidationError(
             f"{label}: data inventory differs: "
             f"missing directories {sorted(missing_directories)}, "
             f"missing files {sorted(missing_files)}, "
+            f"missing symlinks {sorted(missing_symlinks)}, "
             f"unexpected directories {sorted(unexpected_directories)}, "
-            f"unexpected files {sorted(unexpected_files)}"
+            f"unexpected files {sorted(unexpected_files)}, "
+            f"unexpected symlinks {sorted(unexpected_symlinks)}, "
+            f"wrong symlinks {sorted(wrong_symlinks.items())}"
         )
 
 
@@ -702,6 +749,8 @@ def validate_deb(deb, expected_systemd_unit=None):
     validate_control_members(control_members, f"{deb}:control")
     for path, (kind, mode) in DATA_REQUIRED.items():
         require_member(data_members, path, kind, mode, f"{deb}:data")
+    for path, target in DATA_REQUIRED_SYMLINKS.items():
+        require_symlink(data_members, path, target, f"{deb}:data")
     for path, (kind, mode) in CONTROL_REQUIRED.items():
         require_member(control_members, path, kind, mode, f"{deb}:control")
     validate_conffiles(control_tar, control_members, f"{deb}:control")
@@ -1250,7 +1299,7 @@ def validate_build_py(repo):
         )
     package_start = direct_call_positions[stage_calls[0]]
     package_prefix = flutter_body[:package_start]
-    if len(package_prefix) != 24:
+    if len(package_prefix) != 26:
         raise ValidationError("build.py Flutter Debian constructor pre-package inventory differs")
     cargo_block = package_prefix[0]
     if (not isinstance(cargo_block, ast.If)
@@ -1286,16 +1335,17 @@ def validate_build_py(repo):
         "mkdir -p tmpdeb/usr/share/rustdesk",
         "mkdir -p tmpdeb/etc/init.d/",
         "mkdir -p tmpdeb/etc/rustdesk/",
+        "mkdir -p tmpdeb/usr/bin/",
         "mkdir -p tmpdeb/usr/lib/systemd/system/",
         "mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/",
         "mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/",
         "mkdir -p tmpdeb/usr/share/applications/",
         "mkdir -p tmpdeb/usr/share/polkit-1/actions",
     )
-    for statement, command in zip(package_prefix[2:13], static_package_commands):
+    for statement, command in zip(package_prefix[2:14], static_package_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian constructor setup operations are not exact")
-    bundle_copy = package_prefix[13]
+    bundle_copy = package_prefix[14]
     if (not isinstance(bundle_copy, ast.Expr)
             or not isinstance(bundle_copy.value, ast.Call)
             or ast_call_name(bundle_copy.value) != "system2"
@@ -1320,9 +1370,18 @@ def validate_build_py(repo):
         "cp ../res/startwm.sh tmpdeb/etc/rustdesk/",
         "cp ../res/xorg.conf tmpdeb/etc/rustdesk/",
     )
-    for statement, command in zip(package_prefix[14:24], resource_copy_commands):
+    for statement, command in zip(package_prefix[15:25], resource_copy_commands):
         if not direct_call_statement(statement, "system2", (("string", command),)):
             raise ValidationError("build.py Flutter Debian resource copies are not exact")
+    if not direct_call_statement(
+        package_prefix[25],
+        "os.symlink",
+        (
+            ("string", "../share/rustdesk/rustdesk"),
+            ("string", "tmpdeb/usr/bin/rustdesk"),
+        ),
+    ):
+        raise ValidationError("build.py Flutter Debian command symlink is not exact")
     if [
         direct_call_positions[stage_calls[0]],
         direct_call_positions[finalizer_calls[0]],
@@ -1382,7 +1441,7 @@ def validate_build_py(repo):
         system2_owners[owner_name] = system2_owners.get(owner_name, 0) + 1
     if system2_owners != {
         "ffi_bindgen_function_refactor": 1,
-        "build_flutter_deb": 24,
+        "build_flutter_deb": 25,
         "build_flutter_dmg": 4,
         "build_flutter_windows": 2,
     }:
@@ -1403,6 +1462,11 @@ def validate_build_py(repo):
         raise ValidationError("build.py and artifact verifier directory inventories differ")
     if {f"./{name}" for name in module.DEBIAN_DATA_REQUIRED_FILES} != DATA_REQUIRED_FILES:
         raise ValidationError("build.py and artifact verifier file inventories differ")
+    if {
+        f"./{name}": target
+        for name, target in module.DEBIAN_DATA_REQUIRED_SYMLINKS.items()
+    } != DATA_REQUIRED_SYMLINKS:
+        raise ValidationError("build.py and artifact verifier symbolic-link inventories differ")
     if f"./{module.DEBIAN_VARIABLE_DATA_ROOT}" != DATA_VARIABLE_ROOT:
         raise ValidationError("build.py and artifact verifier variable data roots differ")
 
@@ -1496,6 +1560,8 @@ def make_synthetic_tree(root):
         path = root if name == "." else root / name[2:]
         path.mkdir(parents=True, exist_ok=True)
         path.chmod(0o755)
+    for name, target in sorted(DATA_REQUIRED_SYMLINKS.items()):
+        (root / name[2:]).symlink_to(target)
     (root / "DEBIAN").chmod(0o755)
     root.chmod(0o755)
 
@@ -1533,14 +1599,14 @@ def chown_tree(root, uid, gid):
     if os.geteuid() != 0:
         return
     for path in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
-        os.chown(path, uid, gid)
+        os.chown(path, uid, gid, follow_symlinks=False)
     os.chown(root, uid, gid)
 
 
 def write_synthetic_md5sums(staging):
     lines = []
     for path in sorted(staging.rglob("*"), key=lambda item: os.fsencode(str(item.relative_to(staging)))):
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             continue
         relative = path.relative_to(staging).as_posix()
         if relative.startswith("DEBIAN/") or f"./{relative}" in CONFFILE_PATHS:
@@ -1725,7 +1791,14 @@ def special_tar_member(name):
     return member, b""
 
 
-def replace_tar_member(target, mode=None, contents=None, remove=False, replacement_name=None):
+def replace_tar_member(
+    target,
+    mode=None,
+    contents=None,
+    remove=False,
+    replacement_name=None,
+    linkname=None,
+):
     def transform(name, member, original_contents):
         if name != target:
             return member, original_contents
@@ -1735,6 +1808,8 @@ def replace_tar_member(target, mode=None, contents=None, remove=False, replaceme
             member.name = replacement_name
         if mode is not None:
             member.mode = mode
+        if linkname is not None:
+            member.linkname = linkname
         if contents is not None:
             original_contents = contents
         return member, original_contents
@@ -2107,6 +2182,22 @@ def run_source_gate_mutations(repo, tmp):
         (
             replace_once(
                 baseline,
+                "    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
+                "    os.symlink('/usr/share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
+            ),
+            "command symlink is not exact",
+        ),
+        (
+            replace_once(
+                baseline,
+                "    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
+                "    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/remote-control')",
+            ),
+            "command symlink is not exact",
+        ),
+        (
+            replace_once(
+                baseline,
                 '    "usr/share/rustdesk/lib/libwindow_size_plugin.so",\n',
                 "",
             ),
@@ -2129,15 +2220,15 @@ def run_source_gate_mutations(repo, tmp):
     for script, anchor, injected, expected in (
         (
             "postinst",
-            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n",
-            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n"
             "\trm -f /etc/systemd/system/rustdesk.service\n",
             "systemd unit paths must be package-owned",
         ),
         (
             "prerm",
-            "        rm -f /usr/bin/rustdesk\n",
-            "        rm -f /usr/bin/rustdesk\n"
+            "            update-rc.d \"$service\" remove >/dev/null\n",
+            "            update-rc.d \"$service\" remove >/dev/null\n"
             "        rm -f /usr/lib/systemd/system/rustdesk.service\n",
             "systemd unit paths must be package-owned",
         ),
@@ -2159,6 +2250,39 @@ def run_source_gate_mutations(repo, tmp):
         original = script_path.read_text(encoding="utf-8")
         script_path.write_text(replace_once(original, anchor, injected), encoding="utf-8")
         expect_source_validation_failure(lambda: validate_build_py(fixture), expected)
+        script_path.write_text(original, encoding="utf-8")
+
+    for script, anchor, injected in (
+        (
+            "preinst",
+            "        sleep 1\n",
+            "        sleep 1\n        rm -f /usr/bin/libsciter-gtk.so\n",
+        ),
+        (
+            "preinst",
+            "        sleep 1\n",
+            "        sleep 1\n        chmod 0777 /usr/bin\n",
+        ),
+        (
+            "postinst",
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
+            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
+        ),
+        (
+            "prerm",
+            "            update-rc.d \"$service\" remove >/dev/null\n",
+            "            update-rc.d \"$service\" remove >/dev/null\n"
+            "        rm -f /usr/bin/rustdesk\n",
+        ),
+    ):
+        script_path = fixture / f"res/DEBIAN/{script}"
+        original = script_path.read_text(encoding="utf-8")
+        script_path.write_text(replace_once(original, anchor, injected), encoding="utf-8")
+        expect_source_validation_failure(
+            lambda: validate_build_py(fixture),
+            "package-owned /usr/bin paths must not be mutated",
+        )
         script_path.write_text(original, encoding="utf-8")
 
     generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"
@@ -2202,6 +2326,8 @@ def run_production_finalizer_self_test(repo, tmp):
     shutil.rmtree(staging / "DEBIAN")
 
     for path in sorted(staging.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        if path.is_symlink():
+            continue
         if path.is_dir():
             path.chmod(0o700)
         else:
@@ -2225,6 +2351,8 @@ def run_production_finalizer_self_test(repo, tmp):
         info = os.lstat(path)
         if stat.S_ISDIR(info.st_mode):
             expected = 0o755
+        elif stat.S_ISLNK(info.st_mode):
+            expected = 0o777
         elif relative.startswith("DEBIAN/"):
             expected = build_module.DEBIAN_CONTROL_MODES[relative[len("DEBIAN/"):]]
         else:
@@ -2239,7 +2367,7 @@ def run_production_finalizer_self_test(repo, tmp):
     validate_deb(produced)
 
     unexpected = tmp / "unexpected-control"
-    shutil.copytree(staging, unexpected)
+    shutil.copytree(staging, unexpected, symlinks=True)
     (unexpected / "DEBIAN/md5sums").unlink()
     write_file(unexpected / "DEBIAN/triggers", "interest rustdesk-invalid\n", 0o600)
     expect_operation_failure(
@@ -2248,16 +2376,16 @@ def run_production_finalizer_self_test(repo, tmp):
     )
 
     linked = tmp / "linked-payload"
-    shutil.copytree(staging, linked)
+    shutil.copytree(staging, linked, symlinks=True)
     (linked / "DEBIAN/md5sums").unlink()
     os.link(linked / "etc/rustdesk/startwm.sh", linked / "etc/rustdesk/hardlink")
     expect_operation_failure(
         lambda: build_module.finalize_debian_package_tree(linked),
-        "link, special file, or hardlink",
+        "special file or hardlink",
     )
 
     unexpected_data = tmp / "unexpected-data"
-    shutil.copytree(staging, unexpected_data)
+    shutil.copytree(staging, unexpected_data, symlinks=True)
     (unexpected_data / "DEBIAN/md5sums").unlink()
     write_file(unexpected_data / "usr/share/rustdesk/unexpected", "unexpected\n", 0o600)
     expect_operation_failure(
@@ -2265,8 +2393,51 @@ def run_production_finalizer_self_test(repo, tmp):
         "data inventory differs",
     )
 
+    missing_command_link = tmp / "missing-command-link"
+    shutil.copytree(staging, missing_command_link, symlinks=True)
+    (missing_command_link / "DEBIAN/md5sums").unlink()
+    (missing_command_link / "usr/bin/rustdesk").unlink()
+    expect_operation_failure(
+        lambda: build_module.finalize_debian_package_tree(missing_command_link),
+        "missing symlinks ['usr/bin/rustdesk']",
+    )
+
+    wrong_command_link = tmp / "wrong-command-link"
+    shutil.copytree(staging, wrong_command_link, symlinks=True)
+    (wrong_command_link / "DEBIAN/md5sums").unlink()
+    (wrong_command_link / "usr/bin/rustdesk").unlink()
+    (wrong_command_link / "usr/bin/rustdesk").symlink_to("/usr/share/rustdesk/rustdesk")
+    expect_operation_failure(
+        lambda: build_module.finalize_debian_package_tree(wrong_command_link),
+        "wrong symlinks [('usr/bin/rustdesk', '/usr/share/rustdesk/rustdesk')]",
+    )
+
+    extra_command_link = tmp / "extra-command-link"
+    shutil.copytree(staging, extra_command_link, symlinks=True)
+    (extra_command_link / "DEBIAN/md5sums").unlink()
+    (extra_command_link / "usr/bin/remote-control").symlink_to(
+        "../share/rustdesk/rustdesk"
+    )
+    expect_operation_failure(
+        lambda: build_module.finalize_debian_package_tree(extra_command_link),
+        "unexpected symlinks ['usr/bin/remote-control']",
+    )
+
+    hardlinked_command_link = tmp / "hardlinked-command-link"
+    shutil.copytree(staging, hardlinked_command_link, symlinks=True)
+    (hardlinked_command_link / "DEBIAN/md5sums").unlink()
+    os.link(
+        hardlinked_command_link / "usr/bin/rustdesk",
+        hardlinked_command_link / "usr/bin/remote-control",
+        follow_symlinks=False,
+    )
+    expect_operation_failure(
+        lambda: build_module.finalize_debian_package_tree(hardlinked_command_link),
+        "special file or hardlink",
+    )
+
     missing_plugin = tmp / "missing-plugin"
-    shutil.copytree(staging, missing_plugin)
+    shutil.copytree(staging, missing_plugin, symlinks=True)
     (missing_plugin / "DEBIAN/md5sums").unlink()
     (missing_plugin / "usr/share/rustdesk/lib/libwindow_size_plugin.so").unlink()
     expect_operation_failure(
@@ -2275,7 +2446,7 @@ def run_production_finalizer_self_test(repo, tmp):
     )
 
     unexpected_plugin = tmp / "unexpected-plugin"
-    shutil.copytree(staging, unexpected_plugin)
+    shutil.copytree(staging, unexpected_plugin, symlinks=True)
     (unexpected_plugin / "DEBIAN/md5sums").unlink()
     write_file(
         unexpected_plugin / "usr/share/rustdesk/lib/libunexpected_plugin.so",
@@ -2386,6 +2557,49 @@ def run_self_test(repo):
         ).read_bytes()
         validate_deb(good_deb, expected_systemd_unit)
 
+        wrong_command_target_deb = tmp / "wrong-command-target.deb"
+        write_modified_deb(
+            good_deb,
+            wrong_command_target_deb,
+            data_transform=replace_tar_member(
+                "./usr/bin/rustdesk",
+                linkname="/usr/share/rustdesk/rustdesk",
+            ),
+        )
+        expect_validation_failure(
+            wrong_command_target_deb,
+            "wrong symlinks [('./usr/bin/rustdesk', '/usr/share/rustdesk/rustdesk')]",
+        )
+
+        missing_command_link_deb = tmp / "missing-command-link.deb"
+        write_modified_deb(
+            good_deb,
+            missing_command_link_deb,
+            data_transform=replace_tar_member("./usr/bin/rustdesk", remove=True),
+        )
+        expect_validation_failure(missing_command_link_deb, "data inventory differs")
+
+        regular_command_deb = tmp / "regular-command.deb"
+        write_modified_deb(
+            good_deb,
+            regular_command_deb,
+            data_transform=replace_tar_member("./usr/bin/rustdesk", remove=True),
+            data_additions=(regular_tar_member(
+                "./usr/bin/rustdesk",
+                b"#!/bin/sh\nexit 1\n",
+                mode=0o644,
+            ),),
+        )
+        expect_validation_failure(regular_command_deb, "data inventory differs")
+
+        wrong_command_mode_deb = tmp / "wrong-command-mode.deb"
+        write_modified_deb(
+            good_deb,
+            wrong_command_mode_deb,
+            data_transform=replace_tar_member("./usr/bin/rustdesk", mode=0o755),
+        )
+        expect_validation_failure(wrong_command_mode_deb, "mode 755, expected 777")
+
         wrong_systemd_unit_deb = tmp / "wrong-systemd-unit.deb"
         write_modified_deb(
             good_deb,
@@ -2402,7 +2616,7 @@ def run_self_test(repo):
         )
 
         bad_owner_tree = tmp / "bad-owner-tree"
-        shutil.copytree(good_tree, bad_owner_tree)
+        shutil.copytree(good_tree, bad_owner_tree, symlinks=True)
         if os.geteuid() == 0:
             chown_tree(bad_owner_tree, 12345, 12345)
         bad_owner_deb = tmp / "bad-owner.deb"
@@ -2410,17 +2624,19 @@ def run_self_test(repo):
         expect_validation_failure(bad_owner_deb, "tar owner names are not canonical root/root")
 
         bad_mode_tree = tmp / "bad-mode-tree"
-        shutil.copytree(good_tree, bad_mode_tree)
+        shutil.copytree(good_tree, bad_mode_tree, symlinks=True)
         (bad_mode_tree / "usr/share/rustdesk").chmod(0o775)
         bad_mode_deb = tmp / "bad-mode.deb"
         build_deb(bad_mode_tree, bad_mode_deb, root_owner_group=True)
         expect_validation_failure(bad_mode_deb, "mode 775, expected 755")
 
         private_mode_tree = tmp / "private-mode-tree"
-        shutil.copytree(good_tree, private_mode_tree)
+        shutil.copytree(good_tree, private_mode_tree, symlinks=True)
         for path in private_mode_tree.rglob("*"):
             relative = path.relative_to(private_mode_tree).as_posix()
             if relative == "DEBIAN" or relative.startswith("DEBIAN/"):
+                continue
+            if path.is_symlink():
                 continue
             if path.is_dir():
                 path.chmod(0o700)
@@ -2475,7 +2691,14 @@ def run_self_test(repo):
                     symbolic,
                 ),),
             )
-            expect_validation_failure(linked_deb, "package tree must contain only regular files and directories")
+            expect_validation_failure(
+                linked_deb,
+                (
+                    "unexpected symlinks ['./usr/share/rustdesk/data/flutter_assets/symlink']"
+                    if symbolic
+                    else "package tree must contain only regular files, directories, and the exact command symlink"
+                ),
+            )
 
         special_deb = tmp / "special.deb"
         write_modified_deb(
@@ -2485,7 +2708,10 @@ def run_self_test(repo):
                 "./usr/share/rustdesk/data/flutter_assets/special"
             ),),
         )
-        expect_validation_failure(special_deb, "package tree must contain only regular files and directories")
+        expect_validation_failure(
+            special_deb,
+            "package tree must contain only regular files, directories, and the exact command symlink",
+        )
 
         trailing_runner_deb = tmp / "trailing-runner.deb"
         write_modified_deb(
@@ -3028,6 +3254,8 @@ def run_self_test(repo):
             tar_members_from_deb(good_deb, "--ctrl-tarfile")["./md5sums"],
             "good-md5sums",
         )
+        if b"/usr/bin/rustdesk\n" in md5sums:
+            raise ValidationError("good md5sums incorrectly contains the package command symlink")
         bad_md5_deb = tmp / "bad-md5.deb"
         write_modified_deb(
             good_deb,
@@ -3098,7 +3326,9 @@ def main():
     except ValidationError as err:
         fail(str(err))
 
-    print("ok  Debian package tree is root-owned, exact-mode, link-free, and source-gated")
+    print(
+        "ok  Debian package tree is root-owned, exact-mode, exact-command-symlink-only, and source-gated"
+    )
 
 
 if __name__ == "__main__":

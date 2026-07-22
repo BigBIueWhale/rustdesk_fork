@@ -15,11 +15,6 @@ case "$1" in
             invoke-rc.d "$service" stop >/dev/null
         fi
         sleep 1
-        rm -f /usr/bin/libsciter-gtk.so
-        ;;
-    install)
-        sleep 1
-        rm -f /usr/bin/libsciter-gtk.so
         ;;
 esac
 

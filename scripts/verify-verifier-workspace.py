@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11101,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11280,7 +11280,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11414,7 +11414,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11582,7 +11582,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11778,7 +11778,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11812,6 +11812,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
 
 def validate_debian_vendor_unit_ownership_contract(sources):
     build_py = sources["build_py"]
+    preinst = sources["debian_preinst"]
     postinst = sources["debian_postinst"]
     prerm = sources["debian_prerm"]
     postrm = sources["debian_postrm"]
@@ -11835,6 +11836,17 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         "usr/share/rustdesk/files/systemd",
         "Debian legacy systemd template constructor",
     )
+    for text, label in (
+        (
+            '"usr/bin/rustdesk": "../share/rustdesk/rustdesk"',
+            "Debian command-symlink package inventory",
+        ),
+        (
+            "os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
+            "Debian command-symlink constructor",
+        ),
+    ):
+        require_text(build_py, text, label)
 
     forbidden_paths = (
         "/etc/systemd/system",
@@ -11850,6 +11862,13 @@ def validate_debian_vendor_unit_ownership_contract(sources):
     ):
         for path in forbidden_paths:
             require_absent(source, path, label)
+    for source, label in (
+        (preinst, "Debian preinst /usr/bin mutation absence"),
+        (postinst, "Debian postinst /usr/bin mutation absence"),
+        (prerm, "Debian prerm /usr/bin mutation absence"),
+        (postrm, "Debian postrm /usr/bin mutation absence"),
+    ):
+        require_absent(source, "/usr/bin", label)
     require_absent(prerm, "daemon-reload", "Debian prerm pre-removal reload absence")
     require_text(
         postrm,
@@ -11871,6 +11890,14 @@ def validate_debian_vendor_unit_ownership_contract(sources):
             "must reload systemd exactly once after package-file removal",
             "Debian post-removal reload semantic gate",
         ),
+        (
+            "package-owned /usr/bin paths must not be mutated by maintainer scripts",
+            "Debian maintainer-script command-path semantic gate",
+        ),
+        (
+            'if re.search(r"/usr/bin\\b", text):',
+            "Debian maintainer-script bare command-directory semantic gate",
+        ),
     ):
         require_text(maintainer_validator, text, label)
     for text, label in (
@@ -11890,6 +11917,22 @@ def validate_debian_vendor_unit_ownership_contract(sources):
             "wrong-systemd-unit.deb",
             "Debian vendor-unit content mutation",
         ),
+        (
+            '"./usr/bin/rustdesk": "../share/rustdesk/rustdesk"',
+            "Debian command-symlink artifact inventory",
+        ),
+        (
+            "require_symlink(data_members, path, target",
+            "Debian command-symlink artifact type and target gate",
+        ),
+        (
+            "good md5sums incorrectly contains the package command symlink",
+            "Debian command-symlink md5 exclusion gate",
+        ),
+        (
+            "wrong-command-target.deb",
+            "Debian command-symlink target mutation",
+        ),
     ):
         require_text(package_validator, text, label)
     for text, label in (
@@ -11900,6 +11943,18 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         (
             "built .deb retains the legacy maintainer-script systemd unit template",
             "Debian emitted legacy-template absence",
+        ),
+        (
+            "built .deb command is not the exact mode-0777 non-hardlinked relative symlink",
+            "Debian emitted command-symlink gate",
+        ),
+        (
+            'readlink "$tmp_data/usr/bin/rustdesk")" = "../share/rustdesk/rustdesk"',
+            "Debian emitted command-symlink exact target gate",
+        ),
+        (
+            "stat -c '%u:%g:%a:%h' \"$tmp_data/usr/bin/rustdesk\"",
+            "Debian emitted command-symlink metadata gate",
         ),
     ):
         require_text(sources["debian"], text, label)
@@ -11918,10 +11973,46 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         ),
     ):
         require_text(sources["systemd_smoke_guest"], text, label)
+    require_text(
+        sources["systemd_smoke_guest"],
+        "installed RustDesk command link is not owned by the package database",
+        "Debian systemd installed command ownership proof",
+    )
     for text, label in (
         (
-            'echo "== (3b-iii-h10) Debian package lifecycle and vendor-unit ownership (R-S11c-10j/R-T9/R-S11by/R-S11e-91) =="',
+            '[ "$(readlink /usr/bin/rustdesk)" = ../share/rustdesk/rustdesk ]',
+            "Debian systemd installed command target proof",
+        ),
+        (
+            "dpkg-query -S /usr/bin/rustdesk 2>/dev/null",
+            "Debian systemd installed command ownership query",
+        ),
+    ):
+        require_text(sources["systemd_smoke_guest"], text, label)
+    require_text(
+        sources["debian_sysv_lifecycle"],
+        "installed RustDesk command link is not owned by the package database",
+        "Debian SysV installed command ownership proof",
+    )
+    for text, label in (
+        (
+            '[ "$(readlink /usr/bin/rustdesk)" = ../share/rustdesk/rustdesk ]',
+            "Debian SysV installed command target proof",
+        ),
+        (
+            "dpkg-query -S /usr/bin/rustdesk 2>/dev/null",
+            "Debian SysV installed command ownership query",
+        ),
+    ):
+        require_text(sources["debian_sysv_lifecycle"], text, label)
+    for text, label in (
+        (
+            'echo "== (3b-iii-h10) Debian package lifecycle and package-owned unit/command paths (R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92) =="',
             "Debian vendor-unit shared source gate",
+        ),
+        (
+            "grep -HnE '/usr/bin([^[:alnum:]_]|$)' res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm",
+            "Debian command-path shared source rejection",
         ),
         (
             "maintscript:package-or-admin-unit-path-mutation",
@@ -11950,9 +12041,31 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         "R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved",
         "Debian vendor-unit ownership hardening ledger",
     )
+    command_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bz",
+        "Debian package-owned command-symlink requirement",
+    )
+    for text, label in (
+        ("../share/rustdesk/rustdesk", "relative command-symlink target requirement"),
+        ("MUST NOT</span> reference or mutate any <code>/usr/bin</code>", "maintainer-script command-path absence requirement"),
+        ("symlink entry in <code>md5sums</code>", "command-symlink digest exclusion requirement"),
+        ("R-B2 evidence", "Debian command-symlink artifact-proof boundary"),
+    ):
+        require_text(command_requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>219</td>",
+        "Debian package-owned command-symlink Appendix C row",
+    )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
+        "Debian package-owned command-symlink hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11976,6 +12089,25 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         ("Debian vendor-unit ownership Appendix C row", "Appendix mutation"),
         ("Debian vendor-unit ownership hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+        ("Debian command-symlink constructor", "command constructor mutation"),
+        ("Debian preinst /usr/bin mutation absence", "preinst command-path mutation"),
+        ("Debian postinst /usr/bin mutation absence", "postinst command-path mutation"),
+        ("Debian prerm /usr/bin mutation absence", "prerm command-path mutation"),
+        ("Debian maintainer-script command-path semantic gate", "command semantic-gate mutation"),
+        ("Debian maintainer-script bare command-directory semantic gate", "bare command-directory mutation"),
+        ("Debian command-symlink artifact type and target gate", "command artifact-gate mutation"),
+        ("Debian command-path shared source rejection", "command shared-gate mutation"),
+        ("Debian emitted command-symlink exact target gate", "emitted command-target mutation"),
+        ("Debian emitted command-symlink metadata gate", "emitted command-metadata mutation"),
+        ("Debian systemd installed command ownership proof", "systemd command-ownership mutation"),
+        ("Debian systemd installed command target proof", "systemd command-target mutation"),
+        ("Debian systemd installed command ownership query", "systemd ownership-query mutation"),
+        ("Debian SysV installed command ownership proof", "SysV command-ownership mutation"),
+        ("Debian SysV installed command target proof", "SysV command-target mutation"),
+        ("Debian SysV installed command ownership query", "SysV ownership-query mutation"),
+        ("Debian package-owned command-symlink requirement", "command requirement mutation"),
+        ("Debian package-owned command-symlink Appendix C row", "command Appendix mutation"),
+        ("Debian package-owned command-symlink hardening ledger", "command hardening-ledger mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -27691,7 +27823,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11by, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#218",
+        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -28021,15 +28153,15 @@ def run_source_mutations(sources):
         ),
         (
             "debian_postinst",
-            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n",
-            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n"
             "\trm -f /etc/systemd/system/rustdesk.service\n",
             "Debian postinst primary-unit path absence",
         ),
         (
             "debian_prerm",
-            "        rm -f /usr/bin/rustdesk\n",
-            "        rm -f /usr/bin/rustdesk\n"
+            "            update-rc.d \"$service\" remove >/dev/null\n",
+            "            update-rc.d \"$service\" remove >/dev/null\n"
             "        rm -f /usr/lib/systemd/system/rustdesk.service\n",
             "Debian prerm primary-unit path absence",
         ),
@@ -28066,7 +28198,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== (3b-iii-h10) Debian package lifecycle and vendor-unit ownership (R-S11c-10j/R-T9/R-S11by/R-S11e-91) =="',
+            'echo "== (3b-iii-h10) Debian package lifecycle and package-owned unit/command paths (R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92) =="',
             'echo "== (3b-iii-h10) Debian package lifecycle uses script-owned unit state (R-S11c-10j/R-T9) =="',
             "Debian vendor-unit shared source gate",
         ),
@@ -28087,6 +28219,122 @@ def run_source_mutations(sources):
             "R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved",
             "R-S11by/R-S11e-91 — Debian maintainer scripts replace administrator unit state",
             "Debian vendor-unit ownership hardening ledger",
+        ),
+        (
+            "build_py",
+            "os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
+            "os.symlink('/usr/share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')",
+            "Debian command-symlink constructor",
+        ),
+        (
+            "debian_preinst",
+            "        sleep 1\n",
+            "        sleep 1\n        rm -f /usr/bin/libsciter-gtk.so\n",
+            "Debian preinst /usr/bin mutation absence",
+        ),
+        (
+            "debian_postinst",
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
+            "\tln -f -s /usr/share/rustdesk/rustdesk /usr/bin/rustdesk\n"
+            "\tupdate-rc.d \"$service\" defaults >/dev/null\n",
+            "Debian postinst /usr/bin mutation absence",
+        ),
+        (
+            "debian_prerm",
+            "            update-rc.d \"$service\" remove >/dev/null\n",
+            "            update-rc.d \"$service\" remove >/dev/null\n"
+            "        rm -f /usr/bin/rustdesk\n",
+            "Debian prerm /usr/bin mutation absence",
+        ),
+        (
+            "debian_maintainer_validator",
+            "package-owned /usr/bin paths must not be mutated by maintainer scripts",
+            "package-owned /usr/bin paths may be mutated by maintainer scripts",
+            "Debian maintainer-script command-path semantic gate",
+        ),
+        (
+            "debian_maintainer_validator",
+            'if re.search(r"/usr/bin\\b", text):',
+            'if "/usr/bin/" in text:',
+            "Debian maintainer-script bare command-directory semantic gate",
+        ),
+        (
+            "debian_package_authority",
+            "require_symlink(data_members, path, target",
+            "require_symlink_disabled(data_members, path, target",
+            "Debian command-symlink artifact type and target gate",
+        ),
+        (
+            "verify",
+            "grep -HnE '/usr/bin([^[:alnum:]_]|$)' res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm",
+            "grep -HnF '/usr/bin/never-match' res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm",
+            "Debian command-path shared source rejection",
+        ),
+        (
+            "debian",
+            'readlink "$tmp_data/usr/bin/rustdesk")" = "../share/rustdesk/rustdesk"',
+            'readlink "$tmp_data/usr/bin/rustdesk")" = "/usr/share/rustdesk/rustdesk"',
+            "Debian emitted command-symlink exact target gate",
+        ),
+        (
+            "debian",
+            "stat -c '%u:%g:%a:%h' \"$tmp_data/usr/bin/rustdesk\"",
+            "stat -c '%u:%g:%a' \"$tmp_data/usr/bin/rustdesk\"",
+            "Debian emitted command-symlink metadata gate",
+        ),
+        (
+            "systemd_smoke_guest",
+            "installed RustDesk command link is not owned by the package database",
+            "installed RustDesk command link package ownership is not checked",
+            "Debian systemd installed command ownership proof",
+        ),
+        (
+            "systemd_smoke_guest",
+            '[ "$(readlink /usr/bin/rustdesk)" = ../share/rustdesk/rustdesk ]',
+            '[ "$(readlink /usr/bin/rustdesk)" = /usr/share/rustdesk/rustdesk ]',
+            "Debian systemd installed command target proof",
+        ),
+        (
+            "systemd_smoke_guest",
+            "dpkg-query -S /usr/bin/rustdesk 2>/dev/null",
+            "printf '%s\\n' \"$PACKAGE: /usr/bin/rustdesk\"",
+            "Debian systemd installed command ownership query",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            "installed RustDesk command link is not owned by the package database",
+            "installed RustDesk command link package ownership is not checked",
+            "Debian SysV installed command ownership proof",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            '[ "$(readlink /usr/bin/rustdesk)" = ../share/rustdesk/rustdesk ]',
+            '[ "$(readlink /usr/bin/rustdesk)" = /usr/share/rustdesk/rustdesk ]',
+            "Debian SysV installed command target proof",
+        ),
+        (
+            "debian_sysv_lifecycle",
+            "dpkg-query -S /usr/bin/rustdesk 2>/dev/null",
+            "printf '%s\\n' \"$PACKAGE: /usr/bin/rustdesk\"",
+            "Debian SysV installed command ownership query",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bz</span>',
+            '<span class="id">R-S11bz-disabled</span>',
+            "Debian package-owned command-symlink requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>219</td>",
+            "<tr><td>219-disabled</td>",
+            "Debian package-owned command-symlink Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`",
+            "R-S11bz/R-S11e-92 — Debian command remains maintainer-script-owned",
+            "Debian package-owned command-symlink hardening ledger",
         ),
         (
             "build_py",
@@ -29927,6 +30175,7 @@ def main():
             "debian_maintainer_validator": (
                 repo / "scripts/verify-debian-maintainer-scripts.py"
             ).read_text(encoding="utf-8"),
+            "debian_preinst": (repo / "res/DEBIAN/preinst").read_text(encoding="utf-8"),
             "debian_postinst": (repo / "res/DEBIAN/postinst").read_text(encoding="utf-8"),
             "debian_prerm": (repo / "res/DEBIAN/prerm").read_text(encoding="utf-8"),
             "debian_postrm": (repo / "res/DEBIAN/postrm").read_text(encoding="utf-8"),

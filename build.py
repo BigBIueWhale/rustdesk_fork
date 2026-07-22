@@ -66,6 +66,7 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "etc/init.d",
     "etc/rustdesk",
     "usr",
+    "usr/bin",
     "usr/lib",
     "usr/lib/systemd",
     "usr/lib/systemd/system",
@@ -108,6 +109,9 @@ DEBIAN_DATA_REQUIRED_FILES = {
     "usr/share/rustdesk/rustdesk",
 }
 DEBIAN_DATA_REQUIRED_FILES.update(DEBIAN_FLUTTER_LIBRARIES)
+DEBIAN_DATA_REQUIRED_SYMLINKS = {
+    "usr/bin/rustdesk": "../share/rustdesk/rustdesk",
+}
 DEBIAN_VARIABLE_DATA_ROOT = "usr/share/rustdesk/data/flutter_assets"
 
 os.environ["CARGO_PROFILE_RELEASE_RPATH"] = "false"
@@ -364,6 +368,7 @@ def stage_debian_control_files(version, source_dir, control_dir):
 def inventory_debian_package_tree(root):
     directories = {}
     files = {}
+    symlinks = {}
 
     def visit(directory, relative):
         with os.scandir(directory) as iterator:
@@ -379,9 +384,11 @@ def inventory_debian_package_tree(root):
                 visit(Path(entry.path), entry_relative)
             elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
                 files[relative_text] = info
+            elif stat.S_ISLNK(info.st_mode) and info.st_nlink == 1:
+                symlinks[relative_text] = (info, os.readlink(entry.path))
             else:
                 raise RuntimeError(
-                    f"Debian package tree contains a link, special file, or hardlink: {relative_text}"
+                    f"Debian package tree contains a special file or hardlink: {relative_text}"
                 )
 
     root = Path(root)
@@ -389,18 +396,20 @@ def inventory_debian_package_tree(root):
     if not stat.S_ISDIR(root_info.st_mode):
         raise RuntimeError(f"Debian package staging root is not a directory: {root}")
     visit(root, Path())
-    return directories, files
+    return directories, files, symlinks
 
 
 def finalize_debian_package_tree(root):
     root = Path(root)
-    directories, files = inventory_debian_package_tree(root)
+    directories, files, symlinks = inventory_debian_package_tree(root)
     if {entry.name for entry in os.scandir(root)} != {"DEBIAN", "etc", "usr"}:
         raise RuntimeError("Debian package staging root has an unexpected top-level inventory")
     if not {"DEBIAN", "etc", "usr"}.issubset(directories):
         raise RuntimeError("Debian package staging root lacks a required top-level directory")
     if any(name.startswith("DEBIAN/") for name in directories):
         raise RuntimeError("Debian control area contains a nested directory")
+    if any(name.startswith("DEBIAN/") for name in symlinks):
+        raise RuntimeError("Debian control area contains a symbolic link")
     control_files = {
         name[len("DEBIAN/"):]
         for name in files
@@ -412,8 +421,14 @@ def finalize_debian_package_tree(root):
 
     data_directories = set(directories) - {"DEBIAN"}
     data_files = {name for name in files if not name.startswith("DEBIAN/")}
+    data_symlinks = {
+        name: target
+        for name, (_, target) in symlinks.items()
+        if not name.startswith("DEBIAN/")
+    }
     missing_directories = DEBIAN_DATA_REQUIRED_DIRECTORIES - data_directories
     missing_files = DEBIAN_DATA_REQUIRED_FILES - data_files
+    missing_symlinks = set(DEBIAN_DATA_REQUIRED_SYMLINKS) - set(data_symlinks)
     unexpected_directories = {
         name for name in data_directories
         if name not in DEBIAN_DATA_REQUIRED_DIRECTORIES
@@ -424,13 +439,24 @@ def finalize_debian_package_tree(root):
         if name not in DEBIAN_DATA_REQUIRED_FILES
         and not name.startswith(f"{DEBIAN_VARIABLE_DATA_ROOT}/")
     }
-    if missing_directories or missing_files or unexpected_directories or unexpected_files:
+    unexpected_symlinks = set(data_symlinks) - set(DEBIAN_DATA_REQUIRED_SYMLINKS)
+    wrong_symlinks = {
+        name: target
+        for name, target in data_symlinks.items()
+        if DEBIAN_DATA_REQUIRED_SYMLINKS.get(name) != target
+    }
+    if (missing_directories or missing_files or missing_symlinks
+            or unexpected_directories or unexpected_files or unexpected_symlinks
+            or wrong_symlinks):
         raise RuntimeError(
             "Debian package data inventory differs: "
             f"missing directories {sorted(missing_directories)}, "
             f"missing files {sorted(missing_files)}, "
+            f"missing symlinks {sorted(missing_symlinks)}, "
             f"unexpected directories {sorted(unexpected_directories)}, "
-            f"unexpected files {sorted(unexpected_files)}"
+            f"unexpected files {sorted(unexpected_files)}, "
+            f"unexpected symlinks {sorted(unexpected_symlinks)}, "
+            f"wrong symlinks {sorted(wrong_symlinks.items())}"
         )
 
     md5sums = root / "DEBIAN/md5sums"
@@ -442,7 +468,7 @@ def finalize_debian_package_tree(root):
                     digest.update(chunk)
             output.write(f"{digest.hexdigest()}  /{name}\n")
 
-    directories, files = inventory_debian_package_tree(root)
+    directories, files, symlinks = inventory_debian_package_tree(root)
     control_files = {
         name[len("DEBIAN/"):]
         for name in files
@@ -464,8 +490,11 @@ def finalize_debian_package_tree(root):
     root_info = os.lstat(root)
     if stat.S_IMODE(root_info.st_mode) != 0o755:
         raise RuntimeError("Debian package staging root mode is not 0755")
-    final_directories, final_files = inventory_debian_package_tree(root)
-    if set(final_directories) != set(directories) or set(final_files) != set(files):
+    final_directories, final_files, final_symlinks = inventory_debian_package_tree(root)
+    if (set(final_directories) != set(directories)
+            or set(final_files) != set(files)
+            or {name: target for name, (_, target) in final_symlinks.items()}
+            != {name: target for name, (_, target) in symlinks.items()}):
         raise RuntimeError("Debian package inventory changed during mode finalization")
     for name, info in final_directories.items():
         if stat.S_IMODE(info.st_mode) != 0o755:
@@ -477,6 +506,11 @@ def finalize_debian_package_tree(root):
             expected = 0o755 if name in DEBIAN_DATA_EXECUTABLES else 0o644
         if stat.S_IMODE(info.st_mode) != expected:
             raise RuntimeError(f"Debian package file mode differs for {name}: {stat.S_IMODE(info.st_mode):04o}")
+    for name, (info, _) in final_symlinks.items():
+        if stat.S_IMODE(info.st_mode) != 0o777:
+            raise RuntimeError(
+                f"Debian package symbolic-link mode differs for {name}: {stat.S_IMODE(info.st_mode):04o}"
+            )
 
 
 def build_debian_archive(staging, destination):
@@ -503,6 +537,7 @@ def build_flutter_deb(version, features):
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/etc/init.d/')
     system2('mkdir -p tmpdeb/etc/rustdesk/')
+    system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/lib/systemd/system/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
@@ -529,6 +564,7 @@ def build_flutter_deb(version, features):
         'cp ../res/startwm.sh tmpdeb/etc/rustdesk/')
     system2(
         'cp ../res/xorg.conf tmpdeb/etc/rustdesk/')
+    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')
     stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")
     finalize_debian_package_tree("tmpdeb")
     build_debian_archive("tmpdeb", "rustdesk.deb")

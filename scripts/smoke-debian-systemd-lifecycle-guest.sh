@@ -206,6 +206,7 @@ build_package() {
     mkdir -p \
         "$staging/DEBIAN" \
         "$staging/etc/init.d" \
+        "$staging/usr/bin" \
         "$staging/usr/lib/systemd/system" \
         "$staging/usr/share/rustdesk"
     chmod 0755 \
@@ -214,12 +215,14 @@ build_package() {
         "$staging/etc" \
         "$staging/etc/init.d" \
         "$staging/usr" \
+        "$staging/usr/bin" \
         "$staging/usr/lib" \
         "$staging/usr/lib/systemd" \
         "$staging/usr/lib/systemd/system" \
         "$staging/usr/share" \
         "$staging/usr/share/rustdesk"
     install -o root -g root -m 0755 "$BINARY" "$staging/usr/share/rustdesk/rustdesk"
+    ln -s ../share/rustdesk/rustdesk "$staging/usr/bin/rustdesk"
     install -o root -g root -m 0755 "$INIT_SOURCE" "$staging/etc/init.d/rustdesk"
     install -o root -g root -m 0644 \
         "$UNIT_SOURCE" "$staging/usr/lib/systemd/system/rustdesk.service"
@@ -477,6 +480,12 @@ dpkg "${install_argv[@]}" >"$FIXTURE/install.log" 2>&1 \
     || fail 'installed package did not reach configured state'
 [ -f "$BINARY" ] && [ ! -L "$BINARY" ] && [ -x "$BINARY" ] \
     || fail 'installed RustDesk executable is absent or non-executable'
+[ -L /usr/bin/rustdesk ] \
+    && [ "$(readlink /usr/bin/rustdesk)" = ../share/rustdesk/rustdesk ] \
+    || fail 'installed RustDesk command is not the exact package-owned relative link'
+dpkg-query -S /usr/bin/rustdesk 2>/dev/null \
+    | grep -qFx "$PACKAGE: /usr/bin/rustdesk" \
+    || fail 'installed RustDesk command link is not owned by the package database'
 ldd "$BINARY" >"$FIXTURE/ldd.log"
 if grep -q 'not found' "$FIXTURE/ldd.log"; then
     cat "$FIXTURE/ldd.log" >&2

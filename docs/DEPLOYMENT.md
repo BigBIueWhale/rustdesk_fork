@@ -39,12 +39,15 @@ Related: [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
 sudo apt install ./rustdesk-x86_64.deb
 ```
 
-`apt` resolves the GUI/runtime dependencies. The package's `postinst` (on a systemd
-host) automatically:
+`apt` resolves the GUI/runtime dependencies. The package contains:
 
-- symlinks `/usr/bin/rustdesk -> /usr/share/rustdesk/rustdesk`,
+- the dpkg-owned relative symlink `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`,
 - installs `/usr/lib/systemd/system/rustdesk.service` (`ExecStart=/usr/bin/rustdesk --service`),
-- runs `systemctl daemon-reload`, `enable`, and `start`.
+
+On a systemd host, `postinst` runs `systemctl daemon-reload`, `enable`, and `start` through
+the checked Debian helper policy. Maintainer scripts never create or remove the command
+symlink or another `/usr/bin` path; dpkg owns command installation, conflicts, upgrades,
+and removal.
 
 The vendor unit is a dpkg-owned file. Package scripts do not replace or remove
 `/etc/systemd/system/rustdesk.service`, so an administrator replacement, primary-unit

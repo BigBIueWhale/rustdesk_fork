@@ -7638,7 +7638,7 @@ fi
 if [ -n "$r_s11c10p" ]; then echo "  FAIL R-S11c-10p Linux self-relaunch AppImage fallback:$r_s11c10p"; rc=1; else
   echo "  ok  R-S11c-10p Linux self-relaunch uses current_exe only, with no APPDIR/AppRun fallback"; fi
 
-echo "== (3b-iii-h10) Debian package lifecycle and vendor-unit ownership (R-S11c-10j/R-T9/R-S11by/R-S11e-91) =="
+echo "== (3b-iii-h10) Debian package lifecycle and package-owned unit/command paths (R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92) =="
 r_s11c10j=
 for maintscript in res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm; do
   grep -qE '^#!/bin/sh$' "$maintscript" || r_s11c10j="$r_s11c10j ${maintscript##*/}:not-posix-sh"
@@ -7684,6 +7684,11 @@ if grep -HnE '/etc/systemd/system|/usr/lib/systemd/(system|user)|/lib/systemd/sy
   cat "$VERIFY_TMP/rd_verify_r_s11by_unit_paths"
   r_s11c10j="$r_s11c10j maintscript:package-or-admin-unit-path-mutation"
 fi
+if grep -HnE '/usr/bin([^[:alnum:]_]|$)' res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm \
+    >"$VERIFY_TMP/rd_verify_r_s11bz_usr_bin_paths"; then
+  cat "$VERIFY_TMP/rd_verify_r_s11bz_usr_bin_paths"
+  r_s11c10j="$r_s11c10j maintscript:package-command-or-unowned-usr-bin-mutation"
+fi
 grep -qF '"usr/lib/systemd/system/rustdesk.service"' build.py \
   || r_s11c10j="$r_s11c10j package:vendor-unit-inventory-missing"
 grep -qF "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service" build.py \
@@ -7691,6 +7696,10 @@ grep -qF "cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.serv
 if grep -qF 'usr/share/rustdesk/files/systemd' build.py; then
   r_s11c10j="$r_s11c10j package:legacy-unit-template-retained"
 fi
+grep -qF '"usr/bin/rustdesk": "../share/rustdesk/rustdesk"' build.py \
+  || r_s11c10j="$r_s11c10j package:command-symlink-inventory-missing"
+grep -qF "os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')" build.py \
+  || r_s11c10j="$r_s11c10j package:command-symlink-constructor-missing"
 python3 scripts/verify-debian-package-authority.py --repo . --self-test || r_s11c10j="$r_s11c10j package:tree-authority"
 generated_plugin_authority_refs=$(
   awk '
@@ -7714,11 +7723,17 @@ grep -qF 'R-S11c-10t closes the Linux Debian package tree authority' HARDENING_S
 grep -qF 'Linux Debian package tree authority' requirements.html || r_s11c10j="$r_s11c10j package:requirements-missing"
 grep -qF 'built .deb control script $script is not a mode-0755 non-hardlinked regular file' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-maintscript-mode-gate"
 grep -qF 'built .deb systemd unit differs from res/rustdesk.service' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-unit-byte-gate"
+grep -qF 'built .deb command is not the exact mode-0777 non-hardlinked relative symlink' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-command-link-gate"
 grep -qF 'package install replaced the administrator-owned systemd unit link' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-admin-unit-install-proof"
 grep -qF 'package removal deleted the administrator-owned systemd unit link' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-admin-unit-remove-proof"
+grep -qF 'installed RustDesk command link is not owned by the package database' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-systemd-package-command-ownership-proof"
+grep -qF 'installed RustDesk command link is not owned by the package database' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c10j="$r_s11c10j lifecycle:no-sysv-package-command-ownership-proof"
 grep -qF '<span class="id">R-S11by</span>' requirements.html || r_s11c10j="$r_s11c10j vendor-unit:requirement-missing"
 grep -qF '<tr><td>218</td>' requirements.html || r_s11c10j="$r_s11c10j vendor-unit:appendix-missing"
 grep -qF 'R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j vendor-unit:ledger-missing"
+grep -qF '<span class="id">R-S11bz</span>' requirements.html || r_s11c10j="$r_s11c10j command-link:requirement-missing"
+grep -qF '<tr><td>219</td>' requirements.html || r_s11c10j="$r_s11c10j command-link:appendix-missing"
+grep -qF 'R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j command-link:ledger-missing"
 if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"
   r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
@@ -7736,8 +7751,8 @@ linux_child_stop_block=$(
 if echo "$linux_child_stop_block" | grep -q 'allow_err!(ps.kill())'; then
   r_s11c10j="$r_s11c10j linux:managed-server-child-sigkill-regressed"
 fi
-if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9/R-S11by/R-S11e-91 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
-  echo "  ok  R-S11c-10j/R-T9/R-S11by/R-S11e-91 Debian scripts use checked service-manager helpers with no masked failure, dpkg owns the exact vendor unit, administrator unit state is untouched, and post-removal reload follows dpkg file removal; one build.py constructor finalizes the exact root-owned package tree; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
+if [ -n "$r_s11c10j" ]; then echo "  FAIL R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92 Debian package lifecycle/systemd stop:$r_s11c10j"; rc=1; else
+  echo "  ok  R-S11c-10j/R-T9/R-S11by/R-S11bz/R-S11e-91/R-S11e-92 Debian scripts use checked service-manager helpers with no masked failure and mutate no primary systemd or /usr/bin path; dpkg owns the exact vendor unit and sole exact relative command symlink; administrator unit state is untouched and post-removal reload follows dpkg file removal; one build.py constructor finalizes the exact root-owned package tree; unit has cgroup-scoped SIGTERM/TimeoutStopSec with no pkill ExecStop; Linux supervisor SIGTERMs child servers before forced stop"; fi
 
 echo "== (3b-iii-h10v) obsolete generated Docker build helper is absent (R-S11c-10v) =="
 r_s11c10v=

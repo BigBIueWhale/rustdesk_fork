@@ -109,11 +109,10 @@ impl VoiceCallThread {
                 // Removing the exact subscription drops the audio service's sender. Dropping our
                 // retained copy immediately afterwards closes the channel and wakes a worker that
                 // is blocked without audio; it does not need to poll for stop ownership.
-                CLIENT_SERVER.write().unwrap().subscribe(
-                    audio_service::NAME,
-                    subscription,
-                    false,
-                );
+                CLIENT_SERVER
+                    .write()
+                    .unwrap()
+                    .subscribe(audio_service::NAME, subscription, false);
             }
             drop(self.input_lease.take());
         }
@@ -867,15 +866,14 @@ impl<T: InvokeUiSession> Remote<T> {
         // iOS does not have this server.
         #[cfg(not(any(target_os = "ios")))]
         {
-            let input_lease = match crate::audio_service::acquire_voice_call_input(
-                get_default_sound_input(),
-            ) {
-                Ok(input_lease) => input_lease,
-                Err(err) => {
-                    log::error!("Failed to acquire voice-call input: {err}");
-                    return None;
-                }
-            };
+            let input_lease =
+                match crate::audio_service::acquire_voice_call_input(get_default_sound_input()) {
+                    Ok(input_lease) => input_lease,
+                    Err(err) => {
+                        log::error!("Failed to acquire voice-call input: {err}");
+                        return None;
+                    }
+                };
             let (tx_audio_data, mut rx_audio_data) =
                 hbb_common::tokio::sync::mpsc::unbounded_channel();
             // Create a stand-alone inner, add subscribe to audio service
@@ -917,8 +915,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         cleanup_subscription,
                         false,
                     );
-                })
-            {
+                }) {
                 Ok(thread) => thread,
                 Err(err) => {
                     log::error!("Failed to start voice-call audio worker: {err}");
@@ -2426,9 +2423,16 @@ impl<T: InvokeUiSession> Remote<T> {
                         } else {
                             if response.accepted {
                                 // The peer accepted the voice call.
-                                self.handler.on_voice_call_started();
                                 self.stop_voice_call().await;
                                 self.voice_call_thread = self.start_voice_call();
+                                if self.voice_call_thread.is_some() {
+                                    self.handler.on_voice_call_started();
+                                } else {
+                                    self.handler
+                                        .on_voice_call_closed("Failed to start voice call audio");
+                                    let msg = new_voice_call_request(false);
+                                    allow_err!(peer.send(&msg).await);
+                                }
                             } else {
                                 // The peer refused the voice call.
                                 self.handler.on_voice_call_closed("");
@@ -2976,10 +2980,7 @@ mod tests {
         let worker = std::thread::spawn(move || {
             worker_ready.wait();
             completed
-                .send(recv_voice_call_audio(
-                    &mut receiver,
-                    &worker_stop_requested,
-                ))
+                .send(recv_voice_call_audio(&mut receiver, &worker_stop_requested))
                 .unwrap();
         });
         ready.wait();

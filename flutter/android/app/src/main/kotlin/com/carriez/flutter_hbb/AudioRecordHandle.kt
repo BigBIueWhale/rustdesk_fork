@@ -4,138 +4,205 @@ import ffi.FFI
 
 import android.Manifest
 import android.content.Context
-import android.media.*
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioPlaybackCaptureConfiguration
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.projection.MediaProjection
-import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
 import android.os.Build
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import kotlin.concurrent.thread
 
-const val AUDIO_ENCODING = AudioFormat.ENCODING_PCM_FLOAT //  ENCODING_OPUS need API 30
+const val AUDIO_ENCODING = AudioFormat.ENCODING_PCM_FLOAT
 const val AUDIO_SAMPLE_RATE = 48000
 const val AUDIO_CHANNEL_MASK = AudioFormat.CHANNEL_IN_STEREO
 
-class AudioRecordHandle(private var context: Context, private var isVideoStart: ()->Boolean, private var isAudioStart: ()->Boolean) {
+private enum class AudioCaptureMode {
+    STOPPED,
+    PLAYBACK,
+    VOICE_CALL,
+}
+
+internal class AudioRecordHandle(private val context: Context) {
     private val logTag = "LOG_AUDIO_RECORD_HANDLE"
 
+    @Volatile
     private var audioRecorder: AudioRecord? = null
     private var audioReader: AudioReader? = null
     private var minBufferSize = 0
     @Volatile
     private var audioRecordStat = false
+    @Volatile
+    private var captureMode = AudioCaptureMode.STOPPED
+    @Volatile
+    private var captureProjection: MediaProjection? = null
     private var audioThread: Thread? = null
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun createAudioRecorder(inVoiceCall: Boolean, mediaProjection: MediaProjection?): Boolean {
+    private fun createAudioRecorder(
+        mode: AudioCaptureMode,
+        mediaProjection: MediaProjection?,
+    ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             return false
         }
         if (ActivityCompat.checkSelfPermission(
-            context,
-            Manifest.permission.RECORD_AUDIO
-        ) != PackageManager.PERMISSION_GRANTED
+                context,
+                Manifest.permission.RECORD_AUDIO,
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
             Log.d(logTag, "createAudioRecorder failed, no RECORD_AUDIO permission")
             return false
         }
 
-        var builder = AudioRecord.Builder()
-        .setAudioFormat(
+        val builder = AudioRecord.Builder().setAudioFormat(
             AudioFormat.Builder()
                 .setEncoding(AUDIO_ENCODING)
                 .setSampleRate(AUDIO_SAMPLE_RATE)
-                .setChannelMask(AUDIO_CHANNEL_MASK).build()
-        );
-        if (inVoiceCall) {
-            builder.setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-        } else {
-            mediaProjection?.let {
-                var apcc = AudioPlaybackCaptureConfiguration.Builder(it)
-                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-                .addMatchingUsage(AudioAttributes.USAGE_ALARM)
-                .addMatchingUsage(AudioAttributes.USAGE_GAME)
-                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build();
-                builder.setAudioPlaybackCaptureConfig(apcc);
-            } ?: let {
-                Log.d(logTag, "createAudioRecorder failed, mediaProjection null")
-                return false
+                .setChannelMask(AUDIO_CHANNEL_MASK)
+                .build(),
+        )
+        when (mode) {
+            AudioCaptureMode.VOICE_CALL -> {
+                builder.setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
             }
+            AudioCaptureMode.PLAYBACK -> {
+                val projection = mediaProjection
+                if (projection == null) {
+                    Log.d(logTag, "createAudioRecorder failed, mediaProjection null")
+                    return false
+                }
+                val configuration = AudioPlaybackCaptureConfiguration.Builder(projection)
+                    .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                    .addMatchingUsage(AudioAttributes.USAGE_ALARM)
+                    .addMatchingUsage(AudioAttributes.USAGE_GAME)
+                    .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+                    .build()
+                builder.setAudioPlaybackCaptureConfig(configuration)
+            }
+            AudioCaptureMode.STOPPED -> return false
         }
+
         val recorder = try {
             builder.build()
         } catch (e: Exception) {
             Log.e(logTag, "createAudioRecorder failed", e)
             return false
         }
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(logTag, "createAudioRecorder returned an uninitialized recorder")
+            try {
+                recorder.release()
+            } catch (e: Exception) {
+                Log.w(logTag, "release uninitialized audio recorder failed", e)
+            }
+            return false
+        }
         audioRecorder = recorder
-        Log.d(logTag, "createAudioRecorder done,minBufferSize:$minBufferSize")
+        captureProjection = if (mode == AudioCaptureMode.PLAYBACK) mediaProjection else null
         return true
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    private fun checkAudioReader() {
-        if (audioReader != null && minBufferSize != 0) {
-            return
+    private fun checkAudioReader(): Boolean {
+        if (audioReader != null && minBufferSize > 0) {
+            return true
         }
-        // read f32 to byte , length * 4
-        minBufferSize = 2 * 4 * AudioRecord.getMinBufferSize(
+        val platformMinBufferSize = AudioRecord.getMinBufferSize(
             AUDIO_SAMPLE_RATE,
             AUDIO_CHANNEL_MASK,
-            AUDIO_ENCODING
+            AUDIO_ENCODING,
         )
-        if (minBufferSize == 0) {
-            Log.d(logTag, "get min buffer size fail!")
-            return
+        if (platformMinBufferSize <= 0) {
+            Log.e(logTag, "getMinBufferSize failed: $platformMinBufferSize")
+            return false
         }
-        audioReader = AudioReader(minBufferSize, 4)
-        Log.d(logTag, "init audioData len:$minBufferSize")
+        val requestedBufferSize = platformMinBufferSize.toLong() * 2L * 4L
+        if (requestedBufferSize > Int.MAX_VALUE) {
+            Log.e(logTag, "audio buffer size overflow: $requestedBufferSize")
+            return false
+        }
+        minBufferSize = requestedBufferSize.toInt()
+        audioReader = try {
+            AudioReader(minBufferSize, 4)
+        } catch (e: OutOfMemoryError) {
+            Log.e(logTag, "failed to allocate audio reader", e)
+            minBufferSize = 0
+            null
+        } catch (e: Exception) {
+            Log.e(logTag, "failed to allocate audio reader", e)
+            minBufferSize = 0
+            null
+        }
+        return audioReader != null
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun startAudioRecorder() {
-        checkAudioReader()
+    private fun startAudioRecorder(mode: AudioCaptureMode): Boolean {
+        if (!checkAudioReader()) {
+            stopAudioRecorder()
+            return false
+        }
         val reader = audioReader
         val recorder = audioRecorder
-        if (reader != null && recorder != null && minBufferSize != 0) {
-            try {
-                FFI.setFrameRawEnable("audio", true)
-                recorder.startRecording()
-                audioRecordStat = true
-                audioThread = thread {
-                    try {
-                        while (audioRecordStat) {
-                            reader.readSync(recorder)?.let {
-                                FFI.onAudioFrameUpdate(it)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        if (audioRecordStat) {
-                            Log.e(logTag, "audio recorder thread failed", e)
-                        }
-                    } finally {
-                        try {
-                            recorder.release()
-                        } catch (e: Exception) {
-                            Log.w(logTag, "release audio recorder failed", e)
-                        }
-                        if (audioRecorder === recorder) {
-                            audioRecordStat = false
-                            audioRecorder = null
-                            audioReader = null
-                            minBufferSize = 0
-                            FFI.setFrameRawEnable("audio", false)
-                        }
-                        Log.d(logTag, "Exit audio thread")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(logTag, "startAudioRecorder fail", e)
-                stopAudioRecorder()
+        if (reader == null || recorder == null || minBufferSize <= 0) {
+            Log.e(logTag, "startAudioRecorder missing initialized resources")
+            stopAudioRecorder()
+            return false
+        }
+        return try {
+            FFI.setFrameRawEnable("audio", true)
+            recorder.startRecording()
+            if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                throw IllegalStateException("AudioRecord did not enter RECORDSTATE_RECORDING")
             }
-        } else {
-            Log.d(logTag, "startAudioRecorder fail")
+            audioRecordStat = true
+            captureMode = mode
+            val worker = thread(
+                start = false,
+                name = "rustdesk-android-audio",
+            ) {
+                try {
+                    while (audioRecordStat) {
+                        val frame = reader.readSync(recorder) ?: break
+                        FFI.onAudioFrameUpdate(frame)
+                    }
+                } catch (e: Exception) {
+                    if (audioRecordStat) {
+                        Log.e(logTag, "audio recorder thread failed", e)
+                    }
+                } finally {
+                    try {
+                        if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                            recorder.stop()
+                        }
+                    } catch (e: IllegalStateException) {
+                        Log.w(logTag, "stop completed audio recorder failed", e)
+                    }
+                    try {
+                        recorder.release()
+                    } catch (e: Exception) {
+                        Log.w(logTag, "release audio recorder failed", e)
+                    }
+                    if (audioRecorder === recorder) {
+                        audioRecordStat = false
+                        audioRecorder = null
+                        audioReader = null
+                        minBufferSize = 0
+                        captureMode = AudioCaptureMode.STOPPED
+                        captureProjection = null
+                        FFI.setFrameRawEnable("audio", false)
+                    }
+                    Log.d(logTag, "Exit audio thread")
+                }
+            }
+            audioThread = worker
+            worker.start()
+            true
+        } catch (e: Exception) {
+            Log.e(logTag, "startAudioRecorder failed", e)
+            stopAudioRecorder()
+            false
         }
     }
 
@@ -145,7 +212,6 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
         if (recorder != null) {
             try {
                 if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                    // Unblock AudioReader.readSync(..., READ_BLOCKING) before waiting for its thread.
                     recorder.stop()
                 }
             } catch (e: IllegalStateException) {
@@ -171,8 +237,7 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
             audioThread = null
         }
 
-        // startRecording() can fail before the worker exists, so that path must release here.
-        if (worker == null && recorder != null && audioRecorder === recorder) {
+        if ((worker == null || !worker.isAlive) && recorder != null && audioRecorder === recorder) {
             try {
                 recorder.release()
             } catch (e: Exception) {
@@ -181,77 +246,45 @@ class AudioRecordHandle(private var context: Context, private var isVideoStart: 
             audioRecorder = null
             audioReader = null
             minBufferSize = 0
+            captureMode = AudioCaptureMode.STOPPED
+            captureProjection = null
             FFI.setFrameRawEnable("audio", false)
         }
     }
 
-    fun onVoiceCallStarted(mediaProjection: MediaProjection?): Boolean {
+    fun switchToVoiceCall(): Boolean {
         if (!isSupportVoiceCall()) {
             return false
         }
-        // No need to check if video or audio is started here.
-        if (!switchToVoiceCall(mediaProjection)) {
-            return false
-        }
-        return true
-    }
-
-    fun onVoiceCallClosed(mediaProjection: MediaProjection?): Boolean {
-        // Return true if not supported, because is was not started.
-        if (!isSupportVoiceCall()) {
+        val recorder = audioRecorder
+        if (captureMode == AudioCaptureMode.VOICE_CALL &&
+            recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING
+        ) {
             return true
         }
-        if (isVideoStart()) {
-            switchOutVoiceCall(mediaProjection)
-        }
-        tryReleaseAudio()
-        return true
-    }
-
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun switchToVoiceCall(mediaProjection: MediaProjection?): Boolean {
-        audioRecorder?.let {
-            if (it.getAudioSource() == MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
-                return true
-            }
-        }
         stopAudioRecorder()
-
-        if (!createAudioRecorder(true, mediaProjection)) {
-            Log.e(logTag, "createAudioRecorder fail")
+        if (!createAudioRecorder(AudioCaptureMode.VOICE_CALL, null)) {
             return false
         }
-        startAudioRecorder()
-        return true
+        return startAudioRecorder(AudioCaptureMode.VOICE_CALL)
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    fun switchOutVoiceCall(mediaProjection: MediaProjection?): Boolean {
-        audioRecorder?.let {
-            if (it.getAudioSource() != MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
-                return true
-            }
+    fun switchToPlaybackCapture(mediaProjection: MediaProjection): Boolean {
+        val recorder = audioRecorder
+        if (captureMode == AudioCaptureMode.PLAYBACK &&
+            captureProjection === mediaProjection &&
+            recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING
+        ) {
+            return true
         }
         stopAudioRecorder()
-
-        if (!createAudioRecorder(false, mediaProjection)) {
-            Log.e(logTag, "createAudioRecorder fail")
+        if (!createAudioRecorder(AudioCaptureMode.PLAYBACK, mediaProjection)) {
             return false
         }
-        startAudioRecorder()
-        return true
+        return startAudioRecorder(AudioCaptureMode.PLAYBACK)
     }
 
-    fun tryReleaseAudio() {
-        if (isAudioStart() || isVideoStart()) {
-            return
-        }
-        stopAudioRecorder()
-    }
-
-    fun destroy() {
-        Log.d(logTag, "destroy audio record handle")
-
+    fun stopCapture() {
         stopAudioRecorder()
     }
 }

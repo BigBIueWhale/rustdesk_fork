@@ -7260,8 +7260,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   APK, native Android/desktop voice-call session, real device, exact release artifact, or R-B2/R-B10
   transaction is claimed here.
 - **R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners — SOURCE, FOCUSED RUST,
-  SOURCE GATE, AND MUTATION VERIFIED; ANDROID NATIVE OWNER AGGREGATION AND EXACT
-  NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAIN OPEN.** Platforms: the shared Rust audio service used by
+  SOURCE GATE, AND MUTATION VERIFIED; EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAIN OPEN.** Platforms: the shared Rust audio service used by
   non-iOS outgoing viewers and
   controlled Remote/ViewCamera connections on Android and desktop. Endpoint/action: selecting and restarting
   the one process-wide physical voice-call input while independently owned calls start, stop, reconnect, close,
@@ -7294,13 +7293,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   presence, and takes only its exact lease during explicit close, asynchronous close before its first cleanup
   await, and hard `Drop`.
 
-  Evidence boundary: this Rust ownership slice deliberately does not claim the separate Android native recorder
-  state machine is correct. Source tracing found that `MainService.rustSetByName("update_voice_call_state")`
+  Layer boundary: this Rust ownership slice did not by itself make the separate Android native recorder
+  state machine correct. Its source tracing found that `MainService.rustSetByName("update_voice_call_state")`
   receives an exact controlled connection ID but switches the process-wide `AudioRecordHandle` directly for
   each individual state event; a false event can switch out while another ID remains active, and ordinary
   connection removal does not send an exact native owner-retirement event. Outgoing activity voice-call events
-  likewise reach `MainActivity` without a session owner and can cross the activity/service recorder handoff.
-  Exact per-connection/per-session aggregation and that handoff remain a separate open source/device slice. No
+  likewise reached `MainActivity` without a native Activity-session owner and could cross the activity/service
+  recorder handoff. R-S11br/R-S11e-84 independently closes that Android source topology; both layers remain
+  required and neither substitutes for the other. No
   current APK, native Android/desktop voice-call transaction, real-device sequence, exact release artifact, or
   R-B2/R-B10 transaction is claimed here.
 
@@ -7317,6 +7317,103 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   systemd user-bus socket, and the isolated container deliberately mounts no host runtime directory or bus. The
   current repo-pinned full-verifier image is not locally present, and the binding loop excludes the long release
   build, so no repository-wide `scripts/verify.sh` or release transaction result is claimed.
+- **R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners — SOURCE,
+  FOCUSED KOTLIN, SOURCE GATE, AND MUTATION VERIFIED 2026-07-22; EXACT CURRENT APK, NATIVE DEVICE,
+  AND RELEASE-ARTIFACT EVIDENCE REMAIN R-B10/R-B2.** Platform: Android API 30+ native playback/microphone
+  capture inside the one application process retained by `MainService`. Endpoint/action: controlled-side
+  `add_connection`/`update_voice_call_state`/`remove_connection` JNI callbacks, outgoing Flutter
+  `on_voice_call_started`/`on_voice_call_closed`, Activity creation/resume/destruction, service task removal and
+  destruction, and MediaProjection playback start/stop. Boundary: exact live controlled connection or current
+  Flutter Activity-session owner ↔ the process-wide `AudioRecord`, its blocking reader worker, and the exact
+  MediaProjection playback grant.
+
+  The inherited topology gave `MainService` and `MainActivity` separate `AudioRecordHandle` objects. Outgoing
+  events selected one from current service-binding timing; controlled connection state switched the service
+  recorder immediately from each connection's Boolean event. A false event from one connection could therefore
+  switch out a second live call, ordinary connection removal sent no native retirement event, and Activity/task
+  replacement could retain or address stale native state. `AudioRecordHandle.createAudioRecorder()` accepted a
+  built but uninitialized recorder, `startAudioRecorder()` returned no success state, buffer setup could retain a
+  partial recorder, and a null result from the blocking read loop did not terminate the loop. This is a
+  source-proven Android native resource/lifecycle defect and a plausible contributor to state that survives an
+  Activity swipe until Force Stop kills the service process. It is not an on-device reproduction or causal proof
+  of the reported one-host screen-control symptom, and it is not evidence of host modification, Docker/root use,
+  listener exposure, firewall change, privilege escalation, exploitation, or compromise.
+
+  The inherited Rust Activity-resume state also admitted an older Activity carrying a different Flutter-isolate
+  UUID by minting it a fresh generation and closing the current replacement isolate's sessions. The native recorder
+  coordinator correctly refused that cross-isolate transfer only after Rust had already mutated ownership, which
+  could leave Rust session authority and the persistent recorder assigned to different Activities. Resume is now a
+  read-only exact-current-UUID check in Rust; a stale isolate cannot replace or drain the current owner, and both
+  Kotlin failure branches attempt only exact recorder-owner retirement before the stale Activity finishes.
+
+  `VoiceCallAudioCoordinator` is now the sole process-wide serialized owner of one `AudioRecordHandle`. Its pure
+  `VoiceCallOwnerState` records voice-capable controlled IDs separately from the exact active subset; updates are
+  admitted only for registered IDs, removal retires registration plus activity, and one connection cannot clear
+  another. The outgoing owner is the positive native Activity generation plus canonical isolate UUID already used
+  by the Rust session-owner gate. New Activity creation invalidates the previous native owner before Flutter can
+  run; registration follows Rust owner admission with rollback; resume requires the exact current UUID and a
+  generation equal to the current owner for an idempotent ordinary resume, or a newer generation for lost-response
+  recovery, while preserving active state; older generations, stale Activity destruction, and stale service task callbacks
+  cannot alter the replacement. Activity/task teardown retires the exact native owner before matching Rust
+  sessions, while service destruction clears only controlled owners. `src/flutter.rs` now notifies the service of
+  exact connection removal before publishing UI removal. Service binding has no audio-ownership semantics and the
+  obsolete local/service recorder callbacks and state booleans are deleted.
+
+  The shared outgoing response path now stops the prior exact voice worker, constructs the replacement, and
+  publishes `on_voice_call_started` only after that worker exists. Lease-acquisition or worker-spawn failure instead
+  publishes closed state and sends the peer an explicit close request, so Android native capture cannot be activated
+  for a call whose Rust audio worker never started.
+
+  Reconciliation has one closed priority: any active voice owner selects `VOICE_COMMUNICATION`, otherwise the live
+  exact MediaProjection selects playback capture, otherwise capture stops. Playback reuse also requires object
+  identity with the recorder's recorded projection, so grant replacement cannot retain the old capture. Recorder
+  creation proves `RECORD_AUDIO` plus `AudioRecord.STATE_INITIALIZED`; buffer size must be positive, is widened
+  before multiplication, and must fit `Int`; direct-buffer allocation failure releases the partial recorder.
+  Start commits only after `RECORDSTATE_RECORDING`, publishes an unstarted named worker only after all resources
+  exist, and rolls back if start or thread launch fails. A null blocking read is terminal. Spontaneous completion
+  stops and releases its exact recorder; explicit stop first publishes retirement, stops to unblock the read,
+  joins the exact worker while restoring interruption, then clears the exact recorder/reader/mode/projection/raw
+  flag. There is no second recorder, binding fallback, hot loop, detached cleanup, or ambient global close.
+
+  The design follows Android's official lifecycle and media contracts: a started service can outlive Activity
+  binding and receives `onTaskRemoved`, while `onDestroy` is its resource-release sink
+  (<https://developer.android.com/reference/android/app/Service>); started-plus-bound service lifetime is not
+  defined by the binding alone (<https://developer.android.com/develop/background-work/services/bound-services>);
+  competing audio captures are not a reliable ownership mechanism and `VOICE_COMMUNICATION` is privacy-sensitive
+  (<https://developer.android.com/media/platform/sharing-audio-input>); `AudioRecord` construction must be checked
+  for `STATE_INITIALIZED` and stopped/released after use
+  (<https://developer.android.com/reference/android/media/AudioRecord>); and MediaProjection-backed capture must
+  own its callback/revocation lifecycle (<https://developer.android.com/media/platform/av-capture>). The design
+  implication is one application-owned state machine whose exact call owners are independent of Activity/service
+  binding and whose playback mode remains subordinate to the exact live projection.
+
+  Verification: `scripts/android-voice-call-owner-state-test.kt` compiles the Android-free owner model and executes
+  invalid/unregistered admission, two-controlled-owner aggregation, stale outgoing update/teardown refusal,
+  same-or-newer resume with active-state retention plus older/cross-isolate refusal, controlled/outgoing overlap,
+  isolate invalidation, and service clearing. `scripts/verify-android-voice-call-ownership.py` binds the complete
+  Kotlin/Rust topology, lifecycle
+  ordering, one-recorder count, mode priority, projection identity, buffer/start/worker cleanup, platform-channel
+  completion, worker-before-native start publication, requirement, disposition, ledger, and shared-gate wiring, and
+  rejects 52 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
+  focused verifier rather than
+  trusting its output, and mutation-binds the new gate/requirement/disposition/ledger plus the updated
+  MediaProjection audio-retirement contract.
+
+  Exact current-source verification passed in confined non-root, network-disabled, read-only-source containers:
+  the Android-free Kotlin owner transition regression compiled and executed; the focused verifier passed normally
+  and rejected all 52 registered mutations; and the independent workspace verifier passed normally plus its complete
+  in-memory source-mutation matrix. The Android release Kotlin compilation completed with `BUILD SUCCESSFUL` in 30
+  seconds (`228` actionable tasks: `227` executed, `1` up-to-date); existing unrelated deprecation and static-analysis
+  warnings remain and no APK was assembled. Locked/offline Rust 1.75 library tests passed all three Android
+  Activity-owner regressions (`3 passed`, `0 failed`, `347 filtered`) and both adjacent event-driven voice-worker
+  regressions (`2 passed`, `0 failed`, `348 filtered`); pinned Rustfmt passed the two changed Rust files and
+  `Cargo.lock` remained byte-identical. Python byte-compilation, edited Bash syntax, requirements-hash equality
+  (`8c3ff47f637828bee8f30a76d3bbccfd3b2be07093a2bff45cb553d327afd5cb`), and native-codec normal/self-test gates
+  passed. These checks used no published port, Docker socket, host PID/network namespace, host service/config mount,
+  host networking, added capability, or root process.
+
+  No Android device, installed APK, original swipe/relaunch sequence, OEM task behavior, signed artifact, or full
+  R-B2/R-B10 release transaction is claimed by this source slice; those remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8032,9 +8129,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7f6a1a5cef0ec6949a307ed0e2aa3ddb00ece3c563187a9b9b8f1cc59886661c  requirements.html
+8c3ff47f637828bee8f30a76d3bbccfd3b2be07093a2bff45cb553d327afd5cb  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bq, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#210. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11br, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#211. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

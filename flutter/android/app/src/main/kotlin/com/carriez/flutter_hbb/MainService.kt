@@ -125,6 +125,14 @@ class MainService : Service() {
                     // full serialized Client struct, so these keys are always present.
                     val isViewCamera = jsonObject["is_view_camera"] as Boolean
                     val isTerminal = jsonObject["is_terminal"] as Boolean
+                    val portForward = jsonObject["port_forward"] as String
+                    val canUseVoiceCall = isViewCamera ||
+                        (!isFileTransfer && !isTerminal && portForward.isEmpty())
+                    if (canUseVoiceCall &&
+                        !VoiceCallAudioCoordinator.registerControlledConnection(id)
+                    ) {
+                        Log.e(logTag, "Rejected invalid controlled voice-call owner: $id")
+                    }
                     val type = if (isFileTransfer) {
                         translate("Transfer file")
                     } else {
@@ -142,6 +150,16 @@ class MainService : Service() {
                     e.printStackTrace()
                 }
             }
+            "remove_connection" -> {
+                val id = arg1.toIntOrNull()
+                if (id == null ||
+                    !VoiceCallAudioCoordinator.unregisterControlledConnection(id)
+                ) {
+                    Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
+                } else {
+                    cancelNotification(id)
+                }
+            }
             "update_voice_call_state" -> {
                 try {
                     val jsonObject = JSONObject(arg1)
@@ -150,26 +168,15 @@ class MainService : Service() {
                     val peerId = jsonObject["peer_id"] as String
                     val inVoiceCall = jsonObject["in_voice_call"] as Boolean
                     val incomingVoiceCall = jsonObject["incoming_voice_call"] as Boolean
-                    if (!inVoiceCall) {
-                        if (incomingVoiceCall) {
-                            voiceCallRequestNotification(id, "Voice Call Request", username, peerId)
-                        } else {
-                            if (!audioRecordHandle.switchOutVoiceCall(mediaProjection)) {
-                                Log.e(logTag, "switchOutVoiceCall fail")
-                                MainActivity.flutterMethodChannel?.invokeMethod("msgbox", mapOf(
-                                    "type" to "custom-nook-nocancel-hasclose-error",
-                                    "title" to "Voice call",
-                                    "text" to "Failed to switch out voice call."))
-                            }
-                        }
-                    } else {
-                        if (!audioRecordHandle.switchToVoiceCall(mediaProjection)) {
-                            Log.e(logTag, "switchToVoiceCall fail")
-                            MainActivity.flutterMethodChannel?.invokeMethod("msgbox", mapOf(
-                                "type" to "custom-nook-nocancel-hasclose-error",
-                                "title" to "Voice call",
-                                "text" to "Failed to switch to voice call."))
-                        }
+                    if (!VoiceCallAudioCoordinator.setControlledVoiceCallActive(id, inVoiceCall)) {
+                        Log.e(logTag, "Failed to reconcile controlled voice-call owner: $id")
+                        MainActivity.flutterMethodChannel?.invokeMethod("msgbox", mapOf(
+                            "type" to "custom-nook-nocancel-hasclose-error",
+                            "title" to "Voice call",
+                            "text" to "Failed to update voice-call audio."))
+                    }
+                    if (incomingVoiceCall) {
+                        voiceCallRequestNotification(id, "Voice Call Request", username, peerId)
                     }
                 } catch (e: JSONException) {
                     e.printStackTrace()
@@ -222,14 +229,10 @@ class MainService : Service() {
         private var _isReady = false // media permission ready status
         @Volatile
         private var _isStart = false // screen capture start status
-        @Volatile
-        private var _isAudioStart = false // audio capture start status
         val isReady: Boolean
             get() = _isReady
         val isStart: Boolean
             get() = _isStart
-        val isAudioStart: Boolean
-            get() = _isAudioStart
     }
 
     private val logTag = "LOG_SERVICE"
@@ -245,9 +248,6 @@ class MainService : Service() {
     private var surface: Surface? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
-
-    // audio
-    private val audioRecordHandle = AudioRecordHandle(this, { isStart }, { isAudioStart })
 
     // notification
     private lateinit var notificationManager: NotificationManager
@@ -306,6 +306,9 @@ class MainService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(logTag,"MainService onCreate, sdk int:${Build.VERSION.SDK_INT} reuseVirtualDisplay:$reuseVirtualDisplay")
+        if (!VoiceCallAudioCoordinator.initialize(applicationContext)) {
+            Log.e(logTag, "Failed to initialize process-wide audio capture ownership")
+        }
         FFI.init(this)
         HandlerThread("Service", Process.THREAD_PRIORITY_BACKGROUND).apply {
             start()
@@ -327,6 +330,9 @@ class MainService : Service() {
 
     override fun onDestroy() {
         releaseCaptureResources()
+        if (!VoiceCallAudioCoordinator.clearControlledConnections()) {
+            Log.e(logTag, "Failed to release controlled voice-call owners during service teardown")
+        }
         serviceLooper?.quitSafely()
         serviceHandler = null
         serviceLooper = null
@@ -349,6 +355,9 @@ class MainService : Service() {
         // owner pairs recorded by stopped Activities. Generation + isolate UUID binding makes this
         // safe even when an obsolete task callback arrives after a replacement Activity starts.
         for (owner in MainActivity.takeStoppedClientSessionOwners()) {
+            if (!VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())) {
+                Log.e(logTag, "Failed to reconcile removed-task voice-call owner ${owner.generation}")
+            }
             val closedSessions = FFI.closeClientSessions(owner.generation, owner.sessionId)
             if (closedSessions > 0) {
                 Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) for removed task owner ${owner.generation}")
@@ -515,14 +524,6 @@ class MainService : Service() {
         return imageReader?.surface
     }
 
-    fun onVoiceCallStarted(): Boolean {
-        return audioRecordHandle.onVoiceCallStarted(mediaProjection)
-    }
-
-    fun onVoiceCallClosed(): Boolean {
-        return audioRecordHandle.onVoiceCallClosed(mediaProjection)
-    }
-
     @Synchronized
     private fun requestCapture(): Boolean {
         captureRequested = true
@@ -554,11 +555,8 @@ class MainService : Service() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                if (!audioRecordHandle.createAudioRecorder(false, projection)) {
-                    Log.d(logTag, "createAudioRecorder fail")
-                } else {
-                    Log.d(logTag, "audio recorder start")
-                    audioRecordHandle.startAudioRecorder()
+                if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)) {
+                    Log.w(logTag, "Failed to start playback audio capture")
                 }
             } catch (e: RuntimeException) {
                 // Audio is optional. A device-specific audio failure must not leave an already
@@ -604,8 +602,9 @@ class MainService : Service() {
         surface?.release()
         surface = null
 
-        _isAudioStart = false
-        audioRecordHandle.tryReleaseAudio()
+        if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)) {
+            Log.e(logTag, "Failed to reconcile audio after screen-capture stop")
+        }
     }
 
     @Synchronized
@@ -696,7 +695,6 @@ class MainService : Service() {
     fun destroy() {
         Log.d(logTag, "destroy service")
         _isReady = false
-        _isAudioStart = false
 
         releaseCaptureResources()
         checkMediaPermission()

@@ -826,6 +826,14 @@ else
   rc=1
 fi
 
+echo "== (3b-iii-a1a02) Android exact voice-call recorder ownership (R-S11br/R-S11e-84) =="
+if python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test; then
+  echo "  ok  R-S11e-84 Android voice-call capture has serialized controlled-connection and outgoing-Activity owners over one recorder"
+else
+  echo "  FAIL R-S11e-84 Android voice-call capture regained per-event switching, dual recorders, stale owner teardown, or binding-dependent handoff"
+  rc=1
+fi
+
 echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
@@ -11834,6 +11842,7 @@ printf '%s\n' "$stop_capture_block" | grep -qF 'captureRequested = false' || r_s
 printf '%s\n' "$stop_capture_block" | grep -qF 'stopCapturePipeline()' || r_s14_missing="$r_s14_missing explicit-stop-skips-pipeline"
 printf '%s\n' "$pipeline_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing pipeline-no-virtual-display-release"
 printf '%s\n' "$pipeline_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing pipeline-surface-not-nulled"
+printf '%s\n' "$pipeline_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)' || r_s14_missing="$r_s14_missing pipeline-no-playback-owner-retirement"
 printf '%s\n' "$teardown_block" | grep -qF 'stopCapturePipeline(keepReusableDisplay = false)' || r_s14_missing="$r_s14_missing teardown-keeps-reusable-display"
 printf '%s\n' "$teardown_block" | grep -qF 'releaseMediaProjection()' || r_s14_missing="$r_s14_missing teardown-no-mediaProjection-stop"
 printf '%s\n' "$projection_release_block" | grep -qF 'projection.unregisterCallback(callback)' || r_s14_missing="$r_s14_missing projection-callback-not-unregistered"

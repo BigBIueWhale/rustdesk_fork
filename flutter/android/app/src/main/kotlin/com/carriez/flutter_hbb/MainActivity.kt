@@ -30,7 +30,9 @@ import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     companion object {
-        data class ClientSessionOwner(val generation: Long, val sessionId: String)
+        internal data class ClientSessionOwner(val generation: Long, val sessionId: String) {
+            fun toVoiceCallOwner() = OutgoingVoiceCallOwner(generation, sessionId)
+        }
 
         var flutterMethodChannel: MethodChannel? = null
         private var _rdClipboardManager: RdClipboardManager? = null
@@ -54,7 +56,7 @@ class MainActivity : FlutterActivity() {
         }
 
         @Synchronized
-        fun takeStoppedClientSessionOwners(): List<ClientSessionOwner> {
+        internal fun takeStoppedClientSessionOwners(): List<ClientSessionOwner> {
             val owners = stoppedClientSessionOwners.map { (generation, sessionId) ->
                 ClientSessionOwner(generation, sessionId)
             }
@@ -72,10 +74,10 @@ class MainActivity : FlutterActivity() {
     private var clientSessionOwner: ClientSessionOwner? = null
     private var isActivityStopped = false
 
-    private var isAudioStart = false
-    private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        if (!VoiceCallAudioCoordinator.initialize(applicationContext)) {
+            Log.e(logTag, "Failed to initialize process-wide audio capture ownership")
+        }
         super.configureFlutterEngine(flutterEngine)
         if (MainService.isReady) {
             bindMainService()
@@ -118,6 +120,9 @@ class MainActivity : FlutterActivity() {
         // Invalidate the previous Flutter engine's native admission before super.onCreate can
         // attach and run this Activity's engine. Dart binds this generation to its isolate-wide
         // UUID before the UI starts; delayed calls from an older engine then fail closed.
+        if (!VoiceCallAudioCoordinator.invalidateOutgoingOwner()) {
+            Log.e(logTag, "Failed to retire the previous outgoing voice-call owner")
+        }
         clientSessionOwnerGeneration = FFI.beginClientSessionOwner()
         if (clientSessionOwnerGeneration == 0L) {
             Log.e(logTag, "Failed to allocate an Android client session owner generation")
@@ -131,13 +136,14 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
-        isAudioStart = false
-        audioRecordHandle.destroy()
 
         // Teardown is bound to this Activity generation and Flutter isolate UUID. A delayed
         // onDestroy from an obsolete Activity cannot close the replacement Activity's sessions.
         clientSessionOwner?.let { owner ->
             forgetClientSessionOwner(owner)
+            if (!VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())) {
+                Log.e(logTag, "Failed to reconcile outgoing voice-call audio during Activity teardown")
+            }
             val closedSessions = FFI.closeClientSessions(owner.generation, owner.sessionId)
             if (closedSessions > 0) {
                 Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) for Activity owner ${owner.generation}")
@@ -196,6 +202,7 @@ class MainActivity : FlutterActivity() {
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.d(logTag, "onServiceDisconnected")
             mainService = null
+            isServiceBound = false
         }
     }
 
@@ -224,11 +231,17 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     } else {
                         val owner = ClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)
-                        clientSessionOwner = owner
-                        if (isActivityStopped) {
-                            markClientSessionOwnerStopped(owner)
+                        if (!VoiceCallAudioCoordinator.registerOutgoingOwner(owner.toVoiceCallOwner())) {
+                            Log.e(logTag, "Rejected stale outgoing voice-call owner registration")
+                            FFI.closeClientSessions(owner.generation, owner.sessionId)
+                            result.success(false)
+                        } else {
+                            clientSessionOwner = owner
+                            if (isActivityStopped) {
+                                markClientSessionOwnerStopped(owner)
+                            }
+                            result.success(true)
                         }
-                        result.success(true)
                     }
                 }
                 "init_service" -> {
@@ -349,10 +362,10 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "on_voice_call_started" -> {
-                    onVoiceCallStarted()
+                    result.success(setOutgoingVoiceCallActive(true))
                 }
                 "on_voice_call_closed" -> {
-                    onVoiceCallClosed()
+                    result.success(setOutgoingVoiceCallActive(false))
                 }
                 else -> {
                     result.error("-1", "No such method", null)
@@ -361,44 +374,26 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun onVoiceCallStarted() {
-        var ok = false
-        mainService?.let {
-            ok = it.onVoiceCallStarted()
-        } ?: let {
-            isAudioStart = true
-            ok = audioRecordHandle.onVoiceCallStarted(null)
+    private fun setOutgoingVoiceCallActive(active: Boolean): Boolean {
+        val owner = clientSessionOwner
+        if (owner == null) {
+            Log.e(logTag, "Rejected voice-call event without an outgoing session owner")
+            return false
         }
+        val ok = VoiceCallAudioCoordinator.setOutgoingVoiceCallActive(
+            owner.toVoiceCallOwner(),
+            active,
+        )
         if (!ok) {
-            // Rarely happens, So we just add log and msgbox here.
-            Log.e(logTag, "onVoiceCallStarted fail")
+            Log.e(logTag, "Failed to ${if (active) "start" else "stop"} outgoing voice-call audio")
             flutterMethodChannel?.invokeMethod("msgbox", mapOf(
                 "type" to "custom-nook-nocancel-hasclose-error",
                 "title" to "Voice call",
-                "text" to "Failed to start voice call."))
+                "text" to "Failed to update voice-call audio."))
         } else {
-            Log.d(logTag, "onVoiceCallStarted success")
+            Log.d(logTag, "Outgoing voice-call audio active=$active")
         }
-    }
-
-    private fun onVoiceCallClosed() {
-        var ok = false
-        mainService?.let {
-            ok = it.onVoiceCallClosed()
-        } ?: let {
-            isAudioStart = false
-            ok = audioRecordHandle.onVoiceCallClosed(null)
-        }
-        if (!ok) {
-            // Rarely happens, So we just add log and msgbox here.
-            Log.e(logTag, "onVoiceCallClosed fail")
-            flutterMethodChannel?.invokeMethod("msgbox", mapOf(
-                "type" to "custom-nook-nocancel-hasclose-error",
-                "title" to "Voice call",
-                "text" to "Failed to stop voice call."))
-        } else {
-            Log.d(logTag, "onVoiceCallClosed success")
-        }
+        return ok
     }
 
     override fun onStop() {
@@ -418,6 +413,11 @@ class MainActivity : FlutterActivity() {
         val resumedGeneration = FFI.resumeClientSessionOwner(owner.generation, owner.sessionId)
         if (resumedGeneration == 0L) {
             Log.e(logTag, "Failed to resume Android client session ownership; closing stale Activity")
+            val retiredRejectedOwner =
+                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())
+            if (!retiredRejectedOwner) {
+                Log.d(logTag, "Rejected Activity did not own the current voice-call recorder")
+            }
             forgetClientSessionOwner(owner)
             clientSessionOwner = null
             finish()
@@ -425,10 +425,34 @@ class MainActivity : FlutterActivity() {
         }
 
         // onStart can run without onCreate when Android restores an older Activity from the back
-        // stack. Replace its stale generation with the native generation acquired above. Forgetting
-        // the old stopped marker first prevents a delayed task callback from retaining dead metadata.
+        // stack. Reconcile its recorded generation with the authoritative native generation acquired
+        // above. Forgetting the old stopped marker first prevents a delayed task callback from
+        // retaining dead metadata.
         forgetClientSessionOwner(owner)
         val resumedOwner = ClientSessionOwner(resumedGeneration, owner.sessionId)
+        if (!VoiceCallAudioCoordinator.resumeOutgoingOwner(
+                owner.toVoiceCallOwner(),
+                resumedOwner.toVoiceCallOwner(),
+            )
+        ) {
+            Log.e(logTag, "Failed to transfer outgoing voice-call ownership to resumed Activity")
+            val retiredUnreconciledOwner =
+                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())
+            if (!retiredUnreconciledOwner) {
+                Log.d(logTag, "Unreconciled Activity did not own the current voice-call recorder")
+            }
+            val closedUnreconciledSessions =
+                FFI.closeClientSessions(owner.generation, owner.sessionId)
+            if (closedUnreconciledSessions > 0) {
+                Log.i(
+                    logTag,
+                    "Closed $closedUnreconciledSessions session(s) for the exact unreconciled Activity owner",
+                )
+            }
+            clientSessionOwner = null
+            finish()
+            return
+        }
         clientSessionOwner = resumedOwner
         markClientSessionOwnerStarted(resumedOwner)
     }

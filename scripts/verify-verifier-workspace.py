@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#210",
+        "R-S11n through R-S11br, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#211",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11380,6 +11380,321 @@ def validate_viewer_voice_call_worker_contract(sources):
     )
 
 
+def validate_android_voice_call_ownership_contract(sources):
+    focused = sources["android_voice_call_ownership_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "Android voice-call ownership focused validation",
+    )
+    for text, label in (
+        ("def extract_item(", "Android ownership item parser"),
+        ("def validate(sources", "Android ownership semantic entry"),
+        (
+            '"get() = activeControlledConnections.isNotEmpty() || outgoingVoiceCallActive"',
+            "Android controlled/outgoing aggregate demand contract",
+        ),
+        (
+            '"replacement.generation < previous.generation"',
+            "Android outgoing nondecreasing-generation contract",
+        ),
+        (
+            '"if (current == replacement)"',
+            "Android lost-response resume-retry idempotence contract",
+        ),
+        (
+            '"self.session_id.as_ref() != Some(&session_id)"',
+            "Android Rust cross-isolate resume-refusal contract",
+        ),
+        (
+            '"same-isolate Rust-and-recorder Activity resume with exact failure cleanup"',
+            "Android resume-failure exact cleanup contract",
+        ),
+        (
+            '"generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)"',
+            "Android idempotent same-generation resume requirement contract",
+        ),
+        (
+            '"same-or-newer resume with active-state retention plus older/cross-isolate refusal"',
+            "Android idempotent same-generation resume ledger contract",
+        ),
+        (
+            '"only then publish native/UI started state"',
+            "Android worker-before-native start requirement contract",
+        ),
+        (
+            '"publishes `on_voice_call_started` only after that worker exists"',
+            "Android worker-before-native start ledger contract",
+        ),
+        (
+            'require_count(all_android, "= AudioRecordHandle(", 1',
+            "Android single-recorder construction contract",
+        ),
+        (
+            'f"@Synchronized\\n    fun {function}"',
+            "Android coordinator serialization contract",
+        ),
+        (
+            '"internal data class ClientSessionOwner(val generation: Long, val sessionId: String)"',
+            "Android module-internal Activity session owner",
+        ),
+        (
+            '"internal fun takeStoppedClientSessionOwners(): List<ClientSessionOwner>"',
+            "Android module-internal stopped-owner transfer",
+        ),
+        (
+            '"voice-over-playback-over-stopped recorder priority"',
+            "Android recorder priority contract",
+        ),
+        (
+            '"captureProjection === mediaProjection"',
+            "Android exact playback projection contract",
+        ),
+        (
+            '"reader.readSync(recorder) ?: break"',
+            "Android terminal blocking-read failure contract",
+        ),
+        (
+            '"task-removal native-before-Rust exact-owner retirement"',
+            "Android task-removal ordering contract",
+        ),
+        (
+            'call_main_service_set_by_name("remove_connection", Some(&id), None)',
+            "Android Rust exact-removal bridge contract",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Android ownership mutation inventory"),
+        ("run_self_test(sources)", "Android ownership mutation dispatch"),
+    ):
+        source = (
+            focused
+            if text
+            in {
+                "def extract_item(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_self_test(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
+
+    for key, text, label in (
+        (
+            "android_voice_call_owner_state",
+            "internal class VoiceCallOwnerState {",
+            "Android exact owner state source",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "if (current == replacement)",
+            "Android lost-response resume-retry source",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "internal object VoiceCallAudioCoordinator {",
+            "Android process-wide coordinator source",
+        ),
+        (
+            "android_audio_record_handle",
+            "internal class AudioRecordHandle(private val context: Context)",
+            "Android single-context recorder source",
+        ),
+        (
+            "android_main_activity",
+            "VoiceCallAudioCoordinator.invalidateOutgoingOwner()",
+            "Android Activity owner invalidation source",
+        ),
+        (
+            "android_main_activity",
+            "internal data class ClientSessionOwner(val generation: Long, val sessionId: String)",
+            "Android module-internal Activity session owner source",
+        ),
+        (
+            "android_main_activity",
+            "internal fun takeStoppedClientSessionOwners(): List<ClientSessionOwner>",
+            "Android module-internal stopped-owner transfer source",
+        ),
+        (
+            "android_main_service",
+            '"remove_connection" ->',
+            "Android controlled-owner retirement dispatch source",
+        ),
+        (
+            "flutter_source",
+            'call_main_service_set_by_name("remove_connection", Some(&id), None)',
+            "Android native removal bridge source",
+        ),
+        (
+            "flutter_source",
+            "|| self.session_id.as_ref() != Some(&session_id)",
+            "Android Rust cross-isolate resume refusal source",
+        ),
+        (
+            "flutter_source",
+            "fn stale_android_activity_cannot_reclaim_the_replacement_owner()",
+            "Android Rust stale-Activity resume regression source",
+        ),
+        (
+            "android_main_activity",
+            "val retiredRejectedOwner =",
+            "Android Rust-rejected resume cleanup source",
+        ),
+        (
+            "android_main_activity",
+            "val retiredUnreconciledOwner =",
+            "Android unreconciled resume cleanup source",
+        ),
+        (
+            "android_main_activity",
+            "val closedUnreconciledSessions =\n                FFI.closeClientSessions(owner.generation, owner.sessionId)",
+            "Android unreconciled resume original-owner close source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "one controlled teardown cleared another owner",
+            "Android owner aggregation behavior source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "lost-response resume retry was rejected",
+            "Android lost-response retry behavior source",
+        ),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        focused,
+        '("audio", "captureProjection === mediaProjection", "captureProjection != null", "exact projection reuse"),',
+        "Android exact playback projection contract",
+    )
+    require_text(
+        focused,
+        '("audio", "reader.readSync(recorder) ?: break", "reader.readSync(recorder) ?: continue", "terminal read failure"),',
+        "Android terminal blocking-read failure contract",
+    )
+    require_text(
+        focused,
+        '("owners", "replacement.generation < previous.generation", "replacement.generation <= previous.generation", "idempotent same-generation resume"),',
+        "Android outgoing nondecreasing-generation contract",
+    )
+    require_text(
+        focused,
+        '("owners", "if (current == replacement)", "if (false)", "lost-response resume retry idempotence"),',
+        "Android lost-response resume-retry idempotence contract",
+    )
+    require_text(
+        focused,
+        '("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),',
+        "Android Rust cross-isolate resume mutation",
+    )
+    require_text(
+        focused,
+        '("activity", "val retiredRejectedOwner =\\n                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "val retiredRejectedOwner = true", "Rust-rejected resume exact recorder cleanup"),',
+        "Android Rust-rejected resume cleanup mutation",
+    )
+    require_text(
+        focused,
+        '("activity", "val retiredUnreconciledOwner =\\n                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "val retiredUnreconciledOwner = true", "unreconciled resume exact recorder cleanup"),',
+        "Android unreconciled resume cleanup mutation",
+    )
+    require_text(
+        focused,
+        '("activity", "val closedUnreconciledSessions =\\n                FFI.closeClientSessions(owner.generation, owner.sessionId)", "val closedUnreconciledSessions =\\n                FFI.closeClientSessions(resumedOwner.generation, resumedOwner.sessionId)", "unreconciled resume cannot close replacement Rust owner"),',
+        "Android unreconciled resume original-owner close mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", "generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)", "a strictly newer generation", "idempotent same-generation resume requirement"),',
+        "Android idempotent same-generation resume requirement contract",
+    )
+    require_text(
+        focused,
+        '("hardening", "same-or-newer resume with active-state retention plus older/cross-isolate refusal", "strictly newer resume with active-state retention", "idempotent same-generation resume ledger"),',
+        "Android idempotent same-generation resume ledger contract",
+    )
+    require_text(
+        focused,
+        '("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "worker-before-native start requirement"),',
+        "Android worker-before-native start requirement contract",
+    )
+    require_text(
+        focused,
+        '("hardening", "publishes `on_voice_call_started` only after that worker exists", "publishes `on_voice_call_started` before that worker exists", "worker-before-native start ledger"),',
+        "Android worker-before-native start ledger contract",
+    )
+    require_text(
+        focused,
+        '"io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8")',
+        "Android outgoing voice-call worker source loading",
+    )
+    require_text(
+        validation,
+        '"worker-before-native outgoing voice-call activation"',
+        "Android worker-before-native voice activation contract",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
+        "Android voice-call ownership shared focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11br</span>',
+        "Android exact recorder ownership requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)",
+        "Android idempotent same-generation resume requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "only then publish native/UI started state",
+        "Android worker-before-native start requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>211</td>",
+        "Android exact recorder ownership Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners",
+        "Android exact recorder ownership hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "same-or-newer resume with active-state retention plus older/cross-isolate refusal",
+        "Android idempotent same-generation resume ledger source",
+    )
+    require_text(
+        sources["hardening"],
+        "publishes `on_voice_call_started` only after that worker exists",
+        "Android worker-before-native start ledger source",
+    )
+
+    outgoing_voice_response = extract_between(
+        sources["client_io_loop"],
+        "Some(message::Union::VoiceCallResponse(response)) => {",
+        "Some(message::Union::PeerInfo(pi)) => {",
+        "Android accepted outgoing voice-call transition",
+    )
+    require_order(
+        outgoing_voice_response,
+        (
+            "if response.accepted",
+            "self.stop_voice_call().await",
+            "self.voice_call_thread = self.start_voice_call()",
+            "if self.voice_call_thread.is_some()",
+            "self.handler.on_voice_call_started()",
+            '.on_voice_call_closed("Failed to start voice call audio")',
+            "let msg = new_voice_call_request(false)",
+            "peer.send(&msg).await",
+        ),
+        "Android worker-before-native outgoing voice-call activation source",
+    )
+
+
 def validate_android_builder_authority_contract(sources):
     focused = sources["android_builder_authority_verifier"]
     comparator = sources["android_build_source_verifier"]
@@ -11549,12 +11864,14 @@ def validate_android_media_projection_finality_contract(sources):
         "@Volatile\n    private var captureRequested = false",
         "Android cross-thread capture-demand state",
     )
-    for state in ("_isReady", "_isStart", "_isAudioStart"):
+    for state in ("_isReady", "_isStart"):
         require_text(
             android,
             f"@Volatile\n        private var {state} = false",
             f"Android cross-thread {state} state",
         )
+    require_absent(android, "_isAudioStart", "retired parallel Android audio state")
+    require_absent(android, "AudioRecordHandle(", "retired service-local Android recorder")
 
     request_capture = extract_between(
         android,
@@ -11574,6 +11891,11 @@ def validate_android_media_projection_finality_contract(sources):
         "fun stopCapture()",
         "Android transactional capture start",
     )
+    require_text(
+        start_capture,
+        "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)",
+        "Android MediaProjection playback-owner admission",
+    )
     require_order(
         start_capture,
         (
@@ -11586,6 +11908,7 @@ def validate_android_media_projection_finality_contract(sources):
             "releaseCaptureResources(clearCaptureRequest = false)",
             "requestMediaProjection()",
             "return false",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)",
             "_isStart = true",
             'FFI.setFrameRawEnable("video",true)',
         ),
@@ -11623,7 +11946,10 @@ def validate_android_media_projection_finality_contract(sources):
         ("imageReader = null", "ImageReader clear"),
         ("surface?.release()", "Surface release"),
         ("surface = null", "Surface clear"),
-        ("audioRecordHandle.tryReleaseAudio()", "audio release"),
+        (
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)",
+            "exact playback-owner retirement",
+        ),
     ):
         require_text(capture_pipeline, text, f"Android capture pipeline {label}")
 
@@ -11804,6 +12130,11 @@ def validate_android_media_projection_finality_contract(sources):
         sources["verify"],
         "Android MediaProjection lifecycle finality (R-S14/R-T4)",
         "Android MediaProjection shared source gate",
+    )
+    require_text(
+        sources["verify"],
+        "pipeline-no-playback-owner-retirement",
+        "Android MediaProjection playback-owner retirement source gate",
     )
     require_text(
         sources["verify"],
@@ -14296,6 +14627,7 @@ def validate_sources(sources):
     validate_installed_service_classifier_contract(sources)
     validate_unix_helper_process_role_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
+    validate_android_voice_call_ownership_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -26322,7 +26654,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#210",
+            "R-S11n through R-S11br, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#211",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -26583,6 +26915,240 @@ def run_source_mutations(sources):
             "voice-call input ownership hardening ledger",
         ),
         (
+            "android_voice_call_ownership_verifier",
+            '"get() = activeControlledConnections.isNotEmpty() || outgoingVoiceCallActive"',
+            '"get() = outgoingVoiceCallActive"',
+            "Android controlled/outgoing aggregate demand contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"replacement.generation < previous.generation"',
+            '"replacement.generation <= previous.generation"',
+            "Android outgoing nondecreasing-generation contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"if (current == replacement)"',
+            '"if (false)"',
+            "Android lost-response resume-retry idempotence contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"self.session_id.as_ref() != Some(&session_id)"',
+            '"true"',
+            "Android Rust cross-isolate resume-refusal contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"same-isolate Rust-and-recorder Activity resume with exact failure cleanup"',
+            '"unchecked Rust-and-recorder Activity resume"',
+            "Android resume-failure exact cleanup contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'require_count(all_android, "= AudioRecordHandle(", 1',
+            'require_count(all_android, "= AudioRecordHandle(", 2',
+            "Android single-recorder construction contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'f"@Synchronized\\n    fun {function}"',
+            'f"fun {function}"',
+            "Android coordinator serialization contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"internal data class ClientSessionOwner(val generation: Long, val sessionId: String)"',
+            '"data class ClientSessionOwner(val generation: Long, val sessionId: String)"',
+            "Android module-internal Activity session owner",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"internal fun takeStoppedClientSessionOwners(): List<ClientSessionOwner>"',
+            '"fun takeStoppedClientSessionOwners(): List<ClientSessionOwner>"',
+            "Android module-internal stopped-owner transfer",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"captureProjection === mediaProjection"',
+            '"captureProjection != null"',
+            "Android exact playback projection contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"reader.readSync(recorder) ?: break"',
+            '"reader.readSync(recorder) ?: continue"',
+            "Android terminal blocking-read failure contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)"',
+            '"a strictly newer generation"',
+            "Android idempotent same-generation resume requirement contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"same-or-newer resume with active-state retention plus older/cross-isolate refusal"',
+            '"strictly newer resume with active-state retention"',
+            "Android idempotent same-generation resume ledger contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"only then publish native/UI started state"',
+            '"publish native/UI started state before construction"',
+            "Android worker-before-native start requirement contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"publishes `on_voice_call_started` only after that worker exists"',
+            '"publishes `on_voice_call_started` before that worker exists"',
+            "Android worker-before-native start ledger contract",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "internal class VoiceCallOwnerState {",
+            "internal class DisabledVoiceCallOwnerState {",
+            "Android exact owner state source",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "if (current == replacement)",
+            "if (false)",
+            "Android lost-response resume-retry source",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "internal object VoiceCallAudioCoordinator {",
+            "internal object DisabledVoiceCallAudioCoordinator {",
+            "Android process-wide coordinator source",
+        ),
+        (
+            "android_audio_record_handle",
+            "internal class AudioRecordHandle(private val context: Context)",
+            "internal class AudioRecordHandle(private val context: Context, private val legacy: Boolean)",
+            "Android single-context recorder source",
+        ),
+        (
+            "android_main_activity",
+            "VoiceCallAudioCoordinator.invalidateOutgoingOwner()",
+            "true",
+            "Android Activity owner invalidation source",
+        ),
+        (
+            "android_main_activity",
+            "val retiredRejectedOwner =",
+            "val retiredRejectedOwnerDisabled =",
+            "Android Rust-rejected resume cleanup source",
+        ),
+        (
+            "android_main_activity",
+            "val retiredUnreconciledOwner =",
+            "val retiredUnreconciledOwnerDisabled =",
+            "Android unreconciled resume cleanup source",
+        ),
+        (
+            "android_main_activity",
+            "val closedUnreconciledSessions =\n                FFI.closeClientSessions(owner.generation, owner.sessionId)",
+            "val closedUnreconciledSessions =\n                FFI.closeClientSessions(resumedOwner.generation, resumedOwner.sessionId)",
+            "Android unreconciled resume original-owner close source",
+        ),
+        (
+            "android_main_activity",
+            "internal data class ClientSessionOwner(val generation: Long, val sessionId: String)",
+            "data class ClientSessionOwner(val generation: Long, val sessionId: String)",
+            "Android module-internal Activity session owner source",
+        ),
+        (
+            "android_main_activity",
+            "internal fun takeStoppedClientSessionOwners(): List<ClientSessionOwner>",
+            "fun takeStoppedClientSessionOwners(): List<ClientSessionOwner>",
+            "Android module-internal stopped-owner transfer source",
+        ),
+        (
+            "android_main_service",
+            '"remove_connection" ->',
+            '"remove_connection_disabled" ->',
+            "Android controlled-owner retirement dispatch source",
+        ),
+        (
+            "flutter_source",
+            'call_main_service_set_by_name("remove_connection", Some(&id), None)',
+            'call_main_service_set_by_name("stop_capture", Some(&id), None)',
+            "Android native removal bridge source",
+        ),
+        (
+            "flutter_source",
+            "|| self.session_id.as_ref() != Some(&session_id)",
+            "|| false",
+            "Android Rust cross-isolate resume refusal source",
+        ),
+        (
+            "flutter_source",
+            "fn stale_android_activity_cannot_reclaim_the_replacement_owner()",
+            "fn stale_android_activity_reclaims_the_replacement_owner()",
+            "Android Rust stale-Activity resume regression source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "one controlled teardown cleared another owner",
+            "controlled aggregation test disabled",
+            "Android owner aggregation behavior source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "lost-response resume retry was rejected",
+            "lost-response resume retry was accepted without proof",
+            "Android lost-response retry behavior source",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
+            "true # Android voice-call ownership verifier removed",
+            "Android voice-call ownership shared focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11br</span>',
+            '<span class="id">R-S11br-disabled</span>',
+            "Android exact recorder ownership requirement",
+        ),
+        (
+            "requirements",
+            "generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)",
+            "a strictly newer generation",
+            "Android idempotent same-generation resume requirement source",
+        ),
+        (
+            "requirements",
+            "only then publish native/UI started state",
+            "publish native/UI started state before construction",
+            "Android worker-before-native start requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>211</td>",
+            "<tr><td>211-disabled</td>",
+            "Android exact recorder ownership Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners",
+            "R-S11br/R-S11e-84 — Android native voice-call capture is binding-dependent",
+            "Android exact recorder ownership hardening ledger",
+        ),
+        (
+            "hardening",
+            "same-or-newer resume with active-state retention plus older/cross-isolate refusal",
+            "strictly newer resume with active-state retention",
+            "Android idempotent same-generation resume ledger source",
+        ),
+        (
+            "hardening",
+            "publishes `on_voice_call_started` only after that worker exists",
+            "publishes `on_voice_call_started` before that worker exists",
+            "Android worker-before-native start ledger source",
+        ),
+        (
             "android_builder_authority_verifier",
             'forbid(build, token, label)',
             'return # forbidden Android builder authority accepted',
@@ -26746,6 +27312,30 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)",
+            "true",
+            "Android MediaProjection playback-owner admission",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)",
+            "true",
+            "Android capture pipeline exact playback-owner retirement",
+        ),
+        (
+            "client_io_loop",
+            "self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {\n                                    self.handler.on_voice_call_started();",
+            "self.handler.on_voice_call_started();\n                                self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {",
+            "Android worker-before-native outgoing voice-call activation source",
+        ),
+        (
+            "client_io_loop",
+            '.on_voice_call_closed("Failed to start voice call audio")',
+            ".on_voice_call_started()",
+            "Android worker-before-native outgoing voice-call activation source",
+        ),
+        (
+            "android_main_service",
             "mediaProjection !== projection || mediaProjectionCallback !== callback",
             "mediaProjection !== projection && mediaProjectionCallback !== callback",
             "Android exact projection stop invalidation",
@@ -26785,6 +27375,12 @@ def run_source_mutations(sources):
             "Android MediaProjection lifecycle finality (R-S14/R-T4)",
             "Android MediaProjection lifecycle compatibility (R-S14/R-T4)",
             "Android MediaProjection shared source gate",
+        ),
+        (
+            "verify",
+            "pipeline-no-playback-owner-retirement",
+            "pipeline-playback-owner-retirement-not-checked",
+            "Android MediaProjection playback-owner retirement source gate",
         ),
         (
             "requirements",
@@ -27641,6 +28237,12 @@ def main():
             "viewer_voice_call_worker_verifier": (
                 repo / "scripts/verify-viewer-voice-call-worker.py"
             ).read_text(encoding="utf-8"),
+            "android_voice_call_ownership_verifier": (
+                repo / "scripts/verify-android-voice-call-ownership.py"
+            ).read_text(encoding="utf-8"),
+            "android_voice_call_owner_test": (
+                repo / "scripts/android-voice-call-owner-state-test.kt"
+            ).read_text(encoding="utf-8"),
             "android_build_source_verifier": (
                 repo / "scripts/verify-android-build-source.py"
             ).read_text(encoding="utf-8"),
@@ -27666,6 +28268,22 @@ def main():
             "android_main_service": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
+            ).read_text(encoding="utf-8"),
+            "android_main_activity": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt"
+            ).read_text(encoding="utf-8"),
+            "android_audio_record_handle": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/AudioRecordHandle.kt"
+            ).read_text(encoding="utf-8"),
+            "android_voice_call_coordinator": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallAudioCoordinator.kt"
+            ).read_text(encoding="utf-8"),
+            "android_voice_call_owner_state": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt"
             ).read_text(encoding="utf-8"),
             "message_proto": (repo / "libs/hbb_common/protos/message.proto").read_text(
                 encoding="utf-8"

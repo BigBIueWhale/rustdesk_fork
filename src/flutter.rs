@@ -88,23 +88,17 @@ impl AndroidClientOwnerState {
         }
     }
 
-    fn resume(
-        &mut self,
-        generation: u64,
-        session_id: SessionID,
-    ) -> Option<(u64, Option<SessionID>)> {
-        if generation == 0 || generation > self.generation {
+    fn resume(&self, generation: u64, session_id: SessionID) -> Option<u64> {
+        if generation == 0
+            || generation > self.generation
+            || self.session_id.as_ref() != Some(&session_id)
+        {
             return None;
         }
         // The UUID names the Flutter isolate. If this is still the current isolate, return the
         // authoritative native generation even if Android interrupted the previous JNI response
         // before Kotlin recorded it; needlessly advancing here would drain this owner's sessions.
-        if self.session_id.as_ref() == Some(&session_id) {
-            return Some((self.generation, None));
-        }
-        let (generation, previous_owner) = self.begin()?;
-        self.session_id = Some(session_id);
-        Some((generation, previous_owner))
+        Some(self.generation)
     }
 
     fn allows(&self, session_id: &SessionID) -> bool {
@@ -1618,6 +1612,14 @@ pub mod connection_manager {
         }
 
         fn remove_connection(&self, id: i32, close: bool) {
+            #[cfg(target_os = "android")]
+            {
+                let id = id.to_string();
+                if let Err(e) = call_main_service_set_by_name("remove_connection", Some(&id), None)
+                {
+                    log::debug!("call_main_service_set_by_name fail,{}", e);
+                }
+            }
             self.push_event(
                 "on_client_remove",
                 &[("id", &id.to_string()), ("close", &close.to_string())],
@@ -2559,21 +2561,12 @@ pub fn bind_android_client_owner(generation: u64, session_id: SessionID) -> bool
 #[cfg(any(target_os = "android", test))]
 pub fn resume_android_client_owner(generation: u64, session_id: SessionID) -> Option<u64> {
     // A stopped Activity can remain in Android's back stack while another MainActivity becomes the
-    // owner. If Android starts the older instance again, onCreate does not run: atomically give the
-    // now-started Activity a fresh generation and drain the superseded isolate before it can add or
-    // start a session. An already-current Activity keeps its generation and sessions unchanged.
-    let mut owner = ANDROID_CLIENT_OWNER.write().unwrap();
-    let (generation, previous_owner) = owner.resume(generation, session_id)?;
-    if let Some(previous_owner) = previous_owner {
-        let (peer_count, ui_count) = close_sessions_owned_by(&previous_owner);
-        if peer_count != 0 || ui_count != 0 {
-            log::info!(
-                "Closed {peer_count} superseded Android client peer session(s) ({ui_count} UI handler(s)) while resuming Activity owner generation {generation}"
-            );
-        }
-    }
-    drop(owner);
-    Some(generation)
+    // owner. Resuming that obsolete Activity must not drain or replace the current isolate. Only the
+    // already-current UUID may reconcile a JNI response that Kotlin did not record.
+    ANDROID_CLIENT_OWNER
+        .read()
+        .unwrap()
+        .resume(generation, session_id)
 }
 
 #[cfg(any(target_os = "android", test))]
@@ -2764,7 +2757,7 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[test]
-    fn resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation() {
+    fn stale_android_activity_cannot_reclaim_the_replacement_owner() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 
@@ -2787,34 +2780,26 @@ mod mobile_session_lifecycle_tests {
             ConnType::DEFAULT_CONN,
         );
 
-        let resumed_generation =
-            resume_android_client_owner(first_generation, first_session_id).unwrap();
-        assert!(resumed_generation > second_generation);
-        assert!(second_control.close_requested.load(Ordering::Acquire));
-        assert!(!sessions::contains_peer(
+        assert_eq!(
+            resume_android_client_owner(first_generation, first_session_id),
+            None
+        );
+        assert!(!second_control.close_requested.load(Ordering::Acquire));
+        assert!(sessions::contains_peer(
             "host-second-control",
             ConnType::DEFAULT_CONN
         ));
-        assert!(acquire_android_client_owner(&first_session_id).is_ok());
-        assert!(acquire_android_client_owner(&second_session_id).is_err());
-        let resumed_control = sessions::insert_test_session(
-            first_session_id,
-            "host-resumed-control",
-            ConnType::DEFAULT_CONN,
+        assert!(acquire_android_client_owner(&first_session_id).is_err());
+        assert!(acquire_android_client_owner(&second_session_id).is_ok());
+        assert_eq!(
+            resume_android_client_owner(first_generation, second_session_id),
+            Some(second_generation)
         );
         assert_eq!(
-            resume_android_client_owner(first_generation, first_session_id),
-            Some(resumed_generation)
-        );
-        assert_eq!(
-            resume_android_client_owner(resumed_generation + 1, first_session_id),
+            resume_android_client_owner(second_generation + 1, second_session_id),
             None
         );
-        assert!(!resumed_control.close_requested.load(Ordering::Acquire));
-        assert!(sessions::contains_peer(
-            "host-resumed-control",
-            ConnType::DEFAULT_CONN
-        ));
+        assert!(!second_control.close_requested.load(Ordering::Acquire));
 
         sessions::clear_for_test();
     }

@@ -7408,12 +7408,63 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Activity-owner regressions (`3 passed`, `0 failed`, `347 filtered`) and both adjacent event-driven voice-worker
   regressions (`2 passed`, `0 failed`, `348 filtered`); pinned Rustfmt passed the two changed Rust files and
   `Cargo.lock` remained byte-identical. Python byte-compilation, edited Bash syntax, requirements-hash equality
-  (`8c3ff47f637828bee8f30a76d3bbccfd3b2be07093a2bff45cb553d327afd5cb`), and native-codec normal/self-test gates
+  (`19765e32030adbbb3c25b2f98ec28a09ba6f6bd8da2b95287911023b8797e120`), and native-codec normal/self-test gates
   passed. These checks used no published port, Docker socket, host PID/network namespace, host service/config mount,
   host networking, added capability, or root process.
 
   No Android device, installed APK, original swipe/relaunch sequence, OEM task behavior, signed artifact, or full
   R-B2/R-B10 release transaction is claimed by this source slice; those remain open.
+- **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit — SOURCE IMPLEMENTED AND CONFINED
+  FOCUSED/WORKSPACE VERIFIED 2026-07-22; EXACT INSTALLED ARTIFACTS PENDING.** Platform: Linux and macOS pathname
+  Unix-domain listeners.
+  Endpoint/action: the singleton check performed before binding main, user/service password, `_service`, `_pa`,
+  `_cm`, `_url`, and launch-token-derived whiteboard endpoints. Boundary: a namespace entry accepting `connect(2)`
+  ↔ authority to keep the legitimate RustDesk image from reclaiming its local listener pathname.
+
+  The inherited default returned true immediately after any successful connection. Except for the stronger Linux
+  `_cm`/`_pa` checks and `_service` liveness exchange, no peer UID, PID, executable, role, or launch proof entered
+  the incumbent decision. An unrelated same-UID executable could therefore bind a user-owned endpoint first and
+  hold local availability without ever passing that endpoint's later receiver authentication. This was not message
+  authorization: accept-time UID/executable/role/token/capability checks still rejected its traffic. It was a
+  deterministic local singleton-availability and lifecycle-authority ambiguity, not credential disclosure, LPE,
+  remote reachability, exploitation evidence, host mutation, or compromise.
+
+  `probe_existing_listener` now returns `ResultType<bool>` and treats connected peer identity as fallible evidence.
+  For every endpoint not already covered by the stronger Linux `_cm`/`_pa` proofs, it requires the connected
+  socket's kernel-reported peer UID and PID, exact equality with the current effective UID, and a positive match
+  between the peer and current executable. A positive UID or executable mismatch is a foreign stale candidate;
+  missing peer credentials or an unavailable executable proof propagates an error through `check_pid` and
+  `new_listener`, preserving the ambiguous live namespace entry instead of unlinking it and creating split-brain
+  listener state. The protected `_service` path additionally retains its bounded typed `Data::Test` round trip;
+  once current identity is proven, a failed or malformed liveness response is now an error rather than cleanup
+  authority. Incumbent probing remains separate from and weaker than normal message admission; no new request is
+  admitted by this change.
+
+  Linux documents `SO_PEERCRED` as the read-only credentials of the peer process connected to the Unix socket,
+  captured at `connect`, `listen`, or `socketpair` time (<https://man7.org/linux/man-pages/man7/unix.7.html>), and
+  documents `/proc/<pid>/exe` as the executed-program reference with ptrace-governed read/dereference permission
+  (<https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html>). The implementation deliberately propagates the
+  latter permission/identity failure instead of treating absence of proof as proof of staleness. macOS continues to
+  use the existing connected-socket peer UID/PID and same-file executable implementation.
+
+  Confined verification used development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with a read-only root filesystem and
+  source mount, UID/GID 1000, no network, all capabilities dropped, `no-new-privileges`, and tmpfs-only build/cache
+  state. Locked/offline `cargo test --lib --features linux-pkg-config r_s11e85_` compiled the library-test graph and
+  passed the focused policy regression (`1 passed`, `0 failed`, `344 filtered`). The standalone semantic verifier
+  passed all 18 deliberate mutations; the independent workspace verifier passed both its normal validation and full
+  source-mutation matrix. Python byte-compilation, edited Bash syntax, `git diff --check`, native-codec normal and
+  self-test gates, and requirements-hash synchronization
+  (`19765e32030adbbb3c25b2f98ec28a09ba6f6bd8da2b95287911023b8797e120`) passed. Pinned Rustfmt 1.75 parsed all
+  three touched Rust files and reported no changed hunk; its whole-file check remains nonzero solely for pre-existing
+  drift in `src/ipc/auth.rs` around lines 1759/2268 and `src/ipc/fs.rs` around lines 1003/1142, which this narrow slice
+  does not rewrite. `Cargo.lock` remained unchanged. No published port, Docker socket, host PID/network namespace,
+  host service/config mount, host networking, added capability, or root process was used.
+
+  The residual same-account denial of service is explicit: code already running under the same UID can mutate its
+  own mode-0700 socket directory repeatedly, so this slice does not claim a stronger OS-principal isolation boundary
+  than the platform provides. Exact installed Apple/Linux artifacts and the cold R-B2 release transaction remain
+  separately open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8129,9 +8180,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8c3ff47f637828bee8f30a76d3bbccfd3b2be07093a2bff45cb553d327afd5cb  requirements.html
+19765e32030adbbb3c25b2f98ec28a09ba6f6bd8da2b95287911023b8797e120  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11br, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#211. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bs, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#212. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

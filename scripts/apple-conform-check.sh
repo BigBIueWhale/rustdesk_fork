@@ -2653,6 +2653,14 @@ else
   rc=1
 fi
 
+echo "== (2g-b1) R-S11bs Unix incumbent-listener identity =="
+if python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test; then
+  note "ok  R-S11bs Unix singleton detection requires current-principal/current-executable incumbent identity"
+else
+  echo "  FAIL R-S11bs Unix singleton detection regained connect-only or ambiguous-cleanup authority"
+  rc=1
+fi
+
 echo "== (2g-c) R-S11bp outgoing voice-call worker lifecycle =="
 if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
   note "ok  R-S11bp macOS/shared outgoing voice-call capture is event-driven and exact-subscription-owned"

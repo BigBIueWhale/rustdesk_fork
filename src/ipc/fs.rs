@@ -1,7 +1,7 @@
 #[cfg(target_os = "linux")]
 use super::ipc_auth::{
     active_uid, authenticate_cm_endpoint, current_process_identity,
-    ensure_peer_process_identity_matches,
+    ensure_peer_process_identity_matches, peer_executable_is_current_by_pid,
 };
 use crate::ipc::{connect, Data};
 use hbb_common::{config, log, ResultType};
@@ -748,16 +748,16 @@ fn read_pid_file_secure(path: &Path) -> Option<usize> {
 }
 
 #[inline]
-async fn probe_existing_listener(postfix: &str) -> bool {
+async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
     let Ok(mut stream) = connect(1000, postfix).await else {
-        return false;
+        return Ok(false);
     };
     #[cfg(target_os = "linux")]
     {
         if postfix == "_cm" {
             let expected_arg = std::env::args().nth(1).unwrap_or_default();
             if expected_arg != "--cm" && expected_arg != "--cm-no-ui" {
-                return false;
+                return Ok(false);
             }
             let expected_launch_token =
                 std::env::var(crate::common::CM_LAUNCH_TOKEN_ENV).unwrap_or_default();
@@ -765,29 +765,84 @@ async fn probe_existing_listener(postfix: &str) -> bool {
                 .ok()
                 .and_then(|value| value.parse::<u32>().ok())
                 .unwrap_or(0);
-            return authenticate_cm_endpoint(
+            return Ok(authenticate_cm_endpoint(
                 &stream,
                 current_euid(),
                 &expected_arg,
                 &expected_launch_token,
                 expected_launch_parent,
             )
-            .is_ok();
+            .is_ok());
         }
         if postfix == "_pa" {
             let Ok(expected) = current_process_identity("_pa") else {
-                return false;
+                return Ok(false);
             };
-            return ensure_peer_process_identity_matches(&stream, &expected, "_pa").is_ok();
+            return Ok(ensure_peer_process_identity_matches(&stream, &expected, "_pa").is_ok());
         }
     }
+
+    let current_uid = unsafe { hbb_common::libc::geteuid() as u32 };
+    let peer_uid = stream.peer_uid().ok_or_else(|| {
+        Error::new(
+            ErrorKind::PermissionDenied,
+            format!("incumbent ipc listener peer uid is unavailable: postfix={postfix}"),
+        )
+    })?;
+    if peer_uid != current_uid {
+        return Ok(false);
+    }
+    let peer_pid = stream.peer_pid().ok_or_else(|| {
+        Error::new(
+            ErrorKind::PermissionDenied,
+            format!("incumbent ipc listener peer pid is unavailable: postfix={postfix}"),
+        )
+    })?;
+    let executable_matches = peer_executable_is_current_by_pid(peer_pid)?;
+    if !existing_listener_identity_is_acceptable(peer_uid, current_uid, executable_matches) {
+        log::debug!(
+            "Refusing foreign incumbent ipc listener: postfix={}, peer_uid={}, current_uid={}, peer_pid={}, executable_matches={}",
+            postfix,
+            peer_uid,
+            current_uid,
+            peer_pid,
+            executable_matches,
+        );
+        return Ok(false);
+    }
     if postfix != crate::POSTFIX_SERVICE {
-        return true;
+        return Ok(true);
     }
-    if stream.send(&Data::Test).await.is_err() {
-        return false;
+    stream.send(&Data::Test).await.map_err(|err| {
+        Error::new(
+            ErrorKind::TimedOut,
+            format!("incumbent protected ipc listener liveness write failed: {err}"),
+        )
+    })?;
+    match stream.next_timeout(1000).await {
+        Ok(Some(Data::Test)) => Ok(true),
+        Ok(response) => Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "incumbent protected ipc listener returned an invalid liveness response: {response:?}"
+            ),
+        )
+        .into()),
+        Err(err) => Err(Error::new(
+            ErrorKind::TimedOut,
+            format!("incumbent protected ipc listener liveness read failed: {err}"),
+        )
+        .into()),
     }
-    matches!(stream.next_timeout(1000).await, Ok(Some(Data::Test)))
+}
+
+#[inline]
+fn existing_listener_identity_is_acceptable(
+    peer_uid: u32,
+    current_uid: u32,
+    executable_matches: bool,
+) -> bool {
+    peer_uid == current_uid && executable_matches
 }
 
 #[cfg(target_os = "linux")]
@@ -795,7 +850,7 @@ fn current_euid() -> u32 {
     unsafe { hbb_common::libc::geteuid() as u32 }
 }
 
-pub(crate) async fn check_pid(postfix: &str) -> bool {
+pub(crate) async fn check_pid(postfix: &str) -> ResultType<bool> {
     let pid_file = std::path::PathBuf::from(get_pid_file(postfix));
     if let Some(pid) = read_pid_file_secure(&pid_file) {
         if pid > 0 {
@@ -803,15 +858,15 @@ pub(crate) async fn check_pid(postfix: &str) -> bool {
             sys.refresh_processes();
             if let Some(p) = sys.process(pid.into()) {
                 if let Some(current) = sys.process((std::process::id() as usize).into()) {
-                    if current.name() == p.name() && probe_existing_listener(postfix).await {
-                        return true;
+                    if current.name() == p.name() && probe_existing_listener(postfix).await? {
+                        return Ok(true);
                     }
                 }
             }
         }
     }
-    if probe_existing_listener(postfix).await {
-        return true;
+    if probe_existing_listener(postfix).await? {
+        return Ok(true);
     }
     // if not remove old ipc file, the new ipc creation will fail
     // if we remove a ipc file, but the old ipc process is still running,
@@ -823,7 +878,7 @@ pub(crate) async fn check_pid(postfix: &str) -> bool {
             err
         );
     }
-    false
+    Ok(false)
 }
 
 #[inline]
@@ -836,6 +891,19 @@ pub(crate) fn should_scrub_parent_entries_after_check_pid(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn r_s11e85_existing_listener_requires_current_principal_and_executable() {
+        assert!(super::existing_listener_identity_is_acceptable(
+            1000, 1000, true
+        ));
+        assert!(!super::existing_listener_identity_is_acceptable(
+            1001, 1000, true
+        ));
+        assert!(!super::existing_listener_identity_is_acceptable(
+            1000, 1000, false
+        ));
+    }
+
     #[test]
     fn test_write_pid_file_rejects_symlink() {
         use std::os::unix::fs::symlink;

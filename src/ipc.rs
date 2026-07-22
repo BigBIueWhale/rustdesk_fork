@@ -3753,7 +3753,7 @@ pub async fn new_listener(postfix: &str) -> ResultType<Incoming> {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let should_scrub_parent_entries = ensure_secure_ipc_parent_dir(&path, postfix)?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    let existing_listener_alive = check_pid(postfix).await;
+    let existing_listener_alive = check_pid(postfix).await?;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     if should_scrub_parent_entries_after_check_pid(
         should_scrub_parent_entries,

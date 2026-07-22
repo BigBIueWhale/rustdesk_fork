@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11br, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#211",
+        "R-S11n through R-S11bs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#212",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11276,6 +11276,98 @@ def validate_unix_helper_process_role_contract(sources):
         sources["hardening"],
         "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
         "Unix helper process-role hardening ledger",
+    )
+
+
+def validate_unix_listener_incumbent_contract(sources):
+    focused = sources["unix_listener_incumbent_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "Unix incumbent-listener focused runtime validation",
+    )
+    for text, label in (
+        ("def extract_rust_function(", "Unix incumbent Rust function parser"),
+        ("def validate(sources", "Unix incumbent semantic entry"),
+        (
+            '"peer_uid == current_uid && executable_matches"',
+            "Unix incumbent UID/executable conjunction contract",
+        ),
+        (
+            '"let peer_uid = stream.peer_uid().ok_or_else("',
+            "Unix incumbent missing-UID refusal contract",
+        ),
+        (
+            '"let peer_pid = stream.peer_pid().ok_or_else("',
+            "Unix incumbent missing-PID refusal contract",
+        ),
+        (
+            '"let executable_matches = peer_executable_is_current_by_pid(peer_pid)?;"',
+            "Unix incumbent fallible executable proof contract",
+        ),
+        (
+            '"stream.send(&Data::Test).await.map_err("',
+            "Unix protected-listener liveness ambiguity contract",
+        ),
+        (
+            '"let existing_listener_alive = check_pid(postfix).await?;"',
+            "Unix incumbent error propagation contract",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Unix incumbent mutation inventory"),
+        ("run_mutations(sources)", "Unix incumbent mutation dispatch"),
+    ):
+        require_text(validation if text.startswith('"') else focused, text, label)
+    require_exact_count(
+        focused,
+        '"peer_uid == current_uid && executable_matches"',
+        2,
+        "Unix incumbent UID/executable conjunction contract",
+    )
+    require_text(
+        sources["ipc_fs_source"],
+        "peer_uid == current_uid && executable_matches",
+        "Unix incumbent source identity conjunction",
+    )
+    require_text(
+        sources["ipc_auth_source"],
+        "pub(crate) fn peer_executable_is_current_by_pid(peer_pid: u32) -> ResultType<bool>",
+        "Unix fallible peer executable source predicate",
+    )
+    require_text(
+        sources["ipc_auth_source"],
+        "Ok(executable_paths_match(&peer_exe, &current_exe))",
+        "Unix fallible peer executable source predicate",
+    )
+    require_text(
+        sources["ipc_source"],
+        "let existing_listener_alive = check_pid(postfix).await?;",
+        "Unix listener source error propagation",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test",
+        "Unix incumbent shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test",
+        "Unix incumbent Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bs</span>',
+        "authenticated Unix incumbent-listener requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>212</td>",
+        "Unix incumbent-listener Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit",
+        "Unix incumbent-listener hardening ledger",
     )
 
 
@@ -14626,6 +14718,7 @@ def validate_sources(sources):
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
     validate_unix_helper_process_role_contract(sources)
+    validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_builder_authority_contract(sources)
@@ -26654,7 +26747,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11br, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#211",
+            "R-S11n through R-S11bs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#212",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -26825,6 +26918,60 @@ def run_source_mutations(sources):
             "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
             "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts process-role prefixes",
             "Unix helper process-role hardening ledger",
+        ),
+        (
+            "ipc_fs_source",
+            "peer_uid == current_uid && executable_matches",
+            "peer_uid == current_uid || executable_matches",
+            "Unix incumbent source identity conjunction",
+        ),
+        (
+            "ipc_auth_source",
+            "Ok(executable_paths_match(&peer_exe, &current_exe))",
+            "Ok(true)",
+            "Unix fallible peer executable source predicate",
+        ),
+        (
+            "ipc_source",
+            "let existing_listener_alive = check_pid(postfix).await?;",
+            "let existing_listener_alive = check_pid(postfix).await;",
+            "Unix listener source error propagation",
+        ),
+        (
+            "unix_listener_incumbent_verifier",
+            '"peer_uid == current_uid && executable_matches"',
+            '"peer_uid == current_uid || executable_matches"',
+            "Unix incumbent UID/executable conjunction contract",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test",
+            "true # Unix incumbent-listener verifier removed",
+            "Unix incumbent shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test",
+            "true # Unix incumbent-listener verifier removed",
+            "Unix incumbent Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bs</span>',
+            '<span class="id">R-S11bs-disabled</span>',
+            "authenticated Unix incumbent-listener requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>212</td>",
+            "<tr><td>212-disabled</td>",
+            "Unix incumbent-listener Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit",
+            "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is ambient",
+            "Unix incumbent-listener hardening ledger",
         ),
         (
             "viewer_voice_call_worker_verifier",
@@ -28233,6 +28380,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "unix_helper_process_role_verifier": (
                 repo / "scripts/verify-unix-helper-process-role.py"
+            ).read_text(encoding="utf-8"),
+            "unix_listener_incumbent_verifier": (
+                repo / "scripts/verify-unix-listener-incumbent.py"
             ).read_text(encoding="utf-8"),
             "viewer_voice_call_worker_verifier": (
                 repo / "scripts/verify-viewer-voice-call-worker.py"

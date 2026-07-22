@@ -3147,6 +3147,13 @@ fn ensure_peer_executable_matches_current_by_pid(peer_pid: u32, postfix: &str) -
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn peer_executable_is_current_by_pid(peer_pid: u32) -> ResultType<bool> {
+    let peer_exe = peer_exe_canonical_path_by_pid(peer_pid)?;
+    let current_exe = current_exe_canonical_path()?;
+    Ok(executable_paths_match(&peer_exe, &current_exe))
+}
+
 #[cfg(target_os = "windows")]
 fn ensure_windows_identity_matches_current(
     identity: &WindowsProcessImmutableIdentity,

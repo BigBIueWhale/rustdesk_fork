@@ -345,16 +345,6 @@ LExit:
     return WcaFinalize(er);
 }
 
-UINT __stdcall RemoveTestCertificates(__in MSIHANDLE hInstall)
-{
-    HRESULT hr = WcaInitialize(hInstall, "RemoveTestCertificates");
-    if (SUCCEEDED(hr) && !DeleteRustDeskTestCertsW())
-    {
-        hr = E_FAIL;
-    }
-    return WcaFinalize(SUCCEEDED(hr) ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE);
-}
-
 UINT __stdcall RemoveAmyuniIdd(
     __in MSIHANDLE hInstall)
 {

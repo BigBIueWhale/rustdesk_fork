@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
+        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11101,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
+        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11235,7 +11235,7 @@ def validate_windows_installer_api_contract(sources):
 
     for text, label in (
         (
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88)",
             "Windows Installer API shared source gate",
         ),
         (
@@ -11280,7 +11280,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
+        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11306,6 +11306,186 @@ def validate_windows_installer_api_contract(sources):
         ("protected Windows typed Installer API requirement", "requirement mutation"),
         ("Windows Installer API Appendix C row", "Appendix mutation"),
         ("Windows Installer API hardening ledger", "hardening-ledger mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_certificate_cleanup_excision_contract(sources):
+    build_rs = sources["build_rs"]
+    custom_actions_wxs = sources["windows_custom_actions_wxs"]
+    service_wxs = sources["windows_service_wxs"]
+    custom_actions_cpp = sources["windows_custom_actions_cpp"]
+    custom_actions_header = sources["windows_custom_actions_header"]
+    custom_actions_def = sources["windows_custom_actions_def"]
+    custom_actions_project = sources["windows_custom_actions_project"]
+    package_surface = "\n".join(
+        (
+            sources["windows_package_wxs"],
+            custom_actions_wxs,
+            service_wxs,
+            custom_actions_cpp,
+            custom_actions_header,
+            custom_actions_def,
+            custom_actions_project,
+            build_rs,
+        )
+    )
+
+    require_text(
+        build_rs,
+        'cc::Build::new().file(file).compile("windows");',
+        "Windows application build without certificate cleanup",
+    )
+    require_text(
+        sources["windows_certificate_cleanup_source_state"],
+        "windows-certificate-cleanup-source-absent",
+        "Windows certificate cleanup source absence",
+    )
+    for forbidden in (
+        "RemoveTestCertificates",
+        "DeleteRustDeskTestCertsW",
+        "windows_delete_test_cert",
+        "kWdkTestCertSuffix",
+        "kCertFingerprint",
+        "SystemCertificates",
+        "CertAdd",
+        "CertificateRef",
+        "<Certificate",
+        "certutil",
+    ):
+        require_absent(
+            package_surface,
+            forbidden,
+            "unowned Windows certificate cleanup/package state absence",
+        )
+
+    require_exact_count(
+        custom_actions_wxs,
+        "<CustomAction Id=",
+        2,
+        "exact retained Windows custom-action declarations",
+    )
+    for text, label in (
+        (
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"',
+            "retained exact runtime-broker cleanup declaration",
+        ),
+        (
+            '<CustomAction Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd" Impersonate="no" Execute="commit" Return="check"',
+            "retained exact Amyuni cleanup declaration",
+        ),
+    ):
+        require_text(custom_actions_wxs, text, label)
+    for text, label in (
+        (
+            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            "retained runtime-broker cleanup schedule",
+        ),
+        (
+            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
+            "retained Amyuni cleanup schedule",
+        ),
+    ):
+        require_text(service_wxs, text, label)
+    for text, label in (
+        (
+            "UINT __stdcall RemoveRuntimeGeneratedFiles(",
+            "retained runtime-broker cleanup implementation",
+        ),
+        (
+            "UINT __stdcall RemoveAmyuniIdd(",
+            "retained Amyuni cleanup implementation",
+        ),
+    ):
+        require_text(custom_actions_cpp, text, label)
+        symbol = text.split("(")[0].split()[-1]
+        require_text(custom_actions_def, f"\n    {symbol}\n", label + " export")
+
+    for text, label in (
+        (
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88)",
+            "Windows certificate cleanup shared source gate",
+        ),
+        (
+            "unowned-certificate-cleanup-source-leftover",
+            "Windows certificate cleanup source shared rejection",
+        ),
+        (
+            "unowned certificate-store cleanup exists",
+            "Windows certificate cleanup shared success disposition",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+
+    installer_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11f",
+        "Windows Installer sole-authority requirement",
+    )
+    for text, label in (
+        (
+            "The package creates no certificate-store state",
+            "Windows Installer no-certificate ownership rule",
+        ),
+        (
+            "MUST NOT</span> enumerate, inspect, or delete certificates",
+            "Windows Installer certificate mutation prohibition",
+        ),
+    ):
+        require_text(installer_requirement, text, label)
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bv",
+        "unowned Windows certificate cleanup excision requirement",
+    )
+    for text, label in (
+        ("RemoveTestCertificates", "retired certificate action requirement"),
+        ("DeleteRustDeskTestCertsW", "retired certificate call requirement"),
+        ("HKEY_USERS", "cross-user certificate authority requirement"),
+        ("MUST NOT</span> define, schedule, export, compile, or call", "complete certificate cleanup prohibition"),
+        ("No migration, legacy-upgrade, best-effort", "certificate cleanup no-fallback rule"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>215</td>",
+        "unowned Windows certificate cleanup Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state",
+        "unowned Windows certificate cleanup hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows certificate cleanup deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Windows application build without certificate cleanup", "application-build mutation"),
+        ("Windows certificate cleanup source absence", "deleted-source mutation"),
+        ("unowned Windows certificate cleanup/package state absence", "retired-surface mutation"),
+        ("exact retained Windows custom-action declarations", "custom-action inventory mutation"),
+        ("retained exact runtime-broker cleanup declaration", "runtime-cleanup preservation mutation"),
+        ("retained exact Amyuni cleanup declaration", "Amyuni-cleanup preservation mutation"),
+        ("retained runtime-broker cleanup schedule", "runtime-cleanup schedule mutation"),
+        ("retained Amyuni cleanup schedule", "Amyuni-cleanup schedule mutation"),
+        ("retained runtime-broker cleanup implementation", "runtime-cleanup implementation mutation"),
+        ("retained Amyuni cleanup implementation", "Amyuni-cleanup implementation mutation"),
+        ("retained runtime-broker cleanup implementation export", "runtime-cleanup export mutation"),
+        ("retained Amyuni cleanup implementation export", "Amyuni-cleanup export mutation"),
+        ("Windows certificate cleanup source shared rejection", "shared-gate mutation"),
+        ("unowned Windows certificate cleanup excision requirement", "requirement mutation"),
+        ("unowned Windows certificate cleanup Appendix C row", "Appendix mutation"),
+        ("unowned Windows certificate cleanup hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -14984,6 +15164,7 @@ def validate_sources(sources):
     validate_portable_quick_support_excision_contract(sources)
     validate_windows_installer_application_launch_excision_contract(sources)
     validate_windows_installer_api_contract(sources)
+    validate_windows_certificate_cleanup_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
@@ -27018,7 +27199,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214",
+            "R-S11n through R-S11bv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -27144,7 +27325,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88)",
             "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20)",
             "Windows Installer API shared source gate",
         ),
@@ -27165,6 +27346,132 @@ def run_source_mutations(sources):
             "R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API",
             "R-S11bu/R-S11e-87 — protected Windows setup uses an ambient child process",
             "Windows Installer API hardening ledger",
+        ),
+        (
+            "build_rs",
+            'cc::Build::new().file(file).compile("windows");',
+            'cc::Build::new().file(file).file("src/platform/windows_delete_test_cert.cc").compile("windows");',
+            "Windows application build without certificate cleanup",
+        ),
+        (
+            "windows_certificate_cleanup_source_state",
+            "windows-certificate-cleanup-source-absent",
+            "windows-certificate-cleanup-source-present",
+            "Windows certificate cleanup source absence",
+        ),
+        (
+            "windows_custom_actions_wxs",
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>',
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>\n\t\t<CustomAction Id="RemoveTestCertificates" DllEntry="RemoveTestCertificates" Impersonate="no" Execute="commit" Return="check" BinaryRef="Custom_Actions_Dll"/>',
+            "unowned Windows certificate cleanup/package state absence",
+        ),
+        (
+            "windows_service_wxs",
+            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
+            '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>\n\t\t\t<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
+            "unowned Windows certificate cleanup/package state absence",
+        ),
+        (
+            "windows_custom_actions_cpp",
+            "UINT __stdcall RemoveAmyuniIdd(\n",
+            "UINT __stdcall RemoveTestCertificates(__in MSIHANDLE hInstall) { return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveAmyuniIdd(\n",
+            "unowned Windows certificate cleanup/package state absence",
+        ),
+        (
+            "windows_custom_actions_header",
+            "enum DriverUninstallStatus {",
+            'extern "C" BOOL DeleteRustDeskTestCertsW();\n\nenum DriverUninstallStatus {',
+            "unowned Windows certificate cleanup/package state absence",
+        ),
+        (
+            "windows_custom_actions_def",
+            "    RemoveAmyuniIdd",
+            "    RemoveTestCertificates\n    RemoveAmyuniIdd",
+            "unowned Windows certificate cleanup/package state absence",
+        ),
+        (
+            "windows_custom_actions_project",
+            '    <ClCompile Include="DeviceUtils.cpp" />',
+            '    <ClCompile Include="DeviceUtils.cpp" />\n    <ClCompile Include="..\\..\\..\\src\\platform\\windows_delete_test_cert.cc" />',
+            "unowned Windows certificate cleanup/package state absence",
+        ),
+        (
+            "windows_custom_actions_wxs",
+            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />',
+            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />\n\t\t<CustomAction Id="UnexpectedMachineMutation" Execute="deferred" BinaryRef="Custom_Actions_Dll"/>',
+            "exact retained Windows custom-action declarations",
+        ),
+        (
+            "windows_custom_actions_wxs",
+            'Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles"',
+            'Id="RemoveRuntimeGeneratedFilesDisabled" DllEntry="RemoveRuntimeGeneratedFiles"',
+            "retained exact runtime-broker cleanup declaration",
+        ),
+        (
+            "windows_custom_actions_wxs",
+            'Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd"',
+            'Id="RemoveAmyuniIddDisabled" DllEntry="RemoveAmyuniIdd"',
+            "retained exact Amyuni cleanup declaration",
+        ),
+        (
+            "windows_service_wxs",
+            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            '<Custom Action="RemoveRuntimeGeneratedFilesDisabled" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            "retained runtime-broker cleanup schedule",
+        ),
+        (
+            "windows_service_wxs",
+            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
+            '<Custom Action="RemoveAmyuniIddDisabled" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>',
+            "retained Amyuni cleanup schedule",
+        ),
+        (
+            "windows_custom_actions_cpp",
+            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
+            "UINT __stdcall RemoveRuntimeGeneratedFilesDisabled(\n",
+            "retained runtime-broker cleanup implementation",
+        ),
+        (
+            "windows_custom_actions_cpp",
+            "UINT __stdcall RemoveAmyuniIdd(\n",
+            "UINT __stdcall RemoveAmyuniIddDisabled(\n",
+            "retained Amyuni cleanup implementation",
+        ),
+        (
+            "windows_custom_actions_def",
+            "    RemoveRuntimeGeneratedFiles",
+            "    RemoveRuntimeGeneratedFilesDisabled",
+            "retained runtime-broker cleanup implementation export",
+        ),
+        (
+            "windows_custom_actions_def",
+            "    RemoveAmyuniIdd",
+            "    RemoveAmyuniIddDisabled",
+            "retained Amyuni cleanup implementation export",
+        ),
+        (
+            "verify",
+            "unowned-certificate-cleanup-source-leftover",
+            "retired-certificate-source-gate-disabled",
+            "Windows certificate cleanup source shared rejection",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bv</span>',
+            '<span class="id">R-S11bv-disabled</span>',
+            "unowned Windows certificate cleanup excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>215</td>",
+            "<tr><td>215-disabled</td>",
+            "unowned Windows certificate cleanup Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state",
+            "R-S11bv/R-S11e-88 — Windows uninstall retains unowned certificate deletion",
+            "unowned Windows certificate cleanup hardening ledger",
         ),
         (
             "mobile_build_authority_verifier",
@@ -28906,6 +29213,26 @@ def main():
             "service_manual": (repo / "res/service-managers/manual/rustdesk-service").read_text(encoding="utf-8"),
             "service_manual_mode": os.lstat(repo / "res/service-managers/manual/rustdesk-service").st_mode,
             "windows_service_wxs": (repo / "res/msi/Package/Components/RustDesk.wxs").read_text(encoding="utf-8"),
+            "windows_custom_actions_wxs": (
+                repo / "res/msi/Package/Fragments/CustomActions.wxs"
+            ).read_text(encoding="utf-8"),
+            "windows_custom_actions_cpp": (
+                repo / "res/msi/CustomActions/CustomActions.cpp"
+            ).read_text(encoding="utf-8"),
+            "windows_custom_actions_header": (
+                repo / "res/msi/CustomActions/Common.h"
+            ).read_text(encoding="utf-8"),
+            "windows_custom_actions_def": (
+                repo / "res/msi/CustomActions/CustomActions.def"
+            ).read_text(encoding="utf-8"),
+            "windows_custom_actions_project": (
+                repo / "res/msi/CustomActions/CustomActions.vcxproj"
+            ).read_text(encoding="utf-8"),
+            "windows_certificate_cleanup_source_state": (
+                "windows-certificate-cleanup-source-present"
+                if os.path.lexists(repo / "src/platform/windows_delete_test_cert.cc")
+                else "windows-certificate-cleanup-source-absent"
+            ),
             "windows_add_remove_properties_wxs": (
                 repo / "res/msi/Package/Fragments/AddRemoveProperties.wxs"
             ).read_text(encoding="utf-8"),

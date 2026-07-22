@@ -2,8 +2,6 @@
 
 #include <Windows.h>
 
-extern "C" BOOL DeleteRustDeskTestCertsW();
-
 enum DriverUninstallStatus {
     DriverUninstallNotPresent,
     DriverUninstallRemoved,

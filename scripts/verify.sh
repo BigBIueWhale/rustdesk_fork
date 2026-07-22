@@ -1869,7 +1869,7 @@ if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance inva
   echo "  ok  retained Windows RDP, terminal shell, portable broker, Amyuni runtime, and IDD-excision invariants are source-gated"; fi
 
 
-echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87) =="
+echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88) =="
 r_s11e20=
 windows_msi=res/msi/Package/Components/RustDesk.wxs
 windows_ca=res/msi/Package/Fragments/CustomActions.wxs
@@ -1911,13 +1911,16 @@ for forbidden_app_launch in \
 done
 grep -Fq '<fire:FirewallException Id="App.Firewall" Name="$(var.Product) Service" Port="21118" Protocol="tcp" Scope="any" IgnoreFailure="no" />' "$windows_msi" || r_s11e20="$r_s11e20 exact-firewall-declaration-missing"
 if grep -Eq 'StartupFolder|STARTUPSHORTCUTS|ShortcutTray' "$windows_msi"; then r_s11e20="$r_s11e20 independent-startup-persistence-leftover"; fi
-grep -Fq '<CustomAction Id="RemoveTestCertificates" DllEntry="RemoveTestCertificates" Impersonate="no" Execute="commit" Return="check"' "$windows_ca" || r_s11e20="$r_s11e20 fixed-certificate-commit-action-missing"
-grep -Fq '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles.SetParam" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>' "$windows_msi" || r_s11e20="$r_s11e20 certificate-action-not-explicit-uninstall-commit-scheduled"
-grep -Fq 'if (SUCCEEDED(hr) && !DeleteRustDeskTestCertsW())' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 certificate-action-not-fail-closed"
-grep -Fq '..\..\..\src\platform\windows_delete_test_cert.cc' res/msi/CustomActions/CustomActions.vcxproj || r_s11e20="$r_s11e20 certificate-source-not-linked-into-msi"
-if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_cert_broad" -nE 'kWrongRootStorePrefix|has_wrong_root_store_prefix|delete_one_level_tree' src/platform/windows_delete_test_cert.cc; then
-  r_s11e20="$r_s11e20 broad-certificate-store-cleanup-leftover"
+if [ -e src/platform/windows_delete_test_cert.cc ]; then r_s11e20="$r_s11e20 unowned-certificate-cleanup-source-leftover"; fi
+for retired_certificate_surface in RemoveTestCertificates DeleteRustDeskTestCertsW windows_delete_test_cert kWdkTestCertSuffix kCertFingerprint SystemCertificates; do
+  if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_cert_${retired_certificate_surface}" -rInF "$retired_certificate_surface" build.rs res/msi src; then
+    r_s11e20="$r_s11e20 unowned-certificate-cleanup-${retired_certificate_surface}-leftover"
+  fi
+done
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_cert_creation" -rInE '<Certificate|CertificateRef|CertAdd|certutil' build.rs res/msi src; then
+  r_s11e20="$r_s11e20 unreviewed-certificate-package-state-leftover"
 fi
+grep -Fq 'cc::Build::new().file(file).compile("windows");' build.rs || r_s11e20="$r_s11e20 windows-native-build-not-certificate-cleanup-free"
 
 grep -Fq 'if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 runtime-broker-cleanup-result-not-checked"
 grep -Fq 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 runtime-broker-cleanup-not-fatal"
@@ -2071,8 +2074,11 @@ grep -Fq '<tr><td>213</td>' requirements.html || r_s11e20="$r_s11e20 application
 grep -Fq '<span class="id">R-S11bu</span>' requirements.html || r_s11e20="$r_s11e20 installer-api-requirement-missing"
 grep -Fq 'R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API' HARDENING_STATUS.md || r_s11e20="$r_s11e20 installer-api-ledger-missing"
 grep -Fq '<tr><td>214</td>' requirements.html || r_s11e20="$r_s11e20 installer-api-disposition-missing"
+grep -Fq '<span class="id">R-S11bv</span>' requirements.html || r_s11e20="$r_s11e20 unowned-certificate-cleanup-excision-requirement-missing"
+grep -Fq 'R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state' HARDENING_STATUS.md || r_s11e20="$r_s11e20 unowned-certificate-cleanup-excision-ledger-missing"
+grep -Fq '<tr><td>215</td>' requirements.html || r_s11e20="$r_s11e20 unowned-certificate-cleanup-excision-disposition-missing"
 if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
-  echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child or post-install application/tray launch exists; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
+  echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87/R-S11e-88 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child, post-install application/tray launch, or unowned certificate-store cleanup exists; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
 fi
 
 echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="

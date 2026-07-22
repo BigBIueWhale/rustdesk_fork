@@ -1851,7 +1851,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11e-20 — Windows Installer sole machine-state authority — SOURCE IMPLEMENTED; NATIVE/ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Platform: Windows
   setup, install, repair, upgrade, and uninstall. Endpoint/action: UAC-approved setup bootstrap, Program Files
   payload deployment, LocalSystem service ownership, firewall authorization, machine registry/shortcuts, fixed
-  certificate/driver/runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
+  driver/runtime-file cleanup, and runtime broker refresh. Boundary: caller-controlled application image
   and generated command program ↔ administrator-approved machine-state mutation and future LocalSystem execution.
   Attack surface closed: the application no longer implements EXE install/uninstall, generated batch/VBS execution,
   prior-uninstall-string replay, caller-`current_exe` helper execution, public install/helper verbs, direct Windows
@@ -1864,27 +1864,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   executable resolution failure and every other argument shape are fatal. Its embedded
   manifest must contain exactly one root
   `rustdesk-installer.msi`; the elevated leg stages only that file under a protected no-reparse Program Files
-  directory, resolves `msiexec.exe` through `GetSystemDirectoryW`, passes explicit arguments without a shell, waits,
-  always suppresses restart initiation, and accepts only 0 or 3010. It never loads or executes packaged application
-  code. The Windows build compiles only the Flutter distribution, builds, canonicalizes, and validates the MSI first,
+  directory, calls `MsiInstallProductW` directly with `REBOOT=ReallySuppress`, scopes the exact interactive/silent
+  Installer UI level with restoration, and accepts only 0 or 3010. It creates no installer helper child and never
+  loads or executes packaged application code. The Windows build compiles only the Flutter distribution, builds,
+  canonicalizes, and validates the MSI first,
   creates a dedicated one-file setup payload from those final MSI bytes, hash-checks it, packs it offline/locked,
   removes staging in `finally`, and emits only exact output paths.
   The MSI alone creates and ACLs `ProgramData\<Product>\config`; runtime code has no authority to create or
   repair that machine credential root. WiX `ServiceInstall` with the documented null-StartName LocalSystem default, `ServiceControl`, nested
   `ServiceConfigFailureActions` preserving 5/10/30-second restart backoff, and a file-bound inbound TCP/21118
   `fire:FirewallException` transactionally own service and firewall state. The basename process killer and custom
-  service/firewall source, exports, and schedules are deleted. Exact test-certificate and fixed-root Amyuni cleanup run
-  only in the commit phase of explicit uninstall; upgrade preserves them and a later package failure cannot roll back
-  files/service/firewall around irreversible cleanup. Certificate cleanup deletes only the fixed fingerprint after
-  blob validation. Exact runtime-generated broker cleanup remains a checked deferred action before package file
+  service/firewall source, exports, and schedules are deleted. The package creates no certificate-store state, and
+  R-S11e-88 deletes its inherited LocalSystem cross-user certificate scanner instead of retaining an unowned legacy
+  cleanup heuristic. Fixed-root Amyuni device cleanup runs only in the commit phase of explicit uninstall; upgrade
+  preserves it and a later package failure cannot roll back files/service/firewall around irreversible cleanup.
+  Exact runtime-generated broker cleanup remains a checked deferred action before package file
   removal. Runtime broker refresh now requires
   the fixed service image, a non-reparse System32 source, the fixed Program Files destination, and byte equality;
   replacement is atomic when a prior broker exists, and the launch path propagates verification failure. It uses no
   shell, UAC, or basename kill. Verification closure:
-  portable pure tests cover exact setup-name and 0/3010 status policy; a Windows-target isolated portable compile
-  passed historically for an earlier source state; `scripts/verify.sh` gates the sole-authority topology, deleted
+  portable pure tests cover exact setup-name and 0/3010 status policy; the R-S11e-87 slice recorded an exact Rust 1.75
+  Windows-MSVC cross-target type check for the current typed Installer API; `scripts/verify.sh` gates the sole-authority topology, deleted
   paths, declarative MSI resources, exact one-file build payload, broker provenance, R-S11f, this ledger entry,
-  and Appendix C #125. Current Windows artifact evidence is authoritative only through the exact-commit R-B2 manifest.
+  Appendix C #125, and the later #213–#215 closures. Current Windows artifact evidence is authoritative only through
+  the exact-commit R-B2 manifest.
 - **R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED; NATIVE/ARTIFACT
   EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.** Ordinary main IPC remains a closed bounded
   nonsecret protocol. Password bodies use only raw `_password`/`_service_password` with canonical header/body/status
@@ -7601,6 +7604,74 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   (<https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msisetinternalui>); and
   `REBOOT=ReallySuppress` suppresses every Installer-initiated restart/prompt
   (<https://learn.microsoft.com/en-us/windows/win32/msi/reboot>).
+- **R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state — SOURCE IMPLEMENTED AND
+  CONFINED SOURCE/STRUCTURE/MUTATION VERIFIED 2026-07-22; NATIVE MSI TABLE/UNINSTALL AND EXACT ARTIFACT EVIDENCE REMAIN
+  R-B2/R-B10.** Platform: the per-machine Windows Installer custom-action DLL and the application Windows native
+  build. Endpoint/action: the explicit-uninstall commit phase's `RemoveTestCertificates` action. Boundary: authority
+  to uninstall this package ↔ LocalSystem mutation of machine and independently user-owned certificate stores.
+
+  The inherited WiX declared `RemoveTestCertificates` with `Impersonate="no"`, `Execute="commit"`, and
+  `Return="check"`, scheduled only for explicit uninstall after the transaction succeeded. The action called
+  `DeleteRustDeskTestCertsW`, whose dedicated 260-line implementation opened
+  `HKLM\Software\Microsoft\SystemCertificates`, the custom-action account's corresponding `HKCU`, and the same
+  namespace below every loaded `HKEY_USERS` subkey. It enumerated every store and deleted the fixed-fingerprint
+  registry key when its `Blob` ended in an embedded WDK test-certificate byte suffix. The same deletion source was
+  also compiled into the application native library despite having no remaining application caller. A complete
+  repository source/package inventory found no certificate component, certificate import/API call, certificate
+  manifest, ownership record, or certificate-creation operation: this package only deleted certificate state.
+
+  Microsoft defines a no-impersonation commit custom action as system-context work after successful script
+  processing; it also warns that commit-action failure may initiate rollback that cannot undo the commit action's
+  direct state change. Windows defines local-machine stores as global machine state and current-user/HKEY_USERS stores
+  as separate per-account state. Microsoft further limits test signatures to development/test and requires a
+  production driver to be release signed. Thus a fixed fingerprint and suffix narrowed what the scanner could
+  delete, but neither proves that the current package created or exclusively owns the matching certificate. This
+  was unnecessary LocalSystem cross-user/cross-product trust-store deletion authority and a potential administrative
+  state deletion, not evidence of a remote trigger, promptless LPE, attacker-selected target, exploitation, host
+  compromise, or use of the path.
+
+  The closure is deletion-only. The WiX declaration and schedule, custom-action export and function, header symbol,
+  Visual C++ project input, application `build.rs` input, and the entire registry/blob scanner are gone. There is no
+  migration, legacy-upgrade, best-effort, current-user-only, or reduced-fingerprint replacement. The two separately
+  justified fixed custom actions remain: checked deferred cleanup of the exact runtime-generated broker file under
+  the validated private Program Files root, and checked commit-phase SetupAPI removal of the exact Amyuni device on
+  explicit uninstall. R-S11f now requires exact current-package ownership for custom actions and forbids certificate
+  store mutation; R-S11bv and Appendix C #215 bind complete absence. The shared R-S11e-20/R-S11e-88 gate and the
+  independent semantic validator cover source-file absence, application and custom-action build metadata, WiX
+  declaration/schedule, DLL header/implementation/export, certificate-store/package APIs, both retained actions,
+  normative text, ledger, disposition, and requirements-hash scope. The active requirements SHA-256 is
+  `567cf97ab3335145fd64752a8e87281efe904890940fb2f7f09747b7cda840b0`.
+
+  Confined verification used the already-present immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with UID/GID 1000, no network, a
+  read-only root and source, all capabilities dropped, `no-new-privileges`, bounded PID/memory use, and private
+  tmpfs-only writable state. Bash syntax and Python byte-compilation passed; the normal independent semantic
+  validator and its complete repository source-mutation matrix returned `verify-verifier-workspace: ok`. The 21
+  new deliberate mutations restore each retired source/build/WiX/header/call/export surface, weaken the exact
+  retained-action inventory, or remove each gate/requirement/disposition/ledger edge; the existing synchronized
+  hash-scope mutation now binds R-S11bv/#215. Four pre-green mutation runs exposed test-construction weaknesses:
+  duplicate ownership of one shared-heading target, an aggregate WiX view not rebuilt from an independently mutated
+  fragment, substring rather than exact `.def` export matching, and a replacement rejection token that retained the
+  original as a prefix. Each fixture/assertion was made independently falsifiable before the full matrix passed.
+  Exact Rust 1.75 formatting of `build.rs` passed in the already-present Debian image
+  `sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818` with the toolchain mounted read-only.
+  Independent XML parsing accepted both changed WiX documents and the Visual C++ project; a direct production
+  inventory proved the source absent, every retired/API token absent, exactly two custom-action declarations and
+  exports retained, and both exact schedules/implementations present. Native-codec hash watch and its negative
+  self-test passed. No image was pulled or built; no port, Docker socket, host namespace, host service/config mount,
+  added capability, or root process was used. No host RustDesk process, service, listener, configuration, device,
+  firewall, or network state was inspected or changed. The custom-action DLL was not compiled and an MSI was not
+  built or executed on this Linux source-verification host. Native MSI table inspection and real installed
+  explicit-uninstall behavior remain the clean cold
+  R-B2/R-B10 obligations; this source slice does not claim them.
+
+  Primary platform contracts: Microsoft documents system-context no-impersonation commit execution
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/custom-action-in-script-execution-options>), commit-action
+  timing and rollback limitations (<https://learn.microsoft.com/en-us/windows/win32/msi/commit-custom-actions>),
+  independent local-machine and current-user certificate stores
+  (<https://learn.microsoft.com/en-us/windows-hardware/drivers/install/local-machine-and-current-user-certificate-stores>),
+  and that test signatures are for development/test rather than production release
+  (<https://learn.microsoft.com/en-us/windows-hardware/drivers/install/introduction-to-test-signing>).
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8318,9 +8389,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bfafae72b9388349b7ab051f4003217c524fea6ca89f10bd1c42b97ab3c2294f  requirements.html
+567cf97ab3335145fd64752a8e87281efe904890940fb2f7f09747b7cda840b0  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bu, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#214. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bv, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#215. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

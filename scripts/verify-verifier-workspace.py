@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#212",
+        "R-S11n through R-S11bt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11037,6 +11037,90 @@ def validate_portable_quick_support_excision_contract(sources):
         ("Windows run-mode excision requirement", "requirement mutation"),
         ("portable Quick Support residue Appendix C row", "Appendix mutation"),
         ("portable Quick Support residue hardening ledger", "hardening-ledger mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_installer_application_launch_excision_contract(sources):
+    installer = sources["windows_service_wxs"]
+    properties = sources["windows_add_remove_properties_wxs"]
+    combined = sources["windows_package_wxs"] + "\n" + installer + "\n" + properties
+    for token, label in (
+        ('Id="LaunchApp"', "Windows MSI installed application custom action absence"),
+        ('Id="LaunchAppTray"', "Windows MSI installed tray custom action absence"),
+        ('Action="LaunchApp"', "Windows MSI application sequence absence"),
+        ('Action="LaunchAppTray"', "Windows MSI tray sequence absence"),
+        ('FileRef="App.exe"', "Windows MSI installed application file-reference absence"),
+        ("LAUNCH_TRAY_APP", "Windows MSI tray selector absence"),
+        ('Return="asyncNoWait"', "Windows MSI asynchronous application action absence"),
+    ):
+        if token in combined:
+            raise VerificationError(f"{label}: retired installation authority remains")
+
+    require_text(
+        installer,
+        '<ServiceInstall Id="App.Service.Install"',
+        "Windows MSI declarative service installation preservation",
+    )
+    require_text(
+        installer,
+        '<ServiceControl Id="App.Service.Control"',
+        "Windows MSI declarative service control preservation",
+    )
+    for text, label in (
+        ("for forbidden_app_launch in \\", "Windows MSI application-launch shared source gate"),
+        ("post-install-application-launch-leftover", "Windows MSI application-launch gate result"),
+        ("R-S11e-20/R-S11e-86", "Windows MSI application-launch gate identity"),
+    ):
+        require_text(sources["verify"], text, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bt",
+        "Windows installation application-authority requirement",
+    )
+    for text, label in (
+        ('FileRef="App.exe"', "Windows MSI executable-action requirement"),
+        ("LAUNCH_TRAY_APP", "Windows MSI tray-selector requirement"),
+        ("asyncNoWait", "Windows MSI asynchronous-action requirement"),
+        ("There is no de-elevation", "Windows MSI no-launch-fallback requirement"),
+        ("ServiceInstall", "Windows MSI retained-service requirement"),
+        ("ordinary launch authority", "Windows MSI later-user-launch requirement"),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>213</td>",
+        "Windows MSI application-launch Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application",
+        "Windows MSI application-launch hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11bt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows MSI application-launch deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Windows MSI installed application custom action absence", "custom-action source mutation"),
+        ("Windows MSI application sequence absence", "sequence source mutation"),
+        ("Windows MSI tray selector absence", "property source mutation"),
+        ("Windows MSI application-launch shared source gate", "shared-gate mutation"),
+        ("Windows MSI declarative service installation preservation", "service-install mutation"),
+        ("Windows MSI declarative service control preservation", "service-control mutation"),
+        ("Windows installation application-authority requirement", "requirement mutation"),
+        ("Windows MSI application-launch Appendix C row", "Appendix mutation"),
+        ("Windows MSI application-launch hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -14713,6 +14797,7 @@ def validate_sources(sources):
     validate_smoke_container_authority_contract(sources)
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
+    validate_windows_installer_application_launch_excision_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
@@ -26747,9 +26832,63 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#212",
+            "R-S11n through R-S11bt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
+        ),
+        (
+            "windows_service_wxs",
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles.SetParam" Return="check" Property="RemoveRuntimeGeneratedFiles" Value="[App.InstallFolder]" />',
+            '<CustomAction Id="RemoveRuntimeGeneratedFiles.SetParam" Return="check" Property="RemoveRuntimeGeneratedFiles" Value="[App.InstallFolder]" />\n\t\t<CustomAction Id="LaunchApp" ExeCommand="" Return="asyncNoWait" FileRef="App.exe" />',
+            "Windows MSI installed application custom action absence",
+        ),
+        (
+            "windows_service_wxs",
+            "\t\t<InstallExecuteSequence>",
+            "\t\t<InstallExecuteSequence>\n\t\t\t<Custom Action=\"LaunchApp\" After=\"InstallFinalize\" />",
+            "Windows MSI application sequence absence",
+        ),
+        (
+            "windows_add_remove_properties_wxs",
+            '<Property Id="AddRemovePropertiesFile" Value="1" />',
+            '<Property Id="AddRemovePropertiesFile" Value="1" />\n\t\t<Property Id="LAUNCH_TRAY_APP" Value="Y" />',
+            "Windows MSI tray selector absence",
+        ),
+        (
+            "verify",
+            "for forbidden_app_launch in \\",
+            "for forbidden_app_launch_disabled in \\",
+            "Windows MSI application-launch shared source gate",
+        ),
+        (
+            "windows_service_wxs",
+            '<ServiceInstall Id="App.Service.Install"',
+            '<ServiceInstall Id="App.Service.Install.Disabled"',
+            "Windows MSI declarative service installation preservation",
+        ),
+        (
+            "windows_service_wxs",
+            '<ServiceControl Id="App.Service.Control"',
+            '<ServiceControl Id="App.Service.Control.Disabled"',
+            "Windows MSI declarative service control preservation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bt</span>',
+            '<span class="id">R-S11bt-disabled</span>',
+            "Windows installation application-authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>213</td>",
+            "<tr><td>213-disabled</td>",
+            "Windows MSI application-launch Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application",
+            "R-S11bt/R-S11e-86 — Windows Installer launches the remote-control application",
+            "Windows MSI application-launch hardening ledger",
         ),
         (
             "mobile_build_authority_verifier",
@@ -28490,6 +28629,16 @@ def main():
             "service_manual": (repo / "res/service-managers/manual/rustdesk-service").read_text(encoding="utf-8"),
             "service_manual_mode": os.lstat(repo / "res/service-managers/manual/rustdesk-service").st_mode,
             "windows_service_wxs": (repo / "res/msi/Package/Components/RustDesk.wxs").read_text(encoding="utf-8"),
+            "windows_add_remove_properties_wxs": (
+                repo / "res/msi/Package/Fragments/AddRemoveProperties.wxs"
+            ).read_text(encoding="utf-8"),
+            "windows_package_wxs": "\n".join(
+                f"// FILE {path.relative_to(repo).as_posix()}\n{path.read_text(encoding='utf-8')}"
+                for path in sorted(
+                    (repo / "res/msi/Package").rglob("*.wxs"),
+                    key=lambda path: path.as_posix(),
+                )
+            ),
             "android": (repo / "scripts/build-android.sh").read_text(encoding="utf-8"),
             "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
             "docs": (repo / "docs/VERSIONING.md").read_text(encoding="utf-8"),

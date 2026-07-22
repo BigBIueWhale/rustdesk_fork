@@ -1897,6 +1897,18 @@ done
 if printf '%s\n' "$service_install" | grep -Eq 'Account=|Password='; then
   r_s11e20="$r_s11e20 service-start-name-not-null-localsystem"
 fi
+for forbidden_app_launch in \
+  'Id="LaunchApp"' \
+  'Id="LaunchAppTray"' \
+  'Action="LaunchApp"' \
+  'Action="LaunchAppTray"' \
+  'FileRef="App.exe"' \
+  'LAUNCH_TRAY_APP' \
+  'Return="asyncNoWait"'; do
+  if grep -R -Fq --include='*.wxs' "$forbidden_app_launch" res/msi/Package; then
+    r_s11e20="$r_s11e20 post-install-application-launch-leftover:$forbidden_app_launch"
+  fi
+done
 grep -Fq '<fire:FirewallException Id="App.Firewall" Name="$(var.Product) Service" Port="21118" Protocol="tcp" Scope="any" IgnoreFailure="no" />' "$windows_msi" || r_s11e20="$r_s11e20 exact-firewall-declaration-missing"
 if grep -Eq 'StartupFolder|STARTUPSHORTCUTS|ShortcutTray' "$windows_msi"; then r_s11e20="$r_s11e20 independent-startup-persistence-leftover"; fi
 grep -Fq '<CustomAction Id="RemoveTestCertificates" DllEntry="RemoveTestCertificates" Impersonate="no" Execute="commit" Return="check"' "$windows_ca" || r_s11e20="$r_s11e20 fixed-certificate-commit-action-missing"
@@ -2042,8 +2054,11 @@ grep -Fq 'require_existing_file_no_reparse(' src/privacy_mode/win_topmost_window
 grep -Fq 'R-S11f' requirements.html || r_s11e20="$r_s11e20 normative-requirement-missing"
 grep -Fq 'R-S11e-20 — Windows Installer sole machine-state authority' HARDENING_STATUS.md || r_s11e20="$r_s11e20 hardening-ledger-missing"
 grep -Fq '<tr><td>125</td>' requirements.html || r_s11e20="$r_s11e20 appendix-disposition-missing"
+grep -Fq '<span class="id">R-S11bt</span>' requirements.html || r_s11e20="$r_s11e20 application-launch-excision-requirement-missing"
+grep -Fq 'R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application' HARDENING_STATUS.md || r_s11e20="$r_s11e20 application-launch-excision-ledger-missing"
+grep -Fq '<tr><td>213</td>' requirements.html || r_s11e20="$r_s11e20 application-launch-excision-disposition-missing"
 if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
-  echo "  ok  R-S11e-20 setup elevates only an exact one-file MSI transaction; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
+  echo "  ok  R-S11e-20/R-S11e-86 setup elevates only an exact one-file MSI transaction; MSI owns service/firewall/machine state; post-install application/tray launches, application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
 fi
 
 echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="

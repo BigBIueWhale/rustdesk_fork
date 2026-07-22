@@ -7477,6 +7477,65 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   own mode-0700 socket directory repeatedly, so this slice does not claim a stronger OS-principal isolation boundary
   than the platform provides. Exact installed Apple/Linux artifacts and the cold R-B2 release transaction remain
   separately open.
+- **R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application — SOURCE IMPLEMENTED
+  AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-22; NATIVE MSI AND EXACT ARTIFACT EVIDENCE REMAIN
+  R-B2/R-B10.** Platform: the per-machine WiX Windows Installer package. Endpoint/action: completion of an
+  interactive installation and optional tray-selection property. Boundary: administrator approval to perform the
+  finite machine-state transaction ↔ authority to create a long-lived interactive RustDesk desktop/tray process.
+
+  `res/msi/Package/Package.wxs` declares `Scope="perMachine"`. The inherited
+  `res/msi/Package/Components/RustDesk.wxs` nevertheless defined installed-file Type 18-style `LaunchApp` and
+  `LaunchAppTray` executable custom actions targeting `App.exe`. Both were sequenced after `InstallFinalize` with
+  `Return="asyncNoWait"`; `LaunchApp` ran for every non-basic-UI install that was not an ordinary uninstall, while
+  `LaunchAppTray` was selected by the public `LAUNCH_TRAY_APP` property, defaulted in
+  `Fragments/AddRemoveProperties.wxs`. Thus an interactive remote-control process could survive the transaction
+  under whichever principal and token serviced the installation. Windows Installer immediate custom actions use
+  user context by default, but that is not a stable ordinary-desktop-user identity: an elevated installer client or
+  an over-the-shoulder UAC credential prompt can supply administrator authority, and Windows Installer documents
+  additional system-context custom-action cases. This finding is an authority/principal ambiguity and unnecessary
+  post-install execution surface, not proof of a promptless LPE, remote exploit, host compromise, or use of the path.
+
+  The closure is deletion-first. Both executable custom-action definitions, both sequence entries, the obsolete
+  `LAUNCH_TRAY_APP` property, and all MSI `asyncNoWait` application-start behavior are removed. No de-elevation
+  shim, token discovery, Explorer trampoline, shell command, compatibility fallback, or replacement background
+  launch is introduced. The existing declarative `ServiceInstall` and `ServiceControl` entries remain: installation
+  can install/start the machine-owned `--service` runtime, while a person starts the interactive UI later through
+  the installed shortcut or executable under that person's ordinary launch authority.
+
+  The shared R-S11e-20/R-S11e-86 gate rejects each retired definition, schedule, file reference, selector, and
+  asynchronous form across the complete package WiX source tree, while retaining the exact service declaration checks.
+  The independent workspace validator and deliberate mutations bind that gate, the two declarative service entries,
+  R-S11bt, Appendix C #213, this ledger entry, and the current requirements-hash scope. Its normal source path scans
+  the aggregate of every current package `.wxs`; its individually loaded component/property fragments keep the exact
+  mutation targets independent of that aggregate. The first mutation run exposed and rejected an incomplete test
+  construction in which the aggregate was not rebuilt after an individual-fragment mutation. After the validator
+  was corrected to inspect both views, the complete repository-wide source-mutation matrix passed, including the
+  nine new application-launch/service-preservation/documentation mutations and the updated hash-scope mutation.
+
+  Confined verification used the already-present immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with UID/GID 1000, a read-only root
+  filesystem and source mount, no network, all capabilities dropped, `no-new-privileges`, bounded PID/memory/CPU
+  limits, and tmpfs-only scratch state. `bash -n` passed the edited shared gate; Python byte-compilation passed the
+  independent verifier; both modified WiX documents parsed as XML; and normal semantic validation plus the full
+  in-memory source-mutation matrix returned `verify-verifier-workspace: ok`. A separate recursive package probe
+  found none of the seven retired tokens, proved both service declarations remain, and proved the synchronized
+  requirements SHA-256
+  (`c232fe6d7174b54f1b9caf095b4f71fd4d75694784894983c38cf78d519a9cde`). Native-codec normal and self-test gates
+  also passed. No image was pulled or built; no port, Docker socket, host PID/network namespace, host service/config
+  mount, host networking, added capability, or root process was used. No host RustDesk process, service, listener,
+  configuration, device, firewall, or network state was inspected or changed.
+
+  Primary platform contracts: Microsoft documents that custom actions run with user privileges by default and also
+  describes elevated/system custom-action contexts
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/custom-action-security>); installed-file executable custom
+  actions are Type 18 and must be sequenced after their source is installed
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/custom-action-type-18>); `asyncNoWait` permits continuation
+  without waiting for the custom-action thread
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/synchronous-and-asynchronous-custom-actions>); and UAC
+  over-the-shoulder elevation uses credentials supplied by an administrator
+  (<https://learn.microsoft.com/en-us/windows/win32/msi/using-windows-installer-with-uac>). No native MSI was built or
+  executed by this source slice. Final WiX compilation, Windows install/repair/upgrade/uninstall behavior, service
+  behavior, installed shortcut behavior, and exact signed-artifact proof remain the cold R-B2/R-B10 obligations.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8194,9 +8253,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-0a6515af4af6a96a3ae0da10e1e675e1bde6028ae04930cc831869dcbd0d91f9  requirements.html
+c232fe6d7174b54f1b9caf095b4f71fd4d75694784894983c38cf78d519a9cde  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bs, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#212. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bt, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#213. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

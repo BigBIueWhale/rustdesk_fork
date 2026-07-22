@@ -28,6 +28,10 @@ readonly VENDOR_CONFIG=online/cargo-vendor-config.toml
 readonly DOCKER_BIN=/usr/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
 readonly MAX_SCANNER_OUTPUT_BLOCKS=65536 # Bash ulimit -f units: 64 MiB on Linux.
+readonly AUDIT_IMAGE_ROOT=/var/tmp/rustdesk-rust-audit
+readonly AUDIT_IMAGE_DB="$AUDIT_IMAGE_ROOT/advisory-db"
+readonly AUDIT_IMAGE_CARGO_AUDIT="$AUDIT_IMAGE_ROOT/tools/bin/cargo-audit"
+readonly AUDIT_IMAGE_CARGO_DENY="$AUDIT_IMAGE_ROOT/tools/bin/cargo-deny"
 
 audit_die() {
   echo "audit.sh: $*" >&2
@@ -74,12 +78,24 @@ run_bounded_docker() (
 : "${ADVISORY_DB_COMMIT_EPOCH:?audit.sh: ADVISORY_DB_COMMIT_EPOCH unset in pins.env}"
 : "${ADVISORY_DB_MAX_AGE_DAYS:?audit.sh: ADVISORY_DB_MAX_AGE_DAYS unset in pins.env}"
 : "${RUST_AUDIT_IMAGE_ID:?audit.sh: RUST_AUDIT_IMAGE_ID unset in pins.env}"
+: "${RUST_AUDIT_RUST_VERSION:?audit.sh: RUST_AUDIT_RUST_VERSION unset in pins.env}"
+: "${RUST_AUDIT_RUSTC_VERSION:?audit.sh: RUST_AUDIT_RUSTC_VERSION unset in pins.env}"
+: "${RUST_AUDIT_TOOLCHAIN:?audit.sh: RUST_AUDIT_TOOLCHAIN unset in pins.env}"
+: "${RUST_AUDIT_BASE_IMAGE_DIGEST:?audit.sh: RUST_AUDIT_BASE_IMAGE_DIGEST unset in pins.env}"
 : "${SHA256_RUST_AUDIT_CARGO_AUDIT:?audit.sh: cargo-audit binary hash unset in pins.env}"
 : "${SHA256_RUST_AUDIT_CARGO_DENY:?audit.sh: cargo-deny binary hash unset in pins.env}"
 : "${SHA256_CARGO_VENDOR_CLOSURE_V1:?audit.sh: cargo vendor closure pin unset in pins.env}"
 : "${SHA256_CARGO_VENDOR_CONFIG:?audit.sh: cargo vendor config pin unset in pins.env}"
 [[ "$RUST_AUDIT_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || audit_die "RUST_AUDIT_IMAGE_ID is malformed"
+[[ "$RUST_AUDIT_BASE_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || audit_die "RUST_AUDIT_BASE_IMAGE_DIGEST is malformed"
+[[ "$RUST_AUDIT_RUST_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] \
+  || audit_die "RUST_AUDIT_RUST_VERSION is malformed"
+[[ "$RUST_AUDIT_RUSTC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || audit_die "RUST_AUDIT_RUSTC_VERSION is malformed"
+[ "$RUST_AUDIT_TOOLCHAIN" = "${RUST_AUDIT_RUSTC_VERSION}-x86_64-unknown-linux-gnu" ] \
+  || audit_die "RUST_AUDIT_TOOLCHAIN does not match the pinned compiler"
 
 AUDIT_TMP=""
 AUDIT_TMP_ID=""
@@ -118,8 +134,8 @@ readonly AUDIT_TMP AUDIT_TMP_ID
   || audit_die "private workspace is not current-user/current-group mode 0700"
 
 # Validate policy and stage stable private copies before touching the Docker
-# daemon. The freshness check intentionally has no caller override: this pinned
-# November 2025 DB is release-blocking until an audited refresh is acquired.
+# daemon. The freshness check intentionally has no caller override; even a
+# deliberately refreshed pin becomes release-blocking after this fixed window.
 ACCEPT_COUNT="$($PYTHON_BIN scripts/rust-audit-policy.py prepare \
   --policy "$POLICY" --lockfile "$LOCKFILE" \
   --vendor-config "$VENDOR_CONFIG" --output "$AUDIT_TMP")" \
@@ -156,6 +172,13 @@ IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_ID")
   || audit_die "Docker did not resolve the exact pinned Rust advisory content ID"
 readonly IMAGE_ID
 
+IMAGE_METADATA="$($DOCKER_BIN image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
+  || audit_die "could not inspect the pinned Rust advisory image metadata"
+EXPECTED_IMAGE_METADATA="$IMAGE_ID|linux|amd64|1000:1000|rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}|${RUST_AUDIT_RUST_VERSION}|${CARGO_AUDIT_VERSION}|${CARGO_DENY_VERSION}|${ADVISORY_DB_COMMIT}|${ADVISORY_DB_COMMIT_EPOCH}|1000:1000"
+[ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ] \
+  || audit_die "the pinned Rust advisory image metadata does not match pins.env"
+readonly IMAGE_METADATA EXPECTED_IMAGE_METADATA
+
 IMAGE_PREFLIGHT_OUT="$AUDIT_TMP/image-preflight.out"
 IMAGE_PREFLIGHT_ERR="$AUDIT_TMP/image-preflight.err"
 set +e
@@ -164,21 +187,24 @@ run_bounded_docker run --rm --pull=never --network=none --read-only \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m \
-  --env HOME=/tmp --env RUSTUP_TOOLCHAIN=1.75.0-x86_64-unknown-linux-gnu \
+  --env HOME=/tmp --env "RUSTUP_TOOLCHAIN=$RUST_AUDIT_TOOLCHAIN" \
   "$IMAGE_ID" /bin/bash --noprofile --norc -c '
     set -euo pipefail
     [ "$(cargo-audit --version)" = "cargo-audit $1" ]
     [ "$(cargo-deny --version)" = "cargo-deny $2" ]
-    printf "%s  %s\n" "$3" /usr/local/cargo/bin/cargo-audit \
+    expected_rustc_version="$7"
+    read -r _ rustc_version _ <<<"$(rustc --version)"
+    [ "$rustc_version" = "$expected_rustc_version" ]
+    printf "%s  %s\n" "$3" "$AUDIT_TOOLS/bin/cargo-audit" \
       | sha256sum --check --strict -
-    printf "%s  %s\n" "$4" /usr/local/cargo/bin/cargo-deny \
+    printf "%s  %s\n" "$4" "$AUDIT_TOOLS/bin/cargo-deny" \
       | sha256sum --check --strict -
-    [ "$(git -c safe.directory=/opt/advisory-db -C /opt/advisory-db rev-parse HEAD)" = "$5" ]
-    [ "$(git -c safe.directory=/opt/advisory-db -C /opt/advisory-db show -s --format=%ct HEAD)" = "$6" ]
-    [ -z "$(git -c safe.directory=/opt/advisory-db -C /opt/advisory-db status --porcelain --untracked-files=all)" ]
+    [ "$(git -c safe.directory="$ADVISORY_DB" -C "$ADVISORY_DB" rev-parse HEAD)" = "$5" ]
+    [ "$(git -c safe.directory="$ADVISORY_DB" -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = "$6" ]
+    [ -z "$(git -c safe.directory="$ADVISORY_DB" -C "$ADVISORY_DB" status --porcelain --untracked-files=all)" ]
   ' _ "$CARGO_AUDIT_VERSION" "$CARGO_DENY_VERSION" \
     "$SHA256_RUST_AUDIT_CARGO_AUDIT" "$SHA256_RUST_AUDIT_CARGO_DENY" \
-    "$ADVISORY_DB_COMMIT" "$ADVISORY_DB_COMMIT_EPOCH" \
+    "$ADVISORY_DB_COMMIT" "$ADVISORY_DB_COMMIT_EPOCH" "$RUST_AUDIT_RUSTC_VERSION" \
   >"$IMAGE_PREFLIGHT_OUT" 2>"$IMAGE_PREFLIGHT_ERR"
 IMAGE_PREFLIGHT_STATUS=$?
 set -e
@@ -206,10 +232,10 @@ run_bounded_docker run --rm --pull=never --network=none --read-only \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=64 --memory=512m --memory-swap=512m --cpus=2 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m \
-  --env HOME=/audit --env RUSTUP_TOOLCHAIN=1.75.0-x86_64-unknown-linux-gnu \
+  --env HOME=/audit --env "RUSTUP_TOOLCHAIN=$RUST_AUDIT_TOOLCHAIN" \
   --mount "type=bind,source=$AUDIT_TMP,target=/audit,readonly" \
   --workdir /audit "$IMAGE_ID" \
-  cargo-audit audit --file /audit/Cargo.lock --db /opt/advisory-db --no-fetch --deny warnings --json \
+  "$AUDIT_IMAGE_CARGO_AUDIT" audit --file /audit/Cargo.lock --db "$AUDIT_IMAGE_DB" --no-fetch --deny warnings --json \
   "${IGNORE_FLAGS[@]}" >"$AUDIT_RESULT" 2>"$AUDIT_ERROR"
 CARGO_AUDIT_STATUS=$?
 set -e
@@ -230,33 +256,35 @@ set +e
 run_bounded_docker run --rm --pull=never --network=none --read-only \
   --user "$(id -u):$(id -g)" \
   --cap-drop=ALL --security-opt=no-new-privileges \
-  --pids-limit=256 --memory=2g --memory-swap=2g --cpus=2 \
+  --pids-limit=256 --memory=3g --memory-swap=3g --cpus=2 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=512m \
   --tmpfs /work/.cargo:rw,noexec,nosuid,nodev,mode=0700,size=1m \
   --tmpfs /work/.git:rw,noexec,nosuid,nodev,mode=0700,size=1m \
   --tmpfs /work/.harness-state:rw,noexec,nosuid,nodev,mode=0700,size=1m \
   --tmpfs /work/online:rw,noexec,nosuid,nodev,mode=0700,size=1m \
-  --tmpfs /work/target:rw,noexec,nosuid,nodev,mode=0700,size=1m \
+  --tmpfs /work/target:rw,noexec,nosuid,nodev,mode=0700,size=8m \
   --tmpfs /work/flutter/.dart_tool:rw,noexec,nosuid,nodev,mode=0700,size=1m \
   --tmpfs /work/flutter/build:rw,noexec,nosuid,nodev,mode=0700,size=1m \
   --env HOME=/tmp/home --env CARGO_HOME=/tmp/cargo-home \
-  --env RUSTUP_TOOLCHAIN=1.75.0-x86_64-unknown-linux-gnu \
+  --env CARGO_TARGET_DIR=/work/target --env CARGO_DENY_DB_PATH=/tmp/advisory-dbs \
+  --env "RUSTUP_TOOLCHAIN=$RUST_AUDIT_TOOLCHAIN" \
   --mount "type=bind,source=$REPO_ROOT,target=/work,readonly" \
   --mount "type=bind,source=$AUDIT_TMP,target=/audit,readonly" \
   --mount "type=bind,source=$REPO_ROOT/$VENDOR_DIR,target=/vendor,readonly" \
   --workdir /work "$IMAGE_ID" /bin/bash --noprofile --norc -c '
     set -euo pipefail
-    db_root=/tmp/advisory-dbs
+    db_root="$CARGO_DENY_DB_PATH"
+    [ "$db_root" = /tmp/advisory-dbs ]
     db="$db_root/$CARGO_DENY_DB_DIR"
     mkdir -p "$db_root" /tmp/cargo-home /tmp/home
-    cp -a -- /opt/advisory-db "$db"
+    cp -a -- "$ADVISORY_DB" "$db"
     [ "$(git -c safe.directory="$db" -C "$db" rev-parse HEAD)" = "$1" ]
     [ "$(git -c safe.directory="$db" -C "$db" show -s --format=%ct HEAD)" = "$2" ]
     [ -z "$(git -c safe.directory="$db" -C "$db" status --porcelain --untracked-files=all)" ]
     cp -- /audit/cargo.config.toml /tmp/cargo-home/config.toml
-    cargo-deny --format json --locked --offline \
+    "$AUDIT_TOOLS/bin/cargo-deny" --format json --locked --offline \
       --manifest-path /work/Cargo.toml \
-      check -c /audit/deny.runtime.toml advisories --disable-fetch
+      --config /audit/deny.runtime.toml check advisories
     [ "$(git -c safe.directory="$db" -C "$db" rev-parse HEAD)" = "$1" ]
     [ -z "$(git -c safe.directory="$db" -C "$db" status --porcelain --untracked-files=all)" ]
   ' _ "$ADVISORY_DB_COMMIT" "$ADVISORY_DB_COMMIT_EPOCH" \

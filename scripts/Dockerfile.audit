@@ -1,31 +1,106 @@
-# scripts/Dockerfile.audit — the R-R3 / R-A7 dependency-advisory gate image.
+# scripts/Dockerfile.audit — online acquisition recipe for the R-R3/R-A7
+# dependency-advisory verdict image.
 #
-# Bakes cargo-audit, cargo-deny, and the RustSec advisory-db pinned at a recorded
-# commit. The advisory-db pin is load-bearing (R-B10/R-B12 provenance): the audit
-# result is reproducible only against a fixed snapshot, and cargo-audit 0.21.1
-# cannot parse newer advisory-db schema entries.
-ARG RUST_VERSION=1.75
+# This recipe is never invoked by scripts/audit.sh. It accepts only the
+# Dockerfile itself as an empty build context and executes every RUN as numeric
+# UID/GID 1000. The resulting image contains released, lockfile-built scanners
+# plus one exact clean RustSec advisory-db commit. Verdict execution separately
+# addresses only the recorded immutable image content ID and runs without
+# network or root authority.
+ARG RUST_AUDIT_RUST_VERSION=1.88
 ARG BASE_DIGEST
-FROM rust:${RUST_VERSION}-slim@${BASE_DIGEST}
+ARG CARGO_AUDIT_VERSION=0.22.2
+ARG CARGO_DENY_VERSION=0.20.2
+ARG ADVISORY_DB_SHA
+ARG ADVISORY_DB_COMMIT_EPOCH
+FROM rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST} AS builder
 
-ARG CARGO_AUDIT_VERSION=0.21.1
-ARG CARGO_DENY_VERSION=0.14.24
-ARG ADVISORY_DB_SHA=4ea955aed4d1b1214badc01f9d029bb12ef9e8e4
+ARG RUST_AUDIT_RUST_VERSION
+ARG BASE_DIGEST
+ARG CARGO_AUDIT_VERSION
+ARG CARGO_DENY_VERSION
+ARG ADVISORY_DB_SHA
+ARG ADVISORY_DB_COMMIT_EPOCH
 
-# git for the advisory-db clone; cargo-audit needs no extra native deps.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
+USER 1000:1000
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# The pinned Rust advisory tools that build on the pinned Rust toolchain.
-RUN cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked \
-    && cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
+ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
+    AUDIT_TOOLS=/var/tmp/rustdesk-rust-audit/tools \
+    ADVISORY_DB=/var/tmp/rustdesk-rust-audit/advisory-db \
+    CARGO_HOME=/var/tmp/rustdesk-rust-audit/cargo-home \
+    HOME=/var/tmp/rustdesk-rust-audit/home \
+    PATH=/var/tmp/rustdesk-rust-audit/tools/bin:/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin
 
-# Pinned advisory-db snapshot (2025-11-30; pre-2026 so 0.21.1 can parse it).
-# Bump deliberately (and re-review the deny.toml accepts) — never silently.
-ENV ADVISORY_DB=/opt/advisory-db
-ENV CARGO_DENY_DB_PATH=/opt/cargo-deny-advisory-dbs
-ENV CARGO_DENY_DB_DIR=github.com-a946fc29ac602819
-RUN git clone https://github.com/RustSec/advisory-db /opt/advisory-db \
-    && git -C /opt/advisory-db checkout -q "$ADVISORY_DB_SHA" \
-    && mkdir -p "$CARGO_DENY_DB_PATH" \
-    && ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR"
+RUN [ "$(id -u)" = 1000 ] \
+    && [ "$(id -g)" = 1000 ] \
+    && umask 022 \
+    && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" "$AUDIT_ROOT/cargo-target" "$HOME"
+
+# Both released crates are compiled from their packaged lockfiles. Build-only
+# registry, Git, and target state is deleted before this layer is committed and
+# is never copied into the runtime stage.
+RUN export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
+    && cargo install --root "$AUDIT_TOOLS" --locked \
+        --version "$CARGO_AUDIT_VERSION" cargo-audit \
+    && cargo install --root "$AUDIT_TOOLS" --locked \
+        --version "$CARGO_DENY_VERSION" cargo-deny \
+    && [ "$(cargo-audit --version)" = "cargo-audit $CARGO_AUDIT_VERSION" ] \
+    && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
+    && rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"
+
+RUN git init -q "$ADVISORY_DB" \
+    && git -C "$ADVISORY_DB" remote add origin https://github.com/RustSec/advisory-db \
+    && git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q --depth=1 origin "$ADVISORY_DB_SHA" \
+    && git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD \
+    && [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = "$ADVISORY_DB_SHA" ] \
+    && [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = "$ADVISORY_DB_COMMIT_EPOCH" ] \
+    && [ -z "$(git -C "$ADVISORY_DB" status --porcelain --untracked-files=all)" ]
+
+FROM rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST} AS runtime
+
+ARG RUST_AUDIT_RUST_VERSION
+ARG BASE_DIGEST
+ARG CARGO_AUDIT_VERSION
+ARG CARGO_DENY_VERSION
+ARG ADVISORY_DB_SHA
+ARG ADVISORY_DB_COMMIT_EPOCH
+
+USER 1000:1000
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
+    AUDIT_TOOLS=/var/tmp/rustdesk-rust-audit/tools \
+    ADVISORY_DB=/var/tmp/rustdesk-rust-audit/advisory-db \
+    CARGO_DENY_DB_PATH=/var/tmp/rustdesk-rust-audit/cargo-deny-advisory-dbs \
+    CARGO_DENY_DB_DIR=advisory-db-3157b0e258782691 \
+    CARGO_HOME=/var/tmp/rustdesk-rust-audit/cargo-home \
+    HOME=/var/tmp/rustdesk-rust-audit/home \
+    PATH=/var/tmp/rustdesk-rust-audit/tools/bin:/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+RUN [ "$(id -u)" = 1000 ] \
+    && [ "$(id -g)" = 1000 ] \
+    && umask 022 \
+    && mkdir -p "$CARGO_HOME" "$HOME" "$CARGO_DENY_DB_PATH"
+
+COPY --from=builder --chown=1000:1000 \
+    /var/tmp/rustdesk-rust-audit/tools \
+    /var/tmp/rustdesk-rust-audit/tools
+COPY --from=builder --chown=1000:1000 \
+    /var/tmp/rustdesk-rust-audit/advisory-db \
+    /var/tmp/rustdesk-rust-audit/advisory-db
+
+RUN ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR" \
+    && [ "$(cargo-audit --version)" = "cargo-audit $CARGO_AUDIT_VERSION" ] \
+    && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
+    && [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = "$ADVISORY_DB_SHA" ] \
+    && [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = "$ADVISORY_DB_COMMIT_EPOCH" ] \
+    && [ -z "$(git -C "$ADVISORY_DB" status --porcelain --untracked-files=all)" ]
+
+LABEL org.rustdesk.audit.base="rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST}" \
+      org.rustdesk.audit.rust="${RUST_AUDIT_RUST_VERSION}" \
+      org.rustdesk.audit.cargo-audit="${CARGO_AUDIT_VERSION}" \
+      org.rustdesk.audit.cargo-deny="${CARGO_DENY_VERSION}" \
+      org.rustdesk.audit.advisory-db="${ADVISORY_DB_SHA}" \
+      org.rustdesk.audit.advisory-db-epoch="${ADVISORY_DB_COMMIT_EPOCH}" \
+      org.rustdesk.audit.run-user="1000:1000"

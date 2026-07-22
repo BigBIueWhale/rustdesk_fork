@@ -11093,8 +11093,8 @@ grep -qF 'CARGO_DENY_VERSION' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no
 grep -qF 'ADVISORY_DB_COMMIT' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-advisory-db-pin"
 grep -qF 'RUST_AUDIT_IMAGE_ID' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-content-id-pin"
 grep -qF 'check-freshness' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-db-freshness"
-grep -qF 'cargo-audit audit --file /audit/Cargo.lock --db /opt/advisory-db --no-fetch --deny warnings --json' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-run"
-grep -qF 'check -c /audit/deny.runtime.toml advisories --disable-fetch' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-run"
+grep -qF '"$AUDIT_IMAGE_CARGO_AUDIT" audit --file /audit/Cargo.lock --db "$AUDIT_IMAGE_DB" --no-fetch --deny warnings --json' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-audit-run"
+grep -qF -- '--config /audit/deny.runtime.toml check advisories' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-cargo-deny-run"
 grep -qF 'scripts/rust-audit-policy.py prepare' scripts/audit.sh || r_r3_gate="$r_r3_gate audit:no-toml-policy-parser"
 if grep -qE 'grep .*RUSTSEC.*deny[.]toml' scripts/audit.sh; then
   r_r3_gate="$r_r3_gate audit:comment-grep-ignore-parser"
@@ -11104,6 +11104,7 @@ if grep -qF '$DOCKER_BIN build' scripts/audit.sh; then
 fi
 grep -qF 'CARGO_DENY_VERSION=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-cargo-deny-version"
 grep -qF 'RUST_AUDIT_IMAGE_ID=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-rust-audit-image-id"
+grep -qF 'SHA256_RUST_AUDIT_DOCKERFILE=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-rust-audit-dockerfile"
 grep -qF 'ADVISORY_DB_MAX_AGE_DAYS="90"' scripts/pins.env || r_r3_gate="$r_r3_gate pins:weakened-db-freshness"
 grep -qF 'SHA256_CARGO_VENDOR_CLOSURE_V1=' scripts/pins.env || r_r3_gate="$r_r3_gate pins:no-vendor-closure"
 if ! python3 scripts/rust-audit-policy.py --self-test; then

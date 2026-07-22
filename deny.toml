@@ -15,6 +15,20 @@
 #                      ephemeral scalars, R-P12) — security-relevant, non-breaking.
 #   RUSTSEC-2025-0024  crossbeam-channel 0.5.13 -> 0.5.15. Double-free on Drop.
 #   RUSTSEC-2025-0055  tracing-subscriber 0.3.19 -> 0.3.20. ANSI-escape log poison.
+#   RUSTSEC-2026-0007  bytes 1.10.1 -> 1.11.1. BytesMut::reserve integer-overflow
+#                      memory corruption; the patch retains Rust 1.57 MSRV.
+#   RUSTSEC-2026-0204  crossbeam-epoch 0.9.18 -> 0.9.20. Invalid-pointer
+#                      formatting dereference; the patch retains Rust 1.61 MSRV.
+#   RUSTSEC-2026-0049 /
+#   RUSTSEC-2026-0098 /
+#   RUSTSEC-2026-0099 /
+#   RUSTSEC-2026-0104  rustls-webpki 0.103.3 -> 0.103.13, with the minimum
+#                      compatible rustls-pki-types 1.12.0. CRL and name-constraint
+#                      validation plus CRL-parser panic fixes; both retain MSRV <=1.71.
+#   RUSTSEC-2026-0190  anyhow 1.0.98 -> 1.0.103. downcast_mut aliasing
+#                      unsoundness; the patch retains Rust 1.68 MSRV.
+#   RUSTSEC-2026-0186  memmap2 0.9.8 -> 0.9.11. Unchecked range pointer
+#                      arithmetic; the patch retains Rust 1.65 MSRV.
 #   RUSTSEC-2023-0040 /
 #   RUSTSEC-2023-0059 /
 #   RUSTSEC-2025-0040  users 0.11.0 -> uzers 0.12.x via Cargo dependency
@@ -33,11 +47,11 @@
 # PINNED advisory-db snapshot recorded in the build provenance (R-B10/R-B12).
 # The product compiler remains Rust 1.75, but the audit tools are independent
 # release infrastructure and may use a newer compiler when their immutable image
-# is deliberately refreshed. The current 2025-11-30 snapshot is older than the
-# unoverrideable 90-day R-S11bf limit and therefore blocks release; passing it is
-# not current advisory evidence. scripts/audit.sh also excludes mutable crates.io
-# yank state from its reproducible offline verdict while retaining `yanked =
-# "warn"` here for other callers.
+# is deliberately refreshed. The exact 2026-07-17 snapshot was reviewed on
+# 2026-07-22; its age remains subject to the unoverrideable 90-day R-S11bf limit
+# on every invocation. scripts/audit.sh also excludes mutable crates.io yank
+# state from its reproducible offline verdict while retaining the warning policy
+# here for other callers.
 
 [advisories]
 db-urls = ["https://github.com/RustSec/advisory-db"]
@@ -48,6 +62,12 @@ ignore = [
   { id = "RUSTSEC-2025-0004", reason = "openssl 0.10.68 ssl::select_next_proto UAF — same openssl-sys 1.80 MSRV wall as 2025-0022 (fix needs >=0.10.70). ALPN-negotiation path. Accepted on the 1.75 build; revisit with the toolchain bump." },
   { id = "RUSTSEC-2020-0071", reason = "time 0.1.45 potential segfault (localtime_r). Pulled ONLY on macOS (the chrono oldtime path); the controlled box is Linux and R-R2 drops the macOS target, so it leaves the graph there. The v4-only Linux build never compiles it." },
   { id = "RUSTSEC-2024-0013", reason = "libgit2-sys 0.14.2 memory-corruption. Build/dev-time transitive only (git2 tooling), NOT in the controlled runtime binary; the fix is a major bump (>=0.16.2) cascading git2. Tracked for the build-tooling bump." },
+  { id = "RUSTSEC-2026-0194", reason = "quick-xml <0.41 duplicate-attribute O(n^2) DoS. The 0.30 Windows notification dependency only escapes locally constructed toast XML; the macOS-only plist 0.31 path uses plain Reader without attribute iteration; and Wayland scanner 0.37 is a build-time proc macro over pinned local protocol XML. The 0.41 fix needs Rust 1.79 plus parent-major updates, beyond the product Rust 1.75 pin." },
+  { id = "RUSTSEC-2026-0195", reason = "quick-xml <0.41 NsReader namespace-allocation DoS. None of the three locked consumers constructs NsReader: Windows notification only escapes output, macOS-only plist uses plain Reader, and the build-time Wayland scanner uses plain Reader over pinned local XML. The 0.41 fix needs Rust 1.79 plus parent-major updates." },
+  { id = "RUSTSEC-2026-0009", reason = "time 0.3.36 RFC-2822 parser stack exhaustion. The fix (>=0.3.47) is edition 2024 and requires Rust 1.88. Locked consumers format RFC 2822 or parse RFC 3339/fixed local formats; no shipped path parses attacker-provided RFC-2822 text. Revisit with the product toolchain bump." },
+  { id = "RUSTSEC-2026-0008", reason = "git2 0.16.1 Buf null-pointer unsoundness. It is present only through keepawake's build-time shadow-rs 0.21; direct source review shows repository discover/head/commit/status use and no Buf construction or dereference. The fix requires a shadow-rs/git2 major cascade." },
+  { id = "RUSTSEC-2026-0183", reason = "git2 0.16.1 Remote::list null-pointer unsoundness. Build-time shadow-rs is the sole puller and never constructs a remote or calls Remote::list; the >=0.21 fix requires a parent-major cascade." },
+  { id = "RUSTSEC-2026-0184", reason = "git2 0.16.1 blame-buffer Signature null-pointer unsoundness. Build-time shadow-rs is the sole puller and never uses blame_buffer or BlameHunk signatures; the >=0.21 fix requires a parent-major cascade." },
 
   # ── unmaintained/unsound accepted or cleared by completed fork/dependency work ──
   { id = "RUSTSEC-2021-0145", reason = "atty unsound unaligned read. Build-time only; leaves with the bindgen 0.59->0.69 fork bump (Appendix D)." },
@@ -65,6 +85,7 @@ ignore = [
   { id = "RUSTSEC-2017-0008", reason = "serial unmaintained. Transitive; no reachable use on the controlled box. Radio-silence class." },
   { id = "RUSTSEC-2021-0154", reason = "fuser unsound. Retained for shipped non-root Linux CLIPRDR file clipboard request dispatch only: RustDesk mounts through a trusted fixed-path fusermount fd-passing path with canonical target checks, wraps the received fd with Session::from_fd using owner-only ACL, euid-0 FUSE initialization is refused, and FUSE mount-point/queue bounds remain on the reachable path." },
   { id = "RUSTSEC-2025-0124", reason = "rand_os unmaintained (legacy rand 0.6 OS-RNG shim). Transitive; the live CSPRNG path is rand 0.8.6 (fixed above)." },
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25 is unmaintained, with no reported vulnerability or maintained drop-in. The live whiteboard/fontdb path parses local system-font bytes, not remote-session font input. Migration to skrifa is tracked as a real API replacement rather than hidden behind a bulk ignore." },
 
   # ── gtk-rs 0.18 cluster: GUI bindings, unmaintained (gtk3 EOL). All build/UI ──
   # only, no known exploitable path; the GUI is unreachable from the headless

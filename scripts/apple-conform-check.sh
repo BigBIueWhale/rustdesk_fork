@@ -2653,6 +2653,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c) R-S11bp outgoing voice-call worker lifecycle =="
+if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
+  note "ok  R-S11bp macOS/shared outgoing voice-call capture is event-driven and exact-subscription-owned"
+else
+  echo "  FAIL R-S11bp macOS/shared outgoing voice-call capture regained polling or detached subscription lifecycle"
+  rc=1
+fi
+
 echo "== (3) rustfmt parse-check of Rust Apple sources (SDK-free syntax gate) =="
 docker run --rm -i -v "$REPO:/work:ro" -w /work "$IMG" bash -s -- "${APPLE_RS[@]}" <<'SH' || rc=1
 set -euo pipefail

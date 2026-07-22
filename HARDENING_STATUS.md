@@ -7214,6 +7214,49 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   substituted for release provenance. The Apple result is source shape only: no native Mac, signed app,
   installed service, exact release artifact, or end-to-end helper connection is claimed, and those
   evidence obligations remain R-R2/R-B2.
+- **R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned —
+  SOURCE IMPLEMENTED/GATED 2026-07-22; EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAINS
+  R-B2/R-B10.** Platforms: the shared non-iOS outgoing viewer (Android plus desktop; iOS has no local
+  audio-service voice-capture worker). Endpoint/action: an accepted outgoing voice call subscribes one
+  synthetic `ConnInner` to the process-local audio service and forwards its audio frames into that
+  exact viewer round. Boundary: the viewer round's `VoiceCallThread` owner ↔ the subscription, audio
+  receiver, global voice-input selection, and dedicated worker handle. The inherited worker created a
+  separate standard-library stop channel, then executed an unconditional loop that called
+  `try_recv()` on both stop and audio. With neither channel ready it performed no wait at all, so every
+  active voice call could consume a CPU core while idle. The stop sender did not itself revoke the
+  exact service subscription keeping the audio receiver open. Git history places this loop in the
+  imported baseline. This is a source-proven shared resource-availability and lifecycle-coherence
+  defect. Android's persistent process can amplify its duration, but it is not an on-device causal
+  reproduction or proved explanation of the reported one-host screen-control hang; it is unrelated to
+  host RustDesk, firewall/listener state, Docker privilege, exploitation, or compromise.
+
+  `VoiceCallThread` now owns one durable stop flag, the exact subscribed synthetic `ConnInner`, and the
+  exact worker handle. Every normal voice-call close, reconnect/final viewer teardown, and hard-Drop
+  handoff reaches the same `stop()`: it publishes retirement first, then unsubscribes that exact
+  connection. Removing the service copy and dropping the owner's retained sender closes the channel,
+  waking a worker blocked without audio. The worker uses `blocking_recv()` on its dedicated standard
+  thread—no sleep, polling, nested runtime, or detached task—and rechecks the stop flag after wake, so
+  already queued audio cannot cross retirement. Spontaneous audio-channel closure performs an
+  idempotent unsubscribe and restores voice-input state. Named-thread spawn failure immediately rolls
+  back the just-created subscription and input selection. The existing fixed media-completion pool
+  retains and joins the exact handle; this slice does not weaken its bounded admission or abort-on-loss
+  rules.
+
+  Focused behavior regressions prove that an idle receiver remains blocked, exact subscription-channel
+  closure wakes it within a fixed test deadline, a durable stop suppresses already queued audio, and a
+  live message preserves object identity. The standalone
+  `scripts/verify-viewer-voice-call-worker.py` binds the composite owner, stop-before-unsubscribe
+  ordering, blocking receive and post-wake check, worker cleanup, spawn-failure rollback, existing
+  completion-pool sinks, polling-channel absence, R-S11bp, Appendix C #209, this row, and shared-gate
+  and Apple-gate wiring; its self-test rejects 20 deliberate semantic weakenings. The independent
+  workspace verifier passes normally and its complete current-tree source-mutation matrix rejects the
+  registered weakened contracts. Exact Rust 1.75 locked/offline compilation from the reviewed local
+  vendor closure in a fresh bounded, non-root, network-disabled tmpfs target passes both focused tests:
+  2 passed, 0 failed, 340 unrelated tests filtered. Python byte-compilation, edited-shell syntax,
+  `git diff --check`, requirements-hash equality, and native-codec normal/self-test gates also pass.
+  The available diagnostic image has no Rustfmt component, so no formatter result is claimed. No current
+  APK, native Android/desktop voice-call session, real device, exact release artifact, or R-B2/R-B10
+  transaction is claimed here.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -7929,9 +7972,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ae0ae3becc31ac47e08fcc37fe8a2b34096eb104a88b04b1fc4974c1a7ebd483  requirements.html
+45f7f885e6a5392e479db8aeb6544f4b85bcd2d0080ef13033b4c169076287eb  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bo, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bp, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

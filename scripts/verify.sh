@@ -816,6 +816,15 @@ else
   rc=1
 fi
 
+echo "== (3b-iii-a1a01) Outgoing voice-call worker lifecycle (R-S11bp/R-S11e-82) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e82_ --color never
+if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
+  echo "  ok  R-S11e-82 outgoing voice-call capture blocks on audio and tears down through its exact subscription owner"
+else
+  echo "  FAIL R-S11e-82 outgoing voice-call capture regained polling or detached subscription lifecycle"
+  rc=1
+fi
+
 echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then

@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208",
+        "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11276,6 +11276,58 @@ def validate_unix_helper_process_role_contract(sources):
         sources["hardening"],
         "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
         "Unix helper process-role hardening ledger",
+    )
+
+
+def validate_viewer_voice_call_worker_contract(sources):
+    focused = sources["viewer_voice_call_worker_verifier"]
+    for text, label in (
+        ("def extract_rust_item(", "voice-call Rust item parser"),
+        ("def validate(sources", "voice-call semantic entry"),
+        (
+            '"receiver.blocking_recv()?",\n            "if stop_requested.load(Ordering::Acquire)"',
+            "voice-call blocking receive contract",
+        ),
+        (
+            '"stop_requested.load(Ordering::Acquire)"',
+            "voice-call durable stop contract",
+        ),
+        (
+            'for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on"):',
+            "voice-call polling/runtime rejection inventory",
+        ),
+        (
+            '"subscription: Option<ConnInner>"',
+            "voice-call exact subscription owner contract",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "voice-call mutation inventory"),
+        ("run_self_test(sources)", "voice-call mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test",
+        "voice-call shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test",
+        "voice-call Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11bp</span>',
+        "event-driven voice-call worker requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>209</td>",
+        "voice-call worker Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned",
+        "voice-call worker hardening ledger",
     )
 
 
@@ -14194,6 +14246,7 @@ def validate_sources(sources):
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
     validate_unix_helper_process_role_contract(sources)
+    validate_viewer_voice_call_worker_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -26220,8 +26273,8 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
+            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#208",
-            "R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#207",
             "current GitHub-automation requirements-hash scope",
         ),
         (
@@ -26391,6 +26444,48 @@ def run_source_mutations(sources):
             "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
             "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts process-role prefixes",
             "Unix helper process-role hardening ledger",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"receiver.blocking_recv()?",\n            "if stop_requested.load(Ordering::Acquire)"',
+            '"receiver.try_recv().ok()?",\n            "if stop_requested.load(Ordering::Acquire)"',
+            "voice-call blocking receive contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            'for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on"):',
+            "for forbidden in ():",
+            "voice-call polling/runtime rejection inventory",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test",
+            "true # voice-call worker verifier removed",
+            "voice-call shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test",
+            "true # voice-call worker verifier removed",
+            "voice-call Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bp</span>',
+            '<span class="id">R-S11bp-disabled</span>',
+            "event-driven voice-call worker requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>209</td>",
+            "<tr><td>209-disabled</td>",
+            "voice-call worker Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned",
+            "R-S11bp/R-S11e-82 — outgoing voice-call capture polls",
+            "voice-call worker hardening ledger",
         ),
         (
             "android_builder_authority_verifier",
@@ -27447,6 +27542,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "unix_helper_process_role_verifier": (
                 repo / "scripts/verify-unix-helper-process-role.py"
+            ).read_text(encoding="utf-8"),
+            "viewer_voice_call_worker_verifier": (
+                repo / "scripts/verify-viewer-voice-call-worker.py"
             ).read_text(encoding="utf-8"),
             "android_build_source_verifier": (
                 repo / "scripts/verify-android-build-source.py"

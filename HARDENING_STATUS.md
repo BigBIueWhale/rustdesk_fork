@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 855 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 859 lexical `unsafe {`
 blocks across 247 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -672,7 +672,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   regression proves the table and its credential strings are never serialized again. `scripts/verify.sh` gates
   the complete source/module/dependency absence, the direct-only connector shape, the retained stale-value pins,
   and the focused regression. The synchronized machine inventory proves 905 Cargo packages, 36 Git records from
-  26 source URLs (26 rustdesk-org records from 20 URLs), and 855 lexical unsafe blocks across 247 Rust files.
+  26 source URLs (26 rustdesk-org records from 20 URLs), and 859 lexical unsafe blocks across 247 Rust files.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -4636,6 +4636,30 @@ unreachable and a source/test/AST gate prevents reintroduction.
   build-time XML; time's fixed release requires Rust 1.88 while locked callers do not parse attacker RFC-2822 text;
   build-only shadow-rs uses none of git2's three affected APIs; and ttf-parser's maintenance notice covers local
   system-font parsing with no drop-in migration. The complete exact accept set is 41 IDs, not a wildcard.
+
+  Dependency-inventory reconciliation (2026-07-23): the fail-closed inventory correctly remained red after the
+  six reviewed registry-package upgrades above and after four later authority-hardening source changes. The package
+  topology remains 905 records, 36 Git records, and 26 unique Git source URLs; only the complete package-record
+  identity moved to `1289e88c63677833d40600e08616163ae345920d7ff6381d69b7ea26f0d361fc`. The lexical Rust
+  inventory remains 247 tracked files and 74 matching files, while the total moved from 855 to 859 and the per-file
+  identity moved to `e84d5ffaae33889085987b5a49a7be444a94ea6cc467c4e199f91a16372638bf`. The complete
+  attributed delta is `libs/portable/src/main.rs` 11→13 (typed Windows Installer FFI: three calls replace one
+  `GetSystemDirectoryW` call), `src/ipc/fs.rs` 33→34 (effective-UID proof for incumbent-listener authentication),
+  `src/platform/macos.rs` 30→32 (two effective-UID reads binding LaunchAgents to explicit `gui/<uid>` domains), and
+  `src/virtual_display_manager.rs` 20→19 (unowned Amyuni uninstall FFI deleted). These are narrow FFI boundaries in
+  already-reviewed hardening commits, not additional message, process-launch, or privilege authority. No block was
+  consolidated merely to lower the lexical metric. Historical evidence below retains the count measured at its own
+  commit; any later package-record or per-file unsafe change must make the live inventory red again and receive the
+  same attribution before its baseline advances.
+
+  Current reconciliation verification: a non-root, networkless, read-only-root container verified the exact pinned
+  vendor-subtree root and, independently, the lockfile package checksum plus every vendored file digest for each of
+  the six upgraded crates. Rust 1.75.0 accepted locked/offline metadata for all 14 workspace packages. The normal
+  dependency inventory and all 103 adversarial inventory fixtures passed; the semantic workspace verifier passed in
+  normal mode and rejected its complete source-mutation matrix; the Rust-audit authority verifier rejected all 53
+  deliberate mutations; and the native-codec watch passed both normal and mutation modes with the synchronized
+  requirements hash. These are source and metadata gates, not new R-B2 artifact, installed-platform, device, or
+  independent-review evidence.
 
   Verification: production-equivalent confined scanner launches against the exact new image returned cargo-audit
   status 0 over 905 packages with exactly 41 accepts and zero stderr; cargo-deny returned status 0 with 76 policy
@@ -8699,7 +8723,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-cf3803de25034ebbdfa68d768a981992507e87dc4ff78bbbd260beb2d1533ca0  requirements.html
+5819c5408cacf96b5adc6ef4f1324b5d8ec6a744bba6cbf12095ff888fdce535  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bz, R-SV4a,

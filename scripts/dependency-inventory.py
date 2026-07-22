@@ -43,7 +43,7 @@ EXPECTED = {
         "git_source_identities_sha256": "c4502af3f4c24f3d2c536bb4d39b2e85831450a838fa890140e1238ab3a91e24",
         "git_sourced_records": 36,
         "package_records": 905,
-        "package_records_sha256": "6c2f1b15047dc82fe54074aebb19584150171d3bacae21bfa98c4158dc1645e7",
+        "package_records_sha256": "1289e88c63677833d40600e08616163ae345920d7ff6381d69b7ea26f0d361fc",
         "rustdesk_org_git_records": 26,
         "unique_git_source_urls": 26,
     },
@@ -159,8 +159,8 @@ EXPECTED = {
     },
     "rust_sources": {
         "files_with_unsafe_blocks": 74,
-        "lexical_counts_by_file_sha256": "4d89e200c4b55df2e74f6c38cd8e336630ff41ecd70369a95a02a2f84ec42044",
-        "lexical_unsafe_open_brace_blocks": 855,
+        "lexical_counts_by_file_sha256": "e84d5ffaae33889085987b5a49a7be444a94ea6cc467c4e199f91a16372638bf",
+        "lexical_unsafe_open_brace_blocks": 859,
         "tracked_rs_files": 247,
     },
 }

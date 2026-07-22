@@ -6051,7 +6051,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "855 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "859 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -21540,7 +21540,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "855 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "859 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),

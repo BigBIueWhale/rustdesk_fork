@@ -1,9 +1,0 @@
-﻿<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-	<Fragment>
-		<?include ../Includes.wxi?>
-
-		<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />
-
-		<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>
-	</Fragment>
-</Wix>

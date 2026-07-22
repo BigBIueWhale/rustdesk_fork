@@ -840,29 +840,29 @@ stage_flutter_pub_cache() {
 
 # ── The WiX v4.0.5 NuGet closure (§12.2 milestone-2, the .msi) ──────────────────────────────
 # The .msi (R-B7/B8) builds via `python res/msi/preprocess.py` then `msbuild res/msi/msi.sln`, which restores the
-# wixproj's 5 .wixext PackageReferences + the WixToolset.Sdk, and the CustomActions.vcxproj's packages.config
-# (native WixToolset.DUtil/WcaUtil). Stage that whole NuGet closure OFFLINE so the in-VM msbuild needs 0 network.
-# Captured by a host `dotnet restore` of the real wixproj (vcxproj ProjectReference stripped — that's the C++ side,
-# built in-VM) + `dotnet add package` for the two native pkgs (they restore as NuGet pkgs, no nuget.exe). 8 pkgs.
+# wixproj's 5 .wixext PackageReferences + the WixToolset.Sdk. Stage that whole NuGet closure OFFLINE so the in-VM
+# msbuild needs 0 network. Captured by a host `dotnet restore` of the real wixproj. 6 packages.
 # DETERMINISTIC (proven: two fresh re-downloads -> identical SHA): sorted tar + fixed mtime/owner + gzip -n. Shipped
 # on the TOOLCHAINS CD + pre-placed at the golden's NUGET_PACKAGES by win-guest-setup (milestone 2 re-provision).
 stage_windows_wix_nuget() {
     require_cmd docker
     local out="$ONLINE_DIR/wix-nuget.tar.gz"
-    [ -f "$out" ] && { log "WiX NuGet already staged, skipping"; return 0; }
+    if [ -f "$out" ]; then
+        verify_sha256 "$out" "${SHA256_WIX_NUGET}"
+        log "WiX NuGet already staged and digest-verified, skipping"
+        return 0
+    fi
     log "staging the WiX v4.0.5 NuGet closure (host dotnet restore) -> ./online/wix-nuget.tar.gz"
     docker run --rm -e HU="$(id -u)" -e HG="$(id -g)" \
         -v "$(dirname "$ONLINE_DIR")/res/msi:/msi:ro" -v "$ONLINE_DIR:/online" \
         mcr.microsoft.com/dotnet/sdk:8.0 bash -euo pipefail -c '
         export NUGET_PACKAGES=/cache; mkdir -p /cache
         cp -r /msi /tmp/m; cd /tmp/m
-        sed -i "/CustomActions.vcxproj/d" Package/Package.wixproj
         dotnet restore Package/Package.wixproj >/dev/null 2>&1
-        for p in WixToolset.DUtil WixToolset.WcaUtil; do
-            dotnet new classlib -n t_$p -o /tmp/t_$p >/dev/null 2>&1
-            ( cd /tmp/t_$p && dotnet add package $p -v 4.0.5 >/dev/null 2>&1 )
-        done
-        [ -d /cache/wixtoolset.sdk ] && [ -d /cache/wixtoolset.dutil ] || { echo "WiX NuGet capture incomplete"; exit 1; }
+        [ -d /cache/wixtoolset.sdk ] && [ -d /cache/wixtoolset.firewall.wixext ] \
+            && [ -d /cache/wixtoolset.heat ] && [ -d /cache/wixtoolset.netfx.wixext ] \
+            && [ -d /cache/wixtoolset.ui.wixext ] && [ -d /cache/wixtoolset.util.wixext ] \
+            || { echo "WiX NuGet capture incomplete"; exit 1; }
         tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -C /cache -cf - . | gzip -n > /online/wix-nuget.tar.gz
         chown "$HU:$HG" /online/wix-nuget.tar.gz
     '

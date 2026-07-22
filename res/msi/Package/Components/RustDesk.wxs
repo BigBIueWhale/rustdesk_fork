@@ -9,6 +9,7 @@
 				<File Id="App.exe" Name="$(var.Product).exe" KeyPath="yes" Checksum="yes">
 					<fire:FirewallException Id="App.Firewall" Name="$(var.Product) Service" Port="21118" Protocol="tcp" Scope="any" IgnoreFailure="no" />
 				</File>
+				<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />
 				<ServiceInstall Id="App.Service.Install"
 					Name="$(var.Product)"
 					DisplayName="$(var.Product) Service"
@@ -32,13 +33,6 @@
 					Wait="yes" />
 			</Component>
 		</DirectoryRef>
-
-		<CustomAction Id="RemoveRuntimeGeneratedFiles.SetParam" Return="check" Property="RemoveRuntimeGeneratedFiles" Value="[App.InstallFolder]" />
-
-		<InstallExecuteSequence>
-			<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
-			<Custom Action="RemoveRuntimeGeneratedFiles.SetParam" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>
-		</InstallExecuteSequence>
 
 		<!-- Shortcuts -->
 		<DirectoryRef Id="App.StartMenu">

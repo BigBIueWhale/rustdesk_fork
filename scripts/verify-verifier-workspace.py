@@ -11020,7 +11020,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11101,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11235,7 +11235,7 @@ def validate_windows_installer_api_contract(sources):
 
     for text, label in (
         (
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90)",
             "Windows Installer API shared source gate",
         ),
         (
@@ -11280,7 +11280,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11313,19 +11313,14 @@ def validate_windows_installer_api_contract(sources):
 
 def validate_windows_certificate_cleanup_excision_contract(sources):
     build_rs = sources["build_rs"]
-    custom_actions_wxs = sources["windows_custom_actions_wxs"]
     service_wxs = sources["windows_service_wxs"]
-    custom_actions_cpp = sources["windows_custom_actions_cpp"]
-    custom_actions_def = sources["windows_custom_actions_def"]
-    custom_actions_project = sources["windows_custom_actions_project"]
     package_surface = "\n".join(
         (
             sources["windows_package_wxs"],
-            custom_actions_wxs,
             service_wxs,
-            custom_actions_cpp,
-            custom_actions_def,
-            custom_actions_project,
+            sources["windows_package_project"],
+            sources["windows_msi_solution"],
+            sources["windows_msi_preprocess"],
             build_rs,
         )
     )
@@ -11360,31 +11355,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
 
     for text, label in (
         (
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"',
-            "retained exact runtime-broker cleanup declaration",
-        ),
-    ):
-        require_text(custom_actions_wxs, text, label)
-    for text, label in (
-        (
-            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-            "retained runtime-broker cleanup schedule",
-        ),
-    ):
-        require_text(service_wxs, text, label)
-    for text, label in (
-        (
-            "UINT __stdcall RemoveRuntimeGeneratedFiles(",
-            "retained runtime-broker cleanup implementation",
-        ),
-    ):
-        require_text(custom_actions_cpp, text, label)
-        symbol = text.split("(")[0].split()[-1]
-        require_text(custom_actions_def, f"\n    {symbol}\n", label + " export")
-
-    for text, label in (
-        (
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90)",
             "Windows certificate cleanup shared source gate",
         ),
         (
@@ -11392,7 +11363,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
             "Windows certificate cleanup source shared rejection",
         ),
         (
-            "no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, or unowned Amyuni device removal exists",
+            "no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, unowned Amyuni device removal, or RustDesk-authored custom-action DLL exists",
             "Windows certificate cleanup shared success disposition",
         ),
     ):
@@ -11411,6 +11382,10 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
         (
             "MUST NOT</span> enumerate, inspect, or delete certificates",
             "Windows Installer certificate mutation prohibition",
+        ),
+        (
+            "MUST NOT</span> embed, declare, schedule, export, build, or load an application-owned custom-action DLL",
+            "Windows Installer custom-action DLL prohibition",
         ),
     ):
         require_text(installer_requirement, text, label)
@@ -11439,7 +11414,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11453,10 +11428,6 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
         ("Windows application build without certificate cleanup", "application-build mutation"),
         ("Windows certificate cleanup source absence", "deleted-source mutation"),
         ("unowned Windows certificate cleanup/package state absence", "retired-surface mutation"),
-        ("retained exact runtime-broker cleanup declaration", "runtime-cleanup preservation mutation"),
-        ("retained runtime-broker cleanup schedule", "runtime-cleanup schedule mutation"),
-        ("retained runtime-broker cleanup implementation", "runtime-cleanup implementation mutation"),
-        ("retained runtime-broker cleanup implementation export", "runtime-cleanup export mutation"),
         ("Windows certificate cleanup source shared rejection", "shared-gate mutation"),
         ("unowned Windows certificate cleanup excision requirement", "requirement mutation"),
         ("unowned Windows certificate cleanup Appendix C row", "Appendix mutation"),
@@ -11467,21 +11438,16 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
 
 
 def validate_windows_amyuni_cleanup_excision_contract(sources):
-    custom_actions_wxs = sources["windows_custom_actions_wxs"]
     service_wxs = sources["windows_service_wxs"]
-    custom_actions_cpp = sources["windows_custom_actions_cpp"]
-    custom_actions_def = sources["windows_custom_actions_def"]
-    custom_actions_project = sources["windows_custom_actions_project"]
     virtual_display = sources["virtual_display_manager_source"]
     windows_device = sources["windows_device_source"]
     active_surface = "\n".join(
         (
-            custom_actions_wxs,
             service_wxs,
-            custom_actions_cpp,
-            custom_actions_def,
-            custom_actions_project,
             sources["windows_package_wxs"],
+            sources["windows_package_project"],
+            sources["windows_msi_solution"],
+            sources["windows_msi_preprocess"],
             virtual_display,
             windows_device,
         )
@@ -11516,47 +11482,6 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
             forbidden,
             "unowned Windows Amyuni device-removal surface absence",
         )
-    require_absent(
-        "\n".join((custom_actions_wxs, service_wxs)),
-        'Execute="commit"',
-        "Windows MSI commit-action absence",
-    )
-
-    require_exact_count(
-        custom_actions_wxs,
-        "<CustomAction Id=",
-        1,
-        "exact sole Windows DLL custom-action declaration",
-    )
-    require_text(
-        custom_actions_wxs,
-        '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"',
-        "sole runtime-broker cleanup declaration after Amyuni excision",
-    )
-    require_text(
-        service_wxs,
-        '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-        "sole runtime-broker cleanup schedule after Amyuni excision",
-    )
-    require_exact_count(
-        custom_actions_cpp,
-        "UINT __stdcall ",
-        1,
-        "exact sole Windows DLL custom-action implementation",
-    )
-    require_text(
-        custom_actions_cpp,
-        "UINT __stdcall RemoveRuntimeGeneratedFiles(",
-        "sole runtime-broker cleanup implementation after Amyuni excision",
-    )
-    exports = tuple(
-        line.strip()
-        for line in custom_actions_def.splitlines()
-        if line.strip() and line.strip() not in ('LIBRARY "CustomActions"', "EXPORTS")
-    )
-    if exports != ("RemoveRuntimeGeneratedFiles",):
-        raise VerificationError("exact sole Windows DLL custom-action export")
-
     require_text(
         sources["build_py"],
         "available_features = {}",
@@ -11603,7 +11528,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
 
     for text, label in (
         (
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90)",
             "Windows Amyuni cleanup shared source gate",
         ),
         (
@@ -11615,7 +11540,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
             "Windows Amyuni payload shared rejection",
         ),
         (
-            "the exact runtime-broker cleanup is the sole DLL custom action",
+            "exact runtime-broker cleanup is declarative RemoveFile state owned by the application component",
             "Windows Amyuni cleanup shared success disposition",
         ),
     ):
@@ -11657,7 +11582,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11671,10 +11596,6 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
         ("Windows Amyuni removal header absence", "deleted-header mutation"),
         ("Windows Amyuni removal source absence", "deleted-source mutation"),
         ("unowned Windows Amyuni device-removal surface absence", "retired-surface mutation"),
-        ("Windows MSI commit-action absence", "commit-action mutation"),
-        ("exact sole Windows DLL custom-action declaration", "custom-action inventory mutation"),
-        ("exact sole Windows DLL custom-action implementation", "implementation inventory mutation"),
-        ("exact sole Windows DLL custom-action export", "export inventory mutation"),
         ("current Windows release empty third-party resource catalog", "feature-catalog mutation"),
         ("current Windows release plain Flutter build invocation", "release-invocation mutation"),
         ("current Windows release Amyuni payload staging absence", "payload-staging mutation"),
@@ -11691,6 +11612,199 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
         ("unowned Windows Amyuni cleanup excision requirement", "requirement mutation"),
         ("unowned Windows Amyuni cleanup Appendix C row", "Appendix mutation"),
         ("unowned Windows Amyuni cleanup hardening ledger", "hardening-ledger mutation"),
+        ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_declarative_runtime_cleanup_contract(sources):
+    service_wxs = sources["windows_service_wxs"]
+    package_surface = sources["windows_package_wxs"]
+    package_project = sources["windows_package_project"]
+    solution = sources["windows_msi_solution"]
+    preprocess = sources["windows_msi_preprocess"]
+    windows_build = sources["windows_build_script"]
+    online_fetch = sources["online_fetch"]
+
+    runtime_cleanup = '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />'
+    require_exact_count(
+        service_wxs,
+        runtime_cleanup,
+        1,
+        "exact declarative runtime-broker cleanup row",
+    )
+    service_component = extract_between(
+        service_wxs,
+        '<Component Id="App.exe"',
+        "</Component>",
+        "Windows application component",
+    )
+    require_text(
+        service_component,
+        runtime_cleanup,
+        "runtime-broker cleanup application-component ownership",
+    )
+
+    require_text(
+        sources["windows_custom_actions_directory_state"],
+        "windows-custom-actions-directory-absent",
+        "Windows custom-action project directory absence",
+    )
+    require_text(
+        sources["windows_custom_actions_fragment_state"],
+        "windows-custom-actions-fragment-absent",
+        "Windows custom-action fragment absence",
+    )
+    for surface, forbidden, label in (
+        (package_surface, "<CustomAction", "Windows package custom-action declaration absence"),
+        (package_surface, "CustomActionData", "Windows package custom-action data absence"),
+        (
+            package_project,
+            "..\\CustomActions\\CustomActions.vcxproj",
+            "Windows package custom-action project-reference absence",
+        ),
+        (package_project, "CustomActions", "Windows package custom-action name absence"),
+        (solution, "CustomActions", "Windows solution custom-action project absence"),
+        (solution, "{6B3647E0-B4A3-46AE-8757-A22EE51C1DAC}", "Windows solution custom-action GUID absence"),
+        (preprocess, "replace_app_name_in_custom_actions", "Windows custom-action preprocess hook absence"),
+        (windows_build, "CustomActions.vcxproj", "Windows custom-action build path absence"),
+        (windows_build, "WixToolset.DUtil", "Windows DUtil build dependency absence"),
+        (windows_build, "WixToolset.WcaUtil", "Windows WcaUtil build dependency absence"),
+        (online_fetch, "CustomActions.vcxproj", "Windows custom-action offline-capture path absence"),
+        (online_fetch, "WixToolset.DUtil", "Windows DUtil offline dependency absence"),
+        (online_fetch, "WixToolset.WcaUtil", "Windows WcaUtil offline dependency absence"),
+    ):
+        require_absent(surface, forbidden, label)
+
+    require_text(
+        sources["pins"],
+        'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"',
+        "six-package WiX closure digest",
+    )
+    for package in (
+        "wixtoolset.sdk",
+        "wixtoolset.firewall.wixext",
+        "wixtoolset.heat",
+        "wixtoolset.netfx.wixext",
+        "wixtoolset.ui.wixext",
+        "wixtoolset.util.wixext",
+    ):
+        require_text(online_fetch, f"/cache/{package}", f"WiX closure package inventory: {package}")
+    wix_stage = extract_between(
+        online_fetch,
+        "stage_windows_wix_nuget() {\n",
+        "\n}\n\nmain() {",
+        "WiX closure staging function",
+    )
+    require_exact_count(
+        wix_stage,
+        'verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
+        2,
+        "WiX closure preexisting-and-new digest verification",
+    )
+    require_order(
+        wix_stage,
+        (
+            'if [ -f "$out" ]; then',
+            'verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
+            'log "WiX NuGet already staged and digest-verified, skipping"',
+            "return 0",
+        ),
+        "preexisting WiX closure digest verification before skip",
+    )
+    require_text(
+        online_fetch,
+        "Captured by a host `dotnet restore` of the real wixproj. 6 packages.",
+        "six-package WiX closure acquisition description",
+    )
+
+    for text, label in (
+        (
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90)",
+            "declarative runtime-cleanup shared source gate",
+        ),
+        ("declarative-runtime-broker-cleanup-missing", "declarative runtime-cleanup shared assertion"),
+        ("custom-action-project-directory-leftover", "custom-action directory shared rejection"),
+        ("custom-action-build-or-dependency-leftover", "custom-action dependency shared rejection"),
+        (
+            "exact runtime-broker cleanup is declarative RemoveFile state owned by the application component",
+            "declarative runtime-cleanup shared success disposition",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+
+    installer_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11f",
+        "Windows Installer sole-authority requirement",
+    )
+    require_text(
+        installer_requirement,
+        "fixed runtime-generated broker cleanup",
+        "Windows Installer declarative broker-cleanup rule",
+    )
+    require_text(
+        installer_requirement,
+        "This is an authoring boundary, not a claim that the final MSI <code>CustomAction</code> table is empty",
+        "Windows Installer authored-versus-extension action boundary",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bx",
+        "declarative Windows runtime-cleanup requirement",
+    )
+    for text, label in (
+        ("RemoveFile", "Windows declarative file-cleanup requirement"),
+        ("RuntimeBroker_rustdesk.exe", "Windows exact broker filename requirement"),
+        ('On="uninstall"', "Windows component-removal mode requirement"),
+        ("No RustDesk-authored custom path property", "Windows custom path absence requirement"),
+        ("DUtil/WcaUtil", "Windows custom-action dependency absence requirement"),
+        ("six-package digest-pinned WiX closure", "Windows WiX closure requirement"),
+        (
+            "This source invariant does not claim that the final MSI <code>CustomAction</code> table is empty",
+            "Windows extension-owned action attribution requirement",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>217</td>",
+        "declarative Windows runtime-cleanup Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action",
+        "declarative Windows runtime-cleanup hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "declarative Windows runtime-cleanup deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("exact declarative runtime-broker cleanup row", "declarative row mutation"),
+        ("runtime-broker cleanup application-component ownership", "component ownership mutation"),
+        ("Windows custom-action project directory absence", "deleted directory mutation"),
+        ("Windows custom-action fragment absence", "deleted fragment mutation"),
+        ("Windows package custom-action project-reference absence", "project-reference mutation"),
+        ("Windows solution custom-action project absence", "solution-project mutation"),
+        ("Windows custom-action preprocess hook absence", "preprocess-hook mutation"),
+        ("Windows custom-action build path absence", "build-path mutation"),
+        ("Windows DUtil offline dependency absence", "offline-dependency mutation"),
+        ("six-package WiX closure digest", "closure-digest mutation"),
+        ("preexisting WiX closure digest verification before skip", "cached-closure mutation"),
+        ("declarative runtime-cleanup shared assertion", "shared-gate mutation"),
+        ("declarative Windows runtime-cleanup requirement", "requirement mutation"),
+        ("Windows extension-owned action attribution requirement", "extension-action boundary mutation"),
+        ("declarative Windows runtime-cleanup Appendix C row", "Appendix mutation"),
+        ("declarative Windows runtime-cleanup hardening ledger", "hardening-ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -15371,6 +15485,7 @@ def validate_sources(sources):
     validate_windows_installer_api_contract(sources)
     validate_windows_certificate_cleanup_excision_contract(sources)
     validate_windows_amyuni_cleanup_excision_contract(sources)
+    validate_windows_declarative_runtime_cleanup_contract(sources)
     validate_mobile_build_authority_verifier_contract(sources)
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
@@ -27405,20 +27520,20 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11bw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#216",
+            "R-S11n through R-S11bx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#217",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
         (
             "windows_service_wxs",
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles.SetParam" Return="check" Property="RemoveRuntimeGeneratedFiles" Value="[App.InstallFolder]" />',
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles.SetParam" Return="check" Property="RemoveRuntimeGeneratedFiles" Value="[App.InstallFolder]" />\n\t\t<CustomAction Id="LaunchApp" ExeCommand="" Return="asyncNoWait" FileRef="App.exe" />',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />\n\t\t\t\t<CustomAction Id="LaunchApp" ExeCommand="" Return="asyncNoWait" FileRef="App.exe" />',
             "Windows MSI installed application custom action absence",
         ),
         (
             "windows_service_wxs",
-            "\t\t<InstallExecuteSequence>",
-            "\t\t<InstallExecuteSequence>\n\t\t\t<Custom Action=\"LaunchApp\" After=\"InstallFinalize\" />",
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />\n\t\t\t\t<Custom Action="LaunchApp" After="InstallFinalize" />',
             "Windows MSI application sequence absence",
         ),
         (
@@ -27531,7 +27646,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89)",
+            "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90)",
             "Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20)",
             "Windows Installer API shared source gate",
         ),
@@ -27566,64 +27681,10 @@ def run_source_mutations(sources):
             "Windows certificate cleanup source absence",
         ),
         (
-            "windows_custom_actions_wxs",
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>',
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>\n\t\t<CustomAction Id="RemoveTestCertificates" DllEntry="RemoveTestCertificates" Impersonate="no" Execute="commit" Return="check" BinaryRef="Custom_Actions_Dll"/>',
-            "unowned Windows certificate cleanup/package state absence",
-        ),
-        (
             "windows_service_wxs",
-            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-            '<Custom Action="RemoveTestCertificates" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>\n\t\t\t<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />\n\t\t\t\t<CustomAction Id="RemoveTestCertificates" Execute="commit" />',
             "unowned Windows certificate cleanup/package state absence",
-        ),
-        (
-            "windows_custom_actions_cpp",
-            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
-            "UINT __stdcall RemoveTestCertificates(__in MSIHANDLE hInstall) { return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveRuntimeGeneratedFiles(\n",
-            "unowned Windows certificate cleanup/package state absence",
-        ),
-        (
-            "windows_custom_actions_def",
-            "    RemoveRuntimeGeneratedFiles",
-            "    RemoveTestCertificates\n    RemoveRuntimeGeneratedFiles",
-            "unowned Windows certificate cleanup/package state absence",
-        ),
-        (
-            "windows_custom_actions_project",
-            '    <ClCompile Include="CustomActions.cpp" />',
-            '    <ClCompile Include="CustomActions.cpp" />\n    <ClCompile Include="..\\..\\..\\src\\platform\\windows_delete_test_cert.cc" />',
-            "unowned Windows certificate cleanup/package state absence",
-        ),
-        (
-            "windows_custom_actions_wxs",
-            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />',
-            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />\n\t\t<CustomAction Id="UnexpectedMachineMutation" Execute="deferred" BinaryRef="Custom_Actions_Dll"/>',
-            "exact sole Windows DLL custom-action declaration",
-        ),
-        (
-            "windows_custom_actions_wxs",
-            'Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles"',
-            'Id="RemoveRuntimeGeneratedFilesDisabled" DllEntry="RemoveRuntimeGeneratedFiles"',
-            "retained exact runtime-broker cleanup declaration",
-        ),
-        (
-            "windows_service_wxs",
-            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-            '<Custom Action="RemoveRuntimeGeneratedFilesDisabled" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-            "retained runtime-broker cleanup schedule",
-        ),
-        (
-            "windows_custom_actions_cpp",
-            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
-            "UINT __stdcall RemoveRuntimeGeneratedFilesDisabled(\n",
-            "retained runtime-broker cleanup implementation",
-        ),
-        (
-            "windows_custom_actions_def",
-            "    RemoveRuntimeGeneratedFiles",
-            "    RemoveRuntimeGeneratedFilesDisabled",
-            "retained runtime-broker cleanup implementation export",
         ),
         (
             "verify",
@@ -27662,33 +27723,9 @@ def run_source_mutations(sources):
             "Windows Amyuni removal source absence",
         ),
         (
-            "windows_custom_actions_wxs",
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>',
-            '<CustomAction Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check" BinaryRef="Custom_Actions_Dll"/>\n\t\t<CustomAction Id="RemoveAmyuniIdd" DllEntry="RemoveAmyuniIdd" Impersonate="no" Execute="commit" Return="check" BinaryRef="Custom_Actions_Dll"/>',
-            "unowned Windows Amyuni device-removal surface absence",
-        ),
-        (
             "windows_service_wxs",
-            '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-            '<Custom Action="RemoveAmyuniIdd" Before="RemoveRuntimeGeneratedFiles" Condition="Installed AND REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>\n\t\t\t<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>',
-            "unowned Windows Amyuni device-removal surface absence",
-        ),
-        (
-            "windows_custom_actions_cpp",
-            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
-            'UINT __stdcall RemoveAmyuniIdd(__in MSIHANDLE) { UninstallDriver(L"usbmmidd"); return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveRuntimeGeneratedFiles(\n',
-            "unowned Windows Amyuni device-removal surface absence",
-        ),
-        (
-            "windows_custom_actions_def",
-            "    RemoveRuntimeGeneratedFiles",
-            "    RemoveAmyuniIdd\n    RemoveRuntimeGeneratedFiles",
-            "unowned Windows Amyuni device-removal surface absence",
-        ),
-        (
-            "windows_custom_actions_project",
-            '    <ClCompile Include="CustomActions.cpp" />',
-            '    <ClCompile Include="CustomActions.cpp" />\n    <ClCompile Include="DeviceUtils.cpp" />',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />',
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />\n\t\t\t\t<CustomAction Id="RemoveAmyuniIdd" Execute="commit" />',
             "unowned Windows Amyuni device-removal surface absence",
         ),
         (
@@ -27710,22 +27747,100 @@ def run_source_mutations(sources):
             "unowned Windows Amyuni device-removal surface absence",
         ),
         (
-            "windows_custom_actions_wxs",
-            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />',
-            '<Binary Id="Custom_Actions_Dll" SourceFile="$(var.CustomActions.TargetDir)$(var.CustomActions.TargetName).dll" />\n\t\t<CustomAction Id="UnexpectedCommitAction" Execute="commit" BinaryRef="Custom_Actions_Dll"/>',
-            "Windows MSI commit-action absence",
+            "windows_service_wxs",
+            '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />',
+            '<RemoveFile Id="Remove.RuntimeBroker.Disabled" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />',
+            "exact declarative runtime-broker cleanup row",
         ),
         (
-            "windows_custom_actions_cpp",
-            "UINT __stdcall RemoveRuntimeGeneratedFiles(\n",
-            "UINT __stdcall UnexpectedCustomAction(__in MSIHANDLE) { return ERROR_SUCCESS; }\n\nUINT __stdcall RemoveRuntimeGeneratedFiles(\n",
-            "exact sole Windows DLL custom-action implementation",
+            "windows_service_wxs",
+            '</File>\n\t\t\t\t<RemoveFile Id="Remove.RuntimeBroker"',
+            '</File>\n\t\t\t</Component>\n\t\t\t\t<RemoveFile Id="Remove.RuntimeBroker"',
+            "runtime-broker cleanup application-component ownership",
         ),
         (
-            "windows_custom_actions_def",
-            "    RemoveRuntimeGeneratedFiles",
-            "    UnexpectedCustomAction\n    RemoveRuntimeGeneratedFiles",
-            "exact sole Windows DLL custom-action export",
+            "windows_custom_actions_directory_state",
+            "windows-custom-actions-directory-absent",
+            "windows-custom-actions-directory-present",
+            "Windows custom-action project directory absence",
+        ),
+        (
+            "windows_custom_actions_fragment_state",
+            "windows-custom-actions-fragment-absent",
+            "windows-custom-actions-fragment-present",
+            "Windows custom-action fragment absence",
+        ),
+        (
+            "windows_package_project",
+            '    <Content Include="Includes.wxi" />',
+            '    <Content Include="Includes.wxi" />\n    <ProjectReference Include="..\\CustomActions\\CustomActions.vcxproj" />',
+            "Windows package custom-action project-reference absence",
+        ),
+        (
+            "windows_msi_solution",
+            'Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "Package", "Package\\Package.wixproj", "{F403A403-CEFF-4399-B51C-CC646C8E98CF}"\nEndProject',
+            'Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "Package", "Package\\Package.wixproj", "{F403A403-CEFF-4399-B51C-CC646C8E98CF}"\nEndProject\nProject("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CustomActions", "CustomActions\\CustomActions.vcxproj", "{6B3647E0-B4A3-46AE-8757-A22EE51C1DAC}"\nEndProject',
+            "Windows solution custom-action project absence",
+        ),
+        (
+            "windows_msi_preprocess",
+            "import shutil",
+            "import shutil\n\ndef replace_app_name_in_custom_actions(_):\n    pass",
+            "Windows custom-action preprocess hook absence",
+        ),
+        (
+            "windows_build_script",
+            "    $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'",
+            "    $customActionsProject = 'CustomActions.vcxproj'\n    $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'",
+            "Windows custom-action build path absence",
+        ),
+        (
+            "online_fetch",
+            "        dotnet restore Package/Package.wixproj >/dev/null 2>&1",
+            "        dotnet restore Package/Package.wixproj >/dev/null 2>&1\n        dotnet add package WixToolset.DUtil -v 4.0.5 >/dev/null 2>&1",
+            "Windows DUtil offline dependency absence",
+        ),
+        (
+            "pins",
+            'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"',
+            'SHA256_WIX_NUGET="0f76c469cd2171f3bf7913828851a2cb22c10a7e0be8bf73ef99a791a6cd1190"',
+            "six-package WiX closure digest",
+        ),
+        (
+            "online_fetch",
+            '        verify_sha256 "$out" "${SHA256_WIX_NUGET}"\n        log "WiX NuGet already staged and digest-verified, skipping"',
+            '        log "WiX NuGet already staged without digest verification, skipping"\n        return 0\n        verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
+            "preexisting WiX closure digest verification before skip",
+        ),
+        (
+            "verify",
+            "declarative-runtime-broker-cleanup-missing",
+            "declarative-runtime-broker-cleanup-gate-disabled",
+            "declarative runtime-cleanup shared assertion",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bx</span>',
+            '<span class="id">R-S11bx-disabled</span>',
+            "declarative Windows runtime-cleanup requirement",
+        ),
+        (
+            "requirements",
+            "This source invariant does not claim that the final MSI <code>CustomAction</code> table is empty",
+            "This source invariant claims that the final MSI <code>CustomAction</code> table is empty",
+            "Windows extension-owned action attribution requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>217</td>",
+            "<tr><td>217-disabled</td>",
+            "declarative Windows runtime-cleanup Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action",
+            "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup uses a custom-action DLL",
+            "declarative Windows runtime-cleanup hardening ledger",
         ),
         (
             "build_py",
@@ -27801,8 +27916,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "the exact runtime-broker cleanup is the sole DLL custom action",
-            "multiple machine-state DLL custom actions remain",
+            "exact runtime-broker cleanup is declarative RemoveFile state owned by the application component",
+            "runtime-broker cleanup regained custom-action ownership",
             "Windows Amyuni cleanup shared success disposition",
         ),
         (
@@ -29569,12 +29684,16 @@ def main():
             "service_manual": (repo / "res/service-managers/manual/rustdesk-service").read_text(encoding="utf-8"),
             "service_manual_mode": os.lstat(repo / "res/service-managers/manual/rustdesk-service").st_mode,
             "windows_service_wxs": (repo / "res/msi/Package/Components/RustDesk.wxs").read_text(encoding="utf-8"),
-            "windows_custom_actions_wxs": (
-                repo / "res/msi/Package/Fragments/CustomActions.wxs"
-            ).read_text(encoding="utf-8"),
-            "windows_custom_actions_cpp": (
-                repo / "res/msi/CustomActions/CustomActions.cpp"
-            ).read_text(encoding="utf-8"),
+            "windows_custom_actions_directory_state": (
+                "windows-custom-actions-directory-present"
+                if os.path.lexists(repo / "res/msi/CustomActions")
+                else "windows-custom-actions-directory-absent"
+            ),
+            "windows_custom_actions_fragment_state": (
+                "windows-custom-actions-fragment-present"
+                if os.path.lexists(repo / "res/msi/Package/Fragments/CustomActions.wxs")
+                else "windows-custom-actions-fragment-absent"
+            ),
             "windows_custom_actions_header_state": (
                 "windows-custom-actions-header-present"
                 if os.path.lexists(repo / "res/msi/CustomActions/Common.h")
@@ -29585,12 +29704,11 @@ def main():
                 if os.path.lexists(repo / "res/msi/CustomActions/DeviceUtils.cpp")
                 else "windows-device-utils-source-absent"
             ),
-            "windows_custom_actions_def": (
-                repo / "res/msi/CustomActions/CustomActions.def"
+            "windows_package_project": (
+                repo / "res/msi/Package/Package.wixproj"
             ).read_text(encoding="utf-8"),
-            "windows_custom_actions_project": (
-                repo / "res/msi/CustomActions/CustomActions.vcxproj"
-            ).read_text(encoding="utf-8"),
+            "windows_msi_solution": (repo / "res/msi/msi.sln").read_text(encoding="utf-8"),
+            "windows_msi_preprocess": (repo / "res/msi/preprocess.py").read_text(encoding="utf-8"),
             "windows_certificate_cleanup_source_state": (
                 "windows-certificate-cleanup-source-present"
                 if os.path.lexists(repo / "src/platform/windows_delete_test_cert.cc")

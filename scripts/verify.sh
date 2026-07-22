@@ -1873,10 +1873,9 @@ if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance inva
   echo "  ok  retained Windows RDP, terminal shell, portable broker, Amyuni runtime, and IDD-excision invariants are source-gated"; fi
 
 
-echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89) =="
+echo "== (3b-iii-a5e) Windows Installer is the sole machine-state authority (R-S11f/R-S11e-20/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90) =="
 r_s11e20=
 windows_msi=res/msi/Package/Components/RustDesk.wxs
-windows_ca=res/msi/Package/Fragments/CustomActions.wxs
 portable=libs/portable/src/main.rs
 windows_build=scripts/build-windows.ps1
 service_component=$(awk '/<Component Id="App.exe"/,/<\/Component>/' "$windows_msi")
@@ -1926,25 +1925,28 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_cert_creation" -rInE '<Ce
 fi
 grep -Fq 'cc::Build::new().file(file).compile("windows");' build.rs || r_s11e20="$r_s11e20 windows-native-build-not-certificate-cleanup-free"
 
-grep -Fq 'if (!DeleteRuntimeGeneratedFile(normalizedInstallFolder, L"RuntimeBroker_rustdesk.exe"))' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 runtime-broker-cleanup-result-not-checked"
-grep -Fq 'Failed to remove runtime-generated broker executable' res/msi/CustomActions/CustomActions.cpp || r_s11e20="$r_s11e20 runtime-broker-cleanup-not-fatal"
-grep -Fq 'Id="RemoveRuntimeGeneratedFiles" DllEntry="RemoveRuntimeGeneratedFiles" Impersonate="no" Execute="deferred" Return="check"' "$windows_ca" || r_s11e20="$r_s11e20 runtime-broker-cleanup-action-not-checked"
-grep -Fq '<Custom Action="RemoveRuntimeGeneratedFiles" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot; OR UPGRADINGPRODUCTCODE)"/>' "$windows_msi" || r_s11e20="$r_s11e20 runtime-broker-cleanup-not-deferred-before-remove-files"
+grep -Fq '<RemoveFile Id="Remove.RuntimeBroker" Name="RuntimeBroker_rustdesk.exe" On="uninstall" />' "$windows_msi" || r_s11e20="$r_s11e20 declarative-runtime-broker-cleanup-missing"
+[ ! -e res/msi/CustomActions ] || r_s11e20="$r_s11e20 custom-action-project-directory-leftover"
+[ ! -e res/msi/Package/Fragments/CustomActions.wxs ] || r_s11e20="$r_s11e20 custom-action-fragment-leftover"
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_custom_action_surface" -rInE 'CustomAction|Custom_Actions|BinaryRef|RemoveRuntimeGeneratedFiles|CustomActionData' res/msi; then
+  r_s11e20="$r_s11e20 custom-action-surface-leftover:$(tr '\n' ' ' < "$VERIFY_TMP/rd_verify_r_s11e20_custom_action_surface")"
+fi
+if grep -Eq 'CustomActions|DUtil|WcaUtil' res/msi/Package/Package.wixproj res/msi/msi.sln res/msi/preprocess.py "$windows_build" scripts/online-fetch.sh; then
+  r_s11e20="$r_s11e20 custom-action-build-or-dependency-leftover"
+fi
+grep -Fq 'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"' scripts/pins.env || r_s11e20="$r_s11e20 six-package-wix-closure-digest-missing"
+grep -Fq '# msbuild needs 0 network. Captured by a host `dotnet restore` of the real wixproj. 6 packages.' scripts/online-fetch.sh || r_s11e20="$r_s11e20 six-package-wix-closure-stager-missing"
+wix_stage=$(awk '/^stage_windows_wix_nuget\(\) \{/{capture=1} capture{print} capture && /^}/{exit}' scripts/online-fetch.sh)
+wix_cached_verify_line=$(grep -nF 'verify_sha256 "$out" "${SHA256_WIX_NUGET}"' <<<"$wix_stage" | cut -d: -f1 | head -n1 || true)
+wix_cached_return_line=$(grep -nF 'return 0' <<<"$wix_stage" | cut -d: -f1 | head -n1 || true)
+if [ -z "$wix_cached_verify_line" ] || [ -z "$wix_cached_return_line" ] || [ "$wix_cached_verify_line" -ge "$wix_cached_return_line" ]; then
+  r_s11e20="$r_s11e20 cached-wix-closure-not-digest-verified-before-skip"
+fi
 
-[ ! -e res/msi/CustomActions/Common.h ] || r_s11e20="$r_s11e20 amyuni-removal-header-leftover"
-[ ! -e res/msi/CustomActions/DeviceUtils.cpp ] || r_s11e20="$r_s11e20 amyuni-removal-source-leftover"
 if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_amyuni_remove" -nE 'RemoveAmyuniIdd|DriverUninstallStatus|UninstallDriver|DeviceUtils\.cpp|Common\.h|DI_REMOVEDEVICE_GLOBAL|DIF_REMOVE|WcaDeferredActionRequiresReboot|remove usbmmidd|DeviceInstaller64RebootPolicy|pub (unsafe )?fn uninstall_driver' \
-  res/msi/CustomActions/CustomActions.cpp res/msi/CustomActions/CustomActions.def \
-  res/msi/CustomActions/CustomActions.vcxproj res/msi/Package/Fragments/CustomActions.wxs \
-  res/msi/Package/Components/RustDesk.wxs src/virtual_display_manager.rs src/platform/win_device.rs; then
+  res/msi src/virtual_display_manager.rs src/platform/win_device.rs; then
   r_s11e20="$r_s11e20 amyuni-device-removal-surface-leftover"
 fi
-custom_action_declarations=$(grep -Ec '<CustomAction Id="' "$windows_ca" || true)
-[ "$custom_action_declarations" = 1 ] || r_s11e20="$r_s11e20 custom-action-declaration-count-not-one:$custom_action_declarations"
-custom_action_exports=$(awk 'NF && $1 != "LIBRARY" && $1 != "EXPORTS" { print $1 }' res/msi/CustomActions/CustomActions.def)
-[ "$custom_action_exports" = RemoveRuntimeGeneratedFiles ] || r_s11e20="$r_s11e20 custom-action-export-inventory-not-exact"
-custom_action_entrypoints=$(grep -Ec '^UINT __stdcall ' res/msi/CustomActions/CustomActions.cpp || true)
-[ "$custom_action_entrypoints" = 1 ] || r_s11e20="$r_s11e20 custom-action-entrypoint-count-not-one:$custom_action_entrypoints"
 grep -Fq 'available_features = {}' build.py || r_s11e20="$r_s11e20 current-third-party-resource-feature-catalog-not-empty"
 grep -Fq '& $PYTHON_EXE build.py --flutter' "$windows_build" || r_s11e20="$r_s11e20 current-windows-release-invocation-not-plain-flutter"
 if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_amyuni_payload" -nE 'usbmmidd_v2|usbmmIdd\.inf|deviceinstaller64\.exe' build.py "$windows_build"; then
@@ -1954,7 +1956,7 @@ grep -Fq 'win_device::install_driver(inf_path, HARDWARE_ID, &mut reboot_required
 grep -Fq '"install usbmmidd.inf usbmmidd"' src/virtual_display_manager.rs || r_s11e20="$r_s11e20 amyuni-fixed-helper-install-not-preserved"
 grep -Fq 'pub unsafe fn device_io_control(' src/platform/win_device.rs || r_s11e20="$r_s11e20 amyuni-device-io-not-preserved"
 
-if grep -Eq 'reg[}"]?[[:space:]]+add.*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs res/msi/CustomActions/CustomActions.cpp; then
+if grep -Eq 'reg[}"]?[[:space:]]+add.*SoftwareSASGeneration|AddRegSoftwareSASGeneration|RegSetValueExW\(.*SoftwareSASGeneration' src/platform/windows.rs; then
   r_s11e20="$r_s11e20 persistent-sas-installer-write-leftover"
 fi
 sas_policy_read=$(awk '/fn read_software_sas_generation_policy/,/^}/' src/platform/windows.rs)
@@ -2092,8 +2094,11 @@ grep -Fq '<tr><td>215</td>' requirements.html || r_s11e20="$r_s11e20 unowned-cer
 grep -Fq '<span class="id">R-S11bw</span>' requirements.html || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-requirement-missing"
 grep -Fq 'R-S11bw/R-S11e-89 — Windows uninstall never removes an Amyuni device without exact device-instance ownership' HARDENING_STATUS.md || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-ledger-missing"
 grep -Fq '<tr><td>216</td>' requirements.html || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-disposition-missing"
+grep -Fq '<span class="id">R-S11bx</span>' requirements.html || r_s11e20="$r_s11e20 declarative-runtime-cleanup-requirement-missing"
+grep -Fq 'R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action' HARDENING_STATUS.md || r_s11e20="$r_s11e20 declarative-runtime-cleanup-ledger-missing"
+grep -Fq '<tr><td>217</td>' requirements.html || r_s11e20="$r_s11e20 declarative-runtime-cleanup-disposition-missing"
 if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
-  echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87/R-S11e-88/R-S11e-89 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, or unowned Amyuni device removal exists; the exact runtime-broker cleanup is the sole DLL custom action; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall actions, basename MSI kills, and recursive artifact discovery are absent"
+  echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, unowned Amyuni device removal, or RustDesk-authored custom-action DLL exists; exact runtime-broker cleanup is declarative RemoveFile state owned by the application component; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall/file actions, basename MSI kills, and recursive artifact discovery are absent"
 fi
 
 echo "== (3b-iii-a6) Windows UAC process state is exact-image/current-session owned (R-S11d-3/R-S11w/R-S11e-37) =="

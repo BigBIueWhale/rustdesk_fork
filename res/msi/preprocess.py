@@ -11,7 +11,6 @@ import subprocess
 import re
 import platform
 from pathlib import Path
-from itertools import chain
 import shutil
 
 g_indent_unit = "\t"
@@ -223,17 +222,6 @@ def replace_app_name_in_langs(app_name):
             lines = f.readlines()
         for i, line in enumerate(lines):
             lines[i] = line.replace("RustDesk", app_name)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.writelines(lines)
-
-def replace_app_name_in_custom_actions(app_name):
-    custion_actions_dir = Path(sys.argv[0]).parent.joinpath("CustomActions")
-    for file_path in chain(custion_actions_dir.glob("*.cpp"), custion_actions_dir.glob("*.h")):
-        with open(file_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        for i, line in enumerate(lines):
-            line = re.sub(r"\bRustDesk\b", app_name, line)
-            lines[i] = line
         with open(file_path, "w", encoding="utf-8") as f:
             f.writelines(lines)
 
@@ -593,4 +581,3 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     replace_app_name_in_langs(args.app_name)
-    replace_app_name_in_custom_actions(args.app_name)

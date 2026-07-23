@@ -8695,9 +8695,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed. This closes future one-time generator source/runtime authority only; current APK identity, device
   upgrade behavior, the complete R-B2 release transaction, native Apple/Windows evidence, and external review
   remain separate obligations.
-- **R-S11ch/R-S11e-100 — Windows helper container and KVM authority — SOURCE IMPLEMENTED;
-  PROVISION-TIME GOLDEN HASH-ORDER WORDING CORRECTED 2026-07-23; EXACT CORRECTED-COMMIT EVIDENCE
-  PENDING.** Platform: the unprivileged Linux build host and the pinned
+- **R-S11ch/R-S11e-100 — Windows helper container and KVM authority — CORRECTED SOURCE COMMITTED
+  2026-07-23 AT `1b5f4b665a4389151bdf50ff82eaaa136d55ed4a`
+  (TREE `2d22f7a9e4ca5fcc82280ac19d96f94fcaadd5ad`); EXACT CLEAN-COMMIT
+  FOCUSED/WORKSPACE/HARNESS GATES AND DISPOSABLE NON-ROOT TCG/KVM/RELATIVE-OVERLAY PROBES PASS;
+  ESTABLISHED-GOLDEN, WINDOWS-ARTIFACT, AND RELEASE EVIDENCE PENDING.** Platform: the unprivileged
+  Linux build host and the pinned
   Ubuntu helper used around the Windows KVM harness. Endpoint/action: WiX extraction, offline-ISO creation,
   output-disk creation, overlay EFI preparation, result extraction, MSI canonicalization, and read-only golden
   completion/inventory inspection. Boundary: caller Docker authority, captured helper/archive bytes, private
@@ -8759,20 +8762,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   consumer shapes, fixed image/client/config, archive/kernel derivation and pins, provenance-reader confinement,
   exact mounts, relative overlay, sole KVM grant, forbidden authority, R-S11ch, Appendix C #227, this ledger,
   operator documentation, shared-gate wiring, and independent workspace ownership through deliberate mutations.
-  Before the hash-order wording/gate clarification, clean implementation commit
-  `bc3bb5be0083e0cbd6d124ecb7e70b1ed74c0c57` (tree
-  `4003869e60bf43004634463f960b2b93918c37f3`) rejected all 39 then-defined deliberate weakenings under
-  immutable verifier image
+  From the exact clean corrected source commit/tree above, the focused verifier rejected all 42 deliberate
+  weakenings—including established-golden prehash, provision marker/final-hash/acceptance order, and diagnostic
+  prehash—under immutable verifier image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`;
   the independent workspace source-mutation catalog passed under the same image. The broader Windows-harness
   verifier passed 139 mutations and four bounded behavioral suites under exact helper image
   `sha256:aa9abae2debc838591649fb0b7b94f9f2f24e7848c699cd70e1103a690db21ce`.
   Dependency inventory and all 103 inventory self-tests, Bash syntax and isolated Python bytecode compilation,
   offline-image-provenance self-test, native-codec normal/negative gates, `git diff --check`, and synchronized
-  requirements SHA-256 `b3925b07de72130f148c0c47338aa3c6089f12360cab8a84a51410f51fb07e92`
-  also passed from that clean commit. Those results validate the unchanged runtime implementation but are not
-  claimed as exact evidence for the corrected normative text and added hash-order mutations; the corrected
-  source/evidence identity remains pending in this commit. The monolithic `scripts/verify.sh` was deliberately not invoked because it
+  requirements SHA-256 `dd7d7cff62ef3affa5352b9b9eda85f3a0046562516bcc25a1b68eb7e4628f3e`
+  also passed from that clean commit. The monolithic `scripts/verify.sh` was deliberately not invoked because it
   includes two UID-0 containers with `CAP_CHOWN`/`CAP_FOWNER`; running those would have violated this
   investigation's explicit no-root boundary. Its R-S11ch focused gate and independent ownership binding were
   instead executed directly under the non-root confined images above. No full-verifier verdict is claimed.

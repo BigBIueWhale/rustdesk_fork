@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+"""Validate the online acquisition containers' execution authority."""
+
+import argparse
+import pathlib
+import re
+from typing import Dict, NamedTuple, Tuple
+
+
+class AuthorityError(Exception):
+    pass
+
+
+class Mutation(NamedTuple):
+    source: str
+    old: str
+    new: str
+    label: str
+
+
+def require(source: str, token: str, label: str) -> None:
+    if token not in source:
+        raise AuthorityError("missing {}".format(label))
+
+
+def require_count(source: str, token: str, count: int, label: str) -> None:
+    observed = source.count(token)
+    if observed != count:
+        raise AuthorityError("{} count is {}, expected {}".format(label, observed, count))
+
+
+def forbid(source: str, token: str, label: str) -> None:
+    if token in source:
+        raise AuthorityError("forbidden {}".format(label))
+
+
+def extract(source: str, start: str, end: str, label: str) -> str:
+    if source.count(start) != 1:
+        raise AuthorityError("{} start cardinality differs".format(label))
+    begin = source.index(start)
+    finish = source.find(end, begin + len(start))
+    if finish < 0:
+        raise AuthorityError("{} end is missing".format(label))
+    return source[begin : finish + len(end)]
+
+
+def forbid_container_authority(source: str, label: str) -> None:
+    for token, description in (
+        ("--privileged", "privileged mode"),
+        ("--cap-add", "added capability"),
+        ("--network=host", "host network namespace"),
+        ("--network host", "host network namespace"),
+        ("--pid=host", "host PID namespace"),
+        ("--pid host", "host PID namespace"),
+        ("--ipc=host", "host IPC namespace"),
+        ("--ipc host", "host IPC namespace"),
+        ("--uts=host", "host UTS namespace"),
+        ("--uts host", "host UTS namespace"),
+        ("--publish", "published port"),
+        ("--publish-all", "published ports"),
+        ("--expose", "exposed port"),
+        ("--device", "host device"),
+        ("/var/run/docker.sock:/var/run/docker.sock", "Docker socket volume"),
+        ("source=/var/run/docker.sock", "Docker socket mount"),
+    ):
+        forbid(source, token, "{} {}".format(label, description))
+    if re.search(r"^\s+-(?:p|P)(?:\s|=)", source, re.MULTILINE):
+        raise AuthorityError("forbidden {} short published port".format(label))
+
+
+def validate(sources: Dict[str, str]) -> None:
+    shell = sources["shell"]
+    for token, label in (
+        ("readonly DOCKER_BIN=/usr/bin/docker", "fixed Docker client"),
+        ("readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock",
+         "fixed local Docker endpoint"),
+        ('[ "$ONLINE_FETCH_UID" -ne 0 ]', "host-root refusal"),
+        ('[ "$ONLINE_FETCH_GID" -ne 0 ]', "root-primary-group refusal"),
+        ('[ "$(stat -c \'%u:%g:%a:%h\' -- "$DOCKER_BIN")" = "0:0:755:1" ]',
+         "trusted Docker client metadata"),
+        ("for variable in DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+         "caller Docker authority rejection"),
+        ("ONLINE_FETCH_TMP=\"$(umask 077 && mktemp -d /tmp/rustdesk-online-fetch.",
+         "private workspace"),
+        ("trap cleanup_online_fetch_tmp EXIT", "private workspace cleanup"),
+        ('readonly ONLINE_FETCH_DOCKER_CONFIG="$ONLINE_FETCH_TMP/docker-config"',
+         "private Docker configuration"),
+        ("printf '{}\\n' >\"$ONLINE_FETCH_DOCKER_CONFIG/config.json\"",
+         "canonical empty Docker configuration"),
+        ('[ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ]',
+         "Docker configuration byte proof"),
+        ("env -i \\\n        PATH=/usr/bin:/bin", "closed Docker client environment"),
+        ('--host "$ONLINE_FETCH_DOCKER_HOST"', "explicit Docker endpoint"),
+        ('--config "$ONLINE_FETCH_DOCKER_CONFIG"', "explicit Docker configuration"),
+        ("online_image_provenance()", "confined image-provenance funnel"),
+        ("require_online_fetch_builder_image()", "verified immutable-image funnel"),
+        ('--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
+         "exact loaded-image verification"),
+        ("former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
+         "unreviewed WiX producer refusal"),
+    ):
+        require(shell, token, label)
+
+    docker_client = extract(
+        shell,
+        "online_docker() {",
+        '    return "$status"\n}',
+        "Docker client funnel",
+    )
+    require(
+        docker_client,
+        "env -i \\\n        PATH=/usr/bin:/bin",
+        "Docker client funnel closed environment",
+    )
+
+    run = extract(
+        shell,
+        "online_docker_run() {",
+        '        "$@"\n}',
+        "online acquisition launch funnel",
+    )
+    for token, label in (
+        ("online_docker run --rm", "ephemeral container"),
+        ("--pull=never", "no-pull policy"),
+        ("--network=bridge", "intentional isolated bridge egress"),
+        ("--read-only", "read-only root"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "numeric nonroot identity"),
+        ("--cap-drop=ALL", "complete capability drop"),
+        ("--security-opt=no-new-privileges", "no-new-privileges"),
+        ("--pids-limit=2048", "PID ceiling"),
+        ("--memory=16g", "memory ceiling"),
+        ("--memory-swap=16g", "no-swap expansion"),
+        ("--cpus=4", "CPU ceiling"),
+        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g",
+         "bounded scratch"),
+    ):
+        require(run, token, "launch funnel {}".format(label))
+    forbid_container_authority(run, "launch funnel")
+
+    provenance = extract(
+        shell,
+        "online_image_provenance() {",
+        '    return "$status"\n}',
+        "image-provenance funnel",
+    )
+    require_count(
+        provenance,
+        "assert_online_fetch_docker_authority",
+        2,
+        "image-provenance Docker authority proofs",
+    )
+    require(
+        provenance,
+        '/usr/bin/python3 "$LIB_DIR/offline-image-provenance.py" "$@"',
+        "fixed image-provenance program",
+    )
+    require(
+        provenance,
+        "env -i \\\n        PATH=/usr/bin:/bin \\\n        HOME=\"$ONLINE_FETCH_TMP\" \\\n"
+        "        DOCKER_HOST=\"$ONLINE_FETCH_DOCKER_HOST\" \\\n"
+        "        DOCKER_CONFIG=\"$ONLINE_FETCH_DOCKER_CONFIG\"",
+        "closed image-provenance environment",
+    )
+
+    require_count(shell, "online_docker_run ", 10, "ordinary acquisition launch inventory")
+    require_count(shell, "online_docker run ", 1, "sole ordinary Docker run primitive")
+    for token, label in (
+        ("--pull=", "pull policy"),
+        ("--read-only", "root-filesystem policy"),
+        ("--user ", "container identity"),
+        ("--cap-drop=", "capability policy"),
+        ("--security-opt=", "security policy"),
+        ("--pids-limit=", "PID policy"),
+        ("--memory=", "memory policy"),
+        ("--memory-swap=", "swap policy"),
+        ("--cpus=", "CPU policy"),
+        ("--tmpfs ", "scratch policy"),
+    ):
+        require_count(shell, token, 1, "sole {}".format(label))
+    require_count(
+        shell,
+        'local builder="$DEB_BUILDER_IMAGE_ID"',
+        5,
+        "exact Debian builder consumers",
+    )
+    require_count(
+        shell,
+        'local builder="$ANDROID_BUILDER_IMAGE_ID"',
+        5,
+        "exact Android builder consumers",
+    )
+    require_count(
+        shell,
+        "require_online_fetch_builder_image ",
+        10,
+        "per-launch exact-image verification",
+    )
+
+    for token, label in (
+        ("compatibility_tag", "compatibility-tag API"),
+        ('"$builder" bash', "legacy mutable launch shape"),
+        ("online_docker_run \"$@\"", "external Docker option passthrough"),
+        ("online_docker_run ${", "environment-selected Docker option passthrough"),
+        ("online_docker_run ubuntu:", "public Ubuntu runtime tag"),
+        ("online_docker_run mcr.microsoft.com", "public .NET runtime tag"),
+        ("apt-get update -qq", "live package installation in an ordinary producer"),
+    ):
+        forbid(shell, token, label)
+    if re.search(r"(?m)^\s*docker\s+(?:run|tag)\b", shell):
+        raise AuthorityError("forbidden ambient Docker run/tag primitive")
+    forbid_container_authority(shell, "ordinary online-fetch source")
+
+    require(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
+        "shared focused-verifier wiring",
+    )
+    require(sources["requirements"], '<span class="id">R-S11cj</span>', "R-S11cj requirement")
+    require(sources["requirements"], "<tr><td>229</td>", "Appendix C #229 disposition")
+    require(
+        sources["hardening"],
+        "R-S11cj/R-S11e-102 — online acquisition container execution authority",
+        "hardening-ledger disposition",
+    )
+    require(
+        sources["workspace"],
+        '"online_fetch_container_authority_verifier"',
+        "workspace-verifier source ownership",
+    )
+    require(
+        sources["workspace"],
+        "Online acquisition container authority focused verifier",
+        "workspace-verifier semantic binding",
+    )
+
+
+MUTATIONS: Tuple[Mutation, ...] = (
+    Mutation("shell", "readonly DOCKER_BIN=/usr/bin/docker", "DOCKER_BIN=docker",
+             "fixed Docker client"),
+    Mutation("shell", "readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock",
+             "readonly ONLINE_FETCH_DOCKER_HOST=tcp://127.0.0.1:2375",
+             "fixed local Docker endpoint"),
+    Mutation("shell", '"$ONLINE_FETCH_UID" -ne 0', '"$ONLINE_FETCH_UID" -ge 0',
+             "host-root refusal"),
+    Mutation("shell", '"$ONLINE_FETCH_GID" -ne 0', '"$ONLINE_FETCH_GID" -ge 0',
+             "root-primary-group refusal"),
+    Mutation(
+        "shell",
+        "online_docker() {\n    local status=0\n    assert_online_fetch_docker_authority\n"
+        "    env -i \\\n        PATH=/usr/bin:/bin",
+        "online_docker() {\n    local status=0\n    assert_online_fetch_docker_authority\n"
+        "    env \\\n        PATH=\"$PATH\"",
+        "closed Docker environment",
+    ),
+    Mutation("shell", '--host "$ONLINE_FETCH_DOCKER_HOST"', '--host "$DOCKER_HOST"',
+             "fixed endpoint use"),
+    Mutation("shell", '--config "$ONLINE_FETCH_DOCKER_CONFIG"', '--config "$HOME/.docker"',
+             "private Docker configuration use"),
+    Mutation("shell", '[ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ]',
+             "true", "empty Docker configuration proof"),
+    Mutation(
+        "shell",
+        "online_image_provenance() {\n    local status=0\n    assert_online_fetch_docker_authority",
+        "online_image_provenance() {\n    local status=0\n    true",
+        "image-provenance Docker authority proofs",
+    ),
+    Mutation(
+        "shell",
+        "online_image_provenance() {\n    local status=0\n"
+        "    assert_online_fetch_docker_authority\n    env -i",
+        "online_image_provenance() {\n    local status=0\n"
+        "    assert_online_fetch_docker_authority\n    env",
+        "closed image-provenance environment",
+    ),
+    Mutation("shell", "--pull=never", "--pull=always", "no-pull policy"),
+    Mutation("shell", "--network=bridge", "--network=host", "isolated acquisition network"),
+    Mutation("shell", "--read-only", "--hostname=online-fetch", "read-only root"),
+    Mutation("shell", '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "--user 0:0",
+             "numeric nonroot identity"),
+    Mutation("shell", "--cap-drop=ALL", "--cap-drop=NET_RAW", "complete capability drop"),
+    Mutation("shell", "--security-opt=no-new-privileges",
+             "--security-opt=seccomp=unconfined", "no-new-privileges"),
+    Mutation("shell", "--pids-limit=2048", "--pids-limit=-1", "PID ceiling"),
+    Mutation("shell", "--memory=16g", "--memory=0", "memory ceiling"),
+    Mutation("shell", "--memory-swap=16g", "--memory-swap=-1", "swap ceiling"),
+    Mutation("shell", "--cpus=4", "--cpus=0", "CPU ceiling"),
+    Mutation("shell", "size=12g", "size=120g", "scratch ceiling"),
+    Mutation("shell", 'build_frb_codegen() {\n    local builder="$DEB_BUILDER_IMAGE_ID"',
+             'build_frb_codegen() {\n    local builder="ubuntu:18.04"',
+             "exact Debian image"),
+    Mutation("shell", 'stage_vcpkg_natives_arm64() {\n    local builder="$ANDROID_BUILDER_IMAGE_ID"',
+             'stage_vcpkg_natives_arm64() {\n    local builder="ubuntu:24.04"',
+             "exact Android image"),
+    Mutation("shell", "--image-ref \"$image_id\" --role \"$role\" --expected-id \"$image_id\"",
+             "--image-ref \"$role\" --role \"$role\" --expected-id \"$image_id\"",
+             "exact loaded-image verification"),
+    Mutation("shell", "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
+             "mcr.microsoft.com/dotnet/sdk:8.0 producer is allowed",
+             "mutable WiX producer refusal"),
+    Mutation(
+        "verify",
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
+        "true # online-fetch authority gate removed",
+        "shared focused-verifier wiring",
+    ),
+    Mutation("requirements", '<span class="id">R-S11cj</span>',
+             '<span class="id">R-S11cj-disabled</span>', "R-S11cj requirement"),
+    Mutation("requirements", "<tr><td>229</td>", "<tr><td>229-disabled</td>",
+             "Appendix C #229 disposition"),
+    Mutation(
+        "hardening",
+        "R-S11cj/R-S11e-102 — online acquisition container execution authority",
+        "R-S11cj/R-S11e-102 — ambient online acquisition authority",
+        "hardening-ledger disposition",
+    ),
+)
+
+
+def load_sources(repo: pathlib.Path) -> Dict[str, str]:
+    return {
+        "shell": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
+        "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
+        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
+        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
+        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(encoding="utf-8"),
+    }
+
+
+def run_mutations(sources: Dict[str, str]) -> None:
+    for mutation in MUTATIONS:
+        original = sources[mutation.source]
+        count = original.count(mutation.old)
+        if count != 1:
+            raise AuthorityError(
+                "mutation target for {} occurs {} times".format(mutation.label, count)
+            )
+        changed = dict(sources)
+        changed[mutation.source] = original.replace(mutation.old, mutation.new, 1)
+        try:
+            validate(changed)
+        except AuthorityError:
+            continue
+        raise AuthorityError("mutation was accepted: {}".format(mutation.label))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path("."))
+    parser.add_argument("--self-test", action="store_true")
+    arguments = parser.parse_args()
+    sources = load_sources(arguments.repo.resolve())
+    validate(sources)
+    if arguments.self_test:
+        run_mutations(sources)
+    print(
+        "verify-online-fetch-container-authority: OK"
+        + (" ({} mutations)".format(len(MUTATIONS)) if arguments.self_test else "")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (AuthorityError, OSError) as error:
+        print("verify-online-fetch-container-authority: {}".format(error))
+        raise SystemExit(1)

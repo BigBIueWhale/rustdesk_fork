@@ -239,6 +239,18 @@ else
   echo "  ok  R-S11ci exact Apple image + fixed three-target matrix + private source/vendor/output state + non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution"
 fi
 
+echo "== (0h) online acquisition container execution authority (R-S11cj/R-S11e-102) =="
+r_s11cj=
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test; then
+  r_s11cj="$r_s11cj authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cj" ]; then
+  echo "  FAIL R-S11cj online acquisition container execution authority:$r_s11cj"
+  rc=1
+else
+  echo "  ok  R-S11cj every ordinary networked acquisition producer uses a fixed client/private config, exact image, numeric non-root identity, no pull or publication, read-only root, zero capabilities, no-new-privileges, and bounded resources"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

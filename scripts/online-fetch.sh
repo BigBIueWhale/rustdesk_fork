@@ -25,7 +25,123 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
+readonly DOCKER_BIN=/usr/bin/docker
+readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
+readonly ONLINE_FETCH_UID="$(id -u)"
+readonly ONLINE_FETCH_GID="$(id -g)"
+[ "$ONLINE_FETCH_UID" -ne 0 ] || die "online-fetch refuses host or container-root execution"
+[ "$ONLINE_FETCH_GID" -ne 0 ] || die "online-fetch refuses a root primary group"
+[ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable: $DOCKER_BIN"
+[ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
+    || die "trusted Docker client metadata changed"
+[ -S /var/run/docker.sock ] || die "the fixed local Docker socket is unavailable"
+case "${DOCKER_HOST:-$ONLINE_FETCH_DOCKER_HOST}" in
+    "$ONLINE_FETCH_DOCKER_HOST") ;;
+    *) die "online-fetch must use the fixed local Docker endpoint" ;;
+esac
+for variable in DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
+    [ -z "${!variable+x}" ] || die "$variable must not influence online acquisition"
+done
+
+ONLINE_FETCH_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-online-fetch.XXXXXXXXXX)" \
+    || die "cannot create the private online-fetch workspace"
+ONLINE_FETCH_TMP_ID="$(stat -c '%d:%i' -- "$ONLINE_FETCH_TMP")"
+readonly ONLINE_FETCH_TMP ONLINE_FETCH_TMP_ID
+cleanup_online_fetch_tmp() {
+    local status=$? cleanup_failed=0
+    trap - EXIT
+    trap '' HUP INT TERM
+    if [ -n "$ONLINE_FETCH_TMP" ]; then
+        if [ ! -d "$ONLINE_FETCH_TMP" ] || [ -L "$ONLINE_FETCH_TMP" ] \
+           || [ "$(stat -c '%d:%i' -- "$ONLINE_FETCH_TMP" 2>/dev/null)" != "$ONLINE_FETCH_TMP_ID" ]; then
+            echo "[FATAL] online-fetch private workspace identity changed: $ONLINE_FETCH_TMP" >&2
+            cleanup_failed=1
+        elif ! /usr/bin/python3 "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$ONLINE_FETCH_TMP" --expected-identity "$ONLINE_FETCH_TMP_ID"; then
+            echo "[FATAL] online-fetch private workspace cleanup failed: $ONLINE_FETCH_TMP" >&2
+            cleanup_failed=1
+        elif [ -e "$ONLINE_FETCH_TMP" ] || [ -L "$ONLINE_FETCH_TMP" ]; then
+            echo "[FATAL] online-fetch private workspace remains after cleanup: $ONLINE_FETCH_TMP" >&2
+            cleanup_failed=1
+        fi
+    fi
+    [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
+    exit "$status"
+}
+trap cleanup_online_fetch_tmp EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+readonly ONLINE_FETCH_DOCKER_CONFIG="$ONLINE_FETCH_TMP/docker-config"
+install -d -m 0700 "$ONLINE_FETCH_DOCKER_CONFIG"
+printf '{}\n' >"$ONLINE_FETCH_DOCKER_CONFIG/config.json"
+chmod 0600 "$ONLINE_FETCH_DOCKER_CONFIG/config.json"
+export DOCKER_HOST="$ONLINE_FETCH_DOCKER_HOST"
+export DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG"
+
+assert_online_fetch_docker_authority() {
+    [ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
+        || die "trusted Docker client metadata changed"
+    [ -S /var/run/docker.sock ] || die "the fixed local Docker socket changed"
+    [ -d "$ONLINE_FETCH_DOCKER_CONFIG" ] && [ ! -L "$ONLINE_FETCH_DOCKER_CONFIG" ] \
+        || die "private Docker configuration directory changed"
+    [ "$(stat -c '%u:%g:%a' -- "$ONLINE_FETCH_DOCKER_CONFIG")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private Docker configuration directory metadata changed"
+    [ -f "$ONLINE_FETCH_DOCKER_CONFIG/config.json" ] \
+        && [ ! -L "$ONLINE_FETCH_DOCKER_CONFIG/config.json" ] \
+        || die "private Docker configuration file changed"
+    [ "$(stat -c '%u:%g:%a:%h' -- "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:600:1" ] \
+        || die "private Docker configuration file metadata changed"
+    [ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ] \
+        || die "private Docker configuration bytes changed"
+}
+
+online_docker() {
+    local status=0
+    assert_online_fetch_docker_authority
+    env -i \
+        PATH=/usr/bin:/bin \
+        HOME="$ONLINE_FETCH_TMP" \
+        DOCKER_HOST="$ONLINE_FETCH_DOCKER_HOST" \
+        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \
+        "$DOCKER_BIN" \
+        --host "$ONLINE_FETCH_DOCKER_HOST" \
+        --config "$ONLINE_FETCH_DOCKER_CONFIG" \
+        "$@" || status=$?
+    assert_online_fetch_docker_authority
+    return "$status"
+}
+
+online_image_provenance() {
+    local status=0
+    assert_online_fetch_docker_authority
+    env -i \
+        PATH=/usr/bin:/bin \
+        HOME="$ONLINE_FETCH_TMP" \
+        DOCKER_HOST="$ONLINE_FETCH_DOCKER_HOST" \
+        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \
+        /usr/bin/python3 "$LIB_DIR/offline-image-provenance.py" "$@" || status=$?
+    assert_online_fetch_docker_authority
+    return "$status"
+}
+
+# Online acquisition intentionally retains outbound bridge networking. It never
+# publishes a port or joins a host namespace. Every producer otherwise receives
+# the same immutable, numeric-nonroot, capability-free, resource-bounded floor.
+online_docker_run() {
+    online_docker run --rm --pull=never --network=bridge --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=2048 --memory=16g --memory-swap=16g --cpus=4 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g \
+        "$@"
+}
+
 mkdir -p "$ONLINE_DIR"
+assert_online_fetch_docker_authority
 
 # fetch_verify URL DEST_BASENAME EXPECTED_SHA: idempotent download + verify.
 # Skips re-download if the cached file already verifies; aborts on any SHA failure
@@ -248,16 +364,15 @@ require_image_pin() {
 }
 
 verify_or_load_builder_image() {
-    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5" archive_sha="$6" compatibility_tag="$7"
+    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5" archive_sha="$6"
     local archive="$ONLINE_DIR/build-images/${role}.docker.tar.gz"
-    require_cmd python3 docker
-    python3 "$LIB_DIR/offline-image-provenance.py" verify-load \
+    require_cmd python3
+    online_image_provenance verify-load \
         --archive "$archive" --archive-sha "$archive_sha" \
         --role "$role" --expected-id "$image_id" --base "$base" \
         --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
-    docker tag "$image_id" "$compatibility_tag"
-    python3 "$LIB_DIR/offline-image-provenance.py" verify-local \
-        --image-ref "$compatibility_tag" --role "$role" --expected-id "$image_id" --base "$base" \
+    online_image_provenance verify-local \
+        --image-ref "$image_id" --role "$role" --expected-id "$image_id" --base "$base" \
         --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
 }
 
@@ -271,32 +386,28 @@ load_builder_images() {
     for name in "${names[@]}"; do require_image_pin "$name"; done
     verify_or_load_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID" \
         "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" "$SHA256_DEB_BUILDER_DOCKERFILE" \
-        "$SHA256_DEB_BUILDER_DPKG_MANIFEST" "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
-        "${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
+        "$SHA256_DEB_BUILDER_DPKG_MANIFEST" "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
     verify_or_load_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID" \
         "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
-        "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
-        "${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
+        "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE"
     verify_or_load_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \
         "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_WIN_HELPER_DOCKERFILE" \
-        "$SHA256_WIN_HELPER_DPKG_MANIFEST" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
-        "${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
+        "$SHA256_WIN_HELPER_DPKG_MANIFEST" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"
 }
 
 # Explicit maintenance candidate builds. Captured images remain the release authority.
 build_deb_builder_image() {
-    require_cmd docker
     require_image_pin SHA256_DEB_BUILDER_DOCKERFILE
     require_image_pin SHA256_DEB_BUILDER_DPKG_MANIFEST
     local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder-candidate"
-    docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
+    online_docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
         --build-arg "DOCKERFILE_SHA256=${SHA256_DEB_BUILDER_DOCKERFILE}" \
         --build-arg "DPKG_MANIFEST_SHA256=${SHA256_DEB_BUILDER_DPKG_MANIFEST}" \
         --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.deb-builder" "$LIB_DIR"
     local image_id
-    image_id="$(docker image inspect --format '{{.Id}}' "$tag")"
-    python3 "$LIB_DIR/offline-image-provenance.py" verify-local --image-ref "$tag" \
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
+    online_image_provenance verify-local --image-ref "$tag" \
         --role deb-builder --expected-id "$image_id" --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
         --dockerfile-sha "$SHA256_DEB_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_DEB_BUILDER_DPKG_MANIFEST"
     printf 'DEB_BUILDER_IMAGE_ID="%s"\n' "$image_id"
@@ -307,18 +418,17 @@ build_deb_builder_image() {
 # this is FROM ubuntu:24.04 (not the bionic deb-builder). Dockerfile.android-builder bakes the
 # vcpkg/cargo-ndk/gradle system deps; the rust/flutter/NDK toolchains stay in ./online.
 build_android_builder_image() {
-    require_cmd docker
     require_image_pin SHA256_ANDROID_BUILDER_DOCKERFILE
     require_image_pin SHA256_ANDROID_BUILDER_DPKG_MANIFEST
     local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder-candidate"
-    docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
+    online_docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --build-arg "DOCKERFILE_SHA256=${SHA256_ANDROID_BUILDER_DOCKERFILE}" \
         --build-arg "DPKG_MANIFEST_SHA256=${SHA256_ANDROID_BUILDER_DPKG_MANIFEST}" \
         --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.android-builder" "$LIB_DIR"
     local image_id
-    image_id="$(docker image inspect --format '{{.Id}}' "$tag")"
-    python3 "$LIB_DIR/offline-image-provenance.py" verify-local --image-ref "$tag" \
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
+    online_image_provenance verify-local --image-ref "$tag" \
         --role android-builder --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --dockerfile-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST"
     printf 'ANDROID_BUILDER_IMAGE_ID="%s"\n' "$image_id"
@@ -330,27 +440,26 @@ build_android_builder_image() {
 # inputs, so their apt installs belong HERE (the one networked phase), not inside
 # build-windows-vm.sh/provision-windows-vm.sh/verify-windows-golden.sh.
 build_windows_helper_image() {
-    require_cmd docker
     require_image_pin SHA256_WIN_HELPER_DOCKERFILE
     require_image_pin SHA256_WIN_HELPER_DPKG_MANIFEST
     local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper-candidate"
-    docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
+    online_docker build --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --build-arg "DOCKERFILE_SHA256=${SHA256_WIN_HELPER_DOCKERFILE}" \
         --build-arg "DPKG_MANIFEST_SHA256=${SHA256_WIN_HELPER_DPKG_MANIFEST}" \
         --no-cache \
         -t "$tag" -f "$LIB_DIR/Dockerfile.win-helper" "$LIB_DIR"
     local image_id
-    image_id="$(docker image inspect --format '{{.Id}}' "$tag")"
-    python3 "$LIB_DIR/offline-image-provenance.py" verify-local --image-ref "$tag" \
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
+    online_image_provenance verify-local --image-ref "$tag" \
         --role win-helper --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST"
     printf 'WIN_HELPER_IMAGE_ID="%s"\n' "$image_id"
 }
 
 maintenance_build_image_candidates() {
-    require_cmd docker python3
-    docker pull "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
-    docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
+    require_cmd python3
+    online_docker pull "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
+    online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
     build_deb_builder_image
     build_android_builder_image
     build_windows_helper_image
@@ -358,7 +467,7 @@ maintenance_build_image_candidates() {
 
 capture_builder_image() {
     local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5" output="$6"
-    python3 "$LIB_DIR/offline-image-provenance.py" maintenance-capture \
+    online_image_provenance maintenance-capture \
         --output "$output" \
         --role "$role" --expected-id "$image_id" --base "$base" \
         --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
@@ -405,23 +514,31 @@ maintenance_capture_builder_images() {
     printf 'SHA256_WIN_HELPER_IMAGE_ARCHIVE="%s"\n' "$win_sha"
 }
 
+require_online_fetch_builder_image() {
+    local role="$1" image_id="$2"
+    assert_online_fetch_docker_authority
+    require_pinned_builder_image "$role" "$image_id"
+    assert_online_fetch_docker_authority
+}
+
 # ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
 # build_one needs flutter_rust_bridge_codegen to (re)generate the bridge; it cannot
 # `cargo install` it offline (its deps are not in the main vendor set), so build it HERE
 # (networked) in the deb-builder image with the pinned rust — exactly as upstream's
 # bridge.yml does: `cargo install ... --version <pin> --features uuid --locked`.
 build_frb_codegen() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
+    local builder="$DEB_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image deb-builder "$builder"
     if [ -x "$ONLINE_DIR/frb-tool/bin/flutter_rust_bridge_codegen" ]; then
         log "frb codegen tool already staged, skipping"; return 0
     fi
     log "building flutter_rust_bridge_codegen ${FLUTTER_RUST_BRIDGE_VERSION} for ubuntu:18.04 -> ./online/frb-tool"
-    docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
+    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
         TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-1.*.tar.xz
         "$TC"/rust-1.*/install.sh --prefix=/tmp/rust --disable-ldconfig \
             --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
+        export HOME=/tmp/home; mkdir -p "$HOME"
         export PATH=/tmp/rust/bin:$PATH
         cargo install flutter_rust_bridge_codegen --version '"${FLUTTER_RUST_BRIDGE_VERSION}"' \
             --features uuid --locked --root /online/frb-tool
@@ -432,14 +549,16 @@ build_frb_codegen() {
 # build_one resolves the flutter project --offline from this cache. The committed
 # pubspec.lock is the pin; this networked staging step fails if pub would rewrite it.
 stage_pub_cache() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
+    local builder="$DEB_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image deb-builder "$builder"
     if [ -d "$ONLINE_DIR/pub-cache/hosted" ] || [ -d "$ONLINE_DIR/pub-cache/git" ]; then
         log "pub cache already staged, skipping"; return 0
     fi
     log "staging the flutter pub cache (hosted + git deps) -> ./online/pub-cache"
-    docker run --rm -v "$ONLINE_DIR:/online" -v "$REPO_ROOT/flutter:/flutterproj:ro" "$builder" bash -euo pipefail -c '
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        --mount "type=bind,source=$REPO_ROOT/flutter,target=/flutterproj,readonly" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
         TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/flutter-*.tar.xz
         export PATH="$TC/flutter/bin:$PATH"
         export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
@@ -531,9 +650,8 @@ stage_libvpx_distfiles() {
 
 stage_vcpkg_distfiles() {
     stage_libvpx_distfiles
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
+    local builder="$DEB_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image deb-builder "$builder"
     local yuv_tgz="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
     if [ -f "$yuv_tgz" ]; then
         [ "$(sha512sum "$yuv_tgz" | awk '{print $1}')" = "$SHA512_LIBYUV" ] || die "cached libyuv distfile SHA512 mismatch"
@@ -544,11 +662,12 @@ stage_vcpkg_distfiles() {
         *"${SHA_PENDING}"*) die "libyuv distfile SHA512 is the R-B12 sentinel — record it in pins.env first" ;;
     esac
     log "capturing the libyuv vcpkg distfile (reproducible git archive | gzip -n) -> ./online"
-    docker run --rm \
-        -v "$ONLINE_DIR:/online" \
-        -e LIBYUV_COMMIT="$LIBYUV_COMMIT" \
-        -e SHA512_LIBYUV="$SHA512_LIBYUV" \
-        "$builder" bash -euo pipefail -c '
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        --env LIBYUV_COMMIT="$LIBYUV_COMMIT" \
+        --env SHA512_LIBYUV="$SHA512_LIBYUV" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            export HOME=/tmp/home; mkdir -p "$HOME"
             gen() { # url commit out want-sha512
                 rm -rf /tmp/src; mkdir -p /tmp/src; cd /tmp/src; git init -q; git remote add origin "$1"
                 git fetch -q --depth 1 origin "$2" 2>/dev/null || { cd /tmp; rm -rf /tmp/src; git clone -q "$1" /tmp/src >/dev/null 2>&1; cd /tmp/src; }
@@ -571,9 +690,8 @@ stage_vcpkg_distfiles() {
 # patched, pinned res/vcpkg overlay ports atop the baseline registry snapshot (the vcpkg
 # source archive is pinned at VCPKG_BASELINE). vcpkg's bootstrap needs `zip` (in the image).
 stage_vcpkg_natives() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-deb-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified deb-builder image missing — load_builder_images must run first"
+    local builder="$DEB_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image deb-builder "$builder"
     require_libvpx_distfiles
     local native_key
     native_key="$(libvpx_native_key)"
@@ -583,12 +701,13 @@ stage_vcpkg_natives() {
     fi
     [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg must run first"
     log "staging the vcpkg native codecs (libvpx/libyuv/opus, x64-linux static) -> ./online/vcpkg/installed"
-    docker run --rm \
-        -v "$ONLINE_DIR:/online" \
-        -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
-        -e RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
-        -e LIBVPX_NATIVE_KEY="$native_key" \
-        "$builder" bash -euo pipefail -c '
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly" \
+        --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        --env LIBVPX_NATIVE_KEY="$native_key" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            export HOME=/tmp/home; mkdir -p "$HOME"
             VR=/tmp/vcpkg; mkdir -p "$VR"
             tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
             export VCPKG_DISABLE_METRICS=1
@@ -643,9 +762,8 @@ stage_android_ndk() {
 # builtin-baseline), but ./online stages the pinned TARBALL (no .git) — classic mode over the
 # tarball baseline ports + the overlay is equivalent + git-free.
 stage_vcpkg_natives_arm64() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image android-builder "$builder"
     require_libvpx_distfiles
     local native_key
     native_key="$(libvpx_native_key)"
@@ -656,12 +774,13 @@ stage_vcpkg_natives_arm64() {
     [ -d "$ONLINE_DIR/android-ndk/toolchains" ] || die "android NDK not extracted — stage_android_ndk must run first"
     [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg must run first"
     log "staging the vcpkg arm64-android natives (libvpx/libyuv/opus + oboe audio) -> ./online/vcpkg/installed/arm64-android"
-    docker run --rm \
-        -v "$ONLINE_DIR:/online" \
-        -v "$REPO_ROOT/res/vcpkg:/overlay:ro" \
-        -e RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
-        -e LIBVPX_NATIVE_KEY="$native_key" \
-        "$builder" bash -euo pipefail -c '
+    online_docker_run \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly" \
+        --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
+        --env LIBVPX_NATIVE_KEY="$native_key" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            export HOME=/tmp/home; mkdir -p "$HOME"
             export ANDROID_NDK_HOME=/online/android-ndk
             VR=/tmp/vcpkg; mkdir -p "$VR"
             tar -C "$VR" --strip-components=1 -xzf /online/vcpkg-'"${VCPKG_BASELINE}"'.tar.gz
@@ -685,19 +804,20 @@ stage_vcpkg_natives_arm64() {
 # ndk_arm64.sh runs `cargo ndk ... build` to cross-compile librustdesk.so for android;
 # cargo-ndk is NOT in the main cargo-vendor set, so `cargo install` it HERE (networked) in
 # the android-builder image with the pinned rust — exactly as upstream's android job does
-# (`cargo install cargo-ndk --version <pin> --locked`). A HOST tool → ./online/cargo-ndk-tool.
+# (`cargo install cargo-ndk --version <pin> --locked`). A host-target tool → ./online/cargo-ndk-tool.
 stage_cargo_ndk() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image android-builder "$builder"
     if [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ]; then
         log "cargo-ndk already staged, skipping"; return 0
     fi
     log "installing cargo-ndk ${CARGO_NDK_VERSION} for the android-builder image -> ./online/cargo-ndk-tool"
-    docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
+    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
         TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-1.*.tar.xz
         "$TC"/rust-1.*/install.sh --prefix=/tmp/rust --disable-ldconfig \
             --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+        export HOME=/tmp/home; mkdir -p "$HOME"
         export PATH=/tmp/rust/bin:$PATH
         cargo install cargo-ndk --version '"${CARGO_NDK_VERSION}"' --locked --root /online/cargo-ndk-tool
     '
@@ -710,15 +830,16 @@ stage_cargo_ndk() {
 # package's checksum against the SDK repository XML, so the install is reproducible. Staged to
 # ./online/android-sdk (build-tools = aapt2/apksigner/zipalign; platform-N = the android.jar).
 stage_android_sdk() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image android-builder "$builder"
     if [ -d "$ONLINE_DIR/android-sdk/build-tools/${ANDROID_BUILD_TOOLS}" ]; then
         log "android SDK already staged, skipping"; return 0
     fi
     [ -f "$ONLINE_DIR/android-cmdline-tools.zip" ] || die "android cmdline-tools zip missing — fetch_toolchains must run first"
     log "staging the Android SDK (build-tools ${ANDROID_BUILD_TOOLS} + platform-${ANDROID_COMPILE_SDK}) -> ./online/android-sdk"
-    docker run --rm -v "$ONLINE_DIR:/online" "$builder" bash -euo pipefail -c '
+    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        export HOME=/tmp/home; mkdir -p "$HOME"
         mkdir -p /tmp/sdk/cmdline-tools
         unzip -q /online/android-cmdline-tools.zip -d /tmp/sdk/cmdline-tools
         mv /tmp/sdk/cmdline-tools/cmdline-tools /tmp/sdk/cmdline-tools/latest
@@ -741,9 +862,8 @@ stage_android_sdk() {
 # platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then projects this cache
 # into private writable execution state whose tracked init authority enables Gradle offline mode.
 stage_gradle() {
-    require_cmd docker
-    local builder="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"
-    docker image inspect "$builder" >/dev/null 2>&1 || die "verified android-builder image missing — load_builder_images must run first"
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image android-builder "$builder"
     if [ -d "$ONLINE_DIR/gradle-home/caches/modules-2" ]; then
         log "gradle cache already warm, skipping"; return 0
     fi
@@ -751,12 +871,12 @@ stage_gradle() {
     [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android" ] || die "arm64-android vcpkg not staged — stage_vcpkg_natives_arm64 must run first"
     [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ] || die "cargo-ndk not staged — stage_cargo_ndk must run first"
     log "warming the gradle cache via one online apk build (APK_MODE=warm) -> ./online/gradle-home"
-    docker run --rm \
-        -e APK_MODE=warm \
-        -v "$REPO_ROOT:/src" \
-        -v "$ONLINE_DIR:/online" \
-        -w /src \
-        "$builder" bash /src/scripts/android-apk-build.sh
+    online_docker_run \
+        --env APK_MODE=warm \
+        --mount "type=bind,source=$REPO_ROOT,target=/src" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        --workdir /src \
+        "$builder" /bin/bash --noprofile --norc /src/scripts/android-apk-build.sh
     log "gradle cache warmed ($(du -sh "$ONLINE_DIR/gradle-home" 2>/dev/null | cut -f1))"
 }
 
@@ -768,13 +888,13 @@ stage_gradle() {
 # stamps), so the captured set is the complete cached state — with it pre-placed the in-VM precache
 # validates in ~4s and downloads nothing (docker-verified). Deterministic tar + gzip -n => stable SHA.
 stage_windows_engine() {
-    require_cmd docker
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image android-builder "$builder"
     local out="$ONLINE_DIR/flutter-windows-engine.tar.gz"
     [ -f "$out" ] && { log "windows flutter engine already staged, skipping"; return 0; }
     log "staging the windows flutter engine (linux flutter precache --windows) -> ./online/flutter-windows-engine.tar.gz"
-    docker run --rm -v "$ONLINE_DIR:/online" ubuntu:24.04 bash -euo pipefail -c '
-        apt-get update -qq >/dev/null 2>&1
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git curl ca-certificates unzip xz-utils >/dev/null 2>&1
+    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
         tar -C /tmp -xf /online/flutter-*.tar.xz
         export PATH=/tmp/flutter/bin:$PATH CI=true
         export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
@@ -812,16 +932,17 @@ stage_windows_engine() {
 # pinned versions). We package ONLY hosted/ + hosted-hashes/ (flutter_tools needs no git deps); the
 # internal layout begins at hosted/ so it extracts under a Pub\Cache root. Deterministic tar + gzip -n.
 stage_flutter_pub_cache() {
+    local builder="$DEB_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image deb-builder "$builder"
     local out="$ONLINE_DIR/flutter-pub-cache.tar.gz"
     [ -f "$out" ] && { log "windows flutter pub cache already staged, skipping"; return 0; }
     # stage_pub_cache must have populated ./online/pub-cache first (the hosted closure lives there).
     [ -d "$ONLINE_DIR/pub-cache/hosted/pub.dev" ] || die "pub-cache/hosted not staged — stage_pub_cache must run first"
     [ -d "$ONLINE_DIR/pub-cache/hosted-hashes/pub.dev" ] || die "pub-cache/hosted-hashes not staged — stage_pub_cache must run first"
     log "staging the windows flutter_tools pub cache (hosted + hosted-hashes) -> ./online/flutter-pub-cache.tar.gz"
-    require_cmd docker
-    # Run in a container as root: ./online/pub-cache is root-owned (written by the docker flutter steps).
     # Deterministic: sorted names + fixed mtime/owner/numeric-owner + gzip -n -> stable R-B12 SHA.
-    docker run --rm -v "$ONLINE_DIR:/online" ubuntu:24.04 bash -euo pipefail -c '
+    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
         cd /online/pub-cache
         tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - hosted hosted-hashes \
             | gzip -n -9 > /online/flutter-pub-cache.tar.gz
@@ -841,34 +962,18 @@ stage_flutter_pub_cache() {
 # ── The WiX v4.0.5 NuGet closure (§12.2 milestone-2, the .msi) ──────────────────────────────
 # The .msi (R-B7/B8) builds via `python res/msi/preprocess.py` then `msbuild res/msi/msi.sln`, which restores the
 # wixproj's 5 .wixext PackageReferences + the WixToolset.Sdk. Stage that whole NuGet closure OFFLINE so the in-VM
-# msbuild needs 0 network. Captured by a host `dotnet restore` of the real wixproj. 6 packages.
+# msbuild needs 0 network. The six-package tarball is a separately captured, digest-verified input until its
+# producer has an audited immutable image pin; online-fetch must not recreate it through a mutable SDK tag.
 # DETERMINISTIC (proven: two fresh re-downloads -> identical SHA): sorted tar + fixed mtime/owner + gzip -n. Shipped
 # on the TOOLCHAINS CD + pre-placed at the golden's NUGET_PACKAGES by win-guest-setup (milestone 2 re-provision).
 stage_windows_wix_nuget() {
-    require_cmd docker
     local out="$ONLINE_DIR/wix-nuget.tar.gz"
     if [ -f "$out" ]; then
         verify_sha256 "$out" "${SHA256_WIX_NUGET}"
         log "WiX NuGet already staged and digest-verified, skipping"
         return 0
     fi
-    log "staging the WiX v4.0.5 NuGet closure (host dotnet restore) -> ./online/wix-nuget.tar.gz"
-    docker run --rm -e HU="$(id -u)" -e HG="$(id -g)" \
-        -v "$(dirname "$ONLINE_DIR")/res/msi:/msi:ro" -v "$ONLINE_DIR:/online" \
-        mcr.microsoft.com/dotnet/sdk:8.0 bash -euo pipefail -c '
-        export NUGET_PACKAGES=/cache; mkdir -p /cache
-        cp -r /msi /tmp/m; cd /tmp/m
-        dotnet restore Package/Package.wixproj >/dev/null 2>&1
-        [ -d /cache/wixtoolset.sdk ] && [ -d /cache/wixtoolset.firewall.wixext ] \
-            && [ -d /cache/wixtoolset.heat ] && [ -d /cache/wixtoolset.netfx.wixext ] \
-            && [ -d /cache/wixtoolset.ui.wixext ] && [ -d /cache/wixtoolset.util.wixext ] \
-            || { echo "WiX NuGet capture incomplete"; exit 1; }
-        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -C /cache -cf - . | gzip -n > /online/wix-nuget.tar.gz
-        chown "$HU:$HG" /online/wix-nuget.tar.gz
-    '
-    [ -f "$out" ] || die "WiX NuGet staging failed"
-    verify_sha256 "$out" "${SHA256_WIX_NUGET}"
-    log "WiX NuGet staged: $out ($(du -h "$out" | cut -f1))"
+    die "online/wix-nuget.tar.gz is absent; the former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden. Capture the exact six-package closure under a separately audited immutable image, then stage only bytes matching SHA256_WIX_NUGET"
 }
 
 main() {

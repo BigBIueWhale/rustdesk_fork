@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11787,15 +11787,11 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"',
         "six-package WiX closure digest",
     )
-    for package in (
-        "wixtoolset.sdk",
-        "wixtoolset.firewall.wixext",
-        "wixtoolset.heat",
-        "wixtoolset.netfx.wixext",
-        "wixtoolset.ui.wixext",
-        "wixtoolset.util.wixext",
-    ):
-        require_text(online_fetch, f"/cache/{package}", f"WiX closure package inventory: {package}")
+    require_text(
+        sources["pins"],
+        "WixToolset.Sdk + Firewall/Heat/Netfx/UI/Util .wixext = 6 pkgs",
+        "six-package WiX closure inventory",
+    )
     wix_stage = extract_between(
         online_fetch,
         "stage_windows_wix_nuget() {\n",
@@ -11805,8 +11801,8 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     require_exact_count(
         wix_stage,
         'verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
-        2,
-        "WiX closure preexisting-and-new digest verification",
+        1,
+        "WiX closure preexisting digest verification",
     )
     require_order(
         wix_stage,
@@ -11815,13 +11811,14 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
             'verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
             'log "WiX NuGet already staged and digest-verified, skipping"',
             "return 0",
+            "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
         ),
-        "preexisting WiX closure digest verification before skip",
+        "preexisting WiX verification or absent-input refusal",
     )
     require_text(
         online_fetch,
-        "Captured by a host `dotnet restore` of the real wixproj. 6 packages.",
-        "six-package WiX closure acquisition description",
+        "six-package tarball is a separately captured, digest-verified input until its",
+        "six-package WiX fail-closed acquisition description",
     )
 
     for text, label in (
@@ -11884,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11905,7 +11902,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("Windows custom-action build path absence", "build-path mutation"),
         ("Windows DUtil offline dependency absence", "offline-dependency mutation"),
         ("six-package WiX closure digest", "closure-digest mutation"),
-        ("preexisting WiX closure digest verification before skip", "cached-closure mutation"),
+        ("preexisting WiX verification or absent-input refusal", "cached-closure mutation"),
         ("declarative runtime-cleanup shared assertion", "shared-gate mutation"),
         ("declarative Windows runtime-cleanup requirement", "requirement mutation"),
         ("Windows extension-owned action attribution requirement", "extension-action boundary mutation"),
@@ -12218,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+        "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13736,6 +13733,77 @@ def validate_apple_verifier_authority_contract(sources):
         sources["hardening"],
         "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
         "Apple verifier authority hardening ledger",
+    )
+
+
+def validate_online_fetch_container_authority_contract(sources):
+    focused = sources["online_fetch_container_authority_verifier"]
+    online = sources["online_fetch"]
+    for text, label in (
+        ("forbid_container_authority(source: str, label: str)",
+         "online acquisition focused forbidden-authority enforcement"),
+        ("ordinary acquisition launch inventory",
+         "online acquisition focused launch inventory"),
+        ("MUTATIONS: Tuple[Mutation, ...]",
+         "online acquisition focused mutation inventory"),
+        ("run_mutations(sources)",
+         "online acquisition focused mutation dispatch"),
+        ("unreviewed WiX producer refusal",
+         "online acquisition focused WiX refusal"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("readonly DOCKER_BIN=/usr/bin/docker",
+         "online acquisition fixed Docker client"),
+        ("readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock",
+         "online acquisition fixed Docker endpoint"),
+        ('[ "$ONLINE_FETCH_UID" -ne 0 ]',
+         "online acquisition host-root refusal"),
+        ('[ "$ONLINE_FETCH_GID" -ne 0 ]',
+         "online acquisition root-primary-group refusal"),
+        ('readonly ONLINE_FETCH_DOCKER_CONFIG="$ONLINE_FETCH_TMP/docker-config"',
+         "online acquisition private Docker configuration"),
+        ("online_image_provenance() {",
+         "online acquisition image-provenance funnel"),
+        ("online_docker_run() {",
+         "online acquisition sole launch funnel"),
+        ("online_docker run --rm --pull=never --network=bridge --read-only",
+         "online acquisition runtime confinement"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "online acquisition numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "online acquisition privilege confinement"),
+        ("--pids-limit=2048 --memory=16g --memory-swap=16g --cpus=4",
+         "online acquisition resource ceilings"),
+        ('local builder="$DEB_BUILDER_IMAGE_ID"',
+         "online acquisition exact Debian builder"),
+        ('local builder="$ANDROID_BUILDER_IMAGE_ID"',
+         "online acquisition exact Android builder"),
+        ('--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
+         "online acquisition exact loaded-image verification"),
+        ("former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
+         "online acquisition mutable WiX refusal"),
+    ):
+        require_text(online, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
+        "Online acquisition container authority focused verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cj</span>',
+        "online acquisition container authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>229</td>",
+        "online acquisition container authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cj/R-S11e-102 — online acquisition container execution authority",
+        "online acquisition container authority hardening ledger",
     )
 
 
@@ -17082,6 +17150,7 @@ def validate_sources(sources):
     validate_android_keystore_authority_contract(sources)
     validate_windows_helper_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
+    validate_online_fetch_container_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -29257,7 +29326,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
+            "R-S11n through R-S11cj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -29533,8 +29602,8 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "        dotnet restore Package/Package.wixproj >/dev/null 2>&1",
-            "        dotnet restore Package/Package.wixproj >/dev/null 2>&1\n        dotnet add package WixToolset.DUtil -v 4.0.5 >/dev/null 2>&1",
+            "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
+            "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden; WixToolset.DUtil",
             "Windows DUtil offline dependency absence",
         ),
         (
@@ -29547,7 +29616,7 @@ def run_source_mutations(sources):
             "online_fetch",
             '        verify_sha256 "$out" "${SHA256_WIX_NUGET}"\n        log "WiX NuGet already staged and digest-verified, skipping"',
             '        log "WiX NuGet already staged without digest verification, skipping"\n        return 0\n        verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
-            "preexisting WiX closure digest verification before skip",
+            "preexisting WiX verification or absent-input refusal",
         ),
         (
             "verify",
@@ -31000,6 +31069,54 @@ def run_source_mutations(sources):
             "Apple verifier authority hardening ledger",
         ),
         (
+            "online_fetch_container_authority_verifier",
+            "forbid_container_authority(source: str, label: str)",
+            "return # forbidden online acquisition authority accepted",
+            "online acquisition focused forbidden-authority enforcement",
+        ),
+        (
+            "online_fetch",
+            "online_docker run --rm --pull=never --network=bridge --read-only",
+            "online_docker run --rm --network=host",
+            "online acquisition runtime confinement",
+        ),
+        (
+            "online_fetch",
+            '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+            "--user 0:0",
+            "online acquisition numeric nonroot identity",
+        ),
+        (
+            "online_fetch",
+            '--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
+            '--image-ref "$role" --role "$role" --expected-id "$image_id"',
+            "online acquisition exact loaded-image verification",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
+            "true # online acquisition authority gate removed",
+            "Online acquisition container authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cj</span>',
+            '<span class="id">R-S11cj-disabled</span>',
+            "online acquisition container authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>229</td>",
+            "<tr><td>229-disabled</td>",
+            "online acquisition container authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cj/R-S11e-102 — online acquisition container execution authority",
+            "R-S11cj/R-S11e-102 — ambient online acquisition authority",
+            "online acquisition container authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -32224,6 +32341,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "apple_verifier_authority_verifier": (
                 repo / "scripts/verify-apple-verifier-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_container_authority_verifier": (
+                repo / "scripts/verify-online-fetch-container-authority.py"
             ).read_text(encoding="utf-8"),
             "windows_helper_runtime": (
                 repo / "scripts/windows-helper-runtime.sh"

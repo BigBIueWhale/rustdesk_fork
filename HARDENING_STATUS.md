@@ -8891,6 +8891,75 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   full release-verifier verdict is claimed. Native Apple compilation/signing/artifacts, an honest Apple
   SDK-capable source-conformance input or native check, exact clean-commit cold release evidence, and
   independently archived Apple image provenance remain open and are not advanced by this source slice.
+- **R-S11cj/R-S11e-102 — online acquisition container execution authority — SOURCE IMPLEMENTED
+  2026-07-23; FOCUSED/WORKSPACE MUTATION GATES AND EXACT-IMAGE NON-ROOT PROBES PASS; OUTPUT-PUBLICATION AUTHORITY AND EXACT COLD
+  RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the one intentionally
+  networked Docker phase. Endpoint/action: the ten ordinary dependency, tool, SDK, native-library, and cache
+  producers in `scripts/online-fetch.sh`. Boundary: caller Docker/image state and container execution identity
+  ↔ host build inputs, live source/cache binds, and generated offline inputs.
+
+  Before this slice, ten independent ordinary `docker run` sites inherited caller client/context/configuration,
+  allowed implicit pulls, ran as image-default UID 0 with writable roots and default capabilities /
+  privilege-gain semantics, and had no PID, memory, swap, CPU, or scratch bounds. Verified builder archives were
+  retagged to mutable compatibility names before use. The Windows Flutter engine and cache packager selected a
+  mutable public Ubuntu tag; the engine performed a live root package installation. WiX restore selected mutable
+  `mcr.microsoft.com/dotnet/sdk:8.0`. No site published or exposed a port, mounted the Docker socket/device, or
+  joined a host network/PID/IPC/UTS namespace. Outbound networking is the purpose of this phase. This is
+  source-proven build-host/cache execution and mutable-image debt, not evidence of a public listener, container
+  escape, host-root acquisition, source or host RustDesk/service/firewall/network mutation, exploitation, or
+  compromise.
+
+  `scripts/online-fetch.sh` now refuses host UID or primary GID 0, fixes the root-owned `/usr/bin/docker` client
+  and local Unix endpoint, rejects caller Docker context/TLS/configuration, and creates a current-user-private
+  canonical empty Docker configuration whose metadata and bytes are reproved around client operations. One
+  `online_docker_run` funnel supplies `--pull=never`, explicit bridge acquisition networking, read-only root,
+  invoking numeric UID:GID, all capabilities dropped, no-new-privileges, and fixed PID, memory/no-swap, CPU, and
+  executable `nosuid,nodev` tmpfs ceilings. No ordinary call site may add a port, host namespace, socket, device,
+  capability, privileged/root identity, implicit pull, or mutable image.
+
+  Loading independently pinned builder archives now verifies and retains only their exact content IDs; the
+  compatibility-tag API and tag creation are deleted. Five Debian and five Android producer sites select only
+  `DEB_BUILDER_IMAGE_ID` or `ANDROID_BUILDER_IMAGE_ID` and reverify embedded image provenance before launch.
+  Windows Flutter-engine capture reuses the exact Android builder and its already pinned package set, so the live
+  root `apt-get` path is gone. The deterministic Flutter cache packager reuses the exact Debian builder. Because
+  there is no audited immutable .NET producer pin, missing `online/wix-nuget.tar.gz` now fails closed; an existing
+  six-package closure is accepted only after `SHA256_WIX_NUGET` verification. Explicit maintenance base-digest
+  pulls/candidate builds remain separate operator actions and cannot select an ordinary producer runtime.
+
+  Docker's current primary documentation states that bind mounts are writable by default and can change host
+  files, that a read-only bind removes that authority, that ordinary containers have no default resource
+  constraints, and that `--pull=never`, `--read-only`, `--cap-drop`, no-new-privileges, PID/memory/CPU flags, and
+  content digests/IDs are independent controls. It also warns that published ports default to all host
+  interfaces and can bypass UFW, while host networking shares the host namespace. This design intentionally
+  retains bridge egress but supplies no `-p`/`-P`, expose, host namespace, or device/socket authority.
+
+  `scripts/verify-online-fetch-container-authority.py` binds the fixed client/endpoint/private config, root
+  refusal, exact loaded IDs and ten-consumer inventory, sole launch funnel and complete runtime floor, absence of
+  compatibility tags/live package installation/unreviewed WiX execution, shared gate, R-S11cj, Appendix C #229,
+  this ledger, and independent workspace ownership through deliberate mutations. The focused verifier passes and
+  rejects 29 deliberate weakenings. The independent workspace verifier passes normally and its complete in-memory
+  source-mutation catalog rejects mutations of the focused checker, actual launch floor, numeric identity, exact
+  loaded-image verification, shared wiring, requirement, Appendix row, ledger, and current requirements-hash scope.
+
+  Mount-free probes under both exact builder IDs,
+  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776` and
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`, passed as
+  UID/GID 1000 with no network, read-only root, zero capabilities, no-new-privileges, and bounded resources:
+  writes to `/root` failed while an executable copied into bounded `/tmp` ran. Dependency inventory normal plus
+  all 103 self-tests, offline-image-provenance self-test, native-codec normal/negative gates, Bash and isolated
+  Python syntax, requirements SHA-256
+  `564e99c0d60e4b65b4112e8e8ffe6ef37cd672f37a9a526d840748e1053ececf`, and `git diff --check`
+  pass in the immutable non-root/networkless verifier image. No online producer or acquisition networking was
+  exercised, so this is runtime-floor compatibility and source/mutation evidence rather than an acquisition-output
+  reproduction.
+
+  This is intentionally not a full acquisition closure. Every producer is now non-root and confined at the
+  container/runtime layer, but the broad writable `online` binds and Gradle's writable live repository remain
+  separate output/publication authority debt. They must be replaced by read-only inputs, private same-filesystem
+  staging, postcondition validation, and checked atomic publication. Host-side download/extraction publication
+  and maintenance candidate-build authority are also independent audit surfaces. No online acquisition,
+  image pull/build/tag, release build, or host RustDesk/service/listener/firewall/network operation was executed
+  while implementing this source slice.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9608,9 +9677,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a90bc33f6d26a92d41e85d2b13cd73cf66c0e027bbbe842a215b2730f09e82b3  requirements.html
+564e99c0d60e4b65b4112e8e8ffe6ef37cd672f37a9a526d840748e1053ececf  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ci, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cj, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#229. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -266,6 +266,21 @@ else
   echo "  ok  R-S11ck the networked Gradle warmer uses one clean exact-commit private writable source, a separate read-only inner-program authority, before/after input proofs, and no live-repository mount"
 fi
 
+echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
+r_s11cl=
+if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then
+  r_s11cl="$r_s11cl transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test; then
+  r_s11cl="$r_s11cl authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cl" ]; then
+  echo "  FAIL R-S11cl online-fetch Gradle output authority:$r_s11cl"
+  rc=1
+else
+  echo "  ok  R-S11cl the networked Gradle warmer sees read-only online inputs, writes only private cache/SDK outputs, validates them, and uses recoverable checked publication"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

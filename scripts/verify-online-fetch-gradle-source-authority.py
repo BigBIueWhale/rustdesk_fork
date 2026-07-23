@@ -44,9 +44,12 @@ def extract(source: str, start: str, end: str, label: str) -> str:
 
 
 def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:
-    positions = tuple(source.index(token) for token in tokens)
-    if positions != tuple(sorted(positions)) or len(set(positions)) != len(positions):
-        raise AuthorityError("{} is misordered".format(label))
+    position = -1
+    for token in tokens:
+        found = source.find(token, position + 1)
+        if found < 0:
+            raise AuthorityError("{} is missing ordered token {!r}".format(label, token))
+        position = found
 
 
 def validate(sources: Dict[str, str]) -> None:
@@ -216,7 +219,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     for token, label in (
         ("local status=0", "captured container status"),
-        ("post_status=0", "captured source-postcondition status"),
+        ("source_status=0", "captured source-postcondition status"),
         ("prepare_gradle_source", "private-source construction"),
         ('source=$GRADLE_SOURCE_BUILD,target=/src"', "private writable source mount"),
         ('source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,'
@@ -225,10 +228,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("/bin/bash --noprofile --norc /authority/android-apk-build.sh",
          "authority-script execution"),
         ("|| status=$?", "failure-preserving postcondition path"),
-        ("(verify_gradle_source_unchanged) || post_status=$?",
+        ("(verify_gradle_source_unchanged) || source_status=$?",
          "failure-preserving source postcondition"),
         ("retire_gradle_source_build", "source retirement call"),
-        ('[ "$post_status" -eq 0 ] || die "networked Gradle source postcondition failed"',
+        ('[ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"',
          "delayed source-postcondition failure"),
         ('[ "$status" -eq 0 ] || die "networked Gradle warming failed"',
          "delayed container failure"),
@@ -240,10 +243,10 @@ def validate(sources: Dict[str, str]) -> None:
             "prepare_gradle_source",
             "online_docker_run",
             "|| status=$?",
-            "(verify_gradle_source_unchanged) || post_status=$?",
-            "retire_gradle_source_build",
-            '[ "$post_status" -eq 0 ]',
-            '[ "$status" -eq 0 ]',
+            "(verify_gradle_source_unchanged) || source_status=$?",
+            "retire_gradle_source_build\n    restore_gradle_output_traversal",
+            '[ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"',
+            '[ "$status" -eq 0 ] || die "networked Gradle warming failed"',
         ),
         "Gradle source lifecycle",
     )
@@ -512,8 +515,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode) or stat.S_ISFIFO(metadata.st_mode)",
         "directory restoration special-file rejection",
     ),
-    Mutation("shell", "retire_gradle_source_build\n    [ \"$post_status\" -eq 0 ]",
-             "true # source retained\n    [ \"$post_status\" -eq 0 ]",
+    Mutation("shell", "retire_gradle_source_build\n    restore_gradle_output_traversal",
+             "true # source retained\n    restore_gradle_output_traversal",
              "private source retirement"),
     Mutation(
         "verify",

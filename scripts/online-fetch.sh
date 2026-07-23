@@ -28,6 +28,7 @@ load_pins
 readonly DOCKER_BIN=/usr/bin/docker
 readonly GIT_BIN=/usr/bin/git
 readonly TAR_BIN=/usr/bin/tar
+readonly FLOCK_BIN=/usr/bin/flock
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
 readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
@@ -42,6 +43,9 @@ readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
 [ -x "$TAR_BIN" ] || die "trusted tar client is unavailable: $TAR_BIN"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$TAR_BIN")" = "0:0:755:1" ] \
     || die "trusted tar client metadata changed"
+[ -x "$FLOCK_BIN" ] || die "trusted flock client is unavailable: $FLOCK_BIN"
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FLOCK_BIN")" = "0:0:755:1" ] \
+    || die "trusted flock client metadata changed"
 [ -S /var/run/docker.sock ] || die "the fixed local Docker socket is unavailable"
 case "${DOCKER_HOST:-$ONLINE_FETCH_DOCKER_HOST}" in
     "$ONLINE_FETCH_DOCKER_HOST") ;;
@@ -141,6 +145,8 @@ assert_online_fetch_source_tools() {
         || die "trusted Git client metadata changed"
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$TAR_BIN")" = "0:0:755:1" ] \
         || die "trusted tar client metadata changed"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FLOCK_BIN")" = "0:0:755:1" ] \
+        || die "trusted flock client metadata changed"
 }
 
 online_source_git() {
@@ -222,7 +228,17 @@ online_docker_run() {
         "$@"
 }
 
-mkdir -p "$ONLINE_DIR"
+if [ -e "$ONLINE_DIR" ] || [ -L "$ONLINE_DIR" ]; then
+    [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
+        || die "online cache root is not one real directory"
+    [ "$(/usr/bin/stat -c '%u:%g' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" ] \
+        || die "online cache root is not owned by the acquisition identity"
+    /usr/bin/chmod 0700 "$ONLINE_DIR"
+else
+    /usr/bin/install -d -m 0700 "$ONLINE_DIR"
+fi
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+    || die "online cache root is not current-user-private mode 0700"
 assert_online_fetch_docker_authority
 
 # fetch_verify URL DEST_BASENAME EXPECTED_SHA: idempotent download + verify.
@@ -1082,30 +1098,170 @@ retire_gradle_source_build() {
     GRADLE_SOURCE_BUILD=""
 }
 
+gradle_output_tool() {
+    [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ] \
+        || die "Gradle output authority requires the exact source snapshot"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/online-gradle-output.py" "$@"
+}
+
+gradle_output_semantic_args() {
+    printf '%s\0' \
+        --gradle-version "$ANDROID_GRADLE_WRAPPER" \
+        --gradle-sha256 "$SHA256_ANDROID_GRADLE_WRAPPER_ALL" \
+        --build-tools "$ANDROID_BUILD_TOOLS" \
+        --compile-sdk "$ANDROID_COMPILE_SDK"
+}
+
+retire_gradle_output_staging() {
+    local staging="$1" staging_id="$2" disposition
+    disposition="$(
+        gradle_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+    )" || die "cannot reconcile private Gradle output staging"
+    log "Gradle output staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Gradle output staging traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Gradle output staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private Gradle output staging survived retirement"
+}
+
+recover_gradle_output_staging() {
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name '.rustdesk-gradle-warm.*' -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Gradle output staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_gradle_output_staging "$staging" "$staging_id"
+    done
+}
+
+prepare_gradle_output_staging() {
+    GRADLE_OUTPUT_STAGING="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-gradle-warm.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Gradle output staging"
+    GRADLE_OUTPUT_STAGING_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_OUTPUT_STAGING")"
+    readonly GRADLE_OUTPUT_STAGING GRADLE_OUTPUT_STAGING_ID
+    if ! gradle_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+    then
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+            --root "$GRADLE_OUTPUT_STAGING" \
+            --expected-identity "$GRADLE_OUTPUT_STAGING_ID" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Gradle output preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+            --remove-private-root "$GRADLE_OUTPUT_STAGING" \
+            --expected-identity "$GRADLE_OUTPUT_STAGING_ID" \
+            || die "failed Gradle output preparation left non-retirable private staging"
+        die "cannot prepare private Gradle output staging"
+    fi
+    GRADLE_OUTPUT_SDK_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$GRADLE_OUTPUT_STAGING/android-sdk"
+    )"
+    GRADLE_OUTPUT_CACHE_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$GRADLE_OUTPUT_STAGING/gradle-home"
+    )"
+    readonly GRADLE_OUTPUT_SDK_ID GRADLE_OUTPUT_CACHE_ID
+}
+
+restore_gradle_output_traversal() {
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$GRADLE_OUTPUT_STAGING/android-sdk" \
+        --expected-identity "$GRADLE_OUTPUT_SDK_ID" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Android SDK output traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$GRADLE_OUTPUT_STAGING/gradle-home" \
+        --expected-identity "$GRADLE_OUTPUT_CACHE_ID" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Gradle cache output traversal"
+}
+
 stage_gradle() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
-    local status=0 post_status=0
+    local status=0 source_status=0 output_status=0 publication_status=0
+    local lock_fd semantic_args=()
     require_online_fetch_builder_image android-builder "$builder"
-    if [ -d "$ONLINE_DIR/gradle-home/caches/modules-2" ]; then
-        log "gradle cache already warm, skipping"; return 0
-    fi
+    assert_online_fetch_source_tools
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Gradle output serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Gradle output transaction already owns the online root"
     [ -d "$ONLINE_DIR/android-sdk/build-tools" ] || die "android SDK not staged — stage_android_sdk must run first"
     [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android" ] || die "arm64-android vcpkg not staged — stage_vcpkg_natives_arm64 must run first"
     [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ] || die "cargo-ndk not staged — stage_cargo_ndk must run first"
-    log "warming the gradle cache via one online apk build (APK_MODE=warm) -> ./online/gradle-home"
     prepare_gradle_source
+    recover_gradle_output_staging
+    mapfile -d '' semantic_args < <(gradle_output_semantic_args)
+    if [ -e "$ONLINE_DIR/gradle-home" ] || [ -L "$ONLINE_DIR/gradle-home" ]; then
+        gradle_output_tool check-complete \
+            --online "$ONLINE_DIR" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${semantic_args[@]}" \
+            || die "existing Gradle/SDK output is incomplete or structurally unsafe"
+        retire_gradle_source_build
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the Gradle output transaction lock"
+        exec {lock_fd}<&-
+        log "gradle cache already warm and semantically verified, skipping"
+        return 0
+    fi
+    prepare_gradle_output_staging
+    log "warming Gradle into private cache/SDK outputs; ./online remains read-only"
     online_docker_run \
         --env APK_MODE=warm \
+        --env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \
+        --env RUSTDESK_ANDROID_SDK_HOME=/outputs/android-sdk \
         --mount "type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home" \
+        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk" \
         --workdir /src \
         "$builder" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
         || status=$?
-    (verify_gradle_source_unchanged) || post_status=$?
+    (verify_gradle_source_unchanged) || source_status=$?
     retire_gradle_source_build
-    [ "$post_status" -eq 0 ] || die "networked Gradle source postcondition failed"
+    restore_gradle_output_traversal
+    gradle_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${semantic_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        gradle_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${semantic_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_gradle_output_staging "$GRADLE_OUTPUT_STAGING" "$GRADLE_OUTPUT_STAGING_ID"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Gradle output transaction lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"
+    [ "$output_status" -eq 0 ] || die "networked Gradle output postcondition failed"
     [ "$status" -eq 0 ] || die "networked Gradle warming failed"
+    [ "$publication_status" -eq 0 ] || die "networked Gradle output publication failed"
     log "gradle cache warmed ($(du -sh "$ONLINE_DIR/gradle-home" 2>/dev/null | cut -f1))"
 }
 

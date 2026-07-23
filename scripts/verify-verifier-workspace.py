@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13929,7 +13929,7 @@ def validate_online_fetch_gradle_source_authority_contract(sources):
          "Gradle authority-program execution"),
         ("|| status=$?",
          "Gradle failure-preserving status"),
-        ("(verify_gradle_source_unchanged) || post_status=$?",
+        ("(verify_gradle_source_unchanged) || source_status=$?",
          "Gradle failure-preserving source postcondition"),
     ):
         require_text(stage, text, label)
@@ -13939,10 +13939,10 @@ def validate_online_fetch_gradle_source_authority_contract(sources):
             "prepare_gradle_source",
             "online_docker_run",
             "|| status=$?",
-            "(verify_gradle_source_unchanged) || post_status=$?",
-            "retire_gradle_source_build",
-            '[ "$post_status" -eq 0 ]',
-            '[ "$status" -eq 0 ]',
+            "(verify_gradle_source_unchanged) || source_status=$?",
+            "retire_gradle_source_build\n    restore_gradle_output_traversal",
+            '[ "$source_status" -eq 0 ] || die "networked Gradle source postcondition failed"',
+            '[ "$status" -eq 0 ] || die "networked Gradle warming failed"',
         ),
         "Gradle private-source lifecycle",
     )
@@ -14032,6 +14032,133 @@ def validate_online_fetch_gradle_source_authority_contract(sources):
         sources["hardening"],
         "R-S11ck/R-S11e-103 — networked Gradle warmer source authority",
         "online-fetch Gradle source authority hardening ledger",
+    )
+
+
+def validate_online_fetch_gradle_output_authority_contract(sources):
+    focused = sources["online_fetch_gradle_output_authority_verifier"]
+    helper = sources["online_gradle_output_helper"]
+    online = sources["online_fetch"]
+    android = sources["android_apk_build"]
+    wrapper = sources["gradle_wrapper"]
+    for text, label in (
+        ("Gradle output transaction", "Gradle-output focused lifecycle binding"),
+        ("checked two-name publication", "Gradle-output focused publication binding"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Gradle-output focused mutation inventory"),
+        ("run_mutations(sources)", "Gradle-output focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ('/usr/bin/chmod 0700 "$ONLINE_DIR"', "Gradle-output private online root"),
+        ("readonly FLOCK_BIN=/usr/bin/flock", "Gradle-output fixed lock client"),
+        ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+         "Gradle-output exclusive transaction"),
+        ("recover_gradle_output_staging() {", "Gradle-output restart recovery"),
+        ("prepare_gradle_output_staging() {", "Gradle-output staging constructor"),
+        ('"$ONLINE_DIR/.rustdesk-gradle-warm.XXXXXXXXXX"',
+         "Gradle-output unpredictable same-parent staging"),
+        ("target=/online,readonly,bind-recursive=disabled",
+         "Gradle-output read-only online mount"),
+        ('source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home',
+         "Gradle-output narrow Gradle mount"),
+        ('source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk',
+         "Gradle-output narrow SDK mount"),
+        ('[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+         "Gradle-output publication barrier"),
+        ("gradle_output_tool publish", "Gradle-output checked publisher"),
+        ("retire_gradle_output_staging", "Gradle-output private retirement"),
+    ):
+        require_text(online, text, label)
+    for text, label in (
+        ('[ "${RUSTDESK_GRADLE_WARM_HOME:-}" = /outputs/gradle-home ]',
+         "Gradle-output exact inner cache path"),
+        ('[ "${RUSTDESK_ANDROID_SDK_HOME:-}" = /outputs/android-sdk ]',
+         "Gradle-output exact inner SDK path"),
+        ('[ -z "${RUSTDESK_GRADLE_WARM_HOME+x}" ]',
+         "Gradle-output non-warm cache override rejection"),
+        ('[ -z "${RUSTDESK_ANDROID_SDK_HOME+x}" ]',
+         "Gradle-output non-warm SDK override rejection"),
+        ('export ANDROID_SDK_ROOT="$ANDROID_BUILD_SDK" ANDROID_HOME="$ANDROID_BUILD_SDK"',
+         "Gradle-output inner SDK selection"),
+    ):
+        require_text(android, text, label)
+    require_text(
+        wrapper,
+        "distributionSha256Sum=fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12",
+        "Gradle-output wrapper publisher checksum",
+    )
+    require_text(
+        sources["pins"],
+        'SHA256_ANDROID_GRADLE_WRAPPER_ALL="fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12"',
+        "Gradle-output independent publisher pin",
+    )
+    for text, label in (
+        ("reject_descendant_mounts(canonical)", "Gradle-output mount closure"),
+        ("if metadata.st_nlink != 1:\n"
+         '                    fail(f"output file is multiply linked: {child_relative}")',
+         "Gradle-output hardlink refusal"),
+        ("output tree contains a symlink", "Gradle-output symlink refusal"),
+        ("output tree contains a special file", "Gradle-output special-file refusal"),
+        ("live Android SDK changed while the networked producer ran",
+         "Gradle-output live-input postcondition"),
+        ("exactly one pinned distribution archive",
+         "Gradle-output wrapper semantic gate"),
+        ('for name in ("aapt2", "apksigner", "zipalign"):\n'
+         "        require_file(tools / name, executable=True, nonempty=True)",
+         "Gradle-output SDK semantic gate"),
+        ('sync_tree(staging / "android-sdk")', "Gradle-output SDK durability"),
+        ('sync_tree(staging / "gradle-home")', "Gradle-output cache durability"),
+        ("RENAME_EXCHANGE = 2", "Gradle-output atomic SDK exchange"),
+        ("RENAME_NOREPLACE = 1", "Gradle-output no-clobber cache install"),
+        ("rollback_publication(online_fd, staging_fd, sdk_swapped, gradle_moved)",
+         "Gradle-output rollback"),
+        ('return "sdk-rolled-back"', "Gradle-output restart rollback"),
+        ("state is incoherent and was preserved", "Gradle-output ambiguous-state refusal"),
+        ("self-test did not classify completed publication",
+         "Gradle-output completed-transaction fixture"),
+        ("self-test did not roll back an SDK-only publication",
+         "Gradle-output SDK-only fixture"),
+        ("self-test accepted an occupied Gradle publication destination",
+         "Gradle-output destination-race fixture"),
+    ):
+        require_text(helper, text, label)
+    require_order(
+        helper,
+        (
+            "verify_staged(",
+            'sync_tree(staging / "android-sdk")',
+            'renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)',
+            'renameat2(staging_fd, "gradle-home", online_fd, "gradle-home", RENAME_NOREPLACE)',
+            "published Android SDK identity postcondition failed",
+            "published Gradle identity postcondition failed",
+            "validate_semantics(",
+        ),
+        "Gradle-output atomic SDK exchange and checked two-name publication",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test",
+        "Online-fetch Gradle output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-gradle-output.py self-test",
+        "Online-fetch Gradle output transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cl</span>',
+        "online-fetch Gradle output authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>231</td>",
+        "online-fetch Gradle output authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority",
+        "online-fetch Gradle output authority hardening ledger",
     )
 
 
@@ -17380,6 +17507,7 @@ def validate_sources(sources):
     validate_apple_verifier_authority_contract(sources)
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
+    validate_online_fetch_gradle_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -29555,7 +29683,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11ck, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#230",
+            "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -31402,7 +31530,7 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "(verify_gradle_source_unchanged) || post_status=$?",
+            "(verify_gradle_source_unchanged) || source_status=$?",
             "true # source postcondition removed",
             "Gradle failure-preserving source postcondition",
         ),
@@ -31443,6 +31571,82 @@ def run_source_mutations(sources):
             "R-S11ck/R-S11e-103 — networked Gradle warmer source authority",
             "R-S11ck/R-S11e-103 — networked Gradle live-source authority",
             "online-fetch Gradle source authority hardening ledger",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "checked two-name publication",
+            "unchecked output replacement",
+            "Gradle-output focused publication binding",
+        ),
+        (
+            "online_gradle_output_helper",
+            "reject_descendant_mounts(canonical)",
+            "return # descendant mounts accepted",
+            "Gradle-output mount closure",
+        ),
+        (
+            "online_gradle_output_helper",
+            "if metadata.st_nlink != 1:\n"
+            '                    fail(f"output file is multiply linked: {child_relative}")',
+            "if metadata.st_nlink < 1:\n"
+            '                    fail(f"output file is multiply linked: {child_relative}")',
+            "Gradle-output hardlink refusal",
+        ),
+        (
+            "online_gradle_output_helper",
+            'renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)\n'
+            "        sdk_swapped = True",
+            'os.replace(staging / "android-sdk", online / "android-sdk")\n'
+            "        sdk_swapped = True",
+            "Gradle-output atomic SDK exchange",
+        ),
+        (
+            "online_fetch",
+            "target=/online,readonly,bind-recursive=disabled",
+            "target=/online",
+            "Gradle-output read-only online mount",
+        ),
+        (
+            "online_fetch",
+            'source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk',
+            'source=$ONLINE_DIR,target=/outputs/android-sdk',
+            "Gradle-output narrow SDK mount",
+        ),
+        (
+            "android_apk_build",
+            '[ "${RUSTDESK_ANDROID_SDK_HOME:-}" = /outputs/android-sdk ]',
+            '[ -n "${RUSTDESK_ANDROID_SDK_HOME:-}" ]',
+            "Gradle-output exact inner SDK path",
+        ),
+        (
+            "gradle_wrapper",
+            "distributionSha256Sum=fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12",
+            "distributionSha256Sum=0e696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12",
+            "Gradle-output wrapper publisher checksum",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test",
+            "true # online-fetch Gradle output authority gate removed",
+            "Online-fetch Gradle output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cl</span>',
+            '<span class="id">R-S11cl-disabled</span>',
+            "online-fetch Gradle output authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>231</td>",
+            "<tr><td>231-disabled</td>",
+            "online-fetch Gradle output authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority",
+            "R-S11cl/R-S11e-104 — ambient Gradle output authority",
+            "online-fetch Gradle output authority hardening ledger",
         ),
         (
             "android_main_service",
@@ -32678,6 +32882,18 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_fetch_gradle_source_authority_verifier": (
                 repo / "scripts/verify-online-fetch-gradle-source-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_gradle_output_authority_verifier": (
+                repo / "scripts/verify-online-fetch-gradle-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_gradle_output_helper": (
+                repo / "scripts/online-gradle-output.py"
+            ).read_text(encoding="utf-8"),
+            "android_apk_build": (
+                repo / "scripts/android-apk-build.sh"
+            ).read_text(encoding="utf-8"),
+            "gradle_wrapper": (
+                repo / "flutter/android/gradle/wrapper/gradle-wrapper.properties"
             ).read_text(encoding="utf-8"),
             "windows_helper_runtime": (
                 repo / "scripts/windows-helper-runtime.sh"

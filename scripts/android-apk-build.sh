@@ -13,8 +13,8 @@
 # APK_MODE selects the requested Android build operation:
 #   offline: project the read-only warm /online/gradle-home into a private writable cache
 #            whose tracked init authority enables Gradle's actual offline start parameter.
-#   warm:    GRADLE_USER_HOME=/online/gradle-home directly (the networked run populates it,
-#            and gradle auto-installs the extra SDK packages it needs into /online/android-sdk).
+#   warm:    the caller supplies exactly two private /outputs mounts: GRADLE_USER_HOME and
+#            a writable Android SDK clone. The complete /online input closure stays read-only.
 #   rust-check: generate the real Flutter bridge and type-check the aarch64 Android Rust library;
 #               Gradle is not entered.
 set -euo pipefail
@@ -24,6 +24,20 @@ case "${APK_MODE:-}" in
 esac
 [ -z "${RUSTDESK_GRADLE_OFFLINE+x}" ] \
     || { echo "[FATAL] RUSTDESK_GRADLE_OFFLINE is build-internal" >&2; exit 1; }
+if [ "$APK_MODE" = warm ]; then
+    [ "${RUSTDESK_GRADLE_WARM_HOME:-}" = /outputs/gradle-home ] \
+        || { echo "[FATAL] warm Gradle output must be the exact private /outputs/gradle-home mount" >&2; exit 1; }
+    [ "${RUSTDESK_ANDROID_SDK_HOME:-}" = /outputs/android-sdk ] \
+        || { echo "[FATAL] warm Android SDK output must be the exact private /outputs/android-sdk mount" >&2; exit 1; }
+    ANDROID_BUILD_SDK="$RUSTDESK_ANDROID_SDK_HOME"
+else
+    [ -z "${RUSTDESK_GRADLE_WARM_HOME+x}" ] \
+        || { echo "[FATAL] RUSTDESK_GRADLE_WARM_HOME is warm-build-internal" >&2; exit 1; }
+    [ -z "${RUSTDESK_ANDROID_SDK_HOME+x}" ] \
+        || { echo "[FATAL] RUSTDESK_ANDROID_SDK_HOME is warm-build-internal" >&2; exit 1; }
+    ANDROID_BUILD_SDK=/online/android-sdk
+fi
+readonly ANDROID_BUILD_SDK
 
 # Android SDK preferences are distinct from shell HOME: AGP runs in a JVM whose
 # user.home comes from the image account. In the pinned 30.3.1 tool stack, current
@@ -53,13 +67,11 @@ prepare_offline_gradle_cache() {
 }
 
 if [ "$APK_MODE" = warm ]; then
-    if [ -e /online/gradle-home ] || [ -L /online/gradle-home ]; then
-        [ -d /online/gradle-home ] && [ ! -L /online/gradle-home ] \
-            || { echo "[FATAL] warm Gradle cache is not a real directory" >&2; exit 1; }
-    else
-        mkdir /online/gradle-home
-    fi
-    export GRADLE_USER_HOME=/online/gradle-home
+    [ -d "$RUSTDESK_GRADLE_WARM_HOME" ] && [ ! -L "$RUSTDESK_GRADLE_WARM_HOME" ] \
+        || { echo "[FATAL] private warm Gradle output is not a real directory" >&2; exit 1; }
+    [ -d "$ANDROID_BUILD_SDK" ] && [ ! -L "$ANDROID_BUILD_SDK" ] \
+        || { echo "[FATAL] private warm Android SDK output is not a real directory" >&2; exit 1; }
+    export GRADLE_USER_HOME="$RUSTDESK_GRADLE_WARM_HOME"
 fi
 
 TC=/tmp/tc; mkdir -p "$TC"
@@ -89,7 +101,7 @@ export ANDROID_NDK_HOME=/online/android-ndk
 # bindgen (scrap) must parse the NDK android sysroot, not the host glibc headers.
 export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot --target=aarch64-linux-android21"
 export VCPKG_ROOT=/online/vcpkg
-export ANDROID_SDK_ROOT=/online/android-sdk ANDROID_HOME=/online/android-sdk
+export ANDROID_SDK_ROOT="$ANDROID_BUILD_SDK" ANDROID_HOME="$ANDROID_BUILD_SDK"
 # Build-time CARGO_HOME (do NOT clobber the tracked /src/.cargo/config.toml).
 export CARGO_HOME=/tmp/cargo-home; mkdir -p "$CARGO_HOME"
 # Offline flutter shim: routes `flutter pub {run,get}` -> dart --offline and injects --no-pub

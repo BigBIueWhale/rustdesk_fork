@@ -3519,7 +3519,7 @@ def validate_smoke_contract(
         ('record_stage_status R-B4-build', "build status preservation"),
         ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
         ('record_stage_status R-S11c-27j', "sibling Docker stage status preservation"),
-        ('record_stage_status R-S11c-27k', "pre-pidfd fallback stage status preservation"),
+        ('record_stage_status R-S11c-27u', "pidfd-unavailable refusal stage status preservation"),
         ('record_stage_status R-S11c-27l', "Debian SysV stage status preservation"),
         ('record_stage_status R-S11c-27q', "native OpenRC stage status preservation"),
         ('record_stage_status R-S11c-27r', "native runit stage status preservation"),
@@ -3776,10 +3776,10 @@ def validate_smoke_contract(
         ('SERVICE_LIFECYCLE_FORCED=pass', "forced lifecycle result"),
         ('SERVICE_LIFECYCLE_PRIVILEGE_DROP=pass uid=4001', "non-root lifecycle result"),
         ('SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role', "hostile-record lifecycle result"),
-        ('start_pre_pidfd_recorded_child', "pre-pidfd runtime recovery fixture"),
-        ('assert_pre_pidfd_child_alive', "pre-pidfd runtime identity proof"),
-        ('RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1', "forced pre-pidfd runtime exercise"),
-        ('SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=', "pre-pidfd runtime result"),
+        ('start_pidfd_unavailable_recorded_child', "pidfd-unavailable runtime fixture"),
+        ('assert_pidfd_unavailable_child_alive', "pidfd-unavailable runtime identity proof"),
+        ('RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1', "forced pidfd-unavailable runtime exercise"),
+        ('SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=', "pidfd-unavailable runtime result"),
         ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
         ('readonly SOURCE_BINARY=/work/target/debug/rustdesk', "manual lifecycle source binary"),
         ('readonly BINARY=/usr/bin/rustdesk', "manual lifecycle identical installed path"),
@@ -3800,7 +3800,7 @@ def validate_smoke_contract(
         ('def carries_inherited_authority(process):', "inherited descriptor procfs scanner"),
         ('if carries_inherited_authority(supervisor):', "supervisor inherited descriptor runtime proof"),
         ('if carries_inherited_authority(pid_number):', "service child inherited descriptor runtime proof"),
-        ('if carries_inherited_authority(pid):', "pre-pidfd inherited descriptor runtime proof"),
+        ('if carries_inherited_authority(pid):', "pidfd-unavailable child inherited descriptor runtime proof"),
         ('SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded', "service inherited descriptor lifecycle result"),
     ):
         require_text(service_lifecycle, text, label)
@@ -3986,22 +3986,27 @@ def validate_smoke_contract(
     )
     require_text(
         linux_source,
-        'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";',
-        "debug-only pre-pidfd smoke force constant",
+        'const SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV: &str =',
+        "debug-only pidfd-unavailable smoke force constant",
     )
-    pre_pidfd_force = extract_between(
+    require_text(
         linux_source,
-        "fn service_child_pidfd_open_is_forced_unsupported_for_smoke() -> bool {",
+        '"RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE";',
+        "pidfd-unavailable smoke force environment value",
+    )
+    pidfd_unavailable_force = extract_between(
+        linux_source,
+        "fn service_child_pidfd_open_is_forced_unavailable_for_smoke() -> bool {",
         "\nfn open_service_child_pidfd",
-        "pre-pidfd smoke force helper",
+        "pidfd-unavailable smoke force helper",
     )
     for text, label in (
-        ('#[cfg(debug_assertions)]', "pre-pidfd smoke force debug gate"),
-        ('std::env::var_os(SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV)', "pre-pidfd smoke force environment lookup"),
-        ('#[cfg(not(debug_assertions))]', "pre-pidfd smoke force release closure"),
-        ('false', "pre-pidfd smoke force release-disabled result"),
+        ('#[cfg(debug_assertions)]', "pidfd-unavailable smoke force debug gate"),
+        ('std::env::var_os(SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV)', "pidfd-unavailable smoke force environment lookup"),
+        ('#[cfg(not(debug_assertions))]', "pidfd-unavailable smoke force release closure"),
+        ('false', "pidfd-unavailable smoke force release-disabled result"),
     ):
-        require_text(pre_pidfd_force, text, label)
+        require_text(pidfd_unavailable_force, text, label)
     pidfd_open = extract_between(
         linux_source,
         "fn open_service_child_pidfd(pid: u32) -> ResultType<PidFdOpen> {",
@@ -4009,19 +4014,117 @@ def validate_smoke_contract(
         "service child pidfd open helper",
     )
     for text, label in (
-        ('if service_child_pidfd_open_is_forced_unsupported_for_smoke()', "pre-pidfd smoke force dispatch"),
-        ('Smoke forced pidfd_open unavailable for service child pid', "pre-pidfd smoke force diagnostic"),
-        ('return Ok(PidFdOpen::Unsupported);', "forced pre-pidfd unsupported branch"),
+        ('if service_child_pidfd_open_is_forced_unavailable_for_smoke()', "pidfd-unavailable smoke force dispatch"),
+        ('exercising fail-closed recovery refusal', "pidfd-unavailable smoke force diagnostic"),
+        ('return Ok(PidFdOpen::Unsupported);', "forced pidfd-unavailable unsupported branch"),
     ):
         require_text(pidfd_open, text, label)
+    pidfd_unavailable_handler = extract_between(
+        linux_source,
+        "    fn handle_previous_child_without_pidfd(&self, record: &ServiceChildRecord) -> ResultType<()> {",
+        "\n}\n\nfn service_child_record_for_process",
+        "pidfd-unavailable recovery handler",
+    )
     for text, label in (
-        ('recover_previous_child_without_pidfd(&self, record: &ServiceChildRecord)', "pre-pidfd recovery branch"),
-        ('require_service_child_identity_match(record, "pre-pidfd kill fallback")', "pre-pidfd signal revalidation"),
-        ('wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)', "pre-pidfd graceful wait revalidation"),
-        ('wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)', "pre-pidfd forced wait revalidation"),
-        ('final identity-check-to-kill race cannot be eliminated', "pre-pidfd residual race diagnostic"),
+        ('ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent', "pidfd-unavailable safe stale classification"),
+        ('self.remove_record(record)', "pidfd-unavailable safe stale record removal"),
+        ('ServiceChildIdentityState::Match', "pidfd-unavailable live child classification"),
+        ('preserving the record and refusing recovery without signaling', "pidfd-unavailable live child refusal"),
+        ('ServiceChildIdentityState::Mismatch(reason)', "pidfd-unavailable mismatch refusal"),
+        ('ServiceChildIdentityState::Unavailable(reason)', "pidfd-unavailable unverifiable refusal"),
+        ('preserving the record and signaling nothing', "pidfd-unavailable ambiguous record preservation"),
     ):
-        require_text(linux_source, text, label)
+        require_text(pidfd_unavailable_handler, text, label)
+    require_text(
+        linux_source,
+        'PidFdOpen::Unsupported => self.handle_previous_child_without_pidfd(&record)',
+        "pidfd-unavailable recovery dispatch",
+    )
+    for forbidden, label in (
+        ('send_revalidated_service_child_pid_signal', "numeric-PID recovery signal helper"),
+        ('wait_revalidated_service_child_pid_exit', "numeric-PID recovery wait helper"),
+        ('pre-pidfd kill fallback', "numeric-PID recovery fallback context"),
+        ('final identity-check-to-kill race cannot be eliminated', "accepted recovery race diagnostic"),
+    ):
+        require_absent(linux_source, forbidden, label)
+    for text, label in (
+        (
+            'Linux pidfd-unavailable live recovery fails closed without signaling (R-S11c-27u/R-S11ca)',
+            "pidfd-unavailable shared source gate",
+        ),
+        (
+            'numeric-pid-recovery-fallback-regressed',
+            "numeric-PID recovery fallback source rejection",
+        ),
+    ):
+        require_text(verify, text, label)
+    pidfd_unavailable_runtime = extract_between(
+        service_lifecycle,
+        "run_pidfd_unavailable_recovery_refusal() {",
+        "\n}\n\nstop_service_gracefully",
+        "pidfd-unavailable runtime refusal fixture",
+    )
+    require_exact_count(
+        pidfd_unavailable_runtime,
+        '[ "$(sha256sum -- "$RECORD" | awk \'{print $1}\')" = "$record_sha256" ]',
+        2,
+        "pidfd-unavailable pre/post record-byte preservation",
+    )
+    for text, label in (
+        ('RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1', "forced pidfd-unavailable runtime exercise"),
+        ('if [ "$recovery_status" -ne 1 ]; then', "pidfd-unavailable exact refusal status"),
+        ('[ "$after_identity" = "$record_identity" ]', "pidfd-unavailable record metadata preservation"),
+        ('[ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]', "pidfd-unavailable temporary record absence"),
+        ('preserving the record and refusing recovery without signaling', "pidfd-unavailable fail-closed diagnostic"),
+        ('assert_pidfd_unavailable_child_alive', "pidfd-unavailable exact child survival"),
+        ('assert_portable_alive', "pidfd-unavailable portable survival"),
+    ):
+        require_text(pidfd_unavailable_runtime, text, label)
+    pidfd_unavailable_scenario = extract_between(
+        service_lifecycle,
+        'start_pidfd_unavailable_recorded_child "$FIXTURE/service-5b-pidfd-unavailable-child.log"',
+        "\ngroupadd -g 4001 rdseat",
+        "pidfd-unavailable runtime scenario",
+    )
+    require_order(
+        pidfd_unavailable_scenario,
+        (
+            "run_pidfd_unavailable_recovery_refusal",
+            "assert_portable_alive",
+            "remove_exact_hostile_service_record",
+            'force_kill_exact "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START"',
+            "SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass",
+        ),
+        "pidfd-unavailable refusal and exact cleanup order",
+    )
+    pidfd_requirement = extract_html_requirement(
+        requirements,
+        "R-S11ca",
+        "Linux pidfd-only crash-recovery requirement",
+    )
+    for text, label in (
+        ("pidfd_send_signal(2)", "stable pidfd signaling requirement"),
+        ("preserve the record, signal nothing", "pidfd-unavailable live record preservation requirement"),
+        ("No raw numeric-PID recovery signal", "numeric-PID recovery fallback prohibition"),
+        ("directly owned <code>Child</code>", "ordinary owned-child compatibility requirement"),
+        ("exact status-1 refusal", "pidfd-unavailable runtime refusal requirement"),
+    ):
+        require_text(pidfd_requirement, text, label)
+    require_text(
+        requirements,
+        "<tr><td>220</td><td><strong>Linux live crash-recovery signaling retained a recyclable numeric-PID fallback",
+        "Linux numeric-PID recovery Appendix C row",
+    )
+    require_text(
+        hardening,
+        "R-S11c-27u — pidfd-unavailable live recovery refusal",
+        "pidfd-unavailable runtime hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11ca/R-S11e-93 — Linux crash recovery signals only through a stable pidfd",
+        "pidfd-only crash-recovery hardening finding",
+    )
     require_text(
         core_main,
         'log::error!("Linux service lifecycle authority failed closed: {err}");',
@@ -6051,7 +6154,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "859 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "858 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -11020,7 +11123,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11101,7 +11204,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11280,7 +11383,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11414,7 +11517,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11582,7 +11685,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11778,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12112,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -21540,7 +21643,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "859 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "858 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -25055,15 +25158,75 @@ def run_source_mutations(sources):
         ),
         (
             "service_lifecycle",
-            'RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1',
-            'true # pre-pidfd runtime exercise removed',
-            "forced pre-pidfd runtime exercise",
+            'RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1',
+            'true # pidfd-unavailable runtime exercise removed',
+            "forced pidfd-unavailable runtime exercise",
         ),
         (
             "service_lifecycle",
-            'SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=',
-            'SERVICE_LIFECYCLE_PRE_PIDFD_SKIPPED=pass prior_generation=',
-            "pre-pidfd runtime result",
+            'if [ "$recovery_status" -ne 1 ]; then',
+            'if [ "$recovery_status" -ne 0 ]; then',
+            "pidfd-unavailable exact refusal status",
+        ),
+        (
+            "service_lifecycle",
+            '[ "$after_identity" = "$record_identity" ]',
+            'true # pidfd-unavailable record metadata preservation removed',
+            "pidfd-unavailable record metadata preservation",
+        ),
+        (
+            "service_lifecycle",
+            '[ "$(sha256sum -- "$RECORD" | awk \'{print $1}\')" = "$record_sha256" ]\n  [ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]',
+            'true # pidfd-unavailable record bytes and temporary-path proof removed',
+            "pidfd-unavailable pre/post record-byte preservation",
+        ),
+        (
+            "service_lifecycle",
+            '[ "$after_identity" = "$record_identity" ]\n  [ "$(sha256sum -- "$RECORD" | awk \'{print $1}\')" = "$record_sha256" ]\n  [ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]',
+            '[ "$after_identity" = "$record_identity" ]\n  [ "$(sha256sum -- "$RECORD" | awk \'{print $1}\')" = "$record_sha256" ]\n  true # pidfd-unavailable temporary-record proof removed',
+            "pidfd-unavailable temporary record absence",
+        ),
+        (
+            "service_lifecycle",
+            '  assert_pidfd_unavailable_child_alive\n  assert_portable_alive',
+            '  true # pidfd-unavailable exact child and portable survival removed',
+            "pidfd-unavailable exact child survival",
+        ),
+        (
+            "service_lifecycle",
+            'SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=',
+            'SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_SKIPPED=pass generation=',
+            "pidfd-unavailable runtime result",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ca</span>',
+            '<span class="id">R-S11ca-disabled</span>',
+            "Linux pidfd-only crash-recovery requirement",
+        ),
+        (
+            "requirements",
+            "No raw numeric-PID recovery signal",
+            "A revalidated raw numeric-PID recovery signal",
+            "numeric-PID recovery fallback prohibition",
+        ),
+        (
+            "requirements",
+            "<tr><td>220</td>",
+            "<tr><td>220-disabled</td>",
+            "Linux numeric-PID recovery Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11c-27u — pidfd-unavailable live recovery refusal",
+            "R-S11c-27u — numeric-PID recovery fallback retained",
+            "pidfd-unavailable runtime hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11ca/R-S11e-93 — Linux crash recovery signals only through a stable pidfd",
+            "R-S11ca/R-S11e-93 — Linux crash recovery signals a recyclable numeric PID",
+            "pidfd-only crash-recovery hardening finding",
         ),
         (
             "pid_reuse_lifecycle",
@@ -25091,39 +25254,69 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            'require_service_child_identity_match(record, "pre-pidfd kill fallback")',
-            'true; // pre-pidfd signal revalidation removed',
-            "pre-pidfd signal revalidation",
+            'ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent => {\n                log::warn!(\n                    "Discarding stale Linux service child record',
+            'ServiceChildIdentityState::Exited => {\n                log::warn!(\n                    "Discarding stale Linux service child record',
+            "pidfd-unavailable safe stale classification",
         ),
         (
             "linux_source",
-            'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)',
-            'service_child_pid_exists(record.pid)',
-            "pre-pidfd graceful wait revalidation",
+            'self.remove_record(record)\n            }\n            ServiceChildIdentityState::Match',
+            'Ok(())\n            }\n            ServiceChildIdentityState::Match',
+            "pidfd-unavailable safe stale record removal",
         ),
         (
             "linux_source",
-            'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)',
-            'service_child_pid_exists(record.pid)',
-            "pre-pidfd forced wait revalidation",
+            'preserving the record and refusing recovery without signaling',
+            'removing the record and continuing recovery without signaling',
+            "pidfd-unavailable live child refusal",
         ),
         (
             "linux_source",
-            'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";',
-            'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD_DISABLED";',
-            "debug-only pre-pidfd smoke force constant",
+            'ServiceChildIdentityState::Unavailable(reason) => {\n                bail!(\n                    "Refusing unverifiable Linux service child recovery without pidfd',
+            'ServiceChildIdentityState::Absent if false => { let reason = "removed".to_owned();\n                bail!(\n                    "Refusing unverifiable Linux service child recovery without pidfd',
+            "pidfd-unavailable unverifiable refusal",
+        ),
+        (
+            "linux_source",
+            'ServiceChildIdentityState::Mismatch(reason) => {\n                bail!(\n                    "Refusing ambiguous Linux service child recovery without pidfd',
+            'ServiceChildIdentityState::Absent if false => { let reason = "removed".to_owned();\n                bail!(\n                    "Refusing ambiguous Linux service child recovery without pidfd',
+            "pidfd-unavailable mismatch refusal",
+        ),
+        (
+            "linux_source",
+            'PidFdOpen::Unsupported => self.handle_previous_child_without_pidfd(&record)',
+            'PidFdOpen::Unsupported => Ok(())',
+            "pidfd-unavailable recovery dispatch",
+        ),
+        (
+            "linux_source",
+            '"RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE";',
+            '"RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE_DISABLED";',
+            "pidfd-unavailable smoke force environment value",
         ),
         (
             "linux_source",
             '#[cfg(not(debug_assertions))]\n    {\n        false\n    }\n}\n\nfn open_service_child_pidfd',
             '#[cfg(not(debug_assertions))]\n    {\n        true\n    }\n}\n\nfn open_service_child_pidfd',
-            "pre-pidfd smoke force release-disabled result",
+            "pidfd-unavailable smoke force release-disabled result",
         ),
         (
             "linux_source",
-            'if service_child_pidfd_open_is_forced_unsupported_for_smoke() {',
-            'if false { // pre-pidfd smoke force dispatch removed',
-            "pre-pidfd smoke force dispatch",
+            'if service_child_pidfd_open_is_forced_unavailable_for_smoke() {',
+            'if false { // pidfd-unavailable smoke force dispatch removed',
+            "pidfd-unavailable smoke force dispatch",
+        ),
+        (
+            "linux_source",
+            "fn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {",
+            "fn send_revalidated_service_child_pid_signal() {}\n\nfn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {",
+            "numeric-PID recovery signal helper",
+        ),
+        (
+            "verify",
+            'Linux pidfd-unavailable live recovery fails closed without signaling (R-S11c-27u/R-S11ca)',
+            'Linux pidfd-unavailable recovery retains numeric PID fallback (R-S11c-27u/R-S11ca)',
+            "pidfd-unavailable shared source gate",
         ),
         (
             "linux_source",
@@ -25175,9 +25368,9 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'record_stage_status R-S11c-27k',
-            'true # pre-pidfd fallback status removed',
-            "pre-pidfd fallback stage status preservation",
+            'record_stage_status R-S11c-27u',
+            'true # pidfd-unavailable refusal status removed',
+            "pidfd-unavailable refusal stage status preservation",
         ),
         (
             "smoke",
@@ -27877,7 +28070,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11bz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219",
+        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

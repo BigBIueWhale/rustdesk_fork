@@ -3227,7 +3227,7 @@ for runtime_proof in \
   'inherited_authority.st_ino' \
   'service supervisor retained launcher file-descriptor authority' \
   'service child retained launcher file-descriptor authority' \
-  'pre-pidfd service child retained launcher file-descriptor authority' \
+  'pidfd-unavailable service child retained launcher file-descriptor authority' \
   'SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded'; do
   grep -qF "$runtime_proof" scripts/smoke-service-lifecycle.sh || r_s11e28="$r_s11e28 hostile-runtime-proof-missing"
 done
@@ -6351,8 +6351,13 @@ grep -qF 'executable.dev() != record.executable_device' <<<"$service_recovery_bl
 grep -qF 'executable.ino() != record.executable_inode' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b executable-inode-revalidation-missing"
 grep -qF 'service_child_cmdline_has_exact_role' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b exact-role-revalidation-missing"
 grep -qF 'service_child_environment_has_generation' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b generation-revalidation-missing"
-grep -qF 'final identity-check-to-kill race cannot be eliminated' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pre-pidfd-residual-race-not-explicit"
-grep -qF 'send_revalidated_service_child_pid_signal' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pre-pidfd-revalidated-fallback-missing"
+grep -qF 'handle_previous_child_without_pidfd(&self, record: &ServiceChildRecord)' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b pidfd-unavailable-handler-missing"
+grep -qF 'Kernel lacks required pidfd_open for live Linux service child pid' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b live-child-pidfd-refusal-missing"
+grep -qF 'ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent' <<<"$service_recovery_block" || r_s11c27b="$r_s11c27b safe-stale-record-classification-missing"
+if grep -qF 'send_revalidated_service_child_pid_signal' <<<"$service_recovery_block" ||
+   grep -qF 'wait_revalidated_service_child_pid_exit' <<<"$service_recovery_block"; then
+  r_s11c27b="$r_s11c27b numeric-pid-recovery-fallback-regressed"
+fi
 service_entry_block=$(awk '/^pub fn start_os_service\(\) -> ResultType<\(\)> \{/,/^}/' src/platform/linux.rs)
 if ! awk '
   /ServiceRuntime::acquire/ { lease = NR }
@@ -6369,7 +6374,7 @@ grep -qE '^RuntimeDirectoryPreserve=restart$' res/rustdesk.service || r_s11c27b=
 grep -qE '^SystemCallFilter=.*pidfd_open.*pidfd_send_signal.*renameat2' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-lifecycle-syscalls-not-allowed"
 grep -qF 'R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27b="$r_s11c27b hardening-ledger-missing"
 if [ -n "$r_s11c27b" ]; then echo "  FAIL R-S11c-27b Linux durable service-child crash recovery:$r_s11c27b"; rc=1; else
-  echo "  ok  R-S11c-27b root-only atomic records + singleton lease + pidfd-first full identity revalidation + explicit pre-pidfd fallback"; fi
+  echo "  ok  R-S11c-27b root-only atomic records + singleton lease + pidfd-bound signaling + fail-closed pidfd-unavailable recovery"; fi
 
 echo "== (3b-iii-h2d) Linux direct-child stop is bounded and fail-closed (R-S11c-27c) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27c_linux_service_child_term_then_bounded_kill --color never
@@ -6601,39 +6606,52 @@ grep -qF 'R-S11c-27j — concurrent separate-Docker service noninterference beha
 if [ -n "$r_s11c27j" ]; then echo "  FAIL R-S11c-27j Linux sibling Docker noninterference:$r_s11c27j"; rc=1; else
   echo "  ok  R-S11c-27j an unrelated networkless sibling Docker container with a neutral RustDesk server remains alive until explicitly drained after all manual lifecycle stop/crash/hostile-record operations"; fi
 
-echo "== (3b-iii-h2l) Linux pre-pidfd recovery fallback is exact and behavior-tested (R-S11c-27k) =="
-r_s11c27k=
-grep -qF 'const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";' src/platform/linux.rs || r_s11c27k="$r_s11c27k smoke-force-env-constant-missing"
-pre_pidfd_force_block=$(awk '/^fn service_child_pidfd_open_is_forced_unsupported_for_smoke\(\)/,/^fn open_service_child_pidfd/' src/platform/linux.rs)
-echo "$pre_pidfd_force_block" | grep -qF '#[cfg(debug_assertions)]' || r_s11c27k="$r_s11c27k smoke-force-not-debug-gated"
-echo "$pre_pidfd_force_block" | grep -qF 'std::env::var_os(SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV)' || r_s11c27k="$r_s11c27k smoke-force-env-not-read"
-echo "$pre_pidfd_force_block" | grep -qF '#[cfg(not(debug_assertions))]' || r_s11c27k="$r_s11c27k smoke-force-release-gate-missing"
-echo "$pre_pidfd_force_block" | grep -qF 'false' || r_s11c27k="$r_s11c27k smoke-force-release-not-disabled"
-pre_pidfd_open_block=$(awk '/^fn open_service_child_pidfd\(pid: u32\)/,/^fn service_child_pidfd_exited/' src/platform/linux.rs)
-echo "$pre_pidfd_open_block" | grep -qF 'if service_child_pidfd_open_is_forced_unsupported_for_smoke()' || r_s11c27k="$r_s11c27k smoke-force-dispatch-missing"
-echo "$pre_pidfd_open_block" | grep -qF 'Smoke forced pidfd_open unavailable for service child pid' || r_s11c27k="$r_s11c27k smoke-force-diagnostic-missing"
-echo "$pre_pidfd_open_block" | grep -qF 'return Ok(PidFdOpen::Unsupported);' || r_s11c27k="$r_s11c27k forced-unsupported-branch-missing"
-grep -qF 'recover_previous_child_without_pidfd(&self, record: &ServiceChildRecord)' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-recovery-entry-missing"
-grep -qF 'require_service_child_identity_match(record, "pre-pidfd kill fallback")' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-signal-not-revalidated"
-grep -qF 'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-graceful-wait-not-revalidated"
-grep -qF 'wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)' src/platform/linux.rs || r_s11c27k="$r_s11c27k fallback-forced-wait-not-revalidated"
-grep -qF 'final identity-check-to-kill race cannot be eliminated' src/platform/linux.rs scripts/smoke-service-lifecycle.sh HARDENING_STATUS.md || r_s11c27k="$r_s11c27k residual-race-diagnostic-missing"
-grep -qF 'start_pre_pidfd_recorded_child' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-fixture-missing"
-grep -qF 'assert_pre_pidfd_child_alive' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-fixture-identity-proof-missing"
-grep -qF 'RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-force-not-used"
-grep -qF 'SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=' scripts/smoke-service-lifecycle.sh || r_s11c27k="$r_s11c27k runtime-result-marker-missing"
-grep -qF 'record_stage_status R-S11c-27k' scripts/smoke-server.sh || r_s11c27k="$r_s11c27k runtime-status-not-preserved"
-grep -qF 'R-S11c-27k — pre-pidfd fallback recovery behavior' HARDENING_STATUS.md || r_s11c27k="$r_s11c27k hardening-ledger-missing"
-if ! awk '
-  /start_pre_pidfd_recorded_child/ { start = NR }
-  /force-pre-pidfd/ { recover = NR }
-  /SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass/ { marker = NR }
-  END { exit !(start && recover && marker && start < recover && recover < marker) }
-' scripts/smoke-service-lifecycle.sh; then
-  r_s11c27k="$r_s11c27k pre-pidfd-runtime-order-regressed"
+echo "== (3b-iii-h2l) Linux pidfd-unavailable live recovery fails closed without signaling (R-S11c-27u/R-S11ca) =="
+r_s11c27u=
+grep -qF 'const SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV: &str =' src/platform/linux.rs || r_s11c27u="$r_s11c27u smoke-force-env-constant-missing"
+grep -qF '"RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE";' src/platform/linux.rs || r_s11c27u="$r_s11c27u smoke-force-env-value-missing"
+pidfd_unavailable_force_block=$(awk '/^fn service_child_pidfd_open_is_forced_unavailable_for_smoke\(\)/,/^fn open_service_child_pidfd/' src/platform/linux.rs)
+echo "$pidfd_unavailable_force_block" | grep -qF '#[cfg(debug_assertions)]' || r_s11c27u="$r_s11c27u smoke-force-not-debug-gated"
+echo "$pidfd_unavailable_force_block" | grep -qF 'std::env::var_os(SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV)' || r_s11c27u="$r_s11c27u smoke-force-env-not-read"
+echo "$pidfd_unavailable_force_block" | grep -qF '#[cfg(not(debug_assertions))]' || r_s11c27u="$r_s11c27u smoke-force-release-gate-missing"
+echo "$pidfd_unavailable_force_block" | grep -qF 'false' || r_s11c27u="$r_s11c27u smoke-force-release-not-disabled"
+pidfd_unavailable_open_block=$(awk '/^fn open_service_child_pidfd\(pid: u32\)/,/^fn service_child_pidfd_exited/' src/platform/linux.rs)
+echo "$pidfd_unavailable_open_block" | grep -qF 'if service_child_pidfd_open_is_forced_unavailable_for_smoke()' || r_s11c27u="$r_s11c27u smoke-force-dispatch-missing"
+echo "$pidfd_unavailable_open_block" | grep -qF 'exercising fail-closed recovery refusal' || r_s11c27u="$r_s11c27u smoke-force-diagnostic-missing"
+echo "$pidfd_unavailable_open_block" | grep -qF 'return Ok(PidFdOpen::Unsupported);' || r_s11c27u="$r_s11c27u forced-unsupported-branch-missing"
+pidfd_unavailable_handler=$(awk '/^    fn handle_previous_child_without_pidfd\(&self/,/^    }/' src/platform/linux.rs)
+echo "$pidfd_unavailable_handler" | grep -qF 'ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent' || r_s11c27u="$r_s11c27u safe-stale-record-removal-missing"
+echo "$pidfd_unavailable_handler" | grep -qF 'self.remove_record(record)' || r_s11c27u="$r_s11c27u stale-record-removal-missing"
+echo "$pidfd_unavailable_handler" | grep -qF 'ServiceChildIdentityState::Match' || r_s11c27u="$r_s11c27u live-child-classification-missing"
+echo "$pidfd_unavailable_handler" | grep -qF 'preserving the record and refusing recovery without signaling' || r_s11c27u="$r_s11c27u live-child-refusal-missing"
+echo "$pidfd_unavailable_handler" | grep -qF 'ServiceChildIdentityState::Mismatch' || r_s11c27u="$r_s11c27u mismatch-refusal-missing"
+echo "$pidfd_unavailable_handler" | grep -qF 'ServiceChildIdentityState::Unavailable' || r_s11c27u="$r_s11c27u unverifiable-refusal-missing"
+if grep -qF 'send_revalidated_service_child_pid_signal' src/platform/linux.rs ||
+   grep -qF 'wait_revalidated_service_child_pid_exit' src/platform/linux.rs; then
+  r_s11c27u="$r_s11c27u numeric-pid-recovery-fallback-regressed"
 fi
-if [ -n "$r_s11c27k" ]; then echo "  FAIL R-S11c-27k Linux pre-pidfd fallback:$r_s11c27k"; rc=1; else
-  echo "  ok  R-S11c-27k forced pre-pidfd recovery uses only full identity revalidation around kill(2), reports the residual race, terminates the exact prior child, and recovers a fresh generation"; fi
+grep -qF 'start_pidfd_unavailable_recorded_child' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-fixture-missing"
+grep -qF 'assert_pidfd_unavailable_child_alive' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-fixture-identity-proof-missing"
+grep -qF 'RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-force-not-used"
+grep -qF 'if [ "$recovery_status" -ne 1 ]; then' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-exact-status-missing"
+grep -qF '[ "$after_identity" = "$record_identity" ]' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-record-metadata-preservation-missing"
+grep -qF 'assert_pidfd_unavailable_child_alive' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-child-survival-missing"
+grep -qF 'SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-result-marker-missing"
+grep -qF 'record_stage_status R-S11c-27u' scripts/smoke-server.sh || r_s11c27u="$r_s11c27u runtime-status-not-preserved"
+grep -qF 'R-S11c-27u — pidfd-unavailable live recovery refusal' HARDENING_STATUS.md || r_s11c27u="$r_s11c27u hardening-ledger-missing"
+grep -qF '<span class="id">R-S11ca</span>' requirements.html || r_s11c27u="$r_s11c27u normative-requirement-missing"
+grep -qF '<tr><td>220</td><td><strong>Linux live crash-recovery signaling retained a recyclable numeric-PID fallback' requirements.html || r_s11c27u="$r_s11c27u appendix-finding-missing"
+if ! awk '
+  /start_pidfd_unavailable_recorded_child/ { start = NR }
+  /run_pidfd_unavailable_recovery_refusal/ { refuse = NR }
+  /remove_exact_hostile_service_record/ && start { cleanup = NR }
+  /SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass/ { marker = NR }
+  END { exit !(start && refuse && cleanup && marker && start < refuse && refuse < cleanup && cleanup < marker) }
+' scripts/smoke-service-lifecycle.sh; then
+  r_s11c27u="$r_s11c27u pidfd-unavailable-runtime-order-regressed"
+fi
+if [ -n "$r_s11c27u" ]; then echo "  FAIL R-S11c-27u Linux pidfd-unavailable recovery refusal:$r_s11c27u"; rc=1; else
+  echo "  ok  R-S11c-27u live recorded-child recovery uses only pidfd signaling; pidfd-unavailable recovery preserves the child and record, signals nothing, and fails before new authority"; fi
 
 echo "== (3b-iii-h2m) installed Debian non-systemd lifecycle has exact SysV authority (R-S11c-27l) =="
 r_s11c27l=

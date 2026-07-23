@@ -645,16 +645,18 @@ impl ServiceChildCredentials {
 // * While the supervisor is alive, `OwnedServiceChild` retains the direct `Child`; routine
 //   restart and shutdown never rediscover a PID.
 // * After a supervisor crash, a new supervisor first takes the close-on-exec `flock` lease,
-//   consumes one bounded root-only record, opens a pidfd where the kernel supports it, and
+//   consumes one bounded root-only record, opens a pidfd, and
 //   revalidates every recorded field immediately before each signal. `pidfd_send_signal(2)`
 //   then binds the signal to that opened process rather than to a recyclable integer PID.
 //
 // Publication is temp-file fsync -> renameat2(RENAME_NOREPLACE) -> directory fsync. A malformed
 // or ambiguous record is preserved and stops service startup; it is never replaced by a new child.
-// Linux before pidfd_open(2) gets the same full checks around kill(2), with the irreducible final
-// check-to-kill race reported explicitly instead of being presented as equivalent assurance.
+// If pidfd_open(2) is unavailable, an already-exited or absent child record may be removed without
+// signaling. A live or unverifiable record is preserved and startup fails closed: process metadata
+// cannot turn a recyclable integer PID into stable signaling authority.
 #[cfg(debug_assertions)]
-const SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV: &str = "RD_SERVICE_SMOKE_FORCE_PRE_PIDFD";
+const SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV: &str =
+    "RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ServiceChildRecord {
@@ -1223,7 +1225,7 @@ impl ServiceRuntime {
 
         match open_service_child_pidfd(record.pid)? {
             PidFdOpen::Available(pidfd) => self.recover_previous_child_with_pidfd(&record, &pidfd),
-            PidFdOpen::Unsupported => self.recover_previous_child_without_pidfd(&record),
+            PidFdOpen::Unsupported => self.handle_previous_child_without_pidfd(&record),
             PidFdOpen::Absent => {
                 log::warn!(
                     "Discarding stale Linux service child record for absent pid {} without signaling",
@@ -1278,54 +1280,34 @@ impl ServiceRuntime {
         self.remove_record(record)
     }
 
-    fn recover_previous_child_without_pidfd(&self, record: &ServiceChildRecord) -> ResultType<()> {
+    fn handle_previous_child_without_pidfd(&self, record: &ServiceChildRecord) -> ResultType<()> {
         match inspect_service_child_identity(record) {
-            ServiceChildIdentityState::Match => {}
             ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent => {
                 log::warn!(
-                    "Discarding stale Linux service child record for pid {} on a pre-pidfd kernel",
+                    "Discarding stale Linux service child record for pid {} without signaling because pidfd_open is unavailable",
                     record.pid
                 );
-                return self.remove_record(record);
+                self.remove_record(record)
+            }
+            ServiceChildIdentityState::Match => {
+                bail!(
+                    "Kernel lacks required pidfd_open for live Linux service child pid {}; preserving the record and refusing recovery without signaling",
+                    record.pid
+                );
             }
             ServiceChildIdentityState::Mismatch(reason) => {
                 bail!(
-                    "Refusing ambiguous pre-pidfd Linux service child recovery for pid {}: {reason}",
+                    "Refusing ambiguous Linux service child recovery without pidfd for pid {}; preserving the record and signaling nothing: {reason}",
                     record.pid
                 );
             }
             ServiceChildIdentityState::Unavailable(reason) => {
                 bail!(
-                    "Refusing unverifiable pre-pidfd Linux service child recovery for pid {}: {reason}",
+                    "Refusing unverifiable Linux service child recovery without pidfd for pid {}; preserving the record and signaling nothing: {reason}",
                     record.pid
                 );
             }
         }
-        log::warn!(
-            "Kernel lacks pidfd_open; recovery revalidates pid {} immediately before each kill(2), but the final identity-check-to-kill race cannot be eliminated on this kernel",
-            record.pid
-        );
-
-        if send_revalidated_service_child_pid_signal(record, hbb_common::libc::SIGTERM)? {
-            return self.remove_record(record);
-        }
-        if wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT)? {
-            return self.remove_record(record);
-        }
-
-        log::warn!(
-            "Prior Linux service child pid {} did not exit after SIGTERM; using revalidated kill(2) SIGKILL fallback",
-            record.pid
-        );
-        if !send_revalidated_service_child_pid_signal(record, hbb_common::libc::SIGKILL)?
-            && !wait_revalidated_service_child_pid_exit(record, SERVICE_CHILD_FORCED_STOP_TIMEOUT)?
-        {
-            bail!(
-                "Prior Linux service child pid {} remained live after fallback SIGKILL",
-                record.pid
-            );
-        }
-        self.remove_record(record)
     }
 }
 
@@ -1549,10 +1531,10 @@ fn service_child_pid_exists(pid: u32) -> bool {
     std::io::Error::last_os_error().raw_os_error() != Some(hbb_common::libc::ESRCH)
 }
 
-fn service_child_pidfd_open_is_forced_unsupported_for_smoke() -> bool {
+fn service_child_pidfd_open_is_forced_unavailable_for_smoke() -> bool {
     #[cfg(debug_assertions)]
     {
-        std::env::var_os(SERVICE_CHILD_FORCE_PRE_PIDFD_FOR_SMOKE_ENV).as_deref()
+        std::env::var_os(SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV).as_deref()
             == Some(std::ffi::OsStr::new("1"))
     }
     #[cfg(not(debug_assertions))]
@@ -1564,9 +1546,9 @@ fn service_child_pidfd_open_is_forced_unsupported_for_smoke() -> bool {
 fn open_service_child_pidfd(pid: u32) -> ResultType<PidFdOpen> {
     let pid = hbb_common::libc::pid_t::try_from(pid)
         .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
-    if service_child_pidfd_open_is_forced_unsupported_for_smoke() {
+    if service_child_pidfd_open_is_forced_unavailable_for_smoke() {
         log::warn!(
-            "Smoke forced pidfd_open unavailable for service child pid {pid}; exercising pre-pidfd recovery"
+            "Smoke forced pidfd_open unavailable for service child pid {pid}; exercising fail-closed recovery refusal"
         );
         return Ok(PidFdOpen::Unsupported);
     }
@@ -1639,49 +1621,6 @@ fn send_service_child_pidfd_signal(pidfd: &File, signal: c_int) -> ResultType<bo
     Err(anyhow!(
         "Failed to signal service child through pidfd: {err}"
     ))
-}
-
-fn send_revalidated_service_child_pid_signal(
-    record: &ServiceChildRecord,
-    signal: c_int,
-) -> ResultType<bool> {
-    require_service_child_identity_match(record, "pre-pidfd kill fallback")?;
-    let pid = hbb_common::libc::pid_t::try_from(record.pid)
-        .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
-    if unsafe { hbb_common::libc::kill(pid, signal) } == 0 {
-        return Ok(false);
-    }
-    let err = std::io::Error::last_os_error();
-    if err.raw_os_error() == Some(hbb_common::libc::ESRCH) {
-        return Ok(true);
-    }
-    Err(anyhow!(
-        "Failed to signal revalidated service child pid {pid}: {err}"
-    ))
-}
-
-fn wait_revalidated_service_child_pid_exit(
-    record: &ServiceChildRecord,
-    timeout: Duration,
-) -> ResultType<bool> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        match inspect_service_child_identity(record) {
-            ServiceChildIdentityState::Match if Instant::now() < deadline => sleep_millis(50),
-            ServiceChildIdentityState::Match => return Ok(false),
-            ServiceChildIdentityState::Exited | ServiceChildIdentityState::Absent => {
-                return Ok(true);
-            }
-            ServiceChildIdentityState::Mismatch(reason) => bail!(
-                "Service child pid {} changed identity while awaiting exit: {reason}; signaling nothing further",
-                record.pid
-            ),
-            ServiceChildIdentityState::Unavailable(reason) => bail!(
-                "Service child pid {} became unverifiable while awaiting exit: {reason}; signaling nothing further",
-                record.pid
-            ),
-        }
-    }
 }
 
 fn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {

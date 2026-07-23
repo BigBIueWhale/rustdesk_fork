@@ -47,9 +47,9 @@ DECOY=
 DECOY_START=
 DECOY_EXECUTABLE=
 DECOY_GENERATION=
-PRE_PIDFD=
-PRE_PIDFD_START=
-PRE_PIDFD_GENERATION=
+PIDFD_UNAVAILABLE_CHILD=
+PIDFD_UNAVAILABLE_CHILD_START=
+PIDFD_UNAVAILABLE_GENERATION=
 ROOT_ENVIRONMENT_PROVEN=0
 WORKING_DIRECTORY_PROVEN=0
 FILE_DESCRIPTOR_AUTHORITY_PROVEN=0
@@ -201,11 +201,12 @@ cleanup() {
     force_kill_exact "$DECOY" "$DECOY_START" || cleanup_status=1
   fi
   [ -z "$DECOY" ] || wait "$DECOY" 2>/dev/null || true
-  if [ -n "$PRE_PIDFD" ] && [ -n "$PRE_PIDFD_START" ] \
-    && "$READY" --is-running "$PRE_PIDFD" "$PRE_PIDFD_START" 2>/dev/null; then
-    force_kill_exact "$PRE_PIDFD" "$PRE_PIDFD_START" || cleanup_status=1
+  if [ -n "$PIDFD_UNAVAILABLE_CHILD" ] && [ -n "$PIDFD_UNAVAILABLE_CHILD_START" ] \
+    && "$READY" --is-running "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START" 2>/dev/null; then
+    force_kill_exact "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START" \
+      || cleanup_status=1
   fi
-  [ -z "$PRE_PIDFD" ] || wait "$PRE_PIDFD" 2>/dev/null || true
+  [ -z "$PIDFD_UNAVAILABLE_CHILD" ] || wait "$PIDFD_UNAVAILABLE_CHILD" 2>/dev/null || true
   if [ -n "$PORTABLE" ] && [ -n "$PORTABLE_START" ] \
     && "$READY" --is-running "$PORTABLE" "$PORTABLE_START" 2>/dev/null; then
     "$READY" --stop "$PORTABLE" "$PORTABLE_START" >/dev/null 2>&1 \
@@ -292,9 +293,10 @@ if generation_entries != [b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION=" + expecte
 PY
 }
 
-assert_pre_pidfd_child_alive() {
-  "$READY" --is-running "$PRE_PIDFD" "$PRE_PIDFD_START"
-  python3 - "$PRE_PIDFD" "$PRE_PIDFD_START" "$BINARY" "$PRE_PIDFD_GENERATION" "$$" \
+assert_pidfd_unavailable_child_alive() {
+  "$READY" --is-running "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START"
+  python3 - "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START" "$BINARY" \
+    "$PIDFD_UNAVAILABLE_GENERATION" "$$" \
     "$HOSTILE_SERVICE_DESCRIPTOR" <<'PY'
 import os
 import sys
@@ -322,31 +324,31 @@ def carries_inherited_authority(process):
 raw = open(f"/proc/{pid}/stat", "rb").read()
 fields = raw.rsplit(b") ", 1)[1].split()
 if len(fields) < 20 or fields[0] in {b"Z", b"X"} or int(fields[19]) != expected_start:
-    raise SystemExit("pre-pidfd service child identity changed")
+    raise SystemExit("pidfd-unavailable service child identity changed")
 if open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0") != [
     b"rd-smoke-server", b"--server", b"--service-owned-server", b""
 ]:
-    raise SystemExit("pre-pidfd service child role changed")
+    raise SystemExit("pidfd-unavailable service child role changed")
 executable = os.stat(f"/proc/{pid}/exe")
 if (executable.st_dev, executable.st_ino) != (
     expected_executable.st_dev, expected_executable.st_ino
 ):
-    raise SystemExit("pre-pidfd service child executable identity changed")
+    raise SystemExit("pidfd-unavailable service child executable identity changed")
 status = open(f"/proc/{pid}/status", "r", encoding="ascii").read().splitlines()
 values = {line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in status if ":" in line}
 if values.get("Uid", "").split() != ["0"] * 4:
-    raise SystemExit("pre-pidfd service child uid changed")
+    raise SystemExit("pidfd-unavailable service child uid changed")
 environ = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
 expected_entries = {
     b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION=" + expected_generation,
     b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT=" + expected_parent,
 }
 if not expected_entries.issubset(set(environ)):
-    raise SystemExit("pre-pidfd service child launch authority changed")
+    raise SystemExit("pidfd-unavailable service child launch authority changed")
 if os.readlink(f"/proc/{pid}/cwd") != "/":
-    raise SystemExit("pre-pidfd service child retained its launcher working directory")
+    raise SystemExit("pidfd-unavailable service child retained its launcher working directory")
 if carries_inherited_authority(pid):
-    raise SystemExit("pre-pidfd service child retained launcher file-descriptor authority")
+    raise SystemExit("pidfd-unavailable service child retained launcher file-descriptor authority")
 PY
 }
 
@@ -787,34 +789,25 @@ start_service() {
 }
 
 start_service_recovering() {
-  local log=$1 stale_record_identity=$2 stale_record_hash=$3 force_pre_pidfd=${4:-}
+  local log=$1 stale_record_identity=$2 stale_record_hash=$3
   [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
   [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")" = "$stale_record_identity" ]
   [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$stale_record_hash" ]
   : > "$log"
   chmod 0600 "$log"
-  if [ "$force_pre_pidfd" = force-pre-pidfd ]; then
-    (
-      cd "$HOSTILE_SERVICE_CWD"
-      exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
-      exec "${HOSTILE_SERVICE_ENV[@]}" RD_SERVICE_SMOKE_FORCE_PRE_PIDFD=1 \
-        "$BINARY" --service
-    ) >"$log" 2>&1 &
-  else
-    (
-      cd "$HOSTILE_SERVICE_CWD"
-      exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
-      exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
-    ) >"$log" 2>&1 &
-  fi
+  (
+    cd "$HOSTILE_SERVICE_CWD"
+    exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
+    exec "${HOSTILE_SERVICE_ENV[@]}" "$BINARY" --service
+  ) >"$log" 2>&1 &
   SVC=$!
   SVC_START=$("$READY" --identity "$SVC")
   wait_for_service_child "$log" 0 "" "" "" "" "$stale_record_hash"
 }
 
-start_pre_pidfd_recorded_child() {
+start_pidfd_unavailable_recorded_child() {
   local log=$1 device inode uid
-  PRE_PIDFD_GENERATION=$(tr -d '\n' </proc/sys/kernel/random/uuid)
+  PIDFD_UNAVAILABLE_GENERATION=$(tr -d '\n' </proc/sys/kernel/random/uuid)
   : > "$log"
   chmod 0600 "$log"
   (
@@ -822,18 +815,58 @@ start_pre_pidfd_recorded_child() {
     exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
     exec env RUST_LOG=info HOME=/tmp \
       RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
-      RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PRE_PIDFD_GENERATION" \
+      RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PIDFD_UNAVAILABLE_GENERATION" \
       bash --noprofile --norc -c \
       'exec -a rd-smoke-server "$1" --server --service-owned-server' bash "$BINARY"
   ) >"$log" 2>&1 &
-  PRE_PIDFD=$!
-  PRE_PIDFD_START=$("$READY" --identity "$PRE_PIDFD")
-  "$READY" --wait-parked "$PRE_PIDFD" "$PRE_PIDFD_START" "$log" "$PROBE" 0
-  assert_pre_pidfd_child_alive
-  read -r device inode uid < <(service_record_process_identity "$PRE_PIDFD" "$PRE_PIDFD_START")
+  PIDFD_UNAVAILABLE_CHILD=$!
+  PIDFD_UNAVAILABLE_CHILD_START=$("$READY" --identity "$PIDFD_UNAVAILABLE_CHILD")
+  "$READY" --wait-parked "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START" \
+    "$log" "$PROBE" 0
+  assert_pidfd_unavailable_child_alive
+  read -r device inode uid \
+    < <(service_record_process_identity "$PIDFD_UNAVAILABLE_CHILD" \
+      "$PIDFD_UNAVAILABLE_CHILD_START")
   [ "$uid" = 0 ]
-  write_hostile_service_record canonical "$PRE_PIDFD" "$PRE_PIDFD_START" \
-    "$device" "$inode" 0 "$PRE_PIDFD_GENERATION" 0600
+  write_hostile_service_record canonical "$PIDFD_UNAVAILABLE_CHILD" \
+    "$PIDFD_UNAVAILABLE_CHILD_START" "$device" "$inode" 0 \
+    "$PIDFD_UNAVAILABLE_GENERATION" 0600
+  assert_portable_alive
+}
+
+run_pidfd_unavailable_recovery_refusal() {
+  local log=$1 record_identity=$2 record_sha256=$3
+  local after_identity recovery_status
+  [ -f "$RECORD" ] && [ ! -L "$RECORD" ]
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")" = "$record_identity" ]
+  [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$record_sha256" ]
+  : > "$log"
+  chmod 0600 "$log"
+  if (
+    cd "$HOSTILE_SERVICE_CWD"
+    exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"
+    exec "${HOSTILE_SERVICE_ENV[@]}" RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1 \
+      "$BINARY" --service
+  ) >"$log" 2>&1; then
+    recovery_status=0
+  else
+    recovery_status=$?
+  fi
+  if [ "$recovery_status" -ne 1 ]; then
+    echo "service lifecycle: pidfd-unavailable recovery returned status $recovery_status, expected 1" >&2
+    return 1
+  fi
+  after_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")
+  [ "$after_identity" = "$record_identity" ]
+  [ "$(sha256sum -- "$RECORD" | awk '{print $1}')" = "$record_sha256" ]
+  [ ! -e "$RECORD.tmp" ] && [ ! -L "$RECORD.tmp" ]
+  grep -Fq -- "Smoke forced pidfd_open unavailable for service child pid $PIDFD_UNAVAILABLE_CHILD" \
+    "$log"
+  grep -Fq -- \
+    "Kernel lacks required pidfd_open for live Linux service child pid $PIDFD_UNAVAILABLE_CHILD; preserving the record and refusing recovery without signaling" \
+    "$log"
+  grep -Fq -- 'Linux service lifecycle authority failed closed:' "$log"
+  assert_pidfd_unavailable_child_alive
   assert_portable_alive
 }
 
@@ -1080,34 +1113,22 @@ stop_service_gracefully "$FIXTURE/service-5-recovered.log"
 printf 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=%s recovered_generation=%s child_exit_ms=%s\n' \
   "$crashed_generation" "$recovered_generation" "$crashed_child_exit_ms"
 
-start_pre_pidfd_recorded_child "$FIXTURE/service-5b-pre-pidfd-child.log"
-pre_pidfd_child=$PRE_PIDFD
-pre_pidfd_child_start=$PRE_PIDFD_START
-pre_pidfd_generation=$PRE_PIDFD_GENERATION
-pre_pidfd_record_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$RECORD")
-pre_pidfd_record_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
-start_service_recovering "$FIXTURE/service-5b-pre-pidfd-recovered.log" \
-  "$pre_pidfd_record_identity" "$pre_pidfd_record_sha256" force-pre-pidfd
-if "$READY" --is-running "$pre_pidfd_child" "$pre_pidfd_child_start" 2>/dev/null; then
-  echo 'service lifecycle: pre-pidfd fallback left its exact prior child alive' >&2
-  exit 1
-fi
-wait "$PRE_PIDFD"
-PRE_PIDFD=
-PRE_PIDFD_START=
-[ "$GENERATION" != "$pre_pidfd_generation" ]
-[ "$CHILD:$CHILD_START" != "$pre_pidfd_child:$pre_pidfd_child_start" ]
-grep -Fq -- "Smoke forced pidfd_open unavailable for service child pid $pre_pidfd_child" \
-  "$FIXTURE/service-5b-pre-pidfd-recovered.log"
-grep -Fq -- "Kernel lacks pidfd_open; recovery revalidates pid $pre_pidfd_child immediately before each kill(2)" \
-  "$FIXTURE/service-5b-pre-pidfd-recovered.log"
-grep -Fq -- 'R-T9: graceful shutdown complete — exiting 0' \
-  "$FIXTURE/service-5b-pre-pidfd-child.log"
-pre_pidfd_recovered_generation=$GENERATION
+start_pidfd_unavailable_recorded_child "$FIXTURE/service-5b-pidfd-unavailable-child.log"
+pidfd_unavailable_generation=$PIDFD_UNAVAILABLE_GENERATION
+pidfd_unavailable_record_identity=$(stat -c '%d:%i:%u:%g:%a:%h:%s:%Y:%Z' -- "$RECORD")
+pidfd_unavailable_record_sha256=$(sha256sum -- "$RECORD" | awk '{print $1}')
+run_pidfd_unavailable_recovery_refusal \
+  "$FIXTURE/service-5b-pidfd-unavailable-refusal.log" \
+  "$pidfd_unavailable_record_identity" "$pidfd_unavailable_record_sha256"
 assert_portable_alive
-stop_service_gracefully "$FIXTURE/service-5b-pre-pidfd-recovered.log"
-printf 'SERVICE_LIFECYCLE_PRE_PIDFD_RECOVERY=pass prior_generation=%s recovered_generation=%s\n' \
-  "$pre_pidfd_generation" "$pre_pidfd_recovered_generation"
+remove_exact_hostile_service_record \
+  "$pidfd_unavailable_record_identity" "$pidfd_unavailable_record_sha256"
+force_kill_exact "$PIDFD_UNAVAILABLE_CHILD" "$PIDFD_UNAVAILABLE_CHILD_START"
+wait "$PIDFD_UNAVAILABLE_CHILD" 2>/dev/null || true
+PIDFD_UNAVAILABLE_CHILD=
+PIDFD_UNAVAILABLE_CHILD_START=
+printf 'SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=%s record_sha256=%s\n' \
+  "$pidfd_unavailable_generation" "$pidfd_unavailable_record_sha256"
 
 groupadd -g 4001 rdseat
 groupadd -g 4101 rdseat-extra

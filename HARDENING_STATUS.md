@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 859 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 858 lexical `unsafe {`
 blocks across 247 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -672,7 +672,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   regression proves the table and its credential strings are never serialized again. `scripts/verify.sh` gates
   the complete source/module/dependency absence, the direct-only connector shape, the retained stale-value pins,
   and the focused regression. The synchronized machine inventory proves 905 Cargo packages, 36 Git records from
-  26 source URLs (26 rustdesk-org records from 20 URLs), and 859 lexical unsafe blocks across 247 Rust files.
+  26 source URLs (26 rustdesk-org records from 20 URLs), and 858 lexical unsafe blocks across 247 Rust files.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -2063,7 +2063,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   retains the exact non-root environment/UID/GID/group/capability proof. The current binary passed that lifecycle in
   a disposable networkless container, including
   `SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded`, active-user UID/GID and exact
-  supplementary groups, zero live capability sets, graceful/forced/crash/pre-pidfd recovery, and unrelated portable
+  supplementary groups, zero live capability sets, graceful/forced/crash/pre-pidfd recovery (the latter later
+  superseded by R-S11c-27u), and unrelated portable
   process noninterference. `scripts/verify.sh` binds the typed principal/desktop API, explicit selectors, absence of
   ambient reads and process-global mutation, hostile fixture, mandatory runtime result, R-S11l, and Appendix C #134.
   This source/runtime slice does not claim final execution of the exact cold Debian artifact or overall R-B2
@@ -2103,7 +2104,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   regressions. The canonical smoke harness built the current debug binary in Docker and the network-disabled service
   lifecycle stage emitted the mandatory
   `SERVICE_LIFECYCLE_WORKING_DIRECTORY=pass supervisor=/ child=/ ambient=excluded` result across normal, recovery,
-  hostile-record, forced pre-pidfd, root, and active-user paths. Its host identity monitor and portable/sibling
+  hostile-record, forced pre-pidfd, root, and active-user paths (the pre-pidfd case was later superseded by
+  R-S11c-27u). Its host identity monitor and portable/sibling
   noninterference checks passed, as did the subsequent SysV, native OpenRC, native runit, loopback-listener, PAKE,
   session, tunnel, file-transfer, and wire-capture stages. The full verifier-workspace mutation self-test was also
   attempted twice in a constrained container but stopped at its pre-existing descriptor-owned scratch-replacement
@@ -2113,7 +2115,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11e-28 — Linux service-owned inherited descriptor authority — SOURCE, FOCUSED, AND
   ACTUAL-DEBUG-BINARY RUNTIME VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH
   R-B2/R-S11c-27.** Platform: Linux root service supervisor and
-  root/login-screen, active-user, and direct pre-pidfd service-owned server children. Endpoint/action: inherited
+  root/login-screen, active-user, and direct pre-pidfd service-owned server children (the pre-pidfd case was later
+  superseded by R-S11c-27u). Endpoint/action: inherited
   file-descriptor table at exact service-role bootstrap and supervisor-to-child `fork`/`exec`. Boundary:
   init/manual/sudo launcher and privileged supervisor kernel-object capabilities ↔ service-owned runtime and
   privilege-dropped child. Attack surface closed: Linux preserves an open descriptor across `execve` unless
@@ -2147,7 +2150,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   The lifecycle fixture opens fd 198 without close-on-exec to a root-only file in every manual launch path and
   compares that object's device/inode against every live supervisor and child descriptor. The rebuilt current
   debug binary and smoke readiness example passed that networkless Docker lifecycle fixture: graceful, forced,
-  crash/restart, pre-pidfd recovery, active-user credential drop, cwd, portable-sibling, and cross-container
+  crash/restart, pre-pidfd recovery (later superseded by R-S11c-27u), active-user credential drop, cwd,
+  portable-sibling, and cross-container
   identity checks passed, and the fixture emitted
   `SERVICE_LIFECYCLE_FILE_DESCRIPTOR_AUTHORITY=pass supervisor=excluded child=excluded ambient=excluded` with
   staged binary SHA-256 `6009233598bc73c1f75f77c5676a1a116326f99e663efcdc30aa78cbac68308b`. This is current
@@ -6324,8 +6328,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     runit, and the packaged manually supervised path, exact-commit cold artifact evidence, and external expert R-V3
     review also remain mandatory before this parent item or the upcoming release can close.
 
-  - **R-S11c-27k — pre-pidfd fallback recovery behavior — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED
-    2026-07-17; PARENT ITEM REMAINS OPEN.** Linux service recovery already selected a pidfd when available and fell
+  - **R-S11c-27k — pre-pidfd fallback recovery behavior — HISTORICAL RUNTIME EVIDENCE FROM 2026-07-17;
+    FALLBACK SUPERSEDED AND EXCISED BY R-S11c-27u/R-S11e-93 ON 2026-07-23; PARENT ITEM REMAINS OPEN.** This section
+    records the behavior of the then-current source and is not a statement of the current recovery contract. Linux
+    service recovery selected a pidfd when available and fell
     back to numeric-PID `kill(2)` only when `pidfd_open(2)` returned an unsupported-kernel error. The fallback first
     verifies the complete durable identity (PID/start time/boot/executable device+inode/UID/generation/service-owned
     argv and environment role), revalidates that identity immediately before each `SIGTERM` or `SIGKILL`, and uses
@@ -6376,10 +6382,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     those contracts, and the dirty-tree validator passed. This is a current-kernel forced compatibility-branch test;
     it does **not** claim execution on an actually old kernel and does not remove the documented residual race.
 
-    This slice closes only the pre-pidfd fallback runtime checklist item. Later R-S11c-27l/m supply installed
+    This historical slice closed only the then-retained pre-pidfd fallback runtime checklist item. R-S11c-27u later
+    deleted that compatibility branch rather than accepting its irreducible check-to-signal race. Later
+    R-S11c-27l/m supply installed
     SysV/systemd stop/restart and supervisor-crash behavior, and R-S11c-27n supplies cross-mount/container-namespace
     identity. Actual forced numeric-PID reuse, OpenRC/runit/manual packaging integration, exact-commit cold artifact
     evidence, and external expert R-V3 review remain open. The parent item and upcoming release remain **OPEN**.
+
+  - **R-S11c-27u — pidfd-unavailable live recovery refusal — SOURCE IMPLEMENTED AND CONFINED
+    SOURCE/MUTATION/COMPILER VERIFICATION PASSED 2026-07-23; UPDATED EXACT-BINARY LIFECYCLE FIXTURE NOT EXECUTED;
+    PARENT ITEM REMAINS OPEN.** The previous unsupported-pidfd branch completely revalidated a durable child identity before
+    every numeric-PID `kill(2)`, but the final check could not bind the later signal to the same process across PID
+    recycling. Current recovery therefore has no raw numeric-PID `SIGTERM`, `SIGKILL`, or revalidating-wait fallback.
+    A live recorded child is signaled only after `pidfd_open(2)` and only through `pidfd_send_signal(2)`, with the
+    existing complete identity checks immediately before each signal.
+
+    `PidFdOpen::Unsupported` now enters a classification-only handler. `Exited` or `Absent` permits removal of the
+    exact stale record without signaling. `Match`, `Mismatch`, or `Unavailable` preserves that record and returns an
+    error; the ordinary service entry reports the lifecycle authority failure and exits before its IPC listener or a
+    replacement child can be created. This is not a blanket Linux-5.3 minimum: no-record startup works without a
+    pidfd, and routine restart/shutdown still uses the supervisor's directly owned Rust `Child`. Only crash recovery
+    of a still-live durable-record target requires the stable process descriptor.
+
+    The renamed debug-only `RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1` hook can force only the existing
+    `Unsupported` classification and is compiled to `false` in release builds. The networkless actual-binary fixture
+    constructs one exact live service-owned child and canonical root-only record, runs the real `--service` entry,
+    requires exact status 1 plus both forced-unavailable and fail-closed diagnostics, and proves unchanged record
+    identity/bytes, absence of the temporary record, and survival of both the exact child and unrelated portable
+    server. Only after the refusal is proven does the fixture remove the exact record and terminate the retained
+    child through its pidfd-bound test authority. R-S11ca, Appendix C #220, the shared source gate, and the independent
+    semantic/mutation verifier bind this contract. Confined evidence is recorded in R-S11e-93 below. The updated
+    fixture itself was not executed because it models the installed UID-0 service lifecycle, while this slice's
+    execution policy required numeric UID/GID 1000 with all capabilities dropped. This source change therefore does
+    not claim current exact-binary refusal behavior, an installed Debian artifact run, old-kernel execution, overall
+    R-B2/R-B10 completion, or external R-V3 review.
 
   - **R-S11c-27l — installed Debian SysV lifecycle — SOURCE/RUNTIME IMPLEMENTED AND BEHAVIOR-TESTED 2026-07-17;
     PARENT ITEM REMAINS OPEN.** The sole Linux `.deb` now carries a package-owned mode-0755
@@ -6861,13 +6897,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   - Crash recovery must use an atomically written, root-owned child record that
     binds at least PID, `/proc/<pid>/stat` start time, boot identity, executable
     device/inode, service generation, and the service-owned role marker. A new
-    supervisor must open a `pidfd` where supported and revalidate every available
-    identity field immediately before signaling. Missing, malformed, stale, or
-    ambiguous evidence must fail closed by signaling nothing and reporting the
-    condition; a PID or command line alone is never ownership proof. A compatible
-    fallback for supported kernels without `pidfd` must perform the same
-    start-time/file-identity revalidation around `kill(2)` and handle the residual
-    race explicitly.
+    supervisor must open a `pidfd` and revalidate every available identity field
+    immediately before signaling. Missing, malformed, stale, or ambiguous evidence
+    must fail closed by signaling nothing and reporting the condition; a PID or
+    command line alone is never ownership proof. If `pidfd_open(2)` is unavailable,
+    an already-exited or absent record may be removed without signaling, but a live,
+    mismatched, or unverifiable record must be preserved and startup must fail before
+    listener or replacement-child authority. No numeric-PID recovery signal fallback
+    is compatible with this requirement.
   - Delete the global `ps | grep | awk | xargs kill`, broad `pkill -f`, and any
     equivalent sweep as lifecycle authorities. The current `/proc/<pid>/exe`
     pathname-string fallback must not be treated as executable identity across
@@ -8006,6 +8043,77 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed. The exact cold Debian release artifact and installed install/upgrade/removal/purge run remain R-B2.
   Current APK/device, native Apple/Windows installed-platform evidence, and external R-V3 review remain open; this
   slice is not overall completion.
+- **R-S11ca/R-S11e-93 — Linux crash recovery signals only through a stable pidfd — SOURCE IMPLEMENTED AND CONFINED
+  SOURCE/MUTATION/COMPILER/INVENTORY VERIFICATION PASSED 2026-07-23; UPDATED EXACT-BINARY LIFECYCLE FIXTURE NOT
+  EXECUTED; INSTALLED ARTIFACT EVIDENCE REMAINS R-B2.** Platform: Linux `rustdesk --service` recovery after a supervisor crash.
+  Endpoint/action: root-originated `SIGTERM`/`SIGKILL` toward the process named by the durable
+  `/run/rustdesk/service-child.record`. Boundary: time-bounded `/proc` identity observations and a recyclable numeric
+  PID ↔ stable kernel process-reference authority.
+
+  The deleted compatibility branch was careful but could not be made correct. It compared PID/start time, current
+  boot ID, executable device/inode, all UID fields, exact service-owned argv, and the unique generation environment;
+  it repeated those checks immediately before each numeric-PID `kill(2)` and during both bounded waits. A target
+  process could nevertheless exit and its PID be reused between the last successful inspection and the signal.
+  Linux's `pidfd_send_signal(2)` exists specifically to address that class: after a pidfd has been opened for one
+  process, later PID recycling does not retarget operations through the descriptor. The former warning accurately
+  disclosed the race but accepting it still left root lifecycle authority capable of reaching an unrelated process.
+  This is a narrow local crash-recovery availability/authority defect, not evidence that the race occurred, a host
+  process was signaled, Docker obtained root, a public listener was created, a firewall changed, exploitation
+  happened, or a machine was compromised.
+
+  Current source removes `send_revalidated_service_child_pid_signal` and
+  `wait_revalidated_service_child_pid_exit` completely. The only recovery signal helper calls
+  `SYS_pidfd_send_signal` on the already-opened descriptor. When `pidfd_open` returns `ENOSYS`, the new handler may
+  delete only an exact record whose identity inspection reports `Exited` or `Absent`, because that operation sends no
+  signal. `Match` fails with an explicit required-pidfd diagnostic; `Mismatch` and `Unavailable` also fail, preserving
+  the record and signaling nothing. `start_os_service` already sequences lease acquisition and recovery before IPC
+  listener creation, so every refusal precedes both network/service endpoint authority and child launch. No-record
+  startup and the supervisor's routine directly owned-`Child` shutdown remain unchanged, avoiding a needless blanket
+  rejection of older kernels.
+
+  The actual-binary lifecycle fixture was changed from “fallback succeeds” to “unsafe recovery is refused.” It binds
+  one canonical live child/record, forces only `PidFdOpen::Unsupported` through a debug-only environment name that is
+  inert in release builds, requires service exit status 1, compares full record metadata and SHA-256 before and after,
+  rejects a temporary record, and re-proves the exact child plus unrelated UID-4000 portable server are alive. Test
+  cleanup removes only the retained exact record and uses Python's `pidfd_open`/`pidfd_send_signal` path against the
+  retained start-time identity. The top-level smoke consumer now requires
+  `SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL`, and source/semantic mutation gates bind the safe-state split,
+  live-record refusal, fallback-symbol absence, pre-listener order, runtime preservation, R-S11ca, Appendix C #220,
+  and this ledger entry.
+
+  Confined verification used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
+  `--pull=never`, no network, a read-only root and source mount, all capabilities dropped, no-new-privileges, bounded
+  PIDs/CPU/memory/no-swap, and private tmpfs outputs. Bash parsing and in-memory Python compilation passed; normal
+  independent semantic validation passed; the complete in-memory source-mutation matrix passed after independently
+  rejecting weakened live/stale/mismatch/unverifiable decisions, record metadata/byte/temp-path preservation,
+  release-hook closure, recovery dispatch, reintroduced fallback symbols, gate wiring, requirement, Appendix row,
+  and ledger identities. The Rust 1.75.0 locked/offline `cargo check --lib --features linux-pkg-config` completed in
+  1m30s with only the repository's existing warning set. Dependency inventory normal mode and all 103 adversarial
+  checks passed: deleting the sole raw recovery `kill` block changed only `src/platform/linux.rs`, reducing the
+  lexical unsafe total from 859 to 858 and moving the per-file digest from
+  `e84d5ffaae33889085987b5a49a7be444a94ea6cc467c4e199f91a16372638bf` to
+  `32ae35db8dfec93d8fa9de08be93fb595ebc8254e9a71f6606c35aa7190fb67c`; package/vendor/workflow topology stayed
+  unchanged. Native-codec normal and negative self-tests passed against requirements SHA-256
+  `31eb86ec577062999f519f00680e85a04d10e4a687c8daa182b1db0d433d22d1`.
+
+  The immutable image lacks the `rustfmt` component. Invoking its rustup proxy on a read-only root stopped while
+  trying to create an update temporary file, so no formatting result is claimed; the Rust compiler accepted the
+  source. A first confined Python-compile attempt likewise stopped because explicit `py_compile` tried the read-only
+  source `__pycache__`; the corrected run bound its cache to private tmpfs and passed. Before confined validation, a
+  mistaken host-side parser-only `bash -n`/`py_compile` invocation ran without root, project binaries, network,
+  ports, Docker mounts, or service paths and changed no tracked file; it is not counted as evidence and is recorded
+  as a procedural deviation. The first new semantic pass also exposed and then rejected a local verifier-variable
+  wiring error, while two mutation iterations exposed overly broad/underbound mutation targets; those checks were
+  tightened rather than bypassed and the complete final matrix passed.
+
+  The updated exact-binary lifecycle fixture was not executed: it intentionally models a UID-0 installed service,
+  whereas every permitted project/test process in this slice had to remain numeric UID/GID 1000 with all
+  capabilities dropped. No root container, host namespace, Docker socket mount, port publication, host RustDesk
+  process/service/configuration, listener, firewall, or device path was used or changed. Consequently this slice does
+  not claim current exact-binary pidfd-unavailable refusal, clean exact-commit Debian package
+  construction/installation, an installed old-kernel run, Android device evidence, native Apple/Windows evidence, or
+  independent R-V3 review; those broader items remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8723,9 +8831,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5819c5408cacf96b5adc6ef4f1324b5d8ec6a744bba6cbf12095ff888fdce535  requirements.html
+31eb86ec577062999f519f00680e85a04d10e4a687c8daa182b1db0d433d22d1  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11bz, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#219. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ca, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

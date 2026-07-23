@@ -8551,7 +8551,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   firewall, or configuration was exercised. Native installed-service liveness/password behavior and exact
   Debian-artifact evidence remain R-B2/R-S11c-27; the prohibited long cold release build remains unrun.
 - **R-S11cf/R-S11e-98 — Debian builder private-source and container authority — SOURCE IMPLEMENTED;
-  CONFINED SEMANTIC/MUTATION/WORKSPACE AND AUTHORITY-RUNTIME PROBES PASSED ON THE CANDIDATE 2026-07-23;
+  EXACT SOURCE COMMIT `547da491d182b98c31184a509e192977bcd7cb18` CONFINED
+  SEMANTIC/MUTATION/WORKSPACE AND AUTHORITY-RUNTIME PROBES PASSED 2026-07-23;
   EXACT COLD DEBIAN ARTIFACT EXECUTION REMAINS R-B2/R-S11c-27.** Platform: the Linux Docker build host used by the
   direct and release-child Debian artifact builders. Endpoint/action: the sole offline compiler-container launch
   in `scripts/build-debian.sh`. Boundary: the exact committed source, verified offline input closure, and
@@ -8591,7 +8592,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   forbidden ambient authority, R-S11cf, Appendix C #225, this ledger identity, shared-gate wiring, and workspace
   ownership through deliberate mutations.
 
-  Candidate verification is confined and does not compile RustDesk. The focused verifier passes on the pinned
+  Exact-source verification at `547da491d182b98c31184a509e192977bcd7cb18` is confined and does not compile
+  RustDesk. The focused verifier passes on the pinned
   Python 3.6 Debian-builder image and rejects all 32 deliberate source/requirement/ledger weakenings. The independent
   workspace meta-verifier passes normally and rejects its complete in-memory source-mutation matrix while binding
   the new verifier, shared gate, normative requirement, Appendix row, and ledger. A neutral runtime probe used the

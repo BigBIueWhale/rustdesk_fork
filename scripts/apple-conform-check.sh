@@ -163,6 +163,24 @@ target_triplet(){
 }
 target_env_lower(){ echo "$1" | tr '-' '_'; }
 target_env_upper(){ echo "$1" | tr '[:lower:]-' '[:upper:]_'; }
+apple_sdk_boundary_after_workspace() {
+  awk '
+    workspace_line == 0 &&
+      /^[[:space:]]*Checking (rustdesk|hbb_common|scrap) v/ {
+        workspace_line = NR
+      }
+    boundary_line == 0 &&
+      (/fatal error: .* file not found/ ||
+       /fatal error: .*: No such file or directory/ ||
+       /ld: framework not found/ ||
+       /ld: library not found for/) {
+        boundary_line = NR
+      }
+    END {
+      exit !(workspace_line > 0 && boundary_line > workspace_line)
+    }
+  ' "$1"
+}
 
 # ---- preflight ----
 [ "$BUILD_UID" -ne 0 ] || die "refusing host or container-root execution"
@@ -2867,7 +2885,7 @@ for d in opus vpx libyuv; do
   [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
 done
 export VCPKG_ROOT="$stub"
-cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml \
+cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \
   --target "$target" --features "$features"
 SH
   xrc=$?
@@ -2878,8 +2896,7 @@ SH
     echo "  FAIL $target has a Rust compiler error (real Apple-cfg coherence break):"
     grep -nE 'error\[E[0-9]{4}\]' "$log" | head -25 | sed 's/^/      /'
     rc=1
-  elif grep -qE 'Checking rustdesk|Compiling rustdesk|Checking hbb_common|Compiling hbb_common|Checking scrap|Compiling scrap' "$log" \
-    && grep -qE "coreaudio-sys|AudioUnit|fatal error: .+ file not found|framework=|inttypes\.h|vpx/vp8\.h" "$log"; then
+  elif apple_sdk_boundary_after_workspace "$log"; then
     note "ok  $target reached the expected Apple SDK/header boundary with no Rust error"
   else
     echo "  FAIL $target failed before the accepted SDK/header boundary:"

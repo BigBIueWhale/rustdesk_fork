@@ -26,14 +26,22 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 readonly DOCKER_BIN=/usr/bin/docker
+readonly GIT_BIN=/usr/bin/git
+readonly TAR_BIN=/usr/bin/tar
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
-readonly ONLINE_FETCH_UID="$(id -u)"
-readonly ONLINE_FETCH_GID="$(id -g)"
+readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
+readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
 [ "$ONLINE_FETCH_UID" -ne 0 ] || die "online-fetch refuses host or container-root execution"
 [ "$ONLINE_FETCH_GID" -ne 0 ] || die "online-fetch refuses a root primary group"
 [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable: $DOCKER_BIN"
 [ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
     || die "trusted Docker client metadata changed"
+[ -x "$GIT_BIN" ] || die "trusted Git client is unavailable: $GIT_BIN"
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$GIT_BIN")" = "0:0:755:1" ] \
+    || die "trusted Git client metadata changed"
+[ -x "$TAR_BIN" ] || die "trusted tar client is unavailable: $TAR_BIN"
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$TAR_BIN")" = "0:0:755:1" ] \
+    || die "trusted tar client metadata changed"
 [ -S /var/run/docker.sock ] || die "the fixed local Docker socket is unavailable"
 case "${DOCKER_HOST:-$ONLINE_FETCH_DOCKER_HOST}" in
     "$ONLINE_FETCH_DOCKER_HOST") ;;
@@ -125,6 +133,80 @@ online_image_provenance() {
         DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \
         /usr/bin/python3 "$LIB_DIR/offline-image-provenance.py" "$@" || status=$?
     assert_online_fetch_docker_authority
+    return "$status"
+}
+
+assert_online_fetch_source_tools() {
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$GIT_BIN")" = "0:0:755:1" ] \
+        || die "trusted Git client metadata changed"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$TAR_BIN")" = "0:0:755:1" ] \
+        || die "trusted tar client metadata changed"
+}
+
+online_source_git() {
+    local status=0
+    assert_online_fetch_source_tools
+    /usr/bin/env -i \
+        PATH=/usr/bin:/bin \
+        HOME="$ONLINE_FETCH_TMP" \
+        GIT_CONFIG_NOSYSTEM=1 \
+        GIT_CONFIG_GLOBAL=/dev/null \
+        GIT_ATTR_NOSYSTEM=1 \
+        GIT_NO_REPLACE_OBJECTS=1 \
+        GIT_OPTIONAL_LOCKS=0 \
+        "$GIT_BIN" \
+        -c core.hooksPath=/dev/null \
+        -c core.attributesFile=/dev/null \
+        -c core.fsmonitor=false \
+        -C "$REPO_ROOT" \
+        "$@" || status=$?
+    assert_online_fetch_source_tools
+    return "$status"
+}
+
+verify_gradle_live_checkout_state() {
+    local phase="$1" dirt index_flags sparse sparse_status=0 status=0
+    if sparse="$(online_source_git config --local --no-includes --bool core.sparseCheckout)"; then
+        if [ "$sparse" = true ]; then
+            echo "[FATAL] $phase: sparse checkout is forbidden" >&2
+            status=1
+        fi
+    else
+        sparse_status=$?
+        if [ "$sparse_status" -ne 1 ]; then
+            echo "[FATAL] $phase: cannot inspect sparse-checkout state" >&2
+            status=1
+        fi
+    fi
+    if index_flags="$(online_source_git ls-files -v)"; then
+        if printf '%s\n' "$index_flags" \
+            | /usr/bin/awk 'substr($0,1,1) != "H" { found=1 } END { exit found ? 0 : 1 }'
+        then
+            echo "[FATAL] $phase: assume-unchanged, skip-worktree, or noncanonical index flags are forbidden" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] $phase: cannot inspect tracked-file index flags" >&2
+        status=1
+    fi
+    if ! online_source_git diff --no-ext-diff --quiet --ignore-submodules=none --; then
+        echo "[FATAL] $phase: tracked worktree bytes differ from the index" >&2
+        status=1
+    fi
+    if ! online_source_git diff --cached --no-ext-diff --quiet --ignore-submodules=none --; then
+        echo "[FATAL] $phase: index differs from HEAD" >&2
+        status=1
+    fi
+    if dirt="$(online_source_git status --porcelain=v1 --untracked-files=all)"; then
+        if [ -n "$dirt" ]; then
+            echo "[FATAL] $phase: source tree is not clean, including untracked files:
+$dirt" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] $phase: cannot inspect source-tree status" >&2
+        status=1
+    fi
     return "$status"
 }
 
@@ -861,8 +943,148 @@ stage_android_sdk() {
 # /online/gradle-home AND auto-installs the extra SDK packages gradle pulls (build-tools 30.0.3,
 # platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then projects this cache
 # into private writable execution state whose tracked init authority enables Gradle offline mode.
+prepare_gradle_source() {
+    local archive_attribute_status=0 invalid_tree_entry
+    GRADLE_SOURCE_COMMIT="$(online_source_git rev-parse --verify 'HEAD^{commit}')" \
+        || die "cannot resolve the exact Gradle-warm source commit"
+    GRADLE_SOURCE_TREE="$(online_source_git rev-parse --verify "${GRADLE_SOURCE_COMMIT}^{tree}")" \
+        || die "cannot resolve the exact Gradle-warm source tree"
+    [[ "$GRADLE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]] \
+        || die "Gradle-warm source commit ID is malformed"
+    [[ "$GRADLE_SOURCE_TREE" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]] \
+        || die "Gradle-warm source tree ID is malformed"
+    verify_gradle_live_checkout_state "before Gradle warming" \
+        || die "Gradle warming requires one clean canonical committed source tree"
+    invalid_tree_entry="$(
+        online_source_git ls-tree -rz --full-tree "$GRADLE_SOURCE_COMMIT" \
+            | /usr/bin/python3 -I -S -c '
+import sys
+
+for entry in sys.stdin.buffer.read().split(b"\0"):
+    if not entry:
+        continue
+    metadata, path = entry.split(b"\t", 1)
+    mode = metadata.split(b" ", 1)[0]
+    if mode not in (b"100644", b"100755"):
+        print("{} {}".format(mode.decode("ascii", "replace"), path.decode("utf-8", "replace")))
+        break
+'
+    )" || die "cannot inspect the exact Gradle-warm source tree"
+    [ -z "$invalid_tree_entry" ] \
+        || die "Gradle-warm source commit contains a symlink or special entry: $invalid_tree_entry"
+    if online_source_git grep -q -E 'export-(ignore|subst)' \
+        "$GRADLE_SOURCE_COMMIT" -- .gitattributes '**/.gitattributes'
+    then
+        die "Gradle-warm source commit contains an archive-transforming Git attribute"
+    else
+        archive_attribute_status=$?
+        [ "$archive_attribute_status" -eq 1 ] \
+            || die "cannot inspect Gradle-warm source archive attributes"
+    fi
+
+    GRADLE_SOURCE_ARCHIVE="$ONLINE_FETCH_TMP/gradle-source.tar"
+    GRADLE_SOURCE_AUTHORITY="$ONLINE_FETCH_TMP/gradle-source-authority"
+    GRADLE_SOURCE_BUILD="$ONLINE_FETCH_TMP/gradle-source-build"
+    [ ! -e "$GRADLE_SOURCE_ARCHIVE" ] && [ ! -L "$GRADLE_SOURCE_ARCHIVE" ] \
+        || die "Gradle source archive path was not freshly absent"
+    /usr/bin/install -d -m 0700 "$GRADLE_SOURCE_AUTHORITY" "$GRADLE_SOURCE_BUILD"
+    online_source_git archive --format=tar "$GRADLE_SOURCE_COMMIT" >"$GRADLE_SOURCE_ARCHIVE" \
+        || die "cannot archive the exact Gradle-warm source commit"
+    [ -s "$GRADLE_SOURCE_ARCHIVE" ] && [ ! -L "$GRADLE_SOURCE_ARCHIVE" ] \
+        || die "Gradle source archive is missing or invalid"
+    /usr/bin/chmod 0400 "$GRADLE_SOURCE_ARCHIVE"
+    GRADLE_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$GRADLE_SOURCE_ARCHIVE" | /usr/bin/awk '{print $1}'
+    )"
+    "$TAR_BIN" --extract --file="$GRADLE_SOURCE_ARCHIVE" \
+        --directory="$GRADLE_SOURCE_AUTHORITY" --no-same-owner --no-same-permissions \
+        || die "cannot extract the Gradle source authority"
+    "$TAR_BIN" --extract --file="$GRADLE_SOURCE_ARCHIVE" \
+        --directory="$GRADLE_SOURCE_BUILD" --no-same-owner --no-same-permissions \
+        || die "cannot extract the Gradle writable source"
+    invalid_tree_entry="$(/usr/bin/find "$GRADLE_SOURCE_AUTHORITY" "$GRADLE_SOURCE_BUILD" \
+        \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" \
+        || die "cannot inspect the Gradle source snapshots"
+    [ -z "$invalid_tree_entry" ] \
+        || die "Gradle source snapshot contains a symlink or special entry: $invalid_tree_entry"
+    /usr/bin/chmod -R a=rX "$GRADLE_SOURCE_AUTHORITY"
+    /usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"
+    GRADLE_SOURCE_BUILD_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_SOURCE_BUILD")"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
+        --reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" \
+        || die "Gradle writable source does not match its exact commit authority"
+}
+
+verify_gradle_source_unchanged() {
+    local after_archive="$ONLINE_FETCH_TMP/gradle-source-after.tar" current status=0
+    if ! /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
+        --reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" --allow-extras
+    then
+        echo "[FATAL] networked Gradle warming changed a committed source input" >&2
+        status=1
+    fi
+    if current="$(online_source_git rev-parse --verify 'HEAD^{commit}')"; then
+        if [ "$current" != "$GRADLE_SOURCE_COMMIT" ]; then
+            echo "[FATAL] the live source commit changed during Gradle warming" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] cannot re-resolve the Gradle-warm source commit" >&2
+        status=1
+    fi
+    if current="$(online_source_git rev-parse --verify "${GRADLE_SOURCE_COMMIT}^{tree}")"; then
+        if [ "$current" != "$GRADLE_SOURCE_TREE" ]; then
+            echo "[FATAL] the live source tree changed during Gradle warming" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] cannot re-resolve the Gradle-warm source tree" >&2
+        status=1
+    fi
+    if ! verify_gradle_live_checkout_state "after Gradle warming"; then
+        status=1
+    fi
+    if [ -e "$after_archive" ] || [ -L "$after_archive" ]; then
+        echo "[FATAL] Gradle source postcondition archive path was not freshly absent" >&2
+        status=1
+    elif online_source_git archive --format=tar "$GRADLE_SOURCE_COMMIT" >"$after_archive"; then
+        if [ "$(/usr/bin/sha256sum "$after_archive" | /usr/bin/awk '{print $1}')" != "$GRADLE_SOURCE_ARCHIVE_SHA256" ]; then
+            echo "[FATAL] Gradle source commit archive changed during warming" >&2
+            status=1
+        fi
+        /usr/bin/rm -f -- "$after_archive"
+    else
+        echo "[FATAL] cannot rearchive the exact Gradle-warm source commit" >&2
+        status=1
+    fi
+    return "$status"
+}
+
+retire_gradle_source_build() {
+    [ -d "$GRADLE_SOURCE_BUILD" ] && [ ! -L "$GRADLE_SOURCE_BUILD" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_SOURCE_BUILD")" = "$GRADLE_SOURCE_BUILD_ID" ] \
+        || die "private Gradle writable source identity changed before retirement"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$GRADLE_SOURCE_BUILD" \
+        --expected-identity "$GRADLE_SOURCE_BUILD_ID" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Gradle source directory traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$GRADLE_SOURCE_BUILD" \
+        --expected-identity "$GRADLE_SOURCE_BUILD_ID" \
+        || die "cannot retire the private Gradle writable source"
+    [ ! -e "$GRADLE_SOURCE_BUILD" ] && [ ! -L "$GRADLE_SOURCE_BUILD" ] \
+        || die "private Gradle writable source survived retirement"
+    GRADLE_SOURCE_BUILD=""
+}
+
 stage_gradle() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local status=0 post_status=0
     require_online_fetch_builder_image android-builder "$builder"
     if [ -d "$ONLINE_DIR/gradle-home/caches/modules-2" ]; then
         log "gradle cache already warm, skipping"; return 0
@@ -871,12 +1093,19 @@ stage_gradle() {
     [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android" ] || die "arm64-android vcpkg not staged — stage_vcpkg_natives_arm64 must run first"
     [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ] || die "cargo-ndk not staged — stage_cargo_ndk must run first"
     log "warming the gradle cache via one online apk build (APK_MODE=warm) -> ./online/gradle-home"
+    prepare_gradle_source
     online_docker_run \
         --env APK_MODE=warm \
-        --mount "type=bind,source=$REPO_ROOT,target=/src" \
+        --mount "type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online" \
         --workdir /src \
-        "$builder" /bin/bash --noprofile --norc /src/scripts/android-apk-build.sh
+        "$builder" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
+        || status=$?
+    (verify_gradle_source_unchanged) || post_status=$?
+    retire_gradle_source_build
+    [ "$post_status" -eq 0 ] || die "networked Gradle source postcondition failed"
+    [ "$status" -eq 0 ] || die "networked Gradle warming failed"
     log "gradle cache warmed ($(du -sh "$ONLINE_DIR/gradle-home" 2>/dev/null | cut -f1))"
 }
 

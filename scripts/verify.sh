@@ -251,6 +251,21 @@ else
   echo "  ok  R-S11cj every ordinary networked acquisition producer uses a fixed client/private config, exact image, numeric non-root identity, no pull or publication, read-only root, zero capabilities, no-new-privileges, and bounded resources"
 fi
 
+echo "== (0i) online-fetch Gradle source authority (R-S11ck/R-S11e-103) =="
+r_s11ck=
+if ! /usr/bin/python3 -I -S scripts/restore-private-directory-modes.py --self-test; then
+  r_s11ck="$r_s11ck directory-normalizer-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-source-authority.py --repo . --self-test; then
+  r_s11ck="$r_s11ck authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11ck" ]; then
+  echo "  FAIL R-S11ck online-fetch Gradle source authority:$r_s11ck"
+  rc=1
+else
+  echo "  ok  R-S11ck the networked Gradle warmer uses one clean exact-commit private writable source, a separate read-only inner-program authority, before/after input proofs, and no live-repository mount"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

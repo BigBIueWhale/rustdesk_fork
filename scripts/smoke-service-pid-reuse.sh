@@ -110,6 +110,7 @@ launch_service_owned_child() {
   env -i HOME=/tmp PATH=/usr/bin:/bin RUST_LOG=info \
     RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
     RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$generation" \
+    RD_SERVICE_SMOKE_UNSUPERVISED_RECOVERY_FIXTURE=1 \
     setpriv --no-new-privs --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
     "$LAUNCHER" "$BINARY" --service-owned-server >"$log" 2>&1 &
   pid=$!
@@ -257,8 +258,8 @@ finally:
 PY
 }
 
-[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:755 ] || {
-  echo "service PID reuse: source binary must be root-owned mode 0755" >&2
+[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:711 ] || {
+  echo "service PID reuse: source binary must be root-owned mode 0711" >&2
   exit 1
 }
 [ -x "$LAUNCHER" ] && [ -x "$PROBE" ] && [ -x "$READY" ] && [ -x "$PROCESS_GUARD" ]

@@ -222,6 +222,7 @@ build_package() {
         "$staging/usr/share" \
         "$staging/usr/share/rustdesk"
     install -o root -g root -m 0755 "$BINARY" "$staging/usr/share/rustdesk/rustdesk"
+    install -o root -g root -m 0711 "$BINARY" "$staging/usr/share/rustdesk/rustdesk-service-child"
     ln -s ../share/rustdesk/rustdesk "$staging/usr/bin/rustdesk"
     install -o root -g root -m 0755 "$INIT_SOURCE" "$staging/etc/init.d/rustdesk"
     install -o root -g root -m 0644 \
@@ -346,6 +347,9 @@ for entry in open(f"/proc/{pid_number}/environ", "rb").read().split(b"\0"):
     if key in environment:
         raise SystemExit("service child environment has duplicate keys")
     environment[key] = value
+bootstrap_fd = environment.get(b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD", b"")
+if not bootstrap_fd.isdigit() or int(bootstrap_fd) <= 2:
+    raise SystemExit("service child bootstrap descriptor authority is not canonical")
 expected = {
     b"PATH": b"/usr/bin:/bin",
     b"HOME": b"/home/rdseat",
@@ -357,6 +361,7 @@ expected = {
     b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT": str(main_pid).encode("ascii"),
     b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION": generation.encode("ascii"),
     b"RUSTDESK_SERVICE_OWNED_SERVER_EXECUTABLE_FD": argv[0].rsplit(b"/", 1)[1],
+    b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD": bootstrap_fd,
 }
 if set(environment) != set(expected) | {b"TERM"}:
     raise SystemExit("service child environment escaped its bounded allowlist")

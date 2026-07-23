@@ -526,6 +526,13 @@ expected_environment = {
 }
 if not expected_environment.issubset(set(environment)):
     raise SystemExit("runit lifecycle smoke: child launch authority differs")
+bootstrap_entries = [
+    entry.split(b"=", 1)[1]
+    for entry in environment
+    if entry.startswith(b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD=")
+]
+if len(bootstrap_entries) != 1 or not bootstrap_entries[0].isdigit() or int(bootstrap_entries[0]) <= 2:
+    raise SystemExit("runit lifecycle smoke: child bootstrap descriptor authority differs")
 print(pid, start, generation)
 PY
     )
@@ -575,7 +582,7 @@ source_hash=$(sha256sum "$SOURCE_BINARY" "$RUNIT_SOURCE" "$LOGINCTL_SOURCE" \
 
 install -d -o root -g root -m 0711 "$FIXTURE"
 install -d -o root -g root -m 0755 "$SERVICES" "$SERVICE_DIR"
-install -o root -g root -m 0755 "$SOURCE_BINARY" "$BINARY"
+install -o root -g root -m 0711 "$SOURCE_BINARY" "$BINARY"
 install -o root -g root -m 0755 "$RUNIT_SOURCE" "$SERVICE_DIR/run"
 install -o root -g root -m 0755 "$LOGINCTL_SOURCE" /usr/bin/loginctl
 printf 'root\n' >/tmp/rd-service-loginctl-state
@@ -583,7 +590,7 @@ chmod 0600 /tmp/rd-service-loginctl-state
 install -o root -g root -m 0644 /dev/null "$SERVICE_DIR/down"
 cmp -s "$SOURCE_BINARY" "$BINARY" || fail 'installed RustDesk bytes differ from source'
 cmp -s "$RUNIT_SOURCE" "$SERVICE_DIR/run" || fail 'installed runit service differs from source'
-[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:755 ] \
+[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:711 ] \
     || fail 'installed RustDesk identity or mode differs'
 [ "$(stat -c '%u:%g:%a' -- "$SERVICE_DIR/run")" = 0:0:755 ] \
     || fail 'installed runit service identity or mode differs'

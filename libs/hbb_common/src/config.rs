@@ -34,7 +34,7 @@ use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
     encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed, DEFAULT_SALT_LEN,
-    PASSWORD_ENC_VERSION,
+    PASSWORD_ENC_VERSION, PERMANENT_PASSWORD_H1_LEN,
 };
 
 use crate::{
@@ -928,6 +928,7 @@ pub const DIRECT_PORT: i32 = 21118;
 #[inline]
 pub fn is_service_ipc_postfix(postfix: &str) -> bool {
     matches!(postfix, "_service" | "_service_password")
+        || cfg!(target_os = "linux") && postfix == "_service_credential"
 }
 
 // Keep Linux/macOS IPC parent directory rules in one place to avoid drift between
@@ -3323,12 +3324,35 @@ impl Config {
         salt: &str,
     ) -> crate::ResultType<bool> {
         let prs = Self::permanent_password_prs_from_storage(storage, salt)?;
+        Self::set_permanent_password_prs_for_runtime(&prs)
+    }
+
+    /// Install a nonpersistent service-owned CPace PRS replica for this process.
+    ///
+    /// The replica is password-equivalent and therefore accepts only the canonical base64 form
+    /// of exactly one PRS. It deliberately overrides every user-profile at-rest credential,
+    /// including with an explicit empty value, without writing the replica back to that profile.
+    pub fn set_permanent_password_prs_for_runtime(prs: &str) -> crate::ResultType<bool> {
+        if !prs.is_empty() {
+            let mut decoded = base64::decode(prs.as_bytes(), base64::Variant::Original)
+                .map_err(|_| anyhow!("Invalid runtime permanent-password PRS encoding"))?;
+            let mut canonical = base64::encode(&decoded, base64::Variant::Original);
+            let valid = decoded.len() == PERMANENT_PASSWORD_H1_LEN && canonical == prs;
+            sodiumoxide::utils::memzero(&mut decoded);
+            sodiumoxide::utils::memzero(unsafe { canonical.as_mut_vec() });
+            if !valid {
+                return Err(anyhow!("Invalid runtime permanent-password PRS value"));
+            }
+        }
         let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
         let mut runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap();
-        if runtime_prs.as_deref() == Some(prs.as_str()) {
+        if runtime_prs.as_deref() == Some(prs) {
             return Ok(false);
         }
-        *runtime_prs = Some(prs);
+        if let Some(previous) = runtime_prs.as_mut() {
+            sodiumoxide::utils::memzero(unsafe { previous.as_mut_vec() });
+        }
+        *runtime_prs = Some(prs.to_owned());
         advance_permanent_password_credential_generation(&mut generation);
         Ok(true)
     }
@@ -5194,6 +5218,53 @@ unrelated = "preserved"
         assert!(saved_config.password_prs.is_empty());
     }
 
+    #[test]
+    fn runtime_password_prs_replica_is_canonical_nonpersistent_and_can_clear() {
+        let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
+        let file = Config::file_("");
+        let _file_guard = ConfigFileRestoreGuard::new(file.clone());
+        fs::remove_file(&file).ok();
+        let _state_guard = ConfigStateTestGuard::new(Config::default(), HashMap::new());
+        assert!(Config::set_permanent_password_persisted("stale user-profile password").unwrap());
+        let durable = {
+            let config = CONFIG.read().unwrap();
+            (config.password.clone(), config.password_prs.clone())
+        };
+        assert!(!durable.0.is_empty());
+        assert!(!durable.1.is_empty());
+        let prs = base64::encode(
+            &[0x5au8; PERMANENT_PASSWORD_H1_LEN],
+            base64::Variant::Original,
+        );
+
+        assert!(Config::set_permanent_password_prs_for_runtime(&prs).unwrap());
+        assert_eq!(Config::get_permanent_password_prs(), prs);
+        assert!(!Config::set_permanent_password_prs_for_runtime(&prs).unwrap());
+        for invalid in [
+            "not-base64",
+            "YQ==",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        ] {
+            assert!(Config::set_permanent_password_prs_for_runtime(invalid).is_err());
+            assert_eq!(Config::get_permanent_password_prs(), prs);
+        }
+
+        assert!(Config::set_permanent_password_prs_for_runtime("").unwrap());
+        assert!(matches!(
+            Config::read_permanent_password_prs(),
+            PermanentPasswordPrsRead::Empty
+        ));
+        let config = CONFIG.read().unwrap();
+        assert_eq!(
+            (config.password.clone(), config.password_prs.clone()),
+            durable
+        );
+        drop(config);
+        Config::get().store();
+        let saved_config: Config = load_path(file);
+        assert_eq!((saved_config.password, saved_config.password_prs), durable);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn config_patch_root_home_uses_passwd_home() {
@@ -6864,7 +6935,12 @@ unrelated = "preserved"
         const ROOT_UID: u32 = 0;
         const USER_UID: u32 = 1000;
 
-        for postfix in ["_service", "_service_password"] {
+        #[cfg(target_os = "linux")]
+        let service_postfixes = ["_service", "_service_password", "_service_credential"];
+        #[cfg(target_os = "macos")]
+        let service_postfixes = ["_service", "_service_password"];
+
+        for postfix in service_postfixes {
             assert!(is_service_ipc_postfix(postfix));
             let path_root = Config::ipc_path_for_uid(ROOT_UID, postfix);
             let path_user = Config::ipc_path_for_uid(USER_UID, postfix);

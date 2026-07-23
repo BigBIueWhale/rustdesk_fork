@@ -1739,6 +1739,7 @@ messages = (
     "main password IPC listener ended unexpectedly",
     "main IPC listener ended unexpectedly",
     "protected service password IPC listener ended unexpectedly",
+    "protected service credential IPC listener ended unexpectedly",
     "protected _service IPC listener ended unexpectedly",
     "Windows service-main control IPC listener ended unexpectedly",
     "Windows service credential IPC listener ended unexpectedly",

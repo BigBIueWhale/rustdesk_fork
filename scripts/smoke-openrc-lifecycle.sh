@@ -394,6 +394,13 @@ expected_environment = {
 }
 if not expected_environment.issubset(set(environment)):
     raise SystemExit("OpenRC lifecycle smoke: child launch authority differs")
+bootstrap_entries = [
+    entry.split(b"=", 1)[1]
+    for entry in environment
+    if entry.startswith(b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD=")
+]
+if len(bootstrap_entries) != 1 or not bootstrap_entries[0].isdigit() or int(bootstrap_entries[0]) <= 2:
+    raise SystemExit("OpenRC lifecycle smoke: child bootstrap descriptor authority differs")
 print(pid, start, generation)
 PY
     )
@@ -442,14 +449,14 @@ source_hash=$(sha256sum "$SOURCE_BINARY" "$OPENRC_SOURCE" "$LOGINCTL_SOURCE" \
     || fail 'container unexpectedly has an installed RustDesk OpenRC service'
 
 install -d -o root -g root -m 0711 "$FIXTURE"
-install -o root -g root -m 0755 "$SOURCE_BINARY" "$BINARY"
+install -o root -g root -m 0711 "$SOURCE_BINARY" "$BINARY"
 install -o root -g root -m 0755 "$OPENRC_SOURCE" "$OPENRC_SERVICE"
 install -o root -g root -m 0755 "$LOGINCTL_SOURCE" /usr/bin/loginctl
 printf 'root\n' >"$LOGINCTL_STATE"
 chmod 0600 "$LOGINCTL_STATE"
 cmp -s "$SOURCE_BINARY" "$BINARY" || fail 'installed RustDesk bytes differ from source'
 cmp -s "$OPENRC_SOURCE" "$OPENRC_SERVICE" || fail 'installed OpenRC service differs from source'
-[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:755 ] \
+[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:711 ] \
     || fail 'installed RustDesk identity or mode differs'
 [ "$(stat -c '%u:%g:%a' -- "$OPENRC_SERVICE")" = 0:0:755 ] \
     || fail 'installed OpenRC service identity or mode differs'

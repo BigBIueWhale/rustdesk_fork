@@ -38,7 +38,7 @@ case "$1" in
       echo "manual lifecycle installed path already exists" >&2
       exit 1
     }
-    install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk
+    install -o root -g root -m 0711 /work/target/debug/rustdesk /usr/bin/rustdesk
     bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh
     ;;
   service-pid-reuse)
@@ -66,7 +66,7 @@ case "$1" in
       echo "sibling docker installed path already exists" >&2
       exit 1
     }
-    install -o root -g root -m 0755 /work/target/debug/rustdesk "$installed_server"
+    install -o root -g root -m 0711 /work/target/debug/rustdesk "$installed_server"
     source_identity=$(stat -Lc '%d:%i' /work/target/debug/rustdesk)
     installed_identity=$(stat -Lc '%d:%i' "$installed_server")
     [ "$installed_identity" != "$source_identity" ] || {
@@ -94,6 +94,7 @@ case "$1" in
     env -i HOME="$HOME" PATH=/usr/bin:/bin RUST_LOG=info \
       RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
       RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$service_generation" \
+      RD_SERVICE_SMOKE_UNSUPERVISED_RECOVERY_FIXTURE=1 \
       setpriv --no-new-privs --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
       "$SERVER_LAUNCHER" "$installed_server" --service-owned-server \
       >/tmp/sibling-docker.log 2>&1 &

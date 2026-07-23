@@ -18,8 +18,8 @@ if [ "$(stat -c '%u:%g:%a' -- "$SOURCE_BINARY")" != 0:0:755 ]; then
   echo "service lifecycle source binary must be root-owned mode 0755" >&2
   exit 1
 fi
-if [ "$(stat -c '%u:%g:%a' -- "$BINARY")" != 0:0:755 ]; then
-  echo "service lifecycle binary must model a root-owned mode-0755 installed executable" >&2
+if [ "$(stat -c '%u:%g:%a' -- "$BINARY")" != 0:0:711 ]; then
+  echo "service lifecycle binary must model a root-owned mode-0711 installed executable" >&2
   exit 1
 fi
 SOURCE_BINARY_IDENTITY=$(stat -Lc '%d:%i' -- "$SOURCE_BINARY")
@@ -669,6 +669,9 @@ for entry in environ:
     if key in parsed_environment:
         raise SystemExit("service child environment has a duplicate key")
     parsed_environment[key] = value
+bootstrap_fd = parsed_environment.get(b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD", b"")
+if not bootstrap_fd.isdigit() or int(bootstrap_fd) <= 2:
+    raise SystemExit("service child bootstrap descriptor authority is not canonical")
 if expected_uid == "0":
     import pwd
 
@@ -680,6 +683,7 @@ if expected_uid == "0":
         b"XAUTHORITY": root_home.rstrip(b"/") + b"/.Xauthority",
         b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT": str(supervisor).encode("ascii"),
         b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION": generation.encode("ascii"),
+        b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD": bootstrap_fd,
     }
     if set(parsed_environment) != set(required_environment) | {b"TERM"}:
         raise SystemExit("root service child environment escaped its bounded allowlist")
@@ -723,6 +727,7 @@ else:
         b"RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT": str(supervisor).encode("ascii"),
         b"RUSTDESK_SERVICE_OWNED_SERVER_GENERATION": generation.encode("ascii"),
         b"RUSTDESK_SERVICE_OWNED_SERVER_EXECUTABLE_FD": argv[0].rsplit(b"/", 1)[1],
+        b"RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD": bootstrap_fd,
     }
     if set(parsed_environment) != set(expected_environment) | {b"TERM"}:
         raise SystemExit("non-root service child environment was not rebuilt from the bounded allowlist")
@@ -816,6 +821,7 @@ start_pidfd_unavailable_recorded_child() {
     exec env RUST_LOG=info HOME=/tmp \
       RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$" \
       RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$PIDFD_UNAVAILABLE_GENERATION" \
+      RD_SERVICE_SMOKE_UNSUPERVISED_RECOVERY_FIXTURE=1 \
       bash --noprofile --norc -c \
       'exec -a rd-smoke-server "$1" --server --service-owned-server' bash "$BINARY"
   ) >"$log" 2>&1 &

@@ -374,6 +374,8 @@ REQUIRED_SOURCES = (
     "src/ui_interface.rs",
     "src/flutter_ffi.rs",
     "src/common.rs",
+    "src/platform/linux.rs",
+    "src/server.rs",
     "libs/hbb_common/src/config.rs",
 )
 
@@ -431,6 +433,11 @@ def verify_raw_wire(rust: Mapping[str, RustSource]) -> None:
         "fixed authorization body limit",
         unique=True,
     )
+    production.require(
+        ("const", "CREDENTIAL_REPLICA_BYTES", ":", "usize", "=", "44", ";"),
+        "canonical Linux PRS replica length",
+        unique=True,
+    )
     production.require(("const", "REQUEST_HEADER_BYTES", ":", "usize", "=", "36", ";"), "36-byte request header", unique=True)
     production.require(("const", "STATUS_FRAME_BYTES", ":", "usize", "=", "32", ";"), "32-byte status frame", unique=True)
     production.require(("const", "ACK_FRAME_BYTES", ":", "usize", "=", "28", ";"), "28-byte acknowledgement frame", unique=True)
@@ -461,6 +468,31 @@ def verify_raw_wire(rust: Mapping[str, RustSource]) -> None:
             (("filter", "(", "|", "total", "|", "*", "total", "<=", "REQUEST_BODY_MAX_BYTES", ")"), "combined body bound"),
         )
     )
+    header.require(
+        (
+            "CredentialSnapshotRequest", "if", "self", ".", "password_len", "!=", "0",
+            "||", "self", ".", "authorization_len", "!=", "0",
+        ),
+        "bodyless credential snapshot request",
+        unique=True,
+    )
+    header.require(
+        (
+            "CredentialReplica", "if", "self", ".", "authorization_len", "!=", "0",
+            "||", "!", "matches", "!", "(", "self", ".", "password_len", ",", "0",
+            "|", "CREDENTIAL_REPLICA_BYTES", ")",
+        ),
+        "empty-or-exact canonical credential replica length",
+        unique=True,
+    )
+    payload_kind = password.item("enum", "SensitivePayloadKind")
+    payload_kind.require(("CredentialSnapshotRequest", "=", "3"), "snapshot wire kind", unique=True)
+    payload_kind.require(("CredentialReplica", "=", "4"), "replica wire kind", unique=True)
+    from_wire = password.method(
+        ("impl", "SensitivePayloadKind"), "from_wire", "impl SensitivePayloadKind"
+    )
+    from_wire.require(("3", "=>", "Ok", "(", "Self", "::", "CredentialSnapshotRequest", ")"), "snapshot kind decode", unique=True)
+    from_wire.require(("4", "=>", "Ok", "(", "Self", "::", "CredentialReplica", ")"), "replica kind decode", unique=True)
     encode = password.method(("impl", "SensitiveRequestHeader"), "encode", "impl SensitiveRequestHeader")
     encode.require_order(
         (
@@ -545,6 +577,41 @@ def verify_raw_wire(rust: Mapping[str, RustSource]) -> None:
             (("if", "read", "!=", "0"), "trailing-byte rejection"),
         ),
         unique=True,
+    )
+    snapshot_send = password.function("send_credential_snapshot_request_unix")
+    snapshot_send.require_order(
+        (
+            (("SensitiveRequestHeader", "::", "new", "(", "operation_id", ",", "SensitivePayloadKind", "::", "CredentialSnapshotRequest", ",", "0", ",", "0"), "bodyless operation-bound snapshot header"),
+            (("remaining_millis", "(", "deadline", ")"), "snapshot deadline preflight"),
+            (("with_deadline", "(", "deadline", ",", "stream", ".", "write_all", "(", "&", "header", ")"), "bounded snapshot header write"),
+            (("with_deadline", "(", "deadline", ",", "stream", ".", "shutdown", "(", ")", ")"), "snapshot half-close"),
+        )
+    )
+    replica_send = password.function("send_credential_replica_unix")
+    replica_send.require_order(
+        (
+            (("SensitivePayloadKind", "::", "CredentialReplica"), "replica kind"),
+            (("replica", ".", "as_bytes", "(", ")", ".", "len", "(", ")"), "validated replica length"),
+            (("remaining_millis", "(", "deadline", ")"), "replica deadline preflight"),
+            (("with_deadline", "(", "deadline", ",", "stream", ".", "write_all", "(", "&", "header", ")"), "bounded replica header write"),
+            (("with_deadline", "(", "deadline", ",", "stream", ".", "write_all", "(", "replica", ".", "as_bytes", "(", ")", ")"), "bounded replica body write"),
+            (("with_deadline", "(", "deadline", ",", "stream", ".", "shutdown", "(", ")", ")"), "replica half-close"),
+        )
+    )
+    snapshot_receive = password.function("receive_credential_snapshot_request_unix")
+    snapshot_receive.require_order(
+        (
+            (("receive_request_unix", "(", "stream", ",", "SensitivePayloadKind", "::", "CredentialSnapshotRequest", ",", "deadline"), "kind-bound snapshot receive"),
+            (("request", ".", "operation_id", "(", ")"), "snapshot operation UUID"),
+        )
+    )
+    replica_receive = password.function("receive_credential_replica_unix")
+    replica_receive.require_order(
+        (
+            (("receive_request_unix", "(", "stream", ",", "SensitivePayloadKind", "::", "CredentialReplica", ",", "deadline"), "kind-bound replica receive"),
+            (("request", ".", "operation_id", "(", ")", "!=", "expected_operation_id"), "replica UUID binding"),
+            (("request", ".", "into_password", "(", ")"), "sensitive replica ownership"),
+        )
     )
     with_deadline = password.function("with_deadline")
     with_deadline.require(
@@ -638,6 +705,11 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
     service_postfix.require(
         ("matches", "!", "(", "postfix", ",", '"_service"', "|", '"_service_password"', ")"),
         "ordinary and password service endpoint classification",
+        unique=True,
+    )
+    service_postfix.require(
+        ("cfg", "!", "(", "target_os", "=", '"linux"', ")", "&&", "postfix", "==", '"_service_credential"'),
+        "Linux credential replica service endpoint classification",
         unique=True,
     )
     parent_path = config.function("ipc_parent_dir_for_uid")
@@ -754,8 +826,10 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (
                 (("USER_PASSWORD_IPC_POSTFIX", "|", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX"), "both sensitive endpoints"),
                 (("bail", "!", "(", '"sensitive password endpoints require the raw transport"', ")"), "raw-only rejection"),
+                (("postfix", "==", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX"), "Linux credential endpoint"),
+                (("bail", "!", "(", '"the service credential endpoint requires the raw transport"', ")"), "credential raw-only rejection"),
             )
-        )[1]
+        )[-1]
         endpoint_positions = function.positions(("Endpoint", "::", "connect")) + function.positions(
             ("connect_windows_named_pipe",)
         )
@@ -770,7 +844,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (("timeout", "(", "password", "::", "remaining_millis", "(", "deadline", ")", "?", ",", "Endpoint", "::", "connect"), "raw bounded connect"),
             (("match", "postfix", "{"), "finite endpoint dispatch"),
             (("USER_PASSWORD_IPC_POSTFIX", "=>"), "user endpoint proof"),
-            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ")"), "service-owned replica identity/argv proof"),
+            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "service-owned replica identity/argv proof"),
             (("identity", ".", "uid", "(", ")", "!=", "expected_uid"), "service-owned replica UID binding"),
             (("ensure_user_owned_password_server_is_trusted", "(", "&", "stream", ",", "expected_uid", ")"), "user-owned server UID/executable/argv proof"),
             (("SERVICE_PASSWORD_IPC_POSTFIX", "=>"), "service endpoint proof"),
@@ -811,6 +885,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
         (
             (("new_listener", "(", "postfix", ")"), "ordinary service listener"),
             (("new_listener", "(", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "separate raw service-password listener"),
+            (("new_listener", "(", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", ")"), "separate raw service-credential listener"),
         )
     )
     service_listener = ipc.function("run_service_ipc")
@@ -825,6 +900,23 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (("Connection", "::", "new_protected_service", "(", "stream", ")"), "ordinary framed service lane"),
         )
     )
+    credential_capacity = ipc.function("try_acquire_service_credential_ipc_transaction_slot")
+    credential_capacity.require_order(
+        (
+            (("SERVICE_CREDENTIAL_IPC_TRANSACTION_SLOTS", ".", "get_or_init"), "dedicated credential semaphore"),
+            (("Semaphore", "::", "new", "(", "SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET", ")"), "dedicated credential budget"),
+            (("try_acquire_owned", "(", ")"), "nonblocking bounded admission"),
+        ),
+        unique=True,
+    )
+    service_listener.require_order(
+        (
+            (("credential_incoming", ".", "as_mut", "(", ")"), "raw credential accept lane"),
+            (("try_acquire_service_credential_ipc_transaction_slot", "(", ")"), "credential work admission"),
+            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "exact child proof before request read"),
+            (("transactions", ".", "spawn", "(", "handle_linux_service_credential_snapshot_transaction"), "owned credential handler"),
+        )
+    )
     for listener in (main_prepare, main_listener, service_prepare, service_listener):
         listener.require_identifier_absent(
             {"body_mut", "into_password", "read_exact", "receive_request_unix"},
@@ -833,6 +925,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     for handler_name, owner in (
         ("handle_sensitive_main_ipc_transaction", main_listener),
         ("handle_sensitive_linux_service_ipc_transaction", service_listener),
+        ("handle_linux_service_credential_snapshot_transaction", service_listener),
     ):
         calls = non_definition_calls(ipc, handler_name)
         if len(calls) != 1 or not owner.start <= calls[0] < owner.end:
@@ -844,7 +937,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     main_authority.require_order(
         (
             (("MainIpcAuthority", "::", "for_current_process", "(", ")", "==", "MainIpcAuthority", "::", "ServiceOwned"), "service-owned process selection"),
-            (("authenticate_linux_service_owned_password_parent", "(", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "service parent UID/executable/argv/ancestry proof"),
+            (("authenticate_linux_service_owned_password_parent", "(", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "kernel root peer and direct-parent proof"),
             (("Ok", "(", "_", ")", "=>", "Some", "(", "PasswordMutationKind", "::", "ServiceOwned", ")"), "service-owned authority result"),
             (("ensure_user_owned_password_client_is_trusted", "(", "stream", ",", "password", "::", "USER_PASSWORD_IPC_POSTFIX", ")"), "user client UID/executable proof"),
             (("Ok", "(", "(", ")", ")", "=>", "Some", "(", "PasswordMutationKind", "::", "UserOwned", ")"), "user-owned authority result"),
@@ -897,10 +990,24 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         (
             (("if", "pid", "==", "0"), "PID zero rejection"),
             (("ensure_peer_executable_matches_current_by_pid", "(", "pid", ",", "postfix", ")"), "same-executable proof"),
+            (("linux_process_identity_fields_by_pid", "(", "pid", ")"), "live identity fields"),
+        )
+    )
+    process_identity_fields = auth.function("linux_process_identity_fields_by_pid")
+    process_identity_fields.require_order(
+        (
             (("linux_proc_cmdline_args", "(", "pid", ")"), "live argv capture"),
             (("uid", ":", "linux_proc_uid", "(", "pid", ")"), "proc UID capture"),
             (("start_time", ":", "linux_proc_start_time", "(", "pid", ")"), "PID generation capture"),
             (("first_arg", ":", "args", ".", "get", "(", "1", ")"), "process role capture"),
+        )
+    )
+    service_child_identity = auth.function("linux_service_child_process_identity_by_pid")
+    service_child_identity.require_order(
+        (
+            (("if", "pid", "==", "0"), "service-child PID zero rejection"),
+            (("service_child_executable_identity_matches", "(", "pid", ")"), "selected child inode proof"),
+            (("linux_process_identity_fields_by_pid", "(", "pid", ")"), "live service-child identity fields"),
         )
     )
     peer_identity = auth.function("peer_process_identity_from_stream")
@@ -974,12 +1081,12 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     service_server = auth.function("ensure_linux_service_password_server_is_trusted")
     service_server.require_order(
         (
-            (("peer_process_identity_from_stream", "(", "stream", ",", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "full service identity"),
-            (("identity", ".", "uid", "!=", "0"), "root UID requirement"),
-            (("linux_proc_cmdline_args", "(", "identity", ".", "pid", ")"), "live argv"),
+            (("peer_process_identity_from_stream", "(", "stream", ",", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "exact service process identity"),
+            (("identity", ".", "uid", "!=", "0"), "root principal requirement"),
+            (("linux_proc_cmdline_args", "(", "identity", ".", "pid", ")"), "live service argv"),
             (("linux_service_process_argv_is_expected", "(", "&", "args", ")"), "exact --service role"),
-            (("peer_exe_canonical_path_by_pid", "(", "identity", ".", "pid", ")"), "canonical executable"),
-            (("linux_service_executable_is_trusted", "(", "&", "peer_exe", ")"), "root-owned executable tree"),
+            (("peer_exe_canonical_path_by_pid", "(", "identity", ".", "pid", ")"), "canonical service executable"),
+            (("linux_service_executable_is_trusted", "(", "&", "peer_exe", ")"), "trusted root-owned service executable"),
         )
     )
     user_server = auth.function("ensure_user_owned_password_server_is_trusted")
@@ -1015,32 +1122,60 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     parent = auth.function("authenticate_linux_service_owned_password_parent")
     parent.require_order(
         (
-            (("peer_process_identity_from_stream", "(", "stream", ",", "postfix", ")"), "full parent identity"),
-            (("identity", ".", "uid", "!=", "0"), "root parent requirement"),
-            (("args", ".", "len", "(", ")", "!=", "2"), "exact parent argv length"),
-            (("Some", "(", '"--service"', ")"), "parent role"),
+            (("peer_uid_from_fd", "(", "fd", ")"), "kernel parent UID"),
+            (("peer_uid", "!=", "0"), "root parent requirement"),
+            (("peer_pid_from_fd", "(", "fd", ")"), "kernel parent PID"),
             (("SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV",), "launch-parent authority"),
-            (("identity", ".", "pid", "!=", "expected_parent"), "exact parent PID"),
-            (("linux_process_has_ancestor", "(", "std", "::", "process", "::", "id", "(", ")", ",", "expected_parent", ")"), "live ancestry"),
+            (("linux_proc_parent_pid", "(", "std", "::", "process", "::", "id", "(", ")", ")"), "actual child parent PID"),
+            (("peer_pid", "!=", "expected_parent"), "exact parent PID"),
+            (("actual_parent", "!=", "expected_parent"), "direct parent binding"),
         )
+    )
+    parent.forbid(
+        ("peer_process_identity_from_stream",),
+        "direct child proof cannot depend on ptrace-gated root procfs",
     )
     replica = auth.function("authenticate_linux_service_owned_password_replica_server")
     replica.require_order(
         (
-            (("peer_process_identity_from_stream", "(", "stream", ",", '""', ")"), "full replica identity"),
+            (("service_child_peer_process_identity_from_stream", "(", "stream", ",", "postfix", ")"), "postfix-bound exact child executable identity"),
             (("linux_service_owned_server_argv_is_expected", "(", "&", "args", ")"), "exact replica argv"),
             (("SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV",), "replica launch-parent binding"),
-            (("linux_process_has_ancestor", "(", "identity", ".", "pid", ",", "expected_parent", ")"), "replica ancestry"),
+            (("linux_proc_parent_pid", "(", "identity", ".", "pid", ")"), "actual replica parent PID"),
+            (("SERVICE_OWNED_SERVER_GENERATION_ENV",), "replica generation capture"),
+            (("actual_parent", "!=", "expected_parent"), "direct replica parent binding"),
+            (("service_runtime_generation_matches", "(", "&", "generation", ")"), "current runtime generation binding"),
         )
     )
     service_owned_main = auth.function("authenticate_linux_service_owned_main_server")
     service_owned_main.require_order(
         (
-            (("peer_process_identity", "(", "stream", ",", '""', ")"), "full child main-server identity"),
+            (("service_child_peer_process_identity", "(", "stream", ",", '""', ")"), "exact child main-server identity"),
             (("linux_service_owned_server_argv_is_expected", "(", "&", "args", ")"), "exact child main-server argv"),
             (("expected_parent", "=", "std", "::", "process", "::", "id", "(", ")"), "current service parent binding"),
             (("SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV",), "child launch-parent marker"),
-            (("linux_process_has_ancestor", "(", "identity", ".", "pid", ",", "expected_parent", ")"), "live child ancestry"),
+            (("linux_proc_parent_pid", "(", "identity", ".", "pid", ")"), "actual child parent PID"),
+            (("SERVICE_OWNED_SERVER_GENERATION_ENV",), "child generation capture"),
+            (("actual_parent", "!=", "expected_parent"), "direct child parent binding"),
+            (("service_runtime_generation_matches", "(", "&", "generation", ")"), "current child generation binding"),
+        )
+    )
+
+    platform = rust["src/platform/linux.rs"]
+    generation_match = platform.function("service_runtime_generation_matches")
+    generation_match.require_order(
+        (
+            (("SERVICE_RUNTIME_GENERATION", ".", "get", "(", ")"), "root runtime generation owner"),
+            (("is_some_and", "(", "|", "generation", "|", "generation", "==", "candidate", ")"), "exact generation equality"),
+        ),
+        unique=True,
+    )
+    executable_match = platform.function("service_child_executable_identity_matches")
+    executable_match.require_order(
+        (
+            (("SERVICE_CHILD_EXECUTABLE_IDENTITY", ".", "get", "(", ")"), "selected child executable identity owner"),
+            (("fs", "::", "metadata", "(", "format", "!", "(", '"/proc/{pid}/exe"', ")"), "live child executable inode"),
+            (("executable", ".", "dev", "(", ")", ",", "executable", ".", "ino", "(", ")"), "live child executable identity"),
         )
     )
 
@@ -1321,7 +1456,10 @@ def verify_mutation_coordinators(rust: Mapping[str, RustSource]) -> None:
             (("spawn_blocking", "(", "move", "||", "{"), "dedicated blocking worker"),
             (("let", "_permit", "=", "permit"), "capacity permit ownership"),
             (("result", ":", "IpcMutationResult", "::", "InternalFailure"), "panic/error-safe default"),
-            (("Config", "::", "set_permanent_password_persisted", "(", "value", ".", "as_str", "(", ")", ")"), "single persistence authority"),
+            (("service_owned_runtime_replica", "=", "kind", "==", "PasswordMutationKind", "::", "ServiceOwned", "&&", "crate", "::", "common", "::", "is_service_owned_server_process", "(", ")"), "exact Linux child runtime selection"),
+            (("if", "service_owned_runtime_replica", "{"), "runtime replica branch"),
+            (("Config", "::", "set_permanent_password_prs_for_runtime", "(", "value", ".", "as_str", "(", ")", ")", ".", "map", "(", "|", "_", "|", "true", ")"), "nonpersistent PRS replica application"),
+            (("else", "{", "Config", "::", "set_permanent_password_persisted", "(", "value", ".", "as_str", "(", ")", ")"), "durable non-replica authority"),
             (("completion", ".", "result", "=", "result"), "RAII final result update"),
         )
     )
@@ -1507,6 +1645,17 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("send_status_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "status", ",", "deadline", ")"), "operation-bound status"),
         )
     )
+    credential_handler = ipc.function("handle_linux_service_credential_snapshot_transaction")
+    credential_handler.require_order(
+        (
+            (("Instant", "::", "now", "(", ")", "+", "std", "::", "time", "::", "Duration", "::", "from_millis", "(", "SERVICE_IPC_REQUEST_TIMEOUT_MS", ")"), "one absolute credential deadline"),
+            (("receive_credential_snapshot_request_unix", "(", "&", "mut", "stream", ",", "deadline"), "bodyless credential request"),
+            (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "post-read exact-child reauthentication"),
+            (("refreshed", "!=", "identity"), "accepted-socket identity continuity"),
+            (("linux_service_owned_runtime_prs_replica", "(", ")"), "root-owned PRS snapshot"),
+            (("send_credential_replica_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "&", "replica", ",", "deadline"), "operation-bound PRS response"),
+        )
+    )
 
     operation = ipc.function("execute_linux_service_owned_password_operation")
     operation.require_order(
@@ -1528,13 +1677,84 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     commit = ipc.function("commit_service_owned_unattended_password_change")
     commit.require_order(
         (
-            (("complete_main_password_mutation", "(", "operation_id", ",", "&", "value", ",", "true", ",", "ms_timeout", ")"), "same-operation child commit"),
-            (("await",), "bounded child completion"),
+            (("durable_value", "=", "value", ".", "clone", "(", ")"), "root-owned plaintext copy"),
+            (("spawn_blocking", "(", "move", "||", "{", "Config", "::", "set_permanent_password_persisted", "(", "durable_value", ".", "as_str", "(", ")", ")"), "root durable credential write"),
+            (("if", "!", "durable_result", "{", "return", "Ok", "(", "IpcMutationResult", "::", "Rejected", ")"), "no-replica result before durable acceptance"),
+            (("linux_service_owned_runtime_prs_replica", "(", ")"), "root PRS extraction after persistence"),
+            (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on post-persistence PRS failure"),
+            (("complete_main_password_mutation", "(", "operation_id", ",", "&", "replica", ",", "true", ",", "ms_timeout", ")"), "same-operation PRS child convergence"),
+            (("Ok", "(", "IpcMutationResult", "::", "Applied", ")", "=>", "Ok", "(", "IpcMutationResult", "::", "Applied", ")"), "exact applied convergence"),
+            (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on non-applied child result"),
+            (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on child transport/finality failure"),
         )
+    )
+    commit.forbid(
+        ("complete_main_password_mutation", "(", "operation_id", ",", "&", "value"),
+        "plaintext forwarding to the service-owned child",
     )
     commit.forbid(("loop", "{"), "outer unbounded finality loop")
     commit.forbid(("sleep", "(", "0.1", ")", ".", "await"), "outer finality retry")
     commit.forbid(("Uuid", "::", "new_v4"), "operation ID regeneration during recovery")
+
+    root_replica = ipc.function("linux_service_owned_runtime_prs_replica")
+    root_replica.require_order(
+        (
+            (("Config", "::", "read_permanent_password_prs", "(", ")"), "root credential read"),
+            (("Available", "(", "prs", ")", "=>", "{", "Ok", "(", "SensitivePassword", "::", "new", "(", "prs", ")", ")"), "available PRS replica"),
+            (("PermanentPasswordPrsRead", "::", "Empty", "=>"), "explicit empty replica"),
+            (("UndecryptableStorage", "=>"), "undecryptable storage branch"),
+            (("bail", "!", "(", '"Linux root service credential storage is undecryptable"', ")"), "undecryptable fail closed"),
+        )
+    )
+
+    refresh = ipc.function("refresh_linux_service_owned_permanent_password_snapshot")
+    refresh.require_order(
+        (
+            (("is_service_owned_server_process", "(", ")"), "exact service-owned role"),
+            (("service_child_is_unsupervised_recovery_fixture", "(", ")"), "debug fixture branch"),
+            (("set_permanent_password_prs_for_runtime", "(", '""', ")"), "fixture explicit empty override"),
+            (("Config", "::", "ipc_path_for_uid", "(", "0", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", ")"), "root credential socket path"),
+            (("Endpoint", "::", "connect", "(", "path", ")"), "raw credential connection"),
+            (("authenticate_linux_service_owned_password_parent", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "kernel root peer and exact direct parent proof"),
+            (("send_credential_snapshot_request_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "deadline"), "operation-bound snapshot request"),
+            (("receive_credential_replica_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "deadline"), "operation-bound snapshot response"),
+            (("set_permanent_password_prs_for_runtime", "(", "replica", ".", "as_str", "(", ")", ")"), "nonpersistent runtime install"),
+        )
+    )
+
+    server = rust["src/server.rs"]
+    start_server_candidates = [
+        function
+        for function in server.functions("start_server")
+        if function.positions(("refresh_linux_service_owned_permanent_password_snapshot",))
+    ]
+    if len(start_server_candidates) != 1:
+        raise VerificationError(
+            "src/server.rs: expected one desktop start_server credential bootstrap"
+        )
+    start_server = start_server_candidates[0]
+    snapshot = start_server.require(
+        ("refresh_linux_service_owned_permanent_password_snapshot", "(", "10_000", ")", ".", "await"),
+        "service-child credential snapshot before admission",
+        unique=True,
+    )
+    invariant = start_server.require(
+        ("direct_service", "::", "assert_startup_invariants", "(", ")"),
+        "first ordinary startup invariant",
+        unique=True,
+    )
+    if snapshot >= invariant:
+        raise VerificationError(
+            f"{start_server.label}: credential snapshot must precede startup invariants/listeners"
+        )
+    authority_failure = server.function("request_graceful_shutdown_after_authority_failure")
+    authority_failure.require_order(
+        (
+            (("SHUTDOWN_FAILURE_LATCHED", ".", "store", "(", "true", ",", "Ordering", "::", "Release", ")"), "failure latch"),
+            (("request_graceful_shutdown", "(", ")"), "service cancellation"),
+        ),
+        unique=True,
+    )
 
     complete_main = ipc.function("complete_main_password_mutation")
     complete_main.require_order(
@@ -1649,6 +1869,138 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     )
 
 
+def verify_linux_credential_replica_bootstrap(rust: Mapping[str, RustSource]) -> None:
+    config = rust["libs/hbb_common/src/config.rs"]
+    runtime_prs = config.method(
+        ("impl", "Config"), "set_permanent_password_prs_for_runtime", "impl Config"
+    )
+    runtime_prs.require_order(
+        (
+            (("if", "!", "prs", ".", "is_empty", "(", ")"), "explicit empty replica support"),
+            (("base64", "::", "decode", "(", "prs", ".", "as_bytes", "(", ")", ",", "base64", "::", "Variant", "::", "Original", ")"), "strict base64 decode"),
+            (("base64", "::", "encode", "(", "&", "decoded", ",", "base64", "::", "Variant", "::", "Original", ")"), "canonical re-encoding"),
+            (("decoded", ".", "len", "(", ")", "==", "PERMANENT_PASSWORD_H1_LEN", "&&", "canonical", "==", "prs"), "exact canonical PRS validation"),
+            (("memzero", "(", "&", "mut", "decoded", ")"), "decoded PRS wipe"),
+            (("memzero", "(", "unsafe", "{", "canonical", ".", "as_mut_vec", "(", ")", "}", ")"), "canonical temporary wipe"),
+            (("runtime_prs", ".", "as_deref", "(", ")", "==", "Some", "(", "prs", ")"), "same-value no-op"),
+            (("if", "let", "Some", "(", "previous", ")", "=", "runtime_prs", ".", "as_mut", "(", ")"), "previous replica ownership"),
+            (("memzero", "(", "unsafe", "{", "previous", ".", "as_mut_vec", "(", ")", "}", ")"), "previous replica wipe"),
+            (("*", "runtime_prs", "=", "Some", "(", "prs", ".", "to_owned", "(", ")", ")"), "nonpersistent process replica install"),
+            (("advance_permanent_password_credential_generation", "(", "&", "mut", "generation", ")"), "credential generation advance"),
+        )
+    )
+    runtime_prs.forbid(("store_result",), "runtime replica persistence")
+
+    platform = rust["src/platform/linux.rs"]
+    platform.all().forbid(("SYS_ptrace",), "ptrace is not the exec nondumpability boundary")
+    platform.all().forbid(("PTRACE_TRACEME",), "ptrace cannot close procfs memory access")
+    nondumpable = platform.function("make_service_owned_process_nondumpable")
+    nondumpable.require_order(
+        (
+            (("service_owned_process_dumpability", "(", ")"), "initial dumpability read"),
+            (("get_current_uid", "(", ")", "!=", "0"), "active-user-only initial invariant"),
+            (("started_dumpable", "!=", "0"), "fail-closed initial image state"),
+            (("SYS_prctl", ",", "hbb_common", "::", "libc", "::", "PR_SET_DUMPABLE", ",", "0"), "disable dumpability"),
+            (("service_owned_process_dumpability", "(", ")"), "read-back verification"),
+            (("if", "dumpable", "!=", "0"), "fail-closed nondumpable result"),
+        )
+    )
+
+    configure = platform.function("configure_service_child_pre_exec")
+    configure.require_order(
+        (
+            (("SYS_setresuid",), "final active-user UID transition"),
+            (("clear_descriptor_close_on_exec", "(", "executable_fd", ")"), "exact executable descriptor inheritance"),
+            (("clear_descriptor_close_on_exec", "(", "bootstrap_fd", ")"), "bootstrap descriptor inheritance"),
+            (("PR_SET_NO_NEW_PRIVS",), "no-new-privileges inheritance"),
+            (("arm_linux_child_parent_death", "(", "expected_parent", ")"), "parent-death binding"),
+        )
+    )
+
+    prepare = platform.method(
+        ("impl", "ServiceChildBootstrap"), "prepare_stopped", "impl ServiceChildBootstrap"
+    )
+    prepare.require_order(
+        (
+            (("wait_for_ready_marker", "(", "deadline", ")"), "nondumpable readiness marker"),
+            (("SIGSTOP", ",", "deadline", ",", '"nondumpable readiness stop"'), "stopped publication boundary"),
+        )
+    )
+    resume = platform.method(
+        ("impl", "ServiceChildBootstrap"), "resume", "impl ServiceChildBootstrap"
+    )
+    resume.require(("SIGCONT",), "stopped child continuation", unique=True)
+    resume.forbid(("PTRACE",), "ptrace handoff after execute-only exec closure")
+
+    publish_ready = platform.function("publish_service_child_bootstrap_ready")
+    publish_ready.require_order(
+        (
+            (("SYS_write", ",", "bootstrap_fd", ",", "marker", ".", "as_ptr"), "single readiness marker write"),
+            (("SYS_close", ",", "bootstrap_fd"), "bootstrap descriptor close"),
+            (("SYS_kill", ",", "hbb_common", "::", "libc", "::", "syscall", "(", "hbb_common", "::", "libc", "::", "SYS_getpid", ")", ",", "hbb_common", "::", "libc", "::", "SIGSTOP"), "child readiness stop"),
+        )
+    )
+
+    child_image = platform.function("open_active_user_service_child_executable")
+    child_image.require_order(
+        (
+            (("open", "(", '"/proc/self/exe"', ")"), "running service image open"),
+            (("running_metadata", ".", "mode", "(", ")", "&", "0o7777", "==", "0o711"), "execute-only manual image path"),
+            (("running_metadata", ".", "mode", "(", ")", "&", "0o7777", "!=", "0o755"), "readable installed image mode"),
+            (("canonicalize", "(", '"/proc/self/exe"', ")"), "fixed primary package path"),
+            (("LINUX_INSTALLED_SERVICE_CHILD_EXECUTABLE",), "fixed service-child package path"),
+            (("parent_metadata", ".", "mode", "(", ")", "&", "0o022", "!=", "0"), "non-writable service-child parent"),
+            (("O_NOFOLLOW",), "no-follow service-child open"),
+            (("child_metadata", ".", "mode", "(", ")", "&", "0o7777", "!=", "0o711"), "execute-only service-child mode"),
+            (("child_metadata", ".", "len", "(", ")", "!=", "running_metadata", ".", "len", "(", ")"), "service-child length equality"),
+            (("files_have_exact_contents", "(", "&", "mut", "running", ",", "&", "mut", "child"), "service-child byte equality"),
+            (("Ok", "(", "child", ")"), "validated service-child descriptor"),
+        )
+    )
+
+    spawn = platform.function("try_start_server_")
+    spawn.require_order(
+        (
+            (("open_active_user_service_child_executable", "(", ")"), "selected execute-only child image"),
+            (("read_to_string", "(", '"/proc/sys/fs/suid_dumpable"', ")"), "kernel dump policy read"),
+            (("suid_dumpable", ".", "trim", "(", ")", "!=", '"0"'), "classic nondumpable exec policy"),
+            (("set_service_child_executable_identity", "(", "&", "child_executable_metadata", ")"), "selected child inode proof"),
+            (("ServiceChildBootstrap", "::", "create", "(", ")"), "bounded stopped bootstrap"),
+            (("env_clear", "(", ")"), "ambient environment removal"),
+            (("SERVICE_OWNED_SERVER_GENERATION_ENV", ",", "&", "runtime", ".", "generation"), "runtime generation environment"),
+            (("SERVICE_OWNED_SERVER_BOOTSTRAP_FD_ENV", ",", "bootstrap_fd", ".", "to_string", "(", ")"), "bootstrap descriptor environment"),
+            (("configure_service_child_pre_exec", "("), "pre-exec hardening"),
+            (("command", ".", "spawn", "(", ")"), "child exec"),
+            (("bootstrap", ".", "prepare_stopped", "(", "child_pid", ")"), "nondumpable stopped child"),
+            (("service_child_record_for_process", "(", "pid", ",", "expected_child_uid", ",", "&", "runtime", ".", "generation", ")"), "exact stopped-child record"),
+            (("runtime", ".", "publish_record", "(", "&", "record", ")"), "durable generation publication"),
+            (("bootstrap", ".", "resume", "(", "child_pid", ")"), "post-publication admission"),
+        )
+    )
+
+    entry = platform.function("require_service_owned_server_parent_liveness")
+    entry.require_order(
+        (
+            (("make_service_owned_process_nondumpable", "(", ")"), "first-image nondumpability"),
+            (("SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV",), "expected parent environment"),
+            (("SERVICE_OWNED_SERVER_GENERATION_ENV",), "generation environment"),
+            (("validate_canonical_uuid", "(", "&", "generation", ",", '"service generation"', ")"), "canonical generation"),
+            (("service_child_is_unsupervised_recovery_fixture", "(", ")"), "debug fixture decision"),
+            (("SERVICE_OWNED_SERVER_BOOTSTRAP_FD_ENV",), "mandatory bootstrap descriptor"),
+            (("arm_linux_child_parent_death", "(", "expected_parent", ")"), "final-image parent binding"),
+            (("publish_service_child_bootstrap_ready", "(", "bootstrap_fd", ")"), "nondumpable readiness publication"),
+        )
+    )
+
+    fixture = platform.function("service_child_is_unsupervised_recovery_fixture")
+    fixture.require(("#", "[", "cfg", "(", "debug_assertions", ")", "]"), "debug-only fixture read", unique=True)
+    fixture.require(("#", "[", "cfg", "(", "not", "(", "debug_assertions", ")", ")", "]", "{", "false", "}"), "release fixture denial", unique=True)
+    spawn.forbid(
+        ("SERVICE_CHILD_UNSUPERVISED_RECOVERY_FIXTURE_ENV",),
+        "real supervisor propagation of the debug recovery fixture",
+    )
+
+
 def verify_callers(rust: Mapping[str, RustSource]) -> None:
     core = rust["src/core_main.rs"]
     parser = core.function("password_cli_input")
@@ -1760,6 +2112,8 @@ def validate_sources(sources: Mapping[str, str]) -> None:
         "src/ipc/fs.rs",
         "src/core_main.rs",
         "src/ui_interface.rs",
+        "src/platform/linux.rs",
+        "src/server.rs",
     ):
         critical = rust[path].all()
         critical.forbid(("if", "false"), "statically dead if branch in security-critical source")
@@ -1774,6 +2128,7 @@ def validate_sources(sources: Mapping[str, str]) -> None:
     verify_linux_identity_and_authority(rust)
     verify_mutation_coordinators(rust)
     verify_flow_finality_and_shutdown(rust)
+    verify_linux_credential_replica_bootstrap(rust)
     verify_callers(rust)
 
 
@@ -1910,6 +2265,84 @@ def self_test(sources: Mapping[str, str]) -> None:
             "src/ipc.rs",
             "Semaphore::new(SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET)",
             "Semaphore::new(SERVICE_IPC_TRANSACTION_BUDGET)",
+        ),
+        Mutation(
+            "credential replica accepts a noncanonical PRS length",
+            "src/ipc/password.rs",
+            "!matches!(self.password_len, 0 | CREDENTIAL_REPLICA_BYTES)",
+            "self.password_len > CREDENTIAL_REPLICA_BYTES /* exact canonical lengths */",
+        ),
+        Mutation(
+            "credential replica lane uses the ordinary service capacity",
+            "src/ipc.rs",
+            "Semaphore::new(SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET)",
+            "Semaphore::new(SERVICE_IPC_TRANSACTION_BUDGET)",
+        ),
+        Mutation(
+            "service-owned child persists the machine credential",
+            "src/ipc.rs",
+            "Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true)",
+            "Config::set_permanent_password_persisted(value.as_str()).map(|_| true)",
+        ),
+        Mutation(
+            "root forwards plaintext instead of the canonical PRS replica",
+            "src/ipc.rs",
+            "complete_main_password_mutation(operation_id, &replica, true, ms_timeout)",
+            "complete_main_password_mutation(operation_id, &value, true, ms_timeout)",
+        ),
+        Mutation(
+            "post-persistence child rejection no longer fail-stops the generation",
+            "src/ipc.rs",
+            "Ok(result) => {\n            crate::server::request_graceful_shutdown_after_authority_failure();\n            bail!(",
+            "Ok(result) => {\n            crate::server::request_graceful_shutdown();\n            bail!(",
+        ),
+        Mutation(
+            "service child starts without a root credential snapshot",
+            "src/server.rs",
+            "crate::ipc::refresh_linux_service_owned_permanent_password_snapshot(10_000).await",
+            "crate::ipc::refresh_linux_service_owned_permanent_password_snapshot_for_later(10_000).await",
+        ),
+        Mutation(
+            "final Linux child image remains dumpable",
+            "src/platform/linux.rs",
+            "make_service_owned_process_nondumpable()?;",
+            "/* make_service_owned_process_nondumpable()?; */",
+        ),
+        Mutation(
+            "active-user child executable becomes same-uid readable across exec",
+            "src/platform/linux.rs",
+            "child_metadata.mode() & 0o7777 != 0o711",
+            "child_metadata.mode() & 0o7777 != 0o755",
+        ),
+        Mutation(
+            "service-child package image is no longer byte-bound to the running service",
+            "src/platform/linux.rs",
+            "files_have_exact_contents(&mut running, &mut child, running_metadata.len())",
+            "files_have_exact_contents_unchecked(&mut running, &mut child, running_metadata.len())",
+        ),
+        Mutation(
+            "active-user child accepts a dumpable-exec sysctl policy",
+            "src/platform/linux.rs",
+            "if suid_dumpable.trim() != \"0\" {",
+            "if suid_dumpable.trim() == \"0\" {",
+        ),
+        Mutation(
+            "credential replica accepts an indirect or stale-generation child",
+            "src/ipc/auth.rs",
+            "if launch_parent != expected_parent\n        || actual_parent != expected_parent\n        || !crate::platform::linux::service_runtime_generation_matches(&generation)\n    {\n        bail!(\n            \"service-owned password replica owner mismatch:",
+            "if launch_parent != expected_parent {\n        /* actual_parent and service_runtime_generation_matches were bypassed */\n        bail!(\n            \"service-owned password replica owner mismatch:",
+        ),
+        Mutation(
+            "ordinary service-password client accepts an untrusted root executable",
+            "src/ipc/auth.rs",
+            "if !linux_service_executable_is_trusted(&peer_exe) {",
+            "if false { /* trusted root executable proof was bypassed */",
+        ),
+        Mutation(
+            "release builds enable the unsupervised recovery fixture",
+            "src/platform/linux.rs",
+            "pub(crate) fn service_child_is_unsupervised_recovery_fixture() -> bool {\n    #[cfg(debug_assertions)]\n    {\n        std::env::var_os(SERVICE_CHILD_UNSUPERVISED_RECOVERY_FIXTURE_ENV).as_deref()\n            == Some(std::ffi::OsStr::new(\"1\"))\n    }\n    #[cfg(not(debug_assertions))]\n    {\n        false\n    }\n}",
+            "pub(crate) fn service_child_is_unsupervised_recovery_fixture() -> bool {\n    true\n}",
         ),
         Mutation(
             "shutdown clears replay authority before transaction drain",

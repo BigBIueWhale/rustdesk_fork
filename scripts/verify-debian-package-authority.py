@@ -4,7 +4,6 @@ import ast
 import copy
 import gzip
 import hashlib
-import importlib.util
 import io
 import os
 import re
@@ -31,6 +30,7 @@ DATA_EXECUTABLES = {
     "./usr/share/rustdesk/files/openrc/rustdesk",
     "./usr/share/rustdesk/files/runit/run",
     "./usr/share/rustdesk/rustdesk",
+    "./usr/share/rustdesk/rustdesk-service-child",
 }
 FLUTTER_LIBRARIES = {
     "./usr/share/rustdesk/lib/libapp.so",
@@ -92,18 +92,29 @@ DATA_REQUIRED_FILES = {
     "./usr/share/rustdesk/files/openrc/rustdesk",
     "./usr/share/rustdesk/files/runit/run",
     "./usr/share/rustdesk/rustdesk",
+    "./usr/share/rustdesk/rustdesk-service-child",
 }
 DATA_REQUIRED_FILES.update(FLUTTER_LIBRARIES)
 DATA_REQUIRED_SYMLINKS = {
     "./usr/bin/rustdesk": "../share/rustdesk/rustdesk",
 }
 DATA_VARIABLE_ROOT = "./usr/share/rustdesk/data/flutter_assets"
-MANDATORY_ELVES = {"./usr/share/rustdesk/rustdesk"} | FLUTTER_LIBRARIES
+PRIMARY_BINARY = "./usr/share/rustdesk/rustdesk"
+SERVICE_CHILD_BINARY = "./usr/share/rustdesk/rustdesk-service-child"
+RUNNER_BINARIES = {PRIMARY_BINARY, SERVICE_CHILD_BINARY}
+MANDATORY_ELVES = RUNNER_BINARIES | FLUTTER_LIBRARIES
 DATA_REQUIRED = {
     name: ("dir", 0o755) for name in DATA_REQUIRED_DIRECTORIES
 }
 DATA_REQUIRED.update({
-    name: ("file", 0o755 if name in DATA_EXECUTABLES else 0o644)
+    name: (
+        "file",
+        0o711
+        if name == SERVICE_CHILD_BINARY
+        else 0o755
+        if name in DATA_EXECUTABLES
+        else 0o644,
+    )
     for name in DATA_REQUIRED_FILES
 })
 CONTROL_REQUIRED = {
@@ -311,8 +322,14 @@ def validate_data_members(members, label):
     for name, member in members.items():
         require_root_owned(member, f"{label}:{name}")
         expected = (
-            0o777 if member.issym()
-            else 0o755 if member.isdir() or name in DATA_EXECUTABLES
+            0o777
+            if member.issym()
+            else 0o755
+            if member.isdir()
+            else 0o711
+            if name == SERVICE_CHILD_BINARY
+            else 0o755
+            if name in DATA_EXECUTABLES
             else 0o644
         )
         if not member.isfile() and not member.isdir() and not member.issym():
@@ -376,7 +393,7 @@ def validate_control_members(members, label):
 
 def expected_elf_runpath(name):
     basename = Path(name).name
-    if name == "./usr/share/rustdesk/rustdesk":
+    if name in RUNNER_BINARIES:
         return ("$ORIGIN/lib",)
     if is_under(name, "./usr/share/rustdesk/lib") and (
         basename == "libflutter_linux_gtk.so" or basename.endswith("_plugin.so")
@@ -533,7 +550,7 @@ def validate_elf_identity(contents, name, label):
                 align,
             ))
 
-    if name == "./usr/share/rustdesk/rustdesk":
+    if name in RUNNER_BINARIES:
         if len(interpreter_segments) != 1:
             raise ValidationError(f"{label}: ELF runner must contain exactly one program interpreter")
         (
@@ -651,6 +668,7 @@ def validate_elf_identity(contents, name, label):
 def validate_elf_runpaths(deb, data_tar, members):
     try:
         with tarfile.open(fileobj=io.BytesIO(data_tar), mode="r:*") as archive:
+            runner_contents = {}
             for name, member in sorted(members.items()):
                 if not member.isfile():
                     continue
@@ -663,8 +681,14 @@ def validate_elf_runpaths(deb, data_tar, members):
                     raise ValidationError(f"{deb}:data:{name}: required runtime object is not ELF")
                 if not is_elf:
                     continue
+                if name in RUNNER_BINARIES:
+                    runner_contents[name] = contents
                 actual, present = validate_elf_identity(contents, name, f"{deb}:data:{name}")
                 validate_runpath_policy(actual, present, name, f"{deb}:data:{name}")
+            if runner_contents.get(PRIMARY_BINARY) != runner_contents.get(SERVICE_CHILD_BINARY):
+                raise ValidationError(
+                    f"{deb}:data: service-child executable is not byte-identical to the primary runner"
+                )
     except tarfile.TarError as err:
         raise ValidationError(f"{deb}: failed to inspect data archive ELF runpaths: {err}") from err
 
@@ -1299,7 +1323,7 @@ def validate_build_py(repo):
         )
     package_start = direct_call_positions[stage_calls[0]]
     package_prefix = flutter_body[:package_start]
-    if len(package_prefix) != 26:
+    if len(package_prefix) != 27:
         raise ValidationError("build.py Flutter Debian constructor pre-package inventory differs")
     cargo_block = package_prefix[0]
     if (not isinstance(cargo_block, ast.If)
@@ -1375,6 +1399,15 @@ def validate_build_py(repo):
             raise ValidationError("build.py Flutter Debian resource copies are not exact")
     if not direct_call_statement(
         package_prefix[25],
+        "shutil.copyfile",
+        (
+            ("string", "tmpdeb/usr/share/rustdesk/rustdesk"),
+            ("string", "tmpdeb/usr/share/rustdesk/rustdesk-service-child"),
+        ),
+    ):
+        raise ValidationError("build.py Flutter Debian service-child copy is not exact")
+    if not direct_call_statement(
+        package_prefix[26],
         "os.symlink",
         (
             ("string", "../share/rustdesk/rustdesk"),
@@ -1462,6 +1495,13 @@ def validate_build_py(repo):
         raise ValidationError("build.py and artifact verifier directory inventories differ")
     if {f"./{name}" for name in module.DEBIAN_DATA_REQUIRED_FILES} != DATA_REQUIRED_FILES:
         raise ValidationError("build.py and artifact verifier file inventories differ")
+    if {
+        f"./{name}": mode for name, mode in module.DEBIAN_DATA_MODES.items()
+    } != {
+        name: 0o711 if name == SERVICE_CHILD_BINARY else 0o755
+        for name in DATA_EXECUTABLES
+    }:
+        raise ValidationError("build.py and artifact verifier executable mode inventories differ")
     if {
         f"./{name}": target
         for name, target in module.DEBIAN_DATA_REQUIRED_SYMLINKS.items()
@@ -1555,7 +1595,7 @@ def make_synthetic_tree(root):
             contents = "<policyconfig/>\n"
         else:
             contents = f"synthetic fixture for {name}\n"
-        write_file(path, contents, 0o755 if name in DATA_EXECUTABLES else 0o644)
+        write_file(path, contents, DATA_REQUIRED[name][1])
     for name in sorted(DATA_REQUIRED_DIRECTORIES, key=lambda item: item.count("/"), reverse=True):
         path = root if name == "." else root / name[2:]
         path.mkdir(parents=True, exist_ok=True)
@@ -1588,7 +1628,12 @@ def build_synthetic_elf(path, runpath=None, shared=False, legacy_rpath=False):
 
 
 def populate_valid_synthetic_elves(root):
-    build_synthetic_elf(root / "usr/share/rustdesk/rustdesk", "$ORIGIN/lib")
+    primary = root / "usr/share/rustdesk/rustdesk"
+    service_child = root / "usr/share/rustdesk/rustdesk-service-child"
+    build_synthetic_elf(primary, "$ORIGIN/lib")
+    shutil.copyfile(primary, service_child)
+    primary.chmod(0o755)
+    service_child.chmod(0o711)
     for name in sorted(FLUTTER_LIBRARIES):
         basename = Path(name).name
         runpath = "$ORIGIN" if basename == "libflutter_linux_gtk.so" or basename.endswith("_plugin.so") else None
@@ -2211,6 +2256,14 @@ def run_source_gate_mutations(repo, tmp):
             ),
             "Flutter library inventories differ",
         ),
+        (
+            replace_once(
+                baseline,
+                'DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o711',
+                'DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o755',
+            ),
+            "executable mode inventories differ",
+        ),
     )
     for mutated, expected in mutations:
         build_path.write_text(mutated, encoding="utf-8")
@@ -2304,11 +2357,15 @@ def run_source_gate_mutations(repo, tmp):
 
 
 def load_build_module(repo):
-    spec = importlib.util.spec_from_file_location("rustdesk_build_authority", repo / "build.py")
-    if spec is None or spec.loader is None:
-        raise ValidationError("cannot load build.py for Debian staging behavior proof")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    path = repo / "build.py"
+    try:
+        source = path.read_bytes()
+        code = compile(source, str(path), "exec", dont_inherit=True)
+    except (OSError, SyntaxError) as err:
+        raise ValidationError("cannot load build.py for Debian staging behavior proof") from err
+    module = types.ModuleType("rustdesk_build_authority")
+    module.__file__ = str(path)
+    exec(code, module.__dict__)
     return module
 
 
@@ -2356,7 +2413,7 @@ def run_production_finalizer_self_test(repo, tmp):
         elif relative.startswith("DEBIAN/"):
             expected = build_module.DEBIAN_CONTROL_MODES[relative[len("DEBIAN/"):]]
         else:
-            expected = 0o755 if relative in build_module.DEBIAN_DATA_EXECUTABLES else 0o644
+            expected = build_module.DEBIAN_DATA_MODES.get(relative, 0o644)
         if stat.S_IMODE(info.st_mode) != expected:
             raise ValidationError(
                 f"production finalizer left {relative} mode {stat.S_IMODE(info.st_mode):o}, expected {expected:o}"
@@ -2556,6 +2613,32 @@ def run_self_test(repo):
             good_tree / "usr/lib/systemd/system/rustdesk.service"
         ).read_bytes()
         validate_deb(good_deb, expected_systemd_unit)
+
+        readable_service_deb = tmp / "readable-service.deb"
+        write_modified_deb(
+            good_deb,
+            readable_service_deb,
+            data_transform=replace_tar_member(
+                SERVICE_CHILD_BINARY,
+                mode=0o755,
+            ),
+        )
+        expect_validation_failure(readable_service_deb, "mode 755, expected 711")
+
+        mismatched_service_bytes = bytearray(
+            (good_tree / PRIMARY_BINARY[2:]).read_bytes()
+        )
+        mismatched_service_bytes[-1] ^= 1
+        mismatched_service_deb = tmp / "mismatched-service-child.deb"
+        write_modified_deb(
+            good_deb,
+            mismatched_service_deb,
+            data_transform=replace_tar_member(
+                SERVICE_CHILD_BINARY,
+                contents=bytes(mismatched_service_bytes),
+            ),
+        )
+        expect_validation_failure(mismatched_service_deb, "not byte-identical")
 
         wrong_command_target_deb = tmp / "wrong-command-target.deb"
         write_modified_deb(

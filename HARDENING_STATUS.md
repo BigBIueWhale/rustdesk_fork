@@ -18,7 +18,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 858 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 871 lexical `unsafe {`
 blocks across 247 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -485,11 +485,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and `com.carriez.RustDesk.set-unattended-password` action are admitted. `pkcheck` is polled under a 120-second
   bound and is killed and reaped on timeout, shutdown, or status failure. A 64-entry no-eviction admission ledger,
   keyed by process-random HMAC-SHA256 fingerprints, serializes one matching caller through `Authorizing`,
-  `Committing`, `Recoverable`, and `Complete`. After authorization the root service authenticates the exact
-  service-owned replica by uid, executable, argv, launch-parent environment, and live ancestry before sending the
-  same UUID/value on raw `_password`; the child independently proves the root parent before reading it. Ordinary
-  main IPC carries no password fallback. A nonsecret status query is used only for admitted uncertainty. The
-  packaged polkit policy remains administrator-authenticated.
+  `Committing`, `Recoverable`, and `Complete`. After authorization the stable root service is the sole durable
+  writer. It persists first, reads the resulting canonical PRS, and authenticates the exact service-owned child by
+  executable, argv, direct parent, launch-parent environment, and current runtime generation before sending the
+  same UUID with PRS—not plaintext—on raw `_password`; the child applies it only as a nonpersistent runtime replica
+  and independently proves its direct root parent. Before any child listener, raw `_service_credential` performs
+  the same generation-bound proof and supplies the root PRS-or-empty snapshot. Post-persistence divergence
+  fail-stops the service generation. Ordinary main IPC carries no password fallback. A nonsecret status query is
+  used only for admitted uncertainty. The packaged polkit policy remains administrator-authenticated.
 - **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; NATIVE
   CREDENTIAL-PATH EVIDENCE RECORDED AT THE NAMED TREE.** The stable LocalSystem SCM service is the sole durable credential
   writer and replay/finality owner. Mutation enters through raw `_service_password`, not `_service` or an old
@@ -672,7 +675,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   regression proves the table and its credential strings are never serialized again. `scripts/verify.sh` gates
   the complete source/module/dependency absence, the direct-only connector shape, the retained stale-value pins,
   and the focused regression. The synchronized machine inventory proves 905 Cargo packages, 36 Git records from
-  26 source URLs (26 rustdesk-org records from 20 URLs), and 858 lexical unsafe blocks across 247 Rust files.
+  26 source URLs (26 rustdesk-org records from 20 URLs), and 871 lexical unsafe blocks across 247 Rust files.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -1559,7 +1562,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   credential. Android is app-UID/service-owned; portable desktop mode remains user-owned. Password bodies exist
   only on raw `_password`/`_service_password`, after mutual endpoint proof. Ordinary main and `_service` IPC carry
   no password mutation, generic credential/config write, whole-config import, or storage/salt write. Linux adds
-  socket-bound polkit authorization and exact root-parent/service-replica proof. macOS adds a dedicated
+  socket-bound polkit authorization, stable-root durable storage, a raw `_service_credential` PRS snapshot, and
+  direct-parent/current-generation service-replica proof. The child is a nondumpable runtime-only replica. macOS adds a dedicated
   nonshared timeout-zero Authorization Services capability, root helper/installed-app audit-token proof, and exact
   LaunchAgent runtime-snapshot proof. Windows terminates mutation in the stable LocalSystem SCM authority and gives
   the retained child only a generation-bound read-only replica. The final clean committed cold release build is
@@ -1570,7 +1574,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   state ↔ root service credential commit. Attack surface closed: no new credential mutation path is added;
   raw `_service_password` remains the only Linux service-owned password ingress, using
   the SO_PEERCRED-derived peer process subject, `/usr/bin/pkcheck --action-id ... --process ... --allow-user-interaction`,
-  and a root-service raw `_password` commit into the proved service-owned replica. This slice closes the residual assurance
+  and a root-service durable commit followed by raw `_password` PRS convergence into the proved runtime-only
+  service-owned replica. This slice closes the residual assurance
   gap around what the repo ships: `res/com.carriez.RustDesk.policy` is now structurally verified as exactly
   one action, `com.carriez.RustDesk.set-unattended-password`, with `allow_any`, `allow_inactive`, and
   `allow_active` all set to `auth_admin`, with no `yes`, `auth_self`, or keep-style authorizations. The
@@ -1624,17 +1629,20 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `LOCAL_PEERTOKEN` are captured immediately. Security.framework proof executes on a dedicated exactly owned OS
   thread and is synchronously joined; timeout, cancellation, panic, lost result, or lost join ownership aborts the
   process. No generic frame or raw password header/body is read before endpoint proof succeeds.
-- **R-S11e-5 — Linux service-owned replica receiver proof — SOURCE IMPLEMENTED.** After polkit authorization,
-  the root service connects to raw `_password` and authenticates the replica from `SO_PEERCRED`, current executable,
-  exact `--server --service-owned-server` argv, service-parent environment, expected uid, and live ancestry before
-  sending the body. The child independently authenticates the root `--service` parent before reading it. No
-  password value is constructed in or sent through ordinary main IPC; that channel can only recover nonsecret
-  status after admission.
-- **R-S11e-6 — Linux `_service_password` client-side server authentication — SOURCE IMPLEMENTED.** The caller
-  connects to raw `_service_password` and proves the receiver is uid 0, the current trusted executable, exact
-  `--service` role, and rooted in non-writable trusted path metadata before sending the canonical header/body. A
-  path squatter or non-root/wrong-role process receives no password bytes. Generic `_service` carries no password
-  request.
+- **R-S11e-5 — Linux service-owned replica receiver proof — SOURCE IMPLEMENTED.** Before listener admission, the
+  child requests raw `_service_credential`; the root service proves the exact child from `SO_PEERCRED`, current
+  executable, exact `--server --service-owned-server` argv, direct parent, launch-parent environment, and current
+  service generation before returning a canonical PRS-or-empty snapshot. The child independently authenticates
+  its direct root `--service` parent. After polkit-authorized mutation, root persists first and converges that exact
+  child through raw `_password` with the same UUID and canonical PRS, never plaintext; the child applies only a
+  nonpersistent runtime override. No password-equivalent value is sent through ordinary main IPC; that channel can
+  only recover nonsecret status after admission.
+- **R-S11e-6 — Linux `_service_password` client-side server authentication — SOURCE IMPLEMENTED; proof wording
+  corrected by R-S11e-94.** The caller connects to raw `_service_password` through the protected root-owned service
+  IPC path and requires a positive uid-0 peer PID from `SO_PEERCRED` before sending the canonical header/body. It does
+  not depend on an unprivileged process reading protected root `/proc` executable or argv metadata. A non-root path
+  squatter receives no password bytes; a process already running as root remains inside the trusted service boundary.
+  Generic `_service` carries no password request.
 - **R-S11e-7 — user-owned permanent-password receiver authentication — SOURCE IMPLEMENTED.** Linux/macOS
   `_password` mutually proves same uid, current executable, and exact user-owned server role before secret-body
   transfer. Windows `_password` mutually proves exact executable/role/generation/token on the retained first-instance
@@ -3697,7 +3705,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   that can be discarded by a detached thread or overwritten by a later clean shutdown path.
 
   Closure: `request_graceful_shutdown_after_listener_failure` stores the failure latch with Release ordering and
-  then invokes the unchanged cancellation request. All six unexpected listener-end branches use that helper; normal
+  then invokes the unchanged cancellation request. All seven current unexpected listener-end branches use that helper; normal
   cancellation, SIGINT/SIGTERM, and service-manager stop paths continue to call the ordinary request and never set
   the latch. Under R-S11as the retained desktop owner receives and joins local IPC before the sole finalizer call;
   that finalizer waits for authenticated connection cleanup, then loads the monotonic latch with Acquire ordering
@@ -3707,7 +3715,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   downgrade the latched failure.
 
   Proof/gates: the focused Rust regression binds clean and failure status selection. The R-S11e-53 source
-  and Apple gates bind the static latch, Release-before-cancellation producer ordering, exact six error producers,
+  and Apple gates bind the static latch, Release-before-cancellation producer ordering, exact seven error producers,
   Acquire-at-the-finalizer sink selection, process exit using the selected value, protected-service error return,
   unchanged drain-before-terminal-outcome ordering, R-S11am, Appendix C #161, and this ledger. The semantic workspace verifier independently interprets those regions
   and mutation-tests every producer, memory-order weakening, hardcoded-success restoration, regression/gate removal,
@@ -5269,15 +5277,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   includes `conffiles` for `startwm.sh`/`xorg.conf` and `md5sums` covering every non-conffile data file. The finalizer
   rejects unexpected entries, nested control directories, every symlink except the exact package-owned relative data
   symlink `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`, special files, and hardlinked regular files, then
-  makes every directory `0755`, the runner and `startwm.sh` `0755`, all other data and ordinary control files `0644`,
-  and all maintainer scripts `0755`. One `subprocess.run(..., check=True)` argv boundary invokes
+  makes every directory `0755`, the root/root primary runner `0755`, its byte-identical root/root service-child
+  image `0711`, `startwm.sh` and the other executable data files `0755`, all other data and ordinary control files
+  `0644`, and all maintainer scripts `0755`. One
+  `subprocess.run(..., check=True)` argv boundary invokes
   `dpkg-deb --root-owner-group -b`; AST validation admits only that archiver and the exact PE canonicalizer process,
   pins the complete top-level import inventory, rejects decorators, direct and re-exported alternate process-launch
   members, callable aliases, direct stores, dynamic namespace/evaluation APIs, function/module/frame namespace reach,
   and explicit early termination, and requires every package authority's loaded name/code origin to match its sole
   synchronous top-level definition. It resolves concatenated, joined, and interpolated constant strings, requires exact
-  shell-wrapper and FFI-helper bodies, the four-function shell-call ownership inventory, and the exact 26-statement
-  Flutter pre-control-staging program, including the sole command-symlink constructor,
+  shell-wrapper and FFI-helper bodies, the four-function shell-call ownership inventory, and the exact 27-statement
+  Flutter pre-control-staging program, including the exact service-child byte copy and sole command-symlink constructor,
   requires contiguous reachable direct staging/finalization/archive operations, and permits only the exact
   cleanup/versioned-rename/chdir publication tail afterward. The release
   wrapper validates the emitted archive and locale-independent exact extracted-script metadata before hashing it. The
@@ -6206,9 +6216,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     A third complete-smoke attempt reached the corrected non-root branch and exposed a separate fixture mismatch:
     the build stage's `umask 077` had recreated the root-owned debug binary as mode `0700`. Holding an open descriptor
     preserves executable-object identity but correctly does not bypass the inode's execute permission, so Linux
-    rejected the UID-4001 exec. The build stage now changes only the completed smoke binary to the root-owned mode
-    `0755` expected of an installed `/usr/bin/rustdesk`, and the lifecycle refuses to run unless that exact owner/mode
-    precondition holds. Source inputs and all other private fixture outputs remain under the restrictive umask.
+  rejected the UID-4001 exec. At that historical slice the build stage changed only the completed smoke binary to
+  root-owned mode `0755` and the lifecycle required that owner/mode precondition. R-S11cb now keeps the private build
+  output executable for staging but models the installed service image as root-owned mode `0711`. Source inputs and
+  all other private fixture outputs remain under the restrictive umask.
 
     The corrected complete default smoke then passed. Its integrated lifecycle observed root graceful generation
     `0cbc0ad2-3ec7-4e61-929d-3c1b372cc244`, restart generation `64097d5d-1e74-4913-87bb-a26914213bb2`, an
@@ -8008,8 +8019,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   was compromised.
 
   The corrected package has one command authority. `build.py` creates an exact relative symbolic-link data member
-  `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`; its target remains the sole mode-0755 executable payload at
-  `/usr/share/rustdesk/rustdesk`. The finalizer admits exactly that one single-link mode-0777 symlink, rejects every
+  `/usr/bin/rustdesk -> ../share/rustdesk/rustdesk`; its target remains the root/root mode-0755 ordinary UI/service
+  payload. R-S11cb adds a separate byte-identical root/root mode-0711
+  `/usr/share/rustdesk/rustdesk-service-child` payload that is never the primary command. The finalizer admits
+  exactly that one single-link mode-0777 symlink, rejects every
   other link/hardlink/special file, checks the exact target again after mode finalization, and excludes symlinks from
   generated `md5sums`. The independent archive parser requires canonical raw link metadata, root/root ownership,
   symbolic-link type, mode 0777, exact relative target bytes, a closed link inventory, and no symlink digest entry.
@@ -8114,6 +8127,116 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   not claim current exact-binary pidfd-unavailable refusal, clean exact-commit Debian package
   construction/installation, an installed old-kernel run, Android device evidence, native Apple/Windows evidence, or
   independent R-V3 review; those broader items remain open.
+- **R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime replica — SOURCE
+  IMPLEMENTED; CONFINED COMPILER AND SEMANTIC/MUTATION VERIFICATION PASSED 2026-07-23; NATIVE INSTALLED-SERVICE
+  BEHAVIOR AND EXACT ARTIFACT EVIDENCE REMAIN R-B2/R-S11c-27.** Platform: Linux installed-service mode when the
+  stable root `--service` supervisor selects an active-desktop
+  `--server --service-owned-server` child. Endpoint/action: polkit-authorized permanent-password mutation, initial
+  credential snapshot, and the child process's access to the password-equivalent CPace PRS. Boundary: stable root
+  durable machine authority ↔ replaceable active-user runtime authority and ordinary same-uid process-inspection
+  authority.
+
+  The prior architecture authorized in root but committed in the child. After polkit succeeded, root forwarded the
+  plaintext over raw `_password`; `spawn_password_mutation` then called
+  `Config::set_permanent_password_persisted` inside the active-user child, so the selected desktop uid/config root
+  chose durable machine credential state. The child also retained the PRS while an ordinary final-image exec did
+  not explicitly hold dumpability off. Linux documents that credential changes reset dumpability but ordinary exec
+  can restore it, and that ptrace-style checks govern `ptrace`, `process_vm_readv`, and `/proc/<pid>/mem`. Kernel
+  `ptrace.c` also distinguishes the sole-tracer check in attach from the general `__ptrace_may_access` decision used
+  by those other interfaces: making root the child's registered tracer would prevent a second attach but would not
+  itself close every classic same-uid read path during a dumpable exec interval. The application cannot treat either
+  that tracer relationship or an optional restrictive Yama setting as its credential boundary. This was a local
+  credential-authority/confidentiality defect requiring local same-uid process authority; it is not evidence that
+  memory was read, a password was stolen, a host process/service/configuration/firewall changed, Docker gained root,
+  a public listener was created, exploitation occurred, or a machine was compromised.
+
+  Current source makes root the sole durable writer. The root commit worker persists the submitted plaintext,
+  reads the resulting root PRS tri-state, and sends the exact service-owned child only a canonical PRS-or-empty
+  `SensitivePassword` replica under the same UUID. The child-side mutation worker recognizes its exact Linux
+  service-owned role and calls only `set_permanent_password_prs_for_runtime`; that setter accepts empty or canonical
+  base64 for exactly 32 decoded bytes, wipes decoded/re-encoded temporaries and any replaced replica, overrides stale
+  user-profile state without persistence, and advances the credential generation. If root storage is undecryptable,
+  the PRS cannot be read after persistence, the child returns anything but `Applied`, or transport/finality cannot
+  converge, root latches authority failure and cancels the generation. The existing owned IPC drain completes, the
+  supervisor treats the lost protected-IPC worker as fatal, stops the exact child, and lets the service manager
+  start a fresh generation rather than serving divergent credentials.
+
+  Startup uses a separate raw `_service_credential` listener with its own capacity-two semaphore. Admission occurs
+  before `/proc` identity work; the root reads no request body until it proves the exact child. The bodyless kind-3
+  request and kind-4 response reuse the canonical 36-byte raw header and bind one UUID; a replica body is exactly
+  empty or 44-byte canonical base64. Root reauthenticates the accepted identity before reading credential state.
+  The child connects to service IPC, proves a kernel-credential uid-0 peer whose PID is both its launch-parent marker
+  and its actual direct parent, receives and validates the operation-bound replica, and installs it before startup
+  invariants or any local/public listener. It does not depend on reading protected root `/proc` metadata. Root
+  independently proves the accepted child has the exact service-owned argv, direct parent, and current generation.
+  Explicit empty
+  root state suppresses stale user-profile storage; unavailable, malformed, wrong-operation, wrong-peer, or
+  undecryptable state exits the child before admission. Both root-to-child mutation and child-to-root snapshot proof
+  now require direct parent PID plus the root supervisor's current runtime generation, not ancestry alone.
+
+  The active-user launch closes the exec-time same-uid inspection window without ptrace. Debian packaging keeps the
+  ordinary UI/service image root:root mode 0755 so its established same-uid `/proc` executable proofs remain usable,
+  and adds a separate byte-identical root:root mode-0711 service-child image. Before dropping privilege, the root
+  supervisor opens the running fixed primary and no-follow child objects, proves the primary path/mode, protected
+  child parent, child ownership/mode/length, exact byte equality, and selected child inode; it also requires
+  `/proc/sys/fs/suid_dumpable` to contain exactly `0`. An already execute-only root-owned manual service image can use
+  its current inode directly. Linux's unreadable-executable exec transition
+  therefore starts the final active-user image nondumpable instead of briefly restoring classic same-uid inspection.
+  The final image first verifies its initial `PR_GET_DUMPABLE == 0`, reasserts `PR_SET_DUMPABLE(0)`, reads the state
+  back, writes one bounded bootstrap marker, and stops itself. Root constructs and atomically publishes the exact
+  durable child record only while that child is stopped, then sends `SIGCONT`. Root-principal children share the
+  explicit nondumpable marker/stop publication boundary. All metadata, policy, marker, stop, identity, record, resume,
+  and cleanup failures are fail-closed. The systemd unit permits neither the individual `ptrace` syscall nor
+  `@debug`; its already-retained `CAP_SYS_PTRACE` permits the root supervisor's exact nondumpable-child `/proc`
+  proofs without becoming the exec-transition boundary. The unsupervised recovery test hook is
+  `debug_assertions`-only, compiles to false in release, and the real supervisor's `env_clear()` never propagates it.
+
+  Final review rejected an earlier package draft that made the primary executable itself mode 0711. That would
+  also make every ordinary user-launched RustDesk process nondumpable and break the fork's existing same-uid
+  `/proc/<peer>/exe` proofs between ordinary RustDesk processes. The corrected package split confines unreadable-exec
+  behavior to `rustdesk-service-child`. The constructor makes that member by direct byte copy, and both source and
+  archive verifiers require primary mode 0755, child mode 0711, exact ELF policy on both, and byte-for-byte equality.
+  At runtime the root supervisor accepts the package child only after fixed-path, protected-parent, metadata, length,
+  and streaming byte comparison against its open running image; peer authentication then binds the selected child's
+  device/inode rather than incorrectly requiring that its pathname equal the primary UI image.
+
+  `scripts/verify-linux-service-password-ipc.py` now parses the codec, config, IPC/auth, server, and Linux launcher
+  sources and binds framing, ordering, budgets, root persistence, child runtime-only application, plaintext
+  absence, fail-stop, pre-listener snapshot, asymmetric direct-parent/generation proof, initial/final nondumpability,
+  execute-only installed metadata, kernel policy, stopped record publication, and
+  release-fixture closure. Its complete self-test deliberately weakens canonical length, capacity, persistence
+  ownership, PRS-vs-plaintext delivery, fail-stop, startup snapshot, dumpability, executable mode, kernel policy,
+  parent/generation,
+  and release gating and rejects every mutation. The meta-verifier binds the new checker invocation and critical
+  handler/capacity/bootstrap checks. Shared verification requires R-S11cb, Appendix C #221, this ledger identity,
+  the 44-byte bound, and the narrow systemd syscall row.
+
+  Confined evidence used only already-present immutable images as numeric UID/GID 1000 with no network, a read-only
+  root/source/toolchain, all capabilities dropped, no-new-privileges, bounded PIDs/CPU/memory, and private tmpfs
+  outputs. Final Rust 1.75.0 locked/offline `cargo check --config online/cargo-vendor-config.toml --lib --tests
+  --no-default-features --features linux-pkg-config -j1` completed in 5m12s with only the repository's existing
+  warning set. Focused test-profile execution then passed five tests: streaming service-child byte identity including
+  changed/trailing/truncated negatives (1/1), operation-bound and wrong-operation credential snapshots (2/2), exact
+  credential-replica framing (1/1), and canonical nonpersistent PRS replica/clear behavior (1/1). Normal
+  Linux-password semantic/package validation, both complete deliberate-mutation matrices, dependency inventory and
+  all 103 inventory self-tests, native-codec normal/negative checks, meta-verifier normal/source-mutation checks,
+  Bash parsing, and private-tmpfs Python compilation passed. Two stale meta-verifier self-test literals for the
+  corrected dedicated child/27-statement package constructor were rejected, updated to the actual contract, and the
+  complete matrix was rerun successfully. Rustfmt found no drift in a newly touched hunk; the whole-file check remains
+  non-clean only at explicitly untouched pre-existing locations in `src/ipc/auth.rs` and `src/platform/linux.rs`.
+
+  One dependency-inventory invocation was mistakenly executed directly on the host as the ordinary user. It was
+  read-only, used no root/network/service/device/port authority, changed no file, and is not counted; normal mode and
+  all 103 mutations were rerun in the confined container. Separately, an incorrect formatter toolchain mount caused
+  Docker to create one empty named volume, `rust1.75.0-x86_64-unknown-linux-gnu`. No project process used it, it
+  contains no files, and it was left untouched rather than silently removed. Neither deviation touched RustDesk,
+  services, listeners, firewall state, or a device. No root container, host namespace, Docker socket mount, port
+  publication, host RustDesk process/service/configuration, listener, firewall, network, or device path was used,
+  inspected, or changed. The final exact-state review and publication identity are recorded in the external audit
+  ledger after publication; the source slice does not claim native
+  systemd/SysV/OpenRC/runit behavior, same-uid inspection-denial behavior, a built/installed Debian artifact, a
+  clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent R-V3
+  review.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8831,9 +8954,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-31eb86ec577062999f519f00680e85a04d10e4a687c8daa182b1db0d433d22d1  requirements.html
+a284549e5b871bb2367eec7659805ec93a7cab2afa52bf1a25aea2001757a850  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ca, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cb, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

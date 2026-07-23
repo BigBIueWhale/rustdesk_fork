@@ -554,6 +554,14 @@ pub(crate) fn request_graceful_shutdown_after_listener_failure() {
     request_graceful_shutdown();
 }
 
+/// Fail-stop an authority owner after durable state can no longer be reconciled with its live
+/// replica. The service supervisor must exit nonzero so its manager starts one fresh generation;
+/// continuing to admit work with divergent credential state would be unsafe.
+pub(crate) fn request_graceful_shutdown_after_authority_failure() {
+    SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);
+    request_graceful_shutdown();
+}
+
 /// R-T9 (§20): finish a graceful shutdown after cancellation has stopped admission. (1) stop
 /// accepting — the accept loop observes the cancelled token and drops the listener (new SYNs RST);
 /// (2) signal every live connection to close gracefully (each run-loop's `cancelled()` arm sends
@@ -1037,6 +1045,17 @@ pub async fn start_server(is_server: bool) {
     });
 
     if is_server {
+        #[cfg(target_os = "linux")]
+        if crate::common::is_service_owned_server_process() {
+            if let Err(err) =
+                crate::ipc::refresh_linux_service_owned_permanent_password_snapshot(10_000).await
+            {
+                log::error!(
+                    "Linux service-owned credential snapshot failed before admission: {err}"
+                );
+                std::process::exit(1);
+            }
+        }
         // R-A4 is a pre-admission invariant on desktop: prove it before any authority-bearing
         // local IPC listener or the public direct listener is created.
         if let Err(err) = crate::direct_service::assert_startup_invariants() {

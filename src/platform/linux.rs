@@ -29,7 +29,7 @@ use std::{
     process::{Child, Command},
     string::String,
     sync::atomic::{AtomicBool, Ordering},
-    sync::{mpsc, Arc},
+    sync::{mpsc, Arc, OnceLock},
     time::{Duration, Instant},
 };
 use terminfo::{capability as cap, Database};
@@ -55,11 +55,18 @@ const SERVICE_RUNTIME_DIR: &[u8] = b"/run/rustdesk\0";
 const SERVICE_RUNTIME_LOCK: &[u8] = b"service-supervisor.lock\0";
 const SERVICE_CHILD_RECORD: &[u8] = b"service-child.record\0";
 const SERVICE_CHILD_RECORD_TMP: &[u8] = b"service-child.record.tmp\0";
+const SERVICE_CHILD_BOOTSTRAP_READY: u8 = 0xa7;
+const SERVICE_CHILD_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(10);
 const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
 const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
 const LINUX_INSTALLED_EXECUTABLE_PATHS: [&str; 2] =
     ["/usr/share/rustdesk/rustdesk", "/usr/bin/rustdesk"];
+const LINUX_INSTALLED_SERVICE_CHILD_EXECUTABLE: &str = "/usr/share/rustdesk/rustdesk-service-child";
 pub const REOPEN_AFTER_SERVICE_STOP_ARG: &str = "--reopen-after-service-stop";
+
+static SERVICE_RUNTIME_GENERATION: OnceLock<String> = OnceLock::new();
+static SERVICE_CHILD_EXECUTABLE_IDENTITY: OnceLock<std::sync::RwLock<Option<(u64, u64)>>> =
+    OnceLock::new();
 
 // Terminal type constants
 const TERM_XTERM_256COLOR: &str = "xterm-256color";
@@ -657,6 +664,9 @@ impl ServiceChildCredentials {
 #[cfg(debug_assertions)]
 const SERVICE_CHILD_FORCE_PIDFD_UNAVAILABLE_FOR_SMOKE_ENV: &str =
     "RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE";
+#[cfg(debug_assertions)]
+const SERVICE_CHILD_UNSUPERVISED_RECOVERY_FIXTURE_ENV: &str =
+    "RD_SERVICE_SMOKE_UNSUPERVISED_RECOVERY_FIXTURE";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ServiceChildRecord {
@@ -858,6 +868,9 @@ impl ServiceRuntime {
             owner_uid,
         };
         runtime.remove_incomplete_record()?;
+        SERVICE_RUNTIME_GENERATION
+            .set(runtime.generation.clone())
+            .map_err(|_| anyhow!("Linux service runtime generation was initialized twice"))?;
         Ok(runtime)
     }
 
@@ -1055,6 +1068,34 @@ impl ServiceRuntime {
         }
         Ok(())
     }
+}
+
+pub(crate) fn service_runtime_generation_matches(candidate: &str) -> bool {
+    SERVICE_RUNTIME_GENERATION
+        .get()
+        .is_some_and(|generation| generation == candidate)
+}
+
+fn set_service_child_executable_identity(metadata: &fs::Metadata) -> ResultType<()> {
+    let identity = (metadata.dev(), metadata.ino());
+    let mut expected = SERVICE_CHILD_EXECUTABLE_IDENTITY
+        .get_or_init(|| std::sync::RwLock::new(None))
+        .write()
+        .map_err(|_| anyhow!("Linux service-child executable identity lock was poisoned"))?;
+    *expected = Some(identity);
+    Ok(())
+}
+
+pub(crate) fn service_child_executable_identity_matches(pid: u32) -> ResultType<bool> {
+    let expected = SERVICE_CHILD_EXECUTABLE_IDENTITY
+        .get()
+        .ok_or_else(|| anyhow!("Linux service-child executable identity is unavailable"))?
+        .read()
+        .map_err(|_| anyhow!("Linux service-child executable identity lock was poisoned"))?
+        .ok_or_else(|| anyhow!("Linux service-child executable identity is unavailable"))?;
+    let executable = fs::metadata(format!("/proc/{pid}/exe"))
+        .map_err(|err| anyhow!("Failed to inspect Linux service-child executable: {err}"))?;
+    Ok((executable.dev(), executable.ino()) == expected)
 }
 
 #[cfg(test)]
@@ -1543,6 +1584,18 @@ fn service_child_pidfd_open_is_forced_unavailable_for_smoke() -> bool {
     }
 }
 
+pub(crate) fn service_child_is_unsupervised_recovery_fixture() -> bool {
+    #[cfg(debug_assertions)]
+    {
+        std::env::var_os(SERVICE_CHILD_UNSUPERVISED_RECOVERY_FIXTURE_ENV).as_deref()
+            == Some(std::ffi::OsStr::new("1"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+}
+
 fn open_service_child_pidfd(pid: u32) -> ResultType<PidFdOpen> {
     let pid = hbb_common::libc::pid_t::try_from(pid)
         .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
@@ -1629,6 +1682,208 @@ fn syscall_succeeded(result: hbb_common::libc::c_long) -> std::io::Result<()> {
     } else {
         Ok(())
     }
+}
+
+struct ServiceChildBootstrap {
+    ready: File,
+}
+
+impl ServiceChildBootstrap {
+    fn create() -> ResultType<(Self, File)> {
+        let mut descriptors = [-1; 2];
+        let rc = unsafe {
+            hbb_common::libc::pipe2(
+                descriptors.as_mut_ptr(),
+                hbb_common::libc::O_CLOEXEC | hbb_common::libc::O_NONBLOCK,
+            )
+        };
+        if rc != 0 {
+            return Err(anyhow!(
+                "Failed to create the Linux service-child bootstrap pipe: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let ready = unsafe { File::from_raw_fd(descriptors[0]) };
+        let child = unsafe { File::from_raw_fd(descriptors[1]) };
+        Ok((Self { ready }, child))
+    }
+
+    fn wait_for_stop(
+        pid: hbb_common::libc::pid_t,
+        expected_signal: c_int,
+        deadline: Instant,
+        label: &str,
+    ) -> ResultType<()> {
+        loop {
+            let mut status = 0;
+            let observed = unsafe {
+                hbb_common::libc::waitpid(
+                    pid,
+                    &mut status,
+                    hbb_common::libc::WNOHANG | hbb_common::libc::WUNTRACED,
+                )
+            };
+            if observed == pid {
+                if hbb_common::libc::WIFSTOPPED(status)
+                    && hbb_common::libc::WSTOPSIG(status) == expected_signal
+                {
+                    return Ok(());
+                }
+                if hbb_common::libc::WIFEXITED(status) {
+                    bail!(
+                        "Linux service child exited during {label}: status={}",
+                        hbb_common::libc::WEXITSTATUS(status)
+                    );
+                }
+                if hbb_common::libc::WIFSIGNALED(status) {
+                    bail!(
+                        "Linux service child was killed during {label}: signal={}",
+                        hbb_common::libc::WTERMSIG(status)
+                    );
+                }
+                bail!("Linux service child stopped unexpectedly during {label}");
+            }
+            if observed == -1 {
+                return Err(anyhow!(
+                    "Failed waiting for the Linux service child during {label}: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            if Instant::now() >= deadline {
+                bail!("Timed out waiting for the Linux service child during {label}");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_ready_marker(&mut self, deadline: Instant) -> ResultType<()> {
+        let mut marker = [0u8; 1];
+        loop {
+            match self.ready.read(&mut marker) {
+                Ok(1) if marker[0] == SERVICE_CHILD_BOOTSTRAP_READY => return Ok(()),
+                Ok(1) => bail!("Linux service child returned an invalid bootstrap marker"),
+                Ok(0) => bail!("Linux service child closed its bootstrap pipe before readiness"),
+                Ok(_) => bail!("Linux service child returned an invalid bootstrap marker length"),
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(err) => {
+                    return Err(anyhow!(
+                        "Failed reading the Linux service-child bootstrap marker: {err}"
+                    ))
+                }
+            }
+            if Instant::now() >= deadline {
+                bail!("Timed out waiting for the Linux service-child bootstrap marker");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn prepare_stopped(&mut self, pid: hbb_common::libc::pid_t) -> ResultType<()> {
+        let deadline = Instant::now() + SERVICE_CHILD_BOOTSTRAP_TIMEOUT;
+        self.wait_for_ready_marker(deadline)?;
+        Self::wait_for_stop(
+            pid,
+            hbb_common::libc::SIGSTOP,
+            deadline,
+            "nondumpable readiness stop",
+        )
+    }
+
+    fn resume(self, pid: hbb_common::libc::pid_t) -> ResultType<()> {
+        drop(self.ready);
+        syscall_succeeded(unsafe {
+            hbb_common::libc::syscall(hbb_common::libc::SYS_kill, pid, hbb_common::libc::SIGCONT)
+        })
+        .map_err(|err| anyhow!("Failed to continue the protected service child: {err}"))
+    }
+}
+
+fn clear_descriptor_close_on_exec(fd: c_int) -> std::io::Result<()> {
+    syscall_succeeded(unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_fcntl,
+            fd,
+            hbb_common::libc::F_SETFD,
+            0,
+        )
+    })
+}
+
+fn service_owned_process_dumpability() -> hbb_common::libc::c_long {
+    unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_prctl,
+            hbb_common::libc::PR_GET_DUMPABLE,
+            0,
+            0,
+            0,
+            0,
+        )
+    }
+}
+
+fn make_service_owned_process_nondumpable() -> ResultType<()> {
+    let started_dumpable = service_owned_process_dumpability();
+    if hbb_common::users::get_current_uid() != 0
+        && !service_child_is_unsupervised_recovery_fixture()
+        && started_dumpable != 0
+    {
+        bail!("Active-user service child did not enter its final image nondumpable");
+    }
+    syscall_succeeded(unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_prctl,
+            hbb_common::libc::PR_SET_DUMPABLE,
+            0,
+            0,
+            0,
+            0,
+        )
+    })
+    .map_err(|err| anyhow!("Failed to disable Linux service-child dumpability: {err}"))?;
+    let dumpable = service_owned_process_dumpability();
+    if dumpable != 0 {
+        bail!("Linux service child remained dumpable after hardening");
+    }
+    Ok(())
+}
+
+fn publish_service_child_bootstrap_ready(bootstrap_fd: c_int) -> ResultType<()> {
+    let marker = [SERVICE_CHILD_BOOTSTRAP_READY];
+    let written = unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_write,
+            bootstrap_fd,
+            marker.as_ptr(),
+            marker.len(),
+        )
+    };
+    let write_result = if written == marker.len() as c_long {
+        Ok(())
+    } else if written == -1 {
+        Err(anyhow!(
+            "Failed to publish Linux service-child bootstrap readiness: {}",
+            std::io::Error::last_os_error()
+        ))
+    } else {
+        Err(anyhow!(
+            "Linux service-child bootstrap readiness write was incomplete"
+        ))
+    };
+    let close_result = syscall_succeeded(unsafe {
+        hbb_common::libc::syscall(hbb_common::libc::SYS_close, bootstrap_fd)
+    })
+    .map_err(|err| anyhow!("Failed to close the service-child bootstrap descriptor: {err}"));
+    write_result?;
+    close_result?;
+    syscall_succeeded(unsafe {
+        hbb_common::libc::syscall(
+            hbb_common::libc::SYS_kill,
+            hbb_common::libc::syscall(hbb_common::libc::SYS_getpid),
+            hbb_common::libc::SIGSTOP,
+        )
+    })
+    .map_err(|err| anyhow!("Failed to enter the service-child readiness stop: {err}"))
 }
 
 #[derive(Clone, Copy)]
@@ -1773,6 +2028,7 @@ fn configure_service_child_pre_exec(
     expected_parent: hbb_common::libc::pid_t,
     credentials: Option<ServiceChildCredentials>,
     executable_fd: Option<c_int>,
+    bootstrap_fd: Option<c_int>,
 ) -> ResultType<()> {
     let descriptor_upper_bound = linux_service_descriptor_upper_bound()?;
     // The closure performs only raw Linux syscalls and reads already-owned memory. It does
@@ -1807,12 +2063,10 @@ fn configure_service_child_pre_exec(
                 // Keep the descriptor close-on-exec in the multithreaded parent, then clear
                 // the flag only in this forked child. /proc/self/fd/N cannot be executed
                 // while N is close-on-exec; the final image closes N immediately at entry.
-                syscall_succeeded(hbb_common::libc::syscall(
-                    hbb_common::libc::SYS_fcntl,
-                    executable_fd,
-                    hbb_common::libc::F_SETFD,
-                    0,
-                ))?;
+                clear_descriptor_close_on_exec(executable_fd)?;
+            }
+            if let Some(bootstrap_fd) = bootstrap_fd {
+                clear_descriptor_close_on_exec(bootstrap_fd)?;
             }
             syscall_succeeded(hbb_common::libc::syscall(
                 hbb_common::libc::SYS_prctl,
@@ -1834,6 +2088,94 @@ fn insert_nonempty_env(command: &mut Command, key: &str, value: &str) {
     }
 }
 
+fn files_have_exact_contents(
+    left: &mut File,
+    right: &mut File,
+    length: u64,
+) -> std::io::Result<bool> {
+    let mut left_buffer = [0u8; 16 * 1024];
+    let mut right_buffer = [0u8; 16 * 1024];
+    let mut remaining = length;
+    while remaining != 0 {
+        let count = usize::try_from(remaining.min(left_buffer.len() as u64)).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "service executable comparison length does not fit usize",
+            )
+        })?;
+        left.read_exact(&mut left_buffer[..count])?;
+        right.read_exact(&mut right_buffer[..count])?;
+        if left_buffer[..count] != right_buffer[..count] {
+            return Ok(false);
+        }
+        remaining -= count as u64;
+    }
+    let mut left_tail = [0u8; 1];
+    let mut right_tail = [0u8; 1];
+    Ok(left.read(&mut left_tail)? == 0 && right.read(&mut right_tail)? == 0)
+}
+
+fn open_active_user_service_child_executable() -> ResultType<File> {
+    let mut running = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(hbb_common::libc::O_CLOEXEC)
+        .open("/proc/self/exe")
+        .map_err(|err| anyhow!("Failed to open the running service executable object: {err}"))?;
+    let running_metadata = running
+        .metadata()
+        .map_err(|err| anyhow!("Failed to inspect the running service executable object: {err}"))?;
+    if !running_metadata.is_file() || running_metadata.uid() != 0 || running_metadata.gid() != 0 {
+        bail!("Active-user service children require a root-owned regular service executable");
+    }
+
+    if running_metadata.mode() & 0o7777 == 0o711 {
+        return Ok(running);
+    }
+    if running_metadata.mode() & 0o7777 != 0o755
+        || fs::canonicalize("/proc/self/exe")? != Path::new(LINUX_INSTALLED_EXECUTABLE_PATHS[0])
+    {
+        bail!(
+            "Active-user service children require the exact installed service image or an execute-only manual image"
+        );
+    }
+
+    let child_path = Path::new(LINUX_INSTALLED_SERVICE_CHILD_EXECUTABLE);
+    let child_parent = child_path
+        .parent()
+        .ok_or_else(|| anyhow!("Installed service-child executable has no parent"))?;
+    let parent_metadata = fs::symlink_metadata(child_parent)
+        .map_err(|err| anyhow!("Failed to inspect the service-child executable parent: {err}"))?;
+    if !parent_metadata.is_dir()
+        || parent_metadata.uid() != 0
+        || parent_metadata.gid() != 0
+        || parent_metadata.mode() & 0o022 != 0
+    {
+        bail!("Installed service-child executable parent is not trusted root-owned state");
+    }
+    let mut child = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(hbb_common::libc::O_CLOEXEC | hbb_common::libc::O_NOFOLLOW)
+        .open(child_path)
+        .map_err(|err| anyhow!("Failed to open the installed service-child executable: {err}"))?;
+    let child_metadata = child.metadata().map_err(|err| {
+        anyhow!("Failed to inspect the installed service-child executable: {err}")
+    })?;
+    if !child_metadata.is_file()
+        || child_metadata.uid() != 0
+        || child_metadata.gid() != 0
+        || child_metadata.mode() & 0o7777 != 0o711
+        || child_metadata.len() != running_metadata.len()
+    {
+        bail!("Installed service-child executable is not exact root/root mode 0711 state");
+    }
+    if !files_have_exact_contents(&mut running, &mut child, running_metadata.len())
+        .map_err(|err| anyhow!("Failed to compare the installed service-child executable: {err}"))?
+    {
+        bail!("Installed service-child executable differs from the running service image");
+    }
+    Ok(child)
+}
+
 fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<OwnedServiceChild> {
     let principal = selected_service_child_principal(desktop)?
         .ok_or_else(|| anyhow!("Cannot start a service child without a selected desktop"))?;
@@ -1853,27 +2195,38 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
 
     // A credential-changing pre_exec hook makes /proc/self/exe inaccessible before Command
     // performs execve: procfs guards that symlink with a ptrace credential check and the UID
-    // transition resets dumpability. Open the exact executable object while still privileged
-    // and let the post-drop child execute its own inherited descriptor instead. Keep FD_CLOEXEC
-    // set in the multithreaded supervisor, clear it only inside the forked child, and require the
-    // final image to close that one descriptor immediately. The root path can retain
-    // /proc/self/exe directly. Both forms remain bound to the supervisor's executable object
-    // across concurrent package replacement, with no sudo/env wrapper.
+    // transition resets dumpability. Open the selected execute-only object while still privileged
+    // and let the post-drop child execute its inherited descriptor instead. An installed readable
+    // UI/service image must have an exact byte-identical root/root mode-0711 package twin; an
+    // execute-only manual image can use its current inode directly. Keep FD_CLOEXEC set in the
+    // multithreaded supervisor, clear it only inside the forked child, and require the final image
+    // to close that one descriptor immediately. The root-principal path retains /proc/self/exe.
     let child_executable = if credentials.is_some() {
-        let executable = fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(hbb_common::libc::O_CLOEXEC)
-            .open("/proc/self/exe")
-            .map_err(|err| anyhow!("Failed to open the service executable object: {err}"))?;
+        let executable = open_active_user_service_child_executable()?;
+        let suid_dumpable = fs::read_to_string("/proc/sys/fs/suid_dumpable")
+            .map_err(|err| anyhow!("Failed to read the Linux suid_dumpable policy: {err}"))?;
+        if suid_dumpable.trim() != "0" {
+            bail!("Active-user service children require fs.suid_dumpable=0");
+        }
         Some(executable)
     } else {
         None
     };
+    let child_executable_metadata = match child_executable.as_ref() {
+        Some(executable) => executable
+            .metadata()
+            .map_err(|err| anyhow!("Failed to inspect the selected service-child image: {err}"))?,
+        None => fs::metadata("/proc/self/exe")
+            .map_err(|err| anyhow!("Failed to inspect the root service-child image: {err}"))?,
+    };
+    set_service_child_executable_identity(&child_executable_metadata)?;
     let executable_path = child_executable
         .as_ref()
         .map(|executable| format!("/proc/self/fd/{}", executable.as_raw_fd()))
         .unwrap_or_else(|| "/proc/self/exe".to_owned());
     let mut command = Command::new(executable_path);
+    let (mut bootstrap, bootstrap_child) = ServiceChildBootstrap::create()?;
+    let bootstrap_fd = bootstrap_child.as_raw_fd();
     command
         .arg("--server")
         .arg(crate::common::SERVICE_OWNED_SERVER_ARG)
@@ -1887,6 +2240,10 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
         .env(
             crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
             &runtime.generation,
+        )
+        .env(
+            crate::common::SERVICE_OWNED_SERVER_BOOTSTRAP_FD_ENV,
+            bootstrap_fd.to_string(),
         );
     if let Some(executable) = child_executable.as_ref() {
         command.env(
@@ -1921,11 +2278,24 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
     let executable_fd = child_executable
         .as_ref()
         .map(|executable| executable.as_raw_fd());
-    configure_service_child_pre_exec(&mut command, parent_pid, credentials, executable_fd)?;
+    configure_service_child_pre_exec(
+        &mut command,
+        parent_pid,
+        credentials,
+        executable_fd,
+        Some(bootstrap_fd),
+    )?;
     let spawn_result = command.spawn();
     drop(child_executable);
+    drop(bootstrap_child);
     let mut process = spawn_result?;
     let pid = process.id();
+    let child_pid = hbb_common::libc::pid_t::try_from(pid)
+        .map_err(|_| anyhow!("Service child pid does not fit pid_t"))?;
+    if let Err(err) = bootstrap.prepare_stopped(child_pid) {
+        stop_unregistered_service_child(&mut process, pid);
+        return Err(err);
+    }
     let record =
         match service_child_record_for_process(pid, expected_child_uid, &runtime.generation) {
             Ok(record) => record,
@@ -1951,6 +2321,15 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
         }
         return Err(err);
     }
+    if let Err(err) = bootstrap.resume(child_pid) {
+        stop_unregistered_service_child(&mut process, pid);
+        if let Err(remove_err) = runtime.remove_record(&record) {
+            log::error!(
+                "Failed to remove the exact record after child bootstrap failed: {remove_err}"
+            );
+        }
+        return Err(err);
+    }
     Ok(OwnedServiceChild { process, record })
 }
 
@@ -1967,6 +2346,10 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
     if !crate::common::is_service_owned_server_process() {
         bail!("Parent liveness is available only to a service-owned server");
     }
+    // The root-owned mode-0711 installed image and fs.suid_dumpable=0 keep an active-user child
+    // nondumpable across exec. Reassert and verify that state as the first final-image operation,
+    // before any service-owned credential or configuration is loaded.
+    make_service_owned_process_nondumpable()?;
     let expected_parent = std::env::var(crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV)
         .map_err(|_| anyhow!("Service-owned server launch parent is unavailable"))?
         .parse::<hbb_common::libc::pid_t>()
@@ -1977,6 +2360,14 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
     let generation = std::env::var(crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV)
         .map_err(|_| anyhow!("Service-owned server generation is unavailable"))?;
     validate_canonical_uuid(&generation, "service generation")?;
+    if service_child_is_unsupervised_recovery_fixture() {
+        // A debug-only lifecycle fixture needs one exact live service-role process whose parent
+        // intentionally remains alive while a second supervisor exercises stale-record refusal
+        // and numeric-PID reuse. Production builds compile this branch to false. Real supervisor
+        // launches clear the ambient environment and always use the bootstrap descriptor below.
+        arm_linux_child_parent_death(expected_parent)?;
+        return Ok(());
+    }
     let executable_fd = match std::env::var(crate::common::SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV) {
         Ok(value) => Some(
             value
@@ -1988,6 +2379,13 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
             bail!("Service executable descriptor is not valid Unicode")
         }
     };
+    let bootstrap_fd = std::env::var(crate::common::SERVICE_OWNED_SERVER_BOOTSTRAP_FD_ENV)
+        .map_err(|_| anyhow!("Service-owned server bootstrap descriptor is unavailable"))?
+        .parse::<c_int>()
+        .map_err(|err| anyhow!("Service-owned server bootstrap descriptor is invalid: {err}"))?;
+    if bootstrap_fd <= hbb_common::libc::STDERR_FILENO || Some(bootstrap_fd) == executable_fd {
+        bail!("Service-owned server bootstrap descriptor is invalid");
+    }
     if hbb_common::users::get_current_uid() == 0 {
         if executable_fd.is_some() {
             bail!("Root service child unexpectedly inherited an executable descriptor");
@@ -2002,7 +2400,7 @@ pub fn require_service_owned_server_parent_liveness() -> ResultType<()> {
             .map_err(|err| anyhow!("Failed to close the service executable descriptor: {err}"))?;
     }
     arm_linux_child_parent_death(expected_parent)?;
-    Ok(())
+    publish_service_child_bootstrap_ready(bootstrap_fd)
 }
 
 #[inline]
@@ -3349,7 +3747,7 @@ mod process_cleanup_tests {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         if bind_to_parent {
-            configure_service_child_pre_exec(&mut command, parent_pid, None, None).unwrap();
+            configure_service_child_pre_exec(&mut command, parent_pid, None, None, None).unwrap();
         }
         let mut child = command.spawn().unwrap();
         let proc_dir = PathBuf::from(format!("/proc/{}/", child.id()));
@@ -4712,6 +5110,48 @@ pub fn install_service() -> bool {
 #[cfg(test)]
 mod service_lifecycle_tests {
     use super::*;
+
+    #[test]
+    fn r_s11cb_service_child_comparison_requires_exact_contents() {
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-service-child-comparison-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let left_path = directory.join("left");
+        let right_path = directory.join("right");
+        let contents = vec![0x5a; 16 * 1024 + 7];
+        fs::write(&left_path, &contents).unwrap();
+        fs::write(&right_path, &contents).unwrap();
+
+        let mut left = File::open(&left_path).unwrap();
+        let mut right = File::open(&right_path).unwrap();
+        assert!(files_have_exact_contents(&mut left, &mut right, contents.len() as u64).unwrap());
+
+        let mut changed = contents.clone();
+        changed[16 * 1024 + 1] ^= 0xff;
+        fs::write(&right_path, &changed).unwrap();
+        let mut left = File::open(&left_path).unwrap();
+        let mut right = File::open(&right_path).unwrap();
+        assert!(!files_have_exact_contents(&mut left, &mut right, contents.len() as u64).unwrap());
+
+        let mut longer = contents.clone();
+        longer.push(0);
+        fs::write(&right_path, &longer).unwrap();
+        let mut left = File::open(&left_path).unwrap();
+        let mut right = File::open(&right_path).unwrap();
+        assert!(!files_have_exact_contents(&mut left, &mut right, contents.len() as u64).unwrap());
+
+        fs::write(&right_path, &contents[..contents.len() - 1]).unwrap();
+        let mut left = File::open(&left_path).unwrap();
+        let mut right = File::open(&right_path).unwrap();
+        assert!(files_have_exact_contents(&mut left, &mut right, contents.len() as u64).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn r_s11c10_service_lifecycle_uses_absolute_systemctl_candidates() {

@@ -433,6 +433,7 @@ grep -q 'password_mutations().drain().await;' src/ipc.rs                        
 grep -q 'PasswordMutation(PasswordMutationStatus)' src/ipc.rs                         || r_s11="$r_s11 typed-password-result-missing"
 grep -q 'new_listener(password::USER_PASSWORD_IPC_POSTFIX)' src/ipc.rs                || r_s11="$r_s11 raw-user-password-listener-missing"
 grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs             || r_s11="$r_s11 raw-service-password-listener-missing"
+grep -q 'new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX)' src/ipc.rs           || r_s11="$r_s11 raw-linux-service-credential-listener-missing"
 grep -q 'connect_sensitive_unix(' src/ipc.rs                                           || r_s11="$r_s11 raw-password-client-missing"
 grep -q 'password::send_request_unix(' src/ipc.rs                                      || r_s11="$r_s11 raw-password-send-missing"
 grep -q 'password::receive_request_unix(' src/ipc.rs                                   || r_s11="$r_s11 raw-password-receive-missing"
@@ -2585,6 +2586,29 @@ for requirement_id in R-S11g R-S11h R-S11i; do
   grep -Fq "<span class=\"id\">$requirement_id</span>" requirements.html ||
     r_s11b2="$r_s11b2 requirements-$requirement_id-missing"
 done
+grep -Fq '<span class="id">R-S11cb</span>' requirements.html ||
+  r_s11b2="$r_s11b2 requirements-R-S11cb-missing"
+grep -Fq 'R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime replica' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 ledger-R-S11e-94-missing"
+grep -Fq 'CREDENTIAL_REPLICA_BYTES: usize = 44' src/ipc/password.rs ||
+  r_s11b2="$r_s11b2 linux-service-credential-replica-length-missing"
+grep -Fq 'DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o711' build.py ||
+  r_s11b2="$r_s11b2 linux-service-installed-image-not-mode-0711"
+grep -Fq 'SERVICE_CHILD_BINARY = "./usr/share/rustdesk/rustdesk-service-child"' scripts/verify-debian-package-authority.py ||
+  r_s11b2="$r_s11b2 linux-service-package-mode-verifier-missing"
+grep -Fq 'shutil.copyfile(' build.py ||
+  r_s11b2="$r_s11b2 linux-service-package-child-copy-missing"
+grep -Fq 'child_metadata.mode() & 0o7777 != 0o711' src/platform/linux.rs ||
+  r_s11b2="$r_s11b2 linux-service-runtime-image-mode-proof-missing"
+grep -Fq 'files_have_exact_contents(&mut running, &mut child, running_metadata.len())' src/platform/linux.rs ||
+  r_s11b2="$r_s11b2 linux-service-runtime-image-byte-proof-missing"
+grep -Fq 'suid_dumpable.trim() != "0"' src/platform/linux.rs ||
+  r_s11b2="$r_s11b2 linux-service-suid-dumpable-proof-missing"
+if grep -Eq 'SYS_ptrace|PTRACE_TRACEME' src/platform/linux.rs; then
+  r_s11b2="$r_s11b2 linux-service-ptrace-boundary-retained"
+fi
+grep -Fq 'SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2' res/rustdesk.service ||
+  r_s11b2="$r_s11b2 linux-service-bootstrap-filter-drift"
 for ledger_id in R-S11e-4 R-S11e-5 R-S11e-6 R-S11e-9 R-S11e-11 R-S11e-21; do
   grep -Fq "$ledger_id" HARDENING_STATUS.md ||
     r_s11b2="$r_s11b2 ledger-$ledger_id-missing"
@@ -2609,7 +2633,7 @@ if grep -Eq 'MacosServiceOwnedPasswordRequest|macos_store_service_owned_password
   r_s11b2="$r_s11b2 obsolete-macos-password-cache-or-digest-protocol-present"
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 raw password IPC closure:$r_s11b2"; rc=1; else
-  echo "  ok  R-S11b/R-S11c/R-S11g/R-S11h/R-S11i password bodies use only fixed raw _password/_service_password frames; Linux proof/polkit/replica authority, macOS exactly-owned native proof and wiping authorization, Windows retained first-instance pipe and SCM durability, keyed replay finality, and shutdown drain are source-gated"; fi
+  echo "  ok  R-S11b/R-S11c/R-S11g/R-S11h/R-S11i/R-S11cb password bodies use only fixed raw _password/_service_password frames; Linux root-durable PRS replication uses raw _service_credential plus a nondumpable exact child, macOS exactly-owned native proof and wiping authorization, Windows retained first-instance pipe and SCM durability, keyed replay finality, and shutdown drain are source-gated"; fi
 # R-S11bb: the listener lifecycle is deliberately split into prepare/run ownership. The security
 # gates must follow that split rather than silently stopping at retired monolithic function names.
 r_s11bb=""
@@ -3191,13 +3215,13 @@ for pre_exec_binding in \
   'hbb_common::libc::SYS_setgroups' \
   'hbb_common::libc::SYS_setresgid' \
   'hbb_common::libc::SYS_setresuid' \
-  'hbb_common::libc::SYS_fcntl' \
-  'hbb_common::libc::F_SETFD'; do
+  'clear_descriptor_close_on_exec(executable_fd)' \
+  'clear_descriptor_close_on_exec(bootstrap_fd)'; do
   grep -qF "$pre_exec_binding" <<<"$service_child_pre_exec" || r_s11e28="$r_s11e28 child-pre-exec-binding-missing"
 done
 pre_exec_descriptor_line=$(grep -nF 'ServiceDescriptorDisposition::CloseOnExec' <<<"$service_child_pre_exec" | cut -d: -f1)
 pre_exec_groups_line=$(grep -nF 'hbb_common::libc::SYS_setgroups' <<<"$service_child_pre_exec" | cut -d: -f1)
-pre_exec_exec_fd_line=$(grep -nF 'hbb_common::libc::F_SETFD' <<<"$service_child_pre_exec" | cut -d: -f1)
+pre_exec_exec_fd_line=$(grep -nF 'clear_descriptor_close_on_exec(executable_fd)' <<<"$service_child_pre_exec" | cut -d: -f1)
 if [ -z "$pre_exec_descriptor_line" ] || [ -z "$pre_exec_groups_line" ] || [ -z "$pre_exec_exec_fd_line" ] \
   || [ "$pre_exec_descriptor_line" -ge "$pre_exec_groups_line" ] \
   || [ "$pre_exec_descriptor_line" -ge "$pre_exec_exec_fd_line" ]; then
@@ -4523,6 +4547,7 @@ messages = (
     "main password IPC listener ended unexpectedly",
     "main IPC listener ended unexpectedly",
     "protected service password IPC listener ended unexpectedly",
+    "protected service credential IPC listener ended unexpectedly",
     "protected _service IPC listener ended unexpectedly",
     "Windows service-main control IPC listener ended unexpectedly",
     "Windows service credential IPC listener ended unexpectedly",
@@ -4553,7 +4578,7 @@ grep -qF 'authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53)' sc
 grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' HARDENING_STATUS.md \
   || r_s11e53="$r_s11e53 hardening-ledger-missing"
 if [ -n "$r_s11e53" ]; then echo "  FAIL R-S11e-53 IPC listener failure outcome:$r_s11e53"; rc=1; else
-  echo "  ok  R-S11e-53 all six fatal desktop IPC listener endings latch failure before cancellation; finalizer callers exit 1 and protected Unix service IPC returns an error only after their owned drain"; fi
+  echo "  ok  R-S11e-53 all seven fatal desktop IPC listener endings latch failure before cancellation; finalizer callers exit 1 and protected Unix service IPC returns an error only after their owned drain"; fi
 
 # (3b-iii-d9cd) R-S11an/R-S11e-54: the Linux root supervisor
 # positively owns protected service IPC readiness, failure, and complete drain
@@ -6278,7 +6303,8 @@ echo "$service_child_pre_exec_block" | grep -qF 'command.pre_exec(move || {' || 
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setgroups' || r_s11c27a="$r_s11c27a supplementary-groups-not-dropped"
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresgid' || r_s11c27a="$r_s11c27a gid-drop-not-native"
 echo "$service_child_pre_exec_block" | grep -qF 'SYS_setresuid' || r_s11c27a="$r_s11c27a uid-drop-not-native"
-echo "$service_child_pre_exec_block" | grep -qF 'SYS_fcntl' || r_s11c27a="$r_s11c27a forked-child-executable-descriptor-not-enabled"
+echo "$service_child_pre_exec_block" | grep -qF 'clear_descriptor_close_on_exec(executable_fd)' || r_s11c27a="$r_s11c27a forked-child-executable-descriptor-not-enabled"
+echo "$service_child_pre_exec_block" | grep -qF 'clear_descriptor_close_on_exec(bootstrap_fd)' || r_s11c27a="$r_s11c27a forked-child-bootstrap-descriptor-not-enabled"
 echo "$service_child_pre_exec_block" | grep -qF 'PR_SET_NO_NEW_PRIVS' || r_s11c27a="$r_s11c27a exec-privilege-regain-not-blocked"
 echo "$service_child_pre_exec_block" | grep -qF 'arm_linux_child_parent_death(expected_parent)' || r_s11c27a="$r_s11c27a pre-exec-parent-death-binding-missing"
 if ! echo "$service_child_pre_exec_block" | awk '
@@ -6889,7 +6915,7 @@ for token in \
     || r_s11c27n="$r_s11c27n main-fixture:${token%% *}"
 done
 for token in \
-  'install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk' \
+  'install -o root -g root -m 0711 /work/target/debug/rustdesk /usr/bin/rustdesk' \
   'installed_server=/usr/bin/rustdesk' \
   'RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$"' \
   'RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$service_generation"' \
@@ -10333,7 +10359,7 @@ fi
 r_d3a_missing=
 grep -qE '^CapabilityBoundingSet='      res/rustdesk.service || r_d3a_missing="$r_d3a_missing CapabilityBoundingSet"
 grep -qE '^RestrictAddressFamilies=AF_UNIX AF_INET$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictAddressFamilies-v4only"
-grep -qE '^SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-owner-terminal-mounts-and-service-recovery"
+grep -qE '^SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-owner-terminal-mounts-and-service-recovery-bootstrap"
 grep -qE '^SystemCallFilter=~@reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
 grep -qF 'authenticated owner'\''s root terminal' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-terminal-syscall-comment"
 grep -qF 'Linux file clipboard uses fixed-path fusermount fd passing' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-fixed-fuse-helper-comment"

@@ -99,6 +99,9 @@ pub const SERVICE_OWNED_SERVER_GENERATION_ENV: &str = "RUSTDESK_SERVICE_OWNED_SE
 #[cfg(target_os = "linux")]
 pub const SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV: &str =
     "RUSTDESK_SERVICE_OWNED_SERVER_EXECUTABLE_FD";
+#[cfg(target_os = "linux")]
+pub const SERVICE_OWNED_SERVER_BOOTSTRAP_FD_ENV: &str =
+    "RUSTDESK_SERVICE_OWNED_SERVER_BOOTSTRAP_FD";
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub const CM_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_CM_LAUNCH_TOKEN";
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

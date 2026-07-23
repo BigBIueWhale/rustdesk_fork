@@ -3621,7 +3621,7 @@ def validate_smoke_contract(
         ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
         ('SIBLING_DOCKER_READY pid=', "sibling Docker ready marker"),
         ('SIBLING_DOCKER_SURVIVED=pass pid=', "sibling Docker survival marker"),
-        ('install -o root -g root -m 0755 /work/target/debug/rustdesk /usr/bin/rustdesk', "identical installed-path fixture"),
+        ('install -o root -g root -m 0711 /work/target/debug/rustdesk /usr/bin/rustdesk', "identical installed-path fixture"),
         ('"$SERVER_LAUNCHER" "$installed_server" --service-owned-server', "sibling exact service-owned role"),
         ('"$PROCESS_GUARD" wait-service-server', "exact-role sibling identity proof"),
         ('SIBLING_CONTAINER_IDENTITY_READY pid=', "cross-container ready identity"),
@@ -3997,7 +3997,7 @@ def validate_smoke_contract(
     pidfd_unavailable_force = extract_between(
         linux_source,
         "fn service_child_pidfd_open_is_forced_unavailable_for_smoke() -> bool {",
-        "\nfn open_service_child_pidfd",
+        "\npub(crate) fn service_child_is_unsupervised_recovery_fixture",
         "pidfd-unavailable smoke force helper",
     )
     for text, label in (
@@ -4243,7 +4243,8 @@ def validate_smoke_contract(
         (
             "ServiceDescriptorDisposition::CloseOnExec",
             "hbb_common::libc::SYS_setgroups",
-            "hbb_common::libc::F_SETFD",
+            "clear_descriptor_close_on_exec(executable_fd)",
+            "clear_descriptor_close_on_exec(bootstrap_fd)",
         ),
         "service child pre-exec descriptor ordering",
     )
@@ -6154,7 +6155,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "858 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "871 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -8401,13 +8402,14 @@ def validate_ipc_listener_failure_outcome_contract(sources):
         "main password IPC listener ended unexpectedly",
         "main IPC listener ended unexpectedly",
         "protected service password IPC listener ended unexpectedly",
+        "protected service credential IPC listener ended unexpectedly",
         "protected _service IPC listener ended unexpectedly",
         "Windows service-main control IPC listener ended unexpectedly",
         "Windows service credential IPC listener ended unexpectedly",
     )
     failure_helper = "crate::server::request_graceful_shutdown_after_listener_failure();"
     if ipc_source.count(failure_helper) != len(messages):
-        raise VerificationError("exact six listener-failure latch producers are absent")
+        raise VerificationError("exact seven listener-failure latch producers are absent")
     for message in messages:
         anchor = f'listener_error = Some("{message}".to_owned());'
         if ipc_source.count(anchor) != 1:
@@ -8443,7 +8445,7 @@ def validate_ipc_listener_failure_outcome_contract(sources):
         "IPC listener failure outcome requirement",
     )
     for text, label in (
-        ("those six listener streams", "six-listener authority set"),
+        ("those seven listener streams", "seven-listener authority set"),
         ("release/acquire synchronization", "cross-task failure synchronization"),
         ("status 1 when the failure latch is set", "failure process status"),
         ("status 0 only for ordinary requested shutdown", "clean process status"),
@@ -11123,7 +11125,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11204,7 +11206,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11383,7 +11385,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11517,7 +11519,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11685,7 +11687,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11883,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12182,7 +12184,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
             "Debian package-tree active ledger exact command target",
         ),
         (
-            "exact 26-statement\n  Flutter pre-control-staging program, including the sole command-symlink constructor",
+            "exact 27-statement\n  Flutter pre-control-staging program, including the exact service-child byte copy and sole command-symlink constructor",
             "Debian package-tree active ledger constructor inventory",
         ),
         (
@@ -12215,7 +12217,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15451,6 +15453,74 @@ def validate_ipc_lifecycle_checker_contract(sources):
             '(("authorize_service_scoped_ipc_authorization_snapshot"), "fresh UID/executable gate")',
         ),
         "Linux service-password permit-before-identity checker",
+    )
+    for text, label in (
+        (
+            'credential_handler = ipc.function("handle_linux_service_credential_snapshot_transaction")',
+            "Linux credential replica handler checker",
+        ),
+        (
+            'credential_capacity = ipc.function("try_acquire_service_credential_ipc_transaction_slot")',
+            "Linux credential replica capacity checker",
+        ),
+        (
+            'runtime_prs = config.method(',
+            "Linux nonpersistent PRS checker",
+        ),
+        (
+            'platform.function("make_service_owned_process_nondumpable")',
+            "Linux nondumpable child checker",
+        ),
+        (
+            'child_image = platform.function("open_active_user_service_child_executable")',
+            "Linux dedicated service-child image checker",
+        ),
+        (
+            'files_have_exact_contents',
+            "Linux service-child byte-equality checker",
+        ),
+        (
+            'verify_linux_credential_replica_bootstrap(rust)',
+            "Linux credential/bootstrap verifier invocation",
+        ),
+        (
+            '"root forwards plaintext instead of the canonical PRS replica"',
+            "Linux plaintext-forwarding adversarial mutation",
+        ),
+        (
+            '"active-user child executable becomes same-uid readable across exec"',
+            "Linux execute-only image adversarial mutation",
+        ),
+        (
+            '"active-user child accepts a dumpable-exec sysctl policy"',
+            "Linux suid_dumpable adversarial mutation",
+        ),
+        (
+            '"release builds enable the unsupervised recovery fixture"',
+            "Linux release-fixture adversarial mutation",
+        ),
+    ):
+        require_text(linux, text, label)
+
+    credential_requirement = extract_html_requirement(
+        sources["requirements"], "R-S11cb", "Linux stable-root credential requirement"
+    )
+    for text, label in (
+        ("sole durable writer", "Linux root durable credential ownership"),
+        ("root/root mode-0711", "Linux execute-only exec requirement"),
+        ("root/root mode 0755", "Linux primary executable compatibility requirement"),
+        ("/usr/share/rustdesk/rustdesk-service-child", "Linux dedicated service-child image"),
+        ("exact byte equality", "Linux service-child byte identity"),
+        ("fs.suid_dumpable=0", "Linux nondumpable exec policy"),
+        ("PR_SET_DUMPABLE(0)", "Linux nondumpable child requirement"),
+        ("Appendix C #221", "Linux credential finding binding"),
+    ):
+        require_text(credential_requirement, text, label)
+    require_text(sources["requirements"], "<tr><td>221</td>", "Linux credential Appendix C row")
+    require_text(
+        sources["hardening"],
+        "R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime replica",
+        "Linux credential hardening ledger",
     )
 
     requirement = extract_html_requirement(
@@ -21643,7 +21713,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "858 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "871 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -22907,8 +22977,8 @@ def run_source_mutations(sources):
         ),
         (
             "server_source",
-            "SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);",
-            "SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Relaxed);",
+            "pub(crate) fn request_graceful_shutdown_after_listener_failure() {\n    SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);\n    request_graceful_shutdown();\n}",
+            "pub(crate) fn request_graceful_shutdown_after_listener_failure() {\n    SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Relaxed);\n    request_graceful_shutdown();\n}",
             "failure latch before process cancellation",
         ),
         (
@@ -22945,7 +23015,7 @@ def run_source_mutations(sources):
             "ipc_source",
             "crate::server::request_graceful_shutdown_after_listener_failure();",
             "crate::server::request_graceful_shutdown();",
-            "exact six listener-failure latch producers are absent",
+            "exact seven listener-failure latch producers are absent",
         ),
         (
             "server_source",
@@ -25296,8 +25366,8 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            '#[cfg(not(debug_assertions))]\n    {\n        false\n    }\n}\n\nfn open_service_child_pidfd',
-            '#[cfg(not(debug_assertions))]\n    {\n        true\n    }\n}\n\nfn open_service_child_pidfd',
+            '#[cfg(not(debug_assertions))]\n    {\n        false\n    }\n}\n\npub(crate) fn service_child_is_unsupervised_recovery_fixture',
+            '#[cfg(not(debug_assertions))]\n    {\n        true\n    }\n}\n\npub(crate) fn service_child_is_unsupervised_recovery_fixture',
             "pidfd-unavailable smoke force release-disabled result",
         ),
         (
@@ -27721,6 +27791,48 @@ def run_source_mutations(sources):
             "Linux service-password permit-before-identity checker",
         ),
         (
+            "linux_password_ipc_validator",
+            'credential_handler = ipc.function("handle_linux_service_credential_snapshot_transaction")',
+            'credential_handler = ipc.function("handle_linux_service_credential_snapshot_transaction_disabled")',
+            "Linux credential replica handler checker",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'credential_capacity = ipc.function("try_acquire_service_credential_ipc_transaction_slot")',
+            'credential_capacity = ipc.function("try_acquire_service_ipc_transaction_slot")',
+            "Linux credential replica capacity checker",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'verify_linux_credential_replica_bootstrap(rust)',
+            'verify_linux_credential_replica_bootstrap_disabled(rust)',
+            "Linux credential/bootstrap verifier invocation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            'child_image = platform.function("open_active_user_service_child_executable")',
+            'child_image = platform.function("open_active_user_service_child_executable_disabled")',
+            "Linux dedicated service-child image checker",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cb</span>',
+            '<span class="id">R-S11cb-disabled</span>',
+            "Linux stable-root credential requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>221</td>",
+            "<tr><td>221-disabled</td>",
+            "Linux credential Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime replica",
+            "R-S11cb/R-S11e-94 — Linux credential closure deferred",
+            "Linux credential hardening ledger",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11bb</span>',
             '<span class="id">R-S11bb-disabled</span>',
@@ -28070,7 +28182,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11ca, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#220",
+        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -28597,7 +28709,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "exact 26-statement\n  Flutter pre-control-staging program, including the sole command-symlink constructor",
+            "exact 27-statement\n  Flutter pre-control-staging program, including the exact service-child byte copy and sole command-symlink constructor",
             "exact 21-operation\n  Flutter pre-finalization program",
             "Debian package-tree active ledger constructor inventory",
         ),

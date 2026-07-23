@@ -171,6 +171,10 @@ static SERVICE_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new()
 const SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 4;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 static SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(target_os = "linux")]
+const SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET: usize = 2;
+#[cfg(target_os = "linux")]
+static SERVICE_CREDENTIAL_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const MAIN_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 16;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -454,6 +458,22 @@ fn try_acquire_service_password_ipc_transaction_slot() -> Option<OwnedSemaphoreP
         Err(_) => {
             log::debug!(
                 "Rejected _service_password IPC connection because password work is at capacity"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn try_acquire_service_credential_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = SERVICE_CREDENTIAL_IPC_TRANSACTION_SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET)))
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!(
+                "Rejected _service_credential IPC connection because credential replica work is at capacity"
             );
             None
         }
@@ -1161,7 +1181,17 @@ fn spawn_password_mutation(
             kind,
             result: IpcMutationResult::InternalFailure,
         };
-        let result = match Config::set_permanent_password_persisted(value.as_str()) {
+        #[cfg(target_os = "linux")]
+        let service_owned_runtime_replica = kind == PasswordMutationKind::ServiceOwned
+            && crate::common::is_service_owned_server_process();
+        #[cfg(not(target_os = "linux"))]
+        let service_owned_runtime_replica = false;
+        let persisted = if service_owned_runtime_replica {
+            Config::set_permanent_password_prs_for_runtime(value.as_str()).map(|_| true)
+        } else {
+            Config::set_permanent_password_persisted(value.as_str())
+        };
+        let result = match persisted {
             Ok(true) => IpcMutationResult::Applied,
             Ok(false) => IpcMutationResult::Rejected,
             Err(err) => {
@@ -2863,7 +2893,6 @@ async fn handle_sensitive_main_ipc_transaction(
         }
         PasswordMutationKind::ServiceOwned => {
             MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
-                && !Config::is_disable_change_permanent_password()
         }
     };
     let (status, worker) =
@@ -2883,6 +2912,7 @@ async fn handle_sensitive_main_ipc_transaction(
 struct PreparedServiceIpc {
     incoming: Incoming,
     password_incoming: Incoming,
+    credential_incoming: Option<Incoming>,
     listener_guard: LocalIpcListenerGuard,
 }
 
@@ -2893,6 +2923,10 @@ async fn prepare_service_ipc(postfix: &str) -> ResultType<PreparedServiceIpc> {
     }
     let incoming = new_listener(postfix).await?;
     let password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;
+    #[cfg(target_os = "linux")]
+    let credential_incoming = Some(new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX).await?);
+    #[cfg(target_os = "macos")]
+    let credential_incoming = None;
     let listener_guard = LocalIpcListenerGuard::activate(
         &SERVICE_IPC_LISTENER_STATE,
         "protected service IPC listener",
@@ -2900,6 +2934,7 @@ async fn prepare_service_ipc(postfix: &str) -> ResultType<PreparedServiceIpc> {
     Ok(PreparedServiceIpc {
         incoming,
         password_incoming,
+        credential_incoming,
         listener_guard,
     })
 }
@@ -2923,6 +2958,7 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
     let PreparedServiceIpc {
         mut incoming,
         mut password_incoming,
+        mut credential_incoming,
         listener_guard,
     } = listeners;
     let mut transactions = JoinSet::new();
@@ -2936,6 +2972,48 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                 if let Some(Err(err)) = completed {
                     log::error!("protected _service IPC transaction failed: {err}");
                 }
+            }
+            result = async {
+                match credential_incoming.as_mut() {
+                    Some(incoming) => incoming.next().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                #[cfg(target_os = "linux")]
+                {
+                    let Some(result) = result else {
+                        listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());
+                        crate::server::request_graceful_shutdown_after_listener_failure();
+                        break;
+                    };
+                    let stream = match result {
+                        Ok(stream) => stream,
+                        Err(err) => {
+                            log::error!("Could not accept protected service credential IPC client: {err}");
+                            continue;
+                        }
+                    };
+                    let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
+                        continue;
+                    };
+                    let identity = match authenticate_linux_service_owned_password_replica_server(
+                        &stream,
+                        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+                    ) {
+                        Ok(identity) => identity,
+                        Err(err) => {
+                            log::warn!("Rejected Linux service credential replica requester: {err}");
+                            continue;
+                        }
+                    };
+                    transactions.spawn(handle_linux_service_credential_snapshot_transaction(
+                        stream,
+                        identity,
+                        permit,
+                    ));
+                }
+                #[cfg(target_os = "macos")]
+                let _ = result;
             }
             result = password_incoming.next() => {
                 let Some(result) = result else {
@@ -3108,6 +3186,50 @@ async fn handle_sensitive_linux_service_ipc_transaction(
     if let Err(err) = password::send_status_unix(&mut stream, operation_id, status, deadline).await
     {
         log::trace!("Linux service password status could not be returned: {err}");
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn handle_linux_service_credential_snapshot_transaction(
+    mut stream: Conn,
+    identity: PeerProcessIdentity,
+    _permit: OwnedSemaphorePermit,
+) {
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+    let operation_id =
+        match password::receive_credential_snapshot_request_unix(&mut stream, deadline).await {
+            Ok(operation_id) => operation_id,
+            Err(err) => {
+                log::trace!("Linux service credential snapshot request was rejected: {err}");
+                return;
+            }
+        };
+    let refreshed = match authenticate_linux_service_owned_password_replica_server(
+        &stream,
+        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+    ) {
+        Ok(refreshed) => refreshed,
+        Err(err) => {
+            log::warn!("Rejected stale Linux service credential replica requester: {err}");
+            return;
+        }
+    };
+    if refreshed != identity {
+        log::warn!("Rejected Linux service credential requester whose identity changed");
+        return;
+    }
+    let replica = match linux_service_owned_runtime_prs_replica() {
+        Ok(replica) => replica,
+        Err(err) => {
+            log::error!("Linux root service credential snapshot is unavailable: {err}");
+            return;
+        }
+    };
+    if let Err(err) =
+        password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline).await
+    {
+        log::trace!("Linux service credential snapshot could not be returned: {err}");
     }
 }
 
@@ -4610,8 +4732,55 @@ async fn commit_service_owned_unattended_password_change(
     operation_id: String,
     value: SensitivePassword,
 ) -> ResultType<IpcMutationResult> {
+    let durable_value = value.clone();
+    let durable_result = tokio::task::spawn_blocking(move || {
+        Config::set_permanent_password_persisted(durable_value.as_str())
+    })
+    .await
+    .map_err(|err| anyhow::anyhow!("Linux root credential writer failed to join: {err}"))??;
+    if !durable_result {
+        return Ok(IpcMutationResult::Rejected);
+    }
+    let replica = match linux_service_owned_runtime_prs_replica() {
+        Ok(replica) => replica,
+        Err(err) => {
+            crate::server::request_graceful_shutdown_after_authority_failure();
+            return Err(anyhow::anyhow!(
+                "Linux durable credential changed but its runtime replica is unavailable; service generation is stopping: {err}"
+            ));
+        }
+    };
     let ms_timeout = 1_000;
-    complete_main_password_mutation(operation_id, &value, true, ms_timeout).await
+    match complete_main_password_mutation(operation_id, &replica, true, ms_timeout).await {
+        Ok(IpcMutationResult::Applied) => Ok(IpcMutationResult::Applied),
+        Ok(result) => {
+            crate::server::request_graceful_shutdown_after_authority_failure();
+            bail!(
+                "Linux durable credential changed but its runtime replica finished as {result:?}; service generation is stopping"
+            )
+        }
+        Err(err) => {
+            crate::server::request_graceful_shutdown_after_authority_failure();
+            Err(anyhow::anyhow!(
+                "Linux durable credential changed but its runtime replica did not converge; service generation is stopping: {err}"
+            ))
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_service_owned_runtime_prs_replica() -> ResultType<SensitivePassword> {
+    match Config::read_permanent_password_prs() {
+        hbb_common::config::PermanentPasswordPrsRead::Available(prs) => {
+            Ok(SensitivePassword::new(prs))
+        }
+        hbb_common::config::PermanentPasswordPrsRead::Empty => {
+            Ok(SensitivePassword::new(String::new()))
+        }
+        hbb_common::config::PermanentPasswordPrsRead::UndecryptableStorage => {
+            bail!("Linux root service credential storage is undecryptable")
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -5254,6 +5423,10 @@ async fn connect_with_path(
     ) {
         bail!("sensitive password endpoints require the raw transport");
     }
+    #[cfg(target_os = "linux")]
+    if postfix == password::SERVICE_CREDENTIAL_IPC_POSTFIX {
+        bail!("the service credential endpoint requires the raw transport");
+    }
     #[cfg(windows)]
     {
         let client = timeout(ms_timeout, connect_windows_named_pipe(path)).await??;
@@ -5448,6 +5621,10 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
     ) {
         bail!("sensitive password endpoints require the raw transport");
     }
+    #[cfg(target_os = "linux")]
+    if postfix == password::SERVICE_CREDENTIAL_IPC_POSTFIX {
+        bail!("the service credential endpoint requires the raw transport");
+    }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         let use_user_main_ipc = USE_USER_MAIN_IPC.with(|use_user_main| use_user_main.get());
@@ -5500,8 +5677,10 @@ async fn connect_sensitive_unix(
             if service_owned_replica {
                 #[cfg(target_os = "linux")]
                 {
-                    let identity =
-                        authenticate_linux_service_owned_password_replica_server(&stream)?;
+                    let identity = authenticate_linux_service_owned_password_replica_server(
+                        &stream,
+                        password::USER_PASSWORD_IPC_POSTFIX,
+                    )?;
                     let expected_uid = expected_user_uid.ok_or_else(|| {
                         hbb_common::anyhow::anyhow!(
                             "service-owned password replica route has no expected uid"
@@ -6303,6 +6482,36 @@ pub async fn refresh_macos_service_owned_permanent_password_snapshot(
             Ok(false)
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+pub async fn refresh_linux_service_owned_permanent_password_snapshot(
+    ms_timeout: u64,
+) -> ResultType<bool> {
+    if !crate::common::is_service_owned_server_process() {
+        bail!("Linux service credential snapshots require the exact service-owned server role");
+    }
+    if crate::platform::linux::service_child_is_unsupervised_recovery_fixture() {
+        Config::set_permanent_password_prs_for_runtime("")?;
+        return Ok(false);
+    }
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+    let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);
+    let mut stream = timeout(
+        password::remaining_millis(deadline)?,
+        Endpoint::connect(path),
+    )
+    .await??;
+    authenticate_linux_service_owned_password_parent(
+        &stream,
+        password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+    )?;
+    let operation_id = hbb_common::uuid::Uuid::new_v4();
+    password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline).await?;
+    let replica =
+        password::receive_credential_replica_unix(&mut stream, operation_id, deadline).await?;
+    Config::set_permanent_password_prs_for_runtime(replica.as_str())?;
+    Ok(!replica.as_str().is_empty())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

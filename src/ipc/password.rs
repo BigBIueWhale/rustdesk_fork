@@ -4,6 +4,8 @@ use std::{fmt, sync::Arc};
 
 pub(crate) const USER_PASSWORD_IPC_POSTFIX: &str = "_password";
 pub(crate) const SERVICE_PASSWORD_IPC_POSTFIX: &str = "_service_password";
+#[cfg(target_os = "linux")]
+pub(crate) const SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";
 pub(crate) const MACOS_AUTHORIZATION_MAX_BYTES: usize = 1024;
 
 const REQUEST_MAGIC: [u8; 8] = *b"RDPWREQ\0";
@@ -14,12 +16,18 @@ pub(crate) const REQUEST_HEADER_BYTES: usize = 36;
 pub(crate) const STATUS_FRAME_BYTES: usize = 32;
 pub(crate) const ACK_FRAME_BYTES: usize = 28;
 const REQUEST_BODY_MAX_BYTES: usize = UNATTENDED_PASSWORD_MAX_BYTES + MACOS_AUTHORIZATION_MAX_BYTES;
+#[cfg(target_os = "linux")]
+const CREDENTIAL_REPLICA_BYTES: usize = 44;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub(crate) enum SensitivePayloadKind {
     Password = 1,
     PasswordWithAuthorization = 2,
+    #[cfg(target_os = "linux")]
+    CredentialSnapshotRequest = 3,
+    #[cfg(target_os = "linux")]
+    CredentialReplica = 4,
 }
 
 impl SensitivePayloadKind {
@@ -27,6 +35,10 @@ impl SensitivePayloadKind {
         match value {
             1 => Ok(Self::Password),
             2 => Ok(Self::PasswordWithAuthorization),
+            #[cfg(target_os = "linux")]
+            3 => Ok(Self::CredentialSnapshotRequest),
+            #[cfg(target_os = "linux")]
+            4 => Ok(Self::CredentialReplica),
             _ => bail!("unsupported sensitive password request kind"),
         }
     }
@@ -195,6 +207,19 @@ impl SensitiveRequestHeader {
                     || self.authorization_len > MACOS_AUTHORIZATION_MAX_BYTES =>
             {
                 bail!("password request has invalid authorization metadata")
+            }
+            #[cfg(target_os = "linux")]
+            SensitivePayloadKind::CredentialSnapshotRequest
+                if self.password_len != 0 || self.authorization_len != 0 =>
+            {
+                bail!("credential snapshot request has a body")
+            }
+            #[cfg(target_os = "linux")]
+            SensitivePayloadKind::CredentialReplica
+                if self.authorization_len != 0
+                    || !matches!(self.password_len, 0 | CREDENTIAL_REPLICA_BYTES) =>
+            {
+                bail!("credential replica has invalid canonical lengths")
             }
             _ => {}
         }
@@ -512,6 +537,54 @@ where
         .map_err(UnixSensitivePasswordSendError::Uncertain)
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) async fn send_credential_snapshot_request_unix<T>(
+    stream: &mut T,
+    operation_id: hbb_common::uuid::Uuid,
+    deadline: hbb_common::tokio::time::Instant,
+) -> ResultType<()>
+where
+    T: hbb_common::tokio::io::AsyncWrite + Unpin,
+{
+    use hbb_common::tokio::io::AsyncWriteExt as _;
+
+    let header = SensitiveRequestHeader::new(
+        operation_id,
+        SensitivePayloadKind::CredentialSnapshotRequest,
+        0,
+        0,
+    )?
+    .encode();
+    remaining_millis(deadline)?;
+    with_deadline(deadline, stream.write_all(&header)).await?;
+    with_deadline(deadline, stream.shutdown()).await
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) async fn send_credential_replica_unix<T>(
+    stream: &mut T,
+    operation_id: hbb_common::uuid::Uuid,
+    replica: &SensitivePassword,
+    deadline: hbb_common::tokio::time::Instant,
+) -> ResultType<()>
+where
+    T: hbb_common::tokio::io::AsyncWrite + Unpin,
+{
+    use hbb_common::tokio::io::AsyncWriteExt as _;
+
+    let header = SensitiveRequestHeader::new(
+        operation_id,
+        SensitivePayloadKind::CredentialReplica,
+        replica.as_bytes().len(),
+        0,
+    )?
+    .encode();
+    remaining_millis(deadline)?;
+    with_deadline(deadline, stream.write_all(&header)).await?;
+    with_deadline(deadline, stream.write_all(replica.as_bytes())).await?;
+    with_deadline(deadline, stream.shutdown()).await
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) async fn receive_request_unix<T>(
     stream: &mut T,
@@ -535,6 +608,40 @@ where
         bail!("sensitive password request has trailing bytes");
     }
     Ok(request)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) async fn receive_credential_snapshot_request_unix<T>(
+    stream: &mut T,
+    deadline: hbb_common::tokio::time::Instant,
+) -> ResultType<hbb_common::uuid::Uuid>
+where
+    T: hbb_common::tokio::io::AsyncRead + Unpin,
+{
+    let request = receive_request_unix(
+        stream,
+        SensitivePayloadKind::CredentialSnapshotRequest,
+        deadline,
+    )
+    .await?;
+    Ok(request.operation_id())
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) async fn receive_credential_replica_unix<T>(
+    stream: &mut T,
+    expected_operation_id: hbb_common::uuid::Uuid,
+    deadline: hbb_common::tokio::time::Instant,
+) -> ResultType<SensitivePassword>
+where
+    T: hbb_common::tokio::io::AsyncRead + Unpin,
+{
+    let request =
+        receive_request_unix(stream, SensitivePayloadKind::CredentialReplica, deadline).await?;
+    if request.operation_id() != expected_operation_id {
+        bail!("credential replica operation UUID mismatch");
+    }
+    request.into_password()
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -578,6 +685,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use hbb_common::sodiumoxide::base64;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     use hbb_common::tokio;
 
@@ -697,6 +806,123 @@ mod tests {
             SensitivePayloadKind::PasswordWithAuthorization
         )
         .is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn credential_replica_headers_are_kind_bound_and_exact_length() {
+        let request = SensitiveRequestHeader::new(
+            UUID,
+            SensitivePayloadKind::CredentialSnapshotRequest,
+            0,
+            0,
+        )
+        .unwrap()
+        .encode();
+        assert_eq!(request[8..12], [1, 0, 3, 0]);
+        assert!(SensitiveRequestHeader::decode(
+            &request,
+            SensitivePayloadKind::CredentialSnapshotRequest
+        )
+        .is_ok());
+        assert!(
+            SensitiveRequestHeader::decode(&request, SensitivePayloadKind::CredentialReplica)
+                .is_err()
+        );
+
+        for length in [0, CREDENTIAL_REPLICA_BYTES] {
+            assert!(SensitiveRequestHeader::new(
+                UUID,
+                SensitivePayloadKind::CredentialReplica,
+                length,
+                0,
+            )
+            .is_ok());
+        }
+        for length in [
+            1,
+            CREDENTIAL_REPLICA_BYTES - 1,
+            CREDENTIAL_REPLICA_BYTES + 1,
+        ] {
+            assert!(SensitiveRequestHeader::new(
+                UUID,
+                SensitivePayloadKind::CredentialReplica,
+                length,
+                0,
+            )
+            .is_err());
+        }
+        assert!(SensitiveRequestHeader::new(
+            UUID,
+            SensitivePayloadKind::CredentialSnapshotRequest,
+            1,
+            0,
+        )
+        .is_err());
+        assert!(SensitiveRequestHeader::new(
+            UUID,
+            SensitivePayloadKind::CredentialReplica,
+            CREDENTIAL_REPLICA_BYTES,
+            1,
+        )
+        .is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn credential_snapshot_transport_is_operation_bound_and_half_closed() {
+        let (mut requester, mut service) = tokio::io::duplex(256);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        let replica = base64::encode(&[0x3cu8; 32], base64::Variant::Original);
+        assert_eq!(replica.len(), CREDENTIAL_REPLICA_BYTES);
+        let expected_replica = replica.clone();
+        let service_task = tokio::spawn(async move {
+            let operation_id =
+                receive_credential_snapshot_request_unix(&mut service, deadline).await?;
+            send_credential_replica_unix(
+                &mut service,
+                operation_id,
+                &SensitivePassword::new(replica),
+                deadline,
+            )
+            .await
+        });
+
+        send_credential_snapshot_request_unix(&mut requester, UUID, deadline)
+            .await
+            .unwrap();
+        let received = receive_credential_replica_unix(&mut requester, UUID, deadline)
+            .await
+            .unwrap();
+        assert_eq!(received.as_str(), expected_replica);
+        service_task.await.unwrap().unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn credential_snapshot_rejects_the_wrong_operation() {
+        let (mut requester, mut service) = tokio::io::duplex(256);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        let service_task = tokio::spawn(async move {
+            let _ = receive_credential_snapshot_request_unix(&mut service, deadline).await?;
+            send_credential_replica_unix(
+                &mut service,
+                hbb_common::uuid::Uuid::new_v4(),
+                &SensitivePassword::new(String::new()),
+                deadline,
+            )
+            .await
+        });
+
+        send_credential_snapshot_request_unix(&mut requester, UUID, deadline)
+            .await
+            .unwrap();
+        assert!(
+            receive_credential_replica_unix(&mut requester, UUID, deadline)
+                .await
+                .is_err()
+        );
+        service_task.await.unwrap().unwrap();
     }
 
     #[test]

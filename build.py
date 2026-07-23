@@ -47,7 +47,14 @@ DEBIAN_DATA_EXECUTABLES = {
     "usr/share/rustdesk/files/openrc/rustdesk",
     "usr/share/rustdesk/files/runit/run",
     "usr/share/rustdesk/rustdesk",
+    "usr/share/rustdesk/rustdesk-service-child",
 }
+DEBIAN_DATA_MODES = {name: 0o755 for name in DEBIAN_DATA_EXECUTABLES}
+# Keep the ordinary installed/UI image readable so same-uid RustDesk processes can
+# retain their existing /proc executable proofs. Only the byte-identical image used
+# for active-user service children is execute-only; with fs.suid_dumpable=0 that
+# preserves nondumpability across the child's exec transition.
+DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o711
 DEBIAN_FLUTTER_LIBRARIES = {
     "usr/share/rustdesk/lib/libapp.so",
     "usr/share/rustdesk/lib/libdesktop_drop_plugin.so",
@@ -107,6 +114,7 @@ DEBIAN_DATA_REQUIRED_FILES = {
     "usr/share/rustdesk/files/openrc/rustdesk",
     "usr/share/rustdesk/files/runit/run",
     "usr/share/rustdesk/rustdesk",
+    "usr/share/rustdesk/rustdesk-service-child",
 }
 DEBIAN_DATA_REQUIRED_FILES.update(DEBIAN_FLUTTER_LIBRARIES)
 DEBIAN_DATA_REQUIRED_SYMLINKS = {
@@ -484,7 +492,7 @@ def finalize_debian_package_tree(root):
         if name.startswith("DEBIAN/"):
             mode = DEBIAN_CONTROL_MODES[name[len("DEBIAN/"):]]
         else:
-            mode = 0o755 if name in DEBIAN_DATA_EXECUTABLES else 0o644
+            mode = DEBIAN_DATA_MODES.get(name, 0o644)
         os.chmod(root / name, mode)
 
     root_info = os.lstat(root)
@@ -503,7 +511,7 @@ def finalize_debian_package_tree(root):
         if name.startswith("DEBIAN/"):
             expected = DEBIAN_CONTROL_MODES[name[len("DEBIAN/"):]]
         else:
-            expected = 0o755 if name in DEBIAN_DATA_EXECUTABLES else 0o644
+            expected = DEBIAN_DATA_MODES.get(name, 0o644)
         if stat.S_IMODE(info.st_mode) != expected:
             raise RuntimeError(f"Debian package file mode differs for {name}: {stat.S_IMODE(info.st_mode):04o}")
     for name, (info, _) in final_symlinks.items():
@@ -564,6 +572,10 @@ def build_flutter_deb(version, features):
         'cp ../res/startwm.sh tmpdeb/etc/rustdesk/')
     system2(
         'cp ../res/xorg.conf tmpdeb/etc/rustdesk/')
+    shutil.copyfile(
+        'tmpdeb/usr/share/rustdesk/rustdesk',
+        'tmpdeb/usr/share/rustdesk/rustdesk-service-child',
+    )
     os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')
     stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")
     finalize_debian_package_tree("tmpdeb")

@@ -2757,6 +2757,11 @@ fn linux_process_identity_by_pid(pid: u32, postfix: &str) -> ResultType<PeerProc
         bail!("invalid pid 0 on ipc channel '{}'", postfix);
     }
     ensure_peer_executable_matches_current_by_pid(pid, postfix)?;
+    linux_process_identity_fields_by_pid(pid)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_identity_fields_by_pid(pid: u32) -> ResultType<PeerProcessIdentity> {
     let args = linux_proc_cmdline_args(pid)?;
     Ok(PeerProcessIdentity {
         pid,
@@ -2766,6 +2771,24 @@ fn linux_process_identity_by_pid(pid: u32, postfix: &str) -> ResultType<PeerProc
         cm_launch_token: linux_proc_environ_value(pid, crate::common::CM_LAUNCH_TOKEN_ENV)?,
         cm_launch_parent: linux_proc_u32_env(pid, crate::common::CM_LAUNCH_PARENT_ENV)?,
     })
+}
+
+#[cfg(target_os = "linux")]
+fn linux_service_child_process_identity_by_pid(
+    pid: u32,
+    postfix: &str,
+) -> ResultType<PeerProcessIdentity> {
+    if pid == 0 {
+        bail!("invalid service-child pid 0 on ipc channel '{}'", postfix);
+    }
+    if !crate::platform::linux::service_child_executable_identity_matches(pid)? {
+        bail!(
+            "Service-child executable identity mismatch on ipc channel '{}': pid={}",
+            postfix,
+            pid
+        );
+    }
+    linux_process_identity_fields_by_pid(pid)
 }
 
 #[cfg(target_os = "linux")]
@@ -2819,6 +2842,73 @@ where
     if identity.uid != peer_uid {
         bail!(
             "Peer uid changed while authenticating ipc channel '{}': pid={}, socket_uid={}, proc_uid={}",
+            postfix,
+            peer_pid,
+            peer_uid,
+            identity.uid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+fn service_child_peer_process_identity<T>(
+    stream: &ConnectionTmpl<T>,
+    postfix: &str,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer_pid = stream.peer_pid().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to resolve service-child pid on ipc channel '{}'",
+            postfix
+        )
+    })?;
+    let peer_uid = stream.peer_uid().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to resolve service-child uid on ipc channel '{}'",
+            postfix
+        )
+    })?;
+    let identity = linux_service_child_process_identity_by_pid(peer_pid, postfix)?;
+    if identity.uid != peer_uid {
+        bail!(
+            "Service-child uid changed on ipc channel '{}': pid={}, socket_uid={}, proc_uid={}",
+            postfix,
+            peer_pid,
+            peer_uid,
+            identity.uid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+fn service_child_peer_process_identity_from_stream<T>(
+    stream: &T,
+    postfix: &str,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let fd = stream.as_raw_fd();
+    let peer_pid = peer_pid_from_fd(fd).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to resolve service-child pid on ipc channel '{}'",
+            postfix
+        )
+    })?;
+    let peer_uid = peer_uid_from_fd(fd).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Failed to resolve service-child uid on ipc channel '{}'",
+            postfix
+        )
+    })?;
+    let identity = linux_service_child_process_identity_by_pid(peer_pid, postfix)?;
+    if identity.uid != peer_uid {
+        bail!(
+            "Service-child uid changed on ipc channel '{}': pid={}, socket_uid={}, proc_uid={}",
             postfix,
             peer_pid,
             peer_uid,
@@ -2887,7 +2977,7 @@ pub(crate) fn authenticate_linux_service_owned_main_server<T>(
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
 {
-    let identity = peer_process_identity(stream, "")?;
+    let identity = service_child_peer_process_identity(stream, "")?;
     let args = linux_proc_cmdline_args(identity.pid)?;
     if !linux_service_owned_server_argv_is_expected(&args) {
         bail!(
@@ -2901,13 +2991,20 @@ where
         identity.pid,
         crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
     )?;
+    let actual_parent = linux_proc_parent_pid(identity.pid)?;
+    let generation = linux_proc_environ_value(
+        identity.pid,
+        crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+    )?;
     if launch_parent != expected_parent
-        || !linux_process_has_ancestor(identity.pid, expected_parent)
+        || actual_parent != expected_parent
+        || !crate::platform::linux::service_runtime_generation_matches(&generation)
     {
         bail!(
-            "service-owned main server launch parent mismatch: pid={}, expected_parent={}, launch_parent={}",
+            "service-owned main server owner mismatch: pid={}, expected_parent={}, actual_parent={}, launch_parent={}",
             identity.pid,
             expected_parent,
+            actual_parent,
             launch_parent
         );
     }
@@ -2918,46 +3015,44 @@ where
 pub(crate) fn authenticate_linux_service_owned_password_parent<T>(
     stream: &T,
     postfix: &str,
-) -> ResultType<PeerProcessIdentity>
+) -> ResultType<()>
 where
     T: std::os::unix::io::AsRawFd,
 {
-    let identity = peer_process_identity_from_stream(stream, postfix)?;
-    if identity.uid != 0 {
+    let fd = stream.as_raw_fd();
+    let peer_uid = peer_uid_from_fd(fd)
+        .ok_or_else(|| anyhow::anyhow!("service-owned parent uid is unavailable for {postfix}"))?;
+    if peer_uid != 0 {
         bail!("service-owned password parent is not root");
     }
-    let args = linux_proc_cmdline_args(identity.pid)?;
-    if args.len() != 2 || args.get(1).map(String::as_str) != Some("--service") {
-        bail!(
-            "service-owned password parent argv mismatch: pid={}, args={:?}",
-            identity.pid,
-            args
-        );
-    }
+    let peer_pid = peer_pid_from_fd(fd)
+        .filter(|pid| *pid > 0)
+        .ok_or_else(|| anyhow::anyhow!("service-owned parent pid is unavailable for {postfix}"))?;
     let expected_parent = std::env::var(crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV)
         .map_err(|_| anyhow::anyhow!("service-owned server launch parent is unavailable"))?
         .parse::<u32>()
         .map_err(|err| anyhow::anyhow!("service-owned server launch parent is invalid: {err}"))?;
-    if identity.pid != expected_parent
-        || !linux_process_has_ancestor(std::process::id(), expected_parent)
-    {
+    let actual_parent = linux_proc_parent_pid(std::process::id())?;
+    if peer_pid != expected_parent || actual_parent != expected_parent {
         bail!(
-            "service-owned password parent identity mismatch: expected={}, actual={}",
+            "service-owned password parent identity mismatch: expected={}, actual={}, process_parent={}",
             expected_parent,
-            identity.pid
+            peer_pid,
+            actual_parent
         );
     }
-    Ok(identity)
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
 pub(crate) fn authenticate_linux_service_owned_password_replica_server<T>(
     stream: &T,
+    postfix: &str,
 ) -> ResultType<PeerProcessIdentity>
 where
     T: std::os::unix::io::AsRawFd,
 {
-    let identity = peer_process_identity_from_stream(stream, "")?;
+    let identity = service_child_peer_process_identity_from_stream(stream, postfix)?;
     let args = linux_proc_cmdline_args(identity.pid)?;
     if !linux_service_owned_server_argv_is_expected(&args) {
         bail!(
@@ -2971,13 +3066,20 @@ where
         identity.pid,
         crate::common::SERVICE_OWNED_SERVER_LAUNCH_PARENT_ENV,
     )?;
+    let actual_parent = linux_proc_parent_pid(identity.pid)?;
+    let generation = linux_proc_environ_value(
+        identity.pid,
+        crate::common::SERVICE_OWNED_SERVER_GENERATION_ENV,
+    )?;
     if launch_parent != expected_parent
-        || !linux_process_has_ancestor(identity.pid, expected_parent)
+        || actual_parent != expected_parent
+        || !crate::platform::linux::service_runtime_generation_matches(&generation)
     {
         bail!(
-            "service-owned password replica launch parent mismatch: pid={}, expected_parent={}, launch_parent={}",
+            "service-owned password replica owner mismatch: pid={}, expected_parent={}, actual_parent={}, launch_parent={}",
             identity.pid,
             expected_parent,
+            actual_parent,
             launch_parent
         );
     }

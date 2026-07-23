@@ -66,8 +66,8 @@ for path in "$BINARY" "$INIT_SOURCE" "$UNIT_SOURCE" "$READY" "$PROCESS_GUARD" "$
 done
 [ -x "$BINARY" ] && [ -x "$INIT_SOURCE" ] && [ -x "$READY" ] && [ -x "$PROCESS_GUARD" ] \
     && [ -x "$LAUNCHER_SOURCE" ] || fail 'one or more lifecycle fixtures are not executable'
-[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:755 ] \
-    || fail 'the actual RustDesk binary is not root-owned mode 0755'
+[ "$(stat -c '%u:%g:%a' -- "$BINARY")" = 0:0:711 ] \
+    || fail 'the actual RustDesk binary is not root-owned mode 0711'
 
 source_identity=$(stat -c '%d:%i:%u:%g:%a' -- "$ROOT")
 source_hash=$(sha256sum \
@@ -109,6 +109,7 @@ build_package() {
         "$staging/usr/share" \
         "$staging/usr/share/rustdesk"
     install -o root -g root -m 0755 "$BINARY" "$staging/usr/share/rustdesk/rustdesk"
+    install -o root -g root -m 0711 "$BINARY" "$staging/usr/share/rustdesk/rustdesk-service-child"
     ln -s ../share/rustdesk/rustdesk "$staging/usr/bin/rustdesk"
     install -o root -g root -m 0755 "$INIT_SOURCE" "$staging/etc/init.d/rustdesk"
     install -o root -g root -m 0644 "$UNIT_SOURCE" "$staging/usr/lib/systemd/system/rustdesk.service"

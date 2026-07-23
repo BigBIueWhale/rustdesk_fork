@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: d588b090ad2a843e682363b84f8991ea014a0f48b3dc98fee91584be641554be
+Requirements hash: 0db1cf9a1c331b4c59b37c4b93853632a728d661c837fe81a7a645fea9dbe593
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by
 `vcpkg.json`. Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++

@@ -203,6 +203,18 @@ else
   echo "  ok  R-S11cf direct builds use independent private exact-commit sources and the sole Debian compiler is non-root/offline/no-pull/read-only-root/capability-free/resource-bounded"
 fi
 
+echo "== (0e) Android signing-identity generation authority (R-S11cg/R-S11e-99) =="
+r_s11cg=
+if ! python3 scripts/verify-android-keystore-authority.py --repo . --self-test; then
+  r_s11cg="$r_s11cg authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cg" ]; then
+  echo "  FAIL R-S11cg Android signing-identity generation authority:$r_s11cg"
+  rc=1
+else
+  echo "  ok  R-S11cg one-time Android identity generation is fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded with file-only secrets and durable no-clobber publication"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

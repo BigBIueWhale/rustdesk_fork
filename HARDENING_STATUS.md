@@ -8614,6 +8614,61 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Debian lifecycle marker, or the complete cold R-B2 transaction; those remain R-B2/R-S11c-27. No host RustDesk
   process/service/configuration/listener, firewall/network state, native device, or installed package was used,
   inspected, or changed.
+- **R-S11cg/R-S11e-99 — Android signing-identity generation authority — SOURCE IMPLEMENTED/GATED
+  2026-07-23; DISPOSABLE END-TO-END RUNTIME EVIDENCE PENDING; ESTABLISHED PROJECT IDENTITY UNTOUCHED.**
+  Platform: Android build tooling on the unprivileged Linux build host. Endpoint/action: the one-time creation of
+  the stable self-managed RSA signing identity required by R-B2. Boundary: a requested absent protected keystore
+  leaf and optional protected password file ↔ randomness, `keytool`, the local Docker daemon, private staging, and
+  durable final publication.
+
+  The inherited generator selected `${HARNESS_PREFIX}-android-builder`, accepted a shell-interpolated alias, and
+  ran a networkless but otherwise ambient container: default root identity, writable root, default capabilities
+  and privilege-gain semantics, no process/memory/CPU/scratch ceilings, and implicit image-pull behavior. It
+  mounted the complete permanent output directory read-write, copied the password value into the inner
+  `keytool` argv, generated a missing password through host `openssl`, and let `keytool` create the irreplaceable
+  identity directly at its final path. A malformed alias or faulty image/tool therefore had broader host-output,
+  secret, and publication authority than necessary. The old container published no port and had no network,
+  Docker socket, or host namespace. This is source-proven signing-tool/build-host authority debt, not evidence
+  that the established signing identity changed, container root became host root, Docker escaped, a public
+  listener appeared, or any host/device/service/firewall was modified, exploited, or compromised.
+
+  `scripts/gen-android-keystore.sh` now refuses effective UID or primary GID 0, fixes the alias to
+  `rustdesk-fork`, uses `/usr/bin/docker`, closes Docker host/context/TLS/configuration authority, loads the
+  immutable `ANDROID_BUILDER_IMAGE_ID`, and requires its complete pinned local provenance. Keystore/password
+  leaves must be distinct canonical absolute no-symlink paths beneath the same current-UID mode-0700 directory;
+  that directory and its current-UID mode-0700 parent are created only when absent. An existing keystore is
+  refused without inspection or overwrite. An existing password must be a nonempty current-UID mode-0600
+  single-link regular file.
+
+  The generator creates a mode-0700 random stage inside that signing directory, snapshots its narrow worker
+  read-only, and gives Docker an empty private configuration. Password creation, key creation, and independent
+  certificate inspection are three operations in the already-present immutable builder. Every operation is
+  `--pull=never`, networkless, read-only-root, numeric non-root, capability-free, no-new-privileges, and
+  independently bounded for PIDs, memory with no swap expansion, CPU, and non-executable `nosuid,nodev` tmpfs.
+  No final signing directory, repository, Docker socket, port, host namespace, added capability, or image
+  build/pull path is present. The only writable bind is the narrow private output subdirectory. A missing
+  password is derived from 33 bytes of `/dev/urandom` inside the first container and moved out of that writable
+  mount before key generation. Both key-generation password inputs and the independent-verifier key/password
+  inputs are exact read-only files. `keytool` receives only `-storepass:file`/`-keypass:file` paths, never secret
+  argv or environment bytes.
+
+  Password and staged-keystore inode/metadata/size/timestamp state plus SHA-256 are captured and reproved around
+  key generation and independent inspection. The worker fixes RSA-4096, SHA256withRSA, 10000-day validity, alias,
+  and subject; inspection emits exactly one uppercase certificate SHA-256. A newly generated password is
+  atomically hard-linked and filesystem-synchronized first, so a visible keystore cannot lack its matching
+  password. The verified key is then atomically hard-linked to the still-absent final leaf, both filesystems are
+  synchronized, staging links are removed, and final current-UID/mode/link/byte postconditions are reproved.
+  A publication race may leave only the already-durable matching password, never a key without its password;
+  retry deliberately consumes that password.
+
+  `scripts/verify-android-keystore-authority.py` binds the fixed image/alias, path and secret metadata,
+  private staging, all three launch inventories, forbidden ambient authority, file-only password flow,
+  independent verification, stability proofs, password-before-key synchronization/publication, R-S11cg,
+  Appendix C #226, this ledger, operator documentation, shared-gate wiring, and workspace ownership through
+  deliberate mutations. The independent workspace verifier binds the focused verifier and all policy anchors.
+  Runtime evidence is intentionally pending until this source is one clean exact commit. No established
+  keystore/password was listed, opened, mounted, hashed, regenerated, replaced, or otherwise inspected by this
+  slice; no APK/device, host RustDesk process/service/configuration/listener, or firewall/network state was used.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9331,9 +9386,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d588b090ad2a843e682363b84f8991ea014a0f48b3dc98fee91584be641554be  requirements.html
+0db1cf9a1c331b4c59b37c4b93853632a728d661c837fe81a7a645fea9dbe593  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ce, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cg, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

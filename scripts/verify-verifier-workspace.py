@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11884,7 +11884,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12218,7 +12218,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13454,6 +13454,70 @@ def validate_android_builder_authority_contract(sources):
         ("R-S11e-79 remaining release/device obligations", "Android R-S11e-79 open-obligation enforcement"),
     ):
         require_text(focused, text, label)
+
+
+def validate_android_keystore_authority_contract(sources):
+    focused = sources["android_keystore_authority_verifier"]
+    for text, label in (
+        ("forbid(generate, token, label)", "Android keystore forbidden-authority enforcement"),
+        ("require_order(source: str, tokens: Tuple[str, ...]", "Android keystore order helper"),
+        ("password/key generation, verification, and publication authority",
+         "Android keystore publication-order enforcement"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Android keystore mutation inventory"),
+        ("run_mutations(sources)", "Android keystore mutation dispatch"),
+        ('source=$PASS_INPUT,target=/authority/pass,readonly',
+         "Android keystore read-only password contract"),
+        ('ln -- "$STAGED_KEYSTORE" "$OUT_JKS"',
+         "Android keystore atomic publication contract"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ('readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"',
+         "Android keystore immutable image selection"),
+        ('require_pinned_builder_image android-builder "$IMAGE_ID"',
+         "Android keystore image provenance"),
+        ('"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+         "Android keystore common confinement wrapper"),
+        ('--user "$BUILD_UID:$BUILD_GID"', "Android keystore numeric nonroot identity"),
+        ('--cap-drop=ALL --security-opt=no-new-privileges',
+         "Android keystore privilege confinement"),
+        ('mktemp -d "$SIGNING_DIR/.rustdesk-keystore.XXXXXXXXXX"',
+         "Android keystore same-filesystem private stage"),
+        ('ln -- "$PASS_INPUT" "$PASS_FILE"', "Android password no-clobber publication"),
+        ('ln -- "$STAGED_KEYSTORE" "$OUT_JKS"', "Android key no-clobber publication"),
+        ('sync -f -- "$OUT_JKS" "$PASS_FILE"', "Android signing-identity durability"),
+    ):
+        require_text(sources["android_keystore_generator"], text, label)
+    for text, label in (
+        ("dd if=/dev/urandom", "Android keystore kernel CSPRNG"),
+        ("-alias rustdesk-fork", "Android keystore fixed alias"),
+        ("-keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10000",
+         "Android keystore fixed key properties"),
+        ("-storepass:file /authority/pass -keypass:file /authority/pass",
+         "Android keystore file-only password inputs"),
+        ("ANDROID_KEYSTORE_CERT_SHA256=", "Android keystore certificate result"),
+    ):
+        require_text(sources["android_keystore_inner"], text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-android-keystore-authority.py --repo . --self-test",
+        "Android keystore focused authority verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cg</span>',
+        "Android keystore authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>226</td>",
+        "Android keystore authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cg/R-S11e-99 — Android signing-identity generation authority",
+        "Android keystore authority hardening ledger",
+    )
 
 
 def validate_android_media_projection_finality_contract(sources):
@@ -16796,6 +16860,7 @@ def validate_sources(sources):
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_builder_authority_contract(sources)
+    validate_android_keystore_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -28971,7 +29036,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
+        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -30544,6 +30609,48 @@ def run_source_mutations(sources):
             "Debian builder authority hardening ledger",
         ),
         (
+            "android_keystore_authority_verifier",
+            "forbid(generate, token, label)",
+            "return # forbidden Android keystore authority accepted",
+            "Android keystore forbidden-authority enforcement",
+        ),
+        (
+            "android_keystore_generator",
+            '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+            '"$DOCKER_BIN" run --rm',
+            "Android keystore common confinement wrapper",
+        ),
+        (
+            "android_keystore_inner",
+            "-storepass:file /authority/pass -keypass:file /authority/pass",
+            "-storepass password -keypass password",
+            "Android keystore file-only password inputs",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-android-keystore-authority.py --repo . --self-test",
+            "true # Android keystore authority verifier removed",
+            "Android keystore focused authority verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cg</span>',
+            '<span class="id">R-S11cg-disabled</span>',
+            "Android keystore authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>226</td>",
+            "<tr><td>226-disabled</td>",
+            "Android keystore authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cg/R-S11e-99 — Android signing-identity generation authority",
+            "R-S11cg/R-S11e-99 — Android ambient identity generation authority",
+            "Android keystore authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -31750,6 +31857,15 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_builder_authority_verifier": (
                 repo / "scripts/verify-android-builder-authority.py"
+            ).read_text(encoding="utf-8"),
+            "android_keystore_generator": (
+                repo / "scripts/gen-android-keystore.sh"
+            ).read_text(encoding="utf-8"),
+            "android_keystore_inner": (
+                repo / "scripts/android-keystore-generate.sh"
+            ).read_text(encoding="utf-8"),
+            "android_keystore_authority_verifier": (
+                repo / "scripts/verify-android-keystore-authority.py"
             ).read_text(encoding="utf-8"),
             "debian_builder_authority_verifier": (
                 repo / "scripts/verify-debian-builder-authority.py"

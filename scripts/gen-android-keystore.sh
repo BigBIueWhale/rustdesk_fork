@@ -1,75 +1,296 @@
 #!/usr/bin/env bash
-# scripts/gen-android-keystore.sh — generate THE stable R-B2 Android signing key, once (R-B2, §12.1).
+# scripts/gen-android-keystore.sh — generate THE stable R-B2 Android signing key, once (§12.1).
 #
-# Android WELDS app identity to the signing key: the key you first release with is PERMANENT (rotating
-# it forces every user into a data-wiping reinstall). So the key is generated ONCE, kept as a secret
-# OUTSIDE the repo/build image, and reused for every release. build-android.sh asserts these exact
-# properties before signing (RSA 4096-bit, SHA256withRSA, validity >= 10000 days, fixed alias), so a
-# wrong key fails loud rather than silently signing the release.
+# Android welds app identity to the first signing key. This tool therefore refuses root execution,
+# mutable image names, alias overrides, existing output, public destination directories, and broad
+# host mounts. Random-password generation, key generation, and independent key inspection all run
+# in the already-present immutable Android builder with no network or ambient container authority.
 #
-# Usage:   scripts/gen-android-keystore.sh <out.jks> <pass-file> [alias]
-#   <out.jks>    where to write the keystore (MUST NOT already exist — never silently overwrite)
-#   <pass-file>  the store/key password, read from this file (never argv/env). Auto-created with a
-#                strong random password if absent (chmod 600) — BACK IT UP; losing it loses the key.
-#   [alias]      key alias (default: rustdesk-fork — must match ANDROID_KEY_ALIAS at sign time)
+# Usage: scripts/gen-android-keystore.sh [OUT_JKS PASS_FILE]
+# With no arguments, the protected default paths from scripts/lib.sh are used. OUT_JKS and
+# PASS_FILE must be distinct canonical absolute paths in the same current-UID mode-0700 directory;
+# that directory and its parent are created mode 0700 when absent. The alias is always
+# "rustdesk-fork". The keystore is never overwritten.
 set -euo pipefail
+umask 077
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
+load_pins
+export PATH=/usr/bin:/bin
 
-# Default to the standard location build-android.sh / build-release.sh read (lib.sh); pass explicit
-# paths only to keep the key elsewhere. So the one-time setup is simply: scripts/gen-android-keystore.sh
-OUT_JKS="${1:-$DEFAULT_ANDROID_KEYSTORE}"
-PASS_FILE="${2:-$DEFAULT_ANDROID_KEYSTORE_PASS_FILE}"
-ALIAS="${3:-rustdesk-fork}"
-mkdir -p "$(dirname "$OUT_JKS")" "$(dirname "$PASS_FILE")"
-IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-android-builder"   # ships the JDK/keytool
+readonly DOCKER_BIN=/usr/bin/docker
+readonly INNER_SOURCE="$SCRIPT_DIR/android-keystore-generate.sh"
+readonly BUILD_UID="$(id -u)"
+readonly BUILD_GID="$(id -g)"
+readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"
+readonly KEY_ALIAS=rustdesk-fork
 
-require_cmd docker
-# Never silently overwrite: Android identity is welded to the key, so clobbering it would break every
-# installed user's upgrade path. Refuse loudly.
-[ ! -e "$OUT_JKS" ] || die "refusing to overwrite existing keystore: $OUT_JKS — Android welds app identity to the signing key; regenerating breaks in-place upgrades. Move the old key aside first if you REALLY intend to mint a new identity."
-docker image inspect "$IMAGE" >/dev/null 2>&1 || die "build image '$IMAGE' not found — run scripts/online-fetch.sh first (it builds the android image with the JDK/keytool)"
+case "$#" in
+    0)
+        OUT_JKS="$DEFAULT_ANDROID_KEYSTORE"
+        PASS_FILE="$DEFAULT_ANDROID_KEYSTORE_PASS_FILE"
+        ;;
+    2)
+        OUT_JKS="$1"
+        PASS_FILE="$2"
+        ;;
+    *)
+        die "usage: gen-android-keystore.sh [OUT_JKS PASS_FILE] (the alias is fixed to rustdesk-fork)"
+        ;;
+esac
 
-# Password: read from the file (never argv/env). Auto-create a strong one if the operator did not.
-if [ ! -f "$PASS_FILE" ]; then
-    require_cmd openssl
-    ( umask 077; openssl rand -base64 33 > "$PASS_FILE" )
-    warn "created a random keystore password at $PASS_FILE (chmod 600) — BACK IT UP; losing it loses the key forever"
+[ "$BUILD_UID" -ne 0 ] || die "Android signing identity generation refuses host or container-root execution"
+[ "$BUILD_GID" -ne 0 ] || die "Android signing identity generation refuses a root primary group"
+[ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
+[ -f "$INNER_SOURCE" ] && [ ! -L "$INNER_SOURCE" ] \
+    || die "Android keystore inner program must be a non-symlink regular file"
+case "${ANDROID_KEY_ALIAS:-$KEY_ALIAS}" in
+    "$KEY_ALIAS") ;;
+    *) die "ANDROID_KEY_ALIAS is fixed to $KEY_ALIAS" ;;
+esac
+case "${DOCKER_HOST:-unix:///var/run/docker.sock}" in
+    unix:///var/run/docker.sock) export DOCKER_HOST=unix:///var/run/docker.sock ;;
+    *) die "Docker must use the local unix:///var/run/docker.sock daemon" ;;
+esac
+for variable in DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS DOCKER_CONFIG; do
+    [ -z "${!variable+x}" ] || die "$variable must not influence Android signing identity generation"
+done
+
+for value in "$OUT_JKS" "$PASS_FILE"; do
+    case "$value" in
+        /*) ;;
+        *) die "Android signing paths must be absolute: $value" ;;
+    esac
+    case "$value" in
+        *$'\n'*|*$'\r'*) die "Android signing paths must not contain line breaks" ;;
+        *,*) die "Android signing paths must not contain a Docker mount delimiter: $value" ;;
+    esac
+    [ "$(readlink -m -- "$value")" = "$value" ] \
+        || die "Android signing paths must be canonical and contain no symlink component: $value"
+done
+[ "$OUT_JKS" != "$PASS_FILE" ] || die "the keystore and password paths must be distinct"
+[ ! -e "$OUT_JKS" ] && [ ! -L "$OUT_JKS" ] \
+    || die "refusing to overwrite existing keystore: $OUT_JKS — regenerating breaks in-place upgrades"
+
+readonly SIGNING_DIR="$(dirname -- "$OUT_JKS")"
+readonly PASS_DIR="$(dirname -- "$PASS_FILE")"
+[ "$SIGNING_DIR" = "$PASS_DIR" ] \
+    || die "the keystore and password must share one protected directory"
+readonly SIGNING_PARENT="$(dirname -- "$SIGNING_DIR")"
+readonly SIGNING_ANCESTOR="$(dirname -- "$SIGNING_PARENT")"
+[ -d "$SIGNING_ANCESTOR" ] && [ ! -L "$SIGNING_ANCESTOR" ] \
+    || die "the signing directory's existing ancestor must be a real directory: $SIGNING_ANCESTOR"
+[ "$(readlink -f -- "$SIGNING_ANCESTOR")" = "$SIGNING_ANCESTOR" ] \
+    || die "the signing directory's existing ancestor must be canonical: $SIGNING_ANCESTOR"
+
+assert_private_directory() {
+    local path="$1" label="$2" metadata resolved
+    [ -d "$path" ] && [ ! -L "$path" ] || die "$label must be a real directory: $path"
+    resolved="$(readlink -f -- "$path" 2>/dev/null)" || die "$label cannot be resolved: $path"
+    [ "$resolved" = "$path" ] || die "$label must be canonical and non-symlinked: $path"
+    metadata="$(stat -c '%u:%a' -- "$path" 2>/dev/null)" || die "$label is unavailable: $path"
+    [ "$metadata" = "$BUILD_UID:700" ] \
+        || die "$label must be a current-UID mode-0700 directory: $path"
+}
+
+assert_private_docker_config() {
+    local config="$STAGE_ROOT/docker-config/config.json" metadata
+    assert_private_directory "$STAGE_ROOT/docker-config" "Android keystore Docker configuration"
+    [ -f "$config" ] && [ ! -L "$config" ] \
+        || die "Android keystore Docker config.json must be a non-symlink regular file"
+    metadata="$(stat -c '%u:%a:%h' -- "$config" 2>/dev/null)" \
+        || die "Android keystore Docker config.json is unavailable"
+    [ "$metadata" = "$BUILD_UID:600:1" ] \
+        || die "Android keystore Docker config.json must be a current-UID mode-0600 single-link file"
+    cmp -s -- "$config" <(printf '{}\n') \
+        || die "Android keystore Docker config.json must remain the empty canonical configuration"
+}
+
+create_private_directory() {
+    local path="$1" label="$2"
+    if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+        mkdir -m 0700 -- "$path" || die "cannot create $label: $path"
+    fi
+    assert_private_directory "$path" "$label"
+}
+
+assert_secret_file() {
+    local path="$1" label="$2" metadata
+    [ -f "$path" ] && [ ! -L "$path" ] || die "$label must be a non-symlink regular file: $path"
+    [ "$(readlink -f -- "$path")" = "$path" ] \
+        || die "$label must be canonical and non-symlinked: $path"
+    metadata="$(stat -c '%u:%a:%h:%s' -- "$path" 2>/dev/null)" \
+        || die "$label is unavailable: $path"
+    case "$metadata" in
+        "$BUILD_UID:600:1:"[1-9]*) ;;
+        *) die "$label must be a non-empty current-UID mode-0600 single-link file: $path" ;;
+    esac
+}
+
+create_private_directory "$SIGNING_PARENT" "Android signing parent"
+create_private_directory "$SIGNING_DIR" "Android signing directory"
+if [ -e "$PASS_FILE" ] || [ -L "$PASS_FILE" ]; then
+    assert_secret_file "$PASS_FILE" "Android signing password"
 fi
-[ -s "$PASS_FILE" ] || die "password file is empty: $PASS_FILE"
 
-OUT_DIR_ABS="$(cd "$(dirname "$OUT_JKS")" && pwd)"
-JKS_NAME="$(basename "$OUT_JKS")"
-log "generating the R-B2 Android key: $OUT_JKS (RSA 4096, SHA256withRSA, 10000-day validity, alias '$ALIAS')"
+STAGE_ROOT="$(mktemp -d "$SIGNING_DIR/.rustdesk-keystore.XXXXXXXXXX")" \
+    || die "cannot create a private Android keystore staging directory"
+readonly STAGE_ROOT
+chmod 0700 "$STAGE_ROOT"
 
-# keytool runs in the ephemeral, --network=none image; the password is read from the mounted file
-# inside the container (not passed on THIS script's argv). -dname is non-interactive so keytool never
-# prompts. (The store/key password does reach keytool's argv INSIDE the throwaway container — that
-# process list dies with the container and never touches the network; the repeated, sensitive
-# build/SIGN path uses the file-mount and never argv.)
-docker run --rm --network=none \
-    -v "$OUT_DIR_ABS:/out" -v "$PASS_FILE:/pass:ro" "$IMAGE" \
-    bash -euo pipefail -c '
-        pw="$(cat /pass)"
-        keytool -genkeypair -keystore "/out/'"$JKS_NAME"'" -alias "'"$ALIAS"'" \
-            -keyalg RSA -keysize 4096 -sigalg SHA256withRSA -validity 10000 \
-            -storepass "$pw" -keypass "$pw" \
-            -dname "CN=RustDesk Fork (local validation key), OU=fork, O=rustdesk-fork, L=local, ST=local, C=US"
-        # Trust nothing — verify the key we just wrote actually has the R-B2 properties.
-        info="$(keytool -list -v -keystore "/out/'"$JKS_NAME"'" -alias "'"$ALIAS"'" -storepass "$pw")"
-        printf "%s" "$info" | grep -qE "Signature algorithm name:[[:space:]]*SHA256withRSA" || { echo "[FATAL] generated key is not SHA256withRSA" >&2; exit 1; }
-        printf "%s" "$info" | grep -qiE "4096-bit RSA key" || { echo "[FATAL] generated key is not 4096-bit RSA" >&2; exit 1; }
-        printf "%s\n" "$info" | grep -E "SHA256:" | head -1
-    '
+cleanup_stage() {
+    local status=$?
+    trap - EXIT HUP INT TERM
+    if [ -d "$STAGE_ROOT" ]; then
+        if ! chmod -R u+rwX "$STAGE_ROOT" 2>/dev/null \
+            || ! rm -rf -- "$STAGE_ROOT"; then
+            status=1
+        fi
+    fi
+    exit "$status"
+}
+trap cleanup_stage EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-log "OK — keystore written + verified: $OUT_JKS (alias '$ALIAS')"
-if [ "$OUT_JKS" = "$DEFAULT_ANDROID_KEYSTORE" ] && [ "$PASS_FILE" = "$DEFAULT_ANDROID_KEYSTORE_PASS_FILE" ]; then
-    log "It is at the DEFAULT location — just build, NO env vars needed:"
-    log "  scripts/build-release.sh          # all platforms  (or scripts/build-android.sh for the apk only)"
+install -d -m 0700 \
+    "$STAGE_ROOT/authority" \
+    "$STAGE_ROOT/docker-config" \
+    "$STAGE_ROOT/output" \
+    "$STAGE_ROOT/secret"
+install -m 0400 -- "$INNER_SOURCE" "$STAGE_ROOT/authority/android-keystore-generate.sh"
+cmp -s -- "$INNER_SOURCE" "$STAGE_ROOT/authority/android-keystore-generate.sh" \
+    || die "private Android keystore inner-program snapshot differs from its source"
+printf '{}\n' > "$STAGE_ROOT/docker-config/config.json"
+chmod 0600 "$STAGE_ROOT/docker-config/config.json"
+export DOCKER_CONFIG="$STAGE_ROOT/docker-config"
+assert_private_docker_config
+
+require_pinned_builder_image android-builder "$IMAGE_ID"
+assert_private_docker_config
+
+android_keystore_docker_run() {
+    local status=0
+    assert_private_docker_config
+    "$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+        --user "$BUILD_UID:$BUILD_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        "$@" || status=$?
+    assert_private_docker_config
+    return "$status"
+}
+
+generated_password=0
+if [ ! -e "$PASS_FILE" ] && [ ! -L "$PASS_FILE" ]; then
+    if ! android_keystore_docker_run \
+        --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m \
+        --mount "type=bind,source=$STAGE_ROOT/output,target=/out" \
+        --mount "type=bind,source=$STAGE_ROOT/authority/android-keystore-generate.sh,target=/authority/android-keystore-generate.sh,readonly" \
+        "$IMAGE_ID" /bin/bash --noprofile --norc \
+        /authority/android-keystore-generate.sh password; then
+        die "confined Android keystore password generation failed"
+    fi
+    [ ! -e "$STAGE_ROOT/secret/pass" ] && [ ! -L "$STAGE_ROOT/secret/pass" ] \
+        || die "private password destination was not freshly absent"
+    mv -- "$STAGE_ROOT/output/pass" "$STAGE_ROOT/secret/pass" \
+        || die "cannot isolate the generated password from writable key output"
+    PASS_INPUT="$STAGE_ROOT/secret/pass"
+    generated_password=1
 else
-    log "It is at a NON-default location — point the build at it:"
-    log "  export ANDROID_KEYSTORE='$OUT_JKS' ANDROID_KEYSTORE_PASS_FILE='$PASS_FILE'${3:+ ANDROID_KEY_ALIAS='$ALIAS'}"
-    log "  scripts/build-release.sh"
+    assert_secret_file "$PASS_FILE" "Android signing password"
+    PASS_INPUT="$PASS_FILE"
 fi
-log "KEEP $OUT_JKS AND $PASS_FILE SAFE + BACKED UP — they are the permanent app identity (R-B2)."
+readonly PASS_INPUT
+assert_secret_file "$PASS_INPUT" "Android signing password input"
+readonly PASS_STATE_BEFORE="$(stat -c '%d:%i:%u:%a:%h:%s:%Y:%Z' -- "$PASS_INPUT")"
+readonly PASS_SHA_BEFORE="$(sha256sum -- "$PASS_INPUT" | awk '{print $1}')"
+
+log "generating the R-B2 Android key in a private stage (RSA 4096, SHA256withRSA, 10000 days, alias '$KEY_ALIAS')"
+if ! android_keystore_docker_run \
+    --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m \
+    --env HOME=/tmp/home \
+    --mount "type=bind,source=$STAGE_ROOT/output,target=/out" \
+    --mount "type=bind,source=$PASS_INPUT,target=/authority/pass,readonly" \
+    --mount "type=bind,source=$STAGE_ROOT/authority/android-keystore-generate.sh,target=/authority/android-keystore-generate.sh,readonly" \
+    "$IMAGE_ID" /bin/bash --noprofile --norc \
+    /authority/android-keystore-generate.sh keystore; then
+    die "confined Android keystore generation failed"
+fi
+
+readonly STAGED_KEYSTORE="$STAGE_ROOT/output/keystore.jks"
+assert_secret_file "$STAGED_KEYSTORE" "generated Android keystore"
+readonly KEYSTORE_STATE_BEFORE="$(stat -c '%d:%i:%u:%a:%h:%s:%Y:%Z' -- "$STAGED_KEYSTORE")"
+readonly KEYSTORE_SHA_BEFORE="$(sha256sum -- "$STAGED_KEYSTORE" | awk '{print $1}')"
+verification="$(
+    android_keystore_docker_run \
+        --pids-limit=32 --memory=512m --memory-swap=512m --cpus=1 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=128m \
+        --env HOME=/tmp/home \
+        --mount "type=bind,source=$STAGED_KEYSTORE,target=/authority/keystore.jks,readonly" \
+        --mount "type=bind,source=$PASS_INPUT,target=/authority/pass,readonly" \
+        --mount "type=bind,source=$STAGE_ROOT/authority/android-keystore-generate.sh,target=/authority/android-keystore-generate.sh,readonly" \
+        "$IMAGE_ID" /bin/bash --noprofile --norc \
+        /authority/android-keystore-generate.sh verify
+)" || die "independent confined Android keystore verification failed"
+[[ "$verification" =~ ^ANDROID_KEYSTORE_CERT_SHA256=[0-9A-F]{64}$ ]] \
+    || die "Android keystore verifier returned a noncanonical certificate fingerprint"
+
+assert_secret_file "$PASS_INPUT" "Android signing password input after generation"
+[ "$(stat -c '%d:%i:%u:%a:%h:%s:%Y:%Z' -- "$PASS_INPUT")" = "$PASS_STATE_BEFORE" ] \
+    || die "Android signing password identity or metadata changed during key generation"
+[ "$(sha256sum -- "$PASS_INPUT" | awk '{print $1}')" = "$PASS_SHA_BEFORE" ] \
+    || die "Android signing password bytes changed during key generation"
+assert_secret_file "$STAGED_KEYSTORE" "generated Android keystore after verification"
+[ "$(stat -c '%d:%i:%u:%a:%h:%s:%Y:%Z' -- "$STAGED_KEYSTORE")" = "$KEYSTORE_STATE_BEFORE" ] \
+    || die "generated Android keystore identity or metadata changed during verification"
+[ "$(sha256sum -- "$STAGED_KEYSTORE" | awk '{print $1}')" = "$KEYSTORE_SHA_BEFORE" ] \
+    || die "generated Android keystore bytes changed during verification"
+
+# Publish the password first, when this run generated it: a keystore must never become visible
+# without its matching password. Hard links are same-filesystem, atomic, and no-clobber. The private
+# staging links are removed only after filesystem synchronization, leaving each final secret at one link.
+if [ "$generated_password" -eq 1 ]; then
+    [ ! -e "$PASS_FILE" ] && [ ! -L "$PASS_FILE" ] \
+        || die "password destination appeared during generation: $PASS_FILE"
+    ln -- "$PASS_INPUT" "$PASS_FILE" \
+        || die "cannot publish the generated password without clobbering: $PASS_FILE"
+    sync -f -- "$PASS_FILE" || die "cannot synchronize the published Android password"
+fi
+[ ! -e "$OUT_JKS" ] && [ ! -L "$OUT_JKS" ] \
+    || die "keystore destination appeared during generation: $OUT_JKS"
+if ! ln -- "$STAGED_KEYSTORE" "$OUT_JKS"; then
+    if [ "$generated_password" -eq 1 ]; then
+        warn "the matching generated password was published at $PASS_FILE, but the keystore was not; retain that password and retry"
+    fi
+    die "cannot publish the generated keystore without clobbering: $OUT_JKS"
+fi
+sync -f -- "$OUT_JKS" "$PASS_FILE" \
+    || die "cannot synchronize the published Android signing identity"
+rm -f -- "$STAGED_KEYSTORE"
+if [ "$generated_password" -eq 1 ]; then
+    rm -f -- "$PASS_INPUT"
+fi
+
+assert_secret_file "$PASS_FILE" "published Android signing password"
+assert_secret_file "$OUT_JKS" "published Android keystore"
+[ "$(sha256sum -- "$PASS_FILE" | awk '{print $1}')" = "$PASS_SHA_BEFORE" ] \
+    || die "published Android signing password differs from the verified private input"
+[ "$(sha256sum -- "$OUT_JKS" | awk '{print $1}')" = "$KEYSTORE_SHA_BEFORE" ] \
+    || die "published Android keystore differs from the verified private artifact"
+
+log "OK — Android keystore generated, independently verified, synchronized, and published without clobber: $OUT_JKS"
+log "$verification"
+if [ "$generated_password" -eq 1 ]; then
+    warn "created the matching random password at $PASS_FILE — back it up; losing it loses the Android identity"
+fi
+if [ "$OUT_JKS" = "$DEFAULT_ANDROID_KEYSTORE" ] && [ "$PASS_FILE" = "$DEFAULT_ANDROID_KEYSTORE_PASS_FILE" ]; then
+    log "The identity is at the default protected location used by build-android.sh."
+else
+    log "For release builds, set ANDROID_KEYSTORE='$OUT_JKS' and ANDROID_KEYSTORE_PASS_FILE='$PASS_FILE'."
+fi
+log "KEEP BOTH FILES SAFE AND BACKED UP — this is the permanent Android app identity (R-B2)."

@@ -259,7 +259,8 @@ hardening-runtime executable-memory exception from Profile/Release while preserv
 JIT case.
 
 **R-S14/R-T4 Android MediaProjection owner and capture-demand finality — SOURCE CLOSED / GATED;
-EXACT APK/DEVICE VALIDATION PENDING (2026-07-21).** Platform: Android controlled-side foreground
+EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; PHYSICAL-DEVICE AND FULL RELEASE VALIDATION PENDING.**
+Platform: Android controlled-side foreground
 service. Endpoint/action: authorized connection admission/removal, projection consent/replacement/
 revocation, `MainService.onDestroy()`, explicit app Stop (`destroy()`), and the `MediaProjection`/
 `VirtualDisplay`/`ImageReader`/`Surface` objects created for screen capture. Boundary: one exact
@@ -353,7 +354,7 @@ delayed old Service cannot clear a replacement. Kotlin behavior regressions cove
 exclusion, concurrent Remote aggregation, remove→add and add→remove convergence, same-ID type replacement, and full
 clear. Focused/shared/independent mutation gates bind the serialized owner update, reconciliation, stale-stop
 absence, teardown admission latch, exact JNI object release, R-S14, Appendix C #205, and this ledger. Exact
-APK/device reproduction and the full R-B2/R-B10 release remain open.
+APK validation is recorded below; physical-device reproduction and the full R-B2/R-B10 release remain open.
 
 The same service/listener generation now continues through every accepted Android `Connection`, its independent
 connection-manager callback thread, and controlled input JNI call. Native dispatch holds the exact callback-context
@@ -379,6 +380,34 @@ verifier passed normally and across its complete source-mutation matrix. Pinned 
 native-codec normal/self-test gates, synchronized requirements hashes, unchanged `Cargo.lock`, and
 `git diff --check` passed. This is source/build evidence, not a claim that the original swipe/relaunch/Force-Stop
 sequence has been reproduced on a physical Android device; that device validation remains open.
+
+Exact target-local signed-artifact validation (2026-07-23): the first official A/B attempt at clean pushed commit
+`5c64523493ea7c9c46f48753b8cfbc6e637d9bbd` stopped before source snapshotting or compilation. The reviewed
+2026-07-22 Rust advisory refresh had changed six locked registry packages and correctly pinned the resulting
+Cargo-vendor subtree as `3caca8746b4ada39db1d9ecd63db1cf2d3786e050a5bced400e4d2cf6bb45bea`, but had omitted the
+encompassing full-`online/` closure update. The old full pin was `a7581f0ffa4fa924d4eacfe6c2bef9dec37a2ce2d06740c04037489341d904ac`;
+the current tree computed as `5ad074e7bfba62f87d3dc58614c0b33749b513d353bcaf6eaa315a6d8bf67d07`.
+The exact aggregate delta—ten additional files, two fewer directories, and 71,618 additional content bytes—was
+identical to the reviewed vendor-subtree delta; the vendor source-map hash remained pinned and unchanged, and no
+non-vendor entry had a post-refresh modification time. The build gate therefore failed closed on an incomplete
+maintenance transaction; it did not fetch, regenerate, trust, or compile the stale tree.
+
+Commit `29915f0075f4d1464361f218e61dd7d7e7072b85` completed and pushed the enclosing closure pin after the
+canonical record was written and both the full tree and vendor subtree were independently reverified. The exact
+clean pushed commit then completed the default target-local A/B transaction in immutable Android builder image
+`sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`, numeric UID/GID 1000,
+with no network, a read-only root, all capabilities dropped, no-new-privileges, bounded resources, private
+exact-commit sources, and the fresh private 25.7-GB closure snapshot. Passes A/B completed native release builds in
+2m27s/2m23s and independently produced identical Gradle projection
+`b95fd5dae80230287c850081fdf0804503888bb67f337649f24b1075770f02b2`. Both 44,966,946-byte APKs
+were one-signer v2/v3 valid and passed the manifest, mobile at-rest bootstrap, certificate, checksum, source
+pre/postcondition, and independent remount validators. They were byte-identical at SHA-256
+`20af1c99178feb02e3a584a4148dbc5ce8129261361f7f37d0c09461d3e6f02e`; the retained 113,790-byte
+transaction log has SHA-256 `bc8f14c77662d06b9c08cb27c62cfd251447e335463f2add7214bf031c3d8d50`.
+The published APK/checksum are current-UID/GID, mode 0400, one link, and the private workspace was removed.
+This validates packaging of the service-owned capture/generation correction at that exact commit. It does not
+reproduce the swipe/relaunch/Force-Stop sequence on a physical device and is not the full independent-snapshot
+R-B2/R-B10 release transaction; both remain open.
 
 **R-D7a/R-T4 Android outgoing-client Activity/isolate ownership — SOURCE IMPLEMENTED / GATED;
 ANDROID ARM64 RELEASE TARGET BUILD VALIDATED; ON-DEVICE VALIDATION PENDING
@@ -7186,7 +7215,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   signed application, installed LaunchDaemon/LaunchAgent, or artifact was exercised; native Apple and exact R-B2
   lifecycle evidence remain open.
 - **R-S11bj/R-S11e-76 — Android APK builder container and source authority — SOURCE CLOSED/GATED
-  2026-07-21; EXACT CURRENT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android artifact
+  2026-07-21; EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.**
+  Platform: Android artifact
   construction, signing, and verification. Endpoint/action: the four local Docker launches used for keystore
   inspection, offline compilation, signing, and signed-APK verification. Boundary: checked-in exact-commit source,
   signing secrets, verified offline inputs, and private intermediate artifacts ↔ an already-present pinned builder
@@ -7221,11 +7251,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   `scripts/verify-android-builder-authority.py` binds the shell topology, forbidden mounts/flags, comparator semantics,
   requirement/disposition/ledger, and shared-gate wiring and rejects deliberate weakening mutations. The independent
-  workspace verifier also binds that focused verifier and its policy anchors. This slice does not run the Android
-  builder, build/sign an APK, exercise Android, or promote the older 2026-07-18 APK evidence to current commit. Exact
-  current APK, full R-B2/R-B10 release, and real-device behavior remain open.
+  workspace verifier also binds that focused verifier and its policy anchors. This source slice did not itself run
+  the Android builder or exercise Android. The later exact target-local A/B transaction at
+  `29915f0075f4d1464361f218e61dd7d7e7072b85`, recorded under R-S14/R-T4 and R-S11bm/R-S11e-79, validates the
+  current builder path and signed APK; full R-B2/R-B10 release and real-device behavior remain open.
 - **R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority — SOURCE CLOSED/GATED
-  2026-07-21; EXACT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android artifact source staging.
+  2026-07-21; EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.**
+  Platform: Android artifact source staging.
   Endpoint/action: exact clean commit archive extraction into the immutable authority and per-pass writable build
   copy. Boundary: Git's committed regular/executable distinction ↔ filesystem permissions consumed by the offline
   build and its independently strict Gradle-init authority. The first exact-current target-local attempt at clean
@@ -7245,11 +7277,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   roots, directories, regular files, and executable transitions. The strict Gradle-init ownership/mode policy is
   unchanged. `scripts/verify-android-builder-authority.py`, the shared R-S11e-76/R-S11e-77 gate, and the independent
   workspace meta-gate bind both normalization operations, every comparison level, the negative tests, R-S11bk,
-  Appendix C #200, and this ledger row with deliberate mutations. This source correction does not promote the
-  failed attempt into artifact evidence; a clean committed rerun, full R-B2/R-B10 release, and device behavior
-  remain open.
+  Appendix C #200, and this ledger row with deliberate mutations. The later exact target-local A/B transaction at
+  `29915f0075f4d1464361f218e61dd7d7e7072b85` crossed this mode authority and produced byte-identical validated
+  signed APKs; full R-B2/R-B10 release and device behavior remain open.
 - **R-S11bl/R-S11e-78 — Android bounded scratch lifecycle — SOURCE CLOSED/GATED 2026-07-21;
-  EXACT APK, RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
+  EXACT TARGET-LOCAL APK VALIDATED 2026-07-23; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android
+  offline artifact compilation.
   Endpoint/action: the pinned toolchain extraction, native JNI compilation, and private Gradle-cache projection
   inside the existing non-root networkless Android compile container. Boundary: verified immutable offline inputs
   and disposable build state ↔ the explicit 10-GiB <code>/tmp</code> tmpfs and 12-GiB memory/no-swap ceiling.
@@ -7275,8 +7308,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   <code>scripts/verify-android-builder-authority.py</code> binds the exact phase inputs, ordering, retirement
   postconditions, retained Cargo consumer, unchanged outer limits, R-S11bl, Appendix C #201, and this row, with
   deliberate mutations for each closure edge. The independent workspace verifier and shared source gate retain
-  their existing enforcement roles. These measurements and source gates are not APK evidence: an exact clean
-  committed target rerun, the complete R-B2/R-B10 transaction, and device behavior remain open.
+  their existing enforcement roles. The later exact target-local A/B transaction at
+  `29915f0075f4d1464361f218e61dd7d7e7072b85` crossed the unchanged scratch bounds twice and produced
+  byte-identical validated signed APKs; the complete R-B2/R-B10 transaction and device behavior remain open.
 - **R-S11bm/R-S11e-79 — Android tool preferences scratch ownership — SOURCE CORRECTION AND EXACT
   CORRECTED-COMMIT A/B CLOSED/GATED 2026-07-21; FULL RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: Android offline artifact compilation.
   Endpoint/action: Android SDK/AGP user-preference state created during final Flutter/Gradle packaging. Boundary:
@@ -7337,6 +7371,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and debug-keystore diagnostics, and the wrapper reported `ANDROID_PREFERENCES_RESULT=clean`. This is exact
   named-commit target-local A/B evidence. It is not the independent-snapshot full R-B2/R-B10 release transaction
   and does not prove Android device behavior; those obligations remain open.
+
+  Exact current source/artifact follow-up: clean pushed commit
+  `29915f0075f4d1464361f218e61dd7d7e7072b85`, which includes the complete persistent-service capture-owner and
+  listener-generation correction, completed the same official default A/B transaction against refreshed canonical
+  online closure `5ad074e7bfba62f87d3dc58614c0b33749b513d353bcaf6eaa315a6d8bf67d07`. Both passes independently
+  produced Gradle projection `b95fd5dae80230287c850081fdf0804503888bb67f337649f24b1075770f02b2` and
+  byte-identical, one-signer v2/v3-valid, fully artifact-validated APKs at SHA-256
+  `20af1c99178feb02e3a584a4148dbc5ce8129261361f7f37d0c09461d3e6f02e`. This supersedes the older
+  target-local artifact as the current named-commit APK evidence. It still is not physical-device validation or
+  the complete independent-snapshot R-B2/R-B10 release transaction.
 - **R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities — SOURCE
   IMPLEMENTED/GATED 2026-07-22; NATIVE MACOS AND EXACT PACKAGED-ARTIFACT EVIDENCE REMAIN
   R-R2/R-B2.** Platforms: Linux and macOS installed desktop entry processes; Windows retains its
@@ -7519,8 +7563,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   current repo-pinned full-verifier image is not locally present, and the binding loop excludes the long release
   build, so no repository-wide `scripts/verify.sh` or release transaction result is claimed.
 - **R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners — SOURCE,
-  FOCUSED KOTLIN, SOURCE GATE, AND MUTATION VERIFIED 2026-07-22; EXACT CURRENT APK, NATIVE DEVICE,
-  AND RELEASE-ARTIFACT EVIDENCE REMAIN R-B10/R-B2.** Platform: Android API 30+ native playback/microphone
+  FOCUSED KOTLIN, SOURCE GATE, AND MUTATION VERIFIED 2026-07-22; EXACT TARGET-LOCAL APK VALIDATED
+  2026-07-23; NATIVE DEVICE AND FULL RELEASE EVIDENCE REMAIN R-B10/R-B2.** Platform: Android API 30+
+  native playback/microphone
   capture inside the one application process retained by `MainService`. Endpoint/action: controlled-side
   `add_connection`/`update_voice_call_state`/`remove_connection` JNI callbacks, outgoing Flutter
   `on_voice_call_started`/`on_voice_call_closed`, Activity creation/resume/destruction, service task removal and
@@ -7621,8 +7666,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   passed. These checks used no published port, Docker socket, host PID/network namespace, host service/config mount,
   host networking, added capability, or root process.
 
-  No Android device, installed APK, original swipe/relaunch sequence, OEM task behavior, signed artifact, or full
-  R-B2/R-B10 release transaction is claimed by this source slice; those remain open.
+  This source slice did not itself exercise Android or assemble an APK. The later exact target-local A/B
+  transaction at `29915f0075f4d1464361f218e61dd7d7e7072b85`, recorded under R-S14/R-T4 and
+  R-S11bm/R-S11e-79, validates that this source is packaged in the byte-identical signed APK. No Android device,
+  installed voice-call transaction, original swipe/relaunch sequence, OEM task behavior, or full R-B2/R-B10
+  release transaction is claimed; those remain open.
 - **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit — SOURCE IMPLEMENTED AND CONFINED
   FOCUSED/WORKSPACE VERIFIED 2026-07-22; EXACT INSTALLED ARTIFACTS PENDING.** Platform: Linux and macOS pathname
   Unix-domain listeners.

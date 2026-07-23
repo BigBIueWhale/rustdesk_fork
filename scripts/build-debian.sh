@@ -12,6 +12,7 @@
 #
 # NOT run as part of "fork creation" — a checked-in build artifact.
 set -euo pipefail
+umask 077
 
 if [ -n "${ONLINE_DIR+x}" ]; then
     printf 'build-debian: ONLINE_DIR is not an operator override; release snapshots use RUSTDESK_RELEASE_ONLINE_SNAPSHOT\n' >&2
@@ -23,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
+readonly DOCKER_BIN=/usr/bin/docker
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # The §3.2 x64-linux feature set minus hwcodec: CPU-only VP8/VP9.
 FEATURES="--flutter --unix-file-copy-paste"
@@ -39,6 +41,9 @@ BUILD_GID="$(id -g)"
 RELEASE_CHILD=0
 ONLINE_SNAPSHOT_PARENT=""
 OWNED_WORKSPACE=""
+SOURCE_COMMIT=""
+BUILD_SOURCE_ROOT=""
+BUILD_SOURCE_ID=""
 
 case "${DOCKER_HOST:-unix:///var/run/docker.sock}" in
     unix:///var/run/docker.sock) export DOCKER_HOST=unix:///var/run/docker.sock ;;
@@ -106,14 +111,116 @@ assert_private_online_snapshot() {
     verify_private_online_snapshot "$parent"
 }
 
+git_closed() {
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_CONFIG_GLOBAL=/dev/null \
+    GIT_CONFIG_SYSTEM=/dev/null \
+    GIT_TERMINAL_PROMPT=0 \
+    GIT_NO_REPLACE_OBJECTS=1 \
+        command git --no-replace-objects -c core.hooksPath=/dev/null "$@"
+}
+
+assert_private_build_source() {
+    local path="$1" label="$2" resolved metadata current common dirt remotes sparse index_flags
+    case "$path" in
+        /*) ;;
+        *) die "$label must be an absolute path" ;;
+    esac
+    [ -d "$path" ] && [ ! -L "$path" ] || die "$label must be a real directory"
+    resolved="$(readlink -f -- "$path" 2>/dev/null)" || die "$label cannot be resolved"
+    [ "$resolved" = "$path" ] || die "$label must be canonical and non-symlinked"
+    metadata="$(stat -c '%u:%a' -- "$path" 2>/dev/null)" || die "$label is absent"
+    [ "$metadata" = "$BUILD_UID:700" ] \
+        || die "$label must be a current-UID mode-0700 directory"
+    current="$(git_closed -C "$path" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+        || die "$label has no exact Git commit"
+    [ "$current" = "$SOURCE_COMMIT" ] || die "$label commit changed"
+    common="$(git_closed -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+        || die "$label Git directory cannot be resolved"
+    [ "$common" = "$path/.git" ] && [ -d "$common" ] && [ ! -L "$common" ] \
+        || die "$label does not own a private Git directory"
+    [ ! -e "$common/info/grafts" ] && [ ! -L "$common/info/grafts" ] \
+        || die "$label contains Git grafts"
+    [ ! -e "$common/objects/info/alternates" ] && [ ! -L "$common/objects/info/alternates" ] \
+        || die "$label contains Git object alternates"
+    [ ! -e "$common/shallow" ] && [ ! -L "$common/shallow" ] \
+        || die "$label is shallow"
+    [ "$(git_closed -C "$path" rev-parse --is-shallow-repository 2>/dev/null)" = false ] \
+        || die "$label cannot prove complete Git history"
+    [ -z "$(git_closed -C "$path" for-each-ref --format='%(refname)' refs/replace 2>/dev/null)" ] \
+        || die "$label contains Git replacement refs"
+    remotes="$(git_closed -C "$path" remote 2>/dev/null)" || die "$label remotes cannot be inspected"
+    [ -z "$remotes" ] || die "$label retains a Git remote"
+    sparse="$(git_closed -C "$path" config --local --no-includes --bool core.sparseCheckout 2>/dev/null || true)"
+    [ "$sparse" != true ] || die "$label uses a sparse checkout"
+    index_flags="$(git_closed -C "$path" ls-files -v 2>/dev/null)" \
+        || die "$label index flags cannot be inspected"
+    if printf '%s\n' "$index_flags" \
+        | awk 'substr($0,1,1) != "H" { found=1 } END { exit found ? 0 : 1 }'; then
+        die "$label contains noncanonical index flags"
+    fi
+    git_closed -C "$path" symbolic-ref --quiet HEAD >/dev/null 2>&1 \
+        && die "$label is not detached"
+    dirt="$(git_closed -C "$path" status --porcelain=v1 --untracked-files=no 2>/dev/null)" \
+        || die "$label tracked state cannot be inspected"
+    [ -z "$dirt" ] || die "$label tracked state differs from the exact commit"
+    git_closed -C "$path" diff --quiet --no-ext-diff HEAD -- \
+        || die "$label worktree differs from the exact commit"
+    git_closed -C "$path" diff --cached --quiet --no-ext-diff HEAD -- \
+        || die "$label index differs from the exact commit"
+}
+
+prepare_direct_build_source() {
+    local label="$1" source
+    source="$OWNED_WORKSPACE/source-$label"
+    [ ! -e "$source" ] && [ ! -L "$source" ] \
+        || die "direct Debian build source path was not freshly absent"
+    git_closed clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source" \
+        || die "cannot create private direct Debian source $label"
+    git_closed -C "$source" checkout --quiet --detach "$SOURCE_COMMIT" \
+        || die "cannot check out private direct Debian source $label"
+    git_closed -C "$source" remote remove origin \
+        || die "cannot detach private direct Debian source $label"
+    chmod 0700 "$source" || die "cannot protect private direct Debian source $label"
+    git_closed -C "$source" fsck --full --strict --no-reflogs >/dev/null \
+        || die "private direct Debian source $label has invalid Git objects"
+    BUILD_SOURCE_ROOT="$source"
+    BUILD_SOURCE_ID="$(stat -c '%d:%i' -- "$BUILD_SOURCE_ROOT")" \
+        || die "cannot record private direct Debian source identity"
+    assert_private_build_source "$BUILD_SOURCE_ROOT" "private direct Debian source $label"
+}
+
+activate_build_source() {
+    local label="$1"
+    if [ "$RELEASE_CHILD" -eq 1 ]; then
+        BUILD_SOURCE_ROOT="$REPO_ROOT"
+        BUILD_SOURCE_ID="$(stat -c '%d:%i' -- "$BUILD_SOURCE_ROOT")" \
+            || die "cannot record release Debian source identity"
+        assert_private_build_source "$BUILD_SOURCE_ROOT" "release Debian source"
+    else
+        prepare_direct_build_source "$label"
+    fi
+}
+
+verify_build_source_postcondition() {
+    local label="$1" observed
+    observed="$(stat -c '%d:%i' -- "$BUILD_SOURCE_ROOT" 2>/dev/null)" \
+        || die "$label source identity cannot be inspected after compilation"
+    [ "$observed" = "$BUILD_SOURCE_ID" ] || die "$label source identity changed during compilation"
+    assert_private_build_source "$BUILD_SOURCE_ROOT" "$label source after compilation"
+}
+
 prepare_execution_contract() {
     local current
+    current="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+        || die "cannot resolve the exact Debian source commit"
+    [[ "$current" =~ ^[0-9a-f]{40}$ ]] \
+        || die "Debian source commit must be one full lowercase commit ID"
+    SOURCE_COMMIT="$current"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             || die "RELEASE_SRC_COMMIT must be one full lowercase commit ID"
-        current="$(git -c core.hooksPath=/dev/null -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
-            || die "cannot resolve release-child source commit"
         [ "$current" = "$RELEASE_SRC_COMMIT" ] || die "release-child source commit does not equal HEAD"
         [ -n "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ] \
             || die "release child requires RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
@@ -175,7 +282,14 @@ preflight() {
         "flutter-${FLUTTER_VERSION}.tar.xz" "${SHA256_FLUTTER_3_24_5}" \
         "llvm-${LLVM_VERSION}.tar.xz"       "${SHA256_LLVM_15_0_6}"
     case "$SHA256_BASEIMAGE_UBUNTU_1804" in *"${SHA_PENDING}"*) die "the ubuntu:18.04 base digest is the R-B12 sentinel — record it in pins.env first" ;; esac
-    log "preflight OK — building $FEATURES in $IMAGE_ID, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+    case "${DOUBLE_BUILD:-1}" in
+        0|1) ;;
+        *) die "DOUBLE_BUILD must be exactly 0 or 1" ;;
+    esac
+    if [ "$RELEASE_CHILD" -eq 1 ] && [ "${DOUBLE_BUILD:-1}" != 0 ]; then
+        die "release child requires outer independent snapshots and DOUBLE_BUILD=0"
+    fi
+    log "preflight OK — building exact commit $SOURCE_COMMIT with $FEATURES in $IMAGE_ID, offline, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
 }
 
 verify_deb_control_scripts() {
@@ -194,7 +308,7 @@ verify_deb_control_scripts() {
             rm -rf "$tmp_package"
             die "built .deb control script $script is not a mode-0755 non-hardlinked regular file"
         }
-        cmp -s "$REPO_ROOT/res/DEBIAN/$script" "$tmp_control/$script" || {
+        cmp -s "$BUILD_SOURCE_ROOT/res/DEBIAN/$script" "$tmp_control/$script" || {
             rm -rf "$tmp_package"
             die "built .deb control script $script differs from res/DEBIAN/$script"
         }
@@ -205,7 +319,7 @@ verify_deb_control_scripts() {
         rm -rf "$tmp_package"
         die "built .deb SysV init script is not a mode-0755 non-hardlinked regular file"
     }
-    cmp -s "$REPO_ROOT/res/rustdesk.init" "$tmp_data/etc/init.d/rustdesk" || {
+    cmp -s "$BUILD_SOURCE_ROOT/res/rustdesk.init" "$tmp_data/etc/init.d/rustdesk" || {
         rm -rf "$tmp_package"
         die "built .deb SysV init script differs from res/rustdesk.init"
     }
@@ -215,7 +329,7 @@ verify_deb_control_scripts() {
         rm -rf "$tmp_package"
         die "built .deb systemd unit is not a mode-0644 non-hardlinked regular file"
     }
-    cmp -s "$REPO_ROOT/res/rustdesk.service" "$tmp_data/usr/lib/systemd/system/rustdesk.service" || {
+    cmp -s "$BUILD_SOURCE_ROOT/res/rustdesk.service" "$tmp_data/usr/lib/systemd/system/rustdesk.service" || {
         rm -rf "$tmp_package"
         die "built .deb systemd unit differs from res/rustdesk.service"
     }
@@ -239,7 +353,7 @@ verify_deb_control_scripts() {
             die "built .deb service-manager template $template is not a mode-0755 non-hardlinked regular file"
         }
         cmp -s \
-            "$REPO_ROOT/res/service-managers/$template" \
+            "$BUILD_SOURCE_ROOT/res/service-managers/$template" \
             "$tmp_data/usr/share/rustdesk/files/$template" || {
             rm -rf "$tmp_package"
             die "built .deb service-manager template $template differs from its source"
@@ -267,24 +381,32 @@ verify_deb_control_scripts() {
 # build_one PROFILE FEATURES: run upstream's build.py in the pinned container,
 # network removed, ./online mounted read-only. Emits target/release + the .deb.
 build_one() {
-    local profile="$1" features="$2" tag="rustdesk-fork-harness-deb-$1"
+    local profile="$1" features="$2"
     log "building profile '$profile' (features: $features)"
     # HONESTY GATE (the af8746f class): build.py renames the freshly built package to
-    # $REPO_ROOT/rustdesk-<version>.deb, and the post-build step copies whatever
+    # $BUILD_SOURCE_ROOT/rustdesk-<version>.deb, and the post-build step copies whatever
     # rustdesk-*.deb it finds there. A PRIOR run leaves one behind (root-owned), so if a
     # build fails WITHOUT producing a new one, that STALE .deb would be picked up and shipped
     # as a false success. Remove any pre-existing rustdesk-*.deb up front (these are
     # git-ignored artifacts) so the gate below can ONLY find a package THIS run produced.
-    rm -f "$REPO_ROOT"/rustdesk-*.deb
+    rm -f "$BUILD_SOURCE_ROOT"/rustdesk-*.deb
     verify_active_online_snapshot
-    if ! docker run --rm \
-        --name "$tag" \
+    if ! "$DOCKER_BIN" run --rm --pull=never \
         --network=none \
+        --read-only \
         --user "$BUILD_UID:$BUILD_GID" \
+        --cap-drop=ALL \
+        --security-opt=no-new-privileges \
+        --pids-limit=1024 \
+        --memory=16g \
+        --memory-swap=16g \
+        --cpus=4 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g \
         -e SOURCE_DATE_EPOCH \
         -e RUSTDESK_CANARY_OFFLINE=1 \
-        -v "$REPO_ROOT:/src" \
-        -v "$ONLINE_DIR:/online:ro" \
+        --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src" \
+        --tmpfs /src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
         -w /src \
         "$IMAGE_ID" \
         bash -euo pipefail -c '
@@ -416,20 +538,22 @@ CFG
             python3 ./build.py '"$features"'
         '; then
         verify_active_online_snapshot
+        verify_build_source_postcondition "failed Debian $profile build"
         die "Debian build container failed for profile $profile"
     fi
     verify_active_online_snapshot
+    verify_build_source_postcondition "completed Debian $profile build"
     mkdir -p "$OUT_DIR"
     # build.py fails loud (system2 → sys.exit(-1)) on any step, so a non-zero docker run already
     # aborts under set -e. This is the second line of defence: with the stale .deb purged above,
     # a missing rustdesk-*.deb now unambiguously means build.py did NOT emit one (e.g. flutter
     # build linux failed) -- fail loud rather than ship nothing/something stale.
     local deb
-    deb="$(ls -1 "$REPO_ROOT"/rustdesk-*.deb 2>/dev/null | head -1 || true)"
+    deb="$(ls -1 "$BUILD_SOURCE_ROOT"/rustdesk-*.deb 2>/dev/null | head -1 || true)"
     [ -n "$deb" ] && [ -f "$deb" ] || die "no rustdesk-*.deb produced — build.py did not emit a package (flutter build linux likely failed); see the build output above"
     cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
-    python3 "$SCRIPT_DIR/verify-debian-package-authority.py" --repo "$REPO_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
-    python3 "$SCRIPT_DIR/verify-polkit-policy.py" --repo "$REPO_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
+    python3 "$SCRIPT_DIR/verify-debian-package-authority.py" --repo "$BUILD_SOURCE_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
+    python3 "$SCRIPT_DIR/verify-polkit-policy.py" --repo "$BUILD_SOURCE_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
     verify_deb_control_scripts "$OUT_DIR/rustdesk-${profile}.deb"
     sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"
 }
@@ -437,12 +561,14 @@ CFG
 main() {
     preflight
     # The one .deb — viewer and --server in a single binary, role by argv (R-R2b/R-B1).
+    activate_build_source pass-a
     build_one x86_64 "$FEATURES"
 
     # Double-build determinism (R-B2): a second build of identical source MUST
     # produce a byte-identical SHA-256, or the recorded-SHA bar is unfalsifiable.
     if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
         local first; first="$(awk '{print $1}' "$OUT_DIR/rustdesk-x86_64.deb.sha256")"
+        activate_build_source pass-b
         OUT_DIR="$OUT_DIR/_rebuild" build_one x86_64 "$FEATURES"
         local second; second="$(awk '{print $1}' "$OUT_DIR/_rebuild/rustdesk-x86_64.deb.sha256")"
         [ "$first" = "$second" ] || die "double-build SHA mismatch ($first vs $second) — fix BUILD_DATE/SOURCE_DATE_EPOCH determinism (R-B2)"

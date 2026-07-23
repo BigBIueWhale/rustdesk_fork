@@ -13399,6 +13399,52 @@ def validate_android_builder_authority_contract(sources):
         "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
         "Android preferences scratch hardening ledger",
     )
+    debian_focused = sources["debian_builder_authority_verifier"]
+    for text, label in (
+        ('prepare_direct_build_source() {', "Debian builder private direct-source constructor"),
+        ('clone --quiet --no-hardlinks --no-checkout --reject-shallow', "Debian builder private clone"),
+        ('release child requires outer independent snapshots and DOUBLE_BUILD=0',
+         "Debian builder release-snapshot ownership"),
+        ('verify_build_source_postcondition "failed Debian $profile build"',
+         "Debian builder failed-build source postcondition"),
+        ('verify_build_source_postcondition "completed Debian $profile build"',
+         "Debian builder completed-build source postcondition"),
+        ('"$DOCKER_BIN" run --rm --pull=never', "Debian builder immutable no-pull launch"),
+        ('--cap-drop=ALL', "Debian builder capability drop"),
+        ('--security-opt=no-new-privileges', "Debian builder no-new-privileges"),
+        ('/src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m',
+         "Debian builder empty read-only Git-authority shield"),
+        ('target=/online,readonly', "Debian builder read-only online input"),
+    ):
+        require_text(sources["debian"], text, label)
+    for text, label in (
+        ('MUTATIONS: Tuple[Mutation, ...]', "Debian builder mutation inventory"),
+        ('run_mutations(sources)', "Debian builder mutation dispatch"),
+        ('forbid(build, token, label)', "Debian builder forbidden-authority enforcement"),
+        ('Debian compile-container authority is incomplete or misordered',
+         "Debian builder container-order enforcement"),
+    ):
+        require_text(debian_focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-debian-builder-authority.py --repo . --self-test",
+        "Debian builder focused authority verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cf</span>',
+        "Debian builder authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>225</td>",
+        "Debian builder authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cf/R-S11e-98 — Debian builder private-source and container authority",
+        "Debian builder authority hardening ledger",
+    )
     for text, label in (
         ("R-S11bm exact corrected-commit evidence", "Android R-S11bm evidence enforcement"),
         ("Appendix C #202 exact corrected-commit evidence", "Android Appendix C #202 evidence enforcement"),
@@ -30462,6 +30508,42 @@ def run_source_mutations(sources):
             "Android preferences scratch hardening ledger",
         ),
         (
+            "debian_builder_authority_verifier",
+            "forbid(build, token, label)",
+            "return # forbidden Debian builder authority accepted",
+            "Debian builder forbidden-authority enforcement",
+        ),
+        (
+            "debian",
+            '"$DOCKER_BIN" run --rm --pull=never',
+            '"$DOCKER_BIN" run --rm',
+            "Debian builder immutable no-pull launch",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-debian-builder-authority.py --repo . --self-test",
+            "true # Debian builder authority verifier removed",
+            "Debian builder focused authority verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cf</span>',
+            '<span class="id">R-S11cf-disabled</span>',
+            "Debian builder authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>225</td>",
+            "<tr><td>225-disabled</td>",
+            "Debian builder authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cf/R-S11e-98 — Debian builder private-source and container authority",
+            "R-S11cf/R-S11e-98 — Debian builder ambient authority",
+            "Debian builder authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -31668,6 +31750,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_builder_authority_verifier": (
                 repo / "scripts/verify-android-builder-authority.py"
+            ).read_text(encoding="utf-8"),
+            "debian_builder_authority_verifier": (
+                repo / "scripts/verify-debian-builder-authority.py"
             ).read_text(encoding="utf-8"),
             "github_automation_authority_verifier": (
                 repo / "scripts/verify-github-automation-authority.py"

@@ -191,6 +191,18 @@ else
   echo "  ok  R-S11bg exact local image + private source/vendor/output state + non-root ordinary execution + isolated minimal-capability root tests"
 fi
 
+echo "== (0d) Debian builder private-source/container authority (R-S11cf/R-S11e-98) =="
+r_s11cf=
+if ! python3 scripts/verify-debian-builder-authority.py --repo . --self-test; then
+  r_s11cf="$r_s11cf authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cf" ]; then
+  echo "  FAIL R-S11cf Debian builder authority:$r_s11cf"
+  rc=1
+else
+  echo "  ok  R-S11cf direct builds use independent private exact-commit sources and the sole Debian compiler is non-root/offline/no-pull/read-only-root/capability-free/resource-bounded"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

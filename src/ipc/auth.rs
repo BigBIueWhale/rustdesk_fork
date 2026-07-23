@@ -28,7 +28,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_os = "macos")]
 use std::os::unix::fs::OpenOptionsExt;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::io::RawFd;
@@ -2704,116 +2704,61 @@ fn linux_proc_cmdline_args(pid: u32) -> ResultType<Vec<String>> {
         .collect())
 }
 
-#[cfg(target_os = "linux")]
-fn linux_service_process_argv_is_expected(args: &[String]) -> bool {
-    args.len() == 2 && args.get(1).map(String::as_str) == Some("--service")
-}
-
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool {
     args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")
 }
 
 #[cfg(target_os = "linux")]
-fn linux_trusted_service_executable_file_metadata(is_file: bool, uid: u32, mode: u32) -> bool {
-    is_file && uid == 0 && mode & 0o022 == 0 && mode & 0o111 != 0
-}
-
-#[cfg(target_os = "linux")]
-fn linux_trusted_service_executable_parent_metadata(is_dir: bool, uid: u32, mode: u32) -> bool {
-    is_dir && uid == 0 && mode & 0o022 == 0
-}
-
-#[cfg(target_os = "linux")]
-fn linux_service_executable_is_trusted(path: &Path) -> bool {
-    let Some(parent) = path.parent() else {
-        return false;
-    };
-    let Ok(parent_metadata) = fs::metadata(parent) else {
-        return false;
-    };
-    if !linux_trusted_service_executable_parent_metadata(
-        parent_metadata.is_dir(),
-        parent_metadata.uid(),
-        parent_metadata.permissions().mode(),
-    ) {
-        return false;
+fn validate_linux_root_service_peer(
+    peer_uid: Option<u32>,
+    peer_pid: Option<u32>,
+    postfix: &str,
+) -> ResultType<u32> {
+    let peer_uid = peer_uid.ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve Linux root service uid on ipc channel '{postfix}'")
+    })?;
+    if peer_uid != 0 {
+        bail!(
+            "Linux root service uid mismatch on ipc channel '{}': peer_uid={}",
+            postfix,
+            peer_uid
+        );
     }
-    let Ok(metadata) = fs::metadata(path) else {
-        return false;
-    };
-    linux_trusted_service_executable_file_metadata(
-        metadata.is_file(),
-        metadata.uid(),
-        metadata.permissions().mode(),
-    )
+    let peer_pid = peer_pid.ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve Linux root service pid on ipc channel '{postfix}'")
+    })?;
+    if peer_pid == 0 {
+        bail!("Linux root service has pid 0 on ipc channel '{postfix}'");
+    }
+    Ok(peer_pid)
 }
 
+/// Authenticate a connected Linux service endpoint from kernel socket credentials only.
+///
+/// An unprivileged installed-service client cannot inspect the root service's ptrace-gated
+/// executable, argv, or environment. The fixed service socket lives in the separately hardened
+/// root-owned service IPC directory; after connecting, a positive uid-0 `SO_PEERCRED` identity is
+/// the exact authority available to this side of the boundary. A process that can impersonate that
+/// identity is already inside the root authority boundary.
 #[cfg(target_os = "linux")]
-pub(crate) fn ensure_linux_service_server_is_trusted<T>(
+pub(crate) fn ensure_linux_root_service_connection<T>(
     stream: &ConnectionTmpl<T>,
-) -> ResultType<PeerProcessIdentity>
+    postfix: &str,
+) -> ResultType<u32>
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
 {
-    let identity = peer_process_identity(stream, crate::POSTFIX_SERVICE)?;
-    if identity.uid != 0 {
-        bail!(
-            "Linux _service server is not root: peer_uid={}",
-            identity.uid
-        );
-    }
-    let args = linux_proc_cmdline_args(identity.pid)?;
-    if !linux_service_process_argv_is_expected(&args) {
-        bail!(
-            "Linux _service server argv mismatch: pid={}, args={:?}",
-            identity.pid,
-            args
-        );
-    }
-    let peer_exe = peer_exe_canonical_path_by_pid(identity.pid)?;
-    if !linux_service_executable_is_trusted(&peer_exe) {
-        bail!(
-            "Linux _service server executable is not trusted root-owned state: pid={}, peer_exe='{}'",
-            identity.pid,
-            peer_exe.display()
-        );
-    }
-    Ok(identity)
+    validate_linux_root_service_peer(stream.peer_uid(), stream.peer_pid(), postfix)
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn ensure_linux_service_password_server_is_trusted<T>(
-    stream: &T,
-) -> ResultType<PeerProcessIdentity>
+pub(crate) fn ensure_linux_root_service_stream<T>(stream: &T, postfix: &str) -> ResultType<u32>
 where
     T: std::os::unix::io::AsRawFd,
 {
-    let identity =
-        peer_process_identity_from_stream(stream, super::password::SERVICE_PASSWORD_IPC_POSTFIX)?;
-    if identity.uid != 0 {
-        bail!(
-            "Linux service password server is not root: peer_uid={}",
-            identity.uid
-        );
-    }
-    let args = linux_proc_cmdline_args(identity.pid)?;
-    if !linux_service_process_argv_is_expected(&args) {
-        bail!(
-            "Linux service password server argv mismatch: pid={}, args={:?}",
-            identity.pid,
-            args
-        );
-    }
-    let peer_exe = peer_exe_canonical_path_by_pid(identity.pid)?;
-    if !linux_service_executable_is_trusted(&peer_exe) {
-        bail!(
-            "Linux service password server executable is not trusted root-owned state: pid={}, peer_exe='{}'",
-            identity.pid,
-            peer_exe.display()
-        );
-    }
-    Ok(identity)
+    let fd = stream.as_raw_fd();
+    validate_linux_root_service_peer(peer_uid_from_fd(fd), peer_pid_from_fd(fd), postfix)
 }
 
 #[cfg(target_os = "macos")]
@@ -4670,66 +4615,15 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn test_linux_service_process_argv_is_exact() {
-        assert!(super::linux_service_process_argv_is_expected(&[
-            "/usr/bin/rustdesk".to_owned(),
-            "--service".to_owned(),
-        ]));
-        assert!(!super::linux_service_process_argv_is_expected(&[
-            "/usr/bin/rustdesk".to_owned(),
-        ]));
-        assert!(!super::linux_service_process_argv_is_expected(&[
-            "/usr/bin/rustdesk".to_owned(),
-            "--server".to_owned(),
-        ]));
-        assert!(!super::linux_service_process_argv_is_expected(&[
-            "/usr/bin/rustdesk".to_owned(),
-            "--service".to_owned(),
-            "--extra".to_owned(),
-        ]));
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn linux_trusted_service_executable_metadata_requires_root_unwritable_executable_file() {
-        assert!(super::linux_trusted_service_executable_file_metadata(
-            true, 0, 0o755
-        ));
-        assert!(!super::linux_trusted_service_executable_file_metadata(
-            false, 0, 0o755
-        ));
-        assert!(!super::linux_trusted_service_executable_file_metadata(
-            true, 1000, 0o755
-        ));
-        assert!(!super::linux_trusted_service_executable_file_metadata(
-            true, 0, 0o775
-        ));
-        assert!(!super::linux_trusted_service_executable_file_metadata(
-            true, 0, 0o777
-        ));
-        assert!(!super::linux_trusted_service_executable_file_metadata(
-            true, 0, 0o644
-        ));
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn linux_trusted_service_executable_parent_requires_root_unwritable_directory() {
-        assert!(super::linux_trusted_service_executable_parent_metadata(
-            true, 0, 0o755
-        ));
-        assert!(!super::linux_trusted_service_executable_parent_metadata(
-            false, 0, 0o755
-        ));
-        assert!(!super::linux_trusted_service_executable_parent_metadata(
-            true, 1000, 0o755
-        ));
-        assert!(!super::linux_trusted_service_executable_parent_metadata(
-            true, 0, 0o775
-        ));
-        assert!(!super::linux_trusted_service_executable_parent_metadata(
-            true, 0, 0o777
-        ));
+    fn r_s11e97_linux_root_service_peer_requires_kernel_uid_and_positive_pid() {
+        assert_eq!(
+            super::validate_linux_root_service_peer(Some(0), Some(41), "_service").unwrap(),
+            41
+        );
+        assert!(super::validate_linux_root_service_peer(Some(1000), Some(41), "_service").is_err());
+        assert!(super::validate_linux_root_service_peer(None, Some(41), "_service").is_err());
+        assert!(super::validate_linux_root_service_peer(Some(0), None, "_service").is_err());
+        assert!(super::validate_linux_root_service_peer(Some(0), Some(0), "_service").is_err());
     }
 
     #[test]

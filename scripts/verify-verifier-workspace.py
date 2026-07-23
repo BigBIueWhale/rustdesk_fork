@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11884,7 +11884,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12218,7 +12218,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15632,8 +15632,45 @@ def validate_ipc_lifecycle_checker_contract(sources):
             '"release builds enable the unsupervised recovery fixture"',
             "Linux release-fixture adversarial mutation",
         ),
+        (
+            'root_service_peer = auth.function("validate_linux_root_service_peer")',
+            "Linux root-service kernel-credential decision checker",
+        ),
+        (
+            'root_service_connection = auth.function("ensure_linux_root_service_connection")',
+            "Linux framed root-service client checker",
+        ),
+        (
+            'root_service_stream = auth.function("ensure_linux_root_service_stream")',
+            "Linux raw root-service client checker",
+        ),
+        (
+            '"ordinary service-password client accepts a non-root peer"',
+            "Linux non-root root-service-peer adversarial mutation",
+        ),
+        (
+            '"ordinary service-password client regains a root procfs dependency"',
+            "Linux root-procfs adversarial mutation",
+        ),
     ):
         require_text(linux, text, label)
+
+    for text, label in (
+        (
+            '<span class="id">R-S11ce</span>',
+            "Linux root-service client authentication requirement",
+        ),
+        (
+            "<tr><td>224</td>",
+            "Linux root-service client authentication Appendix C row",
+        ),
+    ):
+        require_text(sources["requirements"], text, label)
+    require_text(
+        sources["hardening"],
+        "R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs",
+        "Linux root-service client authentication hardening ledger",
+    )
 
     credential_requirement = extract_html_requirement(
         sources["requirements"], "R-S11cb", "Linux stable-root credential requirement"
@@ -27949,6 +27986,24 @@ def run_source_mutations(sources):
             "Linux dedicated service-child image checker",
         ),
         (
+            "linux_password_ipc_validator",
+            'root_service_peer = auth.function("validate_linux_root_service_peer")',
+            'root_service_peer = auth.function("validate_linux_root_service_peer_disabled")',
+            "Linux root-service kernel-credential decision checker",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"ordinary service-password client accepts a non-root peer"',
+            '"ordinary service-password client accepts any peer"',
+            "Linux non-root root-service-peer adversarial mutation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            '"ordinary service-password client regains a root procfs dependency"',
+            '"ordinary service-password client skips root procfs"',
+            "Linux root-procfs adversarial mutation",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11cb</span>',
             '<span class="id">R-S11cb-disabled</span>',
@@ -28316,7 +28371,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
+        "R-S11n through R-S11ce, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -29199,6 +29254,24 @@ def run_source_mutations(sources):
             "R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority",
             "R-S11cd/R-S11e-96 — Linux whiteboard trusts same uid",
             "Linux nondumpable whiteboard hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ce</span>',
+            '<span class="id">R-S11ce-disabled</span>',
+            "Linux root-service client authentication requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>224</td>",
+            "<tr><td>224-disabled</td>",
+            "Linux root-service client authentication Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs",
+            "R-S11ce/R-S11e-97 — Linux clients authenticate root service endpoints through procfs",
+            "Linux root-service client authentication hardening ledger",
         ),
         (
             "unix_helper_process_role_verifier",

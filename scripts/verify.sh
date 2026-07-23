@@ -517,15 +517,23 @@ windows_service_request_block=$(awk '/async fn handle_windows_service_ipc_reques
 if echo "$windows_service_request_block" | grep -q 'ipc::Data::Close'; then
   r_s11="$r_s11 windows-service-still-accepts-ipc-close"
 fi
-linux_service_server_client_auth_block=$(awk '/pub\(crate\) fn ensure_linux_service_server_is_trusted/,/^}/' src/ipc/auth.rs)
+linux_root_service_peer_block=$(awk '/fn validate_linux_root_service_peer/,/^}/' src/ipc/auth.rs)
 connect_with_path_block=$(awk '/async fn connect_with_path/,/^}/' src/ipc.rs)
-grep -Fq 'pub(crate) fn ensure_linux_service_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 linux-service-server-client-auth-missing"
-echo "$linux_service_server_client_auth_block" | grep -Fq 'identity.uid != 0' || r_s11="$r_s11 linux-service-server-client-auth-not-root-gated"
-echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_process_argv_is_expected(&args)' || r_s11="$r_s11 linux-service-server-client-auth-not-service-argv-gated"
-echo "$linux_service_server_client_auth_block" | grep -Fq 'linux_service_executable_is_trusted(&peer_exe)' || r_s11="$r_s11 linux-service-server-client-auth-no-root-owned-exec-proof"
-echo "$connect_with_path_block" | grep -Fq 'ensure_linux_service_server_is_trusted(&connection)' || r_s11="$r_s11 linux-service-connect-not-client-authenticated"
+grep -Fq 'pub(crate) fn ensure_linux_root_service_connection' src/ipc/auth.rs || r_s11="$r_s11 linux-root-service-connection-auth-missing"
+grep -Fq 'pub(crate) fn ensure_linux_root_service_stream' src/ipc/auth.rs || r_s11="$r_s11 linux-root-service-stream-auth-missing"
+echo "$linux_root_service_peer_block" | grep -Fq 'peer_uid != 0' || r_s11="$r_s11 linux-service-server-client-auth-not-root-gated"
+echo "$linux_root_service_peer_block" | grep -Fq 'peer_pid == 0' || r_s11="$r_s11 linux-service-server-client-auth-not-positive-pid-gated"
+if echo "$linux_root_service_peer_block" | grep -Eq 'linux_proc|peer_exe|cmdline|environ|process_identity'; then
+  r_s11="$r_s11 linux-service-client-auth-depends-on-root-procfs"
+fi
+echo "$connect_with_path_block" | grep -Fq 'ensure_linux_root_service_connection(&connection, postfix)' || r_s11="$r_s11 linux-service-connect-not-client-authenticated"
+if grep -Eq 'ensure_linux_service_(password_)?server_is_trusted|linux_service_executable_is_trusted|linux_service_process_argv_is_expected' src/ipc.rs src/ipc/auth.rs; then
+  r_s11="$r_s11 obsolete-linux-root-procfs-service-proof-present"
+fi
 grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
+grep -Fq '<span class="id">R-S11ce</span>' requirements.html || r_s11="$r_s11 linux-root-service-client-requirement-missing"
 grep -Fq 'R-S11e-6 — Linux `_service_password` client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
+grep -Fq 'R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs' HARDENING_STATUS.md || r_s11="$r_s11 linux-root-service-client-ledger-missing"
 macos_service_server_auth_block=$(awk '/pub\(crate\) fn authorize_macos_service_server_snapshot/,/^}/' src/ipc/auth.rs)
 grep -Fq 'pub(crate) struct MacosServiceServerAuthorization' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-snapshot-type-missing"
 grep -Fq 'pub(crate) fn macos_service_server_authorization_snapshot' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-snapshot-missing"
@@ -2246,6 +2254,7 @@ fi
 echo "== (3b-iii-c) dedicated raw password IPC authority and finality (R-S11b/R-S11c/R-S11g/R-S11h/R-S11i) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config password_mutation --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config windows_credential_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e97_ --color never
 r_s11b2=
 if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >"$VERIFY_TMP/rd_verify_linux_service_password_ipc" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_linux_service_password_ipc"

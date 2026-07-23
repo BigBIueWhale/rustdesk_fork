@@ -53,8 +53,8 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
     authenticate_linux_service_owned_password_replica_server, current_linux_process_identity,
-    ensure_linux_process_identity_matches, ensure_linux_service_password_server_is_trusted,
-    ensure_linux_service_server_is_trusted, linux_cm_child_identity_is_live,
+    ensure_linux_process_identity_matches, ensure_linux_root_service_connection,
+    ensure_linux_root_service_stream, linux_cm_child_identity_is_live,
     linux_process_identity_is_live, peer_process_identity_from_stream,
     peer_process_identity_is_live, LinuxProcessIdentity, PeerProcessIdentity,
 };
@@ -5589,7 +5589,7 @@ async fn connect_with_path(
         }
         #[cfg(target_os = "linux")]
         if config::is_service_ipc_postfix(postfix) {
-            ensure_linux_service_server_is_trusted(&connection)?;
+            ensure_linux_root_service_connection(&connection, postfix)?;
         }
         #[cfg(target_os = "macos")]
         if config::is_service_ipc_postfix(postfix) {
@@ -5824,7 +5824,7 @@ async fn connect_sensitive_unix(
         password::SERVICE_PASSWORD_IPC_POSTFIX => {
             #[cfg(target_os = "linux")]
             {
-                ensure_linux_service_password_server_is_trusted(&stream)?;
+                ensure_linux_root_service_stream(&stream, postfix)?;
             }
             #[cfg(target_os = "macos")]
             {

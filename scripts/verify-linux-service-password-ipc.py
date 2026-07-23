@@ -848,7 +848,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
             (("identity", ".", "uid", "(", ")", "!=", "expected_uid"), "service-owned replica UID binding"),
             (("ensure_user_owned_password_server_is_trusted", "(", "&", "stream", ",", "expected_uid", ")"), "user-owned server UID/executable/argv proof"),
             (("SERVICE_PASSWORD_IPC_POSTFIX", "=>"), "service endpoint proof"),
-            (("ensure_linux_service_password_server_is_trusted", "(", "&", "stream", ")"), "service server UID/executable/argv proof"),
+            (("ensure_linux_root_service_stream", "(", "&", "stream", ",", "postfix", ")"), "service server kernel uid/PID proof"),
             (("_", "=>", "bail", "!", "(", '"unsupported sensitive Unix IPC endpoint"'), "unknown endpoint rejection"),
             (("remaining_millis", "(", "deadline", ")"), "post-proof deadline check"),
         )
@@ -1059,12 +1059,6 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         )
     )
 
-    service_argv = auth.function("linux_service_process_argv_is_expected")
-    service_argv.require(
-        ("args", ".", "len", "(", ")", "==", "2", "&&", "args", ".", "get", "(", "1", ")", ".", "map", "(", "String", "::", "as_str", ")", "==", "Some", "(", '"--service"', ")"),
-        "exact --service argv",
-        unique=True,
-    )
     user_server_argv = auth.function("user_owned_main_server_argv_is_expected")
     user_server_argv.require(("args", ".", "len", "(", ")", "==", "2"), "exact user server argv length", unique=True)
     user_server_argv.require(("Some", "(", '"--server"', ")"), "user server role", unique=True)
@@ -1073,21 +1067,49 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     service_owned_argv.require(("Some", "(", '"--server"', ")"), "service-owned child server role", unique=True)
     service_owned_argv.require(("Some", "(", "crate", "::", "common", "::", "SERVICE_OWNED_SERVER_ARG", ")"), "service-owned child marker", unique=True)
 
-    trusted_file = auth.function("linux_trusted_service_executable_file_metadata")
-    trusted_file.require(("is_file", "&&", "uid", "==", "0", "&&", "mode", "&", "0o022", "==", "0", "&&", "mode", "&", "0o111", "!=", "0"), "root-owned non-writable executable policy", unique=True)
-    trusted_parent = auth.function("linux_trusted_service_executable_parent_metadata")
-    trusted_parent.require(("is_dir", "&&", "uid", "==", "0", "&&", "mode", "&", "0o022", "==", "0"), "root-owned non-writable executable parent", unique=True)
-
-    service_server = auth.function("ensure_linux_service_password_server_is_trusted")
-    service_server.require_order(
+    root_service_peer = auth.function("validate_linux_root_service_peer")
+    root_service_peer.require_order(
         (
-            (("peer_process_identity_from_stream", "(", "stream", ",", "super", "::", "password", "::", "SERVICE_PASSWORD_IPC_POSTFIX", ")"), "exact service process identity"),
-            (("identity", ".", "uid", "!=", "0"), "root principal requirement"),
-            (("linux_proc_cmdline_args", "(", "identity", ".", "pid", ")"), "live service argv"),
-            (("linux_service_process_argv_is_expected", "(", "&", "args", ")"), "exact --service role"),
-            (("peer_exe_canonical_path_by_pid", "(", "identity", ".", "pid", ")"), "canonical service executable"),
-            (("linux_service_executable_is_trusted", "(", "&", "peer_exe", ")"), "trusted root-owned service executable"),
+            (("peer_uid", ".", "ok_or_else"), "kernel peer UID presence"),
+            (("peer_uid", "!=", "0"), "root principal requirement"),
+            (("peer_pid", ".", "ok_or_else"), "kernel peer PID presence"),
+            (("peer_pid", "==", "0"), "positive PID requirement"),
+            (("Ok", "(", "peer_pid", ")"), "validated PID result"),
         )
+    )
+    for forbidden in (
+        "linux_proc_cmdline_args",
+        "peer_exe_canonical_path_by_pid",
+        "peer_process_identity_from_stream",
+        "linux_proc_environ_value",
+        "linux_proc_start_time",
+    ):
+        root_service_peer.forbid((forbidden,), f"ptrace/procfs-dependent root service proof: {forbidden}")
+    root_service_connection = auth.function("ensure_linux_root_service_connection")
+    root_service_connection.require(
+        ("validate_linux_root_service_peer", "(", "stream", ".", "peer_uid", "(", ")", ",", "stream", ".", "peer_pid", "(", ")", ",", "postfix", ")"),
+        "framed service connection uses the common kernel peer decision",
+        unique=True,
+    )
+    root_service_stream = auth.function("ensure_linux_root_service_stream")
+    root_service_stream.require_order(
+        (
+            (("stream", ".", "as_raw_fd", "(", ")"), "raw stream descriptor"),
+            (("validate_linux_root_service_peer"), "common kernel peer decision"),
+            (("peer_uid_from_fd", "(", "fd", ")"), "SO_PEERCRED UID"),
+            (("peer_pid_from_fd", "(", "fd", ")"), "SO_PEERCRED PID"),
+        )
+    )
+    auth.all().require_identifier_absent(
+        {
+            "ensure_linux_service_password_server_is_trusted",
+            "ensure_linux_service_server_is_trusted",
+            "linux_service_executable_is_trusted",
+            "linux_service_process_argv_is_expected",
+            "linux_trusted_service_executable_file_metadata",
+            "linux_trusted_service_executable_parent_metadata",
+        },
+        "obsolete unprivileged root-procfs service proof",
     )
     user_server = auth.function("ensure_user_owned_password_server_is_trusted")
     user_server.require_order(
@@ -2333,10 +2355,16 @@ def self_test(sources: Mapping[str, str]) -> None:
             "if launch_parent != expected_parent {\n        /* actual_parent and service_runtime_generation_matches were bypassed */\n        bail!(\n            \"service-owned password replica owner mismatch:",
         ),
         Mutation(
-            "ordinary service-password client accepts an untrusted root executable",
+            "ordinary service-password client accepts a non-root peer",
             "src/ipc/auth.rs",
-            "if !linux_service_executable_is_trusted(&peer_exe) {",
-            "if false { /* trusted root executable proof was bypassed */",
+            "    if peer_uid != 0 {\n",
+            "    if false && peer_uid != 0 {\n",
+        ),
+        Mutation(
+            "ordinary service-password client regains a root procfs dependency",
+            "src/ipc/auth.rs",
+            "    Ok(peer_pid)\n}",
+            "    linux_proc_cmdline_args(peer_pid)?;\n    Ok(peer_pid)\n}",
         ),
         Mutation(
             "release builds enable the unsupervised recovery fixture",

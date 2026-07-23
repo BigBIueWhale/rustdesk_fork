@@ -8356,6 +8356,48 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   No native installed service, overlay UI, package, release artifact, Android/iOS device, host RustDesk process,
   listener, firewall, or configuration is exercised by this source row. Exact native installed-service/overlay and
   final Debian artifact evidence remain R-B2/R-S11c-27; the prohibited long cold release build remains unrun.
+- **R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs —
+  SOURCE IMPLEMENTED; CONFINED RUST 1.75 FULL LIB/TEST TYPECHECK AND SEMANTIC/MUTATION VERIFICATION PASSED
+  2026-07-23; NATIVE INSTALLED-SERVICE/ARTIFACT EVIDENCE PENDING.** Platform: Linux
+  installed-service mode. Endpoint/action: client-side authentication of the generic, nonsecret `_service`
+  liveness channel and the dedicated raw `_service_password` channel before any request/header/body is sent.
+  Boundary: active-user UI/CLI process ↔ stable uid-0 service listener.
+
+  The retained implementation contradicted the already-normative R-S11i model. Both client paths connected to the
+  fixed root service socket and then tried to read the root peer's `/proc/<pid>/cmdline` and dereference
+  `/proc/<pid>/exe` to prove `--service` plus a protected executable. Linux subjects the executable link to
+  `PTRACE_MODE_READ_FSCREDS`; an ordinary active-user client cannot inspect a uid-0 service this way. The proof
+  could therefore reject the legitimate installed service before generic liveness or the raw password header,
+  while adding no meaningful authority against a process already capable of presenting uid 0.
+
+  Both client paths now terminate in one decision over the connected Unix socket's kernel credentials: uid must be
+  present and exactly zero, and PID must be present and positive. Generic framed `_service` and raw
+  `_service_password` use thin transport-specific wrappers around that decision. The client no longer reads the
+  root peer's executable, argv, environment, start time, ancestry, or any other procfs process metadata. The fixed
+  service path and root-owned mode-0711 service IPC parent remain separately enforced; a non-root path squatter is
+  rejected before any password bytes, and a process that can present uid 0 is already inside the root authority
+  boundary. The opposite-direction controls are unchanged: the root listener still snapshots and proves the
+  active/root caller and exact polkit subject before reading the password body, and `_service_credential` retains
+  the exact direct-parent/current-generation proof in both directions.
+
+  `r_s11e97_linux_root_service_peer_requires_kernel_uid_and_positive_pid` covers the common decision and is
+  compiled/typechecked by the full lib/test target. The Linux password semantic verifier binds both call paths,
+  shared decision, uid/PID requirements, absence of the retired root-procfs proof, and deliberate non-root/procfs
+  regressions. Its normal and complete deliberate-mutation modes pass. The shared source gate binds R-S11ce,
+  Appendix C #224, and this ledger identity.
+
+  Confined validation used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
+  no network, all capabilities dropped, no-new-privileges, a read-only root/source tree and Rust 1.75 toolchain,
+  locked/offline vendored dependencies, and an ephemeral executable tmpfs output tree. The full
+  `cargo check --lib --tests --no-default-features --features linux-pkg-config` target passed, compiling and
+  typechecking production code plus the focused regression. The direct focused `cargo test` attempt compiled the
+  project through the final link and exposed no source error, but the linker was killed at the container's 6 GiB
+  memory cap; it is therefore not recorded as an executed-test pass. The focused semantic verifier passed normally
+  and rejected every deliberate mutation, including non-root peer acceptance and a reintroduced root-procfs read.
+  No native installed service, password transaction, package, release artifact, host RustDesk process, listener,
+  firewall, or configuration was exercised. Native installed-service liveness/password behavior and exact
+  Debian-artifact evidence remain R-B2/R-S11c-27; the prohibited long cold release build remains unrun.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9073,9 +9115,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2e5c7645578c875aa8021a51419d2ed08eb335308937d82f4e618620d6c532bc  requirements.html
+93211ba414c616db371c4d2e4cb26f29184bd14825568db2cd0341d72e738678  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cd, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ce, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#224. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

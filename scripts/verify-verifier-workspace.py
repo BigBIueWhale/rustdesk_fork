@@ -12874,6 +12874,22 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android idempotent same-generation resume ledger contract",
         ),
         (
+            '"it never mints a generation, replaces an owner, or drains sessions"',
+            "Android read-only Activity-resume summary contract",
+        ),
+        (
+            '"shared stale-Activity takeover-refusal regression gate"',
+            "Android shared stale-Activity refusal gate contract",
+        ),
+        (
+            '\'        < owner_resume.index(".read()")\\n\'',
+            "Android shared read-only resume gate contract",
+        ),
+        (
+            '\'    and "close_sessions_owned_by" not in owner_resume\'',
+            "Android shared no-takeover resume gate contract",
+        ),
+        (
             '"only then publish native/UI started state"',
             "Android worker-before-native start requirement contract",
         ),
@@ -13068,6 +13084,26 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
+        '("hardening", "it never mints a generation, replaces an owner, or drains sessions", "allocating a fresh generation and draining a different superseded owner", "read-only Activity-resume summary"),',
+        "Android read-only Activity-resume summary mutation",
+    )
+    require_text(
+        focused,
+        '("verify", "grep -qF \'stale_android_activity_cannot_reclaim_the_replacement_owner\' src/flutter.rs", "grep -qF \'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation\' src/flutter.rs", "shared stale-Activity takeover-refusal regression gate"),',
+        "Android shared stale-Activity refusal gate mutation",
+    )
+    require_text(
+        focused,
+        '("verify", \'and owner_resume.index("ANDROID_CLIENT_OWNER")\\n        < owner_resume.index(".read()")\\n        < owner_resume.index(".resume(generation, session_id)")\', \'and owner_resume.index("ANDROID_CLIENT_OWNER.write()")\\n        < owner_resume.index(".resume(generation, session_id)")\', "shared read-only Rust Activity-resume gate"),',
+        "Android shared read-only resume gate mutation",
+    )
+    require_text(
+        focused,
+        '("verify", \'and "close_sessions_owned_by" not in owner_resume\', \'and "close_sessions_owned_by" in owner_resume\', "shared resume-without-takeover gate"),',
+        "Android shared no-takeover resume gate mutation",
+    )
+    require_text(
+        focused,
         '("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "worker-before-native start requirement"),',
         "Android worker-before-native start requirement contract",
     )
@@ -13090,6 +13126,24 @@ def validate_android_voice_call_ownership_contract(sources):
         sources["verify"],
         "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
         "Android voice-call ownership shared focused-verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs",
+        "Android shared stale-Activity refusal gate source",
+    )
+    require_text(
+        sources["verify"],
+        'and owner_resume.index("ANDROID_CLIENT_OWNER")\n'
+        '        < owner_resume.index(".read()")\n'
+        '        < owner_resume.index(".resume(generation, session_id)")',
+        "Android shared read-only resume gate source",
+    )
+    require_text(
+        sources["verify"],
+        'and "ANDROID_CLIENT_OWNER.write()" not in owner_resume\n'
+        '    and "close_sessions_owned_by" not in owner_resume',
+        "Android shared no-takeover resume gate source",
     )
     require_text(
         sources["requirements"],
@@ -13120,6 +13174,11 @@ def validate_android_voice_call_ownership_contract(sources):
         sources["hardening"],
         "same-or-newer resume with active-state retention plus older/cross-isolate refusal",
         "Android idempotent same-generation resume ledger source",
+    )
+    require_text(
+        sources["hardening"],
+        "it never mints a generation, replaces an owner, or drains sessions",
+        "Android read-only Activity-resume summary source",
     )
     require_text(
         sources["hardening"],
@@ -29537,6 +29596,42 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"it never mints a generation, replaces an owner, or drains sessions",\n'
+            '        "Android read-only Activity-resume summary",',
+            '"allocating a fresh generation and draining a different superseded owner",\n'
+            '        "Android read-only Activity-resume summary",',
+            "Android read-only Activity-resume summary contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"shared stale-Activity takeover-refusal regression gate",\n'
+            "    )\n"
+            "    forbid(",
+            '"shared stale-Activity takeover regression gate",\n'
+            "    )\n"
+            "    forbid(",
+            "Android shared stale-Activity refusal gate contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '\'and owner_resume.index("ANDROID_CLIENT_OWNER")\\n\'\n'
+            '        \'        < owner_resume.index(".read()")\\n\'\n'
+            '        \'        < owner_resume.index(".resume(generation, session_id)")\',',
+            '\'and owner_resume.index("ANDROID_CLIENT_OWNER")\\n\'\n'
+            '        \'        < owner_resume.index(".write()")\\n\'\n'
+            '        \'        < owner_resume.index(".resume(generation, session_id)")\',',
+            "Android shared read-only resume gate contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '\'and "ANDROID_CLIENT_OWNER.write()" not in owner_resume\\n\'\n'
+            '        \'    and "close_sessions_owned_by" not in owner_resume\',',
+            '\'and "ANDROID_CLIENT_OWNER.write()" not in owner_resume\\n\'\n'
+            '        \'    and "close_sessions_owned_by" in owner_resume\',',
+            "Android shared no-takeover resume gate contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             '"only then publish native/UI started state"',
             '"publish native/UI started state before construction"',
             "Android worker-before-native start requirement contract",
@@ -29650,6 +29745,27 @@ def run_source_mutations(sources):
             "Android voice-call ownership shared focused-verifier wiring",
         ),
         (
+            "verify",
+            "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs",
+            "grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs",
+            "Android shared stale-Activity refusal gate source",
+        ),
+        (
+            "verify",
+            'and owner_resume.index("ANDROID_CLIENT_OWNER")\n'
+            '        < owner_resume.index(".read()")\n'
+            '        < owner_resume.index(".resume(generation, session_id)")',
+            'and owner_resume.index("ANDROID_CLIENT_OWNER.write()")\n'
+            '        < owner_resume.index(".resume(generation, session_id)")',
+            "Android shared read-only resume gate source",
+        ),
+        (
+            "verify",
+            'and "close_sessions_owned_by" not in owner_resume',
+            'and "close_sessions_owned_by" in owner_resume',
+            "Android shared no-takeover resume gate source",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11br</span>',
             '<span class="id">R-S11br-disabled</span>',
@@ -29684,6 +29800,12 @@ def run_source_mutations(sources):
             "same-or-newer resume with active-state retention plus older/cross-isolate refusal",
             "strictly newer resume with active-state retention",
             "Android idempotent same-generation resume ledger source",
+        ),
+        (
+            "hardening",
+            "it never mints a generation, replaces an owner, or drains sessions",
+            "allocating a fresh generation and draining a different superseded owner",
+            "Android read-only Activity-resume summary source",
         ),
         (
             "hardening",

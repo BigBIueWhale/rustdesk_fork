@@ -9272,8 +9272,8 @@ grep -qF 'delayed_android_owner_callbacks_cannot_retire_or_close_the_replacement
   || android_client_owner_bad="$android_client_owner_bad aba-regression-test-missing"
 grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad admission-transition-regression-test-missing"
-grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad stopped-activity-resume-regression-test-missing"
+grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad stale-activity-resume-refusal-test-missing"
 grep -qF 'android_owner_transition_joins_outgoing_worker_before_replacement' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad exact-worker-join-regression-test-missing"
 grep -qF 'session.close_and_join();' src/flutter.rs \
@@ -9406,10 +9406,11 @@ ok = (
         < owner_begin.index("owner.begin()")
         < owner_begin.index("close_sessions_owned_by(&previous_owner)")
         < owner_begin.index("drop(owner)")
-    and owner_resume.index("ANDROID_CLIENT_OWNER.write()")
-        < owner_resume.index("owner.resume(generation, session_id)")
-        < owner_resume.index("close_sessions_owned_by(&previous_owner)")
-        < owner_resume.index("drop(owner)")
+    and owner_resume.index("ANDROID_CLIENT_OWNER")
+        < owner_resume.index(".read()")
+        < owner_resume.index(".resume(generation, session_id)")
+    and "ANDROID_CLIENT_OWNER.write()" not in owner_resume
+    and "close_sessions_owned_by" not in owner_resume
     and owner_close.index("ANDROID_CLIENT_OWNER.write()")
         < owner_close.index("owner.retire(generation, session_id)")
         < owner_close.index("close_sessions_owned_by(session_id)")

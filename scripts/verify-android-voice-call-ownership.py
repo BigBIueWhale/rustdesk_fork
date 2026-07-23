@@ -699,8 +699,41 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["hardening"],
+        "it never mints a generation, replaces an owner, or drains sessions",
+        "Android read-only Activity-resume summary",
+    )
+    forbid(
+        sources["hardening"],
+        "allocating a fresh generation and draining a different",
+        "superseded cross-isolate Activity takeover summary",
+    )
+    require(
+        sources["hardening"],
         "publishes `on_voice_call_started` only after that worker exists",
         "Android worker-before-native start ledger",
+    )
+    require(
+        sources["verify"],
+        "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs",
+        "shared stale-Activity takeover-refusal regression gate",
+    )
+    forbid(
+        sources["verify"],
+        "resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation",
+        "shared superseded Activity-takeover regression gate",
+    )
+    require(
+        sources["verify"],
+        'and owner_resume.index("ANDROID_CLIENT_OWNER")\n'
+        '        < owner_resume.index(".read()")\n'
+        '        < owner_resume.index(".resume(generation, session_id)")',
+        "shared read-only Rust Activity-resume gate",
+    )
+    require(
+        sources["verify"],
+        'and "ANDROID_CLIENT_OWNER.write()" not in owner_resume\n'
+        '    and "close_sessions_owned_by" not in owner_resume',
+        "shared resume-without-takeover gate",
     )
     require(
         sources["verify"],
@@ -762,7 +795,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>211</td>", "<tr><td>211-disabled</td>", "Appendix disposition"),
     ("hardening", "R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners", "R-S11br/R-S11e-84 — Android native voice-call capture is best effort", "hardening ledger"),
     ("hardening", "same-or-newer resume with active-state retention plus older/cross-isolate refusal", "strictly newer resume with active-state retention", "idempotent same-generation resume ledger"),
+    ("hardening", "it never mints a generation, replaces an owner, or drains sessions", "allocating a fresh generation and draining a different superseded owner", "read-only Activity-resume summary"),
     ("hardening", "publishes `on_voice_call_started` only after that worker exists", "publishes `on_voice_call_started` before that worker exists", "worker-before-native start ledger"),
+    ("verify", "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs", "grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs", "shared stale-Activity takeover-refusal regression gate"),
+    ("verify", 'and owner_resume.index("ANDROID_CLIENT_OWNER")\n        < owner_resume.index(".read()")\n        < owner_resume.index(".resume(generation, session_id)")', 'and owner_resume.index("ANDROID_CLIENT_OWNER.write()")\n        < owner_resume.index(".resume(generation, session_id)")', "shared read-only Rust Activity-resume gate"),
+    ("verify", 'and "close_sessions_owned_by" not in owner_resume', 'and "close_sessions_owned_by" in owner_resume', "shared resume-without-takeover gate"),
     ("verify", "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test", "true # Android voice-call ownership gate removed", "shared gate wiring"),
 )
 

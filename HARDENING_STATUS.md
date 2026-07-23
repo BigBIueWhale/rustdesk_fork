@@ -304,12 +304,14 @@ removal consumes only owner pairs recorded by stopped Activities. An invalid/mis
 while `MainService` remains persistent and continues owning only incoming controlled-side service state.
 Follow-up closure (2026-07-19): a stopped `MainActivity` can remain in Android's back stack while a newer
 instance advances the native generation; returning to that older instance runs `onStart()` without another
-`onCreate()`. It now atomically resumes its existing isolate UUID, re-synchronizing the current native generation
-without disruption when that UUID is already current or allocating a fresh generation and draining a different
-superseded owner under the same write lock before marking itself started. Thus an OS-restored Activity cannot keep
-rendering with a permanently stale generation, and delayed teardown from the displaced instance still cannot
-retire the resumed owner. Initial Dart owner registration also fails visibly closed: a false result closes that
-stale Activity before `runApp`, rather than launching a UI whose native add/start calls must all fail.
+`onCreate()`. It now reconciles only when its isolate UUID is still the exact current native owner. The read-only
+resume returns that UUID's authoritative generation when Android may have interrupted an earlier JNI response;
+it never mints a generation, replaces an owner, or drains sessions. If another isolate has become current, the
+stale Activity retires only its own exact recorder/session authority and finishes without altering the replacement.
+Thus an OS-restored Activity cannot keep rendering with stale authority or reclaim a newer isolate, and delayed
+teardown still cannot retire the replacement. Initial Dart owner registration also fails visibly closed: a false
+result closes that stale Activity before `runApp`, rather than launching a UI whose native add/start calls must
+all fail.
 Follow-up closure (2026-07-20), **Android outgoing-viewer I/O and media-worker completion ownership**:
 the UUID/generation transition previously proved only that a close was requested and the stale map entry was
 removed. Initial viewer start discarded its I/O `JoinHandle`; reconnect overwrote the prior handle without a
@@ -360,13 +362,14 @@ Final owner close remains terminal and cannot be reversed by a queued reconnect.
 viewer core used by Android, desktop, iOS, and future macOS builds; only the generation/UUID layer and persistent
 foreground-service amplification are Android-specific.
 Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
-drain, delayed-callback ABA rejection, admission/transition lock exclusion, and stopped-Activity ownership
-resumption without generation reuse. They now also hold a synthetic outgoing worker open, prove an owner transition
+drain, delayed-callback ABA rejection, admission/transition lock exclusion, current-isolate lost-response
+reconciliation, and stale-Activity replacement-owner refusal. They now also hold a synthetic outgoing worker open, prove an owner transition
 cannot report completion before releasing and joining it, prove a media owner closes admission before joining
 its exact worker, cancel an exact connecting round, reject stale success/error publication, and prove durable
 supersession covers cancellation before waiter creation. `scripts/verify.sh` gates the typed JNI surface, absence of
 argument-free/global drain APIs, registration-before-UI-or-exit order, owner-scoped Activity/service teardown,
-started-Activity resumption, lock-held add/start/resume/retire ordering, initial I/O-handle retention,
+read-only current-isolate resume reconciliation, stale-Activity takeover refusal, lock-held add/start/retire
+ordering, initial I/O-handle retention,
 reconnect/final joins, connecting-round replacement, current-round-only publication, child-worker ownership, the
 fixed completion pool, nonblocking hard-drop handoff, the sole
 owning audio constructor, and controlled voice-audio close/join sinks. A disposable tracked-file candidate snapshot completed one
@@ -7492,6 +7495,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   implication is one application-owned state machine whose exact call owners are independent of Activity/service
   binding and whose playback mode remains subordinate to the exact live projection.
 
+  Follow-up verifier correction (2026-07-23): the older shared R-D7a lifecycle block still named the deleted
+  takeover regression and required resume to take the owner write lock, mint replacement authority, drain the
+  displaced UUID, and drop that lock. Those assertions predated this row's cross-isolate refusal fix and made the
+  broad gate reject the correct source while the focused gate required the opposite policy. The shared block now
+  requires the current stale-Activity refusal regression and a read-only resume with no write or session-drain
+  authority. The focused verifier also rejects the superseded summary/gate forms, and the independent verifier
+  mutation-binds those checks. Runtime source and normative R-S11br policy did not change in this correction.
+
   Verification: `scripts/android-voice-call-owner-state-test.kt` compiles the Android-free owner model and executes
   invalid/unregistered admission, two-controlled-owner aggregation, stale outgoing update/teardown refusal,
   same-or-newer resume with active-state retention plus older/cross-isolate refusal, controlled/outgoing overlap,
@@ -7499,14 +7510,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Kotlin/Rust topology, lifecycle
   ordering, one-recorder count, mode priority, projection identity, buffer/start/worker cleanup, platform-channel
   completion, worker-before-native start publication, requirement, disposition, ledger, and shared-gate wiring, and
-  rejects 52 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
+  rejects 56 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
   focused verifier rather than
   trusting its output, and mutation-binds the new gate/requirement/disposition/ledger plus the updated
   MediaProjection audio-retirement contract.
 
   Exact current-source verification passed in confined non-root, network-disabled, read-only-source containers:
   the Android-free Kotlin owner transition regression compiled and executed; the focused verifier passed normally
-  and rejected all 52 registered mutations; and the independent workspace verifier passed normally plus its complete
+  and rejected all 56 registered mutations; and the independent workspace verifier passed normally plus its complete
   in-memory source-mutation matrix. The Android release Kotlin compilation completed with `BUILD SUCCESSFUL` in 30
   seconds (`228` actionable tasks: `227` executed, `1` up-to-date); existing unrelated deprecation and static-analysis
   warnings remain and no APK was assembled. Locked/offline Rust 1.75 library tests passed all three Android

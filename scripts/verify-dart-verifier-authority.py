@@ -122,7 +122,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             '--output-root "$FRB_OUTPUT"',
             'cp -a --reflink=auto "$SOURCE_SNAPSHOT/." "$ANALYSIS_ROOT/"',
             'cp -a "$FRB_OUTPUT/." "$ANALYSIS_ROOT/"',
-            '    dart pub get --offline >/dev/null',
+            '    dart pub get --offline --enforce-lockfile >/dev/null',
             'if [ "$lock_before" != "$lock_after" ]; then',
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
             'analyze_status=$?',
@@ -136,7 +136,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'export VCPKG_ROOT=/online/vcpkg',
             '[ -d "$VCPKG_ROOT/installed/x64-linux/lib" ]',
             'export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0',
-            '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)',
+            '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)',
             'cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never',
             'if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then',
             'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk \'{print $1}\')"',
@@ -164,7 +164,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
         "dart verifier final online/source checks are not ordered",
     )
     require(
-        dart.index('(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)')
+        dart.index('(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)')
         < dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/'),
         "Flutter tool dependencies are not explicitly resolved offline before analyzer launch",
     )
@@ -330,9 +330,9 @@ MUTATIONS = (
     Mutation("dart", 'source=$ONLINE_SNAPSHOT,target=/online,readonly', 'source=$ONLINE_DIR,target=/online', "Dart immutable online mount"),
     Mutation(
         "dart",
+        '    dart pub get --offline --enforce-lockfile >/dev/null',
         '    dart pub get --offline >/dev/null',
-        '    dart pub get >/dev/null',
-        "offline Pub resolution",
+        "offline enforced-lockfile Pub resolution",
     ),
     Mutation(
         "dart",
@@ -378,9 +378,9 @@ MUTATIONS = (
     ),
     Mutation(
         "dart",
+        '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)',
         '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)',
-        '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get >/dev/null)',
-        "offline Flutter-tool bootstrap",
+        "offline enforced-lockfile Flutter-tool bootstrap",
     ),
     Mutation(
         "dart",

@@ -141,10 +141,10 @@ docker run --rm --pull=never --network=none --read-only \
     [ -d "$VCPKG_ROOT/installed/x64-linux/lib" ]
     export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0
     cargo_lock_before="$(sha256sum /src/Cargo.lock | awk "{print \$1}")"
-    (cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline >/dev/null)
+    (cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)
     cd /src/flutter
     lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
-    dart pub get --offline >/dev/null
+    dart pub get --offline --enforce-lockfile >/dev/null
     lock_after="$(sha256sum pubspec.lock | awk "{print \$1}")"
     if [ "$lock_before" != "$lock_after" ]; then
       echo "DART-VERIFY: FAILED — dart pub get --offline rewrote flutter/pubspec.lock" >&2

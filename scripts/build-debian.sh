@@ -484,12 +484,12 @@ CFG
             # read-only offline cache → rc=1; `--offline` (here and the flutter injection below)
             # avoids that advisories fetch entirely.
             export CI=true   # non-interactive flutter (suppress the fresh-HOME first-run prompt)
-            ( cd flutter && dart pub get --offline )
+            ( cd flutter && dart pub get --offline --enforce-lockfile )
             # Pre-resolve the flutter SDK'\''s OWN tool package (packages/flutter_tools) OFFLINE before
             # ANY `flutter` invocation: the cold tarball ships it UNRESOLVED, and the first `flutter ...`
             # would otherwise re-resolve it IN-PROCESS + ONLINE (pub.dev + the advisories _TypeError).
             # Its deps are staged in PUB_CACHE by stage_pub_cache. Must precede the injection + build below.
-            ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline )
+            ( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile )
             # Plugin injection (R-B7), mirroring build-windows.ps1:107-110. `dart pub get`
             # resolves the project (writes .dart_tool) but does NOT run flutter'\''s plugin
             # injection, which is what (re)generates flutter/linux/flutter/generated_plugins.cmake
@@ -517,7 +517,7 @@ CFG
             # This makes the build safe to re-run on a non-pristine tree (R-B9 "re-running is safe").
             rm -rf flutter/linux/flutter/ephemeral/.plugin_symlinks \
                    flutter/.flutter-plugins-dependencies flutter/.flutter-plugins
-            ( cd flutter && "$REAL_FLUTTER" pub get --offline )
+            ( cd flutter && "$REAL_FLUTTER" pub get --offline --enforce-lockfile )
             pub_lock_after="$(sha256sum flutter/pubspec.lock | awk "{print \$1}")"
             [ "$pub_lock_before" = "$pub_lock_after" ] || {
                 echo "[FATAL] flutter/pubspec.lock changed during offline pub resolution" >&2

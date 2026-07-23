@@ -179,7 +179,32 @@ def validate(sources: Dict[str, str]) -> None:
         'stage_cargo_installed_tool cargo-ndk "$builder"',
         "cargo-ndk typed producer invocation",
     )
-    require_count(shell, "online_docker run ", 1, "sole ordinary Docker run primitive")
+    semantic = extract(
+        shell,
+        "verify_pub_cache_resolution() {",
+        "\n}\n\nstage_pub_cache() {",
+        "Pub-cache networkless semantic launch",
+    )
+    for token, label in (
+        ("online_docker run --rm --pull=never --network=none --read-only",
+         "ephemeral no-pull networkless read-only launch"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "privilege confinement"),
+        ("--pids-limit=512 --memory=8g --memory-swap=8g --cpus=4",
+         "resource ceilings"),
+        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=5g",
+         "bounded scratch"),
+    ):
+        require(semantic, token, "Pub-cache semantic {}".format(label))
+    forbid_container_authority(semantic, "Pub-cache semantic launch")
+
+    require_count(
+        shell,
+        "online_docker run ",
+        2,
+        "ordinary funnel plus Pub-cache semantic Docker primitives",
+    )
     for token, label in (
         ("--pull=", "pull policy"),
         ("--read-only", "root-filesystem policy"),
@@ -192,7 +217,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("--cpus=", "CPU policy"),
         ("--tmpfs ", "scratch policy"),
     ):
-        require_count(shell, token, 1, "sole {}".format(label))
+        require_count(shell, token, 2, "two-launch {}".format(label))
     require_count(
         shell,
         'local builder="$DEB_BUILDER_IMAGE_ID"',
@@ -288,19 +313,59 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "    assert_online_fetch_docker_authority\n    env",
         "closed image-provenance environment",
     ),
-    Mutation("shell", "--pull=never", "--pull=always", "no-pull policy"),
+    Mutation(
+        "shell",
+        "online_docker run --rm --pull=never --network=bridge --read-only",
+        "online_docker run --rm --pull=always --network=bridge --read-only",
+        "no-pull policy",
+    ),
     Mutation("shell", "--network=bridge", "--network=host", "isolated acquisition network"),
-    Mutation("shell", "--read-only", "--hostname=online-fetch", "read-only root"),
-    Mutation("shell", '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "--user 0:0",
-             "numeric nonroot identity"),
-    Mutation("shell", "--cap-drop=ALL", "--cap-drop=NET_RAW", "complete capability drop"),
-    Mutation("shell", "--security-opt=no-new-privileges",
-             "--security-opt=seccomp=unconfined", "no-new-privileges"),
+    Mutation(
+        "shell",
+        "online_docker run --rm --pull=never --network=bridge --read-only",
+        "online_docker run --rm --pull=never --network=bridge --hostname=online-fetch",
+        "read-only root",
+    ),
+    Mutation(
+        "shell",
+        '--network=bridge --read-only \\\n'
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+        '--network=bridge --read-only \\\n'
+        "        --user 0:0",
+        "numeric nonroot identity",
+    ),
+    Mutation(
+        "shell",
+        "--cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=2048",
+        "--cap-drop=NET_RAW --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=2048",
+        "complete capability drop",
+    ),
+    Mutation(
+        "shell",
+        "--cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=2048",
+        "--cap-drop=ALL --security-opt=seccomp=unconfined \\\n"
+        "        --pids-limit=2048",
+        "no-new-privileges",
+    ),
     Mutation("shell", "--pids-limit=2048", "--pids-limit=-1", "PID ceiling"),
     Mutation("shell", "--memory=16g", "--memory=0", "memory ceiling"),
     Mutation("shell", "--memory-swap=16g", "--memory-swap=-1", "swap ceiling"),
-    Mutation("shell", "--cpus=4", "--cpus=0", "CPU ceiling"),
+    Mutation(
+        "shell",
+        "--memory-swap=16g --cpus=4",
+        "--memory-swap=16g --cpus=0",
+        "CPU ceiling",
+    ),
     Mutation("shell", "size=12g", "size=120g", "scratch ceiling"),
+    Mutation(
+        "shell",
+        "online_docker run --rm --pull=never --network=none --read-only",
+        "online_docker run --rm --pull=never --network=bridge --read-only",
+        "Pub-cache semantic network removal",
+    ),
     Mutation("shell", 'build_frb_codegen() {\n    local builder="$DEB_BUILDER_IMAGE_ID"',
              'build_frb_codegen() {\n    local builder="ubuntu:18.04"',
              "exact Debian image"),

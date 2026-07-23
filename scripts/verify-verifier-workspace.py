@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13785,6 +13785,40 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition mutable WiX refusal"),
     ):
         require_text(online, text, label)
+    launch_funnel = extract_between(
+        online,
+        "online_docker_run() {",
+        '        "$@"\n}',
+        "online acquisition launch funnel",
+    )
+    for text, label in (
+        ("online_docker run --rm --pull=never --network=bridge --read-only",
+         "online acquisition funnel confinement"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "online acquisition numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "online acquisition funnel privilege confinement"),
+        ("--pids-limit=2048 --memory=16g --memory-swap=16g --cpus=4",
+         "online acquisition funnel resource ceilings"),
+    ):
+        require_text(launch_funnel, text, label)
+    pub_semantic = extract_between(
+        online,
+        "verify_pub_cache_resolution() {",
+        "\n}\n\nstage_pub_cache() {",
+        "Pub-cache networkless semantic launch",
+    )
+    for text, label in (
+        ("online_docker run --rm --pull=never --network=none --read-only",
+         "Pub-cache semantic runtime confinement"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "Pub-cache semantic numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "Pub-cache semantic privilege confinement"),
+        ("--pids-limit=512 --memory=8g --memory-swap=8g --cpus=4",
+         "Pub-cache semantic resource ceilings"),
+    ):
+        require_text(pub_semantic, text, label)
     require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
@@ -13817,6 +13851,8 @@ def validate_online_fetch_gradle_source_authority_contract(sources):
          "Gradle-source focused canonical-checkout enforcement"),
         ("post-build exact-input comparison",
          "Gradle-source focused postcondition enforcement"),
+        ("retained-authority reuse branch",
+         "Gradle-source focused retained-authority enforcement"),
         ("Gradle source lifecycle",
          "Gradle-source focused lifecycle ordering"),
         ("MUTATIONS: Tuple[Mutation, ...]",
@@ -13880,6 +13916,14 @@ def validate_online_fetch_gradle_source_authority_contract(sources):
          "Gradle-source authority modes"),
         ('/usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"',
          "Gradle-source writable-copy modes"),
+        ('if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then',
+         "Gradle-source retained-authority reuse branch"),
+        ('verify_gradle_live_checkout_state "before exact-source reuse"',
+         "Gradle retained-authority clean-checkout reproof"),
+        ('[ "$current" = "$GRADLE_SOURCE_COMMIT" ]',
+         "Gradle-source retained-authority commit reproof"),
+        ("recreated writable source does not match its exact commit authority",
+         "Gradle-source recreated-copy comparison"),
         ("verify_gradle_source_unchanged() {",
          "Gradle-source postcondition"),
         ("retire_gradle_source_build() {",
@@ -13964,8 +14008,8 @@ def validate_online_fetch_gradle_source_authority_contract(sources):
     require_exact_count(
         online,
         "verify-android-build-source.py",
-        2,
-        "Gradle pre/post exact-source comparisons",
+        3,
+        "Gradle initial/recreated/post exact-source comparisons",
     )
     for text, label in (
         ("before.st_nlink != 1",
@@ -14323,6 +14367,166 @@ def validate_online_fetch_cargo_tool_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority",
         "online-fetch Cargo-tool output authority hardening ledger",
+    )
+
+
+def validate_online_fetch_pub_cache_output_authority_contract(sources):
+    focused = sources["online_fetch_pub_cache_output_authority_verifier"]
+    helper = sources["online_pub_cache_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        ("Pub-cache output lifecycle", "Pub-cache focused lifecycle binding"),
+        ("checked Pub-cache publication", "Pub-cache focused publication binding"),
+        ("closed Git semantic mapping", "Pub-cache focused Git-map binding"),
+        ("validate_consumers(sources)", "Pub-cache focused consumer binding"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Pub-cache focused mutation inventory"),
+        ("run_mutations(sources)", "Pub-cache focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("pub_cache_output_tool() {", "Pub-cache fixed output helper"),
+        ("pub_cache_provenance_args() {", "Pub-cache provenance mapper"),
+        ("recover_pub_cache_output_staging() {", "Pub-cache restart recovery"),
+        ("verify_pub_cache_resolution() {", "Pub-cache semantic replay"),
+        ("stage_pub_cache() {", "Pub-cache closed producer lifecycle"),
+        ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+         "Pub-cache exclusive transaction"),
+        ('"$ONLINE_DIR/.rustdesk-pub-cache.XXXXXXXXXX"',
+         "Pub-cache unpredictable staging"),
+        ('source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled',
+         "Pub-cache read-only online input"),
+        ('source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache',
+         "Pub-cache narrow writable output"),
+        ('source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
+         "Pub-cache read-only exact project input"),
+        ("cp -a /project-source/. /tmp/project/", "Pub-cache disposable project copy"),
+        ("dart pub get --enforce-lockfile", "Pub-cache flutter_tools lock enforcement"),
+        ("flutter pub get --enforce-lockfile", "Pub-cache project lock enforcement"),
+        ("online_docker run --rm --pull=never --network=none --read-only",
+         "Pub-cache networkless semantic launch"),
+        ("dart pub get --offline --enforce-lockfile",
+         "Pub-cache offline Dart lock enforcement"),
+        ("flutter pub get --offline --enforce-lockfile",
+         "Pub-cache offline Flutter lock enforcement"),
+        ('[ "${#git_specs[@]}" -eq 8 ]', "Pub-cache exact Git dependency count"),
+        ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
+        ('[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]',
+         "Pub-cache digest receipt"),
+        ('--expected-digest "$digest"', "Pub-cache digest-bound publication"),
+        ("pub_cache_output_tool verify", "Pub-cache structural output verdict"),
+        ("pub_cache_output_tool publish", "Pub-cache checked publication"),
+        ("retire_pub_cache_output_staging", "Pub-cache private retirement"),
+        ('&& [ "$semantic_status" -eq 0 ]', "Pub-cache semantic publication barrier"),
+    ):
+        require_text(online, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_pub_cache() {",
+        "\n}\n\n# ── vcpkg overlay distfiles",
+        "Pub-cache output authority lifecycle",
+    )
+    require_exact_count(
+        lifecycle,
+        '"$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5"',
+        2,
+        "Pub-cache pre/post Flutter archive checks",
+    )
+    require_exact_count(
+        lifecycle,
+        "--enforce-lockfile",
+        2,
+        "Pub-cache networked lock enforcement",
+    )
+    require_absent(
+        lifecycle,
+        'source=$ONLINE_DIR,target=/online"',
+        "Pub-cache broad writable online mount",
+    )
+    require_absent(
+        lifecycle,
+        "source=$REPO_ROOT/flutter",
+        "Pub-cache live Flutter source mount",
+    )
+    require_order(
+        lifecycle,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "prepare_gradle_source",
+            "verify_sha256",
+            "recover_pub_cache_output_staging",
+            "check-complete",
+            "prepare_pub_cache_output_staging",
+            "online_docker_run",
+            "(verify_gradle_source_unchanged) || source_status=$?",
+            "retire_gradle_source_build",
+            "restore_pub_cache_output_traversal",
+            "pub_cache_output_tool verify",
+            "verify_pub_cache_resolution",
+            "pub_cache_output_tool publish",
+            "retire_pub_cache_output_staging",
+            '"$FLOCK_BIN" --unlock "$lock_fd"',
+        ),
+        "Pub-cache checked transaction order",
+    )
+    for text, label in (
+        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v1"',
+         "Pub-cache bounded transaction record"),
+        ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
+         "Pub-cache output bounds"),
+        ("EXPECTED_GIT_DEPENDENCIES = 8", "Pub-cache Git inventory bound"),
+        ('required = {"hosted", "hosted-hashes", "git"}',
+         "Pub-cache exact top-level inventory"),
+        ("reject_descendant_mounts(canonical)", "Pub-cache mount closure"),
+        ("Pub cache has a hardlink outside its closed output tree",
+         "Pub-cache hardlink closure"),
+        ("Pub cache symlink escapes the cache root", "Pub-cache symlink closure"),
+        ("Pub cache contains a special file", "Pub-cache special-file refusal"),
+        ("if metadata.st_mode & FORBIDDEN_MODE_BITS:",
+         "Pub-cache set-id/sticky refusal"),
+        ("if attributes:", "Pub-cache extended-attribute refusal"),
+        ("Pub hosted package directories and content-hash records are not one exact set",
+         "Pub-cache hosted/hash equality"),
+        ("sync_tree(output)", "Pub-cache output durability"),
+        ("RENAME_NOREPLACE = 1", "Pub-cache no-clobber primitive"),
+        ('renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)',
+         "Pub-cache descriptor-relative publication"),
+        ("Pub-cache publication rollback also failed", "Pub-cache rollback"),
+        ('return "unpublished"', "Pub-cache unpublished recovery"),
+        ('return "published"', "Pub-cache published recovery"),
+        ("transaction state is incoherent and was preserved",
+         "Pub-cache ambiguous-state refusal"),
+        ("self-test accepted an occupied Pub-cache destination",
+         "Pub-cache destination-race fixture"),
+        ("self-test accepted an escaping Pub-cache symlink",
+         "Pub-cache escaping-symlink fixture"),
+        ("self-test accepted a Pub-cache hardlink outside the output",
+         "Pub-cache external-hardlink fixture"),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-pub-cache-output-authority.py --repo . --self-test",
+        "Online-fetch Pub-cache output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-pub-cache-output.py self-test",
+        "Online-fetch Pub-cache transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cn</span>',
+        "online-fetch Pub-cache output authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>233</td>",
+        "online-fetch Pub-cache output authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
+        "online-fetch Pub-cache output authority hardening ledger",
     )
 
 
@@ -17225,7 +17429,8 @@ def validate_dart_verifier_authority_contract(sources):
             '--mount "type=bind,source=$ONLINE_SNAPSHOT,target=/online,readonly"',
             "Dart verifier read-only online mount",
         ),
-        ('    dart pub get --offline >/dev/null', "Dart verifier offline dependency resolution"),
+        ('    dart pub get --offline --enforce-lockfile >/dev/null',
+         "Dart verifier offline enforced-lockfile dependency resolution"),
         ('if [ "$lock_before" != "$lock_after" ]; then', "Dart verifier Pub lock preservation"),
         (
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
@@ -17673,6 +17878,7 @@ def validate_sources(sources):
     validate_online_fetch_gradle_source_authority_contract(sources)
     validate_online_fetch_gradle_output_authority_contract(sources)
     validate_online_fetch_cargo_tool_output_authority_contract(sources)
+    validate_online_fetch_pub_cache_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -29848,7 +30054,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
+            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -31604,8 +31810,10 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-            "--user 0:0",
+            '--network=bridge --read-only \\\n'
+            '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+            '--network=bridge --read-only \\\n'
+            "        --user 0:0",
             "online acquisition numeric nonroot identity",
         ),
         (
@@ -31643,6 +31851,18 @@ def run_source_mutations(sources):
             "canonical clean-checkout proof",
             "permissive worktree policy",
             "Gradle-source focused canonical-checkout enforcement",
+        ),
+        (
+            "online_fetch_gradle_source_authority_verifier",
+            "retained-authority reuse branch",
+            "ambient source reuse policy",
+            "Gradle-source focused retained-authority enforcement",
+        ),
+        (
+            "online_fetch",
+            'verify_gradle_live_checkout_state "before exact-source reuse"',
+            "true # retained exact source accepted without live reproof",
+            "Gradle retained-authority clean-checkout reproof",
         ),
         (
             "private_directory_mode_restorer",
@@ -31695,8 +31915,12 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "(verify_gradle_source_unchanged) || source_status=$?",
-            "true # source postcondition removed",
+            '"$builder" /bin/bash --noprofile --norc /authority/android-apk-build.sh \\\n'
+            "        || status=$?\n"
+            "    (verify_gradle_source_unchanged) || source_status=$?",
+            '"$builder" /bin/bash --noprofile --norc /authority/android-apk-build.sh \\\n'
+            "        || status=$?\n"
+            "    true # source postcondition removed",
             "Gradle failure-preserving source postcondition",
         ),
         (
@@ -31920,6 +32144,84 @@ def run_source_mutations(sources):
             "R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority",
             "R-S11cm/R-S11e-105 — ambient Cargo-tool output authority",
             "online-fetch Cargo-tool output authority hardening ledger",
+        ),
+        (
+            "online_fetch_pub_cache_output_authority_verifier",
+            "Pub-cache output lifecycle",
+            "Pub-cache output sequence",
+            "Pub-cache focused lifecycle binding",
+        ),
+        (
+            "online_fetch",
+            'source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache',
+            'source=$ONLINE_DIR,target=/online/pub-cache',
+            "Pub-cache narrow writable output",
+        ),
+        (
+            "online_fetch",
+            'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
+            'source=$REPO_ROOT/flutter,target=/project-source,readonly',
+            "Pub-cache read-only exact project input",
+        ),
+        (
+            "online_fetch",
+            '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]',
+            '[[ -n "$receipt" ]]',
+            "Pub-cache digest receipt",
+        ),
+        (
+            "online_fetch_pub_cache_output_authority_verifier",
+            "closed Git semantic mapping",
+            "open Git semantic mapping",
+            "Pub-cache focused Git-map binding",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "Pub cache has a hardlink outside its closed output tree",
+            "Pub cache accepts a hardlink outside its output tree",
+            "Pub-cache hardlink closure",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "Pub cache symlink escapes the cache root",
+            "Pub cache accepts a symlink escape",
+            "Pub-cache symlink closure",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            'renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)',
+            "os.replace(output, destination)",
+            "Pub-cache descriptor-relative publication",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "transaction state is incoherent and was preserved",
+            "transaction state was discarded",
+            "Pub-cache ambiguous-state refusal",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-online-fetch-pub-cache-output-authority.py --repo . --self-test",
+            "true # online-fetch Pub-cache output authority gate removed",
+            "Online-fetch Pub-cache output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cn</span>',
+            '<span class="id">R-S11cn-disabled</span>',
+            "online-fetch Pub-cache output authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>233</td>",
+            "<tr><td>233-disabled</td>",
+            "online-fetch Pub-cache output authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
+            "R-S11cn/R-S11e-106 — ambient Pub-cache output authority",
+            "online-fetch Pub-cache output authority hardening ledger",
         ),
         (
             "android_main_service",
@@ -33167,6 +33469,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_cargo_tool_output_helper": (
                 repo / "scripts/online-cargo-tool-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_pub_cache_output_authority_verifier": (
+                repo / "scripts/verify-online-fetch-pub-cache-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_pub_cache_output_helper": (
+                repo / "scripts/online-pub-cache-output.py"
             ).read_text(encoding="utf-8"),
             "android_apk_build": (
                 repo / "scripts/android-apk-build.sh"

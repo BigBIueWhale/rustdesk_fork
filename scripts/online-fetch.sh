@@ -817,36 +817,295 @@ build_frb_codegen() {
 }
 
 # ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/pub-cache ──
-# build_one resolves the flutter project --offline from this cache. The committed
-# pubspec.lock is the pin; this networked staging step fails if pub would rewrite it.
+# Pub receives the canonical cache path but only through one nested private output
+# mount. The complete online input closure and the exact committed source authority
+# remain read-only. Both the app and pinned flutter_tools lockfiles are enforced.
+pub_cache_output_tool() {
+    [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ] \
+        || die "Pub-cache output authority requires the exact source snapshot"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/online-pub-cache-output.py" "$@"
+}
+
+pub_cache_provenance_args() {
+    printf '%s\0' \
+        --source-commit "$GRADLE_SOURCE_COMMIT" \
+        --source-tree "$GRADLE_SOURCE_TREE" \
+        --source-archive-sha256 "$GRADLE_SOURCE_ARCHIVE_SHA256" \
+        --flutter-version "$FLUTTER_VERSION" \
+        --flutter-archive-sha256 "$SHA256_FLUTTER_3_24_5"
+}
+
+retire_pub_cache_output_staging() {
+    local staging="$1" staging_id="$2" disposition
+    disposition="$(
+        pub_cache_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+    )" || die "cannot reconcile private Pub-cache output staging"
+    log "Pub-cache output staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Pub-cache output staging traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Pub-cache output staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private Pub-cache output staging survived retirement"
+}
+
+recover_pub_cache_output_staging() {
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name '.rustdesk-pub-cache.*' -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Pub-cache output staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_pub_cache_output_staging "$staging" "$staging_id"
+    done
+}
+
+prepare_pub_cache_output_staging() {
+    PUB_CACHE_OUTPUT_STAGING="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-pub-cache.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Pub-cache output staging"
+    PUB_CACHE_OUTPUT_STAGING_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$PUB_CACHE_OUTPUT_STAGING"
+    )"
+    readonly PUB_CACHE_OUTPUT_STAGING PUB_CACHE_OUTPUT_STAGING_ID
+    if ! pub_cache_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${PUB_CACHE_PROVENANCE_ARGS[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+            --root "$PUB_CACHE_OUTPUT_STAGING" \
+            --expected-identity "$PUB_CACHE_OUTPUT_STAGING_ID" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Pub-cache output preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+            --remove-private-root "$PUB_CACHE_OUTPUT_STAGING" \
+            --expected-identity "$PUB_CACHE_OUTPUT_STAGING_ID" \
+            || die "failed Pub-cache output preparation left non-retirable private staging"
+        die "cannot prepare private Pub-cache output staging"
+    fi
+    PUB_CACHE_OUTPUT_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$PUB_CACHE_OUTPUT_STAGING/output"
+    )"
+    readonly PUB_CACHE_OUTPUT_ID
+}
+
+restore_pub_cache_output_traversal() {
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$PUB_CACHE_OUTPUT_STAGING/output" \
+        --expected-identity "$PUB_CACHE_OUTPUT_ID" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Pub-cache output traversal"
+}
+
+verify_pub_cache_resolution() {
+    local cache="$1" builder="$DEB_BUILDER_IMAGE_ID"
+    [ -d "$cache" ] && [ ! -L "$cache" ] \
+        || die "Pub-cache semantic candidate is not one real directory"
+    online_docker run --rm --pull=never --network=none --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=512 --memory=8g --memory-swap=8g --cpus=4 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=5g \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$cache,target=/online/pub-cache,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/authority,readonly,bind-recursive=disabled" \
+        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+        --workdir /tmp \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        umask 077
+        mkdir /tmp/toolchain /tmp/home /tmp/project
+        tar -C /tmp/toolchain -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+        cp -a /authority/flutter/. /tmp/project/
+        chmod -R u+rwX /tmp/project
+        export HOME=/tmp/home PUB_CACHE=/online/pub-cache CI=true
+        export PUB_HOSTED_URL=https://pub.dev
+        export FLUTTER_SUPPRESS_ANALYTICS=true
+        export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0
+        export PATH=/tmp/toolchain/flutter/bin:/tmp/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+        authority_lock="$(sha256sum /authority/flutter/pubspec.lock | awk "{print \$1}")"
+        tools_lock="$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
+        (cd /tmp/toolchain/flutter/packages/flutter_tools \
+            && dart pub get --offline --enforce-lockfile >/dev/null)
+        [ "$tools_lock" = "$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+        (cd /tmp/project && dart pub get --offline --enforce-lockfile >/dev/null)
+        (cd /tmp/project && flutter pub get --offline --enforce-lockfile >/dev/null)
+        [ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]
+
+        git_specs=(
+          "dash_chat_2|bd6b5b41254e57c5bcece202ebfb234de63e6487|.|https://github.com/rustdesk-org/Dash-Chat-2"
+          "desktop_multi_window|b47e8385e5a75d38319ad706a64b0ead3108b093|.|https://github.com/rustdesk-org/rustdesk_desktop_multi_window"
+          "dynamic_layouts|24cb88413fa5181d949ddacbb30a65d5c459e7d9|.|https://github.com/rustdesk-org/dynamic_layouts.git"
+          "flutter_gpu_texture_renderer|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|.|https://github.com/rustdesk-org/flutter_gpu_texture_renderer"
+          "texture_rgba_renderer|42797e0f03141dc2b585f76c64a13974508058b4|.|https://github.com/rustdesk-org/flutter_texture_rgba_renderer"
+          "uni_links|f416118d843a7e9ed117c7bb7bdc2deda5a9e86f|uni_links|https://github.com/rustdesk-org/uni_links"
+          "window_manager|85789bfe6e4cfaf4ecc00c52857467fdb7f26879|.|https://github.com/rustdesk-org/window_manager"
+          "window_size|eb3964990cf19629c89ff8cb4a37640c7b3d5601|plugins/window_size|https://github.com/google/flutter-desktop-embedding.git"
+        )
+        [ "${#git_specs[@]}" -eq 8 ]
+        for spec in "${git_specs[@]}"; do
+            IFS="|" read -r package resolved package_path url <<<"$spec"
+            checkouts=(/online/pub-cache/git/*-"$resolved")
+            [ "${#checkouts[@]}" -eq 1 ] && [ -d "${checkouts[0]}" ]
+            checkout="${checkouts[0]}"
+            [ "$(cat "$checkout/.git/pub-packages")" = "$package_path" ]
+            [ "$(/usr/bin/git -c safe.directory="$checkout" -C "$checkout" rev-parse --verify "HEAD^{commit}")" = "$resolved" ]
+            [ -z "$(/usr/bin/git -c safe.directory="$checkout" -C "$checkout" status --porcelain=v1 --untracked-files=all)" ]
+            /usr/bin/git -c safe.directory="$checkout" -C "$checkout" diff --no-ext-diff --quiet --
+            /usr/bin/git -c safe.directory="$checkout" -C "$checkout" diff --cached --no-ext-diff --quiet --
+            remote="$(
+                /usr/bin/git -c safe.directory="$checkout" -C "$checkout" \
+                    config --path --get remote.origin.url
+            )"
+            case "$remote" in /online/pub-cache/git/cache/*) ;; *) exit 1 ;; esac
+            [ -d "$remote" ] && [ ! -L "$remote" ]
+            [ "$(
+                /usr/bin/git -c safe.directory="$remote" --git-dir="$remote" \
+                    config --get remote.origin.url
+            )" = "$url" ]
+            /usr/bin/git -c safe.directory="$checkout" -C "$checkout" \
+                fsck --full --no-dangling --no-reflogs >/dev/null
+            /usr/bin/git -c safe.directory="$remote" --git-dir="$remote" \
+                fsck --full --no-dangling --no-reflogs >/dev/null
+            /usr/bin/git -c safe.directory="$remote" --git-dir="$remote" \
+                cat-file -e "${resolved}^{commit}"
+            bad_mode="$(
+                /usr/bin/git -c safe.directory="$checkout" -C "$checkout" \
+                    ls-tree -rz --full-tree -r HEAD \
+                    | /usr/bin/python3 -I -S -c "
+import sys
+for entry in sys.stdin.buffer.read().split(b'\0'):
+    if not entry:
+        continue
+    metadata, path = entry.split(b'\t', 1)
+    mode = metadata.split(b' ', 1)[0]
+    if mode not in (b'100644', b'100755', b'120000'):
+        print(mode.decode('ascii', 'replace'), path.decode('utf-8', 'replace'))
+        break
+"
+            )"
+            [ -z "$bad_mode" ]
+            [ -f "$checkout/$package_path/pubspec.yaml" ]
+            grep -qE "^name:[[:space:]]*$package\$" "$checkout/$package_path/pubspec.yaml"
+        done
+    '
+}
+
 stage_pub_cache() {
     local builder="$DEB_BUILDER_IMAGE_ID"
+    local status=0 source_status=0 input_status=0 output_status=0 semantic_status=0 publication_status=0
+    local lock_fd receipt="" digest="" existing=0
     require_online_fetch_builder_image deb-builder "$builder"
-    if [ -d "$ONLINE_DIR/pub-cache/hosted" ] || [ -d "$ONLINE_DIR/pub-cache/git" ]; then
-        log "pub cache already staged, skipping"; return 0
+    assert_online_fetch_source_tools
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Pub-cache output serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Pub-cache output transaction already owns the online root"
+    prepare_gradle_source
+    verify_sha256 "$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5"
+    recover_pub_cache_output_staging
+    mapfile -d '' PUB_CACHE_PROVENANCE_ARGS < <(pub_cache_provenance_args)
+    readonly PUB_CACHE_PROVENANCE_ARGS
+    if [ -e "$ONLINE_DIR/pub-cache" ] || [ -L "$ONLINE_DIR/pub-cache" ]; then
+        existing=1
+        receipt="$(
+            pub_cache_output_tool check-complete \
+                --online "$ONLINE_DIR" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+        )" || output_status=$?
+        if [ "$output_status" -eq 0 ]; then
+            verify_pub_cache_resolution "$ONLINE_DIR/pub-cache" || semantic_status=$?
+        fi
+    else
+        prepare_pub_cache_output_staging
+        log "staging both enforced Pub lock closures into one private output; ./online remains read-only"
+        online_docker_run \
+            --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+            --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache" \
+            --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
+            --workdir /tmp/project \
+            "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            umask 077
+            mkdir /tmp/toolchain /tmp/home /tmp/project
+            tar -C /tmp/toolchain -xf "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz"
+            cp -a /project-source/. /tmp/project/
+            chmod -R u+rwX /tmp/project
+            export HOME=/tmp/home PUB_CACHE=/online/pub-cache CI=true
+            export PUB_HOSTED_URL=https://pub.dev
+            export FLUTTER_SUPPRESS_ANALYTICS=true
+            export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0
+            export PATH=/tmp/toolchain/flutter/bin:/tmp/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+            project_lock="$(sha256sum /project-source/pubspec.lock | awk "{print \$1}")"
+            tools_lock="$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
+            (cd /tmp/toolchain/flutter/packages/flutter_tools \
+                && dart pub get --enforce-lockfile)
+            [ "$tools_lock" = "$(sha256sum /tmp/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
+            (cd /tmp/project && flutter pub get --enforce-lockfile)
+            [ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]
+            rm -rf -- "$PUB_CACHE/_temp" "$PUB_CACHE/log" "$PUB_CACHE/README.md"
+        ' || status=$?
     fi
-    log "staging the flutter pub cache (hosted + git deps) -> ./online/pub-cache"
-    online_docker_run \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
-        --mount "type=bind,source=$REPO_ROOT/flutter,target=/flutterproj,readonly" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-        TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/flutter-*.tar.xz
-        export PATH="$TC/flutter/bin:$PATH"
-        export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
-        export PUB_CACHE=/online/pub-cache; mkdir -p "$PUB_CACHE"
-        # /flutterproj is RO; pub get writes .dart_tool, so copy to a writable dir. The committed
-        # pubspec.lock pins the versions; the cache fills PUB_CACHE (hosted + the git-dep clones).
-        cp -a /flutterproj /tmp/proj
-        cd /tmp/proj
-        lock_before="$(sha256sum pubspec.lock | awk "{print \$1}")"
-        flutter pub get
-        lock_after="$(sha256sum pubspec.lock | awk "{print \$1}")"
-        [ "$lock_before" = "$lock_after" ] || {
-            echo "flutter/pubspec.lock drifted during pub cache staging; regenerate/commit the lock under the pinned Flutter SDK" >&2
-            diff -u /flutterproj/pubspec.lock pubspec.lock || true
-            exit 1
-        }
-    '
+    (verify_gradle_source_unchanged) || source_status=$?
+    retire_gradle_source_build
+    verify_sha256 "$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
+        || input_status=$?
+    if [ "$existing" -eq 0 ]; then
+        restore_pub_cache_output_traversal
+        receipt="$(
+            pub_cache_output_tool verify \
+                --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${PUB_CACHE_PROVENANCE_ARGS[@]}"
+        )" || output_status=$?
+        if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then
+            digest="${BASH_REMATCH[1]}"
+        else
+            output_status=1
+        fi
+        if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+           && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+            verify_pub_cache_resolution "$PUB_CACHE_OUTPUT_STAGING/output" \
+                || semantic_status=$?
+        fi
+        if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+           && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ] \
+           && [ "$semantic_status" -eq 0 ]; then
+            pub_cache_output_tool publish \
+                --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${PUB_CACHE_PROVENANCE_ARGS[@]}" \
+                --expected-digest "$digest" \
+                || publication_status=$?
+        fi
+        retire_pub_cache_output_staging \
+            "$PUB_CACHE_OUTPUT_STAGING" "$PUB_CACHE_OUTPUT_STAGING_ID"
+    fi
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Pub-cache output transaction lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "networked Pub-cache source postcondition failed"
+    [ "$input_status" -eq 0 ] || die "networked Pub-cache Flutter-input postcondition failed"
+    [ "$output_status" -eq 0 ] || die "networked Pub-cache output postcondition failed"
+    [ "$status" -eq 0 ] || die "networked Pub-cache producer failed"
+    [ "$semantic_status" -eq 0 ] || die "networkless Pub-cache semantic replay failed"
+    [ "$publication_status" -eq 0 ] || die "networked Pub-cache output publication failed"
+    log "Pub cache is structurally closed and both enforced lockfiles resolve offline"
 }
 
 # ── vcpkg overlay distfiles (R-B12(a)) ─────────────────────────────────────────
@@ -1120,7 +1379,45 @@ stage_android_sdk() {
 # platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then projects this cache
 # into private writable execution state whose tracked init authority enables Gradle offline mode.
 prepare_gradle_source() {
-    local archive_attribute_status=0 invalid_tree_entry
+    local archive_attribute_status=0 invalid_tree_entry current
+    if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then
+        [ -d "$GRADLE_SOURCE_AUTHORITY" ] && [ ! -L "$GRADLE_SOURCE_AUTHORITY" ] \
+            || die "retained exact source authority changed before reuse"
+        [ -f "$GRADLE_SOURCE_ARCHIVE" ] && [ ! -L "$GRADLE_SOURCE_ARCHIVE" ] \
+            || die "retained exact source archive changed before reuse"
+        current="$(online_source_git rev-parse --verify 'HEAD^{commit}')" \
+            || die "cannot re-resolve the exact Gradle-warm source commit"
+        [ "$current" = "$GRADLE_SOURCE_COMMIT" ] \
+            || die "the live source commit changed before exact-source reuse"
+        current="$(online_source_git rev-parse --verify "${GRADLE_SOURCE_COMMIT}^{tree}")" \
+            || die "cannot re-resolve the exact Gradle-warm source tree"
+        [ "$current" = "$GRADLE_SOURCE_TREE" ] \
+            || die "the live source tree changed before exact-source reuse"
+        verify_gradle_live_checkout_state "before exact-source reuse" \
+            || die "exact-source reuse requires one clean canonical committed source tree"
+        [ "$(/usr/bin/sha256sum "$GRADLE_SOURCE_ARCHIVE" | /usr/bin/awk '{print $1}')" \
+           = "$GRADLE_SOURCE_ARCHIVE_SHA256" ] \
+            || die "retained exact source archive changed before reuse"
+        GRADLE_SOURCE_BUILD="$ONLINE_FETCH_TMP/gradle-source-build"
+        [ ! -e "$GRADLE_SOURCE_BUILD" ] && [ ! -L "$GRADLE_SOURCE_BUILD" ] \
+            || die "exact writable source path was not retired before reuse"
+        /usr/bin/install -d -m 0700 "$GRADLE_SOURCE_BUILD"
+        "$TAR_BIN" --extract --file="$GRADLE_SOURCE_ARCHIVE" \
+            --directory="$GRADLE_SOURCE_BUILD" --no-same-owner --no-same-permissions \
+            || die "cannot recreate the exact writable source"
+        invalid_tree_entry="$(/usr/bin/find "$GRADLE_SOURCE_BUILD" \
+            \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" \
+            || die "cannot inspect the recreated exact source"
+        [ -z "$invalid_tree_entry" ] \
+            || die "recreated exact source contains a symlink or special entry: $invalid_tree_entry"
+        /usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"
+        GRADLE_SOURCE_BUILD_ID="$(/usr/bin/stat -c '%d:%i' -- "$GRADLE_SOURCE_BUILD")"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
+            --reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" \
+            || die "recreated writable source does not match its exact commit authority"
+        return 0
+    fi
     GRADLE_SOURCE_COMMIT="$(online_source_git rev-parse --verify 'HEAD^{commit}')" \
         || die "cannot resolve the exact Gradle-warm source commit"
     GRADLE_SOURCE_TREE="$(online_source_git rev-parse --verify "${GRADLE_SOURCE_COMMIT}^{tree}")" \

@@ -149,7 +149,7 @@ Log 'resolving flutter_tools OFFLINE (0 pub.dev traffic: complete staged cache +
 # REQUIRED for a reliable .ExitCode (-PassThru+WaitForExit yields $null -> `-ne 0` always true; verified on
 # rdwinvm: -Wait -PassThru -> rc=7). A genuine hang is caught by the 130m provision wait.
 $pg = Start-Process 'C:\flutter\bin\cache\dart-sdk\bin\dart.exe' `
-    -ArgumentList 'pub','get','--offline','--directory','C:\flutter\packages\flutter_tools' -Wait -PassThru -NoNewWindow
+    -ArgumentList 'pub','get','--offline','--enforce-lockfile','--directory','C:\flutter\packages\flutter_tools' -Wait -PassThru -NoNewWindow
 if ($pg.ExitCode -ne 0) { Die "flutter_tools offline pub get failed (exit $($pg.ExitCode)) -- the staged pub cache is incomplete OR the advisory-cache stamp did not take (dart re-fetched from pub.dev, unreachable on a fresh-Win11 guest)" }
 # config enables the windows desktop; precache reconciles the (already-present, offline-staged) engine.
 $cfg = Start-Process 'C:\flutter\bin\flutter.bat' -ArgumentList 'config','--no-analytics','--enable-windows-desktop' -Wait -PassThru -NoNewWindow

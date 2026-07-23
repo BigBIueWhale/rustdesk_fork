@@ -19,7 +19,7 @@
 # flutter ($REAL_FLUTTER) unchanged.
 set -euo pipefail
 if [ "${1:-}" = pub ] && [ "${2:-}" = run ]; then exec dart run "${@:3}"; fi
-if [ "${1:-}" = pub ] && [ "${2:-}" = get ]; then exec dart pub get --offline "${@:3}"; fi
+if [ "${1:-}" = pub ] && [ "${2:-}" = get ]; then exec dart pub get --offline --enforce-lockfile "${@:3}"; fi
 # `flutter build` runs pub get IN-PROCESS (not as a subprocess this shim could
 # reroute), which drives pub ONLINE and _TypeErrors on the read-only offline cache
 # exactly like `flutter pub get`. The project is already resolved by `dart pub get

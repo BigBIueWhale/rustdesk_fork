@@ -942,9 +942,9 @@ runpy.run_path(script, run_name='__main__')
     $pubLock = Join-Path $SRC 'flutter\pubspec.lock'
     $pubLockBefore = (Get-FileHash -Algorithm SHA256 $pubLock).Hash
     Push-Location (Join-Path $SRC 'flutter')
-    & dart pub get --offline
+    & dart pub get --offline --enforce-lockfile
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "dart pub get --offline (project) failed ($LASTEXITCODE) -- pub-cache may lack a windows-only package" }
-    & flutter pub get --offline
+    & flutter pub get --offline --enforce-lockfile
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "flutter pub get --offline (plugin injection) failed ($LASTEXITCODE) -- generated_plugins.cmake will be absent; the flutter wrapper may have reached pub.dev for advisories" }
     Pop-Location
     $pubLockAfter = (Get-FileHash -Algorithm SHA256 $pubLock).Hash

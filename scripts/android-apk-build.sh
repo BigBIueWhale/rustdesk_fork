@@ -130,15 +130,15 @@ fi
 # Offline pub: the project + the flutter SDK tool package (flutter build re-resolves both
 # in-process ONLINE otherwise -> pub advisories _TypeError on the read-only cache).
 pub_lock_before="$(sha256sum flutter/pubspec.lock | awk '{print $1}')"
-( cd flutter && dart pub get --offline )
-( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline )
+( cd flutter && dart pub get --offline --enforce-lockfile )
+( cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile )
 # Plugin injection: bare `dart pub get` above does NOT write .flutter-plugins-dependencies (the gradle plugin
 # list) -- only the REAL `flutter pub get` does (the flutter-tool's plugin resolution). Without it the gradle
 # build reuses whatever .flutter-plugins-dependencies is on disk, which can be STALE/wrong -- e.g. one a
 # windows/FRB docker step left listing the desktop-only `desktop_drop` under "android", so gradle asserts its
 # (nonexistent) android dir and fails. Run the REAL flutter (NOT the --no-pub shim) so android's plugin list is
 # regenerated correctly + offline. Mirrors the windows build's generated_plugins.cmake fix (3a577a6).
-( cd flutter && "$REAL_FLUTTER" pub get --offline )
+( cd flutter && "$REAL_FLUTTER" pub get --offline --enforce-lockfile )
 pub_lock_after="$(sha256sum flutter/pubspec.lock | awk '{print $1}')"
 [ "$pub_lock_before" = "$pub_lock_after" ] || {
     echo "[FATAL] flutter/pubspec.lock changed during offline pub resolution" >&2

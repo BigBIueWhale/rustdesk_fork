@@ -9146,8 +9146,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and authority-boundary evidence rather than cold acquisition-output reproduction. No networked
   acquisition, image pull/build/tag, release build, or host
   RustDesk/service/listener/firewall/network operation was executed for this source slice. R-S11cm/
-  R-S11e-105 immediately following closes the two Cargo-installed tool outputs. Pub, vcpkg, SDK, and
-  archive producers still have separate broad writable online mounts; host-side download/extraction
+  R-S11e-105 immediately following closes the two Cargo-installed tool outputs. The Pub output is
+  closed by R-S11cn/R-S11e-106 below; vcpkg, SDK, and archive producers still have separate broad
+  writable online mounts; host-side download/extraction
   and maintenance candidate-image publication, exact cold R-B2 artifacts, native/device evidence,
   and external R-V3 review remain open.
 - **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — SOURCE IMPLEMENTED
@@ -9241,11 +9242,164 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   No real networked Cargo installation was run, so this is source, transaction, real-metadata,
   negative-fixture, and authority-boundary evidence rather than cold acquisition reproduction.
   Cargo's packaged lockfile is enforced but independent registry-package provenance/reproducible
-  binary hashing remains outside this output-authority slice. Pub, vcpkg, SDK, and archive producers,
+  binary hashing remains outside this output-authority slice. The Pub output is closed separately by
+  R-S11cn/R-S11e-106 below; vcpkg, SDK, and archive producers,
   host-side downloads/extractions, maintenance candidate-image publication, exact cold R-B2 artifacts,
   native/device evidence, and external R-V3 review remain open. No online acquisition, networked
   producer, image pull/build/tag, release build, root command, or host RustDesk process/service/config/
   listener/firewall/network operation was executed for this slice.
+- **R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority — SOURCE,
+  TRANSACTION, PINNED-TOOL SEMANTIC, AND MUTATION VERIFIED 2026-07-24; COLD NETWORK
+  ACQUISITION AND RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host,
+  the immutable Debian builder used by the networked producer, and every Android/Debian/Windows/
+  macOS/Dart consumer of the resulting cache. Endpoint/action: `scripts/online-fetch.sh::
+  stage_pub_cache`, which acquires the Flutter project's hosted and Git dependency closure into
+  `online/pub-cache`. Boundary: networked Pub archive/Git processing ↔ the exact committed project,
+  pinned Flutter SDK, complete offline-input closure, and durable cache publication.
+
+  Before this slice `stage_pub_cache` mounted all of `$ONLINE_DIR` read-write, mounted the live
+  checkout's `flutter` project, and let the producer create the permanent `online/pub-cache` name
+  directly. If either `hosted` or `git` already existed, it returned without proving completeness,
+  lockfile agreement, package hashes, Git refs/objects, or offline resolvability. The legitimate
+  output is one Pub cache, but package/archive extraction and Git behavior held write/delete authority
+  over every unrelated cached release input, while partial or stale state could survive until a
+  platform build. R-S11cj's numeric non-root producer constrained writes to the invoking user's
+  authority but did not make the broad bind, live source input, direct final-name publication, or
+  presence-only reuse admissible. This is source-proven acquisition-input, output-publication, and
+  stale-state authority debt, not evidence that a cached input changed, a container escaped, host
+  root was acquired, a listener was exposed, host RustDesk/service/config/firewall/network state
+  changed, exploitation occurred, or the host was compromised.
+
+  `online-fetch.sh` now serializes the complete Pub transaction with an exclusive lock on the
+  current-user-private online root. It constructs and verifies the same clean exact-commit source
+  authority used by the Gradle warmer, binds transaction provenance to commit, tree, source-archive
+  SHA-256, Flutter 3.24.5, and the independently pinned Flutter archive SHA-256, verifies the Flutter
+  archive before and after producer execution, and reconciles every matching reserved transaction.
+  Reuse of the retained authority re-proves the live commit/tree/clean checkout and archive digest
+  before constructing a fresh exact writable copy; the Pub copy is retired before the later Gradle
+  stage recreates its own generation. Neither producer path mounts or copies the live repository.
+
+  A cold Pub run creates unpredictable mode-0700 same-filesystem staging and a mode-0600 fsynced
+  state record binding exact online, staging, output, source, and Flutter identities. The established
+  confined online launcher still supplies intentional bridge egress, the already-loaded immutable
+  Debian image ID, invoking numeric UID:GID, no pull, read-only root, all capabilities dropped,
+  no-new-privileges, bounded PID/memory/no-swap/CPU/tmpfs, no port, no socket, and no host namespace.
+  All of `/online` is mounted only `readonly,bind-recursive=disabled`. The sole writable durable host
+  mount is the exact staged output, nested at canonical `/online/pub-cache` so Pub's cached Git remote
+  paths remain valid after publication. The exact source generation is separately mounted read-only
+  at `/project-source` and copied only to bounded container tmpfs; home, unpacked toolchain, `.dart_tool`,
+  generated plugin state, and other project mutations are disposable. System/global Git configuration
+  is excluded rather than widened with a wildcard safe-directory rule.
+
+  The pinned SDK's `flutter_tools` lock is resolved with `dart pub get --enforce-lockfile`, and the
+  exact project's committed lock is resolved with `flutter pub get --enforce-lockfile`; both lockfile
+  hashes must remain unchanged. Only Pub's known ephemeral `_temp`, `log`, and root `README.md` state
+  is removed. The producer never receives another writable online path or a path to the final cache
+  name. Existing output is no longer presence-trusted: it enters the same complete non-mutating
+  structural and semantic validation as a new candidate.
+
+  `scripts/online-pub-cache-output.py` binds canonical absolute roots, root/output identities, exact
+  ownership, same filesystem, and absence of descendant mounts. It rejects foreign/mixed ownership,
+  group/world-writable state, acquisition-user-writable published state, nonportable paths,
+  filesystem crossings, special objects, set-id/sticky bits, extended attributes, unstable reads,
+  changed metadata, excess depth/count/bytes, and files over the per-file bound. Regular-file
+  hardlinks are admitted only when every `st_nlink` edge is accounted for inside the candidate; this
+  preserves Pub's legitimate internally hardlinked Git pack objects while excluding an external
+  mutable edge. Symlinks are admitted only inside a Git checkout, never inside the bare-cache tree,
+  and only with bounded printable relative targets whose lexical walk remains inside the cache.
+  This preserves the six legitimate relative symlinks in the locked `uni_links` checkout without
+  granting an escape.
+
+  A new output contains exactly `hosted`, `hosted-hashes`, and `git`. Hosted package directory names
+  and `.sha256` record names must be the same nonempty set, every record must be exactly one 64-hex
+  SHA-256 value, and the archive/http advisory cache files required by established Windows staging
+  must exist. The Git tree must contain exactly the eight lock-derived checkouts and eight bare
+  caches with their expected checkout/ref and bare-cache naming shapes, real `.git` directories, and
+  package-path records. Historical complete output may additionally retain only Pub's bounded
+  `_temp`, `log`, or root `README.md` entries; these are inspected and hashed rather than trusted.
+  Validation freezes every staged descendant read-only and returns one deterministic type/path/mode/
+  content/link-group tree digest; the staged root remains privately traversable until publication
+  and its intentional final 0700→0500 transition is canonicalized in that digest.
+
+  Structural success does not authorize publication. `verify_pub_cache_resolution` independently
+  launches the same exact immutable builder with `--network=none`, read-only root, numeric non-root
+  identity, no capabilities/privilege gain, bounded resources, and only read-only online, candidate,
+  and exact-source mounts. It re-extracts the SHA-pinned Flutter 3.24.5 SDK into tmpfs, copies the
+  exact project into tmpfs, resolves both `flutter_tools` and project lockfiles offline with
+  `--enforce-lockfile`, and proves their bytes unchanged. A closed eight-entry map derived from
+  `flutter/pubspec.lock` binds each Git package, exact resolved commit, package subpath, and upstream
+  URL. For every entry it proves one matching checkout, exact HEAD, no untracked/worktree/index
+  drift, a canonical bare-cache remote under `/online/pub-cache/git/cache`, exact upstream URL,
+  presence of the locked commit, full no-dangling/no-reflog `git fsck` on checkout and bare cache,
+  only Git modes 100644/100755/120000, and the expected package name at the locked path.
+
+  Producer, exact-source, Flutter-input, structural-output, offline-semantic, and publication
+  statuses are accumulated independently. Publication is attempted only when the first five are
+  green and the structural receipt is exactly one SHA-256 digest. Every candidate file and directory
+  is fsynced; descriptor-relative `renameat2(RENAME_NOREPLACE)` installs the exact output inode at a
+  still-absent `pub-cache` name, removes owner write from the published root, fsyncs candidate,
+  staging, and online namespace directories, then repeats identity, digest, and exact-shape checks.
+  A later failure restores root traversal and moves that exact inode back without clobber. Restart
+  recovery accepts only the exact recorded unpublished or published inode arrangement and preserves
+  every incoherent state. The established owner/mount-bound directory restorer and external-inode-
+  closure remover retire reconciled private staging.
+
+  Lockfile failure is also closed at consumption rather than only acquisition. Android APK, Debian,
+  Windows, FRB codegen, Dart verification, the Flutter offline shim, Windows guest setup, and macOS
+  distribution now pass `--enforce-lockfile` to their canonical Pub resolutions; offline consumers
+  retain `--offline`, and Flutter-level plugin injection continues to use the real Flutter tool where
+  required. This prevents a consumer from silently selecting a graph other than the committed lock
+  even if cache state is broader than that consumer needs.
+
+  The design follows primary contracts. Dart documents lockfiles, package content hashes, and
+  enforced-lockfile failure at https://dart.dev/tools/pub/dependencies and defines the `PUB_CACHE`
+  system-cache root at https://dart.dev/resources/glossary#system-cache. Docker documents writable-
+  by-default bind mounts, read-only binds, and recursive controls at
+  https://docs.docker.com/engine/storage/bind-mounts/. Git documents full object/connectivity
+  validation at https://git-scm.com/docs/git-fsck.html. Linux documents descriptor-relative
+  `RENAME_NOREPLACE` and the directory fsync needed for durable namespace entries at
+  https://man7.org/linux/man-pages/man2/renameat2.2.html and
+  https://man7.org/linux/man-pages/man2/fsync.2.html.
+
+  Executable evidence used immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as UID/GID 1000:1000, with no pull/network, read-only root/source, all capabilities dropped,
+  no-new-privileges, bounded resources, no socket, no port, and no host namespace. The transaction
+  self-test covers successful publication/recovery, occupied destination, escaping symlink, external
+  hardlink, FIFO, and extended-attribute rejection. A read-only copy of the complete established
+  423,566,825-byte cache (20,750 files, 5,962 directories, six legitimate symlinks, eight checkouts,
+  and eight bare caches) into verifier tmpfs passed the production `check-complete` validator with
+  deterministic inode-independent digest
+  `c5f0882f4550769d23fcc63f13851111fc050f4be3fdf4c1dcedd137ac4411ff`
+  after removing only the three producer-declared ephemeral top-level entries; moving that exact
+  normalized tree to the final-name fixture produced the same `check-complete` digest. Separately,
+  the established cache was mounted read-only into the
+  immutable Debian builder with `--network=none`; both enforced lockfiles resolved offline and all
+  eight exact Git semantic/object checks passed. The host cache and source were not changed.
+
+  The focused gate binds the transaction/mount order, exact image/pin/source paths, producer and
+  offline commands, eight lock-derived mappings, independent verdict barrier, helper invariants,
+  every canonical consumer, shared gate, R-S11cn, Appendix C #233, and this entry, and rejects its
+  complete 40-case deliberate-mutation suite. The independent workspace semantic binding passed
+  normally and its complete source-mutation inventory rejected every mutation after closing a
+  cross-launch token-masking weakness. Adjacent Gradle source/output gates rejected 38/30 mutations,
+  the online-container gate rejected 30, the Cargo-output gate rejected 36, Dart authority rejected
+  60, Android/Debian builder authority rejected 79/32, dependency inventory rejected all 103 and
+  passed live with 905 Cargo packages (36 Git), 199 Flutter packages (eight Git), and 871 lexical
+  unsafe blocks across 247 tracked Rust sources, and native-codec normal/self-test gates passed.
+  Changed shell syntax, Python compilation, requirements parsing/hash synchronization, and diff
+  hygiene passed. The pinned Linux verifier image did not contain a PowerShell parser; the two
+  PowerShell `--enforce-lockfile` edits are therefore source- and mutation-checked here, not claimed
+  as independently parser-executed.
+
+  No real networked Pub acquisition was run, so this is source, transaction, real-cache structural,
+  pinned-tool offline semantic, and negative-fixture evidence rather than cold acquisition
+  reproduction. Pub's content hashes and locked Git objects are enforced, but upstream publisher
+  provenance beyond those contracts remains separate. vcpkg, SDK, and archive producers, host-side
+  downloads/extractions, maintenance candidate-image publication, exact cold R-B2 artifacts,
+  native/device evidence, and external R-V3 review remain open. No online acquisition, image pull/
+  build/tag, release build, root command, or host RustDesk process/service/config/listener/firewall/
+  network operation was executed for this slice.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9963,9 +10117,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f4a9f588f536111f9068153169cd5fcdf08d5b782ad4f5d4b7cef3a4c32ec9b5  requirements.html
+a9626a3124a65d19cc9b8458859aa3b856f46f25251656442c4d09457e09bf39  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

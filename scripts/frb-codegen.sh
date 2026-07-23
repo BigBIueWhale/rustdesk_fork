@@ -255,8 +255,8 @@ docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g
         } > "$CARGO_HOME/config.toml"
         git config --global --add safe.directory /src
         export PUB_CACHE=/online/pub-cache CI=true
-        (cd flutter && dart pub get --offline)
-        (cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline)
+        (cd flutter && dart pub get --offline --enforce-lockfile)
+        (cd "$TC"/flutter/packages/flutter_tools && dart pub get --offline --enforce-lockfile)
         clang_headers=("$LLVM_ROOT"/lib/clang/*/include)
         [ "${#clang_headers[@]}" -eq 1 ] && [ -d "${clang_headers[0]}" ]
         /online/frb-tool/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \

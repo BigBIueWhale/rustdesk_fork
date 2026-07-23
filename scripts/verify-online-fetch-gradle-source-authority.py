@@ -124,7 +124,29 @@ def validate(sources: Dict[str, str]) -> None:
         "Gradle source constructor",
     )
     for token, label in (
-        ("rev-parse --verify 'HEAD^{commit}'", "exact HEAD capture"),
+        ('if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then',
+         "retained-authority reuse branch"),
+        ('verify_gradle_live_checkout_state "before exact-source reuse"',
+         "retained-authority clean-checkout reproof"),
+        ('[ "$current" = "$GRADLE_SOURCE_COMMIT" ]',
+         "retained-authority commit reproof"),
+        ('[ "$current" = "$GRADLE_SOURCE_TREE" ]',
+         "retained-authority tree reproof"),
+        ('= "$GRADLE_SOURCE_ARCHIVE_SHA256" ]',
+         "retained-authority archive reproof"),
+        ('[ ! -e "$GRADLE_SOURCE_BUILD" ] && [ ! -L "$GRADLE_SOURCE_BUILD" ]',
+         "retired writable path precondition"),
+        ('"$TAR_BIN" --extract --file="$GRADLE_SOURCE_ARCHIVE" \\\n'
+         '            --directory="$GRADLE_SOURCE_BUILD" --no-same-owner --no-same-permissions',
+         "retained-authority exact source recreation"),
+        ("recreated exact source contains a symlink or special entry",
+         "recreated-source type closure"),
+        ('--reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" \\\n'
+         '            || die "recreated writable source does not match its exact commit authority"',
+         "recreated exact-source comparison"),
+        ("return 0\n    fi", "retained-authority reuse completion"),
+        ('GRADLE_SOURCE_COMMIT="$(online_source_git rev-parse --verify \'HEAD^{commit}\')"',
+         "exact HEAD capture"),
         ('rev-parse --verify "${GRADLE_SOURCE_COMMIT}^{tree}"', "exact tree capture"),
         ('verify_gradle_live_checkout_state "before Gradle warming"',
          "canonical clean-checkout proof"),
@@ -153,10 +175,17 @@ def validate(sources: Dict[str, str]) -> None:
         ('GRADLE_SOURCE_BUILD_ID="$(/usr/bin/stat -c \'%d:%i\' -- '
          '"$GRADLE_SOURCE_BUILD")"',
          "writable-source identity"),
-        ('--reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD"',
+        ('--reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" \\\n'
+         '        || die "Gradle writable source does not match its exact commit authority"',
          "initial exact-source comparison"),
     ):
         require(prepare, token, "source constructor {}".format(label))
+    require_count(
+        prepare,
+        '/usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"',
+        2,
+        "initial and recreated writable-source mode normalization",
+    )
 
     postcondition = extract(
         shell,
@@ -260,8 +289,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         "verify-android-build-source.py",
-        2,
-        "pre/post exact-input comparisons",
+        3,
+        "initial/recreated/post exact-input comparisons",
     )
     require_count(
         shell,
@@ -376,29 +405,66 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation("shell", "readonly GIT_BIN=/usr/bin/git", "GIT_BIN=git",
              "fixed Git client"),
-    Mutation("shell", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_NOSYSTEM=0",
-             "system Git config exclusion"),
+    Mutation(
+        "shell",
+        "GIT_CONFIG_NOSYSTEM=1 \\\n"
+        "        GIT_CONFIG_GLOBAL=/dev/null",
+        "GIT_CONFIG_NOSYSTEM=0 \\\n"
+        "        GIT_CONFIG_GLOBAL=/dev/null",
+        "system Git config exclusion",
+    ),
     Mutation("shell", "GIT_NO_REPLACE_OBJECTS=1",
              "GIT_REPLACE_REF_BASE=refs/replace",
              "replacement-object exclusion"),
-    Mutation("shell", "GIT_OPTIONAL_LOCKS=0", "GIT_OPTIONAL_LOCKS=1",
-             "optional repository-write exclusion"),
+    Mutation(
+        "shell",
+        "GIT_NO_REPLACE_OBJECTS=1 \\\n"
+        "        GIT_OPTIONAL_LOCKS=0",
+        "GIT_NO_REPLACE_OBJECTS=1 \\\n"
+        "        GIT_OPTIONAL_LOCKS=1",
+        "optional repository-write exclusion",
+    ),
     Mutation("shell", "-c core.fsmonitor=false", "-c core.fsmonitor=true",
              "filesystem-monitor exclusion"),
     Mutation(
         "shell",
-        "prepare_gradle_source() {\n"
-        "    local archive_attribute_status=0 invalid_tree_entry\n"
-        "    GRADLE_SOURCE_COMMIT=\"$(online_source_git rev-parse --verify 'HEAD^{commit}')\"",
-        "prepare_gradle_source() {\n"
-        "    local archive_attribute_status=0 invalid_tree_entry\n"
-        "    GRADLE_SOURCE_COMMIT=\"$(online_source_git rev-parse --verify 'HEAD^{tree}')\"",
+        "GRADLE_SOURCE_COMMIT=\"$(online_source_git rev-parse --verify 'HEAD^{commit}')\"",
+        "GRADLE_SOURCE_COMMIT=\"$(online_source_git rev-parse --verify 'HEAD^{tree}')\"",
         "exact source commit capture",
     ),
     Mutation(
         "shell",
-        "status --porcelain=v1 --untracked-files=all",
-        "status --porcelain=v1 --untracked-files=no",
+        'verify_gradle_live_checkout_state "before exact-source reuse"',
+        "true # retained live checkout accepted",
+        "retained-authority clean-checkout reproof",
+    ),
+    Mutation(
+        "shell",
+        '[ "$current" = "$GRADLE_SOURCE_COMMIT" ] \\\n'
+        '            || die "the live source commit changed before exact-source reuse"',
+        'true \\\n'
+        '            || die "the live source commit changed before exact-source reuse"',
+        "retained-authority commit reproof",
+    ),
+    Mutation(
+        "shell",
+        '[ "$(/usr/bin/sha256sum "$GRADLE_SOURCE_ARCHIVE" | /usr/bin/awk \'{print $1}\')" \\\n'
+        '           = "$GRADLE_SOURCE_ARCHIVE_SHA256" ]',
+        "true",
+        "retained-authority archive reproof",
+    ),
+    Mutation(
+        "shell",
+        '--reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" \\\n'
+        '            || die "recreated writable source does not match its exact commit authority"',
+        'true \\\n'
+        '            || die "recreated writable source does not match its exact commit authority"',
+        "recreated exact-source comparison",
+    ),
+    Mutation(
+        "shell",
+        "online_source_git status --porcelain=v1 --untracked-files=all",
+        "online_source_git status --porcelain=v1 --untracked-files=no",
         "clean source state",
     ),
     Mutation(
@@ -419,9 +485,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("shell", '/usr/bin/chmod -R a=rX "$GRADLE_SOURCE_AUTHORITY"',
              '/usr/bin/chmod -R u+rwX "$GRADLE_SOURCE_AUTHORITY"',
              "read-only source authority"),
-    Mutation("shell", '/usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"',
-             '/usr/bin/chmod -R a+rwx "$GRADLE_SOURCE_BUILD"',
-             "canonical writable-source modes"),
+    Mutation(
+        "shell",
+        '/usr/bin/chmod -R a=rX "$GRADLE_SOURCE_AUTHORITY"\n'
+        '    /usr/bin/chmod -R u=rwX,go=rX "$GRADLE_SOURCE_BUILD"',
+        '/usr/bin/chmod -R a=rX "$GRADLE_SOURCE_AUTHORITY"\n'
+        '    /usr/bin/chmod -R a+rwx "$GRADLE_SOURCE_BUILD"',
+        "canonical writable-source modes",
+    ),
     Mutation(
         "shell",
         '--reference "$GRADLE_SOURCE_AUTHORITY" --candidate "$GRADLE_SOURCE_BUILD" \\\n'

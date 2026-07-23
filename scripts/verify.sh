@@ -296,6 +296,21 @@ else
   echo "  ok  R-S11cm the two networked Cargo installers see read-only online inputs, write one private tool root, validate exact Cargo metadata and ELF identity, and publish recoverably without clobber"
 fi
 
+echo "== (0l) online-fetch Pub-cache output authority (R-S11cn/R-S11e-106) =="
+r_s11cn=
+if ! /usr/bin/python3 -I -S scripts/online-pub-cache-output.py self-test; then
+  r_s11cn="$r_s11cn transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-pub-cache-output-authority.py --repo . --self-test; then
+  r_s11cn="$r_s11cn authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cn" ]; then
+  echo "  FAIL R-S11cn online-fetch Pub-cache output authority:$r_s11cn"
+  rc=1
+else
+  echo "  ok  R-S11cn the networked Pub producer sees read-only pinned inputs, writes one private cache root, and publishes only after structural, Git, and enforced-lockfile offline replay"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

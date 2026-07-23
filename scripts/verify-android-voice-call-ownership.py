@@ -63,11 +63,17 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "audio": (android / "AudioRecordHandle.kt").read_text(encoding="utf-8"),
         "activity": (android / "MainActivity.kt").read_text(encoding="utf-8"),
         "service": (android / "MainService.kt").read_text(encoding="utf-8"),
+        "connection_type": (android / "ControlledConnectionType.kt").read_text(
+            encoding="utf-8"
+        ),
         "flutter": (repo / "src/flutter.rs").read_text(encoding="utf-8"),
         "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
         "test": (repo / "scripts/android-voice-call-owner-state-test.kt").read_text(
             encoding="utf-8"
         ),
+        "connection_type_test": (
+            repo / "scripts/android-controlled-connection-type-test.kt"
+        ).read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
@@ -383,16 +389,59 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         add_connection,
         (
-            'val isFileTransfer = jsonObject["is_file_transfer"] as Boolean',
-            'val isViewCamera = jsonObject["is_view_camera"] as Boolean',
-            'val isTerminal = jsonObject["is_terminal"] as Boolean',
-            'val portForward = jsonObject["port_forward"] as String',
-            "val canUseVoiceCall = isViewCamera ||",
-            "(!isFileTransfer && !isTerminal && portForward.isEmpty())",
+            'jsonObject.getJSONObject("conn_type").getString("t")',
+            "if (connectionType == null)",
+            "return",
+            "if (connectionType.allowsVoiceCall",
             "VoiceCallAudioCoordinator.registerControlledConnection(id)",
         ),
-        "Remote-or-ViewCamera controlled-owner admission",
+        "exact-AuthConnType Remote-or-ViewCamera controlled-owner admission",
     )
+    for legacy in (
+        'jsonObject["is_file_transfer"]',
+        'jsonObject["is_view_camera"]',
+        'jsonObject["is_terminal"]',
+        'jsonObject["port_forward"]',
+        "val canUseVoiceCall",
+    ):
+        forbid(add_connection, legacy, f"reconstructed controlled connection type {legacy}")
+    connection_type = extract_item(
+        sources["connection_type"],
+        "internal enum class ControlledConnectionType",
+        "controlled connection type",
+    )
+    for wire_tag, enum_value in (
+        ("Remote", "REMOTE"),
+        ("FileTransfer", "FILE_TRANSFER"),
+        ("ViewCamera", "VIEW_CAMERA"),
+        ("Terminal", "TERMINAL"),
+        ("PortForward", "PORT_FORWARD"),
+    ):
+        require(
+            connection_type,
+            f'"{wire_tag}" -> {enum_value}',
+            f"exact {wire_tag} connection-type decoding",
+        )
+    require(
+        connection_type,
+        "get() = this == REMOTE || this == VIEW_CAMERA",
+        "Remote-or-ViewCamera voice-call authority",
+    )
+    require(connection_type, "else -> null", "unknown connection-type refusal")
+    connection_type_test = sources["connection_type_test"]
+    for needle, label in (
+        ('"Remote" to ControlledConnectionType.REMOTE', "Remote behavior fixture"),
+        (
+            '"PortForward" to ControlledConnectionType.PORT_FORWARD',
+            "PortForward behavior fixture",
+        ),
+        ('"remote", "REMOTE", "Portforward", "Unknown"', "noncanonical refusal fixtures"),
+        (
+            "connectionType.allowsVoiceCall ==",
+            "complete voice-call authority behavior assertion",
+        ),
+    ):
+        require(connection_type_test, needle, label)
     remove_connection = extract_item(service, '"remove_connection" ->', "controlled connection removal")
     require_order(
         remove_connection,
@@ -769,7 +818,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("audio", "while (worker.isAlive)", "if (worker.isAlive)", "exact worker join"),
     ("audio", "Thread.currentThread().interrupt()", "// interrupt swallowed", "interrupt restoration"),
     ("audio", "captureProjection === mediaProjection", "captureProjection != null", "exact projection reuse"),
+    ("connection_type", '                "PortForward" -> PORT_FORWARD', '                "PortForward" -> REMOTE', "PortForward exact type"),
+    ("connection_type", "get() = this == REMOTE || this == VIEW_CAMERA", "get() = this != FILE_TRANSFER", "Remote-or-ViewCamera voice authority"),
+    ("connection_type", "else -> null", "else -> REMOTE", "unknown connection-type refusal"),
     ("service", "VoiceCallAudioCoordinator.registerControlledConnection(id)", "true", "controlled registration"),
+    ("service", "if (connectionType.allowsVoiceCall &&", "if (true &&", "typed controlled voice-call admission"),
     ("service", '"remove_connection" ->', '"remove_connection_disabled" ->', "controlled removal dispatch"),
     ("service", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(id, inVoiceCall)", "VoiceCallAudioCoordinator.setControlledVoiceCallActive(1, inVoiceCall)", "controlled update identity"),
     ("service", "VoiceCallAudioCoordinator.clearControlledConnections()", "true", "service owner teardown"),
@@ -789,6 +842,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {\n                                    self.handler.on_voice_call_started();", "self.handler.on_voice_call_started();\n                                self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {", "worker-before-native voice activation"),
     ("io_loop", '.on_voice_call_closed("Failed to start voice call audio")', '.on_voice_call_started()', "outgoing voice start-failure retirement"),
     ("test", "one controlled teardown cleared another owner", "controlled teardown passed", "controlled behavior proof"),
+    ("connection_type_test", '"PortForward" to ControlledConnectionType.PORT_FORWARD', '"PortForward" to ControlledConnectionType.REMOTE', "PortForward behavior proof"),
     ("requirements", '<span class="id">R-S11br</span>', '<span class="id">R-S11br-disabled</span>', "normative requirement"),
     ("requirements", "generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)", "a strictly newer generation", "idempotent same-generation resume requirement"),
     ("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "worker-before-native start requirement"),

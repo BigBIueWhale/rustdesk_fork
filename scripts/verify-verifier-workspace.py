@@ -12918,6 +12918,18 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android recorder priority contract",
         ),
         (
+            '"exact-AuthConnType Remote-or-ViewCamera controlled-owner admission"',
+            "Android exact connection-type voice-call admission contract",
+        ),
+        (
+            '"get() = this == REMOTE || this == VIEW_CAMERA"',
+            "Android Remote-or-ViewCamera voice-call authority contract",
+        ),
+        (
+            '"unknown connection-type refusal"',
+            "Android unknown connection-type refusal contract",
+        ),
+        (
             '"captureProjection === mediaProjection"',
             "Android exact playback projection contract",
         ),
@@ -13030,6 +13042,16 @@ def validate_android_voice_call_ownership_contract(sources):
             "lost-response resume retry was rejected",
             "Android lost-response retry behavior source",
         ),
+        (
+            "android_controlled_connection_type",
+            "get() = this == REMOTE || this == VIEW_CAMERA",
+            "Android exact voice-call connection-type policy source",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            '"PortForward" to ControlledConnectionType.PORT_FORWARD',
+            "Android exact PortForward behavior source",
+        ),
     ):
         require_text(sources[key], text, label)
     require_text(
@@ -13041,6 +13063,21 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("audio", "reader.readSync(recorder) ?: break", "reader.readSync(recorder) ?: continue", "terminal read failure"),',
         "Android terminal blocking-read failure contract",
+    )
+    require_text(
+        focused,
+        '("connection_type", \'                "PortForward" -> PORT_FORWARD\', \'                "PortForward" -> REMOTE\', "PortForward exact type"),',
+        "Android exact PortForward type mutation",
+    )
+    require_text(
+        focused,
+        '("connection_type", "else -> null", "else -> REMOTE", "unknown connection-type refusal"),',
+        "Android unknown connection-type mutation",
+    )
+    require_text(
+        focused,
+        '("service", "if (connectionType.allowsVoiceCall &&", "if (true &&", "typed controlled voice-call admission"),',
+        "Android typed controlled voice-call admission mutation",
     )
     require_text(
         focused,
@@ -13350,6 +13387,8 @@ def validate_android_builder_authority_contract(sources):
 def validate_android_media_projection_finality_contract(sources):
     android = sources["android_main_service"]
     cm = sources["ui_cm_source"]
+    connection_type = sources["android_controlled_connection_type"]
+    connection_type_test = sources["android_controlled_connection_type_test"]
 
     add_connection = extract_between(
         android,
@@ -13366,12 +13405,80 @@ def validate_android_media_projection_finality_contract(sources):
         add_connection,
         (
             'val authorized = jsonObject["authorized"] as Boolean',
+            'jsonObject.getJSONObject("conn_type").getString("t")',
+            "if (connectionType == null)",
+            "return",
             "if (authorized)",
-            "if (!isFileTransfer && !isViewCamera && !isTerminal)",
+            "if (connectionType.requiresDesktopCapture)",
             "requestCapture()",
         ),
-        "Android authorized Remote capture demand",
+        "Android exact-AuthConnType authorized Remote capture demand",
     )
+    for legacy in (
+        'jsonObject["is_file_transfer"]',
+        'jsonObject["is_view_camera"]',
+        'jsonObject["is_terminal"]',
+        'jsonObject["port_forward"]',
+    ):
+        require_absent(
+            add_connection,
+            legacy,
+            f"Android reconstructed connection type {legacy}",
+        )
+    connection_type_block = extract_between(
+        connection_type,
+        "internal enum class ControlledConnectionType",
+        "}",
+        "Android controlled connection type",
+    )
+    for wire_tag, enum_value in (
+        ("Remote", "REMOTE"),
+        ("FileTransfer", "FILE_TRANSFER"),
+        ("ViewCamera", "VIEW_CAMERA"),
+        ("Terminal", "TERMINAL"),
+        ("PortForward", "PORT_FORWARD"),
+    ):
+        require_text(
+            connection_type_block,
+            f'"{wire_tag}" -> {enum_value}',
+            f"Android exact {wire_tag} connection-type decoder",
+        )
+    require_text(
+        connection_type_block,
+        "val requiresDesktopCapture: Boolean\n        get() = this == REMOTE",
+        "Android Remote-only capture policy",
+    )
+    require_text(
+        connection_type_block,
+        "get() = this == REMOTE || this == VIEW_CAMERA",
+        "Android Remote-or-ViewCamera voice-call policy",
+    )
+    require_text(
+        connection_type_block,
+        "else -> null",
+        "Android unknown connection-type refusal",
+    )
+    for text, label in (
+        ('"Remote" to ControlledConnectionType.REMOTE', "Remote behavior fixture"),
+        (
+            '"PortForward" to ControlledConnectionType.PORT_FORWARD',
+            "PortForward behavior fixture",
+        ),
+        ('"remote", "REMOTE", "Portforward", "Unknown"', "noncanonical refusal fixtures"),
+        (
+            "connectionType.requiresDesktopCapture ==",
+            "complete capture-policy behavior assertion",
+        ),
+        (
+            "connectionType.allowsVoiceCall ==",
+            "complete voice-call-policy behavior assertion",
+        ),
+    ):
+        require_text(
+            connection_type_test,
+            text,
+            f"Android controlled connection type {label}",
+        )
     require_text(
         android,
         "@Volatile\n    private var captureRequested = false",
@@ -13584,8 +13691,13 @@ def validate_android_media_projection_finality_contract(sources):
 
     require_text(
         cm,
-        "authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal",
+        "authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote",
         "Android live authorized Remote capture-demand classifier",
+    )
+    require_text(
+        cm,
+        "pub conn_type: ipc::CmAuthConnType",
+        "Android Client exact connection type",
     )
     remove_connection = extract_between(
         cm,
@@ -13599,24 +13711,38 @@ def validate_android_media_projection_finality_contract(sources):
             "android_connection_requires_desktop_capture(",
             "client.authorized",
             "client.disconnected",
-            "client.is_file_transfer",
-            "client.is_view_camera",
-            "client.is_terminal",
+            "client.conn_type",
             'call_main_service_set_by_name("stop_capture", None, None)',
         ),
         "Android last-live-Remote capture teardown",
     )
+    for legacy in (
+        "client.is_file_transfer",
+        "client.is_view_camera",
+        "client.is_terminal",
+        "client.port_forward",
+    ):
+        require_absent(
+            remove_connection,
+            legacy,
+            f"Android native capture-demand reconstruction {legacy}",
+        )
     demand_test = extract_between(
         cm,
         "fn android_capture_demand_is_remote_desktop_only()",
         "fn cm_authority(valid: bool, file: bool)",
         "Android capture-demand regression",
     )
-    require_count(
-        demand_test,
-        "assert!(!android_connection_requires_desktop_capture(",
-        5,
-        "Android non-Remote capture-demand exclusions",
+    for conn_type in ("FileTransfer", "ViewCamera", "Terminal", "PortForward"):
+        require_text(
+            demand_test,
+            f"ipc::CmAuthConnType::{conn_type}",
+            f"Android {conn_type} capture-demand exclusion",
+        )
+    require_text(
+        cm,
+        'Some("Remote")',
+        "Android Client exact connection-type serialization regression",
     )
 
     requirement = extract_html_requirement(
@@ -13626,7 +13752,14 @@ def validate_android_media_projection_finality_contract(sources):
         ("exact registered lifecycle callback", "exact callback ownership"),
         ("non-null <code>VirtualDisplay</code>", "transactional active-state proof"),
         ("live, authorized, non-disconnected Remote desktop session", "live Remote demand"),
-        ("file-transfer, view-camera, and terminal sessions", "non-capture connection exclusions"),
+        (
+            "FileTransfer, ViewCamera, Terminal, and PortForward",
+            "complete non-capture connection exclusions",
+        ),
+        (
+            "exact validated <code>AuthConnType</code>",
+            "exact connection-type carry-through",
+        ),
     ):
         require_text(requirement, text, f"Android R-S14 {label}")
     require_text(
@@ -29965,9 +30098,33 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "if (!isFileTransfer && !isViewCamera && !isTerminal) {\n                            requestCapture()",
-            "if (!isFileTransfer && !isViewCamera && !isTerminal && !isStart) {\n                            requestCapture()",
+            "if (connectionType.requiresDesktopCapture) {\n                            requestCapture()",
+            "if (connectionType.requiresDesktopCapture && !isStart) {\n                            requestCapture()",
             "Android capture demand must be recorded while already active",
+        ),
+        (
+            "android_controlled_connection_type",
+            "val requiresDesktopCapture: Boolean\n        get() = this == REMOTE",
+            "val requiresDesktopCapture: Boolean\n        get() = this != FILE_TRANSFER",
+            "Android Remote-only capture policy",
+        ),
+        (
+            "android_controlled_connection_type",
+            '                "PortForward" -> PORT_FORWARD',
+            '                "PortForward" -> REMOTE',
+            "Android exact PortForward connection-type decoder",
+        ),
+        (
+            "android_controlled_connection_type",
+            "else -> null",
+            "else -> REMOTE",
+            "Android unknown connection-type refusal",
+        ),
+        (
+            "android_main_service",
+            "if (connectionType.requiresDesktopCapture)",
+            "if (connectionType != ControlledConnectionType.FILE_TRANSFER)",
+            "Android exact-AuthConnType authorized Remote capture demand",
         ),
         (
             "android_main_service",
@@ -30019,15 +30176,27 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
-            "authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal",
-            "authorized && !is_file_transfer && !is_view_camera && !is_terminal",
+            "authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote",
+            "authorized && conn_type == ipc::CmAuthConnType::Remote",
             "Android live authorized Remote capture-demand classifier",
         ),
         (
             "ui_cm_source",
-            "                client.authorized,\n                client.disconnected,\n                client.is_file_transfer,",
-            "                client.authorized,\n                false,\n                client.is_file_transfer,",
+            "                client.authorized,\n                client.disconnected,\n                client.conn_type,",
+            "                client.authorized,\n                false,\n                client.conn_type,",
             "Android last-live-Remote capture teardown",
+        ),
+        (
+            "ui_cm_source",
+            "pub conn_type: ipc::CmAuthConnType",
+            "pub conn_type: String",
+            "Android Client exact connection type",
+        ),
+        (
+            "android_controlled_connection_type_test",
+            '"PortForward" to ControlledConnectionType.PORT_FORWARD',
+            '"PortForward" to ControlledConnectionType.REMOTE',
+            "Android exact PortForward behavior source",
         ),
         (
             "ui_cm_source",
@@ -30052,6 +30221,18 @@ def run_source_mutations(sources):
             "exact registered lifecycle callback",
             "best-effort lifecycle callback",
             "Android R-S14 exact callback ownership",
+        ),
+        (
+            "requirements",
+            "FileTransfer, ViewCamera, Terminal, and PortForward sessions neither create nor retain Android desktop-capture demand.",
+            "FileTransfer, ViewCamera, and Terminal sessions neither create nor retain Android desktop-capture demand.",
+            "Android R-S14 complete non-capture connection exclusions",
+        ),
+        (
+            "requirements",
+            "exact validated <code>AuthConnType</code>",
+            "reconstructed presentation flags",
+            "Android R-S14 exact connection-type carry-through",
         ),
         (
             "requirements",
@@ -30916,6 +31097,9 @@ def main():
             "android_voice_call_owner_test": (
                 repo / "scripts/android-voice-call-owner-state-test.kt"
             ).read_text(encoding="utf-8"),
+            "android_controlled_connection_type_test": (
+                repo / "scripts/android-controlled-connection-type-test.kt"
+            ).read_text(encoding="utf-8"),
             "android_build_source_verifier": (
                 repo / "scripts/verify-android-build-source.py"
             ).read_text(encoding="utf-8"),
@@ -30945,6 +31129,10 @@ def main():
             "android_main_service": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
+            ).read_text(encoding="utf-8"),
+            "android_controlled_connection_type": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt"
             ).read_text(encoding="utf-8"),
             "android_main_activity": (
                 repo

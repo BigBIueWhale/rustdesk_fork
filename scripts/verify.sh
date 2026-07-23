@@ -11974,9 +11974,12 @@ fi
 # MediaProjection itself is a revocable exact owner: its callback must be registered before a
 # VirtualDisplay is created, onStop must invalidate only that exact owner and fully release its
 # pipeline, and active state may commit only after a non-null VirtualDisplay exists. Capture demand
-# is the live authorized Remote set; file transfer, view-camera, and terminal sessions do not count.
+# is the live authorized Remote set; FileTransfer, ViewCamera, Terminal, and PortForward sessions do
+# not count. The already-validated CmAuthConnType crosses the Rust→Kotlin bridge intact; neither
+# side may reconstruct Remote by negating parallel presentation fields.
 echo "== Android MediaProjection lifecycle finality (R-S14/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
 r_s14_missing=
 grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null || r_s14_missing="$r_s14_missing android-not-not-sticky"
 grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null && r_s14_missing="$r_s14_missing android-sticky-return"
@@ -11991,6 +11994,7 @@ projection_release_block=$(sed -n '/private fun releaseMediaProjection/,/private
 projection_install_block=$(sed -n '/private fun installMediaProjection/,/private fun onMediaProjectionStopped/p' "$r_s14_kt")
 projection_stop_block=$(sed -n '/private fun onMediaProjectionStopped/,/fun destroy()/p' "$r_s14_kt")
 virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private fun initNotification/p' "$r_s14_kt")
+add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {/p' "$r_s14_kt")
 printf '%s\n' "$on_destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing onDestroy-no-capture-resource-teardown"
 printf '%s\n' "$destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-capture-resource-teardown"
 printf '%s\n' "$request_capture_block" | grep -qF 'captureRequested = true' || r_s14_missing="$r_s14_missing remote-demand-not-recorded"
@@ -12017,13 +12021,31 @@ printf '%s\n' "$projection_stop_block" | grep -qF 'stopCapturePipeline(keepReusa
 printf '%s\n' "$virtual_display_block" | grep -qF 'virtualDisplay != null' || r_s14_missing="$r_s14_missing virtual-display-null-treated-active"
 printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: SecurityException)' || r_s14_missing="$r_s14_missing revoked-projection-not-failed"
 printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: IllegalStateException)' || r_s14_missing="$r_s14_missing stopped-projection-not-failed"
+printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getJSONObject("conn_type").getString("t")' || r_s14_missing="$r_s14_missing exact-connection-type-not-decoded"
+printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType == null)' || r_s14_missing="$r_s14_missing unknown-connection-type-not-rejected"
+printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType.requiresDesktopCapture)' || r_s14_missing="$r_s14_missing capture-not-exact-type-gated"
+if printf '%s\n' "$add_connection_block" | grep -qE 'isFileTransfer|isViewCamera|isTerminal|portForward'; then
+  r_s14_missing="$r_s14_missing reconstructed-connection-type"
+fi
+capture_type_policy_block=$(sed -n '/val requiresDesktopCapture:/,/val allowsVoiceCall:/p' "$r_s14_type_kt")
+printf '%s\n' "$capture_type_policy_block" | grep -qF 'get() = this == REMOTE' || r_s14_missing="$r_s14_missing remote-only-kotlin-capture-policy"
+grep -qF '"PortForward" -> PORT_FORWARD' "$r_s14_type_kt" || r_s14_missing="$r_s14_missing port-forward-exact-decoder"
+grep -qF 'else -> null' "$r_s14_type_kt" || r_s14_missing="$r_s14_missing unknown-type-fallback"
+grep -qF '"PortForward" to ControlledConnectionType.PORT_FORWARD' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing port-forward-kotlin-regression-missing"
+grep -qF 'connectionType.requiresDesktopCapture ==' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing complete-kotlin-capture-policy-regression-missing"
+grep -qF 'pub conn_type: ipc::CmAuthConnType' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-client-exact-connection-type-missing"
 grep -qF 'fn android_connection_requires_desktop_capture(' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-classifier-missing"
-grep -qF 'authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-not-live-authorized-remote-only"
+grep -qF 'authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-not-live-authorized-remote-only"
+remove_connection_block=$(sed -n '/fn remove_connection(&self, id: i32, close: bool)/,/fn voice_call_started(&self, id: i32)/p' src/ui_cm_interface.rs)
+printf '%s\n' "$remove_connection_block" | grep -qF 'client.conn_type' || r_s14_missing="$r_s14_missing native-teardown-dropped-exact-connection-type"
+if printf '%s\n' "$remove_connection_block" | grep -qE 'client\\.is_file_transfer|client\\.is_view_camera|client\\.is_terminal|client\\.port_forward'; then
+  r_s14_missing="$r_s14_missing native-teardown-reconstructed-connection-type"
+fi
 grep -qF 'fn android_capture_demand_is_remote_desktop_only()' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-regression-missing"
 if [ -n "$r_s14_missing" ]; then
   echo "  FAIL R-S14/R-T4: Android capture/projection owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-T4 Android capture commits only after VirtualDisplay creation; exact MediaProjection stop invalidates the pipeline; only live Remote sessions retain demand"
+  echo "  ok  R-S14/R-T4 Android capture commits only after VirtualDisplay creation; exact MediaProjection stop invalidates the pipeline; exact AuthConnType admits only live Remote demand"
 fi
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config \
   ui_cm_interface::tests::android_capture_demand_is_remote_desktop_only --color never

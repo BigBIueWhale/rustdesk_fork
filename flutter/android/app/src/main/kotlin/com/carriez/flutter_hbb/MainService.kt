@@ -119,27 +119,27 @@ class MainService : Service() {
                     val username = jsonObject["name"] as String
                     val peerId = jsonObject["peer_id"] as String
                     val authorized = jsonObject["authorized"] as Boolean
-                    val isFileTransfer = jsonObject["is_file_transfer"] as Boolean
-                    // R-S19: view-camera and terminal must not start desktop MediaProjection capture,
-                    // matching the Dart CM gate (server_model.dart). The add_connection JSON is the
-                    // full serialized Client struct, so these keys are always present.
-                    val isViewCamera = jsonObject["is_view_camera"] as Boolean
-                    val isTerminal = jsonObject["is_terminal"] as Boolean
-                    val portForward = jsonObject["port_forward"] as String
-                    val canUseVoiceCall = isViewCamera ||
-                        (!isFileTransfer && !isTerminal && portForward.isEmpty())
-                    if (canUseVoiceCall &&
+                    val connectionType = ControlledConnectionType.fromWireTag(
+                        jsonObject.getJSONObject("conn_type").getString("t")
+                    )
+                    if (connectionType == null) {
+                        Log.e(logTag, "Rejected unknown controlled connection type")
+                        return
+                    }
+                    // R-S14/R-S19: resource authority comes from the exact AuthConnType carried
+                    // by Rust, never by reconstructing Remote from parallel presentation fields.
+                    if (connectionType.allowsVoiceCall &&
                         !VoiceCallAudioCoordinator.registerControlledConnection(id)
                     ) {
                         Log.e(logTag, "Rejected invalid controlled voice-call owner: $id")
                     }
-                    val type = if (isFileTransfer) {
+                    val type = if (connectionType == ControlledConnectionType.FILE_TRANSFER) {
                         translate("Transfer file")
                     } else {
                         translate("Share screen")
                     }
                     if (authorized) {
-                        if (!isFileTransfer && !isViewCamera && !isTerminal) {
+                        if (connectionType.requiresDesktopCapture) {
                             requestCapture()
                         }
                         onClientAuthorizedNotification(id, type, username, peerId)

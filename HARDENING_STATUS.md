@@ -278,7 +278,7 @@ surface, raw-video, and audio pipeline. Start propagates a Boolean display resul
 state only after a non-null `VirtualDisplay`; revoked/stopped/null state fails, fully retires the bad
 owner, and asks for fresh consent. Explicit stop clears demand, while service teardown also unregisters
 and stops the exact projection. The native classifier now defines demand as an authorized,
-non-disconnected Remote desktop connection only—never file transfer, view-camera, or terminal—and a
+non-disconnected Remote desktop connection only—never FileTransfer, ViewCamera, Terminal, or PortForward—and a
 focused Rust regression covers all exclusions. `scripts/verify.sh` and the semantic mutation verifier
 bind the owner/callback order, transactional active-state commit, delayed-consent demand gate, full
 teardown, native classifier, requirement, disposition, and this ledger. The persistent foreground
@@ -286,6 +286,43 @@ service/listener design remains intact; file transfer remains independent. This 
 defect is not source proof of the reported Android outgoing-viewer hang and is not a root/LPE,
 host-modification, public-exposure, container-escape, exploitation, or compromise finding. Exact APK
 compilation and the original swipe/relaunch sequence remain R-B2/R-B10 device-validation obligations.
+
+Follow-up correction (2026-07-23), **exact Android connection-type resource authority**: the earlier
+classifier closure was incomplete. `Data::Login` already carried the server-resolved
+`CmAuthConnType::{Remote,FileTransfer,ViewCamera,Terminal,PortForward}`, but `ConnectionManager` discarded
+that enum while constructing the serialized `Client`. Rust last-connection teardown and Kotlin
+`MainService.add_connection` then independently reconstructed Remote by negating parallel presentation
+booleans; both predicates omitted PortForward. A password-authenticated tunnel could consequently request
+or reuse MediaProjection despite needing no display, and could make Rust retain the capture pipeline after
+the last real Remote disconnected. This was a defense-in-depth R-S19 capability-coherence and resource
+ownership defect, not a PAKE/password bypass, local privilege escalation, public-listener change, host
+modification, or evidence of exploitation.
+
+The validated enum now crosses the `Client` boundary intact. Rust capture retention compares that enum
+directly to `Remote`. Android has one closed exact-tag decoder; unknown, case-varied, or future unhandled tags
+fail closed before notification, voice ownership, or capture demand. The foreground service admits
+MediaProjection demand only for exact Remote and voice-call ownership only for exact Remote/ViewCamera;
+parallel booleans and `port_forward` remain presentation data and no longer decide either resource. The
+five-mode Rust regression, Android-free Kotlin transition regression, shared source gate, focused voice
+ownership verifier, and independent workspace mutation verifier bind the carry-through and both policies.
+The persistent service is deliberately unchanged: Android documents that a started service has a lifecycle
+independent of its creating Activity
+(<https://developer.android.com/develop/background-work/services>), while MediaProjection separately requires
+callback registration before `createVirtualDisplay()` and exact resource cleanup on `onStop()`
+(<https://developer.android.com/reference/android/media/projection/MediaProjection.html>). The design
+implication is persistent listener/service ownership plus exact per-connection capture demand—not killing the
+service to recover incoherent state.
+
+Final confined source verification (2026-07-23): the Android-free Kotlin decoder/policy regression compiled with
+the pinned Kotlin 2.1.21 compiler and passed every canonical/noncanonical/type-policy assertion. The pinned Android
+release graph completed `:app:compileReleaseKotlin` with only `:app:compileFlutterBuildRelease` excluded because
+this bounded check did not generate the separate Rust/Flutter bridge: `BUILD SUCCESSFUL` in 27 seconds, with 228
+actionable tasks (227 executed, one up-to-date) and only existing SDK/plugin/deprecation warnings. Both focused
+Rust 1.75 tests passed; pinned Rustfmt passed the changed Rust file; the focused Android ownership verifier rejected
+all 61 deliberate mutations; the independent workspace verifier passed normally and through its complete source
+mutation matrix; edited Bash syntax and native-codec normal/self-test gates passed; and the requirements hashes
+match. No APK was assembled or installed. Full exact-commit APK/release artifacts and real-device behavior remain
+R-B2/R-B10 obligations.
 
 **R-D7a/R-T4 Android outgoing-client Activity/isolate ownership — SOURCE IMPLEMENTED / GATED;
 ANDROID ARM64 RELEASE TARGET BUILD VALIDATED; ON-DEVICE VALIDATION PENDING
@@ -7510,7 +7547,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Kotlin/Rust topology, lifecycle
   ordering, one-recorder count, mode priority, projection identity, buffer/start/worker cleanup, platform-channel
   completion, worker-before-native start publication, requirement, disposition, ledger, and shared-gate wiring, and
-  rejects 56 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
+  rejects 61 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
   focused verifier rather than
   trusting its output, and mutation-binds the new gate/requirement/disposition/ledger plus the updated
   MediaProjection audio-retirement contract.
@@ -9126,7 +9163,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-93211ba414c616db371c4d2e4cb26f29184bd14825568db2cd0341d72e738678  requirements.html
+9fc95422be3cda78326f03592f48f2806452c858af6e2ef762736c006e6fe5a2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ce, R-SV4a,

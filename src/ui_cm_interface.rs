@@ -1,7 +1,8 @@
+use crate::ipc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::ipc::Connection;
 #[cfg(not(any(target_os = "ios")))]
-use crate::ipc::{self, Data};
+use crate::ipc::Data;
 #[cfg(target_os = "windows")]
 use crate::{clipboard::ClipboardSide, ipc::ClipboardNonFile};
 #[cfg(target_os = "windows")]
@@ -147,6 +148,7 @@ pub struct Client {
     pub is_view_camera: bool,
     pub is_terminal: bool,
     pub port_forward: String,
+    pub conn_type: ipc::CmAuthConnType,
     pub name: String,
     pub avatar: String,
     pub peer_id: String,
@@ -166,11 +168,9 @@ pub struct Client {
 fn android_connection_requires_desktop_capture(
     authorized: bool,
     disconnected: bool,
-    is_file_transfer: bool,
-    is_view_camera: bool,
-    is_terminal: bool,
+    conn_type: ipc::CmAuthConnType,
 ) -> bool {
-    authorized && !disconnected && !is_file_transfer && !is_view_camera && !is_terminal
+    authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -347,6 +347,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         is_view_camera: bool,
         is_terminal: bool,
         port_forward: String,
+        conn_type: ipc::CmAuthConnType,
         peer_id: String,
         name: String,
         avatar: String,
@@ -366,6 +367,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             is_view_camera,
             is_terminal,
             port_forward,
+            conn_type,
             name: name.clone(),
             avatar,
             peer_id: peer_id.clone(),
@@ -419,9 +421,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             android_connection_requires_desktop_capture(
                 client.authorized,
                 client.disconnected,
-                client.is_file_transfer,
-                client.is_view_camera,
-                client.is_terminal,
+                client.conn_type,
             )
         }) {
             if let Err(e) =
@@ -629,7 +629,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         file,
                                         connection_authority,
                                     );
-                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, self.tx.clone());
+                                    self.cm.add_connection(id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, privacy_mode, self.tx.clone());
                                     self.conn_id = id;
                                     self.file_authority = file_authority;
                                     self.cm_auth_token = cm_auth_token;
@@ -1054,6 +1054,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     is_view_camera,
                     is_terminal,
                     port_forward,
+                    conn_type,
                     peer_id,
                     name,
                     avatar,
@@ -2082,23 +2083,30 @@ mod tests {
     #[test]
     fn android_capture_demand_is_remote_desktop_only() {
         assert!(android_connection_requires_desktop_capture(
-            true, false, false, false, false
+            true,
+            false,
+            ipc::CmAuthConnType::Remote
         ));
         assert!(!android_connection_requires_desktop_capture(
-            false, false, false, false, false
+            false,
+            false,
+            ipc::CmAuthConnType::Remote
         ));
         assert!(!android_connection_requires_desktop_capture(
-            true, true, false, false, false
+            true,
+            true,
+            ipc::CmAuthConnType::Remote
         ));
-        assert!(!android_connection_requires_desktop_capture(
-            true, false, true, false, false
-        ));
-        assert!(!android_connection_requires_desktop_capture(
-            true, false, false, true, false
-        ));
-        assert!(!android_connection_requires_desktop_capture(
-            true, false, false, false, true
-        ));
+        for conn_type in [
+            ipc::CmAuthConnType::FileTransfer,
+            ipc::CmAuthConnType::ViewCamera,
+            ipc::CmAuthConnType::Terminal,
+            ipc::CmAuthConnType::PortForward,
+        ] {
+            assert!(!android_connection_requires_desktop_capture(
+                true, false, conn_type
+            ));
+        }
     }
 
     #[cfg(not(any(target_os = "ios")))]
@@ -2267,6 +2275,7 @@ mod tests {
             is_view_camera: false,
             is_terminal: false,
             port_forward: String::new(),
+            conn_type: ipc::CmAuthConnType::Remote,
             name: "owner".to_owned(),
             avatar: String::new(),
             peer_id: "peer".to_owned(),
@@ -2286,6 +2295,13 @@ mod tests {
                 .get("keyboard")
                 .and_then(serde_json::Value::as_bool),
             Some(true)
+        );
+        assert_eq!(
+            client_payload
+                .get("conn_type")
+                .and_then(|value| value.get("t"))
+                .and_then(serde_json::Value::as_str),
+            Some("Remote")
         );
         for key in ["restart", "recording", "block_input"] {
             assert!(

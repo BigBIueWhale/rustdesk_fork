@@ -227,6 +227,18 @@ else
   echo "  ok  R-S11ch all Windows helpers use one immutable non-root/no-pull/network/read-only-root/capability-free/resource-bounded runtime, narrow binds, a pinned derived libguestfs kernel, and exact KVM-only golden inspection"
 fi
 
+echo "== (0g) Apple conformance verifier authority (R-S11ci/R-S11e-101) =="
+r_s11ci=
+if ! /usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test; then
+  r_s11ci="$r_s11ci authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11ci" ]; then
+  echo "  FAIL R-S11ci Apple conformance verifier authority:$r_s11ci"
+  rc=1
+else
+  echo "  ok  R-S11ci exact Apple image + fixed three-target matrix + private source/vendor/output state + non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

@@ -13,11 +13,6 @@
 #        aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios
 #      using the real Apple features: macOS = flutter,unix-file-copy-paste;
 #      iOS = flutter.
-#
-# Override the matrix only for focused diagnosis:
-#   APPLE_TARGETS="x86_64-apple-darwin aarch64-apple-ios" scripts/apple-conform-check.sh
-# Legacy APPLE_TARGET=<target> is accepted as a single-target override, but the
-# default remains the full R-R2 target matrix.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
@@ -63,14 +58,61 @@ then
 fi
 verify_scan_self_test "$APPLE_CHECK_TMP"
 
-BASE_IMG=rd-devcheck
-IMG=rd-apple-check
-SDK_DIR="${MACOS_SDK_DIR:-$REPO/online/macos-sdk}"
-DEFAULT_APPLE_TARGETS=(aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios)
-
 die(){ echo "FATAL: $*" >&2; exit 1; }
 note(){ echo "  $*"; }
 rc=0
+readonly DOCKER_BIN=/usr/bin/docker
+readonly APPLE_DOCKER_HOST=unix:///var/run/docker.sock
+readonly APPLE_DOCKER_CONFIG="$APPLE_CHECK_TMP/docker-config"
+readonly BUILD_UID="$(id -u)"
+readonly BUILD_GID="$(id -g)"
+readonly IMG="$APPLE_CHECK_IMAGE_ID"
+readonly SELECTED_APPLE_TARGETS=(
+  aarch64-apple-darwin
+  x86_64-apple-darwin
+  aarch64-apple-ios
+)
+
+verify_apple_docker_authority() {
+  [ "$(stat -c '%u:%g:%a:%h' -- "$APPLE_DOCKER_CONFIG")" = "$BUILD_UID:$BUILD_GID:700:2" ] \
+    || die "private Docker configuration directory metadata changed"
+  [ "$(stat -c '%u:%g:%a:%h' -- "$APPLE_DOCKER_CONFIG/config.json")" = "$BUILD_UID:$BUILD_GID:600:1" ] \
+    || die "private Docker configuration file metadata changed"
+  [ "$(cat "$APPLE_DOCKER_CONFIG/config.json")" = "{}" ] \
+    || die "private Docker configuration bytes changed"
+}
+
+apple_docker() {
+  local status=0
+  verify_apple_docker_authority
+  env -i \
+    PATH=/usr/bin:/bin \
+    HOME="$APPLE_CHECK_TMP" \
+    DOCKER_HOST="$APPLE_DOCKER_HOST" \
+    DOCKER_CONFIG="$APPLE_DOCKER_CONFIG" \
+    "$DOCKER_BIN" \
+      --host "$APPLE_DOCKER_HOST" \
+      --config "$APPLE_DOCKER_CONFIG" \
+      "$@" || status=$?
+  verify_apple_docker_authority
+  return "$status"
+}
+
+archive_current_source() {
+  /usr/bin/git -C "$REPO" ls-files -z --cached --others --exclude-standard \
+    | /usr/bin/python3 -c '
+import os
+import sys
+
+root = os.fsencode(sys.argv[1])
+for relative in sys.stdin.buffer.read().split(b"\0"):
+    if relative and os.path.lexists(os.path.join(root, relative)):
+        sys.stdout.buffer.write(relative + b"\0")
+' "$REPO" \
+    | tar --create --file=- --directory="$REPO" --null --verbatim-files-from \
+        --no-recursion --files-from=- --sort=name --format=gnu --mtime='@0' \
+        --owner=0 --group=0 --numeric-owner
+}
 
 echo "== (0) Apple checker host scratch uses one private workspace (R-S11c-10x) =="
 r_s11c10x=
@@ -104,21 +146,6 @@ else
   note "ok  R-S11c-10x Apple checker host output is confined to one current-UID mode-0700 workspace"
 fi
 
-if [ -n "${APPLE_TARGETS:-}" ]; then
-  targets_raw="${APPLE_TARGETS//,/ }"
-  read -r -a SELECTED_APPLE_TARGETS <<< "$targets_raw"
-elif [ -n "${APPLE_TARGET:-}" ]; then
-  SELECTED_APPLE_TARGETS=("$APPLE_TARGET")
-else
-  SELECTED_APPLE_TARGETS=("${DEFAULT_APPLE_TARGETS[@]}")
-fi
-
-valid_apple_target(){
-  case "$1" in
-    aarch64-apple-darwin|x86_64-apple-darwin|aarch64-apple-ios) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 target_features(){
   case "$1" in
     *-apple-ios) echo "flutter" ;;
@@ -136,21 +163,154 @@ target_triplet(){
 }
 target_env_lower(){ echo "$1" | tr '-' '_'; }
 target_env_upper(){ echo "$1" | tr '[:lower:]-' '[:upper:]_'; }
-for t in "${SELECTED_APPLE_TARGETS[@]}"; do
-  valid_apple_target "$t" || die "unsupported APPLE_TARGETS entry '$t'"
-done
 
 # ---- preflight ----
-command -v docker >/dev/null 2>&1 || die "docker not found - this gate runs entirely in containers"
+[ "$BUILD_UID" -ne 0 ] || die "refusing host or container-root execution"
+[ "$BUILD_GID" -ne 0 ] || die "refusing a root primary group"
+[ -f "$DOCKER_BIN" ] && [ ! -L "$DOCKER_BIN" ] && [ -x "$DOCKER_BIN" ] \
+  || die "trusted Docker client is unavailable at $DOCKER_BIN"
+[ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN")" = "0:0:755:1" ] \
+  || die "trusted Docker client metadata is invalid"
+[ -S /var/run/docker.sock ] || die "fixed local Docker socket is unavailable"
+case "${DOCKER_HOST:-$APPLE_DOCKER_HOST}" in
+  "$APPLE_DOCKER_HOST") ;;
+  *) die "caller Docker endpoint authority is forbidden" ;;
+esac
+for name in DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
+  [ -z "${!name:-}" ] || die "caller $name authority is forbidden"
+done
+[ -z "${APPLE_TARGET:-}" ] && [ -z "${APPLE_TARGETS:-}" ] \
+  || die "the R-R2 release verdict always runs the exact three-target matrix"
+[ -z "${MACOS_SDK_DIR:-}" ] \
+  || die "caller-selected Apple SDK authority is forbidden"
 [ -f "$REPO/scripts/apple-cc-shim.sh" ] || die "scripts/apple-cc-shim.sh missing"
-[ -f "$REPO/scripts/Dockerfile.devcheck" ] || die "scripts/Dockerfile.devcheck missing"
 [ -f "$REPO/scripts/Dockerfile.apple-check" ] || die "scripts/Dockerfile.apple-check missing"
+: "${APPLE_CHECK_IMAGE_ID:?APPLE_CHECK_IMAGE_ID is unset}"
+: "${SHA256_APPLE_CHECK_DOCKERFILE:?SHA256_APPLE_CHECK_DOCKERFILE is unset}"
+: "${SHA256_APPLE_CHECK_CARGO:?SHA256_APPLE_CHECK_CARGO is unset}"
+: "${SHA256_APPLE_CHECK_RUSTC:?SHA256_APPLE_CHECK_RUSTC is unset}"
+: "${SHA256_APPLE_CHECK_DPKG_MANIFEST:?SHA256_APPLE_CHECK_DPKG_MANIFEST is unset}"
+: "${SHA256_CARGO_VENDOR_CLOSURE_V1:?SHA256_CARGO_VENDOR_CLOSURE_V1 is unset}"
+: "${SHA256_CARGO_VENDOR_CONFIG:?SHA256_CARGO_VENDOR_CONFIG is unset}"
+[[ "$IMG" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || die "malformed immutable Apple-check image ID"
+[ "$(sha256sum scripts/Dockerfile.apple-check | awk '{print $1}')" = "$SHA256_APPLE_CHECK_DOCKERFILE" ] \
+  || die "Apple-check acquisition recipe differs from its reviewed pin"
+[ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
+  || die "Cargo vendor source map differs from its reviewed pin"
 
-echo "== building the apple-check image (devcheck base + Rust 1.81 + Apple std targets) =="
-docker build -q -t "$BASE_IMG" -f scripts/Dockerfile.devcheck scripts >/dev/null \
-  || die "could not build $BASE_IMG from scripts/Dockerfile.devcheck"
-docker build -q -t "$IMG" -f scripts/Dockerfile.apple-check scripts >/dev/null \
-  || die "could not build $IMG from scripts/Dockerfile.apple-check"
+install -d -m 0700 "$APPLE_DOCKER_CONFIG"
+install -m 0600 /dev/null "$APPLE_DOCKER_CONFIG/config.json"
+printf '{}\n' >"$APPLE_DOCKER_CONFIG/config.json"
+verify_apple_docker_authority
+
+IMAGE_ID="$(apple_docker image inspect --format '{{.Id}}' "$IMG")" \
+  || die "immutable Apple-check image is not present locally"
+[ "$IMAGE_ID" = "$IMG" ] || die "local Apple-check image identity differs from its pin"
+readonly IMAGE_ID
+
+readonly APPLE_SOURCE_ARCHIVE="$APPLE_CHECK_TMP/source.tar"
+readonly APPLE_SOURCE="$APPLE_CHECK_TMP/source"
+readonly APPLE_VENDOR_PARENT="$APPLE_CHECK_TMP/vendor-input"
+readonly APPLE_VENDOR="$APPLE_VENDOR_PARENT/subtree"
+readonly APPLE_TARGET="$APPLE_CHECK_TMP/target"
+readonly APPLE_CARGO_CONFIG="$APPLE_CHECK_TMP/cargo-config.toml"
+install -d -m 0700 "$APPLE_SOURCE" "$APPLE_TARGET"
+archive_current_source >"$APPLE_SOURCE_ARCHIVE"
+SOURCE_DIGEST="$(sha256sum "$APPLE_SOURCE_ARCHIVE" | awk '{print $1}')"
+readonly SOURCE_DIGEST
+tar --extract --file="$APPLE_SOURCE_ARCHIVE" --directory="$APPLE_SOURCE" --no-same-owner
+chmod -R a-w "$APPLE_SOURCE"
+/usr/bin/python3 scripts/online-input-provenance.py snapshot-subtree-create \
+  --source online/cargo-vendor \
+  --destination "$APPLE_VENDOR_PARENT" \
+  --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+{
+  printf '[net]\noffline = true\n'
+  sed 's#directory = .*#directory = "/vendor"#' online/cargo-vendor-config.toml
+} >"$APPLE_CARGO_CONFIG"
+chmod 0400 "$APPLE_CARGO_CONFIG"
+[ "$(grep -c '^directory = "/vendor"$' "$APPLE_CARGO_CONFIG")" -eq 1 ] \
+  || die "private Cargo source map has an invalid vendor-directory cardinality"
+[ "$(stat -c '%u:%g:%a:%h' "$APPLE_TARGET")" = "$BUILD_UID:$BUILD_GID:700:2" ] \
+  || die "private Cargo target metadata is invalid"
+[ "$(stat -c '%u:%g:%a:%h' "$APPLE_CARGO_CONFIG")" = "$BUILD_UID:$BUILD_GID:400:1" ] \
+  || die "private Cargo config metadata is invalid"
+
+readonly IMAGE_PREFLIGHT_OUT="$APPLE_CHECK_TMP/image-preflight.out"
+readonly IMAGE_PREFLIGHT_ERR="$APPLE_CHECK_TMP/image-preflight.err"
+set +e
+apple_docker run --rm --pull=never --network=none --read-only \
+  --user "$BUILD_UID:$BUILD_GID" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m \
+  --env HOME=/tmp \
+  --env RUSTUP_HOME=/usr/local/rustup \
+  --env CARGO_HOME=/usr/local/cargo \
+  "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+    [ "$(id -u)" -ne 0 ] && [ "$(id -g)" -ne 0 ]
+    printf "rustc=%s\n" "$(rustc +1.81.0 --version)"
+    printf "cargo=%s\n" "$(cargo +1.81.0 --version)"
+    cargo_path="$(rustup +1.81.0 which cargo)"
+    rustc_path="$(rustup +1.81.0 which rustc)"
+    cargo_sha="$(sha256sum "$cargo_path")"; cargo_sha="${cargo_sha%% *}"
+    rustc_sha="$(sha256sum "$rustc_path")"; rustc_sha="${rustc_sha%% *}"
+    dpkg_sha="$(dpkg-query -W | LC_ALL=C sort | sha256sum)"; dpkg_sha="${dpkg_sha%% *}"
+    printf "cargo-sha=%s\n" "$cargo_sha"
+    printf "rustc-sha=%s\n" "$rustc_sha"
+    printf "dpkg-sha=%s\n" "$dpkg_sha"
+    rustup target list --installed --toolchain 1.81.0 | LC_ALL=C sort
+    printf "sodium=%s\n" "${SODIUM_USE_PKG_CONFIG-}"
+  ' >"$IMAGE_PREFLIGHT_OUT" 2>"$IMAGE_PREFLIGHT_ERR"
+IMAGE_PREFLIGHT_STATUS=$?
+set -e
+[ "$IMAGE_PREFLIGHT_STATUS" -eq 0 ] && [ ! -s "$IMAGE_PREFLIGHT_ERR" ] \
+  || { cat "$IMAGE_PREFLIGHT_ERR" >&2; die "immutable Apple-check image preflight failed"; }
+readonly EXPECTED_IMAGE_PREFLIGHT="$APPLE_CHECK_TMP/image-preflight.expected"
+cat >"$EXPECTED_IMAGE_PREFLIGHT" <<EOF
+rustc=rustc 1.81.0 (eeb90cda1 2024-09-04)
+cargo=cargo 1.81.0 (2dbb1af80 2024-08-20)
+cargo-sha=$SHA256_APPLE_CHECK_CARGO
+rustc-sha=$SHA256_APPLE_CHECK_RUSTC
+dpkg-sha=$SHA256_APPLE_CHECK_DPKG_MANIFEST
+aarch64-apple-darwin
+aarch64-apple-ios
+x86_64-apple-darwin
+x86_64-unknown-linux-gnu
+sodium=1
+EOF
+chmod 0600 "$EXPECTED_IMAGE_PREFLIGHT"
+cmp "$EXPECTED_IMAGE_PREFLIGHT" "$IMAGE_PREFLIGHT_OUT" \
+  || die "immutable Apple-check image contents differ from reviewed pins"
+
+APPLE_READ_RUN=(apple_docker run --rm --interactive --pull=never --network=none --read-only
+  --user "$BUILD_UID:$BUILD_GID"
+  --cap-drop=ALL --security-opt=no-new-privileges
+  --pids-limit=64 --memory=512m --memory-swap=512m --cpus=1
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m
+  --mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"
+  --workdir /work
+  "$IMAGE_ID")
+
+COMMON_CHECK=(apple_docker run --rm --interactive --pull=never --network=none --read-only
+  --user "$BUILD_UID:$BUILD_GID"
+  --cap-drop=ALL --security-opt=no-new-privileges
+  --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4
+  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g
+  --mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"
+  --mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"
+  --mount "type=bind,source=$APPLE_TARGET,target=/build"
+  --mount "type=bind,source=$APPLE_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"
+  --env HOME=/tmp/apple-home
+  --env CARGO_HOME=/tmp/cargo-home
+  --env CARGO_TARGET_DIR=/build
+  --env CARGO_INCREMENTAL=0
+  --env CARGO_NET_OFFLINE=true
+  --env RUSTUP_TOOLCHAIN=1.81.0
+  --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
+  --env PKG_CONFIG_ALLOW_CROSS=1
+  --workdir /work)
 
 # ---- Apple source set (R-R2 retain-and-check) ----
 APPLE_RS=(
@@ -2285,7 +2445,7 @@ fi
 echo "== (2c) Appendix C #2b native-worker decode sandbox: accepted residual (reverted 0c54912) — no macOS worker hardening to assert =="
 
 echo "== (2d) Apple metadata allow-lists: plist/entitlements/pods/Xcode shell phases =="
-docker run --rm -i -v "$REPO:/work:ro" -w /work "$IMG" python3 - <<'PY' || rc=1
+"${APPLE_READ_RUN[@]}" python3 - <<'PY' || rc=1
 from pathlib import Path
 import ast
 import plistlib
@@ -2673,37 +2833,12 @@ else
   rc=1
 fi
 
-echo "== (3) rustfmt parse-check of Rust Apple sources (SDK-free syntax gate) =="
-docker run --rm -i -v "$REPO:/work:ro" -w /work "$IMG" bash -s -- "${APPLE_RS[@]}" <<'SH' || rc=1
-set -euo pipefail
-rc=0
-for f in "$@"; do
-  if ! rfe=$(rustfmt --emit stdout --edition 2021 "$f" 2>&1 >/dev/null); then
-    echo "  PARSE-FAIL $f"
-    printf '%s\n' "$rfe" | sed 's/^/      /'
-    rc=1
-  fi
-done
-[ "$rc" = 0 ] && echo "  ok  all Apple .rs sources parse"
-exit "$rc"
-SH
-
-echo "== (4) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
+echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
 echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"
 [ ! -e "$REPO/src/version.rs" ] || {
   echo "  FAIL non-mutating Apple gate: source tree contains generated src/version.rs"
   rc=1
 }
-COMMON_CHECK=( docker run --rm
-  -v "$REPO:/work:ro"
-  -v rd-cargo-cache:/usr/local/cargo/registry
-  -v rd-git-cache:/usr/local/cargo/git
-  -v rd-apple-target:/build
-  -e CARGO_TARGET_DIR=/build
-  -e RUSTUP_TOOLCHAIN=1.81.0
-  -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
-  -e PKG_CONFIG_ALLOW_CROSS=1
-  -w /work )
 
 for target in "${SELECTED_APPLE_TARGETS[@]}"; do
   features=$(target_features "$target")
@@ -2713,15 +2848,16 @@ for target in "${SELECTED_APPLE_TARGETS[@]}"; do
   log="$APPLE_CHECK_TMP/apple-xcheck-$target.log"
   echo "  -- $target features=$features"
 
-  if [ -d "$SDK_DIR" ]; then
-    note "online/macos-sdk present ($SDK_DIR) -> real Apple SDK cross-check"
-    set +e
-    "${COMMON_CHECK[@]}" \
-      -v "$SDK_DIR:/apple-sdk:ro" \
-      -e SDKROOT=/apple-sdk \
-      -e BINDGEN_EXTRA_CLANG_ARGS="-isysroot /apple-sdk" \
-      -e "CFLAGS_$lower_env=-isysroot /apple-sdk" \
-      "$IMG" bash -s -- "$target" "$features" "$triplet" <<'SH' > "$log" 2>&1
+  set +e
+  "${COMMON_CHECK[@]}" \
+    --env SDKROOT=/tmp \
+    --env BINDGEN_EXTRA_CLANG_ARGS="-isysroot /tmp" \
+    --env "CC_$lower_env=/work/scripts/apple-cc-shim.sh" \
+    --env "CXX_$lower_env=/work/scripts/apple-cc-shim.sh" \
+    --env "CFLAGS_$lower_env=-isysroot /tmp" \
+    --env "CXXFLAGS_$lower_env=-isysroot /tmp" \
+    --env "CARGO_TARGET_${upper_env}_LINKER=/work/scripts/apple-cc-shim.sh" \
+    "$IMAGE_ID" /bin/bash --noprofile --norc -s -- "$target" "$features" "$triplet" <<'SH' >"$log" 2>&1
 set -euo pipefail
 target="$1"; features="$2"; triplet="$3"
 stub=/tmp/apple-vcpkg
@@ -2731,57 +2867,24 @@ for d in opus vpx libyuv; do
   [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
 done
 export VCPKG_ROOT="$stub"
-cargo +1.81.0 check --target "$target" --features "$features"
+cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml \
+  --target "$target" --features "$features"
 SH
-    xrc=$?
-    set -e
-    if [ "$xrc" = 0 ]; then
-      note "ok  $target real-SDK cross-check compiled clean"
-    else
-      echo "  FAIL $target real-SDK cross-check failed:"
-      tail -40 "$log" | sed 's/^/      /'
-      rc=1
-    fi
+  xrc=$?
+  set -e
+  if [ "$xrc" = 0 ]; then
+    note "ok  $target SDK-free cross-check compiled clean"
+  elif grep -qE 'error\[E[0-9]{4}\]' "$log"; then
+    echo "  FAIL $target has a Rust compiler error (real Apple-cfg coherence break):"
+    grep -nE 'error\[E[0-9]{4}\]' "$log" | head -25 | sed 's/^/      /'
+    rc=1
+  elif grep -qE 'Checking rustdesk|Compiling rustdesk|Checking hbb_common|Compiling hbb_common|Checking scrap|Compiling scrap' "$log" \
+    && grep -qE "coreaudio-sys|AudioUnit|fatal error: .+ file not found|framework=|inttypes\.h|vpx/vp8\.h" "$log"; then
+    note "ok  $target reached the expected Apple SDK/header boundary with no Rust error"
   else
-    note "no online/macos-sdk -> SDK-free best-effort check with scripts/apple-cc-shim.sh"
-    set +e
-    "${COMMON_CHECK[@]}" \
-      -v "$REPO/scripts/apple-cc-shim.sh:/applecc:ro" \
-      -e SDKROOT=/tmp \
-      -e BINDGEN_EXTRA_CLANG_ARGS="-isysroot /tmp" \
-      -e "CC_$lower_env=/applecc" \
-      -e "CXX_$lower_env=/applecc" \
-      -e "CFLAGS_$lower_env=-isysroot /tmp" \
-      -e "CXXFLAGS_$lower_env=-isysroot /tmp" \
-      -e "CARGO_TARGET_${upper_env}_LINKER=/applecc" \
-      "$IMG" bash -s -- "$target" "$features" "$triplet" <<'SH' > "$log" 2>&1
-set -euo pipefail
-target="$1"; features="$2"; triplet="$3"
-stub=/tmp/apple-vcpkg
-rm -rf "$stub"
-mkdir -p "$stub/installed/$triplet/include" "$stub/installed/$triplet/lib"
-for d in opus vpx libyuv; do
-  [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
-done
-export VCPKG_ROOT="$stub"
-cargo +1.81.0 check --target "$target" --features "$features"
-SH
-    xrc=$?
-    set -e
-    if [ "$xrc" = 0 ]; then
-      note "ok  $target compiled clean even without Apple SDK headers"
-    elif grep -qE 'error\[E[0-9]{4}\]' "$log"; then
-      echo "  FAIL $target has a Rust compiler error (real Apple-cfg coherence break):"
-      grep -nE 'error\[E[0-9]{4}\]' "$log" | head -25 | sed 's/^/      /'
-      rc=1
-    elif grep -qE 'Checking rustdesk|Compiling rustdesk|Checking hbb_common|Compiling hbb_common|Checking scrap|Compiling scrap' "$log" \
-      && grep -qE "coreaudio-sys|AudioUnit|fatal error: .+ file not found|framework=|inttypes\.h|vpx/vp8\.h" "$log"; then
-      note "ok  $target reached the expected Apple SDK/header boundary with no Rust error"
-    else
-      echo "  FAIL $target failed before the accepted SDK/header boundary:"
-      tail -40 "$log" | sed 's/^/      /'
-      rc=1
-    fi
+    echo "  FAIL $target failed before the accepted SDK/header boundary:"
+    tail -40 "$log" | sed 's/^/      /'
+    rc=1
   fi
 done
 
@@ -2828,6 +2931,19 @@ if [ -e "$REPO/src/version.rs" ]; then
 else
   note "ok  non-mutating source proof: read-only source tree has no generated src/version.rs"
 fi
+
+/usr/bin/python3 scripts/online-input-provenance.py verify-subtree \
+  --tree "$APPLE_VENDOR" \
+  --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+  || die "private Cargo vendor snapshot changed during Apple verification"
+SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
+[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
+  || die "Apple verification detected a change in the real source worktree"
+FINAL_IMAGE_ID="$(apple_docker image inspect --format '{{.Id}}' "$IMAGE_ID")" \
+  || die "immutable Apple-check image disappeared during verification"
+[ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ] \
+  || die "immutable Apple-check image identity changed during verification"
+verify_apple_docker_authority
 
 echo
 if [ "$rc" = 0 ]; then

@@ -8789,6 +8789,97 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   established golden, boot or define a VM/domain, compile Windows/RustDesk, access a host service, or
   inspect/change host RustDesk, listeners, firewall/UFW/nftables/iptables, or host network state. Full golden
   behavior, Windows artifacts, double-build equality, and the complete cold release remain R-B2 obligations.
+- **R-S11ci/R-S11e-101 — Apple conformance verifier authority — SOURCE IMPLEMENTED
+  2026-07-23; FOCUSED/WORKSPACE MUTATION GATES PASS; FRESH CONFINED MACOS TARGETS REACH THE
+  DOCUMENTED SDK BOUNDARY; IOS FAILS CLOSED AT THE EARLIER UNAVAILABLE APPLE HEADER; NATIVE APPLE,
+  EXACT COLD RELEASE, AND INDEPENDENT IMAGE-PROVENANCE EVIDENCE PENDING.** Platform: the
+  unprivileged Linux verification host and the Rust 1.81 Apple source-conformance container. Endpoint/action:
+  the R-R2 metadata parser and three-target `cargo check` verdict reached through
+  `scripts/apple-conform-check.sh`. Boundary: caller environment, Docker daemon/image/cache state, live source
+  and offline inputs ↔ the release verdict over retained macOS/iOS source.
+
+  The old gate built `rd-devcheck` and `rd-apple-check` tags on every invocation and then ran three independent
+  container shapes by those mutable names. Metadata and parse helpers received default bridge networking,
+  writable roots, default capabilities and privilege-gain semantics, no resource ceiling, and Docker's default
+  UID 0 because neither recipe declared `USER`. The cross-check mounted the live checkout read-only but reused
+  three persistent named volumes for Cargo registry, Git, and compiled target state. `APPLE_TARGET(S)` could
+  reduce the mandatory R-R2 matrix; `MACOS_SDK_DIR` could select any directory and incidental directory
+  existence changed the verdict. The declared minimal Rust image did not install `rustfmt`, yet a separate
+  parse mode assumed it. This is source-proven build-host, stale-input, and release-verdict authority debt. It
+  is not evidence that a helper published or opened a public listener, container root became host root, Docker
+  escaped, source changed, host RustDesk or any service/firewall/network state changed, or any system was
+  exploited or compromised.
+
+  The checker now refuses host UID or primary GID 0, requires the fixed root-owned `/usr/bin/docker` and local
+  Unix socket, rejects caller Docker context/TLS/configuration, target, and SDK inputs, and replaces caller
+  client state with a fresh current-UID mode-0700 configuration containing exactly one mode-0600 single-link
+  `{}` file. Its metadata and bytes are reproved around every daemon operation. The gate never builds, pulls,
+  tags, or resolves a mutable name. It addresses only
+  `APPLE_CHECK_IMAGE_ID=sha256:612145fabd0c603417ab5e689e84d5b5a619f4edf31efceb3ecbe2813da2199c`,
+  verifies the reviewed acquisition-recipe digest, and performs a mount-free preflight over exact Rust/Cargo
+  1.81 versions, Cargo/rustc binary SHA-256 values, package-manifest SHA-256, libsodium policy, and the exact
+  installed target inventory. Independently archived acquisition and distribution of that content identity
+  remain open; the local image ID and internal byte pins do not overclaim bootstrap provenance.
+
+  One mode-0700 transaction snapshots the tracked plus nonignored source into a read-only compiler tree,
+  snapshots and re-verifies the complete pinned `online/cargo-vendor` closure, creates a mode-0400 offline Cargo
+  source map, and owns the sole fresh writable target. The real checkout is never a compiler mount. The verdict
+  always iterates exactly `aarch64-apple-darwin`, `x86_64-apple-darwin`, and `aarch64-apple-ios` with their fixed
+  feature sets. Because no redistributable Apple SDK is a pinned offline input and Apple remains
+  source-conformance-only on Linux, caller/ambient real-SDK modes are deleted; the checked-in compiler shim is
+  the sole release mode. A check must compile cleanly or reach the existing narrowly classified Apple
+  SDK/header boundary only after the RustDesk workspace begins checking and with no Rust compiler error. Native
+  Mac compilation/signing/packaging/runtime remains separate R-B2 evidence. The redundant undeclared-rustfmt
+  path is deleted rather than repaired as a second syntax mode.
+
+  Image preflight, structured metadata parsing, and cross-checking all use `--pull=never`, `--network=none`,
+  read-only root, invoking numeric UID:GID, all capabilities dropped, no-new-privileges, and explicit
+  PID/memory/no-swap/CPU plus `nosuid,nodev` tmpfs ceilings. Metadata sees only the private source snapshot.
+  Cargo sees exactly that source, the read-only private vendor snapshot/config, the private target, and tmpfs;
+  it runs Rust 1.81 with `--locked --offline` and offline environment policy. No persistent named volume,
+  arbitrary SDK, live repository, full `online` tree, Docker socket, device, host namespace, added capability,
+  or port enters a container. Final postconditions reverify the vendor closure, real-source transaction digest,
+  Docker configuration, and image identity.
+
+  Docker's own documentation establishes the semantics behind this closure: the default container user is root
+  unless `USER`/`--user` changes it
+  (https://docs.docker.com/engine/containers/run/#user); `--pull=never` forbids implicit acquisition
+  (https://docs.docker.com/reference/cli/docker/container/run/#set-the-pull-policy---pull);
+  named-volume content persists after a container is removed
+  (https://docs.docker.com/engine/containers/run/#volume-mounts); and `--read-only` plus explicit mounts bounds
+  writable filesystem authority
+  (https://docs.docker.com/reference/cli/docker/container/run/#mount-volume-read-only---read-only).
+  Docker also documents that bind mounts can otherwise affect host files and that read-only mounts remove that
+  write authority (https://docs.docker.com/engine/storage/bind-mounts/), while its security guidance says most
+  containers do not need root and can run with reduced capabilities
+  (https://docs.docker.com/engine/security/).
+
+  `scripts/verify-apple-verifier-authority.py` binds the fixed client/config/image, exact pins and target matrix,
+  private source/vendor/output topology, complete three-launch inventory, confinement and resource flags,
+  locked/offline command, forbidden legacy authority, setup/execution/postcondition order, R-S11ci, Appendix C
+  #228, this ledger, shared-gate wiring, and independent workspace ownership through deliberate mutations.
+  Its focused normal/self-test passes and rejects 38 deliberate weakenings. The independent workspace semantic
+  verifier passes both normal validation and its complete in-memory source-mutation catalog, including separate
+  mutations of the focused rejection logic, actual common launch, Dockerfile content pin, shared wiring,
+  requirement, Appendix row, and ledger. Both ran as UID/GID 1000 in the immutable
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` verifier with no
+  network, read-only root/source, zero capabilities, no-new-privileges, and explicit resource ceilings.
+  Dependency inventory normal plus all 103 mutations, native-codec normal/negative gates, Bash/Python syntax,
+  synchronized requirements SHA-256
+  `7b76e8bf7debb914a59502033689a1448b73235ed262f3c38abf81690efe474e`, and diff checks pass.
+
+  A separate fresh disposable target exercised the exact locked/offline cross-check command in the pinned Apple
+  image with UID/GID 1000, no network, read-only root/source/vendor, zero capabilities, no-new-privileges, and
+  the production resource ceilings. Both `aarch64-apple-darwin` and `x86_64-apple-darwin` reached the documented
+  SDK boundary without a Rust compiler error. `aarch64-apple-ios` failed earlier while the pinned
+  `coreaudio-sys 0.2.15` build script tried to include unavailable `AudioUnit/AudioUnit.h`, before a RustDesk
+  workspace crate began checking. The hardened criterion correctly rejected that as an early failure. This
+  demonstrates why persistent target state was not admissible: stale build-script output could conceal the
+  missing-SDK boundary. No Apple SDK was fabricated, downloaded, mounted, or accepted from the caller, and no
+  header stub or weakened classification was added. Consequently no complete `apple-conform-check PASS`, full
+  `scripts/verify.sh`, or full release-verifier verdict is claimed. Native Apple compilation/signing/artifacts,
+  an honest iOS-capable source-conformance input or native check, exact clean-commit cold release evidence, and
+  independently archived Apple image provenance remain open and are not advanced by this source slice.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9506,9 +9597,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-dd7d7cff62ef3affa5352b9b9eda85f3a0046562516bcc25a1b68eb7e4628f3e  requirements.html
+7b76e8bf7debb914a59502033689a1448b73235ed262f3c38abf81690efe474e  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ch, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ci, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

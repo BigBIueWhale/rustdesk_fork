@@ -3,10 +3,13 @@
 # Extends the Linux devcheck image (scripts/Dockerfile.devcheck — the apt deps + the
 # libsodium pkg-config wiring the apple build scripts also need on the host side) with the
 # macOS-pinned Rust 1.81 (R-B5a: "Rust 1.75 (macOS 1.81)") and the three apple std targets
-# the spec's gate names. Built + used by scripts/apple-conform-check.sh.
+# the spec's gate names. This is an acquisition recipe only: the gate itself
+# accepts one separately reviewed local image content ID and never builds,
+# pulls, tags, or resolves this recipe's mutable name.
 #
-# NB: this produces NO apple artifact (R-R2 — apple is off the build matrix). It exists so
-# `cargo check --target *-apple-*` can TYPE-CHECK the apple cfg without an Apple build host.
+# NB: this produces NO Apple artifact (R-R2 — Apple is off the build matrix). It supports
+# SDK-free cross-checks only to the documented Apple SDK/header boundary; complete native
+# type-checking still requires an independently controlled Apple SDK/build host.
 FROM rd-devcheck
 
 RUN rustup toolchain install 1.81.0 --profile minimal \

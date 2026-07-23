@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11884,7 +11884,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12218,7 +12218,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13650,6 +13650,88 @@ def validate_windows_helper_authority_contract(sources):
         sources["hardening"],
         "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
         "Windows helper authority hardening ledger",
+    )
+
+
+def validate_apple_verifier_authority_contract(sources):
+    focused = sources["apple_verifier_authority_verifier"]
+    apple = sources["apple"]
+    apple_dockerfile_digest = hashlib.sha256(
+        sources["apple_check_dockerfile"].encode("utf-8")
+    ).hexdigest()
+    require_text(
+        sources["pins"],
+        f'SHA256_APPLE_CHECK_DOCKERFILE="{apple_dockerfile_digest}"',
+        "Apple acquisition-recipe content pin",
+    )
+    for text, label in (
+        ("forbid_container_authority(source: str, label: str)",
+         "Apple focused forbidden-authority enforcement"),
+        ("Apple verifier setup, execution, and postconditions",
+         "Apple focused transaction-order enforcement"),
+        ("MUTATIONS: Tuple[Mutation, ...]",
+         "Apple focused mutation inventory"),
+        ("run_mutations(sources)",
+         "Apple focused mutation dispatch"),
+        ("cross-check mount inventory",
+         "Apple focused mount-cardinality enforcement"),
+        ("exact three-target matrix",
+         "Apple focused target-cardinality enforcement"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("readonly DOCKER_BIN=/usr/bin/docker",
+         "Apple fixed Docker client"),
+        ("readonly APPLE_DOCKER_HOST=unix:///var/run/docker.sock",
+         "Apple fixed Docker endpoint"),
+        ('readonly IMG="$APPLE_CHECK_IMAGE_ID"',
+         "Apple immutable image selection"),
+        ("apple_docker run --rm --pull=never --network=none --read-only",
+         "Apple preflight confinement"),
+        ("APPLE_READ_RUN=(apple_docker run --rm --interactive --pull=never --network=none --read-only",
+         "Apple metadata-parser confinement"),
+        ("COMMON_CHECK=(apple_docker run --rm --interactive --pull=never --network=none --read-only",
+         "Apple cross-check confinement"),
+        ('--user "$BUILD_UID:$BUILD_GID"',
+         "Apple numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "Apple privilege confinement"),
+        ('--mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"',
+         "Apple private read-only source"),
+        ('--mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"',
+         "Apple private read-only vendor"),
+        ("cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml",
+         "Apple locked offline cross-check"),
+        ('[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
+         "Apple real-source postcondition"),
+        ('[ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ]',
+         "Apple exact-image postcondition"),
+    ):
+        require_text(apple, text, label)
+    require_text(
+        sources["pins"],
+        'APPLE_CHECK_IMAGE_ID="sha256:',
+        "Apple image content pin",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test",
+        "Apple conformance focused authority verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ci</span>',
+        "Apple verifier authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>228</td>",
+        "Apple verifier authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
+        "Apple verifier authority hardening ledger",
     )
 
 
@@ -16995,6 +17077,7 @@ def validate_sources(sources):
     validate_android_builder_authority_contract(sources)
     validate_android_keystore_authority_contract(sources)
     validate_windows_helper_authority_contract(sources)
+    validate_apple_verifier_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -29170,7 +29253,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
+        "R-S11n through R-S11ci, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#228",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -30859,6 +30942,48 @@ def run_source_mutations(sources):
             "Windows helper authority hardening ledger",
         ),
         (
+            "apple_verifier_authority_verifier",
+            "forbid_container_authority(source: str, label: str)",
+            "return # forbidden Apple verifier authority accepted",
+            "Apple focused forbidden-authority enforcement",
+        ),
+        (
+            "apple_check_dockerfile",
+            "This is an acquisition recipe only",
+            "This is an unreviewed acquisition recipe",
+            "Apple acquisition-recipe content pin",
+        ),
+        (
+            "apple",
+            "COMMON_CHECK=(apple_docker run --rm --interactive --pull=never --network=none --read-only",
+            "COMMON_CHECK=(apple_docker run --rm --interactive",
+            "Apple cross-check confinement",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test",
+            "true # Apple verifier authority gate removed",
+            "Apple conformance focused authority verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ci</span>',
+            '<span class="id">R-S11ci-disabled</span>',
+            "Apple verifier authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>228</td>",
+            "<tr><td>228-disabled</td>",
+            "Apple verifier authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
+            "R-S11ci/R-S11e-101 — Apple ambient verifier authority",
+            "Apple verifier authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -31864,6 +31989,9 @@ def main():
             "runit_lifecycle": (repo / "scripts/smoke-runit-lifecycle.sh").read_text(encoding="utf-8"),
             "runit_lifecycle_mode": os.lstat(repo / "scripts/smoke-runit-lifecycle.sh").st_mode,
             "devcheck_dockerfile": (repo / "scripts/Dockerfile.devcheck").read_text(encoding="utf-8"),
+            "apple_check_dockerfile": (
+                repo / "scripts/Dockerfile.apple-check"
+            ).read_text(encoding="utf-8"),
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
@@ -32077,6 +32205,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_helper_authority_verifier": (
                 repo / "scripts/verify-windows-helper-authority.py"
+            ).read_text(encoding="utf-8"),
+            "apple_verifier_authority_verifier": (
+                repo / "scripts/verify-apple-verifier-authority.py"
             ).read_text(encoding="utf-8"),
             "windows_helper_runtime": (
                 repo / "scripts/windows-helper-runtime.sh"

@@ -178,7 +178,7 @@ lazy_static::lazy_static! {
 
 #[cfg(target_os = "linux")]
 lazy_static::lazy_static! {
-    static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::PeerProcessIdentity)>>> = Default::default();
+    static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::LinuxProcessIdentity)>>> = Default::default();
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -201,7 +201,7 @@ impl Drop for CmPeerIdentityRegistration {
 #[cfg(target_os = "linux")]
 fn register_cm_peer_identity_for_conn(
     conn_id: i32,
-    cm_peer_identity: crate::ipc::PeerProcessIdentity,
+    cm_peer_identity: crate::ipc::LinuxProcessIdentity,
 ) -> ResultType<CmPeerIdentityRegistration> {
     if conn_id <= 0 || cm_peer_identity.pid() == 0 {
         bail!("invalid connection-manager peer identity");
@@ -226,7 +226,7 @@ pub(crate) fn clear_cm_peer_identity_for_conn(conn_id: i32) {
 #[cfg(target_os = "linux")]
 pub(crate) fn expected_cm_peer_identity_for_conn_ids(
     conn_ids: &[i32],
-) -> ResultType<crate::ipc::PeerProcessIdentity> {
+) -> ResultType<crate::ipc::LinuxProcessIdentity> {
     if conn_ids.is_empty() {
         bail!("no active audio subscriber");
     }
@@ -241,7 +241,7 @@ pub(crate) fn expected_cm_peer_identity_for_conn_ids(
                 conn_id
             );
         };
-        if !crate::ipc::peer_process_identity_is_live(cm_peer_identity, "_cm") {
+        if !crate::ipc::linux_cm_child_identity_is_live(cm_peer_identity, std::process::id()) {
             bail!(
                 "stale connection-manager peer identity for audio subscriber {}",
                 conn_id
@@ -8416,17 +8416,12 @@ async fn connect_authenticated_cm(
     expected_arg: &str,
 ) -> ResultType<(
     ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
-    crate::ipc::PeerProcessIdentity,
+    crate::ipc::LinuxProcessIdentity,
 )> {
     let mut stream = crate::ipc::connect_for_uid(ms_timeout, uid, "_cm").await?;
-    let identity = crate::ipc::authenticate_cm_endpoint(
-        &stream,
-        uid,
-        expected_arg,
-        cm_launch_token(),
-        std::process::id(),
-    )?;
-    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await?;
+    let identity = crate::ipc::authenticate_cm_endpoint(&stream, uid, std::process::id())?;
+    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)
+        .await?;
     Ok((stream, identity))
 }
 
@@ -8437,7 +8432,8 @@ async fn connect_authenticated_cm(
 ) -> ResultType<ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>> {
     let mut stream = crate::ipc::connect(ms_timeout, "_cm").await?;
     crate::ipc::authenticate_macos_cm_endpoint(&stream, expected_arg)?;
-    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await?;
+    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)
+        .await?;
     Ok(stream)
 }
 
@@ -8621,11 +8617,7 @@ async fn start_ipc(
             } else {
                 log::debug!("Start cm");
                 #[cfg(target_os = "linux")]
-                let child = if headless_cm {
-                    crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?
-                } else {
-                    crate::run_me_with_env(args, cm_launch_env())?
-                };
+                let child = crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?;
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 let child = crate::run_me_with_env(args, cm_launch_env())?;
                 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

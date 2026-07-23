@@ -1,7 +1,7 @@
 #[cfg(target_os = "linux")]
 use super::ipc_auth::{
-    active_uid, authenticate_cm_endpoint, current_process_identity,
-    ensure_peer_process_identity_matches, peer_executable_is_current_by_pid,
+    active_uid, authenticate_cm_endpoint, current_linux_process_identity,
+    ensure_linux_process_identity_matches, peer_executable_is_current_by_pid,
 };
 use crate::ipc::{connect, Data};
 use hbb_common::{config, log, ResultType};
@@ -765,20 +765,22 @@ async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
                 .ok()
                 .and_then(|value| value.parse::<u32>().ok())
                 .unwrap_or(0);
-            return Ok(authenticate_cm_endpoint(
-                &stream,
-                current_euid(),
-                &expected_arg,
+            if authenticate_cm_endpoint(&stream, current_euid(), expected_launch_parent).is_err() {
+                return Ok(false);
+            }
+            return Ok(super::authenticate_cm_endpoint_launch_proof(
+                &mut stream,
                 &expected_launch_token,
-                expected_launch_parent,
+                &expected_arg,
             )
+            .await
             .is_ok());
         }
         if postfix == "_pa" {
-            let Ok(expected) = current_process_identity("_pa") else {
+            let Ok(expected) = current_linux_process_identity() else {
                 return Ok(false);
             };
-            return Ok(ensure_peer_process_identity_matches(&stream, &expected, "_pa").is_ok());
+            return Ok(ensure_linux_process_identity_matches(&stream, &expected, "_pa").is_ok());
         }
     }
 

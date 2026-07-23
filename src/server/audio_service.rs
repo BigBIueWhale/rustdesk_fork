@@ -91,7 +91,7 @@ impl Drop for VoiceCallInputLease {
 struct PaCaptureAuthority {
     token: String,
     conn_ids: Vec<i32>,
-    expected_peer: crate::ipc::PeerProcessIdentity,
+    expected_peer: crate::ipc::LinuxProcessIdentity,
 }
 
 #[cfg(target_os = "linux")]
@@ -102,7 +102,7 @@ lazy_static::lazy_static! {
 #[cfg(target_os = "linux")]
 struct PaCaptureAuthorityGuard {
     token: String,
-    expected_peer: crate::ipc::PeerProcessIdentity,
+    expected_peer: crate::ipc::LinuxProcessIdentity,
 }
 
 #[cfg(target_os = "linux")]
@@ -111,7 +111,7 @@ impl PaCaptureAuthorityGuard {
         &self.token
     }
 
-    fn expected_peer(&self) -> &crate::ipc::PeerProcessIdentity {
+    fn expected_peer(&self) -> &crate::ipc::LinuxProcessIdentity {
         &self.expected_peer
     }
 }
@@ -143,11 +143,11 @@ fn token_eq(left: &str, right: &str) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn expected_pa_peer(conn_ids: &[i32]) -> ResultType<crate::ipc::PeerProcessIdentity> {
+fn expected_pa_peer(conn_ids: &[i32]) -> ResultType<crate::ipc::LinuxProcessIdentity> {
     if crate::is_server() {
         crate::server::expected_cm_peer_identity_for_conn_ids(conn_ids)
     } else {
-        crate::ipc::current_process_identity("_pa")
+        crate::ipc::current_linux_process_identity()
     }
 }
 
@@ -186,13 +186,13 @@ where
         + std::marker::Unpin
         + std::os::unix::io::AsRawFd,
 {
-    crate::ipc::ensure_peer_process_identity_matches(stream, authority.expected_peer(), "_pa")
+    crate::ipc::ensure_linux_process_identity_matches(stream, authority.expected_peer(), "_pa")
 }
 
 #[cfg(target_os = "linux")]
 pub(crate) fn validate_pa_capture_authority(
     token: &str,
-    peer: &crate::ipc::PeerProcessIdentity,
+    peer: &crate::ipc::LinuxProcessIdentity,
 ) -> bool {
     if token.is_empty() {
         return false;
@@ -203,7 +203,11 @@ pub(crate) fn validate_pa_capture_authority(
         .as_ref()
         .map(|authority| {
             pa_capture_authority_matches(authority, token, peer, || {
-                crate::ipc::peer_process_identity_is_live(peer, "_pa")
+                if peer.pid() == std::process::id() {
+                    crate::ipc::linux_process_identity_is_live(peer)
+                } else {
+                    crate::ipc::linux_cm_child_identity_is_live(peer, std::process::id())
+                }
             })
         })
         .unwrap_or(false)
@@ -213,7 +217,7 @@ pub(crate) fn validate_pa_capture_authority(
 fn pa_capture_authority_matches<F>(
     authority: &PaCaptureAuthority,
     token: &str,
-    peer: &crate::ipc::PeerProcessIdentity,
+    peer: &crate::ipc::LinuxProcessIdentity,
     peer_is_live: F,
 ) -> bool
 where
@@ -313,7 +317,7 @@ mod pa_impl {
         #[cfg(target_os = "linux")]
         let pa_authority = super::install_pa_capture_authority(sp.subscriber_ids())?;
         #[cfg(target_os = "linux")]
-        let owner = crate::ipc::current_process_identity("_pa")?;
+        let owner = crate::ipc::current_linux_process_identity()?;
         #[cfg(target_os = "linux")]
         let mut stream = crate::ipc::connect(1000, "_pa").await?;
         #[cfg(target_os = "linux")]
@@ -692,7 +696,7 @@ mod test {
         let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
         *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
 
-        let expected_peer = crate::ipc::current_process_identity("_pa").unwrap();
+        let expected_peer = crate::ipc::current_linux_process_identity().unwrap();
         assert!(!validate_pa_capture_authority("", &expected_peer));
         assert!(!validate_pa_capture_authority("wrong", &expected_peer));
 
@@ -711,11 +715,10 @@ mod test {
             &expected_peer,
             || true
         ));
-        let wrong_peer = crate::ipc::PeerProcessIdentity::for_test(
+        let wrong_peer = crate::ipc::LinuxProcessIdentity::for_test(
             expected_peer.pid().saturating_add(1).max(1),
             0,
             "wrong-start-time".to_owned(),
-            "--cm".to_owned(),
         );
         assert!(!pa_capture_authority_matches(
             &authority_snapshot,

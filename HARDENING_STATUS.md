@@ -1183,10 +1183,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `Data::PulseAudioStart { owner, token, source }`; the audio service mints a 32-byte in-memory capture
   lease from its active subscriber-id set immediately before connecting to `_pa`; controlled-side `--server`
   leases are bound to the authenticated live process identity of the server's connected `_cm` stream for those
-  subscriber ids (`pid`, `uid`, Linux `/proc` start time, current executable, expected `--cm`/`--cm-no-ui`
-  mode, server-scoped CM launch token, and server-parent ancestry), while viewer-side `CLIENT_SERVER` voice-call capture is bound to
-  the current process identity. The server accepts a Linux `_cm` endpoint only after that identity check, stores
-  it only for the lifetime of the CM IPC bridge, and rejects stale/reused, launch-tokenless, or non-descendant identities before
+  subscriber ids (`pid`, `uid`, and Linux `/proc` start time), while viewer-side `CLIENT_SERVER` voice-call capture is bound to
+  the current process identity. The server accepts a Linux `_cm` endpoint only when its socket-credential identity is the
+  exact direct child it launched and its CM role is bound into the server-scoped launch-token proof, stores that identity
+  only for the lifetime of the CM IPC bridge, and rejects stale/reused, launch-tokenless, wrong-role, or non-child identities before
   minting a downstream audio lease. The audio service verifies the connected `_pa` endpoint identity before
   disclosing the token; `_pa` validates locally only when the serialized owner identity is its own process and
   otherwise connects to the owner's UID-scoped main IPC, authenticates that endpoint against the serialized owner
@@ -1202,7 +1202,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs the Linux `pa_capture_authority_*` unit tests and asserts the owner-identity start
   message, owner-UID-routed and owner-identity-authenticated helper validation, endpoint identity check before
   token send, subscriber-bound authority installation, authenticated live CM identity registration/cleanup,
-  CM launch-token and launch-parent ancestry checks, stale `_cm`/`_pa` socket probe checks, old message absence, and the service-layer
+  CM role-bound launch-token and exact direct-parent checks, stale `_cm`/`_pa` socket probe checks, old message absence, and the service-layer
   subscriber-id snapshot. The fixed-path CM endpoint-selection class is closed separately below for macOS and
   non-audio helper consumers.
 - **R-S11c-11 — Desktop `_cm` endpoint-selection identity — CLOSED 2026-07-09; Windows extended 2026-07-11.** Platforms: Linux,
@@ -1221,9 +1221,11 @@ unreachable and a source/test/AST gate prevents reintroduction.
   launcher and same-user launcher, and the Windows server-side secondary `_cm` clients for clipboard-file sync
   and privacy-mode state perform the same authenticated connect before sending data. The old Flutter
   theme/language notification side-channel is no longer a `_cm` IPC client.
-  Linux keeps its stronger live process identity check (UID, current executable, expected CM mode, proc
-  start time, launch token, launch parent ancestry) and now also performs the same mutual pre-disclosure
-  proof. Stale, preexisting, launch-tokenless, wrong-mode, wrong-token, fixed-path squatting listeners, and
+  Linux keeps a PID-reuse-resistant socket identity (`pid`, `uid`, and proc start time), requires the selected
+  CM to be the server's exact direct child, and binds the expected CM role into the same mutual pre-disclosure
+  launch-token proof. This deliberately avoids relying on ptrace-gated executable, argv, or environment reads
+  across the installed service's nondumpable root-to-user boundary. Stale, preexisting, launch-tokenless,
+  wrong-role, wrong-token, non-child, fixed-path squatting listeners, and
   same-binary `--server` signing-oracle attempts fail before `Data::Login` or the per-connection CM token is
   sent. Verification closure: `scripts/verify.sh` runs the `cm_endpoint_proof_*` unit test and asserts the
   server/endpoint challenge/proof variants, directional HMAC proof/verify helpers, server-side proof before
@@ -2977,8 +2979,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   promptless ordinary-user-to-root primitive. Killing a selected process does not itself grant code execution.
 
   Closure: the supervisor cleanup function, direct SIGKILL wrapper, current-image kill sweep, and all three calls are
-  deleted. The server connection path selects `run_me_with_env_and_parent_death` only for Linux `headless_cm`; GUI
-  `--cm` and non-Linux launches retain their existing paths. The new helper still derives the current executable,
+  deleted. This slice originally selected `run_me_with_env_and_parent_death` only for Linux `headless_cm`; R-S11e-95
+  subsequently applies the same exact-parent lifetime to graphical Linux `--cm` because CM authority now depends on
+  direct parenthood. Non-Linux launches retain their existing paths. The helper still derives the current executable,
   exact role argv, and CM launch-token/parent environment, but registers the Linux parent-death hook before the
   existing R-S11q descriptor hook. The parent captures its PID. In the forked child, the hook uses raw `prctl` to set
   `PR_SET_PDEATHSIG` to `SIGKILL`, then raw `getppid` and `ESRCH` failure to reject an already-changed parent before
@@ -2995,9 +2998,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   A three-process regression starts a launcher copy of the exact test image, has it spawn a worker through the exact
   production parent-bound helper, receives the worker PID over a private Unix socket, retains that worker with a
   pidfd, kills/reaps the launcher, and requires the pidfd to report worker exit. `scripts/verify.sh` and the semantic
-  workspace verifier bind hook-before-descriptor ordering, raw syscall and parent-comparison semantics, headless-only
-  call-site selection, the actual-child proof, complete global cleanup absence, R-S11ad, Appendix C #152, and this
-  entry. Independent source mutations remove or weaken each authority edge and documentation/gate anchor.
+  workspace verifier bind hook-before-descriptor ordering, raw syscall and parent-comparison semantics, current
+  all-Linux call-site selection, the actual-child proof, complete global cleanup absence, R-S11ad, Appendix C #152,
+  and this entry. Independent source mutations remove or weaken each authority edge and documentation/gate anchor.
 
   Verification: Rust/Cargo 1.75 complete the locked/offline Linux library check with only the existing warning set.
   The new actual-child regression, the retained service-child parent-death regression, and the renamed exact-argv
@@ -8237,6 +8240,66 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   systemd/SysV/OpenRC/runit behavior, same-uid inspection-denial behavior, a built/installed Debian artifact, a
   clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent R-V3
   review.
+- **R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority —
+  SOURCE IMPLEMENTED; CONFINED COMPILER AND SEMANTIC/MUTATION VERIFICATION PASSED 2026-07-23; NATIVE
+  INSTALLED-SERVICE BEHAVIOR AND EXACT ARTIFACT EVIDENCE REMAIN R-B2/R-S11c-27.** Platform: Linux installed-service
+  mode after the stable root supervisor has launched the active-user, nondumpable
+  `--server --service-owned-server` image. Endpoint/action: the service child's graphical/headless connection
+  manager, the `_cm` listener and launch proof, main-IPC connection-capability validation, and the `_pa` capture
+  capability. Boundary: nondumpable service server ↔ its exact CM child, and CM ↔ its exact server launch parent.
+
+  R-S11cb intentionally made the active-user service image unreadable and nondumpable. A CM spawned through
+  `current_exe()` executes that same dedicated image and remains nondumpable. The retained Linux `_cm` proof still
+  attempted to read the other same-uid process's `/proc/<pid>/exe`, `cmdline`, and `environ` into
+  `PeerProcessIdentity`. Linux subjects the executable link to ptrace read access, so the new confidentiality
+  boundary could reject the legitimate parent/child pair it was meant to protect. The CM-dependent control/audio
+  path could therefore fail while an independent file-transfer path continued. This was a hardening-induced local
+  functional and helper-authority incompatibility, not evidence of exploitation, remote authentication bypass,
+  Docker root access, a host service/configuration/firewall change, a public listener, or machine compromise.
+
+  Linux CM and PA flows now use a deliberately minimal `LinuxProcessIdentity` containing only PID, UID, and process
+  start time. A Unix socket supplies the peer PID/UID; `/proc/<pid>/stat` adds the non-reused start identity. The
+  server accepts `_cm` only when that live identity is its exact current direct child. In the reverse direction the
+  CM requires its launch-parent marker to equal its current kernel parent and requires the main socket peer to equal
+  that parent's PID/UID/start-time identity before asking for a connection capability. No executable, argv,
+  environment, token, or other ptrace-gated metadata crosses this nondumpable boundary. The fresh launch-token proof
+  remains mutual and is additionally domain-separated by the complete exact `--cm` or `--cm-no-ui` role; a proof
+  from one role cannot authorize the other. Both graphical and headless Linux launches use the existing
+  `PR_SET_PDEATHSIG(SIGKILL)` plus pre-exec parent recheck path, preventing an orphaned CM from outliving the server
+  parent whose authority it carries.
+
+  The per-connection PulseAudio authority also retains only the minimal kernel identity. The service server records
+  the exact authenticated CM child for each active subscriber and rechecks both process start and direct parent
+  before issuing capture authority. The CM-side PA listener accepts an external owner only when it is the exact
+  launch parent and the exact peer on the protected main socket, then asks that peer to validate the per-connection
+  random token. A user-owned same-process path remains supported through exact self identity. Incumbent `_cm`
+  probing now requires both exact direct-parent identity and mutual role-bound HMAC; `_pa` probing uses the exact
+  minimal identity. No same-UID-only fallback, executable-procfs fallback, body-before-proof path, or generic config
+  authority was added.
+
+  `scripts/verify-linux-nondumpable-cm.py` independently binds the three-field identity closure, kernel socket
+  credential and start-time derivation, direct-parent proofs in both directions, role-domain-separated mutual HMAC,
+  parent-death launch path, retained-CM liveness, incumbent probes, main validation ordering, PA ownership, focused
+  Rust regressions, R-S11cc, Appendix C #222, this ledger identity, and shared-gate wiring. Its self-test rejects 17
+  deliberate weakenings. The workspace meta-verifier separately binds the focused checker semantics, invocation,
+  requirement, Appendix row, and ledger.
+
+  Confined validation used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
+  `--pull=never`, no network, a read-only root/source/toolchain, all capabilities dropped, no-new-privileges, bounded
+  PIDs/CPU/memory/no-swap, and private tmpfs output. The final Rust 1.75.0 locked/offline
+  `cargo check --config online/cargo-vendor-config.toml --lib --tests --no-default-features --features
+  linux-pkg-config -j1` completed with only the repository's existing warning set. Focused R-S11e-95 tests, normal
+  and 17-mutation focused verification, meta-verifier normal/source-mutation checks, Bash/Python syntax,
+  dependency-inventory normal/self-test, native-codec normal/self-test, requirements-hash synchronization, and
+  touched-source formatting/diff checks are recorded in the external audit ledger with the final publication
+  identity.
+
+  No release build, package installation, root container, host namespace, Docker socket mount, port publication,
+  host RustDesk process/service/configuration, listener, firewall, network, or device path was used, inspected, or
+  changed. This source slice therefore does not claim current native service-child/CM behavior, an installed Debian
+  package, a clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent
+  R-V3 review.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -8954,9 +9017,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a284549e5b871bb2367eec7659805ec93a7cab2afa52bf1a25aea2001757a850  requirements.html
+38b19488cac5d32db8abaf3426492fe99421f20b0e2f332e21b8f68c902a46ec  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cb, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cc, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

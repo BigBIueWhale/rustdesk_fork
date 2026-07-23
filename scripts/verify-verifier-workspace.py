@@ -7278,8 +7278,9 @@ def validate_linux_headless_cm_parent_contract(sources):
     cm_launch_compact = re.sub(r"\s+", "", cm_launch)
     require_text(
         cm_launch_compact,
-        "ifheadless_cm{crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?}else{crate::run_me_with_env(args,cm_launch_env())?}",
-        "headless-only parent-bound launch selection",
+        '#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?;'
+        '#[cfg(any(target_os="macos",target_os="windows"))]letchild=crate::run_me_with_env(args,cm_launch_env())?;',
+        "all-Linux parent-bound launch selection",
     )
     for forbidden in (
         "fn stop_headless_connection_manager_processes",
@@ -11125,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11206,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11385,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11519,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11687,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11883,7 +11884,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12217,7 +12218,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12453,6 +12454,65 @@ def validate_installed_service_classifier_contract(sources):
         sources["hardening"],
         "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
         "installed-service classifier hardening ledger",
+    )
+
+
+def validate_linux_nondumpable_cm_contract(sources):
+    focused = sources["linux_nondumpable_cm_verifier"]
+    for text, label in (
+        ("def block(", "CM verifier Rust block parser"),
+        ("def validate(sources", "CM verifier semantic entry"),
+        (
+            '"stream.peer_pid()"',
+            "kernel socket PID contract",
+        ),
+        (
+            '"stream.peer_uid()"',
+            "kernel socket UID contract",
+        ),
+        (
+            'absent(identity, field, f"ptrace-gated identity field {field}")',
+            "minimal identity field-closure rejection",
+        ),
+        (
+            '"linux_proc_parent_pid(identity.pid)"',
+            "exact direct-parent contract",
+        ),
+        (
+            '"authenticate_linux_cm_owner_stream(stream)"',
+            "Linux CM exact owner verifier contract",
+        ),
+        (
+            '"cm_role_bound_challenge(role, challenge)?"',
+            "role-bound mutual proof contract",
+        ),
+        (
+            '"crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?"',
+            "parent-death launch contract",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "CM authority mutation inventory"),
+        ("run_mutations(sources)", "CM authority mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test",
+        "Linux nondumpable CM shared focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cc</span>',
+        "Linux nondumpable CM requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>222</td>",
+        "Linux nondumpable CM Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority",
+        "Linux nondumpable CM hardening ledger",
     )
 
 
@@ -16020,6 +16080,7 @@ def validate_sources(sources):
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
+    validate_linux_nondumpable_cm_contract(sources)
     validate_unix_helper_process_role_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
@@ -24846,7 +24907,7 @@ def run_source_mutations(sources):
             "connection_source",
             "crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?",
             "crate::run_me_with_env(args, cm_launch_env())?",
-            "headless-only parent-bound launch selection",
+            "all-Linux parent-bound launch selection",
         ),
         (
             "common_source",
@@ -28182,7 +28243,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11cb, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#221",
+        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -28959,6 +29020,42 @@ def run_source_mutations(sources):
             "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
             "R-S11bn/R-S11e-80 — installed-service ownership uses path prefixes",
             "installed-service classifier hardening ledger",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            'absent(identity, field, f"ptrace-gated identity field {field}")',
+            "return # ptrace-gated CM identity fields accepted",
+            "minimal identity field-closure rejection",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            '"authenticate_linux_cm_owner_stream(stream)"',
+            '"ensure_peer_executable_matches_current_by_pid_opt"',
+            "Linux CM exact owner verifier contract",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test",
+            "true # Linux nondumpable CM verifier removed",
+            "Linux nondumpable CM shared focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cc</span>',
+            '<span class="id">R-S11cc-disabled</span>',
+            "Linux nondumpable CM requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>222</td>",
+            "<tr><td>222-disabled</td>",
+            "Linux nondumpable CM Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority",
+            "R-S11cc/R-S11e-95 — Linux connection-manager trusts same uid",
+            "Linux nondumpable CM hardening ledger",
         ),
         (
             "unix_helper_process_role_verifier",
@@ -30462,6 +30559,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "installed_service_classifier_verifier": (
                 repo / "scripts/verify-installed-service-classifier.py"
+            ).read_text(encoding="utf-8"),
+            "linux_nondumpable_cm_verifier": (
+                repo / "scripts/verify-linux-nondumpable-cm.py"
             ).read_text(encoding="utf-8"),
             "unix_helper_process_role_verifier": (
                 repo / "scripts/verify-unix-helper-process-role.py"

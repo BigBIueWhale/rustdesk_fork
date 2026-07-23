@@ -52,10 +52,11 @@ use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
 #[cfg(target_os = "linux")]
 pub(crate) use ipc_auth::{
     authenticate_cm_endpoint, authenticate_linux_service_owned_main_server,
-    authenticate_linux_service_owned_password_replica_server, current_process_identity,
-    ensure_linux_service_password_server_is_trusted, ensure_linux_service_server_is_trusted,
-    ensure_peer_process_identity_matches, peer_process_identity, peer_process_identity_from_stream,
-    peer_process_identity_is_live, PeerProcessIdentity,
+    authenticate_linux_service_owned_password_replica_server, current_linux_process_identity,
+    ensure_linux_process_identity_matches, ensure_linux_service_password_server_is_trusted,
+    ensure_linux_service_server_is_trusted, linux_cm_child_identity_is_live,
+    linux_process_identity_is_live, peer_process_identity_from_stream,
+    peer_process_identity_is_live, LinuxProcessIdentity, PeerProcessIdentity,
 };
 #[cfg(windows)]
 pub(crate) use ipc_auth::{
@@ -1723,7 +1724,7 @@ pub enum Data {
     CmFileResponse(CmFileResponse),
     #[cfg(target_os = "linux")]
     PulseAudioStart {
-        owner: PeerProcessIdentity,
+        owner: LinuxProcessIdentity,
         token: String,
         source: String,
     },
@@ -3552,7 +3553,7 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
         MainIpcRequest::ValidatePulseAudioStart { token } => {
             let valid = !token.is_empty()
                 && token.len() <= MAIN_IPC_MAX_AUTH_TOKEN_BYTES
-                && peer_process_identity(stream, "")
+                && ipc_auth::linux_kernel_peer_process_identity(stream, "")
                     .map(|peer| crate::audio_service::validate_pa_capture_authority(&token, &peer))
                     .unwrap_or(false);
             MainIpcResponse::PulseAudioStartValidation(valid)
@@ -4144,12 +4145,25 @@ fn verify_helper_launch_proof(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn cm_role_bound_challenge(role: &str, challenge: &str) -> ResultType<String> {
+    if !matches!(role, "--cm" | "--cm-no-ui") {
+        bail!("invalid connection-manager role");
+    }
+    if challenge.is_empty() {
+        bail!("missing connection-manager endpoint challenge");
+    }
+    Ok(format!("{role}\0{challenge}"))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn cm_launch_proof_for_challenge(
     context: &[u8],
     challenge: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<String> {
-    helper_launch_proof_for_challenge("connection-manager", context, challenge, launch_token)
+    let challenge = cm_role_bound_challenge(role, challenge)?;
+    helper_launch_proof_for_challenge("connection-manager", context, &challenge, launch_token)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4158,11 +4172,13 @@ fn verify_cm_launch_proof(
     challenge: &str,
     proof: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<()> {
+    let challenge = cm_role_bound_challenge(role, challenge)?;
     verify_helper_launch_proof(
         "connection-manager",
         context,
-        challenge,
+        &challenge,
         proof,
         launch_token,
     )
@@ -4172,8 +4188,9 @@ fn verify_cm_launch_proof(
 pub(crate) fn cm_endpoint_proof_for_challenge(
     challenge: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<String> {
-    cm_launch_proof_for_challenge(CM_ENDPOINT_PROOF_CONTEXT, challenge, launch_token)
+    cm_launch_proof_for_challenge(CM_ENDPOINT_PROOF_CONTEXT, challenge, launch_token, role)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4181,18 +4198,40 @@ pub(crate) fn verify_cm_endpoint_proof(
     challenge: &str,
     proof: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<()> {
-    verify_cm_launch_proof(CM_ENDPOINT_PROOF_CONTEXT, challenge, proof, launch_token)
+    verify_cm_launch_proof(
+        CM_ENDPOINT_PROOF_CONTEXT,
+        challenge,
+        proof,
+        launch_token,
+        role,
+    )
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn cm_server_proof_for_challenge(challenge: &str, launch_token: &str) -> ResultType<String> {
-    cm_launch_proof_for_challenge(CM_SERVER_PROOF_CONTEXT, challenge, launch_token)
+fn cm_server_proof_for_challenge(
+    challenge: &str,
+    launch_token: &str,
+    role: &str,
+) -> ResultType<String> {
+    cm_launch_proof_for_challenge(CM_SERVER_PROOF_CONTEXT, challenge, launch_token, role)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn verify_cm_server_proof(challenge: &str, proof: &str, launch_token: &str) -> ResultType<()> {
-    verify_cm_launch_proof(CM_SERVER_PROOF_CONTEXT, challenge, proof, launch_token)
+fn verify_cm_server_proof(
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+    role: &str,
+) -> ResultType<()> {
+    verify_cm_launch_proof(
+        CM_SERVER_PROOF_CONTEXT,
+        challenge,
+        proof,
+        launch_token,
+        role,
+    )
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4287,13 +4326,14 @@ fn verify_whiteboard_server_proof(
 pub(crate) async fn authenticate_cm_endpoint_launch_proof<T>(
     stream: &mut ConnectionTmpl<T>,
     launch_token: &str,
+    expected_role: &str,
 ) -> ResultType<()>
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin,
 {
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmServerChallenge { challenge }) => {
-            let proof = cm_server_proof_for_challenge(&challenge, launch_token)?;
+            let proof = cm_server_proof_for_challenge(&challenge, launch_token, expected_role)?;
             stream
                 .send_json_timeout(&Data::CmServerProof { proof }, CM_ENDPOINT_AUTH_TIMEOUT_MS)
                 .await?;
@@ -4312,7 +4352,7 @@ where
         .await?;
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmEndpointProof { proof }) => {
-            verify_cm_endpoint_proof(&challenge, &proof, launch_token)
+            verify_cm_endpoint_proof(&challenge, &proof, launch_token, expected_role)
         }
         _ => bail!("connection-manager endpoint did not prove launch authority"),
     }
@@ -4326,8 +4366,21 @@ pub(crate) async fn connect_authenticated_windows_cm(
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
     let mut stream = connect(ms_timeout, "_cm").await?;
     authenticate_windows_cm_endpoint(&stream, expected_arg)?;
-    authenticate_cm_endpoint_launch_proof(&mut stream, launch_token).await?;
+    authenticate_cm_endpoint_launch_proof(&mut stream, launch_token, expected_arg).await?;
     Ok(stream)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn current_cm_process_role() -> ResultType<String> {
+    let mut args = std::env::args();
+    let _executable = args.next();
+    let role = args
+        .next()
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("connection-manager role is unavailable"))?;
+    if args.next().is_some() || !matches!(role.as_str(), "--cm" | "--cm-no-ui") {
+        bail!("invalid connection-manager process role");
+    }
+    Ok(role)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4341,6 +4394,7 @@ where
         Ok(token) => token,
         Err(err) => bail!("missing connection-manager launch token: {err}"),
     };
+    let role = current_cm_process_role()?;
     let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
         .send_json_timeout(
@@ -4352,14 +4406,14 @@ where
         .await?;
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmServerProof { proof }) => {
-            verify_cm_server_proof(&server_challenge, &proof, &launch_token)?;
+            verify_cm_server_proof(&server_challenge, &proof, &launch_token, &role)?;
         }
         _ => bail!("connection-manager server launch proof missing"),
     }
 
     match stream.next_timeout(CM_ENDPOINT_AUTH_TIMEOUT_MS).await? {
         Some(Data::CmEndpointChallenge { challenge }) => {
-            let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token)?;
+            let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token, &role)?;
             stream
                 .send_json_timeout(
                     &Data::CmEndpointProof { proof },
@@ -5774,16 +5828,20 @@ pub(crate) async fn validate_cm_connection_authority(
         bail!("missing cm authority token");
     }
 
-    match main_ipc_request(
-        MainIpcRequest::ValidateCmConnection {
-            id,
-            conn_type,
-            cm_auth_token: cm_auth_token.to_owned(),
-        },
-        1_000,
-    )
-    .await?
-    {
+    let request = MainIpcRequest::ValidateCmConnection {
+        id,
+        conn_type,
+        cm_auth_token: cm_auth_token.to_owned(),
+    };
+    #[cfg(target_os = "linux")]
+    let response = {
+        let stream = connect(1_000, "").await?;
+        ipc_auth::authenticate_linux_cm_owner_stream(&stream)?;
+        main_ipc_request_on_stream(stream, request, 1_000).await?
+    };
+    #[cfg(not(target_os = "linux"))]
+    let response = main_ipc_request(request, 1_000).await?;
+    match response {
         MainIpcResponse::CmConnectionValidation(result) => Ok(result),
         _ => bail!("invalid cm authority validation response"),
     }
@@ -5791,14 +5849,14 @@ pub(crate) async fn validate_cm_connection_authority(
 
 #[cfg(target_os = "linux")]
 async fn validate_pulse_audio_start_authority(
-    owner: &PeerProcessIdentity,
+    owner: &LinuxProcessIdentity,
     token: &str,
 ) -> ResultType<()> {
     if token.is_empty() {
         bail!("missing pulse audio capture authority token");
     }
     if owner.pid() == std::process::id() {
-        if let Ok(peer) = current_process_identity("_pa") {
+        if let Ok(peer) = current_linux_process_identity() {
             if &peer == owner && crate::audio_service::validate_pa_capture_authority(token, &peer) {
                 return Ok(());
             }
@@ -5806,8 +5864,12 @@ async fn validate_pulse_audio_start_authority(
         bail!("local pulse audio capture authority rejected");
     }
 
+    let expected_owner = ipc_auth::linux_cm_owner_identity()?;
+    if &expected_owner != owner {
+        bail!("pulse audio capture owner is not the connection-manager launch parent");
+    }
     let stream = connect_for_uid(1_000, owner.uid(), "").await?;
-    ensure_peer_process_identity_matches(&stream, owner, "")?;
+    ensure_linux_process_identity_matches(&stream, owner, "")?;
     match main_ipc_request_on_stream(
         stream,
         MainIpcRequest::ValidatePulseAudioStart {
@@ -8769,25 +8831,30 @@ mod test {
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     #[test]
-    fn cm_endpoint_proof_is_launch_token_bound() {
+    fn r_s11e95_cm_endpoint_proof_is_launch_token_and_role_bound() {
         let challenge = crate::encode64([7u8; 32]);
         let other_challenge = crate::encode64([8u8; 32]);
         let launch_token = crate::encode64([9u8; 32]);
         let other_launch_token = crate::encode64([10u8; 32]);
-        let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token).unwrap();
-        let server_proof = cm_server_proof_for_challenge(&challenge, &launch_token).unwrap();
+        let role = "--cm";
+        let proof = cm_endpoint_proof_for_challenge(&challenge, &launch_token, role).unwrap();
+        let server_proof = cm_server_proof_for_challenge(&challenge, &launch_token, role).unwrap();
 
-        assert!(verify_cm_endpoint_proof(&challenge, &proof, &launch_token).is_ok());
-        assert!(verify_cm_endpoint_proof(&other_challenge, &proof, &launch_token).is_err());
-        assert!(verify_cm_endpoint_proof(&challenge, &proof, &other_launch_token).is_err());
-        assert!(verify_cm_server_proof(&challenge, &server_proof, &launch_token).is_ok());
-        assert!(verify_cm_server_proof(&other_challenge, &server_proof, &launch_token).is_err());
-        assert!(verify_cm_server_proof(&challenge, &proof, &launch_token).is_err());
-        assert!(verify_cm_endpoint_proof(&challenge, &server_proof, &launch_token).is_err());
-        assert!(cm_endpoint_proof_for_challenge("", &launch_token).is_err());
-        assert!(cm_endpoint_proof_for_challenge(&challenge, "").is_err());
-        assert!(cm_server_proof_for_challenge("", &launch_token).is_err());
-        assert!(cm_server_proof_for_challenge(&challenge, "").is_err());
+        assert!(verify_cm_endpoint_proof(&challenge, &proof, &launch_token, role).is_ok());
+        assert!(verify_cm_endpoint_proof(&other_challenge, &proof, &launch_token, role).is_err());
+        assert!(verify_cm_endpoint_proof(&challenge, &proof, &other_launch_token, role).is_err());
+        assert!(verify_cm_endpoint_proof(&challenge, &proof, &launch_token, "--cm-no-ui").is_err());
+        assert!(verify_cm_server_proof(&challenge, &server_proof, &launch_token, role).is_ok());
+        assert!(
+            verify_cm_server_proof(&other_challenge, &server_proof, &launch_token, role).is_err()
+        );
+        assert!(verify_cm_server_proof(&challenge, &proof, &launch_token, role).is_err());
+        assert!(verify_cm_endpoint_proof(&challenge, &server_proof, &launch_token, role).is_err());
+        assert!(cm_endpoint_proof_for_challenge("", &launch_token, role).is_err());
+        assert!(cm_endpoint_proof_for_challenge(&challenge, "", role).is_err());
+        assert!(cm_endpoint_proof_for_challenge(&challenge, &launch_token, "--server").is_err());
+        assert!(cm_server_proof_for_challenge("", &launch_token, role).is_err());
+        assert!(cm_server_proof_for_challenge(&challenge, "", role).is_err());
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -2429,6 +2429,42 @@ impl PeerProcessIdentity {
     }
 }
 
+/// Kernel-visible Linux process identity used across a nondumpable helper boundary.
+///
+/// Unlike `PeerProcessIdentity`, this type deliberately contains no executable, argv, or
+/// environment-derived fields. Those `/proc` surfaces are ptrace-gated and are therefore
+/// unavailable to the same-UID server/connection-manager pair after the installed service child
+/// becomes nondumpable. The socket credential supplies PID/UID and `/proc/<pid>/stat` supplies the
+/// non-reused start identity; the CM-specific admission functions additionally require the exact
+/// direct parent relationship.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct LinuxProcessIdentity {
+    pid: u32,
+    uid: u32,
+    start_time: String,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxProcessIdentity {
+    pub(crate) fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    pub(crate) fn uid(&self) -> u32 {
+        self.uid
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(pid: u32, uid: u32, start_time: String) -> Self {
+        Self {
+            pid,
+            uid,
+            start_time,
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 pub(crate) fn linux_proc_stat_start_time(pid: u32, stat: &str) -> ResultType<String> {
     let Some((_, after_comm)) = stat.rsplit_once(") ") else {
@@ -2459,6 +2495,151 @@ fn linux_proc_parent_pid(pid: u32) -> ResultType<u32> {
     };
     ppid.parse::<u32>()
         .map_err(|err| anyhow::anyhow!("Failed to parse /proc/{pid}/stat parent pid: {err}"))
+}
+
+#[cfg(target_os = "linux")]
+fn linux_kernel_process_identity_by_pid(pid: u32) -> ResultType<LinuxProcessIdentity> {
+    if pid == 0 {
+        bail!("invalid Linux process pid");
+    }
+    Ok(LinuxProcessIdentity {
+        pid,
+        uid: linux_proc_uid(pid)?,
+        start_time: linux_proc_start_time(pid)?,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn current_linux_process_identity() -> ResultType<LinuxProcessIdentity> {
+    linux_kernel_process_identity_by_pid(std::process::id())
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_kernel_peer_process_identity<T>(
+    stream: &ConnectionTmpl<T>,
+    postfix: &str,
+) -> ResultType<LinuxProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer_pid = stream.peer_pid().ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve peer pid on ipc channel '{}'", postfix)
+    })?;
+    let peer_uid = stream.peer_uid().ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve peer uid on ipc channel '{}'", postfix)
+    })?;
+    let identity = linux_kernel_process_identity_by_pid(peer_pid)?;
+    if identity.uid != peer_uid {
+        bail!(
+            "Peer uid changed while authenticating ipc channel '{}': pid={}, socket_uid={}, proc_uid={}",
+            postfix,
+            peer_pid,
+            peer_uid,
+            identity.uid
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_process_identity_is_live(identity: &LinuxProcessIdentity) -> bool {
+    linux_kernel_process_identity_by_pid(identity.pid)
+        .map(|live| live == *identity)
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn ensure_linux_process_identity_matches<T>(
+    stream: &ConnectionTmpl<T>,
+    expected: &LinuxProcessIdentity,
+    postfix: &str,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let observed = linux_kernel_peer_process_identity(stream, postfix)?;
+    if &observed != expected {
+        bail!(
+            "IPC peer identity mismatch on '{}': expected {:?}, got {:?}",
+            postfix,
+            expected,
+            observed
+        );
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_cm_child_identity_is_live(
+    identity: &LinuxProcessIdentity,
+    expected_parent: u32,
+) -> bool {
+    expected_parent > 0
+        && linux_process_identity_is_live(identity)
+        && linux_proc_parent_pid(identity.pid).is_ok_and(|parent| parent == expected_parent)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_cm_endpoint<T>(
+    stream: &ConnectionTmpl<T>,
+    expected_uid: u32,
+    expected_parent: u32,
+) -> ResultType<LinuxProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    if expected_parent == 0 {
+        bail!("connection-manager launch parent is unavailable");
+    }
+    let identity = linux_kernel_peer_process_identity(stream, "_cm")?;
+    if identity.uid != expected_uid {
+        bail!(
+            "_cm endpoint uid mismatch: expected {}, got {}",
+            expected_uid,
+            identity.uid
+        );
+    }
+    let actual_parent = linux_proc_parent_pid(identity.pid)?;
+    if actual_parent != expected_parent {
+        bail!(
+            "_cm endpoint parent mismatch: expected {}, got {}",
+            expected_parent,
+            actual_parent
+        );
+    }
+    Ok(identity)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_cm_owner_identity() -> ResultType<LinuxProcessIdentity> {
+    let expected_parent = std::env::var(crate::common::CM_LAUNCH_PARENT_ENV)
+        .map_err(|_| anyhow::anyhow!("connection-manager launch parent is unavailable"))?
+        .parse::<u32>()
+        .map_err(|err| anyhow::anyhow!("connection-manager launch parent is invalid: {err}"))?;
+    if expected_parent == 0 {
+        bail!("connection-manager launch parent is invalid");
+    }
+    let actual_parent = linux_proc_parent_pid(std::process::id())?;
+    if actual_parent != expected_parent {
+        bail!(
+            "connection-manager owner changed: expected {}, got {}",
+            expected_parent,
+            actual_parent
+        );
+    }
+    linux_kernel_process_identity_by_pid(expected_parent)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_linux_cm_owner_stream<T>(
+    stream: &ConnectionTmpl<T>,
+) -> ResultType<LinuxProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let expected = linux_cm_owner_identity()?;
+    ensure_linux_process_identity_matches(stream, &expected, "")?;
+    Ok(expected)
 }
 
 #[cfg(target_os = "linux")]
@@ -2792,11 +2973,6 @@ fn linux_service_child_process_identity_by_pid(
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn current_process_identity(postfix: &str) -> ResultType<PeerProcessIdentity> {
-    linux_process_identity_by_pid(std::process::id(), postfix)
-}
-
-#[cfg(target_os = "linux")]
 pub(crate) fn peer_process_identity<T>(
     stream: &ConnectionTmpl<T>,
     postfix: &str,
@@ -2914,51 +3090,6 @@ where
             peer_uid,
             identity.uid
         );
-    }
-    Ok(identity)
-}
-
-#[cfg(target_os = "linux")]
-pub(crate) fn authenticate_cm_endpoint<T>(
-    stream: &ConnectionTmpl<T>,
-    expected_uid: u32,
-    expected_arg: &str,
-    expected_launch_token: &str,
-    expected_launch_parent: u32,
-) -> ResultType<PeerProcessIdentity>
-where
-    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
-{
-    let identity = peer_process_identity(stream, "_cm")?;
-    if identity.uid != expected_uid {
-        bail!(
-            "_cm endpoint uid mismatch: expected {}, got {}",
-            expected_uid,
-            identity.uid
-        );
-    }
-    if identity.first_arg != expected_arg {
-        bail!(
-            "_cm endpoint mode mismatch: expected {}, got {}",
-            expected_arg,
-            identity.first_arg
-        );
-    }
-    if expected_launch_token.is_empty() {
-        if !identity.cm_launch_token.is_empty() {
-            bail!("_cm endpoint launch token mismatch");
-        }
-    } else if identity.cm_launch_token != expected_launch_token {
-        bail!("_cm endpoint launch token mismatch");
-    }
-    if expected_launch_parent == 0 {
-        if identity.cm_launch_parent != 0 {
-            bail!("_cm endpoint launch parent mismatch");
-        }
-    } else if identity.cm_launch_parent != expected_launch_parent
-        || !linux_process_has_ancestor(identity.pid, expected_launch_parent)
-    {
-        bail!("_cm endpoint launch parent mismatch");
     }
     Ok(identity)
 }
@@ -3098,27 +3229,6 @@ pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, post
                     || linux_process_has_ancestor(identity.pid, identity.cm_launch_parent))
         })
         .unwrap_or(false)
-}
-
-#[cfg(target_os = "linux")]
-pub(crate) fn ensure_peer_process_identity_matches<T>(
-    stream: &ConnectionTmpl<T>,
-    expected: &PeerProcessIdentity,
-    postfix: &str,
-) -> ResultType<()>
-where
-    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
-{
-    let observed = peer_process_identity(stream, postfix)?;
-    if &observed != expected {
-        bail!(
-            "IPC peer identity mismatch on '{}': expected {:?}, got {:?}",
-            postfix,
-            expected,
-            observed
-        );
-    }
-    Ok(())
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4000,30 +4110,45 @@ pub(crate) fn authenticate_windows_cm_endpoint(
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
-    let peer_pid = stream.peer_pid();
-    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_cm") {
-        log::warn!(
-            "Rejected unauthorized connection on _cm IPC channel due to executable mismatch: peer_pid={:?}, err={}",
-            peer_pid,
-            err
-        );
-        return false;
-    }
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     {
-        let Some(peer_pid) = peer_pid else {
-            log::warn!("Rejected unauthorized connection on _cm IPC channel: peer pid unavailable");
-            return false;
-        };
-        if !peer_process_is_current_exe_server(peer_pid) {
+        if let Err(err) = authenticate_linux_cm_owner_stream(stream) {
             log::warn!(
-                "Rejected unauthorized connection on _cm IPC channel: peer is not the current executable's --server process, peer_pid={}",
-                peer_pid
+                "Rejected unauthorized _cm IPC peer outside the exact launch-parent boundary: {err}"
             );
             return false;
         }
+        return true;
     }
-    true
+    #[cfg(not(target_os = "linux"))]
+    {
+        let peer_pid = stream.peer_pid();
+        if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_cm") {
+            log::warn!(
+                "Rejected unauthorized connection on _cm IPC channel due to executable mismatch: peer_pid={:?}, err={}",
+                peer_pid,
+                err
+            );
+            return false;
+        }
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        {
+            let Some(peer_pid) = peer_pid else {
+                log::warn!(
+                    "Rejected unauthorized connection on _cm IPC channel: peer pid unavailable"
+                );
+                return false;
+            };
+            if !peer_process_is_current_exe_server(peer_pid) {
+                log::warn!(
+                    "Rejected unauthorized connection on _cm IPC channel: peer is not the current executable's --server process, peer_pid={}",
+                    peer_pid
+                );
+                return false;
+            }
+        }
+        true
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4574,6 +4699,27 @@ mod tests {
         assert!(!formatted.contains("secret-token"));
         assert!(formatted.contains("<redacted>"));
         assert!(formatted.contains("cm_launch_parent"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn r_s11e95_linux_kernel_identity_is_pid_reuse_and_direct_parent_bound() {
+        let identity = super::current_linux_process_identity().unwrap();
+        let parent = super::linux_proc_parent_pid(identity.pid()).unwrap();
+
+        assert!(super::linux_process_identity_is_live(&identity));
+        assert!(super::linux_cm_child_identity_is_live(&identity, parent));
+        assert!(!super::linux_cm_child_identity_is_live(&identity, 0));
+        assert!(!super::linux_cm_child_identity_is_live(
+            &identity,
+            parent.saturating_add(1)
+        ));
+        let wrong_start = super::LinuxProcessIdentity::for_test(
+            identity.pid(),
+            identity.uid(),
+            "wrong-start-time".to_owned(),
+        );
+        assert!(!super::linux_process_identity_is_live(&wrong_start));
     }
 
     #[test]

@@ -951,7 +951,7 @@ echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never
 r_s11c7=
 grep -q 'PulseAudioStart {' src/ipc.rs || r_s11c7="$r_s11c7 tokened-pa-start-missing"
-grep -q 'owner: PeerProcessIdentity' src/ipc.rs || r_s11c7="$r_s11c7 pa-start-owner-identity-missing"
+grep -q 'owner: LinuxProcessIdentity' src/ipc.rs || r_s11c7="$r_s11c7 pa-start-owner-identity-missing"
 grep -q 'ValidatePulseAudioStart' src/ipc.rs || r_s11c7="$r_s11c7 pa-start-validation-message-missing"
 if grep -q 'PulseAudioSource' src/ipc.rs src/server/audio_service.rs; then
   r_s11c7="$r_s11c7 legacy-pa-source-message-present"
@@ -963,33 +963,32 @@ echo "$start_pa_body" | grep -q 'validate_pulse_audio_start_authority(&owner, &t
 echo "$start_pa_body" | grep -q 'Rejected _pa client without audio capture authority' || r_s11c7="$r_s11c7 missing-token-not-rejected"
 pa_validate_body=$(awk '/^async fn validate_pulse_audio_start_authority/,/^}/' src/ipc.rs)
 echo "$pa_validate_body" | grep -q 'connect_for_uid(1_000, owner.uid(), "")' || r_s11c7="$r_s11c7 pa-helper-validation-not-owner-uid-routed"
-echo "$pa_validate_body" | grep -q 'ensure_peer_process_identity_matches(&stream, owner, "")' || r_s11c7="$r_s11c7 pa-helper-validation-not-owner-identity-authenticated"
+echo "$pa_validate_body" | grep -q 'ensure_linux_process_identity_matches(&stream, owner, "")' || r_s11c7="$r_s11c7 pa-helper-validation-not-owner-identity-authenticated"
 if echo "$pa_validate_body" | grep -q 'connect(1_000, "")'; then
   r_s11c7="$r_s11c7 pa-helper-validation-still-ambient-main-ipc"
 fi
 grep -q 'static ref PA_CAPTURE_AUTHORITY' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-registry-missing"
 grep -q 'fn install_pa_capture_authority(conn_ids: Vec<i32>) -> ResultType<PaCaptureAuthorityGuard>' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-installer-missing"
 grep -q 'validate_pa_capture_authority' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-validator-missing"
-grep -q 'expected_peer: crate::ipc::PeerProcessIdentity' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-peer-identity-missing"
+grep -q 'expected_peer: crate::ipc::LinuxProcessIdentity' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-peer-identity-missing"
 grep -q 'fn ensure_pa_endpoint_matches_authority' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-endpoint-peer-check-missing"
-grep -q 'ensure_peer_process_identity_matches(stream, authority.expected_peer(), "_pa")' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-endpoint-peer-identity-not-checked"
-grep -q 'peer_process_identity_is_live(peer, "_pa")' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-live-peer-not-checked"
+grep -q 'ensure_linux_process_identity_matches(stream, authority.expected_peer(), "_pa")' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-endpoint-peer-identity-not-checked"
+grep -q 'linux_process_identity_is_live(peer)' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-live-self-not-checked"
+grep -q 'linux_cm_child_identity_is_live(peer, std::process::id())' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-live-cm-child-not-checked"
 grep -q 'expected_cm_peer_identity_for_conn_ids(conn_ids)' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-not-bound-to-cm-peer"
 grep -q 'install_pa_capture_authority(sp.subscriber_ids())' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-not-bound-to-subscribers"
 grep -q 'Data::PulseAudioStart' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-tokened-start"
-grep -q 'let owner = crate::ipc::current_process_identity("_pa")' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-owner-identity"
-grep -q 'struct PeerProcessIdentity' src/ipc/auth.rs || r_s11c7="$r_s11c7 peer-process-identity-missing"
+grep -q 'let owner = crate::ipc::current_linux_process_identity()' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-owner-identity"
+grep -q 'struct LinuxProcessIdentity' src/ipc/auth.rs || r_s11c7="$r_s11c7 minimal-linux-process-identity-missing"
 grep -q 'linux_proc_start_time(pid)' src/ipc/auth.rs || r_s11c7="$r_s11c7 peer-identity-start-time-missing"
-grep -q 'cm_launch_token: String' src/ipc/auth.rs || r_s11c7="$r_s11c7 peer-identity-cm-launch-token-missing"
-grep -q 'cm_launch_parent: u32' src/ipc/auth.rs || r_s11c7="$r_s11c7 peer-identity-cm-launch-parent-missing"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs src/ipc/auth.rs src/ipc/fs.rs src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-token-env-missing"
 grep -q 'CM_LAUNCH_PARENT_ENV' src/common.rs src/ipc/auth.rs src/ipc/fs.rs src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-parent-env-missing"
-grep -q 'fn linux_process_has_ancestor' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-launch-parent-ancestor-check-missing"
+grep -q 'fn linux_cm_child_identity_is_live' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-live-direct-child-check-missing"
 grep -q 'authenticate_cm_endpoint' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-authenticator-missing"
-grep -q 'expected_launch_token: &str' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-authenticator-not-token-bound"
-grep -q 'expected_launch_parent: u32' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-authenticator-not-parent-bound"
-grep -q 'identity.cm_launch_token != expected_launch_token' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-launch-token-not-checked"
-grep -q 'linux_process_has_ancestor(identity.pid, expected_launch_parent)' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-launch-parent-not-checked"
+grep -q 'expected_parent: u32' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-authenticator-not-parent-bound"
+grep -q 'if actual_parent != expected_parent' src/ipc/auth.rs || r_s11c7="$r_s11c7 cm-endpoint-direct-parent-not-checked"
+grep -q 'fn cm_role_bound_challenge' src/ipc.rs || r_s11c7="$r_s11c7 cm-launch-proof-not-role-bound"
+grep -q 'authenticate_cm_endpoint_launch_proof' src/ipc.rs src/ipc/fs.rs src/server/connection.rs || r_s11c7="$r_s11c7 cm-endpoint-mutual-launch-proof-missing"
 grep -q 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs || r_s11c7="$r_s11c7 cm-server-launch-token-missing"
 common_conn_lazy_static=$(awk '/lazy_static::lazy_static! \{/{flag=1} flag{print} flag && /^}/{exit}' src/server/connection.rs)
 if echo "$common_conn_lazy_static" | grep -Eq 'CM_PEER_IDENTITIES|CM_LAUNCH_TOKEN'; then
@@ -1010,12 +1009,12 @@ grep -q 'struct CmPeerIdentityRegistration' src/server/connection.rs || r_s11c7=
 grep -q 'clear_cm_peer_identity_for_conn(self.0)' src/server/connection.rs || r_s11c7="$r_s11c7 cm-peer-identity-not-cleared-by-conn-drop"
 grep -q 'clear_cm_peer_identity_for_conn(self.conn_id)' src/server/connection.rs || r_s11c7="$r_s11c7 cm-peer-identity-not-cleared-by-ipc-drop"
 grep -q 'expected_cm_peer_identity_for_conn_ids' src/server/connection.rs || r_s11c7="$r_s11c7 cm-peer-identity-resolver-missing"
-grep -q 'peer_process_identity_is_live(cm_peer_identity, "_cm")' src/server/connection.rs || r_s11c7="$r_s11c7 cm-peer-identity-live-check-missing"
+grep -q 'linux_cm_child_identity_is_live(cm_peer_identity, std::process::id())' src/server/connection.rs || r_s11c7="$r_s11c7 cm-peer-identity-live-check-missing"
 grep -q 'pub fn subscriber_ids(&self) -> Vec<i32>' src/server/service.rs || r_s11c7="$r_s11c7 service-subscriber-id-snapshot-missing"
 grep -q 'authenticate_cm_endpoint(' src/ipc/fs.rs || r_s11c7="$r_s11c7 cm-stale-socket-probe-not-authenticated"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/ipc/fs.rs || r_s11c7="$r_s11c7 cm-stale-socket-probe-not-launch-token-bound"
 grep -q 'CM_LAUNCH_PARENT_ENV' src/ipc/fs.rs || r_s11c7="$r_s11c7 cm-stale-socket-probe-not-launch-parent-bound"
-grep -q 'ensure_peer_process_identity_matches(&stream, &expected, "_pa")' src/ipc/fs.rs || r_s11c7="$r_s11c7 pa-stale-socket-probe-not-identity-bound"
+grep -q 'ensure_linux_process_identity_matches(&stream, &expected, "_pa")' src/ipc/fs.rs || r_s11c7="$r_s11c7 pa-stale-socket-probe-not-identity-bound"
 if grep -q 'owner_pid' src/ipc.rs src/server/audio_service.rs; then
   r_s11c7="$r_s11c7 legacy-pa-owner-pid-present"
 fi
@@ -2230,6 +2229,15 @@ grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs || r_s
 grep -q 'password::SensitivePayloadKind::Password' src/ipc.rs || r_s11b="$r_s11b raw-service-password-kind-missing"
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
   echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service is bounded no-secret control IPC; password mutation uses the separate raw _service_password listener, and whole-config/password-bearing service variants are absent"; fi
+
+echo "== (3b-iii-b1) Linux nondumpable CM/PA parent authority (R-S11cc/R-S11e-95) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e95_ --color never
+if python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test; then
+  echo "  ok  R-S11e-95 CM/PA authority uses kernel socket identity, start time, exact parenthood, role-bound proof, and parent-death ownership"
+else
+  echo "  FAIL R-S11e-95 CM/PA authority regained ptrace-gated process metadata, same-uid trust, or an orphanable helper"
+  rc=1
+fi
 
 # (3b-iii-c) R-S11b/R-S11c/R-S11g/R-S11h/R-S11i: password values are not
 # ordinary IPC data. Desktop mutations use fixed raw _password/_service_password frames,
@@ -3597,7 +3605,7 @@ if [ -n "$r_s11e43" ]; then echo "  FAIL R-S11e-43 Linux obsolete Xorg process a
 
 # (3b-iii-d9c3) R-S11ad/R-S11e-44: the root supervisor does not
 # rediscover no-UI connection managers through mutable process text. The exact
-# server parent binds the exact child at spawn and the kernel owns retirement.
+# server parent binds every Linux CM child at spawn and the kernel owns retirement.
 echo "== (3b-iii-d9c3) Linux headless CM parent authority (R-S11ad/R-S11e-44) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e44_ --color never
 r_s11e44=
@@ -3631,8 +3639,8 @@ if [ -z "$parent_death_hook_line" ] || [ -z "$descriptor_hook_line" ] || [ "$par
 fi
 connection_manager_launch_compact=$(printf '%s' "$connection_manager_launch" | tr -d '[:space:]')
 case "$connection_manager_launch_compact" in
-  *'ifheadless_cm{crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?}else{crate::run_me_with_env(args,cm_launch_env())?}'*) ;;
-  *) r_s11e44="$r_s11e44 headless-only-call-site-missing" ;;
+  *'#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?;#[cfg(any(target_os="macos",target_os="windows"))]letchild=crate::run_me_with_env(args,cm_launch_env())?;'*) ;;
+  *) r_s11e44="$r_s11e44 linux-parent-bound-call-site-missing" ;;
 esac
 for forbidden in \
   'fn stop_headless_connection_manager_processes' \
@@ -3659,7 +3667,7 @@ grep -qF 'Linux root-service headless-CM global process authority' requirements.
 grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARDENING_STATUS.md \
   || r_s11e44="$r_s11e44 hardening-ledger-missing"
 if [ -n "$r_s11e44" ]; then echo "  FAIL R-S11e-44 Linux headless CM parent authority:$r_s11e44"; rc=1; else
-  echo "  ok  R-S11e-44 no root process-table sweep owns headless CMs; the exact server launch arms kernel parent-death authority before exec"; fi
+  echo "  ok  R-S11e-44/R-S11e-95 no root process-table sweep owns CMs; every exact Linux server launch arms kernel parent-death authority before exec"; fi
 
 # (3b-iii-d9c3a) R-T4/R-S11c-27t: the per-connection CM bridge may be
 # started before the CM endpoint exists. Loss of the owning connection is a

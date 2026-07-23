@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+# shellcheck source=scripts/windows-helper-runtime.sh
+source "$SCRIPT_DIR/windows-helper-runtime.sh"
 
 STATE_DIR="${HARNESS_STATE_DIR:-$REPO_ROOT/.harness-state}"
 GOLDEN="${WINDOWS_GOLDEN_IMAGE:-$REPO_ROOT/.harness-state/win11-golden.qcow2}"
@@ -16,8 +18,6 @@ SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 export SOURCE_DATE_EPOCH
 
 DOMAIN_PREFIX="${HARNESS_PREFIX:-rustdesk-fork-harness}"
-WIN_HELPER_TAG="$DOMAIN_PREFIX-win-helper"
-DEB_BUILDER_TAG="$DOMAIN_PREFIX-deb-builder"
 VM_TIMEOUT_SECONDS=7200
 CREATE_TIMEOUT_SECONDS=300
 CONTROL_TIMEOUT_SECONDS=30
@@ -40,7 +40,6 @@ FORK_VERSION_VALUE=""
 BASE_MANIFEST_SHA256=""
 OFFLINE_MANIFEST_SHA256=""
 WIX_NUGET_ROOT=""
-WIN_HELPER_IMAGE=""
 DEB_BUILDER_IMAGE=""
 PRIVATE_GOLDEN=""
 ONLINE_SNAPSHOT_PARENT=""
@@ -253,6 +252,9 @@ cleanup() {
     elif [ -n "$RUN_ROOT" ] && [ -d "$RUN_ROOT" ]; then
         warn "retaining failed Windows harness state at $RUN_ROOT"
     fi
+    if ! windows_helper_authority_close; then
+        CLEANUP_FAILED=1
+    fi
     if [ "$CLEANUP_FAILED" != 0 ] && [ "$status" = 0 ]; then
         status=1
     fi
@@ -390,9 +392,8 @@ preflight() {
     [ -f "$ONLINE_DIR/vcpkg-distfiles/libvpx-native-key.txt" ] \
         && [ ! -L "$ONLINE_DIR/vcpkg-distfiles/libvpx-native-key.txt" ] \
         || die "libvpx native key is missing"
-    require_pinned_builder_image win-helper "$WIN_HELPER_TAG"
-    require_pinned_builder_image deb-builder "$DEB_BUILDER_TAG"
-    WIN_HELPER_IMAGE="$WIN_HELPER_IMAGE_ID"
+    windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"
+    require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"
     DEB_BUILDER_IMAGE="$DEB_BUILDER_IMAGE_ID"
 }
 
@@ -719,14 +720,11 @@ extract_wix_nuget() {
     [ ! -e "$WIX_NUGET_ROOT" ] && [ ! -L "$WIX_NUGET_ROOT" ] \
         || die "extracted WiX root path is already occupied"
     mkdir -m 0700 "$WIX_NUGET_ROOT"
-    docker run --rm --network=none --user "$(id -u):$(id -g)" \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+    windows_helper_small_run \
+        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz,target=/authority/wix-nuget.tar.gz,readonly" \
         --mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget" \
-        "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
-            umask 077
-            tar --extract --gzip --file=/online/wix-nuget.tar.gz \
-                --directory=/wix-nuget --no-same-owner --no-same-permissions
-        '
+        -- /usr/bin/tar --extract --gzip --file=/authority/wix-nuget.tar.gz \
+            --directory=/wix-nuget --no-same-owner --no-same-permissions
 }
 
 build_offline_media() {
@@ -736,26 +734,31 @@ build_offline_media() {
     write_offline_manifest "$manifest"
     OFFLINE_MANIFEST_SHA256="$(sha256sum "$manifest" | awk '{print $1}')"
     local offline_iso="$RUN_ROOT/offline.iso"
-    docker run --rm --network=none \
+    local media_output="$RUN_ROOT/offline-output"
+    [ ! -e "$offline_iso" ] && [ ! -L "$offline_iso" ] \
+        || die "offline UDF media output path is occupied"
+    mkdir -m 0700 "$media_output"
+    windows_helper_media_run \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
         --mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget,readonly" \
-        --mount "type=bind,source=$RUN_ROOT,target=/run" \
-        -e OLEFILE_VERSION="$OLEFILE_VERSION" \
-        -e LIBVPX_SOURCE_REF="$LIBVPX_SOURCE_REF" \
-        -e LIBVPX_FIX_COMMIT="$LIBVPX_FIX_COMMIT" \
-        "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
-            genisoimage -udf -D -r -f -quiet -V OFFLINE -o /run/offline.iso -graft-points \
-                /cargo-vendor=/online/cargo-vendor \
-                /cargo-vendor-config.toml=/online/cargo-vendor-config.toml \
-                /pub-cache=/online/pub-cache \
-                /vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz=/online/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz \
-                /vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch=/online/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch \
-                /vcpkg-distfiles/libvpx-native-key.txt=/online/vcpkg-distfiles/libvpx-native-key.txt \
-                /vcpkg-distfiles/windows-tools=/online/vcpkg-distfiles/windows-tools \
-                /python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl \
-                /wix-nuget=/wix-nuget \
-                /.offline-input-manifest.json=/run/offline-input-manifest.json
-        '
+        --mount "type=bind,source=$manifest,target=/authority/offline-input-manifest.json,readonly" \
+        --mount "type=bind,source=$media_output,target=/out" \
+        -- /usr/bin/genisoimage -udf -D -r -f -quiet -V OFFLINE \
+            -o /out/offline.iso -graft-points \
+            /cargo-vendor=/online/cargo-vendor \
+            /cargo-vendor-config.toml=/online/cargo-vendor-config.toml \
+            /pub-cache=/online/pub-cache \
+            "/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz=/online/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" \
+            "/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch=/online/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch" \
+            /vcpkg-distfiles/libvpx-native-key.txt=/online/vcpkg-distfiles/libvpx-native-key.txt \
+            /vcpkg-distfiles/windows-tools=/online/vcpkg-distfiles/windows-tools \
+            "/python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \
+            /wix-nuget=/wix-nuget \
+            /.offline-input-manifest.json=/authority/offline-input-manifest.json
+    [ -s "$media_output/offline.iso" ] \
+        || die "confined Windows helper did not produce offline UDF media"
+    mv -- "$media_output/offline.iso" "$offline_iso"
+    rmdir -- "$media_output"
     [ -s "$offline_iso" ] || die "offline UDF media was not produced"
     write_offline_manifest "$after"
     cmp -s "$manifest" "$after" || die "offline inputs changed while the immutable UDF media was created"
@@ -871,30 +874,27 @@ build_pass_media() {
 
 create_output_disk() {
     qemu-img create -f raw "$CURRENT_PASS_ROOT/output.img" 3G >/dev/null
-    docker run --rm --network=none \
-        --mount "type=bind,source=$CURRENT_PASS_ROOT,target=/pass" \
-        "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
-            export LIBGUESTFS_BACKEND=direct
-            guestfish -a /pass/output.img run : \
-                part-disk /dev/sda mbr : \
-                part-set-mbr-id /dev/sda 1 0x0c : \
-                mkfs vfat /dev/sda1 label:OUTPUT
-        '
+    windows_helper_guestfish_run \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/output.img,target=/authority/output.img" \
+        -- /usr/bin/guestfish -a /authority/output.img run : \
+            part-disk /dev/sda mbr : \
+            part-set-mbr-id /dev/sda 1 0x0c : \
+            mkfs vfat /dev/sda1 label:OUTPUT
 }
 
 prepare_overlay() {
     verify_private_golden
-    qemu-img create -f qcow2 -F qcow2 -b "$PRIVATE_GOLDEN" "$CURRENT_PASS_ROOT/overlay.qcow2" >/dev/null
-    docker run --rm --network=none \
-        --mount "type=bind,source=$CURRENT_PASS_ROOT,target=/pass" \
-        --mount "type=bind,source=$PRIVATE_GOLDEN,target=$PRIVATE_GOLDEN,readonly" \
-        "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
-            export LIBGUESTFS_BACKEND=direct
-            guestfish --rw -a /pass/overlay.qcow2 run : \
-                mount /dev/sda1 / : \
-                mkdir-p /EFI/BOOT : \
-                cp /EFI/Microsoft/Boot/bootmgfw.efi /EFI/BOOT/BOOTX64.EFI
-        '
+    (
+        cd "$CURRENT_PASS_ROOT"
+        qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2 >/dev/null
+    )
+    windows_helper_guestfish_run \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/overlay.qcow2,target=/authority/pass/overlay.qcow2" \
+        --mount "type=bind,source=$PRIVATE_GOLDEN,target=/authority/golden.qcow2,readonly" \
+        -- /usr/bin/guestfish --rw -a /authority/pass/overlay.qcow2 run : \
+            mount /dev/sda1 / : \
+            mkdir-p /EFI/BOOT : \
+            cp /EFI/Microsoft/Boot/bootmgfw.efi /EFI/BOOT/BOOTX64.EFI
 }
 
 verify_domain_xml() {
@@ -1043,17 +1043,12 @@ extract_and_validate() {
     local result="$CURRENT_PASS_ROOT/result"
     local extracted
     extracted="$(mktemp -d "$CURRENT_PASS_ROOT/extract.XXXXXXXX")"
-    docker run --rm --network=none \
-        --mount "type=bind,source=$CURRENT_PASS_ROOT,target=/pass,readonly" \
+    windows_helper_guestfish_run \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/output.img,target=/authority/output.img,readonly" \
         --mount "type=bind,source=$extracted,target=/out" \
-        --env HOST_UID="$(id -u)" --env HOST_GID="$(id -g)" \
-        "$WIN_HELPER_IMAGE" bash -euo pipefail -c '
-            export LIBGUESTFS_BACKEND=direct
-            guestfish --ro -a /pass/output.img run : \
-                mount /dev/sda1 / : \
-                glob copy-out "/*" /out
-            chown -R "${HOST_UID}:${HOST_GID}" /out
-        '
+        -- /usr/bin/guestfish --ro -a /authority/output.img run : \
+            mount /dev/sda1 / : \
+            glob copy-out '/*' /out
 
     for system_dir in "System Volume Information" '$RECYCLE.BIN'; do
         if [ -e "$extracted/$system_dir" ] || [ -L "$extracted/$system_dir" ]; then
@@ -1081,22 +1076,26 @@ extract_and_validate() {
         --output "$extracted/rustdesk-setup.exe" "$setup_input"
     rm -f -- "$setup_input"
     local msi_input="$extracted/.canonicalize-input-rustdesk.msi"
-    local msi_contract="$extracted/.canonicalize-rustdesk-msi-contract.json"
-    for path in "$msi_input" "$msi_contract"; do
+    local msi_stage="$CURRENT_PASS_ROOT/msi-canonicalize"
+    [ ! -e "$msi_stage" ] && [ ! -L "$msi_stage" ] \
+        || die "private MSI canonicalizer output path is occupied"
+    mkdir -m 0700 "$msi_stage"
+    local msi_contract="$msi_stage/contract.json"
+    local msi_output="$msi_stage/rustdesk.msi"
+    for path in "$msi_input" "$msi_contract" "$msi_output"; do
         [ ! -e "$path" ] && [ ! -L "$path" ] \
             || die "private MSI canonicalizer path is occupied: $path"
     done
     local msi_input_sha256
     msi_input_sha256="$(sha256sum "$extracted/rustdesk.msi" | awk '{print $1}')"
     mv -- "$extracted/rustdesk.msi" "$msi_input"
-    docker run --rm --network=none \
-        --user "$(id -u):$(id -g)" \
-        --mount "type=bind,source=$extracted,target=/out" \
-        --mount "type=bind,source=$SOURCE_SNAPSHOT/scripts,target=/scripts,readonly" \
-        "$WIN_HELPER_IMAGE" \
-        python3 /scripts/canonicalize-msi.py /out/.canonicalize-input-rustdesk.msi \
+    windows_helper_small_run \
+        --mount "type=bind,source=$msi_input,target=/authority/input.msi,readonly" \
+        --mount "type=bind,source=$SOURCE_SNAPSHOT/scripts/canonicalize-msi.py,target=/authority/canonicalize-msi.py,readonly" \
+        --mount "type=bind,source=$msi_stage,target=/out" \
+        -- /usr/bin/python3 /authority/canonicalize-msi.py /authority/input.msi \
             --output /out/rustdesk.msi \
-            --contract-out /out/.canonicalize-rustdesk-msi-contract.json \
+            --contract-out /out/contract.json \
             --fork-version "$FORK_VERSION_VALUE" \
             --source-commit "$SOURCE_COMMIT" \
             --source-tree "$SOURCE_TREE" \
@@ -1108,12 +1107,17 @@ extract_and_validate() {
         && [ "$(stat -c %h "$msi_contract")" = 1 ] && [ -s "$msi_contract" ] \
         || die "host MSI cabinet contract is missing or invalid"
     local msi_output_sha256
-    msi_output_sha256="$(sha256sum "$extracted/rustdesk.msi" | awk '{print $1}')"
+    [ -f "$msi_output" ] && [ ! -L "$msi_output" ] \
+        && [ "$(stat -c %h "$msi_output")" = 1 ] && [ -s "$msi_output" ] \
+        || die "host MSI canonical output is missing or invalid"
+    msi_output_sha256="$(sha256sum "$msi_output" | awk '{print $1}')"
     [ "$msi_input_sha256" = "$(sha256sum "$msi_input" | awk '{print $1}')" ] \
         || die "guest MSI changed during host canonical validation"
     [ "$msi_output_sha256" = "$msi_input_sha256" ] \
         || die "guest MSI was not already in exact canonical form"
+    mv -- "$msi_output" "$extracted/rustdesk.msi"
     rm -f -- "$msi_input" "$msi_contract"
+    rmdir -- "$msi_stage"
     mkdir "$result"
     install -m 0644 "$extracted/rustdesk-setup.exe" "$result/rustdesk-setup.exe"
     install -m 0644 "$extracted/rustdesk.msi" "$result/rustdesk.msi"
@@ -1268,6 +1272,7 @@ harness_self_test() {
 }
 
 main() {
+    windows_helper_authority_open
     preflight
     RUN_ID="$(</proc/sys/kernel/random/uuid)"
     assert_uuid "$RUN_ID"

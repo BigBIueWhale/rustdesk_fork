@@ -25,6 +25,7 @@ LABEL_PREFIX = "org.rustdesk.build-input."
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 PACKAGE = re.compile(rb"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
+DOCKER = "/usr/bin/docker"
 
 
 class ProvenanceError(RuntimeError):
@@ -103,7 +104,7 @@ def run(command: list[str], *, input_stream: BinaryIO | None = None) -> subproce
 
 
 def inspect_image(image_ref: str) -> dict[str, object]:
-    result = run(["docker", "image", "inspect", image_ref])
+    result = run([DOCKER, "image", "inspect", image_ref])
     if result.returncode != 0:
         fail(f"docker image inspect failed for {image_ref}: {result.stderr.decode(errors='replace').strip()}")
     try:
@@ -155,6 +156,8 @@ def validate_package_manifest(manifest: bytes) -> str:
 
 
 def verify_local(image_ref: str, spec: Spec) -> None:
+    if os.getuid() == 0 or os.getgid() == 0:
+        fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
     command = (
         "set -eu; "
@@ -166,11 +169,22 @@ def verify_local(image_ref: str, spec: Spec) -> None:
     )
     result = run(
         [
-            "docker",
+            DOCKER,
             "run",
             "--rm",
+            "--pull=never",
             "--network=none",
             "--read-only",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=64",
+            "--memory=512m",
+            "--memory-swap=512m",
+            "--cpus=1",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m",
             "--entrypoint",
             "/bin/sh",
             spec.image_id,
@@ -597,7 +611,7 @@ def load_archive(archive_path: Path, expected_archive_sha: str, spec: Spec) -> N
         hashing = HashingReader(os.fdopen(os.dup(fd), "rb"))
         try:
             process = subprocess.Popen(
-                ["docker", "load"],
+                [DOCKER, "load"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -641,14 +655,14 @@ def capture(output: Path, spec: Spec) -> tuple[str, int]:
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    result = run(["docker", "tag", spec.image_id, spec.capture_tag])
+    result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
     if result.returncode != 0:
         fail(f"cannot create fixed capture tag: {result.stderr.decode(errors='replace').strip()}")
     validate_inspect(inspect_image(spec.capture_tag), spec.capture_tag, spec)
     temporary = output.with_name(output.name + ".part")
     digest = hashlib.sha256()
     count = 0
-    process = subprocess.Popen(["docker", "save", spec.capture_tag], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([DOCKER, "save", spec.capture_tag], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         if process.stdout is None:
             fail("docker save stdout is unavailable")

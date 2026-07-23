@@ -25,6 +25,7 @@ FILES = {
     "portable_cargo": "libs/portable/Cargo.toml",
     "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
+    "runtime": "scripts/windows-helper-runtime.sh",
     "offline": "scripts/windows-offline-manifest.py",
     "frb": "scripts/frb-codegen.sh",
     "guest": "scripts/run-build.ps1",
@@ -284,6 +285,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     portable_cargo = sources["portable_cargo"]
     resource = sources["resource"]
     host = sources["host"]
+    runtime = sources["runtime"]
     offline = sources["offline"]
     frb = sources["frb"]
     guest = sources["guest"]
@@ -645,10 +647,26 @@ def validate_sources(sources: dict[str, str]) -> None:
         'python3 "$SOURCE_SNAPSHOT/scripts/windows-offline-manifest.py"',
         "isolated offline-media manifest generator",
     )
+    require(host, 'source "$SCRIPT_DIR/windows-helper-runtime.sh"', "shared Windows helper runtime")
+    require(
+        runtime,
+        "run --rm --pull=never --network=none --read-only",
+        "common networkless immutable Windows helper launch",
+    )
+    require(
+        runtime,
+        '--user "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID"',
+        "common invoking-UID Windows helper identity",
+    )
     require(
         extract_wix_nuget,
-        'docker run --rm --network=none --user "$(id -u):$(id -g)"',
-        "networkless invoking-UID WiX extraction",
+        "windows_helper_small_run",
+        "confined invoking-UID WiX extraction",
+    )
+    require(
+        extract_wix_nuget,
+        "source=$ONLINE_DIR/wix-nuget.tar.gz,target=/authority/wix-nuget.tar.gz,readonly",
+        "exact read-only WiX archive",
     )
     require(
         build_offline_media,
@@ -731,8 +749,12 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     for fixture in ("absolute link", "escaping link", "directory link", "directory target", "case collision", "special file"):
         require(offline, f'"{fixture}"', f"offline behavioral fixture {fixture}")
-    require(host, 'require_pinned_builder_image win-helper "$WIN_HELPER_TAG"', "pinned Windows helper image")
-    require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_TAG"', "pinned FRB builder image")
+    require(
+        runtime,
+        'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+        "pinned Windows helper image",
+    )
+    require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "pinned FRB builder image")
     require(
         host_main,
         'ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"',
@@ -769,16 +791,18 @@ def validate_sources(sources: dict[str, str]) -> None:
         (
             'msi_input_sha256="$(sha256sum "$extracted/rustdesk.msi"',
             'mv -- "$extracted/rustdesk.msi" "$msi_input"',
-            'docker run --rm --network=none',
-            '--user "$(id -u):$(id -g)"',
-            'python3 /scripts/canonicalize-msi.py /out/.canonicalize-input-rustdesk.msi',
+            "windows_helper_small_run",
+            'source=$msi_input,target=/authority/input.msi,readonly',
+            'source=$SOURCE_SNAPSHOT/scripts/canonicalize-msi.py,target=/authority/canonicalize-msi.py,readonly',
+            '/usr/bin/python3 /authority/canonicalize-msi.py /authority/input.msi',
             '--output /out/rustdesk.msi',
-            '--contract-out /out/.canonicalize-rustdesk-msi-contract.json',
+            '--contract-out /out/contract.json',
             '[ "$msi_input_sha256" = "$(sha256sum "$msi_input"',
             '[ "$msi_output_sha256" = "$msi_input_sha256" ]',
+            'mv -- "$msi_output" "$extracted/rustdesk.msi"',
             'rm -f -- "$msi_input" "$msi_contract"',
         ),
-        "networkless invoking-UID host MSI canonical-form validation",
+        "confined invoking-UID host MSI canonical-form validation",
     )
     for temporary_cleanup in (
         'rm -f -- "$extracted/rustdesk-setup.exe"',
@@ -1744,7 +1768,18 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "if False:",
         ),
         ("FRB user", "frb", '--user "$(id -u):$(id -g)"', ""),
-        ("image provenance", "host", 'require_pinned_builder_image win-helper "$WIN_HELPER_TAG"', "freeze_image win-helper"),
+        (
+            "image provenance",
+            "runtime",
+            'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+            "freeze_image win-helper",
+        ),
+        (
+            "WiX helper wrapper",
+            "host",
+            'windows_helper_small_run \\\n        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz',
+            'docker run \\\n        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz',
+        ),
         (
             "online snapshot",
             "host",
@@ -2051,14 +2086,14 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "host MSI absent-output invocation",
             "host",
-            "--output /out/rustdesk.msi \\\n            --contract-out /out/.canonicalize-rustdesk-msi-contract.json",
-            "--output /out/.canonicalize-input-rustdesk.msi \\\n            --contract-out /out/.canonicalize-rustdesk-msi-contract.json",
+            "--output /out/rustdesk.msi \\\n            --contract-out /out/contract.json",
+            "--output /out/input.msi \\\n            --contract-out /out/contract.json",
         ),
         (
             "host MSI invoking-UID ownership",
-            "host",
-            'docker run --rm --network=none \\\n        --user "$(id -u):$(id -g)" \\\n        --mount "type=bind,source=$extracted,target=/out"',
-            'docker run --rm --network=none \\\n        --mount "type=bind,source=$extracted,target=/out"',
+            "runtime",
+            '--user "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID"',
+            "--user 0:0",
         ),
         (
             "host MSI noninteractive cleanup",

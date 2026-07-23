@@ -8695,6 +8695,78 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed. This closes future one-time generator source/runtime authority only; current APK identity, device
   upgrade behavior, the complete R-B2 release transaction, native Apple/Windows evidence, and external review
   remain separate obligations.
+- **R-S11ch/R-S11e-100 — Windows helper container and KVM authority — SOURCE IMPLEMENTED;
+  FOCUSED MUTATION/WORKSPACE GATES AND DISPOSABLE NON-ROOT TCG/KVM PROBES PASS 2026-07-23;
+  EXACT COMMITTED-SOURCE EVIDENCE PENDING.** Platform: the unprivileged Linux build host and the pinned
+  Ubuntu helper used around the Windows KVM harness. Endpoint/action: WiX extraction, offline-ISO creation,
+  output-disk creation, overlay EFI preparation, result extraction, MSI canonicalization, and read-only golden
+  completion/inventory inspection. Boundary: caller Docker authority, captured helper/archive bytes, private
+  build outputs, the exact golden image, and `/dev/kvm` ↔ containerized `tar`, `genisoimage`, Python,
+  libguestfs/supermin, and QEMU.
+
+  The three consumers previously contained seven independent helper launch shapes. The build path eventually
+  resolved the immutable image ID and every launch was networkless with no published port, Docker socket, or
+  host namespace, but the helpers retained a writable container root, default capabilities and privilege-gain
+  semantics, implicit pull behavior, no resource ceilings, caller Docker-client configuration, and broad
+  writable run/pass/script mounts. Provision and diagnostic verification selected a mutable
+  harness-prefixed tag, ran as container root, mounted the complete harness-state tree read-only, and granted
+  `/dev/kvm`. This is source-proven build-output/device authority debt. It is not evidence that a helper
+  listened publicly, container root became host root, Docker escaped, the established golden changed, host
+  RustDesk or a host service/firewall/network setting changed, or any system was exploited or compromised.
+
+  `scripts/windows-helper-runtime.sh` now owns the only helper-container launch. It refuses host UID or
+  primary GID 0, validates the root-owned fixed `/usr/bin/docker`, fixes the local Unix daemon, rejects
+  context/TLS endpoint inputs, and replaces any inherited client configuration with a random current-UID
+  mode-0700 runtime containing a mode-0600 single-link canonical `{}` config. The runtime supplies
+  `--host`/`--config` explicitly and re-proves that authority before and after every daemon operation. It
+  verifies the exact `WIN_HELPER_IMAGE_ID`, embedded role/base/Dockerfile/dpkg provenance, and independently
+  pinned captured image archive. `scripts/offline-image-provenance.py` now uses `/usr/bin/docker` and its
+  embedded-provenance reader itself refuses root and runs non-root/no-pull/networkless/read-only-root with all
+  capabilities dropped, no-new-privileges, and explicit process/memory/no-swap/CPU/tmpfs bounds.
+
+  The captured Ubuntu image's `/boot/vmlinuz-6.8.0-134-generic` is root-owned mode 0600, so a direct UID-1000
+  libguestfs invocation correctly failed. The correction does not add root or `CAP_DAC_READ_SEARCH`.
+  `scripts/windows-helper-extract-kernel.py` is snapshotted mode 0400 and executed as the invoking numeric
+  UID:GID inside the same exact image. It parses the already-pinned offline Docker archive as data, requires
+  one image and unique referenced layers, rejects duplicate/ambiguous/whiteout kernel members, extracts exactly
+  `boot/vmlinuz-$WIN_HELPER_KERNEL_VERSION` no-clobber, independently verifies
+  `SHA256_WIN_HELPER_KERNEL`, synchronizes the file/directory, and leaves a private mode-0400 kernel. The runtime
+  mounts that leaf read-only and fixes `SUPERMIN_KERNEL`, modules, version, cache, and temporary roots, allowing
+  supermin/QEMU to remain UID 1000.
+
+  Every launch is `--pull=never`, networkless, read-only-root, numeric non-root, capability-free,
+  no-new-privileges, and bounded by one of three explicit PID/memory/no-swap/CPU/tmpfs profiles. Caller
+  options accept only lexically canonical explicit bind mounts backed by regular files/directories, refuse
+  special files and protected runtime targets, and require writable sources to be current-UID, not
+  group/world writable, and single-link when regular. The build's six operations now mount the
+  exact WiX archive/private output, verified online snapshot plus exact manifest/private ISO output, exact raw
+  output disk, exact relative-backed overlay plus private golden, exact read-only output disk plus fresh extract
+  directory, and exact read-only MSI/worker plus fresh canonical output. No whole run root, pass root, source
+  scripts tree, or permanent output tree is writable. The relative `../golden.qcow2` backing identity resolves
+  to the same private leaf in host and container layouts.
+
+  Provision and golden verification address the immutable ID and mount only the exact SHA-verified golden
+  read-only at `/authority/golden.qcow2`; their snapshotted fixed worker has only `marker` and `inventory`
+  operations. Ordinary build libguestfs receives no host device. Only these two golden-read consumers receive
+  exactly `/dev/kvm:rwm` and its one non-root numeric supplemental group, while retaining zero capabilities and
+  no-new-privileges. No consumer has an image build/pull fallback, mutable helper tag, privileged/root identity,
+  added capability, published port, Docker socket, host namespace, or broad harness-state mount.
+
+  `scripts/verify-windows-helper-authority.py` binds the shared runtime, all six build and two golden-inspection
+  consumer shapes, fixed image/client/config, archive/kernel derivation and pins, provenance-reader confinement,
+  exact mounts, relative overlay, sole KVM grant, forbidden authority, R-S11ch, Appendix C #227, this ledger,
+  operator documentation, shared-gate wiring, and independent workspace ownership through deliberate mutations.
+  Exact immutable source verification has not yet been committed; that source/evidence identity will be recorded
+  after the focused and workspace gates are rerun from the clean commit.
+
+  Disposable private 64-MiB raw disks exercised the production runtime under both TCG and the exact KVM
+  authorization. Both completed partition/VFAT guestfish operations as UID/GID 1000 with the exact derived
+  kernel, zero added capabilities, no network, read-only root, no-new-privileges, and bounded scratch/resources;
+  outputs remained current-user owned and were removed. A separate derivation/provenance run verified the exact
+  archive and image before and after extraction. These probes did not open the established golden, boot or
+  define a VM/domain, compile Windows/RustDesk, access a host service, or inspect/change host RustDesk,
+  listeners, firewall/UFW/nftables/iptables, or host network state. Full golden behavior, Windows artifacts,
+  double-build equality, and the complete cold release remain R-B2 obligations.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9412,9 +9484,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-0db1cf9a1c331b4c59b37c4b93853632a728d661c837fe81a7a645fea9dbe593  requirements.html
+b3925b07de72130f148c0c47338aa3c6089f12360cab8a84a51410f51fb07e92  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cg, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ch, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -215,6 +215,18 @@ else
   echo "  ok  R-S11cg one-time Android identity generation is fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded with file-only secrets and durable no-clobber publication"
 fi
 
+echo "== (0f) Windows helper container/KVM authority (R-S11ch/R-S11e-100) =="
+r_s11ch=
+if ! python3 scripts/verify-windows-helper-authority.py --repo . --self-test; then
+  r_s11ch="$r_s11ch authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11ch" ]; then
+  echo "  FAIL R-S11ch Windows helper container/KVM authority:$r_s11ch"
+  rc=1
+else
+  echo "  ok  R-S11ch all Windows helpers use one immutable non-root/no-pull/network/read-only-root/capability-free/resource-bounded runtime, narrow binds, a pinned derived libguestfs kernel, and exact KVM-only golden inspection"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1
@@ -12396,12 +12408,12 @@ if grep -Fq 'the residual is real and currently unaddressed' requirements.html; 
 grep -qF 'Dockerfile.win-helper' scripts/online-fetch.sh          || rb_struct="$rb_struct windows:helper-image-not-built-online"
 git ls-files --error-unmatch scripts/Dockerfile.win-helper >/dev/null 2>&1 || rb_struct="$rb_struct windows:helper-dockerfile-not-tracked"
 [ -s scripts/Dockerfile.win-helper ]                              || rb_struct="$rb_struct windows:helper-dockerfile-missing"
-grep -qF 'WIN_HELPER_IMAGE' scripts/build-windows-vm.sh           || rb_struct="$rb_struct windows:no-helper-image-build"
-grep -qF 'WIN_HELPER_IMAGE' scripts/provision-windows-vm.sh       || rb_struct="$rb_struct windows:no-helper-image-provision"
-grep -qF 'WIN_HELPER_IMAGE' scripts/verify-windows-golden.sh      || rb_struct="$rb_struct windows:no-helper-image-verify"
-grep -qF -- '--network=none' scripts/build-windows-vm.sh          || rb_struct="$rb_struct windows:helper-not-offline-build"
-grep -qF -- '--network=none' scripts/provision-windows-vm.sh      || rb_struct="$rb_struct windows:helper-not-offline-provision"
-grep -qF -- '--network=none' scripts/verify-windows-golden.sh     || rb_struct="$rb_struct windows:helper-not-offline-verify"
+for f in scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; do
+  grep -qF 'source "$SCRIPT_DIR/windows-helper-runtime.sh"' "$f" \
+    || rb_struct="$rb_struct ${f##*/}:no-shared-helper-runtime"
+done
+grep -qF -- 'run --rm --pull=never --network=none --read-only' scripts/windows-helper-runtime.sh \
+  || rb_struct="$rb_struct windows:shared-helper-not-immutable-offline"
 if grep -Eq 'provision_pkg[[:space:]]+libvirt-daemon-system' scripts/host-provision.sh; then
   rb_struct="$rb_struct host-provision:installs-system-libvirt"
 fi

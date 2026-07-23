@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11884,7 +11884,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12218,7 +12218,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13517,6 +13517,103 @@ def validate_android_keystore_authority_contract(sources):
         sources["hardening"],
         "R-S11cg/R-S11e-99 — Android signing-identity generation authority",
         "Android keystore authority hardening ledger",
+    )
+
+
+def validate_windows_helper_authority_contract(sources):
+    focused = sources["windows_helper_authority_verifier"]
+    runtime = sources["windows_helper_runtime"]
+    for text, label in (
+        ("forbid(runtime, token, label)",
+         "Windows helper focused forbidden-authority enforcement"),
+        ("Windows build authority, immutable inputs, execution, and publication",
+         "Windows helper focused operation-order enforcement"),
+        ("MUTATIONS: Tuple[Mutation, ...]",
+         "Windows helper focused mutation inventory"),
+        ("run_mutations(sources)",
+         "Windows helper focused mutation dispatch"),
+        ("archive pre/post verification",
+         "Windows helper focused archive stability binding"),
+        ("single exact device grant",
+         "Windows helper focused KVM cardinality binding"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("WINDOWS_HELPER_DOCKER_BIN=/usr/bin/docker",
+         "Windows helper fixed Docker client"),
+        ('require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+         "Windows helper immutable image provenance"),
+        ("run --rm --pull=never --network=none --read-only",
+         "Windows helper common confinement"),
+        ('--user "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID"',
+         "Windows helper numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "Windows helper privilege confinement"),
+        ("SUPERMIN_KERNEL=/authority/kernel/vmlinuz",
+         "Windows helper nonroot kernel authority"),
+        ("--device /dev/kvm:/dev/kvm:rwm",
+         "Windows helper exact KVM authorization"),
+        ("Windows helper bind source must be a regular file or directory",
+         "Windows helper special-file mount refusal"),
+    ):
+        require_text(runtime, text, label)
+    for text, label in (
+        ("digest.hexdigest() != expected_sha256",
+         "Windows helper derived-kernel hash verification"),
+        ("if found != 1:",
+         "Windows helper exact kernel-member cardinality"),
+        ("os.O_EXCL",
+         "Windows helper kernel no-clobber extraction"),
+    ):
+        require_text(sources["windows_helper_kernel_extractor"], text, label)
+    for source_name, label in (
+        ("windows_build", "Windows build"),
+        ("windows_provision", "Windows provision"),
+        ("windows_golden_verify", "Windows golden verification"),
+    ):
+        require_text(
+            sources[source_name],
+            'source "$SCRIPT_DIR/windows-helper-runtime.sh"',
+            label + " shared helper runtime",
+        )
+    require_text(
+        sources["windows_build"],
+        "qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2",
+        "Windows build relative private-golden backing identity",
+    )
+    for source_name, label in (
+        ("windows_provision", "Windows provision"),
+        ("windows_golden_verify", "Windows golden verification"),
+    ):
+        require_text(
+            sources[source_name],
+            'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
+            label + " exact read-only golden mount",
+        )
+        require_text(
+            sources[source_name],
+            "windows_helper_kvm_guestfish_run",
+            label + " exact KVM wrapper",
+        )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-windows-helper-authority.py --repo . --self-test",
+        "Windows helper focused authority verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ch</span>',
+        "Windows helper authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>227</td>",
+        "Windows helper authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
+        "Windows helper authority hardening ledger",
     )
 
 
@@ -16861,6 +16958,7 @@ def validate_sources(sources):
     validate_android_voice_call_ownership_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_keystore_authority_contract(sources)
+    validate_windows_helper_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -29036,7 +29134,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11cg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#226",
+        "R-S11n through R-S11ch, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#227",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -30651,6 +30749,60 @@ def run_source_mutations(sources):
             "Android keystore authority hardening ledger",
         ),
         (
+            "windows_helper_authority_verifier",
+            "forbid(runtime, token, label)",
+            "return # forbidden Windows helper authority accepted",
+            "Windows helper focused forbidden-authority enforcement",
+        ),
+        (
+            "windows_helper_runtime",
+            "run --rm --pull=never --network=none --read-only",
+            "run --rm",
+            "Windows helper common confinement",
+        ),
+        (
+            "windows_helper_kernel_extractor",
+            "digest.hexdigest() != expected_sha256",
+            "False",
+            "Windows helper derived-kernel hash verification",
+        ),
+        (
+            "windows_build",
+            "qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2",
+            'qemu-img create -f qcow2 -F qcow2 -b "$PRIVATE_GOLDEN" overlay.qcow2',
+            "Windows build relative private-golden backing identity",
+        ),
+        (
+            "windows_provision",
+            'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
+            'source=$STATE_DIR,target=/state,readonly',
+            "Windows provision exact read-only golden mount",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-windows-helper-authority.py --repo . --self-test",
+            "true # Windows helper authority verifier removed",
+            "Windows helper focused authority verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ch</span>',
+            '<span class="id">R-S11ch-disabled</span>',
+            "Windows helper authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>227</td>",
+            "<tr><td>227-disabled</td>",
+            "Windows helper authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
+            "R-S11ch/R-S11e-100 — Windows ambient helper authority",
+            "Windows helper authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -31866,6 +32018,24 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_keystore_authority_verifier": (
                 repo / "scripts/verify-android-keystore-authority.py"
+            ).read_text(encoding="utf-8"),
+            "windows_helper_authority_verifier": (
+                repo / "scripts/verify-windows-helper-authority.py"
+            ).read_text(encoding="utf-8"),
+            "windows_helper_runtime": (
+                repo / "scripts/windows-helper-runtime.sh"
+            ).read_text(encoding="utf-8"),
+            "windows_helper_kernel_extractor": (
+                repo / "scripts/windows-helper-extract-kernel.py"
+            ).read_text(encoding="utf-8"),
+            "windows_build": (
+                repo / "scripts/build-windows-vm.sh"
+            ).read_text(encoding="utf-8"),
+            "windows_provision": (
+                repo / "scripts/provision-windows-vm.sh"
+            ).read_text(encoding="utf-8"),
+            "windows_golden_verify": (
+                repo / "scripts/verify-windows-golden.sh"
             ).read_text(encoding="utf-8"),
             "debian_builder_authority_verifier": (
                 repo / "scripts/verify-debian-builder-authority.py"

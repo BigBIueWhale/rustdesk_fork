@@ -10,44 +10,45 @@
 #
 # NOT part of "fork creation" — a build-harness diagnostic, run after provision-windows-vm.sh.
 set -euo pipefail
+umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+# shellcheck source=scripts/windows-helper-runtime.sh
+source "$SCRIPT_DIR/windows-helper-runtime.sh"
 
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
-WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
 
 require_cmd docker
 assert_no_build_host_network_residual
 [ -f "$GOLDEN" ] || die "golden not found: $GOLDEN (run provision-windows-vm.sh first)"
 [ -e /dev/kvm ] || die "/dev/kvm absent — the libguestfs-in-docker appliance needs it"
 verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
-docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"
+
+cleanup_windows_helper_authority() {
+  local status=$?
+  trap - EXIT
+  windows_helper_authority_close || status=1
+  exit "$status"
+}
+trap cleanup_windows_helper_authority EXIT
+
+windows_helper_authority_open
+windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"
 
 log "inspecting the golden read-only via libguestfs (offline Windows helper image)"
 # virt-ls/virt-cat each auto-inspect the Windows root, so paths are C:-relative with '/'. Two appliance
 # boots (root listing + the definitive done-marker), no fail-cascade. The done marker is conclusive:
 # win-guest-setup.ps1 writes C:\guest-setup-done.txt ONLY at its very end (after the vcpkg natives),
 # immediately before Stop-Computer — so its presence proves the whole toolchain install completed.
-out="$(docker run --rm --network=none --device /dev/kvm -v "$STATE_DIR:/state:ro" "$WIN_HELPER_IMAGE" bash -c '
-  export LIBGUESTFS_BACKEND=direct
-  echo "=== C:\\ root listing (expect flutter, vcpkg, guest-setup-done.txt, online, src) ==="
-  virt-ls -a /state/win11-golden.qcow2 / 2>&1 | sort || echo "(virt-ls of C:\\ failed — OS not inspectable)"
-  echo "=== C:\\vcpkg\\installed\\x64-windows-static (the warmed sec3.2 natives) ==="
-  virt-ls -a /state/win11-golden.qcow2 "/vcpkg/installed/x64-windows-static/lib" 2>/dev/null | head -8 || echo "(absent — vcpkg natives not warmed)"
-  echo "=== C:\\flutter\\bin\\cache\\artifacts\\engine (the precached windows engine, for the offline flutter build) ==="
-  virt-ls -a /state/win11-golden.qcow2 "/flutter/bin/cache/artifacts/engine" 2>/dev/null | grep -i windows || echo "(no windows engine — flutter precache --windows did not run)"
-  echo "=== verdict ==="
-  if virt-cat -a /state/win11-golden.qcow2 /guest-setup-done.txt >/dev/null 2>&1; then
-    echo "GOLDEN-OK: C:\\guest-setup-done.txt present — win-guest-setup.ps1 ran to completion"
-  else
-    echo "GOLDEN-FAIL: C:\\guest-setup-done.txt ABSENT — win-guest-setup.ps1 did not complete"
-    echo "=== C:\\setup-transcript.txt (tail, where it stopped) ==="
-    virt-cat -a /state/win11-golden.qcow2 /setup-transcript.txt 2>/dev/null | tail -30 || echo "(no transcript — FirstLogonCommands never launched win-guest-setup.ps1)"
-  fi
-')"
+out="$(
+  windows_helper_kvm_guestfish_run \
+    --mount "type=bind,source=$GOLDEN,target=/authority/golden.qcow2,readonly" \
+    -- /bin/bash --noprofile --norc \
+      /authority/windows-golden-inspect.sh inventory
+)"
 echo "$out"
 
 if echo "$out" | grep -q '^GOLDEN-OK:'; then

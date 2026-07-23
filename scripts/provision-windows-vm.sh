@@ -18,15 +18,17 @@
 #
 # NOT run as part of "fork creation" — a checked-in build artifact.
 set -euo pipefail
+umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+# shellcheck source=scripts/windows-helper-runtime.sh
+source "$SCRIPT_DIR/windows-helper-runtime.sh"
 
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
 DOMAIN="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-golden"
-WIN_HELPER_IMAGE="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper"
 AUTOUNATTEND_ISO="$STATE_DIR/autounattend.iso"   # the PROVISION CD: autounattend.xml + the setup .ps1
 TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the staged ./online windows artifacts
 SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed repo (res/vcpkg etc.) for warming
@@ -36,8 +38,8 @@ preflight() {
     assert_no_build_host_network_residual
     [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
     [ -e /dev/kvm ] || die "/dev/kvm absent — Windows helper libguestfs inspection needs it"
-    docker image inspect "$WIN_HELPER_IMAGE" >/dev/null 2>&1 || die "Windows helper image missing: $WIN_HELPER_IMAGE — run scripts/online-fetch.sh"
     require_online_complete
+    windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"
     [ -f "$SCRIPT_DIR/autounattend.xml" ]    || die "scripts/autounattend.xml missing (the unattended-install answer file)"
     [ -f "$SCRIPT_DIR/win-guest-setup.ps1" ] || die "scripts/win-guest-setup.ps1 missing (the guest toolchain installer)"
     # Win11 ISO + VS Build Tools are EVERGREEN (not stably SHA-addressable upstream),
@@ -98,10 +100,11 @@ build_media() {
 # qcow2 is write-locked while it runs). A libguestfs error (e.g. a reboot relocked the image
 # mid-read) returns non-zero -> treated as "not done yet", so this never yields a false positive.
 golden_has_done_marker() {
-    docker run --rm --network=none --device /dev/kvm -v "$STATE_DIR:/state:ro" "$WIN_HELPER_IMAGE" bash -c '
-        export LIBGUESTFS_BACKEND=direct
-        virt-cat -a /state/win11-golden.qcow2 /guest-setup-done.txt >/dev/null 2>&1
-    ' >/dev/null 2>&1
+    windows_helper_kvm_guestfish_run \
+        --mount "type=bind,source=$GOLDEN,target=/authority/golden.qcow2,readonly" \
+        -- /bin/bash --noprofile --norc \
+            /authority/windows-golden-inspect.sh marker \
+        >/dev/null 2>&1
 }
 
 build_golden() {
@@ -198,11 +201,20 @@ build_golden() {
 }
 
 main() {
+    windows_helper_authority_open
     preflight
     build_golden
     log "Per-build usage (build-windows.ps1): create a CoW overlay and a transient"
     log "domain over \$GOLDEN, share C:\\src + C:\\online read-only, run the build,"
     log "copy out the .exe/.msi + SHA-256, then destroy the overlay (cleanup.sh)."
 }
+
+cleanup_windows_helper_authority() {
+    local status=$?
+    trap - EXIT
+    windows_helper_authority_close || status=1
+    exit "$status"
+}
+trap cleanup_windows_helper_authority EXIT
 
 main "$@"

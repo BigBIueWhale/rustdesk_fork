@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Linux CM/PA authority across the nondumpable service-child boundary."""
+"""Verify Linux CM/PA/whiteboard authority across the nondumpable service-child boundary."""
 
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ class VerificationError(RuntimeError):
 def require(source: str, needle: str, label: str) -> None:
     if needle not in source:
         raise VerificationError(f"missing {label}")
+
+
+def compact_whitespace(source: str) -> str:
+    return "".join(source.split())
 
 
 def absent(source: str, needle: str, label: str) -> None:
@@ -66,6 +70,8 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "fs": "src/ipc/fs.rs",
         "connection": "src/server/connection.rs",
         "audio": "src/server/audio_service.rs",
+        "whiteboard_client": "src/whiteboard/client.rs",
+        "whiteboard_server": "src/whiteboard/server.rs",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
@@ -175,6 +181,74 @@ def validate(sources: Dict[str, str]) -> None:
         "Linux parent proof before non-Linux executable policy",
     )
 
+    whiteboard_owner = block(
+        auth,
+        "pub(crate) fn linux_whiteboard_owner_identity",
+        "whiteboard launch-parent identity",
+    )
+    ordered(
+        whiteboard_owner,
+        (
+            "if expected_parent == 0",
+            "linux_proc_parent_pid(std::process::id())?",
+            "if actual_parent != expected_parent",
+            "linux_kernel_process_identity_by_pid(expected_parent)",
+        ),
+        "whiteboard launch marker and actual-parent convergence",
+    )
+    whiteboard_owner_stream = block(
+        auth,
+        "pub(crate) fn authenticate_linux_whiteboard_owner_stream",
+        "whiteboard-to-owner stream proof",
+    )
+    ordered(
+        whiteboard_owner_stream,
+        (
+            "linux_whiteboard_owner_identity(expected_parent)?",
+            'ensure_linux_process_identity_matches(stream, &expected, "_whiteboard")?',
+        ),
+        "whiteboard exact socket owner proof",
+    )
+    whiteboard_listener = block(
+        auth,
+        "pub(crate) fn authorize_whiteboard_ipc_connection",
+        "whiteboard listener admission",
+    )
+    linux_whiteboard_listener = region(
+        whiteboard_listener,
+        '#[cfg(target_os = "linux")]',
+        '#[cfg(not(target_os = "linux"))]',
+        "Linux whiteboard listener admission",
+    )
+    ordered(
+        linux_whiteboard_listener,
+        (
+            "authenticate_linux_whiteboard_owner_stream(stream, expected_parent_pid)",
+            "return false",
+            "return true",
+        ),
+        "Linux whiteboard parent proof",
+    )
+    for forbidden in (
+        "ensure_peer_executable_matches_current_by_pid_opt",
+        "peer_process_is_current_exe_server",
+    ):
+        absent(
+            linux_whiteboard_listener,
+            forbidden,
+            f"Linux whiteboard ptrace-gated proof {forbidden}",
+        )
+    require(
+        whiteboard_listener,
+        '#[cfg(not(target_os = "linux"))]',
+        "non-Linux whiteboard native identity policy",
+    )
+    require(
+        whiteboard_listener,
+        "ensure_peer_executable_matches_current_by_pid_opt",
+        "non-Linux whiteboard executable proof",
+    )
+
     ipc = sources["ipc"]
     role = block(ipc, "fn cm_role_bound_challenge", "CM role-bound challenge")
     require(role, 'matches!(role, "--cm" | "--cm-no-ui")', "closed CM role set")
@@ -267,6 +341,76 @@ def validate(sources: Dict[str, str]) -> None:
         "wrong-role HMAC rejection",
     )
 
+    whiteboard_role = block(
+        ipc, "fn whiteboard_role_bound_challenge", "whiteboard role-bound challenge"
+    )
+    ordered(
+        whiteboard_role,
+        (
+            "role != WHITEBOARD_PROCESS_ROLE",
+            "if challenge.is_empty()",
+            'format!("{WHITEBOARD_PROCESS_ROLE}\\0{challenge}")',
+        ),
+        "fixed whiteboard role/challenge binding",
+    )
+    whiteboard_proof = block(
+        ipc,
+        "fn whiteboard_launch_proof_for_challenge",
+        "whiteboard endpoint proof constructor",
+    )
+    ordered(
+        whiteboard_proof,
+        (
+            "whiteboard_role_bound_challenge(role, challenge)?",
+            "helper_launch_proof_for_challenge",
+        ),
+        "whiteboard role binding before endpoint HMAC",
+    )
+    whiteboard_current_role = block(
+        ipc, "fn current_whiteboard_process_role", "current whiteboard role"
+    )
+    ordered(
+        whiteboard_current_role,
+        (
+            "std::env::args()",
+            "args.next()",
+            "if args.next().is_some()",
+            "role != WHITEBOARD_PROCESS_ROLE",
+        ),
+        "complete exact whiteboard argv role",
+    )
+    whiteboard_answer = block(
+        ipc,
+        "pub(crate) async fn answer_whiteboard_endpoint_challenge",
+        "whiteboard proof answer",
+    )
+    ordered(
+        whiteboard_answer,
+        (
+            "current_whiteboard_process_role()?",
+            "verify_whiteboard_server_proof",
+            "&role",
+            "whiteboard_endpoint_proof_for_challenge",
+            "&role",
+        ),
+        "same exact role in mutual whiteboard proof",
+    )
+    for test in (
+        "r_s11e96_whiteboard_endpoint_proof_is_launch_token_and_role_bound",
+        "r_s11e96_linux_whiteboard_owner_is_exact_direct_parent",
+    ):
+        require(ipc + auth, test, f"focused {test} regression")
+    whiteboard_proof_test = block(
+        ipc,
+        "fn r_s11e96_whiteboard_endpoint_proof_is_launch_token_and_role_bound",
+        "whiteboard launch-token/role regression",
+    )
+    require(
+        compact_whitespace(whiteboard_proof_test),
+        'whiteboard_endpoint_proof_for_challenge(&challenge,&launch_token,"--server",).is_err()',
+        "wrong whiteboard role rejection",
+    )
+
     connection = sources["connection"]
     require(
         connection,
@@ -344,17 +488,54 @@ def validate(sources: Dict[str, str]) -> None:
         require(audio, marker, f"PA minimal authority {marker}")
     absent(audio, "crate::ipc::PeerProcessIdentity", "PA ptrace-gated full identity")
 
+    whiteboard_client = sources["whiteboard_client"]
+    whiteboard_launch = block(
+        whiteboard_client, "async fn start_whiteboard_", "whiteboard helper launch"
+    )
+    ordered(
+        whiteboard_launch,
+        (
+            '#[cfg(target_os = "linux")]',
+            "crate::common::run_me_with_env_and_parent_death(",
+            "whiteboard_launch_env(&launch_token)",
+            '#[cfg(not(target_os = "linux"))]',
+            "crate::run_me_with_env(args, whiteboard_launch_env(&launch_token))?",
+        ),
+        "Linux-only whiteboard parent-death launch",
+    )
+
+    whiteboard_server = sources["whiteboard_server"]
+    whiteboard_admission = block(
+        whiteboard_server, "pub(super) async fn start_ipc", "whiteboard IPC receiver"
+    )
+    ordered(
+        whiteboard_admission,
+        (
+            "authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)",
+            "answer_whiteboard_endpoint_challenge(&mut stream).await",
+            "tokio::spawn(handle_new_stream(stream))",
+        ),
+        "whiteboard parent proof and mutual HMAC before traffic",
+    )
+
     for key, needle, label in (
         ("requirements", '<span class="id">R-S11cc</span>', "R-S11cc requirement"),
         ("requirements", "<tr><td>222</td>", "Appendix C #222"),
+        ("requirements", '<span class="id">R-S11cd</span>', "R-S11cd requirement"),
+        ("requirements", "<tr><td>223</td>", "Appendix C #223"),
         (
             "hardening",
             "R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority",
             "R-S11e-95 hardening ledger",
         ),
         (
+            "hardening",
+            "R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority",
+            "R-S11e-96 hardening ledger",
+        ),
+        (
             "verify",
-            "python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test",
+            "Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96)",
             "shared focused-verifier wiring",
         ),
     ):
@@ -449,6 +630,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "PA live CM direct-parent proof",
     ),
     (
+        "auth",
+        "if actual_parent != expected_parent {\n        bail!(\n            \"whiteboard owner changed",
+        "if false {\n        bail!(\n            \"whiteboard owner changed",
+        "whiteboard owner parent convergence",
+    ),
+    (
+        "auth",
+        "authenticate_linux_whiteboard_owner_stream(stream, expected_parent_pid)",
+        "ensure_peer_executable_matches_current_by_pid_opt(stream.peer_pid(), \"_whiteboard\")",
+        "whiteboard listener owner proof",
+    ),
+    (
+        "ipc",
+        'Ok(format!("{WHITEBOARD_PROCESS_ROLE}\\0{challenge}"))',
+        "Ok(challenge.to_owned())",
+        "whiteboard role HMAC binding",
+    ),
+    (
+        "ipc",
+        "let role = current_whiteboard_process_role()?;",
+        'let role = "--whiteboard".to_owned();',
+        "whiteboard exact current role",
+    ),
+    (
+        "whiteboard_client",
+        "crate::common::run_me_with_env_and_parent_death(",
+        "crate::run_me_with_env(",
+        "Linux whiteboard parent-death launch",
+    ),
+    (
         "requirements",
         '<span class="id">R-S11cc</span>',
         '<span class="id">R-S11cc-disabled</span>',
@@ -467,9 +678,27 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "hardening ledger",
     ),
     (
+        "requirements",
+        '<span class="id">R-S11cd</span>',
+        '<span class="id">R-S11cd-disabled</span>',
+        "R-S11cd requirement",
+    ),
+    (
+        "requirements",
+        "<tr><td>223</td>",
+        "<tr><td>223-disabled</td>",
+        "Appendix C #223",
+    ),
+    (
+        "hardening",
+        "R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority",
+        "R-S11cd/R-S11e-96 — Linux whiteboard trusts same uid",
+        "whiteboard hardening ledger",
+    ),
+    (
         "verify",
-        "python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test",
-        "true # nondumpable CM verifier removed",
+        "Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96)",
+        "Linux nondumpable CM/PA parent authority (R-S11cc/R-S11e-95)",
         "shared gate wiring",
     ),
 )
@@ -500,7 +729,7 @@ def main() -> int:
     if args.self_test:
         run_mutations(sources)
     print(
-        "Linux nondumpable CM/PA authority validation: OK"
+        "Linux nondumpable CM/PA/whiteboard authority validation: OK"
         + (f" ({len(MUTATIONS)} mutations)" if args.self_test else "")
     )
     return 0
@@ -511,7 +740,7 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (OSError, UnicodeError, VerificationError) as error:
         print(
-            f"Linux nondumpable CM/PA authority verification failed: {error}",
+            f"Linux nondumpable CM/PA/whiteboard authority verification failed: {error}",
             file=__import__("sys").stderr,
         )
         raise SystemExit(1)

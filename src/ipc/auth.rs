@@ -2435,8 +2435,8 @@ impl PeerProcessIdentity {
 /// environment-derived fields. Those `/proc` surfaces are ptrace-gated and are therefore
 /// unavailable to the same-UID server/connection-manager pair after the installed service child
 /// becomes nondumpable. The socket credential supplies PID/UID and `/proc/<pid>/stat` supplies the
-/// non-reused start identity; the CM-specific admission functions additionally require the exact
-/// direct parent relationship.
+/// non-reused start identity; protected helper admission additionally requires the exact direct
+/// parent relationship.
 #[cfg(target_os = "linux")]
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LinuxProcessIdentity {
@@ -2639,6 +2639,37 @@ where
 {
     let expected = linux_cm_owner_identity()?;
     ensure_linux_process_identity_matches(stream, &expected, "")?;
+    Ok(expected)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn linux_whiteboard_owner_identity(
+    expected_parent: u32,
+) -> ResultType<LinuxProcessIdentity> {
+    if expected_parent == 0 {
+        bail!("whiteboard launch parent is unavailable");
+    }
+    let actual_parent = linux_proc_parent_pid(std::process::id())?;
+    if actual_parent != expected_parent {
+        bail!(
+            "whiteboard owner changed: expected {}, got {}",
+            expected_parent,
+            actual_parent
+        );
+    }
+    linux_kernel_process_identity_by_pid(expected_parent)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn authenticate_linux_whiteboard_owner_stream<T>(
+    stream: &ConnectionTmpl<T>,
+    expected_parent: u32,
+) -> ResultType<LinuxProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let expected = linux_whiteboard_owner_identity(expected_parent)?;
+    ensure_linux_process_identity_matches(stream, &expected, "_whiteboard")?;
     Ok(expected)
 }
 
@@ -4156,35 +4187,49 @@ pub(crate) fn authorize_whiteboard_ipc_connection(
     stream: &Connection,
     expected_parent_pid: u32,
 ) -> bool {
-    if expected_parent_pid == 0 {
-        log::warn!("Rejected _whiteboard IPC peer: missing launch parent pid");
-        return false;
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(err) = authenticate_linux_whiteboard_owner_stream(stream, expected_parent_pid) {
+            log::warn!(
+                "Rejected unauthorized _whiteboard IPC peer outside the exact launch-parent boundary: {err}"
+            );
+            return false;
+        }
+        return true;
     }
-    let peer_pid = stream.peer_pid();
-    if peer_pid != Some(expected_parent_pid) {
-        log::warn!(
-            "Rejected _whiteboard IPC peer: expected parent pid {}, got {:?}",
-            expected_parent_pid,
-            peer_pid
-        );
-        return false;
+    #[cfg(not(target_os = "linux"))]
+    {
+        if expected_parent_pid == 0 {
+            log::warn!("Rejected _whiteboard IPC peer: missing launch parent pid");
+            return false;
+        }
+        let peer_pid = stream.peer_pid();
+        if peer_pid != Some(expected_parent_pid) {
+            log::warn!(
+                "Rejected _whiteboard IPC peer: expected parent pid {}, got {:?}",
+                expected_parent_pid,
+                peer_pid
+            );
+            return false;
+        }
+        if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_whiteboard")
+        {
+            log::warn!(
+                "Rejected _whiteboard IPC peer due to executable mismatch: peer_pid={:?}, err={}",
+                peer_pid,
+                err
+            );
+            return false;
+        }
+        if !peer_process_is_current_exe_server(expected_parent_pid) {
+            log::warn!(
+                "Rejected _whiteboard IPC peer: launch parent is not the current executable's --server process, peer_pid={}",
+                expected_parent_pid
+            );
+            return false;
+        }
+        true
     }
-    if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_whiteboard") {
-        log::warn!(
-            "Rejected _whiteboard IPC peer due to executable mismatch: peer_pid={:?}, err={}",
-            peer_pid,
-            err
-        );
-        return false;
-    }
-    if !peer_process_is_current_exe_server(expected_parent_pid) {
-        log::warn!(
-            "Rejected _whiteboard IPC peer: launch parent is not the current executable's --server process, peer_pid={}",
-            expected_parent_pid
-        );
-        return false;
-    }
-    true
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -4720,6 +4765,18 @@ mod tests {
             "wrong-start-time".to_owned(),
         );
         assert!(!super::linux_process_identity_is_live(&wrong_start));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn r_s11e96_linux_whiteboard_owner_is_exact_direct_parent() {
+        let parent = super::linux_proc_parent_pid(std::process::id()).unwrap();
+        let identity = super::linux_whiteboard_owner_identity(parent).unwrap();
+
+        assert_eq!(identity.pid(), parent);
+        assert!(super::linux_process_identity_is_live(&identity));
+        assert!(super::linux_whiteboard_owner_identity(0).is_err());
+        assert!(super::linux_whiteboard_owner_identity(parent.saturating_add(1)).is_err());
     }
 
     #[test]

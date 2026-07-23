@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11884,7 +11884,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12218,7 +12218,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12459,6 +12459,12 @@ def validate_installed_service_classifier_contract(sources):
 
 def validate_linux_nondumpable_cm_contract(sources):
     focused = sources["linux_nondumpable_cm_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "Linux nondumpable CM/whiteboard focused runtime validation",
+    )
     for text, label in (
         ("def block(", "CM verifier Rust block parser"),
         ("def validate(sources", "CM verifier semantic entry"),
@@ -12490,15 +12496,67 @@ def validate_linux_nondumpable_cm_contract(sources):
             '"crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?"',
             "parent-death launch contract",
         ),
+        (
+            '"authenticate_linux_whiteboard_owner_stream(stream, expected_parent_pid)"',
+            "Linux whiteboard exact owner verifier contract",
+        ),
+        (
+            '"whiteboard_role_bound_challenge(role, challenge)?"',
+            "whiteboard role-bound mutual proof contract",
+        ),
+        (
+            "'whiteboard_endpoint_proof_for_challenge(&challenge,&launch_token,\"--server\",).is_err()'",
+            "wrong whiteboard role regression contract",
+        ),
+        (
+            '"crate::common::run_me_with_env_and_parent_death("',
+            "whiteboard parent-death launch contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "CM authority mutation inventory"),
         ("run_mutations(sources)", "CM authority mutation dispatch"),
     ):
-        require_text(focused, text, label)
+        source = (
+            focused
+            if text
+            in {
+                "def block(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_mutations(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
     require_text(
         sources["verify"],
         "python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test",
         "Linux nondumpable CM shared focused-verifier wiring",
     )
+    require_text(
+        sources["verify"],
+        "Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96)",
+        "Linux nondumpable CM/whiteboard shared focused-verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e96_ --color never',
+        "Linux nondumpable whiteboard shared Rust-test wiring",
+    )
+    for text, label in (
+        (
+            "grep -q 'const WHITEBOARD_PROCESS_ROLE: &str = \"--whiteboard\";' \"$REPO/src/ipc.rs\"",
+            "Apple fixed whiteboard role source gate",
+        ),
+        (
+            "grep -q 'fn whiteboard_role_bound_challenge' \"$REPO/src/ipc.rs\"",
+            "Apple role-bound whiteboard proof source gate",
+        ),
+        (
+            "grep -q 'let role = current_whiteboard_process_role()?' \"$REPO/src/ipc.rs\"",
+            "Apple exact current whiteboard role source gate",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
     require_text(
         sources["requirements"],
         '<span class="id">R-S11cc</span>',
@@ -12510,9 +12568,24 @@ def validate_linux_nondumpable_cm_contract(sources):
         "Linux nondumpable CM Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cd</span>',
+        "Linux nondumpable whiteboard requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>223</td>",
+        "Linux nondumpable whiteboard Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority",
         "Linux nondumpable CM hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority",
+        "Linux nondumpable whiteboard hardening ledger",
     )
 
 
@@ -28243,7 +28316,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-        "R-S11n through R-S11cc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222",
+        "R-S11n through R-S11cd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -29034,10 +29107,62 @@ def run_source_mutations(sources):
             "Linux CM exact owner verifier contract",
         ),
         (
+            "linux_nondumpable_cm_verifier",
+            '"authenticate_linux_whiteboard_owner_stream(stream, expected_parent_pid)",\n'
+            '            "return false",',
+            '"ensure_peer_executable_matches_current_by_pid_opt(stream.peer_pid(), \\"_whiteboard\\")",\n'
+            '            "return false",',
+            "Linux whiteboard exact owner verifier contract",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            '"whiteboard_role_bound_challenge(role, challenge)?"',
+            '"helper_launch_proof_for_challenge(\\"whiteboard\\""',
+            "whiteboard role-bound mutual proof contract",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            "'whiteboard_endpoint_proof_for_challenge(&challenge,&launch_token,\"--server\",).is_err()',\n"
+            '        "wrong whiteboard role rejection",',
+            "'whiteboard_endpoint_proof_for_challenge(&challenge,&launch_token,\"--server\",).is_ok()',\n"
+            '        "wrong whiteboard role rejection",',
+            "wrong whiteboard role regression contract",
+        ),
+        (
+            "verify",
+            "Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96)",
+            "Linux nondumpable CM/PA parent authority (R-S11cc/R-S11e-95)",
+            "Linux nondumpable CM/whiteboard shared focused-verifier wiring",
+        ),
+        (
             "verify",
             "python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test",
-            "true # Linux nondumpable CM verifier removed",
+            "true # Linux nondumpable CM/PA/whiteboard verifier removed",
             "Linux nondumpable CM shared focused-verifier wiring",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e96_ --color never',
+            "true # Linux nondumpable whiteboard Rust test removed",
+            "Linux nondumpable whiteboard shared Rust-test wiring",
+        ),
+        (
+            "apple",
+            "grep -q 'const WHITEBOARD_PROCESS_ROLE: &str = \"--whiteboard\";' \"$REPO/src/ipc.rs\"",
+            "true # Apple fixed whiteboard role source gate removed",
+            "Apple fixed whiteboard role source gate",
+        ),
+        (
+            "apple",
+            "grep -q 'fn whiteboard_role_bound_challenge' \"$REPO/src/ipc.rs\"",
+            "true # Apple role-bound whiteboard proof source gate removed",
+            "Apple role-bound whiteboard proof source gate",
+        ),
+        (
+            "apple",
+            "grep -q 'let role = current_whiteboard_process_role()?' \"$REPO/src/ipc.rs\"",
+            "true # Apple exact current whiteboard role source gate removed",
+            "Apple exact current whiteboard role source gate",
         ),
         (
             "requirements",
@@ -29056,6 +29181,24 @@ def run_source_mutations(sources):
             "R-S11cc/R-S11e-95 — Linux nondumpable service child and connection-manager use kernel parent authority",
             "R-S11cc/R-S11e-95 — Linux connection-manager trusts same uid",
             "Linux nondumpable CM hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cd</span>',
+            '<span class="id">R-S11cd-disabled</span>',
+            "Linux nondumpable whiteboard requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>223</td>",
+            "<tr><td>223-disabled</td>",
+            "Linux nondumpable whiteboard Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority",
+            "R-S11cd/R-S11e-96 — Linux whiteboard trusts same uid",
+            "Linux nondumpable whiteboard hardening ledger",
         ),
         (
             "unix_helper_process_role_verifier",

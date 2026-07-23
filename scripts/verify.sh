@@ -2230,12 +2230,13 @@ grep -q 'password::SensitivePayloadKind::Password' src/ipc.rs || r_s11b="$r_s11b
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
   echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service is bounded no-secret control IPC; password mutation uses the separate raw _service_password listener, and whole-config/password-bearing service variants are absent"; fi
 
-echo "== (3b-iii-b1) Linux nondumpable CM/PA parent authority (R-S11cc/R-S11e-95) =="
+echo "== (3b-iii-b1) Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e95_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e96_ --color never
 if python3 scripts/verify-linux-nondumpable-cm.py --repo . --self-test; then
-  echo "  ok  R-S11e-95 CM/PA authority uses kernel socket identity, start time, exact parenthood, role-bound proof, and parent-death ownership"
+  echo "  ok  R-S11e-95/R-S11e-96 CM/PA/whiteboard authority uses kernel socket identity, start time, exact parenthood, role-bound proof, and parent-death ownership"
 else
-  echo "  FAIL R-S11e-95 CM/PA authority regained ptrace-gated process metadata, same-uid trust, or an orphanable helper"
+  echo "  FAIL R-S11e-95/R-S11e-96 CM/PA/whiteboard authority regained ptrace-gated process metadata, same-uid trust, or an orphanable helper"
   rc=1
 fi
 
@@ -5933,6 +5934,9 @@ grep -q 'whiteboard_endpoint_postfix(&launch_token)' src/whiteboard/client.rs ||
 grep -q 'authenticate_whiteboard_endpoint_launch_proof(&mut stream, launch_token)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-does-not-authenticate-whiteboard-endpoint"
 grep -q 'authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-check-parent-pid"
 grep -q 'answer_whiteboard_endpoint_challenge(&mut stream).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-prove-launch-token"
+grep -q 'const WHITEBOARD_PROCESS_ROLE: &str = "--whiteboard";' src/ipc.rs || r_s11c8="$r_s11c8 fixed-whiteboard-role-missing"
+grep -q 'fn whiteboard_role_bound_challenge' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-role-bound-proof-missing"
+grep -q 'let role = current_whiteboard_process_role()?' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-proof-does-not-use-exact-current-role"
 grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-state-machine-missing"
 grep -q 'super::client::get_key_cursor(conn_id)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
 grep -q 'register_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-register-not-id-based"

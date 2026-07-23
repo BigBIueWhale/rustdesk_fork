@@ -8300,6 +8300,62 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed. This source slice therefore does not claim current native service-child/CM behavior, an installed Debian
   package, a clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent
   R-V3 review.
+- **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent authority —
+  SOURCE IMPLEMENTED; CONFINED RUST 1.75 COMPILER/TEST AND SEMANTIC/MUTATION VERIFICATION PASSED
+  2026-07-23; NATIVE INSTALLED-ARTIFACT EVIDENCE PENDING.** Platform: Linux installed-service mode after the active-user
+  `--server --service-owned-server` image is deliberately unreadable and nondumpable. Endpoint/action:
+  same-principal `--whiteboard` overlay launch, token-derived `_whiteboard_<hmac>` listener admission,
+  directional mutual launch proof, and helper lifetime. Boundary: the overlay helper ↔ the exact server
+  process and thread that launched it.
+
+  The source-proven old path recorded the launch parent and required that exact socket PID, but then called
+  `ensure_peer_executable_matches_current_by_pid_opt` and the server-role argv reader before answering the
+  mutual HMAC challenge. The server and helper both execute the dedicated mode-0711 service-child image.
+  Linux subjects `/proc/<pid>/exe` dereference to ptrace access checks, and the capability-free non-root
+  reproduction recorded for this slice changed that same-UID read from success to `EACCES` immediately after
+  `PR_SET_DUMPABLE(0)`. `/proc/<pid>/stat` remained readable. The hardened service confidentiality boundary
+  could therefore make a legitimate overlay reject its own server before proof. This is a hardening-induced
+  local availability and helper-authority incompatibility, not evidence of exploitation, remote bypass, Docker
+  root access, host service/configuration/firewall mutation, a public listener, or compromise.
+
+  Linux whiteboard admission now derives one minimal PID/UID/start-time identity for the connected Unix peer,
+  requires the immutable launch-parent PID to equal the helper's current kernel parent, and requires the socket
+  identity to equal that exact live parent before answering any challenge. It does not read executable, argv,
+  environment, or token metadata across the nondumpable boundary. Non-Linux admission retains its existing exact
+  parent PID, current executable, and complete server-role checks.
+
+  The existing fresh 32-byte launch secret, HMAC-derived endpoint name, directional server/endpoint challenge
+  domains, proof-before-stream-spawn order, and per-connection drawing tokens remain. Both directional proofs now
+  also bind the fixed `--whiteboard` role. The helper derives that role from its complete exact argv before
+  answering; missing, extra, case-varied, or different roles fail closed. Every same-principal Linux whiteboard
+  launch uses `run_me_with_env_and_parent_death`, which arms the existing pre-exec
+  `PR_SET_PDEATHSIG(SIGKILL)` and parent recheck before the descriptor policy and exec. The overlay and inherited
+  launch secret therefore cannot remain after loss of the exact creating server thread.
+
+  `scripts/verify-linux-nondumpable-cm.py` now covers CM, PA, and whiteboard. It binds the Linux exact-parent
+  identity, socket PID/UID/start-time proof, absence of ptrace-gated whiteboard proof, non-Linux proof retention,
+  fixed-role HMAC and complete helper argv, parent-death launch, receiver proof-before-traffic order, focused tests,
+  R-S11cd, Appendix C #223, this ledger identity, and shared-gate wiring. Its self-test rejects 25 deliberate
+  CM/PA/whiteboard weakenings. The independent workspace meta-verifier binds the focused runtime-validation region,
+  wrong-role regression, shared compiled-test invocation, shared heading, all three Apple source assertions,
+  requirement, Appendix row, and ledger identity; its normal and complete source-mutation modes pass.
+
+  Confined validation used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
+  no network, all capabilities dropped, no-new-privileges, a read-only root and source tree, vendored dependencies,
+  and ephemeral tmpfs compiler output. Rust 1.75.0 locked/offline tests passed all four R-S11e-95/R-S11e-96
+  kernel-identity and role/token-proof regressions plus the actual-child R-S11e-44 parent-death regression. The
+  normal default-feature `cargo check --features linux-pkg-config` passed with only the repository's existing
+  warning set. Focused 25-mutation verification, workspace normal/source-mutation verification, Bash/Python syntax,
+  dependency-inventory normal/self-test (unchanged 871 lexical unsafe blocks), native-codec normal/self-test,
+  requirements-hash synchronization, `Cargo.lock` immutability, touched-source Rust 1.75 formatting, and
+  `git diff --check` also passed. The full Apple wrapper was deliberately not invoked because it unconditionally
+  rebuilds and retags Docker images before source checking; its three changed whiteboard assertions were instead
+  syntax-checked, independently inspected, and mutation-bound by the workspace verifier.
+
+  No native installed service, overlay UI, package, release artifact, Android/iOS device, host RustDesk process,
+  listener, firewall, or configuration is exercised by this source row. Exact native installed-service/overlay and
+  final Debian artifact evidence remain R-B2/R-S11c-27; the prohibited long cold release build remains unrun.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9017,9 +9073,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-38b19488cac5d32db8abaf3426492fe99421f20b0e2f332e21b8f68c902a46ec  requirements.html
+2e5c7645578c875aa8021a51419d2ed08eb335308937d82f4e618620d6c532bc  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cc, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#222. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cd, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#223. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -268,10 +268,14 @@ async fn start_whiteboard_() -> ResultType<()> {
         bail!("Refusing unsupported root-to-user whiteboard launch");
     } else {
         log::debug!("Start whiteboard");
-        CHILD_PROCESS.lock().unwrap().push(crate::run_me_with_env(
+        #[cfg(target_os = "linux")]
+        let child = crate::common::run_me_with_env_and_parent_death(
             args,
             whiteboard_launch_env(&launch_token),
-        )?);
+        )?;
+        #[cfg(not(target_os = "linux"))]
+        let child = crate::run_me_with_env(args, whiteboard_launch_env(&launch_token))?;
+        CHILD_PROCESS.lock().unwrap().push(child);
     }
     for _ in 0..20 {
         sleep(0.3).await;

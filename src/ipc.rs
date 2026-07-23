@@ -4072,6 +4072,9 @@ const WHITEBOARD_ENDPOINT_POSTFIX_PREFIX: &str = "_whiteboard_";
 const WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WHITEBOARD_PROCESS_ROLE: &str = "--whiteboard";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn helper_endpoint_hmac_key(
     helper_name: &str,
     launch_token: &str,
@@ -4251,6 +4254,40 @@ fn whiteboard_endpoint_name_suffix(launch_token: &str) -> ResultType<String> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn whiteboard_role_bound_challenge(role: &str, challenge: &str) -> ResultType<String> {
+    if role != WHITEBOARD_PROCESS_ROLE {
+        bail!("invalid whiteboard role");
+    }
+    if challenge.is_empty() {
+        bail!("missing whiteboard endpoint challenge");
+    }
+    Ok(format!("{WHITEBOARD_PROCESS_ROLE}\0{challenge}"))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn whiteboard_launch_proof_for_challenge(
+    context: &[u8],
+    challenge: &str,
+    launch_token: &str,
+    role: &str,
+) -> ResultType<String> {
+    let challenge = whiteboard_role_bound_challenge(role, challenge)?;
+    helper_launch_proof_for_challenge("whiteboard", context, &challenge, launch_token)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn verify_whiteboard_launch_proof(
+    context: &[u8],
+    challenge: &str,
+    proof: &str,
+    launch_token: &str,
+    role: &str,
+) -> ResultType<()> {
+    let challenge = whiteboard_role_bound_challenge(role, challenge)?;
+    verify_helper_launch_proof("whiteboard", context, &challenge, proof, launch_token)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) fn whiteboard_endpoint_postfix(launch_token: &str) -> ResultType<String> {
     Ok(format!(
         "{}{}",
@@ -4270,12 +4307,13 @@ pub(crate) fn whiteboard_endpoint_postfix_from_env() -> ResultType<String> {
 pub(crate) fn whiteboard_endpoint_proof_for_challenge(
     challenge: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<String> {
-    helper_launch_proof_for_challenge(
-        "whiteboard",
+    whiteboard_launch_proof_for_challenge(
         WHITEBOARD_ENDPOINT_PROOF_CONTEXT,
         challenge,
         launch_token,
+        role,
     )
 }
 
@@ -4284,13 +4322,14 @@ pub(crate) fn verify_whiteboard_endpoint_proof(
     challenge: &str,
     proof: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<()> {
-    verify_helper_launch_proof(
-        "whiteboard",
+    verify_whiteboard_launch_proof(
         WHITEBOARD_ENDPOINT_PROOF_CONTEXT,
         challenge,
         proof,
         launch_token,
+        role,
     )
 }
 
@@ -4298,12 +4337,13 @@ pub(crate) fn verify_whiteboard_endpoint_proof(
 fn whiteboard_server_proof_for_challenge(
     challenge: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<String> {
-    helper_launch_proof_for_challenge(
-        "whiteboard",
+    whiteboard_launch_proof_for_challenge(
         WHITEBOARD_SERVER_PROOF_CONTEXT,
         challenge,
         launch_token,
+        role,
     )
 }
 
@@ -4312,14 +4352,28 @@ fn verify_whiteboard_server_proof(
     challenge: &str,
     proof: &str,
     launch_token: &str,
+    role: &str,
 ) -> ResultType<()> {
-    verify_helper_launch_proof(
-        "whiteboard",
+    verify_whiteboard_launch_proof(
         WHITEBOARD_SERVER_PROOF_CONTEXT,
         challenge,
         proof,
         launch_token,
+        role,
     )
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn current_whiteboard_process_role() -> ResultType<String> {
+    let mut args = std::env::args();
+    let _executable = args.next();
+    let role = args
+        .next()
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("whiteboard process role is unavailable"))?;
+    if args.next().is_some() || role != WHITEBOARD_PROCESS_ROLE {
+        bail!("invalid whiteboard process role");
+    }
+    Ok(role)
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -4438,7 +4492,11 @@ where
         .await?
     {
         Some(Data::WhiteboardServerChallenge { challenge }) => {
-            let proof = whiteboard_server_proof_for_challenge(&challenge, launch_token)?;
+            let proof = whiteboard_server_proof_for_challenge(
+                &challenge,
+                launch_token,
+                WHITEBOARD_PROCESS_ROLE,
+            )?;
             stream
                 .send_json_timeout(
                     &Data::WhiteboardServerProof { proof },
@@ -4462,9 +4520,12 @@ where
         .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
         .await?
     {
-        Some(Data::WhiteboardEndpointProof { proof }) => {
-            verify_whiteboard_endpoint_proof(&challenge, &proof, launch_token)
-        }
+        Some(Data::WhiteboardEndpointProof { proof }) => verify_whiteboard_endpoint_proof(
+            &challenge,
+            &proof,
+            launch_token,
+            WHITEBOARD_PROCESS_ROLE,
+        ),
         _ => bail!("whiteboard endpoint did not prove launch authority"),
     }
 }
@@ -4478,6 +4539,7 @@ where
 {
     let launch_token = std::env::var(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
         .map_err(|err| hbb_common::anyhow::anyhow!("missing whiteboard launch token: {err}"))?;
+    let role = current_whiteboard_process_role()?;
     let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
         .send_json_timeout(
@@ -4492,7 +4554,7 @@ where
         .await?
     {
         Some(Data::WhiteboardServerProof { proof }) => {
-            verify_whiteboard_server_proof(&server_challenge, &proof, &launch_token)?;
+            verify_whiteboard_server_proof(&server_challenge, &proof, &launch_token, &role)?;
         }
         _ => bail!("whiteboard server launch proof missing"),
     }
@@ -4502,7 +4564,7 @@ where
         .await?
     {
         Some(Data::WhiteboardEndpointChallenge { challenge }) => {
-            let proof = whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token)?;
+            let proof = whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token, &role)?;
             stream
                 .send_json_timeout(
                     &Data::WhiteboardEndpointProof { proof },
@@ -8859,45 +8921,72 @@ mod test {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
-    fn whiteboard_endpoint_proof_is_launch_token_bound() {
+    fn r_s11e96_whiteboard_endpoint_proof_is_launch_token_and_role_bound() {
         let challenge = crate::encode64([11u8; 32]);
         let other_challenge = crate::encode64([12u8; 32]);
         let launch_token = crate::encode64([13u8; 32]);
         let other_launch_token = crate::encode64([14u8; 32]);
+        let role = WHITEBOARD_PROCESS_ROLE;
         let endpoint_proof =
-            whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token).unwrap();
+            whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token, role).unwrap();
         let server_proof =
-            whiteboard_server_proof_for_challenge(&challenge, &launch_token).unwrap();
+            whiteboard_server_proof_for_challenge(&challenge, &launch_token, role).unwrap();
         let endpoint = whiteboard_endpoint_postfix(&launch_token).unwrap();
         let other_endpoint = whiteboard_endpoint_postfix(&other_launch_token).unwrap();
 
         assert!(endpoint.starts_with("_whiteboard_"));
         assert_ne!(endpoint, other_endpoint);
         assert!(
-            verify_whiteboard_endpoint_proof(&challenge, &endpoint_proof, &launch_token).is_ok()
+            verify_whiteboard_endpoint_proof(&challenge, &endpoint_proof, &launch_token, role)
+                .is_ok()
         );
+        assert!(verify_whiteboard_endpoint_proof(
+            &other_challenge,
+            &endpoint_proof,
+            &launch_token,
+            role,
+        )
+        .is_err());
+        assert!(verify_whiteboard_endpoint_proof(
+            &challenge,
+            &endpoint_proof,
+            &other_launch_token,
+            role,
+        )
+        .is_err());
+        assert!(verify_whiteboard_endpoint_proof(
+            &challenge,
+            &endpoint_proof,
+            &launch_token,
+            "--server",
+        )
+        .is_err());
         assert!(
-            verify_whiteboard_endpoint_proof(&other_challenge, &endpoint_proof, &launch_token)
+            verify_whiteboard_server_proof(&challenge, &server_proof, &launch_token, role).is_ok()
+        );
+        assert!(verify_whiteboard_server_proof(
+            &other_challenge,
+            &server_proof,
+            &launch_token,
+            role,
+        )
+        .is_err());
+        assert!(
+            verify_whiteboard_server_proof(&challenge, &endpoint_proof, &launch_token, role,)
                 .is_err()
         );
         assert!(
-            verify_whiteboard_endpoint_proof(&challenge, &endpoint_proof, &other_launch_token)
+            verify_whiteboard_endpoint_proof(&challenge, &server_proof, &launch_token, role,)
                 .is_err()
         );
-        assert!(verify_whiteboard_server_proof(&challenge, &server_proof, &launch_token).is_ok());
+        assert!(whiteboard_endpoint_proof_for_challenge("", &launch_token, role).is_err());
+        assert!(whiteboard_endpoint_proof_for_challenge(&challenge, "", role).is_err());
         assert!(
-            verify_whiteboard_server_proof(&other_challenge, &server_proof, &launch_token).is_err()
+            whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token, "--server",)
+                .is_err()
         );
-        assert!(
-            verify_whiteboard_server_proof(&challenge, &endpoint_proof, &launch_token).is_err()
-        );
-        assert!(
-            verify_whiteboard_endpoint_proof(&challenge, &server_proof, &launch_token).is_err()
-        );
-        assert!(whiteboard_endpoint_proof_for_challenge("", &launch_token).is_err());
-        assert!(whiteboard_endpoint_proof_for_challenge(&challenge, "").is_err());
-        assert!(whiteboard_server_proof_for_challenge("", &launch_token).is_err());
-        assert!(whiteboard_server_proof_for_challenge(&challenge, "").is_err());
+        assert!(whiteboard_server_proof_for_challenge("", &launch_token, role).is_err());
+        assert!(whiteboard_server_proof_for_challenge(&challenge, "", role).is_err());
         assert!(whiteboard_endpoint_postfix("").is_err());
     }
 

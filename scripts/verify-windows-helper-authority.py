@@ -34,7 +34,10 @@ def forbid(source: str, token: str, label: str) -> None:
 
 
 def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:
-    positions = tuple(source.index(token) for token in tokens)
+    try:
+        positions = tuple(source.index(token) for token in tokens)
+    except ValueError:
+        raise AuthorityError("{} is incomplete or misordered".format(label))
     if positions != tuple(sorted(positions)) or len(set(positions)) != len(positions):
         raise AuthorityError("{} is incomplete or misordered".format(label))
 
@@ -241,6 +244,36 @@ def validate(sources: Dict[str, str]) -> None:
         forbid(source, "-v \"$STATE_DIR", label + " short whole-state volume")
     require_count(provision, "windows_helper_kvm_guestfish_run", 1, "one provision inspector")
     require_count(golden_verify, "windows_helper_kvm_guestfish_run", 1, "one golden verifier")
+    existing_golden = provision[
+        provision.index('    if [ -f "$GOLDEN" ]; then') : provision.index("    build_media")
+    ]
+    require_order(
+        existing_golden,
+        (
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "if golden_has_done_marker; then",
+        ),
+        "existing golden hash-before-marker inspection",
+    )
+    provision_loop = provision[provision.index("    while true; do") :]
+    require_order(
+        provision_loop,
+        (
+            "if golden_has_done_marker; then",
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "golden Win11 template built:",
+        ),
+        "provision marker, final hash, and acceptance",
+    )
+    require_order(
+        golden_verify,
+        (
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "windows_helper_authority_open",
+            "windows_helper_kvm_guestfish_run",
+        ),
+        "diagnostic golden hash-before-inspection",
+    )
 
     for token, label in (
         ("outer image archive contains duplicate member names", "outer-member uniqueness"),
@@ -298,6 +331,11 @@ def validate(sources: Dict[str, str]) -> None:
         "shared focused-verifier wiring",
     )
     require(sources["requirements"], '<span class="id">R-S11ch</span>', "R-S11ch requirement")
+    require(
+        sources["requirements"],
+        "provision-owned in-progress leaf solely to test its terminal completion marker",
+        "provision-time golden hash-order requirement",
+    )
     require(sources["requirements"], "<tr><td>227</td>", "Appendix C #227 disposition")
     require(
         sources["hardening"],
@@ -405,6 +443,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("provision", 'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
              'source=$STATE_DIR,target=/state,readonly', "provision exact golden mount"),
     Mutation(
+        "provision",
+        '                if golden_has_done_marker; then\n'
+        '                    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+        '                if golden_has_done_marker; then\n'
+        "                    true # final golden hash removed",
+        "provision final hash before acceptance",
+    ),
+    Mutation(
         "golden_verify",
         'windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"',
         "true # golden verifier helper authority resolution removed",
@@ -412,6 +458,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation("golden_verify", 'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
              'source=$STATE_DIR,target=/state,readonly', "verifier exact golden mount"),
+    Mutation(
+        "golden_verify",
+        'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+        "true # diagnostic golden prehash removed",
+        "diagnostic golden hash-before-inspection",
+    ),
     Mutation("extractor", 'opaque_whiteout = "boot/.wh..wh..opq"',
              'opaque_whiteout = "boot/.wh..wh..opq-disabled"',
              "opaque boot-whiteout refusal"),
@@ -428,6 +480,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "true # Windows helper authority verifier removed", "shared verifier wiring"),
     Mutation("requirements", '<span class="id">R-S11ch</span>',
              '<span class="id">R-S11ch-disabled</span>', "R-S11ch requirement"),
+    Mutation(
+        "requirements",
+        "provision-owned in-progress leaf solely to test its terminal completion marker",
+        "arbitrary in-progress tree before accepting any state",
+        "provision-time golden hash-order requirement",
+    ),
     Mutation("requirements", "<tr><td>227</td>", "<tr><td>227-disabled</td>",
              "Appendix C #227 disposition"),
     Mutation("hardening", "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",

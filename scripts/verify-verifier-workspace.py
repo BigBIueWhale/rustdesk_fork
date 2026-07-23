@@ -13595,6 +13595,37 @@ def validate_windows_helper_authority_contract(sources):
             "windows_helper_kvm_guestfish_run",
             label + " exact KVM wrapper",
         )
+    provision = sources["windows_provision"]
+    existing_golden = provision[
+        provision.index('    if [ -f "$GOLDEN" ]; then') : provision.index("    build_media")
+    ]
+    require_order(
+        existing_golden,
+        (
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "if golden_has_done_marker; then",
+        ),
+        "Windows provision existing-golden hash-before-inspection",
+    )
+    provision_loop = provision[provision.index("    while true; do") :]
+    require_order(
+        provision_loop,
+        (
+            "if golden_has_done_marker; then",
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "golden Win11 template built:",
+        ),
+        "Windows provision marker/final-hash/acceptance order",
+    )
+    require_order(
+        sources["windows_golden_verify"],
+        (
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "windows_helper_authority_open",
+            "windows_helper_kvm_guestfish_run",
+        ),
+        "Windows diagnostic golden hash-before-inspection",
+    )
     require_text(
         sources["verify"],
         "python3 scripts/verify-windows-helper-authority.py --repo . --self-test",
@@ -13604,6 +13635,11 @@ def validate_windows_helper_authority_contract(sources):
         sources["requirements"],
         '<span class="id">R-S11ch</span>',
         "Windows helper authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "provision-owned in-progress leaf solely to test its terminal completion marker",
+        "Windows provision-time golden hash-order requirement",
     )
     require_text(
         sources["requirements"],
@@ -30779,6 +30815,20 @@ def run_source_mutations(sources):
             "Windows provision exact read-only golden mount",
         ),
         (
+            "windows_provision",
+            '                if golden_has_done_marker; then\n'
+            '                    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            '                if golden_has_done_marker; then\n'
+            "                    true # final golden hash removed",
+            "Windows provision marker/final-hash/acceptance order",
+        ),
+        (
+            "windows_golden_verify",
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "true # diagnostic golden prehash removed",
+            "Windows diagnostic golden hash-before-inspection",
+        ),
+        (
             "verify",
             "python3 scripts/verify-windows-helper-authority.py --repo . --self-test",
             "true # Windows helper authority verifier removed",
@@ -30789,6 +30839,12 @@ def run_source_mutations(sources):
             '<span class="id">R-S11ch</span>',
             '<span class="id">R-S11ch-disabled</span>',
             "Windows helper authority requirement",
+        ),
+        (
+            "requirements",
+            "provision-owned in-progress leaf solely to test its terminal completion marker",
+            "arbitrary in-progress tree before accepting any state",
+            "Windows provision-time golden hash-order requirement",
         ),
         (
             "requirements",

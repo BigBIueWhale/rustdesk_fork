@@ -8695,9 +8695,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   changed. This closes future one-time generator source/runtime authority only; current APK identity, device
   upgrade behavior, the complete R-B2 release transaction, native Apple/Windows evidence, and external review
   remain separate obligations.
-- **R-S11ch/R-S11e-100 — Windows helper container and KVM authority — SOURCE IMPLEMENTED;
-  FOCUSED MUTATION/WORKSPACE GATES AND DISPOSABLE NON-ROOT TCG/KVM PROBES PASS 2026-07-23;
-  EXACT COMMITTED-SOURCE EVIDENCE PENDING.** Platform: the unprivileged Linux build host and the pinned
+- **R-S11ch/R-S11e-100 — Windows helper container and KVM authority — SOURCE COMMITTED 2026-07-23
+  AT `bc3bb5be0083e0cbd6d124ecb7e70b1ed74c0c57`
+  (TREE `4003869e60bf43004634463f960b2b93918c37f3`); EXACT CLEAN-COMMIT FOCUSED/WORKSPACE/HARNESS
+  GATES AND DISPOSABLE NON-ROOT TCG/KVM/RELATIVE-OVERLAY PROBES PASS; ESTABLISHED-GOLDEN,
+  WINDOWS-ARTIFACT, AND RELEASE EVIDENCE PENDING.** Platform: the unprivileged Linux build host and the pinned
   Ubuntu helper used around the Windows KVM harness. Endpoint/action: WiX extraction, offline-ISO creation,
   output-disk creation, overlay EFI preparation, result extraction, MSI canonicalization, and read-only golden
   completion/inventory inspection. Boundary: caller Docker authority, captured helper/archive bytes, private
@@ -8756,17 +8758,32 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   consumer shapes, fixed image/client/config, archive/kernel derivation and pins, provenance-reader confinement,
   exact mounts, relative overlay, sole KVM grant, forbidden authority, R-S11ch, Appendix C #227, this ledger,
   operator documentation, shared-gate wiring, and independent workspace ownership through deliberate mutations.
-  Exact immutable source verification has not yet been committed; that source/evidence identity will be recorded
-  after the focused and workspace gates are rerun from the clean commit.
+  From the exact clean source commit/tree above, the focused verifier rejected all 39 deliberate weakenings
+  under immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`;
+  the independent workspace source-mutation catalog passed under the same image. The broader Windows-harness
+  verifier passed 139 mutations and four bounded behavioral suites under exact helper image
+  `sha256:aa9abae2debc838591649fb0b7b94f9f2f24e7848c699cd70e1103a690db21ce`.
+  Dependency inventory and all 103 inventory self-tests, Bash syntax and isolated Python bytecode compilation,
+  offline-image-provenance self-test, native-codec normal/negative gates, `git diff --check`, and synchronized
+  requirements SHA-256 `b3925b07de72130f148c0c47338aa3c6089f12360cab8a84a51410f51fb07e92`
+  also passed from that clean commit. The monolithic `scripts/verify.sh` was deliberately not invoked because it
+  includes two UID-0 containers with `CAP_CHOWN`/`CAP_FOWNER`; running those would have violated this
+  investigation's explicit no-root boundary. Its R-S11ch focused gate and independent ownership binding were
+  instead executed directly under the non-root confined images above. No full-verifier verdict is claimed.
 
   Disposable private 64-MiB raw disks exercised the production runtime under both TCG and the exact KVM
   authorization. Both completed partition/VFAT guestfish operations as UID/GID 1000 with the exact derived
   kernel, zero added capabilities, no network, read-only root, no-new-privileges, and bounded scratch/resources;
-  outputs remained current-user owned and were removed. A separate derivation/provenance run verified the exact
-  archive and image before and after extraction. These probes did not open the established golden, boot or
-  define a VM/domain, compile Windows/RustDesk, access a host service, or inspect/change host RustDesk,
-  listeners, firewall/UFW/nftables/iptables, or host network state. Full golden behavior, Windows artifacts,
-  double-build equality, and the complete cold release remain R-B2 obligations.
+  outputs remained current-user mode-0600 single-link files and were removed. A production-layout disposable
+  qcow2 overlay recorded `../golden.qcow2`, resolved the exact synthetic read-only base at the same identity
+  inside the container, accepted a write through the overlay, and returned that byte through a separate
+  read-only invocation. A deliberately mode-0644 writable probe was rejected before its helper launch; the
+  production `umask 077` shape then passed. Archive/image provenance and the independent derived-kernel pin were
+  reproved before and after extraction. These exact-commit probes built or pulled no image and did not open the
+  established golden, boot or define a VM/domain, compile Windows/RustDesk, access a host service, or
+  inspect/change host RustDesk, listeners, firewall/UFW/nftables/iptables, or host network state. Full golden
+  behavior, Windows artifacts, double-build equality, and the complete cold release remain R-B2 obligations.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of

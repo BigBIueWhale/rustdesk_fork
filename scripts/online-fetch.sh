@@ -619,6 +619,193 @@ require_online_fetch_builder_image() {
     assert_online_fetch_docker_authority
 }
 
+cargo_tool_output_tool() {
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-cargo-tool-output.py" "$@"
+}
+
+cargo_tool_output_semantic_args() {
+    local kind="$1" tool_version
+    case "$kind" in
+        frb) tool_version="$FLUTTER_RUST_BRIDGE_VERSION" ;;
+        cargo-ndk) tool_version="$CARGO_NDK_VERSION" ;;
+        *) die "unsupported networked Cargo tool kind: $kind" ;;
+    esac
+    printf '%s\0' \
+        --kind "$kind" \
+        --tool-version "$tool_version" \
+        --rust-version "$RUST_VERSION"
+}
+
+retire_cargo_tool_output_staging() {
+    local staging="$1" staging_id="$2" kind="$3" disposition
+    disposition="$(
+        cargo_tool_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            --kind "$kind"
+    )" || die "cannot reconcile private $kind Cargo tool staging"
+    log "$kind Cargo tool staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private $kind Cargo tool staging traversal"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private $kind Cargo tool staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private $kind Cargo tool staging survived retirement"
+}
+
+recover_cargo_tool_output_staging() {
+    local kind="$1" stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-cargo-tool-$kind.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved $kind Cargo tool staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_cargo_tool_output_staging "$staging" "$staging_id" "$kind"
+    done
+}
+
+stage_cargo_installed_tool() {
+    local kind="$1" builder="$2"
+    local role package binary tool_version features destination
+    case "$kind:$builder" in
+        "frb:$DEB_BUILDER_IMAGE_ID")
+            role=deb-builder
+            package=flutter_rust_bridge_codegen
+            binary=flutter_rust_bridge_codegen
+            tool_version="$FLUTTER_RUST_BRIDGE_VERSION"
+            features=uuid
+            destination=frb-tool
+            ;;
+        "cargo-ndk:$ANDROID_BUILDER_IMAGE_ID")
+            role=android-builder
+            package=cargo-ndk
+            binary=cargo-ndk
+            tool_version="$CARGO_NDK_VERSION"
+            features=
+            destination=cargo-ndk-tool
+            ;;
+        *) die "networked Cargo tool request is outside the closed producer set" ;;
+    esac
+    local status=0 input_status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id output_id
+    local semantic_args=()
+    require_online_fetch_builder_image "$role" "$builder"
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for $kind Cargo tool serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Cargo tool output transaction already owns the online root"
+    verify_sha256 \
+        "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"
+    recover_cargo_tool_output_staging "$kind"
+    mapfile -d '' semantic_args < <(cargo_tool_output_semantic_args "$kind")
+    if [ -e "$ONLINE_DIR/$destination" ] || [ -L "$ONLINE_DIR/$destination" ]; then
+        cargo_tool_output_tool check-complete \
+            --online "$ONLINE_DIR" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${semantic_args[@]}" \
+            || die "existing $kind Cargo tool is incomplete or structurally unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the $kind Cargo tool transaction lock"
+        exec {lock_fd}<&-
+        log "$kind Cargo tool already staged and semantically verified, skipping"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-cargo-tool-$kind.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private $kind Cargo tool staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! cargo_tool_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${semantic_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed $kind Cargo tool preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed $kind Cargo tool preparation left non-retirable private staging"
+        die "cannot prepare private $kind Cargo tool staging"
+    fi
+    output_id="$(/usr/bin/stat -c '%d:%i' -- "$staging/output")"
+    log "installing pinned $package $tool_version into private checked output; ./online is read-only"
+    online_docker_run \
+        --env CARGO_TOOL_PACKAGE="$package" \
+        --env CARGO_TOOL_BINARY="$binary" \
+        --env CARGO_TOOL_VERSION="$tool_version" \
+        --env CARGO_TOOL_FEATURES="$features" \
+        --env RUST_VERSION="$RUST_VERSION" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$staging/output,target=/outputs/tool" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            toolchain="/tmp/toolchain"
+            archive="/online/rust-${RUST_VERSION}.tar.xz"
+            installer="$toolchain/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu/install.sh"
+            mkdir -p "$toolchain" /tmp/home /tmp/cargo-home /tmp/cargo-target
+            tar -C "$toolchain" -xf "$archive"
+            "$installer" --prefix=/tmp/rust --disable-ldconfig \
+                --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+            export HOME=/tmp/home
+            export CARGO_HOME=/tmp/cargo-home
+            export CARGO_TARGET_DIR=/tmp/cargo-target
+            export PATH=/tmp/rust/bin:$PATH
+            install_args=(
+                cargo install "$CARGO_TOOL_PACKAGE"
+                --version "$CARGO_TOOL_VERSION"
+                --locked
+                --root /outputs/tool
+                --bin "$CARGO_TOOL_BINARY"
+                --target x86_64-unknown-linux-gnu
+                --profile release
+            )
+            if [ -n "$CARGO_TOOL_FEATURES" ]; then
+                install_args+=(--features "$CARGO_TOOL_FEATURES")
+            fi
+            "${install_args[@]}"
+        ' || status=$?
+    (
+        verify_sha256 \
+            "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"
+    ) || input_status=$?
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging/output" --expected-identity "$output_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private $kind Cargo tool output traversal"
+    cargo_tool_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${semantic_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        cargo_tool_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${semantic_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_cargo_tool_output_staging "$staging" "$staging_id" "$kind"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the $kind Cargo tool transaction lock"
+    exec {lock_fd}<&-
+    [ "$input_status" -eq 0 ] || die "networked $kind Cargo tool input postcondition failed"
+    [ "$output_status" -eq 0 ] || die "networked $kind Cargo tool output postcondition failed"
+    [ "$status" -eq 0 ] || die "networked $kind Cargo tool producer failed"
+    [ "$publication_status" -eq 0 ] || die "networked $kind Cargo tool publication failed"
+}
+
 # ── The FRB codegen tool (R-B7): built FOR ubuntu:18.04, staged to ./online/frb-tool ──
 # build_one needs flutter_rust_bridge_codegen to (re)generate the bridge; it cannot
 # `cargo install` it offline (its deps are not in the main vendor set), so build it HERE
@@ -626,21 +813,7 @@ require_online_fetch_builder_image() {
 # bridge.yml does: `cargo install ... --version <pin> --features uuid --locked`.
 build_frb_codegen() {
     local builder="$DEB_BUILDER_IMAGE_ID"
-    require_online_fetch_builder_image deb-builder "$builder"
-    if [ -x "$ONLINE_DIR/frb-tool/bin/flutter_rust_bridge_codegen" ]; then
-        log "frb codegen tool already staged, skipping"; return 0
-    fi
-    log "building flutter_rust_bridge_codegen ${FLUTTER_RUST_BRIDGE_VERSION} for ubuntu:18.04 -> ./online/frb-tool"
-    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-        TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-1.*.tar.xz
-        "$TC"/rust-1.*/install.sh --prefix=/tmp/rust --disable-ldconfig \
-            --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview >/dev/null
-        export HOME=/tmp/home; mkdir -p "$HOME"
-        export PATH=/tmp/rust/bin:$PATH
-        cargo install flutter_rust_bridge_codegen --version '"${FLUTTER_RUST_BRIDGE_VERSION}"' \
-            --features uuid --locked --root /online/frb-tool
-    '
+    stage_cargo_installed_tool frb "$builder"
 }
 
 # ── The flutter pub cache (R-B7): hosted + git deps, staged to ./online/pub-cache ──
@@ -905,20 +1078,7 @@ stage_vcpkg_natives_arm64() {
 # (`cargo install cargo-ndk --version <pin> --locked`). A host-target tool → ./online/cargo-ndk-tool.
 stage_cargo_ndk() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
-    require_online_fetch_builder_image android-builder "$builder"
-    if [ -x "$ONLINE_DIR/cargo-ndk-tool/bin/cargo-ndk" ]; then
-        log "cargo-ndk already staged, skipping"; return 0
-    fi
-    log "installing cargo-ndk ${CARGO_NDK_VERSION} for the android-builder image -> ./online/cargo-ndk-tool"
-    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-        TC=/tmp/tc; mkdir -p "$TC"; tar -C "$TC" -xf /online/rust-1.*.tar.xz
-        "$TC"/rust-1.*/install.sh --prefix=/tmp/rust --disable-ldconfig \
-            --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
-        export HOME=/tmp/home; mkdir -p "$HOME"
-        export PATH=/tmp/rust/bin:$PATH
-        cargo install cargo-ndk --version '"${CARGO_NDK_VERSION}"' --locked --root /online/cargo-ndk-tool
-    '
+    stage_cargo_installed_tool cargo-ndk "$builder"
 }
 
 # ── The Android SDK (build-tools + platform), via sdkmanager ────────────────────────

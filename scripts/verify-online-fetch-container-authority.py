@@ -162,7 +162,23 @@ def validate(sources: Dict[str, str]) -> None:
         "closed image-provenance environment",
     )
 
-    require_count(shell, "online_docker_run ", 10, "ordinary acquisition launch inventory")
+    require_count(shell, "online_docker_run ", 9, "ordinary acquisition launch inventory")
+    require_count(
+        shell,
+        "stage_cargo_installed_tool ",
+        2,
+        "closed Cargo-tool producer invocations",
+    )
+    require(
+        shell,
+        'stage_cargo_installed_tool frb "$builder"',
+        "FRB typed producer invocation",
+    )
+    require(
+        shell,
+        'stage_cargo_installed_tool cargo-ndk "$builder"',
+        "cargo-ndk typed producer invocation",
+    )
     require_count(shell, "online_docker run ", 1, "sole ordinary Docker run primitive")
     for token, label in (
         ("--pull=", "pull policy"),
@@ -192,8 +208,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         "require_online_fetch_builder_image ",
-        10,
-        "per-launch exact-image verification",
+        9,
+        "per-launch-site exact-image verification",
     )
 
     for token, label in (

@@ -262,10 +262,21 @@ def validate(sources: Dict[str, str]) -> None:
 MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("shell", '/usr/bin/chmod 0700 "$ONLINE_DIR"',
              '/usr/bin/chmod 0775 "$ONLINE_DIR"', "private online root"),
-    Mutation("shell", '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
-             "true # output transaction unlocked", "exclusive transaction lock"),
-    Mutation("shell", 'target=/online,readonly,bind-recursive=disabled',
-             "target=/online", "read-only online input"),
+    Mutation(
+        "shell",
+        '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \\\n'
+        '        || die "another Gradle output transaction already owns the online root"',
+        "true # Gradle output transaction unlocked",
+        "exclusive transaction lock",
+    ),
+    Mutation(
+        "shell",
+        '--mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \\\n'
+        '        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home"',
+        '--mount "type=bind,source=$ONLINE_DIR,target=/online" \\\n'
+        '        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home"',
+        "read-only online input",
+    ),
     Mutation("shell", 'source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home',
              'source=$ONLINE_DIR,target=/outputs/gradle-home', "narrow Gradle output"),
     Mutation("shell", 'source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk',

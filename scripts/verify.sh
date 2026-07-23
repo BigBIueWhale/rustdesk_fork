@@ -281,6 +281,21 @@ else
   echo "  ok  R-S11cl the networked Gradle warmer sees read-only online inputs, writes only private cache/SDK outputs, validates them, and uses recoverable checked publication"
 fi
 
+echo "== (0k) online-fetch Cargo-tool output authority (R-S11cm/R-S11e-105) =="
+r_s11cm=
+if ! /usr/bin/python3 -I -S scripts/online-cargo-tool-output.py self-test; then
+  r_s11cm="$r_s11cm transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-tool-output-authority.py --repo . --self-test; then
+  r_s11cm="$r_s11cm authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cm" ]; then
+  echo "  FAIL R-S11cm online-fetch Cargo-tool output authority:$r_s11cm"
+  rc=1
+else
+  echo "  ok  R-S11cm the two networked Cargo installers see read-only online inputs, write one private tool root, validate exact Cargo metadata and ELF identity, and publish recoverably without clobber"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

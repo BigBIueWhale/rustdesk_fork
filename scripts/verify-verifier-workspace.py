@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+        "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14057,7 +14057,9 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         ("prepare_gradle_output_staging() {", "Gradle-output staging constructor"),
         ('"$ONLINE_DIR/.rustdesk-gradle-warm.XXXXXXXXXX"',
          "Gradle-output unpredictable same-parent staging"),
-        ("target=/online,readonly,bind-recursive=disabled",
+        ('source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \\\n'
+         '        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,'
+         'target=/outputs/gradle-home',
          "Gradle-output read-only online mount"),
         ('source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home',
          "Gradle-output narrow Gradle mount"),
@@ -14159,6 +14161,168 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority",
         "online-fetch Gradle output authority hardening ledger",
+    )
+
+
+def validate_online_fetch_cargo_tool_output_authority_contract(sources):
+    focused = sources["online_fetch_cargo_tool_output_authority_verifier"]
+    helper = sources["online_cargo_tool_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        ("Cargo-tool output lifecycle", "Cargo-tool focused lifecycle binding"),
+        ("checked one-name publication", "Cargo-tool focused publication binding"),
+        ("pre/post Rust archive verification", "Cargo-tool focused input binding"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "Cargo-tool focused mutation inventory"),
+        ("run_mutations(sources)", "Cargo-tool focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("cargo_tool_output_tool() {", "Cargo-tool fixed output helper"),
+        ("cargo_tool_output_semantic_args() {", "Cargo-tool semantic mapper"),
+        ("recover_cargo_tool_output_staging() {", "Cargo-tool restart recovery"),
+        ("stage_cargo_installed_tool() {", "Cargo-tool closed producer funnel"),
+        ('"frb:$DEB_BUILDER_IMAGE_ID")', "Cargo-tool FRB builder binding"),
+        ('"cargo-ndk:$ANDROID_BUILDER_IMAGE_ID")',
+         "Cargo-tool cargo-ndk builder binding"),
+        ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+         "Cargo-tool exclusive transaction"),
+        ('"$ONLINE_DIR/.rustdesk-cargo-tool-$kind.XXXXXXXXXX"',
+         "Cargo-tool unpredictable staging"),
+        ('source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled',
+         "Cargo-tool read-only input mount"),
+        ('source=$staging/output,target=/outputs/tool',
+         "Cargo-tool narrow writable output"),
+        ('archive="/online/rust-${RUST_VERSION}.tar.xz"',
+         "Cargo-tool exact Rust archive"),
+        ('--version "$CARGO_TOOL_VERSION"', "Cargo-tool exact version request"),
+        ("--locked", "Cargo-tool packaged lockfile enforcement"),
+        ("--root /outputs/tool", "Cargo-tool private install root"),
+        ('--bin "$CARGO_TOOL_BINARY"', "Cargo-tool exact binary request"),
+        ("--target x86_64-unknown-linux-gnu", "Cargo-tool exact host target"),
+        ("--profile release", "Cargo-tool exact release profile"),
+        ("cargo_tool_output_tool verify", "Cargo-tool output postcondition"),
+        ("cargo_tool_output_tool publish", "Cargo-tool checked publication"),
+        ("retire_cargo_tool_output_staging", "Cargo-tool private retirement"),
+        ('[ "$status" -eq 0 ] && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+         "Cargo-tool publication barrier"),
+        ('stage_cargo_installed_tool frb "$builder"', "Cargo-tool typed FRB caller"),
+        ('stage_cargo_installed_tool cargo-ndk "$builder"',
+         "Cargo-tool typed cargo-ndk caller"),
+    ):
+        require_text(online, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_cargo_installed_tool() {",
+        "\n}\n\n# ── The FRB codegen tool",
+        "Cargo-tool output authority lifecycle",
+    )
+    require_exact_count(
+        lifecycle,
+        '"$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"',
+        2,
+        "Cargo-tool pre/post Rust archive checks",
+    )
+    require_absent(
+        lifecycle,
+        'source=$ONLINE_DIR,target=/online"',
+        "Cargo-tool broad writable online mount",
+    )
+    require_absent(
+        lifecycle,
+        "--root /online/",
+        "Cargo-tool direct final install root",
+    )
+    require_order(
+        lifecycle,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "verify_sha256",
+            "recover_cargo_tool_output_staging",
+            "check-complete",
+            "/usr/bin/mktemp -d",
+            "cargo_tool_output_tool prepare",
+            "online_docker_run",
+            ") || input_status=$?",
+            "restore-private-directory-modes.py",
+            "cargo_tool_output_tool verify",
+            "cargo_tool_output_tool publish",
+            "retire_cargo_tool_output_staging",
+            '"$FLOCK_BIN" --unlock "$lock_fd"',
+        ),
+        "Cargo-tool checked transaction order",
+    )
+    for text, label in (
+        ('STATE_NAME = ".rustdesk-cargo-tool-output-state-v1"',
+         "Cargo-tool bounded transaction record"),
+        ("TREE_LIMITS = (16, 4, 512 * 1024**2, 512 * 1024**2)",
+         "Cargo-tool output bounds"),
+        ("FORBIDDEN_MODE_BITS = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX",
+         "Cargo-tool set-id/sticky mode-bit closure"),
+        ('destination="frb-tool"', "Cargo-tool FRB destination"),
+        ('features=("uuid",)', "Cargo-tool FRB feature metadata"),
+        ('destination="cargo-ndk-tool"', "Cargo-tool cargo-ndk destination"),
+        ("features=()", "Cargo-tool cargo-ndk empty feature metadata"),
+        ("reject_descendant_mounts(canonical)", "Cargo-tool mount closure"),
+        ("if metadata.st_nlink != 1:\n"
+         '                    fail(f"Cargo tool file is multiply linked: {child_relative}")',
+         "Cargo-tool hardlink refusal"),
+        ("Cargo tool output contains a symlink", "Cargo-tool symlink refusal"),
+        ("Cargo tool output contains a special file", "Cargo-tool special-file refusal"),
+        ("if metadata.st_mode & FORBIDDEN_MODE_BITS:",
+         "Cargo-tool set-id/sticky mode-bit predicate"),
+        ("if attributes:", "Cargo-tool extended-attribute predicate"),
+        ("carries set-id/sticky mode bits", "Cargo-tool set-id/sticky mode-bit refusal"),
+        ("carries extended attributes", "Cargo-tool extended-attribute refusal"),
+        ("read_regular_prefix(binary, 64, TREE_LIMITS[3])",
+         "Cargo-tool bounded ELF read"),
+        ("machine != 62", "Cargo-tool x86-64 ELF identity"),
+        ('set(top_level) != {".crates.toml", ".crates2.json", "bin"}',
+         "Cargo-tool exact install inventory"),
+        ('"version_req": f"={tool_version}"', "Cargo-tool exact version metadata"),
+        ('"features": list(spec.features)', "Cargo-tool exact feature metadata"),
+        ('"rustc": RUSTC_1_75_DETAILS', "Cargo-tool exact compiler metadata"),
+        ("sync_tree(output)", "Cargo-tool output durability"),
+        ("RENAME_NOREPLACE = 1", "Cargo-tool no-clobber primitive"),
+        ('renameat2(staging_fd, "output", online_fd, spec.destination, RENAME_NOREPLACE)',
+         "Cargo-tool descriptor-relative publication"),
+        ("Cargo tool publication rollback also failed", "Cargo-tool rollback"),
+        ('return "unpublished"', "Cargo-tool unpublished recovery"),
+        ('return "published"', "Cargo-tool published recovery"),
+        ("state is incoherent and was preserved", "Cargo-tool ambiguous-state refusal"),
+        ("self-test accepted an occupied Cargo tool destination",
+         "Cargo-tool destination-race fixture"),
+        ("self-test accepted wrong Cargo installation metadata",
+         "Cargo-tool metadata negative fixture"),
+        ("self-test accepted extended attributes in Cargo tool output",
+         "Cargo-tool extended-attribute fixture"),
+        ("self-test accepted set-id mode bits in Cargo tool output",
+         "Cargo-tool set-id fixture"),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-tool-output-authority.py --repo . --self-test",
+        "Online-fetch Cargo-tool output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-cargo-tool-output.py self-test",
+        "Online-fetch Cargo-tool transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cm</span>',
+        "online-fetch Cargo-tool output authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>232</td>",
+        "online-fetch Cargo-tool output authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority",
+        "online-fetch Cargo-tool output authority hardening ledger",
     )
 
 
@@ -17508,6 +17672,7 @@ def validate_sources(sources):
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
     validate_online_fetch_gradle_output_authority_contract(sources)
+    validate_online_fetch_cargo_tool_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -29683,7 +29848,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231",
+            "R-S11n through R-S11cm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -31602,8 +31767,12 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "target=/online,readonly,bind-recursive=disabled",
-            "target=/online",
+            'source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \\\n'
+            '        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,'
+            'target=/outputs/gradle-home',
+            'source=$ONLINE_DIR,target=/online" \\\n'
+            '        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,'
+            'target=/outputs/gradle-home',
             "Gradle-output read-only online mount",
         ),
         (
@@ -31647,6 +31816,110 @@ def run_source_mutations(sources):
             "R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority",
             "R-S11cl/R-S11e-104 — ambient Gradle output authority",
             "online-fetch Gradle output authority hardening ledger",
+        ),
+        (
+            "online_fetch_cargo_tool_output_authority_verifier",
+            "Cargo-tool output lifecycle",
+            "Cargo-tool output sequence",
+            "Cargo-tool focused lifecycle binding",
+        ),
+        (
+            "online_fetch",
+            '"frb:$DEB_BUILDER_IMAGE_ID")',
+            '"frb:"*)',
+            "Cargo-tool FRB builder binding",
+        ),
+        (
+            "online_fetch",
+            '"cargo-ndk:$ANDROID_BUILDER_IMAGE_ID")',
+            '"cargo-ndk:"*)',
+            "Cargo-tool cargo-ndk builder binding",
+        ),
+        (
+            "online_fetch",
+            '"$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"',
+            '"$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$untrusted_hash"',
+            "Cargo-tool pre/post Rust archive checks",
+        ),
+        (
+            "online_fetch",
+            'source=$staging/output,target=/outputs/tool',
+            'source=$ONLINE_DIR,target=/outputs/tool',
+            "Cargo-tool narrow writable output",
+        ),
+        (
+            "online_fetch",
+            "--root /outputs/tool",
+            "--root /online/frb-tool",
+            "Cargo-tool private install root",
+        ),
+        (
+            "online_fetch",
+            '[ "$status" -eq 0 ] && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+            '[ "$status" -eq 0 ]',
+            "Cargo-tool publication barrier",
+        ),
+        (
+            "online_cargo_tool_output_helper",
+            "if metadata.st_nlink != 1:\n"
+            '                    fail(f"Cargo tool file is multiply linked: {child_relative}")',
+            "if metadata.st_nlink < 1:\n"
+            '                    fail(f"Cargo tool file is multiply linked: {child_relative}")',
+            "Cargo-tool hardlink refusal",
+        ),
+        (
+            "online_cargo_tool_output_helper",
+            "read_regular_prefix(binary, 64, TREE_LIMITS[3])",
+            "read_regular(binary, TREE_LIMITS[3])",
+            "Cargo-tool bounded ELF read",
+        ),
+        (
+            "online_cargo_tool_output_helper",
+            "if metadata.st_mode & FORBIDDEN_MODE_BITS:",
+            "if False:",
+            "Cargo-tool set-id/sticky mode-bit predicate",
+        ),
+        (
+            "online_cargo_tool_output_helper",
+            "if attributes:",
+            "if False:",
+            "Cargo-tool extended-attribute predicate",
+        ),
+        (
+            "online_cargo_tool_output_helper",
+            'renameat2(staging_fd, "output", online_fd, spec.destination, RENAME_NOREPLACE)',
+            "os.replace(output, destination)",
+            "Cargo-tool descriptor-relative publication",
+        ),
+        (
+            "online_cargo_tool_output_helper",
+            "state is incoherent and was preserved",
+            "state was discarded",
+            "Cargo-tool ambiguous-state refusal",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-tool-output-authority.py --repo . --self-test",
+            "true # online-fetch Cargo-tool output authority gate removed",
+            "Online-fetch Cargo-tool output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cm</span>',
+            '<span class="id">R-S11cm-disabled</span>',
+            "online-fetch Cargo-tool output authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>232</td>",
+            "<tr><td>232-disabled</td>",
+            "online-fetch Cargo-tool output authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority",
+            "R-S11cm/R-S11e-105 — ambient Cargo-tool output authority",
+            "online-fetch Cargo-tool output authority hardening ledger",
         ),
         (
             "android_main_service",
@@ -32888,6 +33161,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_gradle_output_helper": (
                 repo / "scripts/online-gradle-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_cargo_tool_output_authority_verifier": (
+                repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_cargo_tool_output_helper": (
+                repo / "scripts/online-cargo-tool-output.py"
             ).read_text(encoding="utf-8"),
             "android_apk_build": (
                 repo / "scripts/android-apk-build.sh"

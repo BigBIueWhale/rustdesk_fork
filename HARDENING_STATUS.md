@@ -9145,10 +9145,107 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   networked Gradle acquisition was also not run, so this is source, transaction, negative-fixture,
   and authority-boundary evidence rather than cold acquisition-output reproduction. No networked
   acquisition, image pull/build/tag, release build, or host
-  RustDesk/service/listener/firewall/network operation was executed for this source slice. Other
-  networked producers still have broad writable online mounts; host-side download/extraction and
-  maintenance candidate-image publication, exact cold R-B2 artifacts, native/device evidence, and
-  external R-V3 review remain open.
+  RustDesk/service/listener/firewall/network operation was executed for this source slice. R-S11cm/
+  R-S11e-105 immediately following closes the two Cargo-installed tool outputs. Pub, vcpkg, SDK, and
+  archive producers still have separate broad writable online mounts; host-side download/extraction
+  and maintenance candidate-image publication, exact cold R-B2 artifacts, native/device evidence,
+  and external R-V3 review remain open.
+- **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — SOURCE IMPLEMENTED
+  2026-07-24; CONFINED TRANSACTION/FIXTURE EVIDENCE RECORDED; OTHER ONLINE PRODUCERS AND EXACT COLD
+  RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the immutable
+  Debian/Android builder containers. Endpoint/action: `scripts/online-fetch.sh::build_frb_codegen` and
+  `stage_cargo_ndk`, which use networked Cargo registry resolution to install
+  `flutter_rust_bridge_codegen` 1.80.1 and `cargo-ndk` 3.1.2. Boundary: registry package/build-script
+  execution ↔ the complete pinned offline-input closure and durable tool-root publication.
+
+  Before this slice each installer bind-mounted `$ONLINE_DIR` read-write at `/online` and wrote its
+  final Cargo installation root there directly. The legitimate output was one small host-tool tree,
+  but the same mount gave package and build-script execution write/delete authority over all Cargo/Pub
+  state, NDK/vcpkg/native trees, toolchain and builder archives, Windows inputs, and every other cached
+  release input. R-S11cj's numeric non-root container limited that authority to the invoking user's
+  files but did not make the broad bind admissible. This is source-proven acquisition-input and
+  output-publication authority, not evidence that a cached input changed, a container escaped, host
+  root was acquired, a listener was exposed, host RustDesk/service/firewall/network state changed,
+  exploitation occurred, or the host was compromised.
+
+  `online-fetch.sh` now routes both operations through one closed two-kind producer funnel. The FRB
+  kind is accepted only with the immutable Debian builder, exact package/binary/version pin, and sole
+  `uuid` feature; cargo-ndk is accepted only with the immutable Android builder, exact package/binary/
+  version pin, and no feature override. The existing acquisition confinement remains unchanged:
+  intentional outbound bridge egress, immutable already-loaded image ID, numeric UID:GID, no pull,
+  read-only root, all capabilities dropped, no-new-privileges, bounded resources/tmpfs, no published
+  port, no Docker socket, and no host namespace.
+
+  The host holds an exclusive lock over the complete tool transaction, verifies the exact pinned Rust
+  1.75 archive SHA-256 before launch and after producer termination, and reconciles every matching
+  reserved transaction before inspecting a final name. A cold run creates unpredictable mode-0700
+  same-filesystem staging and a bounded, mode-0600, fsynced state record binding the exact online,
+  staging, output, kind, tool-version, and Rust-version identities. The producer sees all of `/online`
+  only through `readonly,bind-recursive=disabled`; its sole writable host mount is the exact staged
+  root at `/outputs/tool`. Cargo home, target, and process home stay in bounded container scratch.
+  Cargo receives the fixed package and bare exact version plus `--locked`, exact `--bin`, release
+  profile, `x86_64-unknown-linux-gnu` target, pinned Rust compiler, and only the fixed kind feature.
+  Neither producer retains a path that writes `frb-tool` or `cargo-ndk-tool` directly.
+
+  `scripts/online-cargo-tool-output.py` rejects noncanonical roots, descendant mounts, filesystem
+  crossings, nonportable names, symlinks, special objects, external hardlinks/multiply linked files,
+  set-id/sticky mode bits, extended attributes, foreign ownership, group/world-writable published
+  state, unstable reads, changed root identity, or excess depth/count/bytes. It admits exactly
+  `.crates.toml`, `.crates2.json`, and one `bin` child.
+  Both Cargo metadata forms must canonically identify the exact crates.io registry package/version,
+  expected binary, exact features, release profile, host target, and complete pinned Rust 1.75 compiler
+  build record. The sole binary must be nonempty/executable and have a bounded canonical 64-bit
+  little-endian System V x86-64 ELF header and valid program-header bounds. Existing historical
+  root-owned output is only read-only checked by this same semantic validator; a new transaction
+  accepts only current-identity-owned staged bytes.
+
+  Producer, Rust-input, output, and publication verdicts are accumulated independently. Publication
+  is attempted only when the first three are green. Every output file and directory is fsynced before
+  descriptor-relative `renameat2(RENAME_NOREPLACE)` installs the still-absent final name and the two
+  namespace directories are fsynced. A later identity/semantic failure moves that exact inode back
+  without clobber. Restart recovery accepts only the exact recorded unpublished or published inode
+  arrangement; every incoherent state is preserved and rejected. The established exact-owner/mount-
+  bound directory restorer and external-inode-closure remover retire reconciled private staging.
+
+  The design follows primary contracts. Cargo documents `cargo install` exact version, `--locked`,
+  `--root`, binary, feature, target, and profile selection and the installation metadata under the
+  selected root: https://doc.rust-lang.org/cargo/commands/cargo-install.html. Docker documents that
+  bind mounts are writable by default and defines `readonly` plus recursive bind controls:
+  https://docs.docker.com/engine/storage/bind-mounts/. Linux documents descriptor-relative
+  `RENAME_NOREPLACE` and the explicit directory fsync required for durable names:
+  https://man7.org/linux/man-pages/man2/renameat2.2.html and
+  https://man7.org/linux/man-pages/man2/fsync.2.html.
+
+  The executable helper self-test covers both kinds' normal validation, no-clobber publication,
+  completed and unpublished recovery, an occupied destination, wrong Cargo metadata, and symlink
+  rejection. A Cargo 1.75 fixture independently confirmed the real `.crates.toml`/`.crates2.json`
+  layouts used by the validator, and read-only inspection of the established cached tools confirmed
+  the exact registry/version/features/target/compiler records for both pinned packages without
+  changing them. Because the live host cache root is currently mode 0775 and this slice was forbidden
+  to normalize host state merely for a test, both exact tool trees were copied from the read-only
+  source mount into a mode-0700 verifier-tmpfs online root; the production `check-complete` command
+  accepted both complete byte trees there. The focused Cargo-tool verifier passes and rejects all 36
+  deliberate mutations. The independent workspace verifier passes normally and with its complete
+  source-mutation inventory after that inventory exposed and closed older cross-producer Gradle/Cargo
+  mount-token masking. The adjacent Gradle source gate rejects all 34 mutations, the Gradle output gate
+  rejects all 30, and the acquisition-container gate rejects all 29. Directory-restoration, Android
+  exact-source comparison, Gradle and Cargo output transaction, and offline image-provenance self-tests
+  pass. Dependency inventory passes normally and rejects all 103 mutations (905 Cargo packages/36 Git
+  records, 199 Flutter lock packages, and 871 lexical `unsafe {` blocks across 247 tracked Rust files);
+  native-codec normal/mutation, Bash/Python syntax, requirements hash
+  `f4a9f588f536111f9068153169cd5fcdf08d5b782ad4f5d4b7cef3a4c32ec9b5`, and diff-hygiene
+  checks pass. These gates bind the closed kind/image/package/version/feature mapping, exact mounts and
+  Cargo arguments, pre/post input checks, verdict barrier, structural/semantic checks, durability,
+  no-clobber rollback/recovery, shared gate, R-S11cm, Appendix C #232, and this ledger.
+
+  No real networked Cargo installation was run, so this is source, transaction, real-metadata,
+  negative-fixture, and authority-boundary evidence rather than cold acquisition reproduction.
+  Cargo's packaged lockfile is enforced but independent registry-package provenance/reproducible
+  binary hashing remains outside this output-authority slice. Pub, vcpkg, SDK, and archive producers,
+  host-side downloads/extractions, maintenance candidate-image publication, exact cold R-B2 artifacts,
+  native/device evidence, and external R-V3 review remain open. No online acquisition, networked
+  producer, image pull/build/tag, release build, root command, or host RustDesk process/service/config/
+  listener/firewall/network operation was executed for this slice.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -9866,9 +9963,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-6a7246105673a29b1ce698fd7c6de607c0dd83ae9d0faacc68481d77466c1819  requirements.html
+f4a9f588f536111f9068153169cd5fcdf08d5b782ad4f5d4b7cef3a4c32ec9b5  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cl, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#231. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cm, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#232. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

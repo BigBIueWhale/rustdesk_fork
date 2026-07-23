@@ -8861,6 +8861,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   private source/vendor/output topology, complete three-launch inventory, confinement and resource flags,
   locked/offline command, forbidden legacy authority, setup/execution/postcondition order, R-S11ci, Appendix C
   #228, this ledger, shared-gate wiring, and independent workspace ownership through deliberate mutations.
+  Source commit `328db288188fd0a0e8b9fc62d5eb0099709ac934` established the authority envelope; the
+  fresh-target probe then exposed the parallel log-classification race, and source commit
+  `5dad3a44071a3c5796d7438b346cf02e305ce059`, tree
+  `2a70064cf8a35a6a97b3f14247a397d872122c15`, made the verdict serialized and order-sensitive.
   Its focused normal/self-test passes and rejects 40 deliberate weakenings. The independent workspace semantic
   verifier passes both normal validation and its complete in-memory source-mutation catalog, including separate
   mutations of the focused rejection logic, actual common launch, Dockerfile content pin, shared wiring,
@@ -8871,10 +8875,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   synchronized requirements SHA-256
   `a90bc33f6d26a92d41e85d2b13cd73cf66c0e027bbbe842a215b2730f09e82b3`, and diff checks pass.
 
-  A separate private source/vendor snapshot and freshly emptied target per triple exercised the exact
-  locked/offline cross-check command in the pinned Apple image with UID/GID 1000, no network, read-only
-  root/source/vendor, zero capabilities, no-new-privileges, and the production resource ceilings. An initial
-  parallel diagnostic proved the old existence-only marker test was scheduler-dependent: a workspace
+  From the clean exact final source commit, a separate private source/vendor snapshot and freshly emptied target
+  per triple exercised the exact locked/offline cross-check command in the pinned Apple image with UID/GID 1000,
+  no network, read-only root/source/vendor, zero capabilities, no-new-privileges, and the production resource
+  ceilings. The vendor closure was independently verified before and after the matrix. An initial parallel
+  diagnostic proved the old existence-only marker test was scheduler-dependent: a workspace
   build-script line could race ahead of the missing-header report. After the gate was serialized and changed to
   require an ordered workspace-library `Checking` line, all three targets—`aarch64-apple-darwin`,
   `x86_64-apple-darwin`, and `aarch64-apple-ios`—failed earlier while pinned `coreaudio-sys 0.2.15` tried to

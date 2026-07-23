@@ -46,7 +46,9 @@ use hbb_common::{
     tokio_util::codec::{BytesCodec, Framed},
 };
 #[cfg(target_os = "android")]
-use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
+use scrap::android::{
+    call_main_service_key_event_for_generation, call_main_service_pointer_input_for_generation,
+};
 use scrap::camera;
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
@@ -2483,6 +2485,8 @@ pub struct Connection {
     tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
     authorized: bool,
     credential_generation: u64,
+    #[cfg(target_os = "android")]
+    android_server_generation: u64,
     keyboard: bool,
     clipboard: bool,
     audio: bool,
@@ -2634,6 +2638,7 @@ impl Connection {
         server: super::ServerPtrWeak,
         control_permissions: Option<ControlPermissions>,
         credential_generation: u64,
+        android_generation: Option<u64>,
     ) {
         // Android is not supported yet, so we always set control_permissions to None.
         #[cfg(target_os = "android")]
@@ -2684,6 +2689,8 @@ impl Connection {
             tx_to_cm,
             authorized: false,
             credential_generation,
+            #[cfg(target_os = "android")]
+            android_server_generation: android_generation.unwrap_or_default(),
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
             clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
             audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
@@ -2772,7 +2779,7 @@ impl Connection {
             return;
         }
         #[cfg(target_os = "android")]
-        start_channel(rx_to_cm, tx_from_cm);
+        start_channel(rx_to_cm, tx_from_cm, conn.android_server_generation);
         #[cfg(target_os = "android")]
         conn.send_permission(Permission::Keyboard, conn.keyboard)
             .await;
@@ -4600,9 +4607,13 @@ impl Connection {
                             );
                             return false;
                         }
-                        if let Err(e) =
-                            call_main_service_pointer_input("mouse", me.mask, me.x, me.y)
-                        {
+                        if let Err(e) = call_main_service_pointer_input_for_generation(
+                            self.android_server_generation,
+                            "mouse",
+                            me.mask,
+                            me.x,
+                            me.y,
+                        ) {
                             log::debug!("call_main_service_pointer_input fail:{}", e);
                         }
                     }
@@ -4667,7 +4678,8 @@ impl Connection {
                             Some(pointer_device_event::Union::TouchEvent(touch)) => {
                                 match touch.union {
                                     Some(touch_event::Union::PanStart(pan_start)) => {
-                                        call_main_service_pointer_input(
+                                        call_main_service_pointer_input_for_generation(
+                                            self.android_server_generation,
                                             "touch",
                                             4,
                                             pan_start.x,
@@ -4675,7 +4687,8 @@ impl Connection {
                                         )
                                     }
                                     Some(touch_event::Union::PanUpdate(pan_update)) => {
-                                        call_main_service_pointer_input(
+                                        call_main_service_pointer_input_for_generation(
+                                            self.android_server_generation,
                                             "touch",
                                             5,
                                             pan_update.x,
@@ -4683,8 +4696,12 @@ impl Connection {
                                         )
                                     }
                                     Some(touch_event::Union::PanEnd(pan_end)) => {
-                                        call_main_service_pointer_input(
-                                            "touch", 6, pan_end.x, pan_end.y,
+                                        call_main_service_pointer_input_for_generation(
+                                            self.android_server_generation,
+                                            "touch",
+                                            6,
+                                            pan_end.x,
+                                            pan_end.y,
                                         )
                                     }
                                     _ => Ok(()),
@@ -4769,7 +4786,10 @@ impl Connection {
 
                     match encode_result {
                         Ok(data) => {
-                            let result = call_main_service_key_event(&data);
+                            let result = call_main_service_key_event_for_generation(
+                                self.android_server_generation,
+                                &data,
+                            );
                             if let Err(e) = result {
                                 log::debug!("call_main_service_key_event fail: {}", e);
                             }

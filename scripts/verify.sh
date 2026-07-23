@@ -11974,20 +11974,31 @@ fi
 # MediaProjection itself is a revocable exact owner: its callback must be registered before a
 # VirtualDisplay is created, onStop must invalidate only that exact owner and fully release its
 # pipeline, and active state may commit only after a non-null VirtualDisplay exists. Capture demand
-# is the live authorized Remote set; FileTransfer, ViewCamera, Terminal, and PortForward sessions do
-# not count. The already-validated CmAuthConnType crosses the Rust→Kotlin bridge intact; neither
-# side may reconstruct Remote by negating parallel presentation fields.
+# is a service-owned exact set of live authorized Remote connection IDs; FileTransfer, ViewCamera,
+# Terminal, and PortForward sessions do not count. Independent Rust connection tasks may deliver
+# add/remove callbacks concurrently, so MainService serializes complete owner-set mutation plus
+# capture reconciliation and no detached global stop edge exists. The already-validated
+# CmAuthConnType crosses the Rust→Kotlin bridge intact; neither side may reconstruct Remote by
+# negating parallel presentation fields. The listener generation crosses each accepted connection
+# and gates controlled-state/input JNI dispatch, so a stopped server's late callback cannot enter a
+# replacement MainService or stop its listener.
 echo "== Android MediaProjection lifecycle finality (R-S14/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
+r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
+r_s14_ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
+r_s14_ffi_rs=libs/scrap/src/android/ffi.rs
+r_s14_flutter=src/flutter.rs
+r_s14_flutter_ffi=src/flutter_ffi.rs
+r_s14_connection=src/server/connection.rs
+r_s14_direct_service=src/direct_service.rs
 r_s14_missing=
 grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null || r_s14_missing="$r_s14_missing android-not-not-sticky"
 grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null && r_s14_missing="$r_s14_missing android-sticky-return"
 on_destroy_block=$(sed -n '/override fun onDestroy()/,/super.onDestroy()/p' "$r_s14_kt")
 destroy_block=$(sed -n '/fun destroy()/,/stopSelf()/p' "$r_s14_kt")
-request_capture_block=$(sed -n '/private fun requestCapture()/,/fun startCapture()/p' "$r_s14_kt")
-start_capture_block=$(sed -n '/fun startCapture()/,/fun stopCapture()/p' "$r_s14_kt")
-stop_capture_block=$(sed -n '/fun stopCapture()/,/private fun stopCapturePipeline/p' "$r_s14_kt")
+reconcile_capture_block=$(sed -n '/private fun reconcileControlledCaptureDemand()/,/private fun stopCapturePipeline/p' "$r_s14_kt")
+start_capture_block=$(sed -n '/fun startCapture()/,/private fun reconcileControlledCaptureDemand()/p' "$r_s14_kt")
 pipeline_block=$(sed -n '/private fun stopCapturePipeline/,/private fun releaseCaptureResources/p' "$r_s14_kt")
 teardown_block=$(sed -n '/private fun releaseCaptureResources/,/private fun releaseMediaProjection/p' "$r_s14_kt")
 projection_release_block=$(sed -n '/private fun releaseMediaProjection/,/private fun installMediaProjection/p' "$r_s14_kt")
@@ -11995,18 +12006,25 @@ projection_install_block=$(sed -n '/private fun installMediaProjection/,/private
 projection_stop_block=$(sed -n '/private fun onMediaProjectionStopped/,/fun destroy()/p' "$r_s14_kt")
 virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private fun initNotification/p' "$r_s14_kt")
 add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {/p' "$r_s14_kt")
-printf '%s\n' "$on_destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing onDestroy-no-capture-resource-teardown"
-printf '%s\n' "$destroy_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-capture-resource-teardown"
-printf '%s\n' "$request_capture_block" | grep -qF 'captureRequested = true' || r_s14_missing="$r_s14_missing remote-demand-not-recorded"
-printf '%s\n' "$request_capture_block" | grep -qF 'return startCapture()' || r_s14_missing="$r_s14_missing remote-demand-not-started"
+remove_connection_kt_block=$(sed -n '/"remove_connection" -> {/,/"update_voice_call_state" -> {/p' "$r_s14_kt")
+resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun destroy()/p' "$r_s14_kt")
+printf '%s\n' "$on_destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing onDestroy-no-exact-owner-teardown"
+printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.stopServer(nativeServerGeneration)' || r_s14_missing="$r_s14_missing onDestroy-stop-not-generation-bound"
+printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.releaseService(this)' || r_s14_missing="$r_s14_missing onDestroy-retains-stale-service-callback-owner"
+printf '%s\n' "$destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-owner-resource-teardown"
+printf '%s\n' "$resource_release_block" | grep -qF 'acceptingControlledConnections = false' || r_s14_missing="$r_s14_missing teardown-does-not-close-resource-admission"
+printf '%s\n' "$resource_release_block" | grep -qF 'controlledCaptureOwners.clear()' || r_s14_missing="$r_s14_missing teardown-retains-capture-owners"
+printf '%s\n' "$resource_release_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing teardown-does-not-release-capture"
+printf '%s\n' "$reconcile_capture_block" | grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' || r_s14_missing="$r_s14_missing exact-owner-demand-not-recorded"
+printf '%s\n' "$reconcile_capture_block" | grep -qF 'if (captureRequested)' || r_s14_missing="$r_s14_missing exact-owner-demand-not-applied"
+printf '%s\n' "$reconcile_capture_block" | grep -qF 'startCapture()' || r_s14_missing="$r_s14_missing live-owner-demand-not-started"
+printf '%s\n' "$reconcile_capture_block" | grep -qF 'stopCapturePipeline()' || r_s14_missing="$r_s14_missing empty-owner-demand-not-stopped"
 printf '%s\n' "$start_capture_block" | grep -qF 'val projection = mediaProjection' || r_s14_missing="$r_s14_missing start-no-exact-projection"
 printf '%s\n' "$start_capture_block" | grep -qF 'if (!startRawVideoRecorder(projection))' || r_s14_missing="$r_s14_missing start-no-virtual-display-commit-gate"
 printf '%s\n' "$start_capture_block" | grep -qF 'releaseCaptureResources(clearCaptureRequest = false)' || r_s14_missing="$r_s14_missing failed-start-does-not-preserve-live-demand"
 printf '%s\n' "$start_capture_block" | grep -qF 'requestMediaProjection()' || r_s14_missing="$r_s14_missing failed-start-no-fresh-consent"
 printf '%s\n' "$start_capture_block" | grep -qF '_isStart = true' || r_s14_missing="$r_s14_missing active-state-commit-missing"
 printf '%s\n' "$start_capture_block" | grep -qF 'mediaProjection!!' && r_s14_missing="$r_s14_missing projection-force-unwrap"
-printf '%s\n' "$stop_capture_block" | grep -qF 'captureRequested = false' || r_s14_missing="$r_s14_missing explicit-stop-retains-demand"
-printf '%s\n' "$stop_capture_block" | grep -qF 'stopCapturePipeline()' || r_s14_missing="$r_s14_missing explicit-stop-skips-pipeline"
 printf '%s\n' "$pipeline_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing pipeline-no-virtual-display-release"
 printf '%s\n' "$pipeline_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing pipeline-surface-not-nulled"
 printf '%s\n' "$pipeline_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)' || r_s14_missing="$r_s14_missing pipeline-no-playback-owner-retirement"
@@ -12023,7 +12041,12 @@ printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: SecurityException)'
 printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: IllegalStateException)' || r_s14_missing="$r_s14_missing stopped-projection-not-failed"
 printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getJSONObject("conn_type").getString("t")' || r_s14_missing="$r_s14_missing exact-connection-type-not-decoded"
 printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType == null)' || r_s14_missing="$r_s14_missing unknown-connection-type-not-rejected"
-printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType.requiresDesktopCapture)' || r_s14_missing="$r_s14_missing capture-not-exact-type-gated"
+printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-upserted"
+printf '%s\n' "$add_connection_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-admission"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'controlledCaptureOwners.unregister(id)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-retired"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-retirement"
+grep -qF '@Synchronized' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-dispatch-not-serialized"
+grep -qA2 '@Synchronized' "$r_s14_kt" | grep -qF 'fun rustSetByName' || r_s14_missing="$r_s14_missing controlled-resource-dispatch-not-serialized"
 if printf '%s\n' "$add_connection_block" | grep -qE 'isFileTransfer|isViewCamera|isTerminal|portForward'; then
   r_s14_missing="$r_s14_missing reconstructed-connection-type"
 fi
@@ -12033,22 +12056,47 @@ grep -qF '"PortForward" -> PORT_FORWARD' "$r_s14_type_kt" || r_s14_missing="$r_s
 grep -qF 'else -> null' "$r_s14_type_kt" || r_s14_missing="$r_s14_missing unknown-type-fallback"
 grep -qF '"PortForward" to ControlledConnectionType.PORT_FORWARD' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing port-forward-kotlin-regression-missing"
 grep -qF 'connectionType.requiresDesktopCapture ==' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing complete-kotlin-capture-policy-regression-missing"
+grep -qF 'internal class ControlledCaptureOwnerState' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing service-capture-owner-state-missing"
+grep -qF 'private val owners = mutableSetOf<Int>()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-capture-owner-set-missing"
+grep -qF 'authorized && connectionType.requiresDesktopCapture' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing owner-admission-not-authorized-remote-only"
+grep -qF 'get() = owners.isNotEmpty()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing capture-demand-not-derived-from-owner-set"
+[ "$(grep -cF 'owners.remove(connectionId)' "$r_s14_owners_kt")" -eq 2 ] || r_s14_missing="$r_s14_missing exact-capture-owner-retirement-paths-incomplete"
+grep -qF 'one Remote teardown cleared another live owner' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing concurrent-owner-regression-missing"
+grep -qF 'remove-then-add ordering lost new Remote demand' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing remove-then-add-regression-missing"
+grep -qF 'add-then-remove ordering lost new Remote demand' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing add-then-remove-regression-missing"
 grep -qF 'pub conn_type: ipc::CmAuthConnType' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-client-exact-connection-type-missing"
-grep -qF 'fn android_connection_requires_desktop_capture(' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-classifier-missing"
-grep -qF 'authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-not-live-authorized-remote-only"
-remove_connection_block=$(sed -n '/fn remove_connection(&self, id: i32, close: bool)/,/fn voice_call_started(&self, id: i32)/p' src/ui_cm_interface.rs)
-printf '%s\n' "$remove_connection_block" | grep -qF 'client.conn_type' || r_s14_missing="$r_s14_missing native-teardown-dropped-exact-connection-type"
-if printf '%s\n' "$remove_connection_block" | grep -qE 'client\\.is_file_transfer|client\\.is_view_camera|client\\.is_terminal|client\\.port_forward'; then
-  r_s14_missing="$r_s14_missing native-teardown-reconstructed-connection-type"
+if grep -qF '"stop_capture"' src/ui_cm_interface.rs "$r_s14_kt"; then
+  r_s14_missing="$r_s14_missing detached-global-stop-edge-retained"
 fi
-grep -qF 'fn android_capture_demand_is_remote_desktop_only()' src/ui_cm_interface.rs || r_s14_missing="$r_s14_missing native-demand-regression-missing"
+grep -qF 'external fun init(service: Context, applicationContext: Context)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-and-application-contexts-not-separated"
+grep -qF 'external fun releaseService(service: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-release-jni-declaration-missing"
+grep -qF 'external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
+grep -qF 'nativeServerGeneration = FFI.startServer(this, configPath, "")' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
+grep -qF 'external fun stopServer(generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-stop-not-exact-generation"
+grep -qF 'Java_ffi_FFI_releaseService' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing exact-service-release-jni-missing"
+grep -qF 'env.is_same_object(owner.owner.as_obj(), &service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-release-not-exact-object-bound"
+grep -qF 'current.take();' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-global-ref-not-released"
+grep -qF 'env.new_global_ref(application_context)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing application-context-global-ref-missing"
+grep -qF 'init_ndk_context(java_vm, context_jobject)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing ndk-context-not-application-global-bound"
+grep -qF 'pub fn bind_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
+grep -qF 'env.is_same_object(current.owner.as_obj(), service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
+grep -qF 'if generation.is_some() && context.generation != generation' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
+grep -qF 'bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
+grep -qF 'a retained global <code>applicationContext</code> reference' requirements.html || r_s14_missing="$r_s14_missing application-context-global-reference-requirement-missing"
+grep -qF 'service_generation: u64' "$r_s14_flutter" || r_s14_missing="$r_s14_missing connection-manager-generation-owner-missing"
+grep -qF 'call_main_service_set_by_name_for_generation(' "$r_s14_flutter" || r_s14_missing="$r_s14_missing controlled-callback-not-generation-bound"
+grep -qF 'android_server_generation: u64' "$r_s14_connection" || r_s14_missing="$r_s14_missing connection-generation-owner-missing"
+grep -qF 'call_main_service_pointer_input_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing pointer-input-not-generation-bound"
+grep -qF 'call_main_service_key_event_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing key-input-not-generation-bound"
+grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
+grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
+grep -qF 'expected_generation.checked_add(1)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing exact-generation-stop-overflow-gate-missing"
+grep -qF 'ANDROID_SERVER_GENERATION.compare_exchange(' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
   echo "  FAIL R-S14/R-T4: Android capture/projection owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-T4 Android capture commits only after VirtualDisplay creation; exact MediaProjection stop invalidates the pipeline; exact AuthConnType admits only live Remote demand"
+  echo "  ok  R-S14/R-T4 Android capture commits only after VirtualDisplay creation; exact service-owned Remote IDs serialize demand; stale global stops, callback owners, and server generations are rejected"
 fi
-"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config \
-  ui_cm_interface::tests::android_capture_demand_is_remote_desktop_only --color never
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them
 # is the exact "defaulted-off-but-present" hazard R-G1 forbids — the funnel overrides the write and

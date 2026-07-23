@@ -1586,7 +1586,7 @@ pub mod connection_manager {
     #[cfg(any(target_os = "android"))]
     use hbb_common::log;
     #[cfg(any(target_os = "android"))]
-    use scrap::android::call_main_service_set_by_name;
+    use scrap::android::call_main_service_set_by_name_for_generation;
     use serde_json::json;
 
     use crate::ui_cm_interface::InvokeUiCM;
@@ -1594,7 +1594,10 @@ pub mod connection_manager {
     use super::GLOBAL_EVENT_STREAM;
 
     #[derive(Clone)]
-    struct FlutterHandler {}
+    struct FlutterHandler {
+        #[cfg(target_os = "android")]
+        service_generation: u64,
+    }
 
     impl InvokeUiCM for FlutterHandler {
         //TODO port_forward
@@ -1602,9 +1605,12 @@ pub mod connection_manager {
             let client_json = serde_json::to_string(&client).unwrap_or("".into());
             // send to Android service, active notification no matter UI is shown or not.
             #[cfg(target_os = "android")]
-            if let Err(e) =
-                call_main_service_set_by_name("add_connection", Some(&client_json), None)
-            {
+            if let Err(e) = call_main_service_set_by_name_for_generation(
+                self.service_generation,
+                "add_connection",
+                Some(&client_json),
+                None,
+            ) {
                 log::debug!("call_main_service_set_by_name fail,{}", e);
             }
             // send to UI, refresh widget
@@ -1615,8 +1621,12 @@ pub mod connection_manager {
             #[cfg(target_os = "android")]
             {
                 let id = id.to_string();
-                if let Err(e) = call_main_service_set_by_name("remove_connection", Some(&id), None)
-                {
+                if let Err(e) = call_main_service_set_by_name_for_generation(
+                    self.service_generation,
+                    "remove_connection",
+                    Some(&id),
+                    None,
+                ) {
                     log::debug!("call_main_service_set_by_name fail,{}", e);
                 }
             }
@@ -1645,9 +1655,12 @@ pub mod connection_manager {
             let client_json = serde_json::to_string(&client).unwrap_or("".into());
             // send to Android service, active notification no matter UI is shown or not.
             #[cfg(target_os = "android")]
-            if let Err(e) =
-                call_main_service_set_by_name("update_voice_call_state", Some(&client_json), None)
-            {
+            if let Err(e) = call_main_service_set_by_name_for_generation(
+                self.service_generation,
+                "update_voice_call_state",
+                Some(&client_json),
+                None,
+            ) {
                 log::debug!("call_main_service_set_by_name fail,{}", e);
             }
             self.push_event("update_voice_call_state", &[("client", &client_json)]);
@@ -1701,7 +1714,10 @@ pub mod connection_manager {
         std::thread::spawn(crate::ipc::start_pa);
 
         let cm = ConnectionManager {
-            ui_handler: FlutterHandler {},
+            ui_handler: FlutterHandler {
+                #[cfg(target_os = "android")]
+                service_generation: 0,
+            },
         };
         if new_thread {
             std::thread::spawn(move || start_ipc(cm));
@@ -1723,10 +1739,11 @@ pub mod connection_manager {
     pub fn start_channel(
         rx: UnboundedReceiver<crate::ipc::Data>,
         tx: UnboundedSender<crate::ipc::Data>,
+        service_generation: u64,
     ) {
         use crate::ui_cm_interface::start_listen;
         let cm = crate::ui_cm_interface::ConnectionManager {
-            ui_handler: FlutterHandler {},
+            ui_handler: FlutterHandler { service_generation },
         };
         std::thread::spawn(move || start_listen(cm, rx, tx));
     }

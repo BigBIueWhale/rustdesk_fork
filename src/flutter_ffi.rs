@@ -47,10 +47,7 @@ lazy_static::lazy_static! {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[no_mangle]
-unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key(
-    key: *const u8,
-    len: usize,
-) -> bool {
+unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key(key: *const u8, len: usize) -> bool {
     if key.is_null() {
         log::error!("Rejected null mobile at-rest storage key");
         return false;
@@ -2349,9 +2346,10 @@ pub mod server_side {
     pub unsafe extern "system" fn Java_ffi_FFI_startServer(
         env: JNIEnv,
         _class: JClass,
+        service: JObject,
         app_dir: JString,
         custom_client_config: JString,
-    ) {
+    ) -> jlong {
         log::debug!("startServer from jvm");
         let mut env = env;
         if let Ok(app_dir) = env.get_string(&app_dir) {
@@ -2371,11 +2369,26 @@ pub mod server_side {
         // this point makes GEN != generation, so MainService.onDestroy -> stopServer deterministically
         // tears this listener down. The direct listener is owned by this MainService instance.
         let generation = crate::direct_service::android_begin_generation();
+        if generation == 0 {
+            return 0;
+        }
+        if !scrap::android::bind_main_service_generation(&env, &service, generation) {
+            log::error!(
+                "startServer could not bind generation {generation} to its exact MainService"
+            );
+            let _ = crate::direct_service::android_request_stop(generation);
+            return 0;
+        }
         std::thread::spawn(move || start_server(true, generation));
+        generation as jlong
     }
 
     #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_stopServer(_env: JNIEnv, _class: JClass) {
+    pub unsafe extern "system" fn Java_ffi_FFI_stopServer(
+        _env: JNIEnv,
+        _class: JClass,
+        generation: jlong,
+    ) -> jboolean {
         // R-D7a: MainService.onDestroy drives the service-owned-listener teardown. Supersede the
         // current server generation; the `direct_server` accept loop + `start_direct_only`
         // keep-alive observe it and unwind, dropping the `TcpListener` so the listening socket
@@ -2383,7 +2396,13 @@ pub mod server_side {
         // closes it via the START_NOT_STICKY exit). No config write — the stop is the OS
         // foreground-service lifecycle, not an option (the listener reads no `stop-service`, R-D4).
         log::debug!("stopServer from jvm");
-        crate::direct_service::android_request_stop();
+        if generation <= 0 {
+            log::error!("stopServer rejected invalid generation {generation}");
+            return jboolean::from(false);
+        }
+        jboolean::from(crate::direct_service::android_request_stop(
+            generation as u64,
+        ))
     }
 
     fn parse_client_session_owner(env: &mut JNIEnv, value: &JString) -> Option<SessionID> {

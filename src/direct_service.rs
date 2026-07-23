@@ -109,12 +109,14 @@ pub fn request_direct_listener_rebuild(reason: &str) {
 ///     `startServer` had already superseded (or the post-stop value itself), letting a stopped
 ///     service's thread believe it was current and keep the listener bound ("Stop doesn't stop").
 ///     With the captured value, ANY begin/stop after this thread's start makes GEN != my_generation.
-///   - `MainService.onDestroy` -> JNI `stopServer` calls `android_request_stop()` to supersede the
-///     running generation. `direct_server` observes it at its loop top and `return`s (dropping the
-///     `TcpListener` local -> socket closed), and `start_direct_only` observes it in its keep-alive
-///     poll and `return`s (so the JNI thread + its `#[tokio::main]` runtime unwind, aborting any
-///     live accept task -> socket closed). No config write — the stop is the OS foreground-service
-///     lifecycle, not an option (the dead `stop-service` writes are deleted; the key is pinned `N`).
+///   - `MainService.onDestroy` -> JNI `stopServer` calls `android_request_stop()` with the exact
+///     generation it owns. A delayed obsolete Service cannot supersede a replacement generation.
+///     `direct_server` observes a successful supersession at its loop top and `return`s (dropping
+///     the `TcpListener` local -> socket closed), and `start_direct_only` observes it in its
+///     keep-alive poll and `return`s (so the JNI thread + its `#[tokio::main]` runtime unwind,
+///     aborting any live accept task -> socket closed). No config write — the stop is the OS
+///     foreground-service lifecycle, not an option (the dead `stop-service` writes are deleted; the
+///     key is pinned `N`).
 /// Desktop/iOS never touch this: their listener lifetime is the process / `systemd`-unit lifetime
 /// (R-X9), so the whole mechanism is `#[cfg(target_os = "android")]`.
 #[cfg(target_os = "android")]
@@ -124,18 +126,52 @@ static ANDROID_SERVER_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// returns the new generation the spawned server's accept loop + keep-alive run under.
 #[cfg(target_os = "android")]
 pub fn android_begin_generation() -> u64 {
-    ANDROID_SERVER_GENERATION.fetch_add(1, Ordering::SeqCst) + 1
+    let mut current = ANDROID_SERVER_GENERATION.load(Ordering::SeqCst);
+    loop {
+        let Some(next) = current.checked_add(1) else {
+            log::error!("R-D7a: Android server generation exhausted");
+            return 0;
+        };
+        match ANDROID_SERVER_GENERATION.compare_exchange(
+            current,
+            next,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => return next,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 /// R-D7a: supersede any running Android server generation (JNI `stopServer` on
 /// `MainService.onDestroy`). The graceful teardown twin of process-death fd close: the running
 /// accept loop + keep-alive observe the bump and unwind, closing the listening socket.
 #[cfg(target_os = "android")]
-pub fn android_request_stop() {
-    let generation = ANDROID_SERVER_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    log::info!(
-        "R-D7a: Android stopServer — superseding the service-owned listener generation (now {generation})"
-    );
+pub fn android_request_stop(expected_generation: u64) -> bool {
+    let Some(next_generation) = expected_generation.checked_add(1) else {
+        log::error!("R-D7a: Android server generation exhausted");
+        return false;
+    };
+    match ANDROID_SERVER_GENERATION.compare_exchange(
+        expected_generation,
+        next_generation,
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+    ) {
+        Ok(_) => {
+            log::info!(
+                "R-D7a: Android stopServer — superseding owned listener generation {expected_generation} (now {next_generation})"
+            );
+            true
+        }
+        Err(current) => {
+            log::warn!(
+                "R-D7a: rejected stale Android stopServer generation {expected_generation}; current generation is {current}"
+            );
+            false
+        }
+    }
 }
 
 /// R-D7a: true iff `generation` is still the current Android server generation, i.e. no later
@@ -966,6 +1002,7 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
                                 addr,
                                 None, // Direct connections don't have control_permissions
                                 permit,
+                                android_generation,
                             )
                             .await
                         );

@@ -663,6 +663,9 @@ pub async fn create_tcp_connection(
     // before Connection::start (and auto-dropped on any earlier fail-closed bail), so the
     // bound caps the attacker-reachable half-open population, not authenticated sessions.
     prekey_permit: tokio::sync::OwnedSemaphorePermit,
+    // Android binds every controlled callback to the exact foreground-service/listener
+    // generation that accepted it. Other targets always pass None.
+    android_generation: Option<u64>,
 ) -> ResultType<()> {
     let mut stream = stream;
     // R-P5 / R-P14 / §8: keying is the single mandatory CPace handshake, run
@@ -699,6 +702,7 @@ pub async fn create_tcp_connection(
         Arc::downgrade(&server),
         control_permissions,
         credential_generation,
+        android_generation,
     )
     .await;
     Ok(())

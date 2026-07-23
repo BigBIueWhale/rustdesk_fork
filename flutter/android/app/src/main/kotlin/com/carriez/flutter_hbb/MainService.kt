@@ -63,7 +63,11 @@ class MainService : Service() {
 
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
+    @Synchronized
     fun rustPointerInput(kind: Int, mask: Int, x: Int, y: Int) {
+        if (!acceptingControlledConnections) {
+            return
+        }
         // turn on screen with LEFT_DOWN when screen off
         if (!powerManager.isInteractive && (kind == 0 || mask == LEFT_DOWN)) {
             if (wakeLock.isHeld) {
@@ -88,7 +92,11 @@ class MainService : Service() {
 
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
+    @Synchronized
     fun rustKeyEventInput(input: ByteArray) {
+        if (!acceptingControlledConnections) {
+            return
+        }
         InputService.ctx?.onKeyEvent(input)
     }
 
@@ -110,9 +118,14 @@ class MainService : Service() {
     }
 
     @Keep
+    @Synchronized
     fun rustSetByName(name: String, arg1: String, arg2: String) {
         when (name) {
             "add_connection" -> {
+                if (!acceptingControlledConnections) {
+                    Log.w(logTag, "Rejected controlled connection while service is stopping")
+                    return
+                }
                 try {
                     val jsonObject = JSONObject(arg1)
                     val id = jsonObject["id"] as Int
@@ -126,6 +139,10 @@ class MainService : Service() {
                         Log.e(logTag, "Rejected unknown controlled connection type")
                         return
                     }
+                    if (!controlledCaptureOwners.upsert(id, authorized, connectionType)) {
+                        Log.e(logTag, "Rejected invalid controlled capture owner: $id")
+                        return
+                    }
                     // R-S14/R-S19: resource authority comes from the exact AuthConnType carried
                     // by Rust, never by reconstructing Remote from parallel presentation fields.
                     if (connectionType.allowsVoiceCall &&
@@ -133,15 +150,13 @@ class MainService : Service() {
                     ) {
                         Log.e(logTag, "Rejected invalid controlled voice-call owner: $id")
                     }
+                    reconcileControlledCaptureDemand()
                     val type = if (connectionType == ControlledConnectionType.FILE_TRANSFER) {
                         translate("Transfer file")
                     } else {
                         translate("Share screen")
                     }
                     if (authorized) {
-                        if (connectionType.requiresDesktopCapture) {
-                            requestCapture()
-                        }
                         onClientAuthorizedNotification(id, type, username, peerId)
                     } else {
                         loginRequestNotification(id, type, username, peerId)
@@ -152,15 +167,24 @@ class MainService : Service() {
             }
             "remove_connection" -> {
                 val id = arg1.toIntOrNull()
-                if (id == null ||
-                    !VoiceCallAudioCoordinator.unregisterControlledConnection(id)
-                ) {
+                if (id == null) {
                     Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
                 } else {
+                    val captureOwnerRemoved = controlledCaptureOwners.unregister(id)
+                    val voiceOwnerRemoved =
+                        VoiceCallAudioCoordinator.unregisterControlledConnection(id)
+                    if (!captureOwnerRemoved || !voiceOwnerRemoved) {
+                        Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
+                    }
+                    reconcileControlledCaptureDemand()
                     cancelNotification(id)
                 }
             }
             "update_voice_call_state" -> {
+                if (!acceptingControlledConnections) {
+                    Log.w(logTag, "Rejected controlled voice update while service is stopping")
+                    return
+                }
                 try {
                     val jsonObject = JSONObject(arg1)
                     val id = jsonObject["id"] as Int
@@ -182,10 +206,6 @@ class MainService : Service() {
                     e.printStackTrace()
                 }
             }
-            "stop_capture" -> {
-                Log.d(logTag, "from rust:stop_capture")
-                stopCapture()
-            }
             "half_scale" -> {
                 val halfScale = arg1.toBoolean()
                 if (isHalfScale != halfScale) {
@@ -201,6 +221,7 @@ class MainService : Service() {
 
     private var serviceLooper: Looper? = null
     private var serviceHandler: Handler? = null
+    private var nativeServerGeneration = 0L
 
     private val powerManager: PowerManager by lazy { applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager }
     private val wakeLock: PowerManager.WakeLock by lazy { powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "rustdesk:wakelock")}
@@ -245,6 +266,8 @@ class MainService : Service() {
     private var mediaProjectionCallback: MediaProjection.Callback? = null
     @Volatile
     private var captureRequested = false
+    private var acceptingControlledConnections = true
+    private val controlledCaptureOwners = ControlledCaptureOwnerState()
     private var surface: Surface? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -309,7 +332,7 @@ class MainService : Service() {
         if (!VoiceCallAudioCoordinator.initialize(applicationContext)) {
             Log.e(logTag, "Failed to initialize process-wide audio capture ownership")
         }
-        FFI.init(this)
+        FFI.init(this, applicationContext)
         HandlerThread("Service", Process.THREAD_PRIORITY_BACKGROUND).apply {
             start()
             serviceLooper = looper
@@ -321,7 +344,10 @@ class MainService : Service() {
         // keep the config dir same with flutter
         val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
         val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
-        FFI.startServer(configPath, "")
+        nativeServerGeneration = FFI.startServer(this, configPath, "")
+        if (nativeServerGeneration <= 0L) {
+            Log.e(logTag, "Failed to bind the native server to this MainService generation")
+        }
 
         createForegroundNotification()
         acquireNetworkKeepaliveWakeLock()
@@ -329,10 +355,7 @@ class MainService : Service() {
     }
 
     override fun onDestroy() {
-        releaseCaptureResources()
-        if (!VoiceCallAudioCoordinator.clearControlledConnections()) {
-            Log.e(logTag, "Failed to release controlled voice-call owners during service teardown")
-        }
+        releaseControlledConnectionResources()
         serviceLooper?.quitSafely()
         serviceHandler = null
         serviceLooper = null
@@ -345,7 +368,12 @@ class MainService : Service() {
         // closes. The user "Stop service" path reaches here via MainActivity.stop_service -> destroy()
         // -> stopSelf -> onDestroy; an OS/OEM/battery kill closes the socket by process death instead
         // (START_NOT_STICKY means no zombie auto-restart rebinds it).
-        FFI.stopServer()
+        if (!FFI.stopServer(nativeServerGeneration)) {
+            Log.d(logTag, "Native server generation was already stopped or replaced")
+        }
+        if (!FFI.releaseService(this)) {
+            Log.d(logTag, "MainService callback owner was already replaced or released")
+        }
         super.onDestroy()
     }
 
@@ -367,6 +395,7 @@ class MainService : Service() {
     }
 
     private var isHalfScale: Boolean? = null;
+    @Synchronized
     private fun updateScreenInfo(orientation: Int) {
         var w: Int
         var h: Int
@@ -525,12 +554,6 @@ class MainService : Service() {
     }
 
     @Synchronized
-    private fun requestCapture(): Boolean {
-        captureRequested = true
-        return startCapture()
-    }
-
-    @Synchronized
     fun startCapture(): Boolean {
         if (isStart) {
             return true
@@ -572,9 +595,13 @@ class MainService : Service() {
     }
 
     @Synchronized
-    fun stopCapture() {
-        captureRequested = false
-        stopCapturePipeline()
+    private fun reconcileControlledCaptureDemand() {
+        captureRequested = controlledCaptureOwners.requiresDesktopCapture
+        if (captureRequested) {
+            startCapture()
+        } else {
+            stopCapturePipeline()
+        }
     }
 
     @Synchronized
@@ -692,11 +719,21 @@ class MainService : Service() {
         checkMediaPermission()
     }
 
+    @Synchronized
+    private fun releaseControlledConnectionResources() {
+        acceptingControlledConnections = false
+        controlledCaptureOwners.clear()
+        releaseCaptureResources()
+        if (!VoiceCallAudioCoordinator.clearControlledConnections()) {
+            Log.e(logTag, "Failed to release controlled voice-call owners during service teardown")
+        }
+    }
+
     fun destroy() {
         Log.d(logTag, "destroy service")
         _isReady = false
 
-        releaseCaptureResources()
+        releaseControlledConnectionResources()
         checkMediaPermission()
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()

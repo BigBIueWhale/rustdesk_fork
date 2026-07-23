@@ -12918,8 +12918,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android recorder priority contract",
         ),
         (
-            '"exact-AuthConnType Remote-or-ViewCamera controlled-owner admission"',
-            "Android exact connection-type voice-call admission contract",
+            '"serialized exact-AuthConnType controlled-resource admission"',
+            "Android exact connection-type controlled-resource admission contract",
         ),
         (
             '"get() = this == REMOTE || this == VIEW_CAMERA"',
@@ -12942,8 +12942,24 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android task-removal ordering contract",
         ),
         (
-            'call_main_service_set_by_name("remove_connection", Some(&id), None)',
-            "Android Rust exact-removal bridge contract",
+            '"generation-bound controlled callback dispatch"',
+            "Android Rust generation-bound removal bridge contract",
+        ),
+        (
+            '"exact generation compare-and-exchange stop"',
+            "Android exact server-generation stop contract",
+        ),
+        (
+            '"generation comparison before controlled Java dispatch"',
+            "Android controlled callback generation-gate contract",
+        ),
+        (
+            '"single exact-object MainService generation binding"',
+            "Android exact-object generation-owner contract",
+        ),
+        (
+            '"global application-context retention before NDK publication"',
+            "Android global application-context lifetime contract",
         ),
         ("MUTATIONS: Tuple[Mutation, ...]", "Android ownership mutation inventory"),
         ("run_self_test(sources)", "Android ownership mutation dispatch"),
@@ -13004,8 +13020,8 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "flutter_source",
-            'call_main_service_set_by_name("remove_connection", Some(&id), None)',
-            "Android native removal bridge source",
+            "call_main_service_set_by_name_for_generation(",
+            "Android generation-bound native removal bridge source",
         ),
         (
             "flutter_source",
@@ -13078,6 +13094,16 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("service", "if (connectionType.allowsVoiceCall &&", "if (true &&", "typed controlled voice-call admission"),',
         "Android typed controlled voice-call admission mutation",
+    )
+    require_text(
+        focused,
+        '("direct_service", "expected_generation.checked_add(1)", "expected_generation.wrapping_add(1)", "exact server-generation stop"),',
+        "Android exact server-generation stop mutation",
+    )
+    require_text(
+        focused,
+        '("android_ffi", "if generation.is_some() && context.generation != generation", "if false", "controlled callback generation comparison"),',
+        "Android controlled callback generation mutation",
     )
     require_text(
         focused,
@@ -13389,17 +13415,25 @@ def validate_android_media_projection_finality_contract(sources):
     cm = sources["ui_cm_source"]
     connection_type = sources["android_controlled_connection_type"]
     connection_type_test = sources["android_controlled_connection_type_test"]
+    capture_owners = sources["android_controlled_capture_owner_state"]
+    ffi_kt = sources["android_ffi_kt"]
+    android_ffi = sources["android_scrap_ffi"]
+    flutter = sources["flutter_source"]
+    flutter_ffi = sources["flutter_ffi_source"]
+    server = sources["server_source"]
+    server_connection = sources["connection_source"]
+    direct_service = sources["direct_service"]
 
     add_connection = extract_between(
         android,
         '            "add_connection" -> {',
-        '            "update_voice_call_state" -> {',
+        '            "remove_connection" -> {',
         "Android authorized-connection capture dispatch",
     )
-    require_absent(
-        add_connection,
-        "&& !isStart",
-        "Android capture demand must be recorded while already active",
+    require_text(
+        android,
+        "@Keep\n    @Synchronized\n    fun rustSetByName",
+        "Android serialized controlled-resource dispatch",
     )
     require_order(
         add_connection,
@@ -13408,11 +13442,10 @@ def validate_android_media_projection_finality_contract(sources):
             'jsonObject.getJSONObject("conn_type").getString("t")',
             "if (connectionType == null)",
             "return",
-            "if (authorized)",
-            "if (connectionType.requiresDesktopCapture)",
-            "requestCapture()",
+            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
+            "reconcileControlledCaptureDemand()",
         ),
-        "Android exact-AuthConnType authorized Remote capture demand",
+        "Android exact-AuthConnType capture-owner admission and reconciliation",
     )
     for legacy in (
         'jsonObject["is_file_transfer"]',
@@ -13479,6 +13512,55 @@ def validate_android_media_projection_finality_contract(sources):
             text,
             f"Android controlled connection type {label}",
         )
+    capture_owner_state = extract_between(
+        capture_owners,
+        "internal class ControlledCaptureOwnerState",
+        "\n}",
+        "Android controlled capture-owner state",
+    )
+    for text, label in (
+        ("private val owners = mutableSetOf<Int>()", "exact connection-ID owner set"),
+        ("get() = owners.isNotEmpty()", "owner-set-derived capture demand"),
+        ("if (connectionId <= 0)", "positive connection-ID admission"),
+        (
+            "if (authorized && connectionType.requiresDesktopCapture)",
+            "authorized exact-Remote admission",
+        ),
+        ("owners.add(connectionId)", "exact capture-owner insertion"),
+        ("owners.remove(connectionId)", "exact capture-owner retirement"),
+        ("owners.clear()", "complete capture-owner teardown"),
+    ):
+        require_text(capture_owner_state, text, f"Android capture state {label}")
+    require_count(
+        capture_owner_state,
+        "owners.remove(connectionId)",
+        2,
+        "Android exact capture-owner retirement paths",
+    )
+    for text, label in (
+        (
+            "one Remote teardown cleared another live owner",
+            "concurrent Remote aggregation",
+        ),
+        (
+            "remove-then-add ordering lost new Remote demand",
+            "remove-before-add convergence",
+        ),
+        (
+            "add-then-remove ordering lost new Remote demand",
+            "add-before-remove convergence",
+        ),
+        (
+            "non-Remote replacement retained capture demand",
+            "same-ID exact-type replacement",
+        ),
+        ("owner clear retained capture demand", "service teardown"),
+    ):
+        require_text(
+            connection_type_test,
+            text,
+            f"Android capture-owner behavior {label}",
+        )
     require_text(
         android,
         "@Volatile\n    private var captureRequested = false",
@@ -13493,22 +13575,44 @@ def validate_android_media_projection_finality_contract(sources):
     require_absent(android, "_isAudioStart", "retired parallel Android audio state")
     require_absent(android, "AudioRecordHandle(", "retired service-local Android recorder")
 
-    request_capture = extract_between(
+    remove_connection = extract_between(
         android,
-        "private fun requestCapture(): Boolean",
-        "fun startCapture(): Boolean",
-        "Android capture-demand entry",
+        '            "remove_connection" -> {',
+        '            "update_voice_call_state" -> {',
+        "Android controlled connection removal",
     )
     require_order(
-        request_capture,
-        ("captureRequested = true", "return startCapture()"),
-        "Android capture demand before start attempt",
+        remove_connection,
+        (
+            "val id = arg1.toIntOrNull()",
+            "controlledCaptureOwners.unregister(id)",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(id)",
+            "reconcileControlledCaptureDemand()",
+            "cancelNotification(id)",
+        ),
+        "Android exact capture-owner retirement and reconciliation",
+    )
+    reconcile_capture = extract_between(
+        android,
+        "private fun reconcileControlledCaptureDemand",
+        "private fun stopCapturePipeline",
+        "Android capture-demand reconciliation",
+    )
+    require_order(
+        reconcile_capture,
+        (
+            "captureRequested = controlledCaptureOwners.requiresDesktopCapture",
+            "if (captureRequested)",
+            "startCapture()",
+            "stopCapturePipeline()",
+        ),
+        "Android owner-set-derived capture reconciliation",
     )
 
     start_capture = extract_between(
         android,
         "fun startCapture(): Boolean",
-        "fun stopCapture()",
+        "private fun reconcileControlledCaptureDemand",
         "Android transactional capture start",
     )
     require_text(
@@ -13539,18 +13643,8 @@ def validate_android_media_projection_finality_contract(sources):
         "mediaProjection!!",
         "Android capture projection force unwrap",
     )
-
-    stop_capture = extract_between(
-        android,
-        "fun stopCapture()",
-        "private fun stopCapturePipeline",
-        "Android explicit capture stop",
-    )
-    require_order(
-        stop_capture,
-        ("captureRequested = false", "stopCapturePipeline()"),
-        "Android explicit stop clears capture demand",
-    )
+    require_absent(android, "fun stopCapture()", "detached Android global capture stop")
+    require_absent(android, '"stop_capture"', "detached Android global capture-stop dispatch")
     capture_pipeline = extract_between(
         android,
         "private fun stopCapturePipeline",
@@ -13691,58 +13785,289 @@ def validate_android_media_projection_finality_contract(sources):
 
     require_text(
         cm,
-        "authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote",
-        "Android live authorized Remote capture-demand classifier",
-    )
-    require_text(
-        cm,
         "pub conn_type: ipc::CmAuthConnType",
         "Android Client exact connection type",
     )
-    remove_connection = extract_between(
+    require_absent(
         cm,
-        "fn remove_connection(&self, id: i32, close: bool)",
-        "fn voice_call_started(&self, id: i32)",
-        "Android connection-removal capture demand",
+        "android_connection_requires_desktop_capture",
+        "Rust capture-demand snapshot classifier",
     )
-    require_order(
-        remove_connection,
-        (
-            "android_connection_requires_desktop_capture(",
-            "client.authorized",
-            "client.disconnected",
-            "client.conn_type",
-            'call_main_service_set_by_name("stop_capture", None, None)',
-        ),
-        "Android last-live-Remote capture teardown",
-    )
-    for legacy in (
-        "client.is_file_transfer",
-        "client.is_view_camera",
-        "client.is_terminal",
-        "client.port_forward",
-    ):
-        require_absent(
-            remove_connection,
-            legacy,
-            f"Android native capture-demand reconstruction {legacy}",
-        )
-    demand_test = extract_between(
+    require_absent(
         cm,
-        "fn android_capture_demand_is_remote_desktop_only()",
-        "fn cm_authority(valid: bool, file: bool)",
-        "Android capture-demand regression",
+        'call_main_service_set_by_name("stop_capture"',
+        "Rust detached global capture-stop edge",
     )
-    for conn_type in ("FileTransfer", "ViewCamera", "Terminal", "PortForward"):
-        require_text(
-            demand_test,
-            f"ipc::CmAuthConnType::{conn_type}",
-            f"Android {conn_type} capture-demand exclusion",
-        )
     require_text(
         cm,
         'Some("Remote")',
         "Android Client exact connection-type serialization regression",
+    )
+    service_teardown = extract_between(
+        android,
+        "private fun releaseControlledConnectionResources",
+        "fun destroy()",
+        "Android controlled-resource teardown",
+    )
+    require_order(
+        service_teardown,
+        (
+            "acceptingControlledConnections = false",
+            "controlledCaptureOwners.clear()",
+            "releaseCaptureResources()",
+            "VoiceCallAudioCoordinator.clearControlledConnections()",
+        ),
+        "Android closed-admission controlled-resource teardown",
+    )
+    on_destroy = extract_between(
+        android,
+        "override fun onDestroy()",
+        "override fun onTaskRemoved",
+        "Android service callback-owner teardown",
+    )
+    require_order(
+        on_destroy,
+        (
+            "releaseControlledConnectionResources()",
+            "FFI.stopServer(nativeServerGeneration)",
+            "FFI.releaseService(this)",
+            "super.onDestroy()",
+        ),
+        "Android resource-before-exact-callback-owner teardown",
+    )
+    on_create = extract_between(
+        android,
+        "override fun onCreate()",
+        "override fun onDestroy()",
+        "Android service generation creation",
+    )
+    require_order(
+        on_create,
+        (
+            "FFI.init(this, applicationContext)",
+            'nativeServerGeneration = FFI.startServer(this, configPath, "")',
+            "if (nativeServerGeneration <= 0L)",
+        ),
+        "Android exact native server generation ownership",
+    )
+    require_text(
+        ffi_kt,
+        "external fun init(service: Context, applicationContext: Context)",
+        "Android separated service/application JNI initialization",
+    )
+    require_text(
+        ffi_kt,
+        "external fun releaseService(service: Context): Boolean",
+        "Android exact Service callback-owner release declaration",
+    )
+    require_text(
+        ffi_kt,
+        "external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long",
+        "Android exact native server generation return",
+    )
+    require_text(
+        ffi_kt,
+        "external fun stopServer(generation: Long): Boolean",
+        "Android exact native server generation stop",
+    )
+    service_init = extract_between(
+        android_ffi,
+        "Java_ffi_FFI_init(",
+        "#[no_mangle]\npub extern \"system\" fn Java_ffi_FFI_releaseService",
+        "Android MainService JNI initialization",
+    )
+    require_order(
+        service_init,
+        (
+            "service: JObject",
+            "application_context: JObject",
+            "env.new_global_ref(service)",
+            "env.new_global_ref(application_context)",
+            "install_application_context_once(java_vm, application_context)",
+            "Some(MainServiceContext",
+            "generation: None",
+            "owner: service",
+        ),
+        "Android callback Service versus process application-context ownership",
+    )
+    application_context_install = extract_between(
+        android_ffi,
+        "fn install_application_context_once",
+        "fn try_init_rustls_platform_verifier",
+        "Android process application-context installation",
+    )
+    require_order(
+        application_context_install,
+        (
+            "let mut current = APPLICATION_CONTEXT.write().unwrap()",
+            "if current.is_some()",
+            "context.as_obj().as_raw() as *mut c_void",
+            "init_ndk_context(java_vm, context_jobject)",
+            "*current = Some(context)",
+        ),
+        "Android retained global application context before NDK publication",
+    )
+    service_release = extract_between(
+        android_ffi,
+        "Java_ffi_FFI_releaseService(",
+        "#[no_mangle]\npub extern \"system\" fn Java_ffi_FFI_setClipboardManager",
+        "Android exact MainService callback-owner release",
+    )
+    require_order(
+        service_release,
+        (
+            "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
+            "let Some(owner) = current.as_ref()",
+            "env.is_same_object(owner.owner.as_obj(), &service)",
+            "if is_current",
+            "current.take()",
+        ),
+        "Android exact-object callback-owner release",
+    )
+    generation_binding = extract_between(
+        android_ffi,
+        "pub fn bind_main_service_generation",
+        "#[no_mangle]\npub extern \"system\" fn Java_ffi_FFI_releaseService",
+        "Android MainService generation binding",
+    )
+    require_order(
+        generation_binding,
+        (
+            "if generation == 0 || service.is_null()",
+            "let mut current = MAIN_SERVICE_CTX.write().unwrap()",
+            "env.is_same_object(current.owner.as_obj(), service)",
+            "if current.generation.is_some()",
+            "current.generation = Some(generation)",
+        ),
+        "Android single exact-object MainService generation binding",
+    )
+    generation_dispatch = extract_between(
+        android_ffi,
+        "fn call_main_service_set_by_name_inner",
+        "// Difference between MainService",
+        "Android controlled callback generation gate",
+    )
+    require_order(
+        generation_dispatch,
+        (
+            "let context = MAIN_SERVICE_CTX.read().unwrap()",
+            "if generation.is_some() && context.generation != generation",
+            "env.call_method(",
+            "&context.owner",
+        ),
+        "Android generation comparison before controlled Java dispatch",
+    )
+    flutter_handler = extract_between(
+        flutter,
+        "\n    struct FlutterHandler",
+        "\n    impl InvokeUiCM for FlutterHandler",
+        "Android connection-manager callback generation owner",
+    )
+    require_text(
+        flutter_handler,
+        "service_generation: u64",
+        "Android connection-manager callback generation field",
+    )
+    flutter_remove = extract_between(
+        flutter,
+        "fn remove_connection(&self, id: i32, close: bool)",
+        "fn new_message(&self, id: i32, text: String)",
+        "Android generation-bound connection removal",
+    )
+    require_order(
+        flutter_remove,
+        (
+            "call_main_service_set_by_name_for_generation(",
+            "self.service_generation",
+            '"remove_connection"',
+        ),
+        "Android generation-bound controlled callback dispatch",
+    )
+    require_text(
+        server_connection,
+        "start_channel(rx_to_cm, tx_from_cm, conn.android_server_generation)",
+        "Android connection generation transfer into callback channel",
+    )
+    require_text(
+        server_connection,
+        "android_server_generation: u64",
+        "Android connection generation owner",
+    )
+    for helper, expected_count, label in (
+        ("call_main_service_pointer_input_for_generation", 5, "pointer input"),
+        ("call_main_service_key_event_for_generation", 2, "key input"),
+    ):
+        actual_count = server_connection.count(helper)
+        if actual_count != expected_count:
+            raise VerificationError(
+                f"Android generation-bound {label}: expected {expected_count}, found {actual_count}"
+            )
+    require_text(
+        server,
+        "android_generation: Option<u64>",
+        "Android accepted connection generation parameter",
+    )
+    require_order(
+        direct_service,
+        (
+            "crate::server::create_tcp_connection(",
+            "permit,",
+            "android_generation,",
+        ),
+        "Android listener generation transfer into accepted connection",
+    )
+    exact_stop = extract_between(
+        direct_service,
+        "pub fn android_request_stop",
+        "/// R-D7a: true iff",
+        "Android exact server-generation stop",
+    )
+    require_order(
+        exact_stop,
+        (
+            "expected_generation.checked_add(1)",
+            "ANDROID_SERVER_GENERATION.compare_exchange(",
+            "expected_generation",
+            "next_generation",
+            "Ok(_) =>",
+            "true",
+            "Err(current) =>",
+            "false",
+        ),
+        "Android compare-and-exchange server-generation stop",
+    )
+    native_start = extract_between(
+        flutter_ffi,
+        "Java_ffi_FFI_startServer",
+        "#[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_stopServer",
+        "Android native server generation start",
+    )
+    require_order(
+        native_start,
+        (
+            "service: JObject",
+            "android_begin_generation()",
+            "bind_main_service_generation(&env, &service, generation)",
+            "start_server(true, generation)",
+            "generation as jlong",
+        ),
+        "Android listener and callback generation binding",
+    )
+    native_stop = extract_between(
+        flutter_ffi,
+        "Java_ffi_FFI_stopServer",
+        "fn parse_client_session_owner",
+        "Android native exact server-generation stop",
+    )
+    require_order(
+        native_stop,
+        (
+            "generation: jlong",
+            "if generation <= 0",
+            "android_request_stop(",
+            "generation as u64",
+        ),
+        "Android positive exact server-generation stop",
     )
 
     requirement = extract_html_requirement(
@@ -13751,7 +14076,12 @@ def validate_android_media_projection_finality_contract(sources):
     for text, label in (
         ("exact registered lifecycle callback", "exact callback ownership"),
         ("non-null <code>VirtualDisplay</code>", "transactional active-state proof"),
-        ("live, authorized, non-disconnected Remote desktop session", "live Remote demand"),
+        (
+            "service-owned set of exact positive connection IDs",
+            "exact service-owned capture demand",
+        ),
+        ("one service monitor", "serialized owner reconciliation"),
+        ("detached global stop edge", "detached stop prohibition"),
         (
             "FileTransfer, ViewCamera, Terminal, and PortForward",
             "complete non-capture connection exclusions",
@@ -13759,6 +14089,18 @@ def validate_android_media_projection_finality_contract(sources):
         (
             "exact validated <code>AuthConnType</code>",
             "exact connection-type carry-through",
+        ),
+        (
+            "gate its controlled-state and input JNI callbacks against the exact live Service generation",
+            "stale-generation callback refusal",
+        ),
+        (
+            "bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object",
+            "exact-object listener-generation binding",
+        ),
+        (
+            "initialize process-lifetime native Android context from a retained global <code>applicationContext</code> reference",
+            "application-context native lifetime",
         ),
     ):
         require_text(requirement, text, f"Android R-S14 {label}")
@@ -13773,6 +14115,26 @@ def validate_android_media_projection_finality_contract(sources):
         "Android MediaProjection finality hardening ledger",
     )
     require_text(
+        sources["hardening"],
+        "service-owned exact Remote connection-ID set",
+        "Android serialized capture-owner hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "exact-object JNI release",
+        "Android exact callback-owner release hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "refuses a zero, stopped, or replaced generation before entering Java",
+        "Android callback-generation hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "`startServer(this, ...)` returns that exact generation only after JNI proves",
+        "Android exact-object listener-generation hardening ledger",
+    )
+    require_text(
         sources["verify"],
         "Android MediaProjection lifecycle finality (R-S14/R-T4)",
         "Android MediaProjection shared source gate",
@@ -13784,8 +14146,8 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "ui_cm_interface::tests::android_capture_demand_is_remote_desktop_only",
-        "Android capture-demand shared regression wiring",
+        "stale global stops, callback owners, and server generations are rejected",
+        "Android service-owned capture-demand shared gate",
     )
 
 
@@ -29681,6 +30043,18 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"exact generation compare-and-exchange stop"',
+            '"unqualified Android server stop"',
+            "Android exact server-generation stop contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"generation comparison before controlled Java dispatch"',
+            '"controlled Java dispatch without generation comparison"',
+            "Android controlled callback generation-gate contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             'require_count(all_android, "= AudioRecordHandle(", 1',
             'require_count(all_android, "= AudioRecordHandle(", 2',
             "Android single-recorder construction contract",
@@ -29843,9 +30217,12 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            'call_main_service_set_by_name("remove_connection", Some(&id), None)',
-            'call_main_service_set_by_name("stop_capture", Some(&id), None)',
-            "Android native removal bridge source",
+            'call_main_service_set_by_name_for_generation(\n'
+            '                    self.service_generation,\n'
+            '                    "remove_connection",',
+            'call_main_service_set_by_name(\n'
+            '                    "remove_connection",',
+            "Android generation-bound controlled callback dispatch",
         ),
         (
             "flutter_source",
@@ -30098,9 +30475,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "if (connectionType.requiresDesktopCapture) {\n                            requestCapture()",
-            "if (connectionType.requiresDesktopCapture && !isStart) {\n                            requestCapture()",
-            "Android capture demand must be recorded while already active",
+            "@Keep\n    @Synchronized\n    fun rustSetByName",
+            "@Keep\n    fun rustSetByName",
+            "Android serialized controlled-resource dispatch",
         ),
         (
             "android_controlled_connection_type",
@@ -30121,10 +30498,58 @@ def run_source_mutations(sources):
             "Android unknown connection-type refusal",
         ),
         (
-            "android_main_service",
-            "if (connectionType.requiresDesktopCapture)",
+            "android_controlled_capture_owner_state",
+            "get() = owners.isNotEmpty()",
+            "get() = false",
+            "Android capture state owner-set-derived capture demand",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "if (authorized && connectionType.requiresDesktopCapture)",
             "if (connectionType != ControlledConnectionType.FILE_TRANSFER)",
-            "Android exact-AuthConnType authorized Remote capture demand",
+            "Android capture state authorized exact-Remote admission",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "owners.remove(connectionId)",
+            "// capture owner retained",
+            "Android exact capture-owner retirement paths",
+        ),
+        (
+            "android_main_service",
+            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
+            "true",
+            "Android exact-AuthConnType capture-owner admission and reconciliation",
+        ),
+        (
+            "android_main_service",
+            "captureRequested = controlledCaptureOwners.requiresDesktopCapture",
+            "captureRequested = false",
+            "Android owner-set-derived capture reconciliation",
+        ),
+        (
+            "android_main_service",
+            "controlledCaptureOwners.unregister(id)",
+            "true",
+            "Android exact capture-owner retirement and reconciliation",
+        ),
+        (
+            "android_main_service",
+            "acceptingControlledConnections = false",
+            "acceptingControlledConnections = true",
+            "Android closed-admission controlled-resource teardown",
+        ),
+        (
+            "android_main_service",
+            'nativeServerGeneration = FFI.startServer(this, configPath, "")',
+            'FFI.startServer(configPath, "")',
+            "Android exact native server generation ownership",
+        ),
+        (
+            "android_main_service",
+            "FFI.stopServer(nativeServerGeneration)",
+            "FFI.stopServer(0)",
+            "Android resource-before-exact-callback-owner teardown",
         ),
         (
             "android_main_service",
@@ -30176,15 +30601,105 @@ def run_source_mutations(sources):
         ),
         (
             "ui_cm_source",
-            "authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote",
-            "authorized && conn_type == ipc::CmAuthConnType::Remote",
-            "Android live authorized Remote capture-demand classifier",
+            "        self.ui_handler.remove_connection(id, close);",
+            "        let _ = scrap::android::call_main_service_set_by_name(\"stop_capture\", None, None);\n        self.ui_handler.remove_connection(id, close);",
+            "Rust detached global capture-stop edge",
         ),
         (
-            "ui_cm_source",
-            "                client.authorized,\n                client.disconnected,\n                client.conn_type,",
-            "                client.authorized,\n                false,\n                client.conn_type,",
-            "Android last-live-Remote capture teardown",
+            "android_ffi_kt",
+            "external fun init(service: Context, applicationContext: Context)",
+            "external fun init(service: Context)",
+            "Android separated service/application JNI initialization",
+        ),
+        (
+            "android_ffi_kt",
+            "external fun releaseService(service: Context): Boolean",
+            "external fun releaseService(service: Context)",
+            "Android exact Service callback-owner release declaration",
+        ),
+        (
+            "android_ffi_kt",
+            "external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long",
+            "external fun startServer(app_dir: String, custom_client_config: String): Long",
+            "Android exact native server generation return",
+        ),
+        (
+            "android_ffi_kt",
+            "external fun stopServer(generation: Long): Boolean",
+            "external fun stopServer(): Unit",
+            "Android exact native server generation stop",
+        ),
+        (
+            "android_scrap_ffi",
+            "env.is_same_object(owner.owner.as_obj(), &service)",
+            "true",
+            "Android exact-object callback-owner release",
+        ),
+        (
+            "android_scrap_ffi",
+            "env.new_global_ref(application_context)",
+            "env.new_global_ref(service)",
+            "Android callback Service versus process application-context ownership",
+        ),
+        (
+            "android_scrap_ffi",
+            "init_ndk_context(java_vm, context_jobject)",
+            "init_ndk_context(java_vm, service.as_obj().as_raw() as *mut c_void)",
+            "Android retained global application context before NDK publication",
+        ),
+        (
+            "android_scrap_ffi",
+            "env.is_same_object(current.owner.as_obj(), service)",
+            "true",
+            "Android single exact-object MainService generation binding",
+        ),
+        (
+            "android_scrap_ffi",
+            "if current.generation.is_some()",
+            "if false",
+            "Android single exact-object MainService generation binding",
+        ),
+        (
+            "android_scrap_ffi",
+            "if generation.is_some() && context.generation != generation",
+            "if false",
+            "Android generation comparison before controlled Java dispatch",
+        ),
+        (
+            "flutter_source",
+            'call_main_service_set_by_name_for_generation(\n                    self.service_generation,\n                    "remove_connection"',
+            'call_main_service_set_by_name(\n                    "remove_connection"',
+            "Android generation-bound controlled callback dispatch",
+        ),
+        (
+            "connection_source",
+            "android_server_generation: u64",
+            "android_server_generation: i64",
+            "Android connection generation owner",
+        ),
+        (
+            "connection_source",
+            "call_main_service_pointer_input_for_generation",
+            "call_main_service_pointer_input",
+            "Android generation-bound pointer input",
+        ),
+        (
+            "connection_source",
+            "call_main_service_key_event_for_generation",
+            "call_main_service_key_event",
+            "Android generation-bound key input",
+        ),
+        (
+            "direct_service",
+            "expected_generation.checked_add(1)",
+            "expected_generation.wrapping_add(1)",
+            "Android compare-and-exchange server-generation stop",
+        ),
+        (
+            "flutter_ffi_source",
+            "bind_main_service_generation(&env, &service, generation)",
+            "true",
+            "Android listener and callback generation binding",
         ),
         (
             "ui_cm_source",
@@ -30197,12 +30712,6 @@ def run_source_mutations(sources):
             '"PortForward" to ControlledConnectionType.PORT_FORWARD',
             '"PortForward" to ControlledConnectionType.REMOTE',
             "Android exact PortForward behavior source",
-        ),
-        (
-            "ui_cm_source",
-            "fn android_capture_demand_is_remote_desktop_only()",
-            "fn android_capture_demand_regression_removed()",
-            "Android capture-demand regression",
         ),
         (
             "verify",
@@ -30236,6 +30745,36 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            "service-owned set of exact positive connection IDs",
+            "one global Boolean reconstructed in Rust",
+            "Android R-S14 exact service-owned capture demand",
+        ),
+        (
+            "requirements",
+            "detached global stop edge",
+            "best-effort global stop edge",
+            "Android R-S14 detached stop prohibition",
+        ),
+        (
+            "requirements",
+            "gate its controlled-state and input JNI callbacks against the exact live Service generation",
+            "route callbacks through the latest Service object",
+            "Android R-S14 stale-generation callback refusal",
+        ),
+        (
+            "requirements",
+            "bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object",
+            "bind that generation to whichever Service object is currently reachable",
+            "Android R-S14 exact-object listener-generation binding",
+        ),
+        (
+            "requirements",
+            "a retained global <code>applicationContext</code> reference",
+            "a JNI local <code>applicationContext</code> reference",
+            "Android R-S14 application-context native lifetime",
+        ),
+        (
+            "requirements",
             "<tr><td>205</td>",
             "<tr><td>205-disabled</td>",
             "Android MediaProjection finality Appendix C row",
@@ -30245,6 +30784,30 @@ def run_source_mutations(sources):
             "R-S14/R-T4 Android MediaProjection owner and capture-demand finality",
             "R-S14/R-T4 Android MediaProjection owner compatibility",
             "Android MediaProjection finality hardening ledger",
+        ),
+        (
+            "hardening",
+            "service-owned exact Remote connection-ID set",
+            "Rust-owned Boolean capture snapshot",
+            "Android serialized capture-owner hardening ledger",
+        ),
+        (
+            "hardening",
+            "exact-object JNI release",
+            "process-lifetime stale JNI retention",
+            "Android exact callback-owner release hardening ledger",
+        ),
+        (
+            "hardening",
+            "refuses a zero, stopped, or replaced generation before entering Java",
+            "accepts callbacks from any native generation",
+            "Android callback-generation hardening ledger",
+        ),
+        (
+            "hardening",
+            "`startServer(this, ...)` returns that exact generation only after JNI proves",
+            "`startServer()` attaches the generation to the latest Service without comparison",
+            "Android exact-object listener-generation hardening ledger",
         ),
         (
             "ui_session_source",
@@ -31133,6 +31696,16 @@ def main():
             "android_controlled_connection_type": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt"
+            ).read_text(encoding="utf-8"),
+            "android_controlled_capture_owner_state": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt"
+            ).read_text(encoding="utf-8"),
+            "android_ffi_kt": (
+                repo / "flutter/android/app/src/main/kotlin/ffi.kt"
+            ).read_text(encoding="utf-8"),
+            "android_scrap_ffi": (
+                repo / "libs/scrap/src/android/ffi.rs"
             ).read_text(encoding="utf-8"),
             "android_main_activity": (
                 repo

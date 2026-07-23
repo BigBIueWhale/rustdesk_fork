@@ -271,15 +271,16 @@ reported capture active even if no `VirtualDisplay` existed. Fresh consent repla
 without an exact callback transition. Native last-connection teardown also treated view-camera,
 unauthorized, and disconnected rows as desktop-capture demand.
 
-Source closure: installation now retires the old projection while preserving only live capture demand,
+Initial source closure: installation now retires the old projection while preserving only live capture demand,
 registers one exact callback before display creation, and resumes only if that demand remains. Exact
 `onStop()` ignores a replaced callback, clears readiness, and fully releases the display, reader,
 surface, raw-video, and audio pipeline. Start propagates a Boolean display result and commits active
 state only after a non-null `VirtualDisplay`; revoked/stopped/null state fails, fully retires the bad
 owner, and asks for fresh consent. Explicit stop clears demand, while service teardown also unregisters
-and stops the exact projection. The native classifier now defines demand as an authorized,
-non-disconnected Remote desktop connection only—never FileTransfer, ViewCamera, Terminal, or PortForward—and a
-focused Rust regression covers all exclusions. `scripts/verify.sh` and the semantic mutation verifier
+and stops the exact projection. That intermediate correction defined a Rust-side last-live-connection
+classifier as authorized, non-disconnected Remote only—never FileTransfer, ViewCamera, Terminal, or
+PortForward—and covered it with a focused Rust regression. The later exact service-owned demand
+correction below supersedes that split classifier/stop-edge topology. `scripts/verify.sh` and the semantic mutation verifier
 bind the owner/callback order, transactional active-state commit, delayed-consent demand gate, full
 teardown, native classifier, requirement, disposition, and this ledger. The persistent foreground
 service/listener design remains intact; file transfer remains independent. This controlled-side
@@ -298,12 +299,12 @@ the last real Remote disconnected. This was a defense-in-depth R-S19 capability-
 ownership defect, not a PAKE/password bypass, local privilege escalation, public-listener change, host
 modification, or evidence of exploitation.
 
-The validated enum now crosses the `Client` boundary intact. Rust capture retention compares that enum
-directly to `Remote`. Android has one closed exact-tag decoder; unknown, case-varied, or future unhandled tags
+The validated enum now crosses the `Client` boundary intact. Android has one closed exact-tag decoder;
+unknown, case-varied, or future unhandled tags
 fail closed before notification, voice ownership, or capture demand. The foreground service admits
 MediaProjection demand only for exact Remote and voice-call ownership only for exact Remote/ViewCamera;
 parallel booleans and `port_forward` remain presentation data and no longer decide either resource. The
-five-mode Rust regression, Android-free Kotlin transition regression, shared source gate, focused voice
+Android-free Kotlin transition regression, shared source gate, focused voice
 ownership verifier, and independent workspace mutation verifier bind the carry-through and both policies.
 The persistent service is deliberately unchanged: Android documents that a started service has a lifecycle
 independent of its creating Activity
@@ -313,16 +314,71 @@ callback registration before `createVirtualDisplay()` and exact resource cleanup
 implication is persistent listener/service ownership plus exact per-connection capture demand—not killing the
 service to recover incoherent state.
 
-Final confined source verification (2026-07-23): the Android-free Kotlin decoder/policy regression compiled with
+Prior exact-type follow-up verification (2026-07-23): the Android-free Kotlin decoder/policy regression compiled with
 the pinned Kotlin 2.1.21 compiler and passed every canonical/noncanonical/type-policy assertion. The pinned Android
 release graph completed `:app:compileReleaseKotlin` with only `:app:compileFlutterBuildRelease` excluded because
 this bounded check did not generate the separate Rust/Flutter bridge: `BUILD SUCCESSFUL` in 27 seconds, with 228
 actionable tasks (227 executed, one up-to-date) and only existing SDK/plugin/deprecation warnings. Both focused
-Rust 1.75 tests passed; pinned Rustfmt passed the changed Rust file; the focused Android ownership verifier rejected
+then-current Rust classifier tests passed; pinned Rustfmt passed the changed Rust file; the focused Android ownership verifier rejected
 all 61 deliberate mutations; the independent workspace verifier passed normally and through its complete source
 mutation matrix; edited Bash syntax and native-codec normal/self-test gates passed; and the requirements hashes
 match. No APK was assembled or installed. Full exact-commit APK/release artifacts and real-device behavior remain
-R-B2/R-B10 obligations.
+R-B2/R-B10 obligations. The Rust classifier and detached stop edge from that checkpoint are superseded by the
+exact service-owned owner set below rather than retained as current design.
+
+Second follow-up correction (2026-07-23), **serialized service-owned capture demand and exact callback-object
+lifetime**: the exact-type correction still split one resource decision across independent Rust connection tasks.
+`ConnectionManager::remove_connection` mutated `CLIENTS`, released that lock, computed that no Remote remained,
+and only afterward called `MainService.rustSetByName("stop_capture")`. A concurrent newly authorized Remote could
+enter JNI first and request capture; the older removal could then deliver its stale global stop last. The final
+native map would contain a live Remote while persistent `MainService.captureRequested` was false. That is a
+source-proven mechanism directly consistent with screen control hanging while a separate file-transfer connection
+works and Force Stop repairs process state, although exact device causality is still not claimed.
+
+`MainService` now owns a service-owned exact Remote connection-ID set. Its synchronized Rust callback dispatch
+upserts only a positive, authorized, exact-Remote ID, retires only the exact removed ID, and reconciles the complete
+set to capture start/stop before releasing the same service monitor. Both distinct-connection delivery orders
+therefore converge: removing one owner cannot clear another, and there is no detached stop that can arrive after a
+newer admission. Removal attempts capture-owner and voice-owner retirement independently and reconciles capture
+afterward even if the other subsystem reports a rejected identity, so a partial cleanup result cannot leave the
+derived capture state stale. The Rust global demand snapshot/classifier and `stop_capture` command are deleted.
+Service teardown closes further controlled-resource admission before clearing capture/voice owners and releasing
+MediaProjection; late pointer/key and controlled-state callbacks are refused.
+
+The JNI object lifetime is closed at the same boundary. Initialization now retains the exact callback-owning
+`MainService` separately from a process-lifetime global reference to Android `applicationContext`; the NDK context
+receives only that retained application object, never a Service or JNI local reference whose native call has
+returned. `onDestroy()` stops the server and uses exact-object JNI release to clear only its own `GlobalRef`; a
+delayed old Service cannot clear a replacement. Kotlin behavior regressions cover unauthorized and non-Remote
+exclusion, concurrent Remote aggregation, remove→add and add→remove convergence, same-ID type replacement, and full
+clear. Focused/shared/independent mutation gates bind the serialized owner update, reconciliation, stale-stop
+absence, teardown admission latch, exact JNI object release, R-S14, Appendix C #205, and this ledger. Exact
+APK/device reproduction and the full R-B2/R-B10 release remain open.
+
+The same service/listener generation now continues through every accepted Android `Connection`, its independent
+connection-manager callback thread, and controlled input JNI call. Native dispatch holds the exact callback-context
+read guard and refuses a zero, stopped, or replaced generation before entering Java, so an old connection's delayed
+add/remove/voice/input event cannot mutate a replacement Service even if the server has restarted and eventually
+reuses the same positive connection ID. `startServer(this, ...)` returns that exact generation only after JNI proves
+the caller is the currently retained `MainService` object; an overlapping obsolete Service therefore cannot bind
+its generation to a replacement callback owner. `stopServer(generation)` uses compare-and-exchange rather than an
+unconditional global bump, so delayed destruction of an obsolete Service cannot stop the replacement listener.
+Exact object identity, exact listener generation, and the service-owned connection-ID set are therefore one closed
+lifecycle boundary rather than three independently timed best-effort facts.
+
+Final confined verification (2026-07-23): the Android-free Kotlin regression compiled with pinned Kotlin 2.1.21
+and passed exact connection-type decoding, capture/voice policy, positive owner admission, two-Remote aggregation,
+both cross-connection delivery orders, same-ID type replacement, and clear. Locked/offline pinned Android Rust
+`cargo ndk check --release --features flutter --lib` passed. A disposable, non-root, networkless full Android
+arm64 release graph generated `app-arm64-v8a-release.apk` (45.0 MB); the build tool reported success, while the
+outer disposable-cache cleanup wrapper separately returned nonzero until immutable cache permissions were
+normalized and the scratch was removed. The APK was neither retained, installed, nor published. Locked/offline
+Rust 1.75 `cargo check --lib --features linux-pkg-config` also passed the shared library with existing warnings
+only. The focused ownership verifier passed and rejected all 101 deliberate mutations; the independent workspace
+verifier passed normally and across its complete source-mutation matrix. Pinned Rustfmt, edited Bash/Python syntax,
+native-codec normal/self-test gates, synchronized requirements hashes, unchanged `Cargo.lock`, and
+`git diff --check` passed. This is source/build evidence, not a claim that the original swipe/relaunch/Force-Stop
+sequence has been reproduced on a physical Android device; that device validation remains open.
 
 **R-D7a/R-T4 Android outgoing-client Activity/isolate ownership — SOURCE IMPLEMENTED / GATED;
 ANDROID ARM64 RELEASE TARGET BUILD VALIDATED; ON-DEVICE VALIDATION PENDING
@@ -9163,7 +9219,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9fc95422be3cda78326f03592f48f2806452c858af6e2ef762736c006e6fe5a2  requirements.html
+806f27dcd662328b80bba43de3e6ca5d4c973435ea529cbdcda848cc645ff8dd  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ce, R-SV4a,

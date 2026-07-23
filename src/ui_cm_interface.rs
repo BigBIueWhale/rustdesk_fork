@@ -164,15 +164,6 @@ pub struct Client {
     tx: UnboundedSender<Data>,
 }
 
-#[cfg(any(target_os = "android", test))]
-fn android_connection_requires_desktop_capture(
-    authorized: bool,
-    disconnected: bool,
-    conn_type: ipc::CmAuthConnType,
-) -> bool {
-    authorized && !disconnected && conn_type == ipc::CmAuthConnType::Remote
-}
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct IpcTaskRunner<T: InvokeUiCM> {
     stream: Connection,
@@ -414,21 +405,6 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         #[cfg(target_os = "windows")]
         {
             crate::clipboard::try_empty_clipboard_files(ClipboardSide::Host, id);
-        }
-
-        #[cfg(any(target_os = "android"))]
-        if !CLIENTS.read().unwrap().values().any(|client| {
-            android_connection_requires_desktop_capture(
-                client.authorized,
-                client.disconnected,
-                client.conn_type,
-            )
-        }) {
-            if let Err(e) =
-                scrap::android::call_main_service_set_by_name("stop_capture", None, None)
-            {
-                log::debug!("stop_capture err:{}", e);
-            }
         }
 
         self.ui_handler.remove_connection(id, close);
@@ -2079,35 +2055,6 @@ mod tests {
     use crate::ipc::Data;
     use hbb_common::tokio::{runtime::Runtime, sync::mpsc::unbounded_channel};
     use std::fs;
-
-    #[test]
-    fn android_capture_demand_is_remote_desktop_only() {
-        assert!(android_connection_requires_desktop_capture(
-            true,
-            false,
-            ipc::CmAuthConnType::Remote
-        ));
-        assert!(!android_connection_requires_desktop_capture(
-            false,
-            false,
-            ipc::CmAuthConnType::Remote
-        ));
-        assert!(!android_connection_requires_desktop_capture(
-            true,
-            true,
-            ipc::CmAuthConnType::Remote
-        ));
-        for conn_type in [
-            ipc::CmAuthConnType::FileTransfer,
-            ipc::CmAuthConnType::ViewCamera,
-            ipc::CmAuthConnType::Terminal,
-            ipc::CmAuthConnType::PortForward,
-        ] {
-            assert!(!android_connection_requires_desktop_capture(
-                true, false, conn_type
-            ));
-        }
-    }
 
     #[cfg(not(any(target_os = "ios")))]
     fn cm_authority(valid: bool, file: bool) -> ipc::CmConnectionAuthority {

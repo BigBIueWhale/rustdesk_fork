@@ -8614,8 +8614,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Debian lifecycle marker, or the complete cold R-B2 transaction; those remain R-B2/R-S11c-27. No host RustDesk
   process/service/configuration/listener, firewall/network state, native device, or installed package was used,
   inspected, or changed.
-- **R-S11cg/R-S11e-99 — Android signing-identity generation authority — SOURCE IMPLEMENTED/GATED
-  2026-07-23; DISPOSABLE END-TO-END RUNTIME EVIDENCE PENDING; ESTABLISHED PROJECT IDENTITY UNTOUCHED.**
+- **R-S11cg/R-S11e-99 — Android signing-identity generation authority — SOURCE CLOSED/GATED AND
+  EXACT-COMMIT DISPOSABLE END-TO-END VALIDATED 2026-07-23; ESTABLISHED PROJECT IDENTITY UNTOUCHED.**
   Platform: Android build tooling on the unprivileged Linux build host. Endpoint/action: the one-time creation of
   the stable self-managed RSA signing identity required by R-B2. Boundary: a requested absent protected keystore
   leaf and optional protected password file ↔ randomness, `keytool`, the local Docker daemon, private staging, and
@@ -8641,8 +8641,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   single-link regular file.
 
   The generator creates a mode-0700 random stage inside that signing directory, snapshots its narrow worker
-  read-only, and gives Docker an empty private configuration. Password creation, key creation, and independent
-  certificate inspection are three operations in the already-present immutable builder. Every operation is
+  read-only, and gives Docker an empty private configuration whose owner/mode/link/bytes are reproved before and
+  after daemon operations. Password creation, key creation, and independent certificate inspection are three
+  operations in the already-present immutable builder. Every operation is
   `--pull=never`, networkless, read-only-root, numeric non-root, capability-free, no-new-privileges, and
   independently bounded for PIDs, memory with no swap expansion, CPU, and non-executable `nosuid,nodev` tmpfs.
   No final signing directory, repository, Docker socket, port, host namespace, added capability, or image
@@ -8666,9 +8667,34 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   independent verification, stability proofs, password-before-key synchronization/publication, R-S11cg,
   Appendix C #226, this ledger, operator documentation, shared-gate wiring, and workspace ownership through
   deliberate mutations. The independent workspace verifier binds the focused verifier and all policy anchors.
-  Runtime evidence is intentionally pending until this source is one clean exact commit. No established
-  keystore/password was listed, opened, mounted, hashed, regenerated, replaced, or otherwise inspected by this
-  slice; no APK/device, host RustDesk process/service/configuration/listener, or firewall/network state was used.
+
+  Exact clean source commit `c89082124cff95a1c0a67ababcd4a5de57d5996f`, tree
+  `07741ba2a4a6239d1e19d9d71440560338d11a24`, was exercised through both publication branches. A fresh
+  mode-0700 `/tmp` fixture with no password produced a disposable random password and key, independently
+  inspected the fixed alias/properties, synchronized both, and left current-UID mode-0600 single-link final
+  files; an immediate retry failed on the pre-Docker existing-keystore no-clobber guard. A separate fixture with
+  an existing mode-0600 password produced and independently inspected a disposable key while its password digest
+  and single-link metadata remained unchanged. Both trees and their random keys were removed. A neutral launch
+  with the exact Android image and key-generation bounds observed UID/GID 1000, zero effective capabilities,
+  `NoNewPrivs: 1`, read-only root, only loopback, and a narrow writable output whose worker-umask canary was
+  current-UID mode 0600.
+
+  The focused verifier passes under the immutable Python 3.6 Debian-builder image and rejects all 30 deliberate
+  weakenings. From the same clean commit, the independent workspace verifier passes normal validation and its
+  complete in-memory source-mutation catalog in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
+  Dependency inventory normal plus 103 self-tests, native-codec normal/self-test, Bash/Python syntax,
+  requirements SHA-256 `0db1cf9a1c331b4c59b37c4b93853632a728d661c837fe81a7a645fea9dbe593`,
+  and diff checks pass. Full executable workspace fixture mode expects a live current-user systemd D-Bus socket;
+  the confined verifier deliberately had none, failed closed, and was not given a host session-bus mount. No
+  claim is made for that fixture mode.
+
+  No established keystore/password was listed, opened, mounted, hashed, regenerated, replaced, or otherwise
+  inspected. No APK was built or signed, no Android device was used, and no host RustDesk
+  process/service/configuration/listener, firewall/UFW/nftables/iptables, or host network state was inspected or
+  changed. This closes future one-time generator source/runtime authority only; current APK identity, device
+  upgrade behavior, the complete R-B2 release transaction, native Apple/Windows evidence, and external review
+  remain separate obligations.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of

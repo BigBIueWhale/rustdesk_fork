@@ -363,9 +363,9 @@ class ServerModel with ChangeNotifier {
     // route the user to set one. The fork deliberately has NO auto-generated password —
     // the user must choose one — so we prompt rather than fabricate a credential; the
     // service starts once a non-empty password is set (notEmptyCallback re-invokes this).
-    // (`permanent-password-set` is is_permanent_password_set() == !get_permanent_password_prs()
-    // .is_empty(), the exact condition the Rust park/bail use, so this gate never diverges
-    // from the fail-closed backstop.) Desktop is intentionally untouched (it uses the
+    // (`permanent-password-set` reports the same typed PRS availability consumed by the
+    // Rust park/bail paths, so this gate never diverges from the fail-closed backstop.)
+    // Desktop is intentionally untouched (it uses the
     // installed --service, and its launch path runs before the widget tree exists).
     if ((isAndroid || isIOS) &&
         (await bind.mainGetCommon(key: 'permanent-password-set')) != 'true') {

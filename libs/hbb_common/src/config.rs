@@ -1193,13 +1193,6 @@ impl PermanentPasswordCredentialSnapshot {
 }
 
 impl PermanentPasswordPrsRead {
-    pub fn into_prs(self) -> String {
-        match self {
-            Self::Available(prs) => prs,
-            Self::Empty | Self::UndecryptableStorage => String::new(),
-        }
-    }
-
     pub fn is_available(&self) -> bool {
         matches!(self, Self::Available(_))
     }
@@ -2626,7 +2619,7 @@ impl Config {
             // signature of a TRANSIENT machine-UUID read failure (macOS login window / Windows
             // shutdown — get_uuid, lib.rs). PRESERVE it: a coincident store() must not wipe a
             // possibly-valid credential on a blip. It fails closed at the CPace boundary
-            // (get_permanent_password_prs is empty) until the UUID reads again.
+            // (the typed PRS read is unavailable) until the UUID reads again.
             return Ok(());
         }
 
@@ -3254,10 +3247,6 @@ impl Config {
         Some(authorize())
     }
 
-    pub fn get_permanent_password_prs() -> String {
-        Self::read_permanent_password_prs().into_prs()
-    }
-
     /// Returns the locally persisted permanent password storage and salt (NOT the hard/preset one).
     ///
     /// This function is side-effect free and returns a consistent snapshot under a single lock.
@@ -3348,7 +3337,7 @@ impl Config {
         if storage.is_empty() {
             // A cleared credential must clear BOTH at-rest forms. Leaving config.password_prs set after
             // the storage is cleared would keep the CPace handshake authenticating with the just-cleared
-            // password (get_permanent_password_prs reads password_prs, not password) — R-S9.
+            // password (the typed PRS reader reads password_prs, not password) — R-S9.
             if config.password.is_empty()
                 && config.password_prs.is_empty()
                 && (salt.is_empty() || config.salt == salt)
@@ -3416,7 +3405,7 @@ impl Config {
         }
         let (local_storage, _local_salt) = Self::get_local_permanent_password_storage_and_salt();
         if !local_storage.is_empty() {
-            // F2 (coherence): CPace keys from the LIVE PRS (get_permanent_password_prs →
+            // F2 (coherence): CPace keys from the LIVE PRS (read_permanent_password_prs →
             // config.password_prs), which is what the auth boundary actually consumes. Report a
             // LOCAL permanent password as "set" only when that PRS is present and decryptable,
             // so an undecryptable `01…` blob (e.g. a transient machine-UUID read failure) or a
@@ -5137,8 +5126,10 @@ unrelated = "preserved"
             Config::set_permanent_password_storage_for_runtime(&storage, "runtime-salt").unwrap()
         );
         assert_eq!(
-            Config::get_permanent_password_prs(),
-            decrypt_permanent_password_prs_storage(&prs_storage).unwrap()
+            Config::read_permanent_password_prs(),
+            PermanentPasswordPrsRead::Available(
+                decrypt_permanent_password_prs_storage(&prs_storage).unwrap()
+            )
         );
         let config = CONFIG.read().unwrap();
         assert!(config.password.is_empty());
@@ -5171,7 +5162,10 @@ unrelated = "preserved"
         );
 
         assert!(Config::set_permanent_password_prs_for_runtime(&prs).unwrap());
-        assert_eq!(Config::get_permanent_password_prs(), prs);
+        assert_eq!(
+            Config::read_permanent_password_prs(),
+            PermanentPasswordPrsRead::Available(prs.clone())
+        );
         assert!(!Config::set_permanent_password_prs_for_runtime(&prs).unwrap());
         for invalid in [
             "not-base64",
@@ -5179,7 +5173,10 @@ unrelated = "preserved"
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         ] {
             assert!(Config::set_permanent_password_prs_for_runtime(invalid).is_err());
-            assert_eq!(Config::get_permanent_password_prs(), prs);
+            assert_eq!(
+                Config::read_permanent_password_prs(),
+                PermanentPasswordPrsRead::Available(prs.clone())
+            );
         }
 
         assert!(Config::set_permanent_password_prs_for_runtime("").unwrap());
@@ -5890,7 +5887,6 @@ unrelated = "preserved"
                 Config::read_permanent_password_prs(),
                 PermanentPasswordPrsRead::Available(_)
             ));
-            assert!(!Config::get_permanent_password_prs().is_empty());
             assert!(Config::has_permanent_password());
         });
 
@@ -5900,7 +5896,10 @@ unrelated = "preserved"
         half.password = storage;
         half.salt = "salt123".to_owned();
         with_config_and_hard_settings(half, HashMap::new(), || {
-            assert!(Config::get_permanent_password_prs().is_empty());
+            assert_eq!(
+                Config::read_permanent_password_prs(),
+                PermanentPasswordPrsRead::Empty
+            );
             assert!(!Config::has_permanent_password());
         });
 
@@ -5915,7 +5914,6 @@ unrelated = "preserved"
                 Config::read_permanent_password_prs(),
                 PermanentPasswordPrsRead::UndecryptableStorage
             );
-            assert!(Config::get_permanent_password_prs().is_empty());
             assert!(!Config::has_permanent_password());
         });
     }

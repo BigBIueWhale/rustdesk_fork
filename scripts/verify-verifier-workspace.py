@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16472,6 +16472,160 @@ def validate_temporary_password_generator_excision_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_typed_permanent_password_prs_contract(sources):
+    config = sources["config_source"]
+    server = sources["server_source"]
+    require_absent(
+        config,
+        "pub fn get_permanent_password_prs",
+        "Config PRS string accessor",
+    )
+    require_absent(
+        config,
+        "pub fn into_prs",
+        "PRS enum string adapter",
+    )
+    require_absent(
+        server,
+        "pub async fn effective_permanent_password_prs()",
+        "server PRS string helper",
+    )
+    require_absent(
+        server,
+        ".into_prs()",
+        "server PRS string adapter",
+    )
+
+    auth = extract_between(
+        server,
+        "async fn authenticate_tcp_stream(",
+        "\nimpl Server {",
+        "CPace typed PRS admission",
+    )
+    for text, label in (
+        (
+            "let (prs_status, credential_generation) = credential.into_parts();",
+            "credential snapshot generation binding",
+        ),
+        (
+            "PermanentPasswordPrsRead::Available(prs) => prs",
+            "CPace available PRS decision",
+        ),
+        (
+            "PermanentPasswordPrsRead::Empty =>",
+            "CPace empty PRS decision",
+        ),
+        (
+            "Refusing connection: no permanent password set (R-S9)",
+            "CPace empty PRS diagnostic",
+        ),
+        (
+            "PermanentPasswordPrsRead::UndecryptableStorage =>",
+            "CPace undecryptable PRS decision",
+        ),
+        (
+            "Refusing connection: permanent password storage is undecryptable (R-S9)",
+            "CPace undecryptable PRS diagnostic",
+        ),
+    ):
+        require_text(auth, text, label)
+    require_order(
+        auth,
+        (
+            "let (prs_status, credential_generation) = credential.into_parts();",
+            "let prs = match prs_status {",
+            "PermanentPasswordPrsRead::Available(prs) => prs",
+            "PermanentPasswordPrsRead::Empty =>",
+            "PermanentPasswordPrsRead::UndecryptableStorage =>",
+            "hbb_common::cpace::guess_limiter_allows(addr.ip())",
+            "hbb_common::cpace::run_responder(fs, &prs).await",
+        ),
+        "typed PRS decision before limiter and CPace",
+    )
+
+    shared_gate = extract_between(
+        sources["verify"],
+        "grep -Fq 'pub enum PermanentPasswordPrsRead'",
+        "# (3c-ii-a) Viewer peer media admission bounds",
+        "shared typed PRS source gate",
+    )
+    for text in (
+        "grep -qF 'pub fn get_permanent_password_prs' libs/hbb_common/src/config.rs",
+        "grep -qF 'pub fn into_prs' libs/hbb_common/src/config.rs",
+        "grep -qF 'pub async fn effective_permanent_password_prs()' src/server.rs",
+        "PermanentPasswordPrsRead::Available(prs) => prs",
+        "PermanentPasswordPrsRead::Empty =>",
+        "PermanentPasswordPrsRead::UndecryptableStorage =>",
+        "R-S11b-3m — typed permanent-password PRS authority reaches CPace admission",
+        "<tr><td>236</td>",
+    ):
+        require_text(shared_gate, text, "shared typed PRS source gate")
+
+    apple_gate = extract_between(
+        sources["apple"],
+        "grep -q 'effective_permanent_password_prs'",
+        'grep -Fq \'security-framework = "2.10"\'',
+        "Apple typed PRS source gate",
+    )
+    for text in (
+        "PermanentPasswordPrsRead::Available(prs) => prs",
+        "PermanentPasswordPrsRead::Empty =>",
+        "PermanentPasswordPrsRead::UndecryptableStorage =>",
+        "grep -qF 'get_permanent_password_prs'",
+        "grep -qF 'into_prs('",
+    ):
+        require_text(apple_gate, text, "Apple typed PRS source gate")
+
+    require_text(
+        sources["requirements"],
+        "<tr><td>86</td>",
+        "R-S9 PRS read-state Appendix C row",
+    )
+    for text in (
+        "<code>Config::get_permanent_password_prs</code>",
+        "<code>PermanentPasswordPrsRead::into_prs</code>",
+        "explicitly accepts only <code>Available(prs)</code>",
+        "refuses <code>Empty</code> and <code>UndecryptableStorage</code> distinctly",
+    ):
+        require_text(
+            sources["requirements"],
+            text,
+            "R-S9 typed-through-admission disposition",
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>236</td>",
+        "PRS string-adapter Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3m — typed permanent-password PRS authority reaches CPace admission",
+        "typed PRS authority hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "typed PRS deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Config PRS string accessor", "Config accessor mutation"),
+        ("PRS enum string adapter", "enum adapter mutation"),
+        ("server PRS string helper", "server helper mutation"),
+        ("CPace undecryptable PRS diagnostic", "auth decision mutation"),
+        ("shared typed PRS source gate", "shared-gate mutation"),
+        ("Apple typed PRS source gate", "Apple-gate mutation"),
+        (
+            "R-S9 typed-through-admission disposition",
+            "R-S9 disposition mutation",
+        ),
+        ("PRS string-adapter Appendix C row", "Appendix mutation"),
+        ("typed PRS authority hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_rendezvous_compatibility_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -18044,6 +18198,7 @@ def validate_sources(sources):
     validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
+    validate_typed_permanent_password_prs_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
     validate_public_server_selection_excision_contract(sources)
@@ -29102,6 +29257,60 @@ def run_source_mutations(sources):
         ),
         (
             "config_source",
+            "    pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {",
+            "    pub fn get_permanent_password_prs() -> String {\n        match Self::read_permanent_password_prs() {\n            PermanentPasswordPrsRead::Available(prs) => prs,\n            PermanentPasswordPrsRead::Empty | PermanentPasswordPrsRead::UndecryptableStorage => String::new(),\n        }\n    }\n\n    pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {",
+            "Config PRS string accessor",
+        ),
+        (
+            "config_source",
+            "impl PermanentPasswordPrsRead {\n    pub fn is_available(&self) -> bool {",
+            "impl PermanentPasswordPrsRead {\n    pub fn into_prs(self) -> String {\n        match self {\n            Self::Available(prs) => prs,\n            Self::Empty | Self::UndecryptableStorage => String::new(),\n        }\n    }\n\n    pub fn is_available(&self) -> bool {",
+            "PRS enum string adapter",
+        ),
+        (
+            "server_source",
+            "pub type Childs = Arc<Mutex<Vec<std::process::Child>>>;",
+            "pub async fn effective_permanent_password_prs() -> String {\n    match effective_permanent_password_prs_status().await {\n        PermanentPasswordPrsRead::Available(prs) => prs,\n        PermanentPasswordPrsRead::Empty | PermanentPasswordPrsRead::UndecryptableStorage => String::new(),\n    }\n}\n\npub type Childs = Arc<Mutex<Vec<std::process::Child>>>;",
+            "server PRS string helper",
+        ),
+        (
+            "server_source",
+            "Refusing connection: permanent password storage is undecryptable (R-S9)",
+            "Refusing connection: no permanent password set (R-S9)",
+            "CPace undecryptable PRS diagnostic",
+        ),
+        (
+            "verify",
+            "grep -qF 'pub fn get_permanent_password_prs' libs/hbb_common/src/config.rs",
+            "grep -qF 'pub fn get_permanent_password_prs_disabled' libs/hbb_common/src/config.rs",
+            "shared typed PRS source gate",
+        ),
+        (
+            "apple",
+            "grep -q 'PermanentPasswordPrsRead::Available(prs) => prs'",
+            "grep -q 'PermanentPasswordPrsRead::Available(_)'",
+            "Apple typed PRS source gate",
+        ),
+        (
+            "requirements",
+            "explicitly accepts only <code>Available(prs)</code>",
+            "may flatten <code>Available(prs)</code>",
+            "R-S9 typed-through-admission disposition",
+        ),
+        (
+            "requirements",
+            "<tr><td>236</td>",
+            "<tr><td>236-disabled</td>",
+            "PRS string-adapter Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11b-3m — typed permanent-password PRS authority reaches CPace admission",
+            "R-S11b-3m — typed permanent-password PRS authority deferred",
+            "typed PRS authority hardening ledger",
+        ),
+        (
+            "config_source",
             "pub const CONNECT_TIMEOUT: u64 = 18_000;",
             "pub const RENDEZVOUS_TIMEOUT: u64 = 12_000;\npub const REG_INTERVAL: i64 = 15_000;\npub const CONNECT_TIMEOUT: u64 = 18_000;",
             "rendezvous operation timeout",
@@ -30260,7 +30469,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
+            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

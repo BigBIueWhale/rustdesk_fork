@@ -302,10 +302,6 @@ pub async fn effective_permanent_password_credential_snapshot(
     Config::read_permanent_password_credential_snapshot()
 }
 
-pub async fn effective_permanent_password_prs() -> String {
-    effective_permanent_password_prs_status().await.into_prs()
-}
-
 pub type Childs = Arc<Mutex<Vec<std::process::Child>>>;
 type ConnMap = HashMap<i32, ConnInner>;
 
@@ -722,10 +718,15 @@ async fn authenticate_tcp_stream(stream: &mut Stream, addr: SocketAddr) -> Resul
         }
         let credential = effective_permanent_password_credential_snapshot().await;
         let (prs_status, credential_generation) = credential.into_parts();
-        let prs = prs_status.into_prs();
-        if prs.is_empty() {
-            bail!("Refusing connection: no permanent password set (R-S9)");
-        }
+        let prs = match prs_status {
+            PermanentPasswordPrsRead::Available(prs) => prs,
+            PermanentPasswordPrsRead::Empty => {
+                bail!("Refusing connection: no permanent password set (R-S9)")
+            }
+            PermanentPasswordPrsRead::UndecryptableStorage => {
+                bail!("Refusing connection: permanent password storage is undecryptable (R-S9)")
+            }
+        };
         // R-S10 / R-P14c: shed a source that has exceeded the online-guess rate
         // BEFORE the expensive scalar-mult — checked here, before run_responder.
         if !hbb_common::cpace::guess_limiter_allows(addr.ip()) {

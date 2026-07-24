@@ -563,15 +563,17 @@ wrappers feed the same live PRS reader. Endpoint/action: permanent-password PRS 
 direct-listener binding, and "password set" status. Boundary: durable credential envelope or service-owned runtime
 snapshot ↔ network reachability/auth state. Attack surface closed: unavailable PRS states are now typed as
 `PermanentPasswordPrsRead::Available`, `Empty`, or `UndecryptableStorage` instead of being silently collapsed
-inside the live reader. `get_permanent_password_prs()` only string-adapts the typed result at the legacy CPace
-call boundary, where empty still means fail closed before keying; `has_permanent_password()` keys on the PRS the
-auth boundary can actually use, not stale `config.password`. The macOS service-owned runtime snapshot helper
-preserves the typed status, and `direct_server` logs undecryptable stored PRS distinctly while dropping/parking
-the listener until a valid password is provisioned. No fallback is admitted from stale runtime memory,
-`config.password`, preset/hard settings, or prior service snapshots. Verification closure: the config regression
-test covers fully provisioned, PRS-empty half-state, and undecryptable current-format storage; `scripts/verify.sh`
-gates the typed enum, the undecryptable branch, the server status helper, the direct-listener diagnostic, the
-requirements/status disposition, and absence of a silent `unwrap_or_default()` collapse in the PRS string accessor.
+inside the live reader. R-S11b-3m removes the later string-flattening surfaces as well:
+`Config::get_permanent_password_prs`, `PermanentPasswordPrsRead::into_prs`, and the unused
+`effective_permanent_password_prs` helper are absent. The CPace authentication sink explicitly matches the typed
+state, uses only `Available(prs)`, and refuses `Empty` and `UndecryptableStorage` with distinct diagnostics before
+keying. `has_permanent_password()` keys on the PRS the auth boundary can actually use, not stale
+`config.password`. The macOS service-owned runtime snapshot helper preserves the typed status, and
+`direct_server` logs undecryptable stored PRS distinctly while dropping/parking the listener until a valid
+password is provisioned. No fallback is admitted from stale runtime memory, `config.password`, preset/hard
+settings, or prior service snapshots. Verification closure: config and integration regressions consume the typed
+state; `scripts/verify.sh` gates the typed enum, explicit three-way CPace decision, deleted string adapters,
+server-status helper, direct-listener diagnostic, requirements/status disposition, and Appendix C #236.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -837,6 +839,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   provisioning-owned shape, executes the regression, and binds this ledger plus Appendix C #235. The independent
   workspace validator semantically checks those invariants and deliberately mutates the source, gate,
   requirements, Appendix row, and ledger. Exact native and reproducible artifact evidence remains under R-B2.
+- **R-S11b-3m — typed permanent-password PRS authority reaches CPace admission — CLOSED/GATED 2026-07-24.**
+  Platforms: every controlled-side build. Endpoint/action: reading the password-equivalent permanent-password
+  PRS for listener readiness, status, tests, and the CPace responder admission decision. Boundary: durable or
+  service-owned runtime credential state ↔ the only network authentication sink. The earlier R-S9 repair made
+  the storage reader typed, but retained three legacy string adapters: public
+  `Config::get_permanent_password_prs`, public `PermanentPasswordPrsRead::into_prs`, and an unused server
+  `effective_permanent_password_prs` helper. The live CPace sink called `into_prs`, collapsing both `Empty` and
+  `UndecryptableStorage` into an empty string before refusing the connection. This failed closed and was not an
+  authentication bypass, credential disclosure, privilege escalation, exploitation event, Android lifecycle
+  defect, or evidence of host compromise, but it weakened the typed authority model and left future callers a
+  misleading API that erased a durable storage failure.
+  Closure deletes all three adapters. `authenticate_tcp_stream` now consumes
+  `PermanentPasswordPrsRead` directly: only `Available(prs)` reaches the limiter and CPace responder, while
+  `Empty` and `UndecryptableStorage` return distinct pre-keying failures. The runtime-smoke seeder and config
+  tests also match typed state explicitly; no test preserves the flattening semantics. Shared and Apple gates
+  reject any adapter reintroduction and require the three-way authentication match. The independent workspace
+  validator checks the source, both gates, R-S9 disposition, this ledger, Appendix C #236, and deliberate
+  mutations. Exact native/reproducible artifact and device evidence remain under R-B2.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -5317,7 +5337,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   deletes the unused public whole-`Config`/`Config2` get/set surfaces and standalone salt writer, leaving
   only typed field-specific mutation APIs. R-S11b-3l removes the remaining public arbitrary-length
   automatic-password generator and makes storage-salt generation private, fixed-purpose, fixed-length, and
-  solely owned by durable permanent-password provisioning.
+  solely owned by durable permanent-password provisioning. R-S11b-3m then deletes every legacy PRS
+  string-flattening adapter and keeps `Available`/`Empty`/`UndecryptableStorage` typed through the CPace admission
+  decision.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad/default permissions across production listeners.
@@ -10157,9 +10179,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-21bada0ad8302584bce5b93baa45e1d2b92fdb2fdc7f2e83cdb12b82c7a09371  requirements.html
+44deb9171b3f9c61a694de46cf078f5aa7d6a1b9717c6380bf14e5982bed25b0  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

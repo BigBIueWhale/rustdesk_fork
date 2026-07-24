@@ -8137,19 +8137,38 @@ grep -Fq 'pub enum PermanentPasswordPrsRead' libs/hbb_common/src/config.rs ||
   { echo "  FAIL R-S9: permanent-password PRS read status must be typed, not collapsed to a bare string"; exit 1; }
 grep -Fq 'PermanentPasswordPrsRead::UndecryptableStorage' libs/hbb_common/src/config.rs ||
   { echo "  FAIL R-S9: undecryptable permanent-password PRS storage must remain distinguishable from an empty credential"; exit 1; }
-prs_reader_body=$(awk '/pub fn get_permanent_password_prs\(\)/,/^    }/' libs/hbb_common/src/config.rs)
-if echo "$prs_reader_body" | grep -q 'unwrap_or_default'; then
-  echo "  FAIL R-S9: get_permanent_password_prs must not silently collapse decrypt failure with unwrap_or_default"
+if grep -qF 'pub fn get_permanent_password_prs' libs/hbb_common/src/config.rs ||
+   grep -qF 'pub fn into_prs' libs/hbb_common/src/config.rs ||
+   grep -qF 'pub async fn effective_permanent_password_prs()' src/server.rs; then
+  echo "  FAIL R-S9/R-S11b-3m: permanent-password PRS state must remain typed through the CPace admission sink; legacy string-flattening accessors are forbidden"
   exit 1
 fi
 grep -Fq 'effective_permanent_password_prs_status' src/server.rs ||
   { echo "  FAIL R-S9: server auth helper must preserve permanent-password PRS read status"; exit 1; }
+prs_auth_body=$(awk '/async fn authenticate_tcp_stream\(/,/^}/' src/server.rs)
+for required in \
+  'PermanentPasswordPrsRead::Available(prs) => prs' \
+  'PermanentPasswordPrsRead::Empty =>' \
+  'PermanentPasswordPrsRead::UndecryptableStorage =>' \
+  'Refusing connection: no permanent password set (R-S9)' \
+  'Refusing connection: permanent password storage is undecryptable (R-S9)'; do
+  echo "$prs_auth_body" | grep -Fq "$required" ||
+    { echo "  FAIL R-S9/R-S11b-3m: CPace admission must explicitly distinguish available, empty, and undecryptable PRS state"; exit 1; }
+done
+if echo "$prs_auth_body" | grep -qE 'into_prs|unwrap_or_default'; then
+  echo "  FAIL R-S9/R-S11b-3m: CPace admission silently flattens typed PRS state"
+  exit 1
+fi
 grep -Fq 'stored permanent password PRS cannot be decrypted' src/direct_service.rs ||
   { echo "  FAIL R-S9: direct listener must log undecryptable stored PRS distinctly from a missing password"; exit 1; }
 grep -Fq 'Permanent-password PRS read-state authority' requirements.html ||
   { echo "  FAIL R-S9: requirements Appendix C must disposition permanent-password PRS read-state authority"; exit 1; }
 grep -Fq 'R-S9 permanent-password PRS read-state authority' HARDENING_STATUS.md ||
   { echo "  FAIL R-S9: hardening status must record the PRS read-state closure"; exit 1; }
+grep -Fq 'R-S11b-3m — typed permanent-password PRS authority reaches CPace admission' HARDENING_STATUS.md ||
+  { echo "  FAIL R-S11b-3m: hardening status must record legacy PRS string-adapter excision"; exit 1; }
+grep -Fq '<tr><td>236</td>' requirements.html ||
+  { echo "  FAIL R-S11b-3m: Appendix C must record legacy PRS string-adapter excision"; exit 1; }
 
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the

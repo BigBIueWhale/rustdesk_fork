@@ -12,11 +12,17 @@
 //! and the fork's fixed domain-separation salt. The at-rest wrapper is local-machine storage only;
 //! it is not a host identity and is not part of the PAKE input.
 fn main() {
-    use hbb_common::config::Config;
+    use hbb_common::config::{Config, PermanentPasswordPrsRead};
     let a: Vec<String> = std::env::args().collect();
     let pw = a.get(1).expect("usage: seed_password <password>");
     let ok = Config::set_permanent_password(pw);
-    let prs = Config::get_permanent_password_prs();
+    let prs = match Config::read_permanent_password_prs() {
+        PermanentPasswordPrsRead::Available(prs) => prs,
+        PermanentPasswordPrsRead::Empty => panic!("seeded permanent password produced no PRS"),
+        PermanentPasswordPrsRead::UndecryptableStorage => {
+            panic!("seeded permanent password storage is undecryptable")
+        }
+    };
     let prs_empty = prs.is_empty();
     // R-P1: the stored PRS is the Argon2id hash, NEVER the plaintext.
     let prs_is_plaintext = &prs == pw;

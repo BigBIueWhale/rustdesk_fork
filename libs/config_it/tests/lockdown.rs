@@ -6,7 +6,7 @@
 //! can default-permissive or re-enable them. A wrong funnel here is fail-open and
 //! "looks fine", so this test pins the behavior exactly.
 
-use hbb_common::config::Config;
+use hbb_common::config::{Config, PermanentPasswordPrsRead};
 
 #[test]
 fn pinned_policy_is_the_single_source_of_truth() {
@@ -145,7 +145,9 @@ fn pinned_policy_is_the_single_source_of_truth() {
 fn permanent_password_prs_is_memory_hard_hash() {
     let pw = "hunter2-correct-horse";
     assert!(Config::set_permanent_password(pw));
-    let prs = Config::get_permanent_password_prs();
+    let PermanentPasswordPrsRead::Available(prs) = Config::read_permanent_password_prs() else {
+        panic!("a set password must yield an available PRS");
+    };
 
     // The stored PRS is a HASH, not the plaintext.
     assert_ne!(prs, pw, "the PRS must not be the plaintext password");
@@ -163,14 +165,22 @@ fn permanent_password_prs_is_memory_hard_hash() {
     // Stable for the same password: re-setting the SAME password is idempotent
     // and yields the SAME PRS (no per-set randomness — the salt is a fixed constant).
     assert!(Config::set_permanent_password(pw));
-    assert_eq!(Config::get_permanent_password_prs(), prs);
+    assert_eq!(
+        Config::read_permanent_password_prs(),
+        PermanentPasswordPrsRead::Available(prs.clone())
+    );
 
     // A different password yields a different PRS, and the change takes effect at once
     // (no cached PRS).
     assert!(Config::set_permanent_password("a-new-password"));
-    let prs2 = Config::get_permanent_password_prs();
+    let PermanentPasswordPrsRead::Available(prs2) = Config::read_permanent_password_prs() else {
+        panic!("a changed password must yield an available PRS");
+    };
     assert_ne!(prs2, prs, "a new password must change the PRS");
-    assert_ne!(prs2, "a-new-password", "the new PRS is the hash, not the plaintext");
+    assert_ne!(
+        prs2, "a-new-password",
+        "the new PRS is the hash, not the plaintext"
+    );
 
     // The legacy `config.password` slot also holds the Argon2id PRS (NOT the plaintext,
     // NOT a fast SHA256) and stays salt-bound — so a full config dump has no plaintext
@@ -178,9 +188,15 @@ fn permanent_password_prs_is_memory_hard_hash() {
     let (pw_storage, salt) = Config::get_local_permanent_password_storage_and_salt();
     assert_ne!(pw_storage, "a-new-password");
     assert!(!pw_storage.is_empty());
-    assert!(!salt.is_empty(), "the hash-shaped storage stays salt-bound (R-S9)");
+    assert!(
+        !salt.is_empty(),
+        "the hash-shaped storage stays salt-bound (R-S9)"
+    );
 
     // Clearing the password clears the PRS (no shared secret ⇒ handshake fails closed).
     assert!(Config::set_permanent_password(""));
-    assert_eq!(Config::get_permanent_password_prs(), "");
+    assert_eq!(
+        Config::read_permanent_password_prs(),
+        PermanentPasswordPrsRead::Empty
+    );
 }

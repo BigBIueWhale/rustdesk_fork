@@ -192,7 +192,7 @@ pub fn derive_cpace_prs(password: &str) -> Option<String> {
 ///            unchanged — only the 32 bytes inside are now memory-hard, never a fast
 ///            hash, never the plaintext.
 ///   - `.1` → `config.password_prs`: the base64 PRS string the CPace handshake reads
-///            live (`get_permanent_password_prs`), machine-UUID-encrypted.
+///            live (`read_permanent_password_prs`), machine-UUID-encrypted.
 /// `None` on an empty password or a derivation/encoding failure.
 pub(super) fn derive_permanent_password_storages(password: &str) -> Option<(String, String)> {
     let raw = derive_cpace_prs_raw(password)?;

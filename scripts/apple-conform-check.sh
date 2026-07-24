@@ -1181,7 +1181,13 @@ grep -q 'test_set_permanent_password_persists_when_value_matches_preset' "$REPO/
 grep -q 'effective_permanent_password_prs' "$REPO/src/direct_service.rs" || r_s11b2="$r_s11b2 macos-service-password-listener-not-effective-prs"
 grep -q 'let credential = effective_permanent_password_credential_snapshot().await' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-snapshot-missing"
 grep -q 'let (prs_status, credential_generation) = credential.into_parts();' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-generation-binding-missing"
-grep -q 'let prs = prs_status.into_prs();' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-not-effective-prs"
+grep -q 'PermanentPasswordPrsRead::Available(prs) => prs' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-available-prs-missing"
+grep -q 'PermanentPasswordPrsRead::Empty =>' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-empty-prs-refusal-missing"
+grep -q 'PermanentPasswordPrsRead::UndecryptableStorage =>' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-undecryptable-prs-refusal-missing"
+if grep -qF 'get_permanent_password_prs' "$REPO/libs/hbb_common/src/config.rs" "$REPO/src/server.rs" ||
+   grep -qF 'into_prs(' "$REPO/libs/hbb_common/src/config.rs" "$REPO/src/server.rs"; then
+  r_s11b2="$r_s11b2 macos-service-password-cpace-string-flattener-present"
+fi
 grep -Fq 'security-framework = "2.10"' "$REPO/Cargo.toml" || r_s11b2="$r_s11b2 macos-security-framework-direct-dependency-missing"
 grep -Fq '<span class="id">R-S11g</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 transaction-finality-requirement-missing"
 grep -Fq '<span class="id">R-S11i</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 raw-password-ipc-requirement-missing"

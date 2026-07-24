@@ -30,6 +30,7 @@ readonly GIT_BIN=/usr/bin/git
 readonly TAR_BIN=/usr/bin/tar
 readonly FLOCK_BIN=/usr/bin/flock
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
+readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
@@ -315,6 +316,36 @@ $dirt" >&2
     return "$status"
 }
 
+verify_clean_live_checkout_state() {
+    local phase="$1" grafts replacements status=0
+    verify_gradle_live_checkout_state "$phase" || status=$?
+    if grafts="$(online_source_git rev-parse --git-path info/grafts)"; then
+        case "$grafts" in
+            /*) ;;
+            *) grafts="$REPO_ROOT/$grafts" ;;
+        esac
+        if [ -e "$grafts" ] || [ -L "$grafts" ]; then
+            echo "[FATAL] $phase: Git graft state is forbidden" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] $phase: cannot resolve Git graft authority" >&2
+        status=1
+    fi
+    if replacements="$(
+        online_source_git for-each-ref --format='%(refname)' refs/replace
+    )"; then
+        if [ -n "$replacements" ]; then
+            echo "[FATAL] $phase: Git replacement refs are forbidden" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] $phase: cannot inspect Git replacement refs" >&2
+        status=1
+    fi
+    return "$status"
+}
+
 # Online acquisition intentionally retains outbound bridge networking. It never
 # publishes a port or joins a host namespace. Every producer otherwise receives
 # the same immutable, numeric-nonroot, capability-free, resource-bounded floor.
@@ -405,7 +436,7 @@ fetch_debian_systemd_smoke_image() {
     log "Debian systemd smoke image acquired transactionally and SHA512-verified: $dest"
 }
 
-libvpx_native_key() {
+libvpx_live_native_key() {
     (
         printf 'VCPKG_BASELINE=%s\n' "$VCPKG_BASELINE"
         printf 'LIBVPX_SOURCE_REF=%s\n' "$LIBVPX_SOURCE_REF"
@@ -417,6 +448,170 @@ libvpx_native_key() {
             sha256sum "$file"
         done
     ) | sha256sum | awk '{print $1}'
+}
+
+LIBVPX_SOURCE_AUTHORITY_COMMIT=""
+LIBVPX_SOURCE_AUTHORITY_TREE=""
+LIBVPX_SOURCE_AUTHORITY_BLOB=""
+LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY=""
+
+libvpx_native_key_for_commit() {
+    local commit="$1" inventory entry metadata mode type object file digest count=0
+    inventory="$(
+        umask 077
+        /usr/bin/mktemp "$ONLINE_FETCH_TMP/libvpx-source-tree.XXXXXXXXXX"
+    )" || die "cannot create the exact libvpx source inventory"
+    online_source_git ls-tree -rz --full-tree "$commit" -- res/vcpkg/libvpx \
+        >"$inventory" \
+        || die "cannot enumerate the committed libvpx source tree"
+    (
+        printf 'VCPKG_BASELINE=%s\n' "$VCPKG_BASELINE"
+        printf 'LIBVPX_SOURCE_REF=%s\n' "$LIBVPX_SOURCE_REF"
+        printf 'SHA512_LIBVPX_SOURCE=%s\n' "$SHA512_LIBVPX_SOURCE"
+        printf 'LIBVPX_FIX_COMMIT=%s\n' "$LIBVPX_FIX_COMMIT"
+        printf 'SHA512_LIBVPX_PATCH=%s\n' "$SHA512_LIBVPX_PATCH"
+        while IFS= read -r -d '' entry; do
+            metadata="${entry%%$'\t'*}"
+            file="${entry#*$'\t'}"
+            read -r mode type object <<<"$metadata"
+            [ "$type" = blob ] && { [ "$mode" = 100644 ] || [ "$mode" = 100755 ]; } \
+                || die "committed libvpx source contains a symlink, submodule, or special entry: $file"
+            case "$file" in
+                res/vcpkg/libvpx/*) ;;
+                *) die "committed libvpx source inventory escaped its exact subtree: $file" ;;
+            esac
+            digest="$(
+                online_source_git cat-file blob "$object" \
+                    | /usr/bin/sha256sum \
+                    | /usr/bin/awk '{print $1}'
+            )" || die "cannot hash committed libvpx source object: $file"
+            printf '%s  %s\n' "$digest" "$file"
+            count=$((count + 1))
+        done <"$inventory"
+        [ "$count" -gt 0 ] || die "committed libvpx source tree is empty"
+    ) | /usr/bin/sha256sum | /usr/bin/awk '{print $1}'
+}
+
+prepare_libvpx_source_authority() {
+    local entry metadata mode type blob path current_key
+    [ -z "$LIBVPX_SOURCE_AUTHORITY_COMMIT" ] \
+        || die "libvpx source authority was initialized more than once"
+    LIBVPX_SOURCE_AUTHORITY_COMMIT="$(
+        online_source_git rev-parse --verify 'HEAD^{commit}'
+    )" || die "cannot resolve the committed libvpx source identity"
+    LIBVPX_SOURCE_AUTHORITY_TREE="$(
+        online_source_git rev-parse --verify "${LIBVPX_SOURCE_AUTHORITY_COMMIT}^{tree}"
+    )" || die "cannot resolve the committed libvpx source tree"
+    [[ "$LIBVPX_SOURCE_AUTHORITY_COMMIT" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]] \
+        || die "committed libvpx source identity is malformed"
+    [[ "$LIBVPX_SOURCE_AUTHORITY_TREE" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]] \
+        || die "committed libvpx source tree identity is malformed"
+    verify_clean_live_checkout_state "before committed libvpx local publication" \
+        || die "libvpx local publication requires one clean canonical committed source tree"
+    entry="$(
+        online_source_git ls-tree --full-tree "$LIBVPX_SOURCE_AUTHORITY_COMMIT" \
+            -- res/vcpkg/libvpx/0005-cve-2026-1861.patch
+    )" || die "cannot resolve the committed libvpx security patch"
+    [ "$(printf '%s\n' "$entry" | /usr/bin/wc -l)" -eq 1 ] \
+        || die "committed libvpx security patch has ambiguous Git state"
+    metadata="${entry%%$'\t'*}"
+    path="${entry#*$'\t'}"
+    read -r mode type blob <<<"$metadata"
+    [ "$mode" = 100644 ] && [ "$type" = blob ] \
+        && [ "$path" = res/vcpkg/libvpx/0005-cve-2026-1861.patch ] \
+        || die "committed libvpx security patch is not one ordinary tracked blob"
+    [ "$(
+        online_source_git hash-object --no-filters -- \
+            res/vcpkg/libvpx/0005-cve-2026-1861.patch
+    )" = "$blob" ] \
+        || die "live libvpx security patch differs from its committed blob"
+    LIBVPX_SOURCE_AUTHORITY_BLOB="$blob"
+    LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY="$(
+        libvpx_native_key_for_commit "$LIBVPX_SOURCE_AUTHORITY_COMMIT"
+    )" || die "cannot derive the committed libvpx native-input key"
+    current_key="$(libvpx_live_native_key)" \
+        || die "cannot derive the live libvpx native-input key"
+    [ "$current_key" = "$LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY" ] \
+        || die "live libvpx inputs differ from the committed native-input authority"
+}
+
+verify_libvpx_source_authority() {
+    local phase="$1" current entry metadata mode type blob path current_key status=0
+    if [ -z "$LIBVPX_SOURCE_AUTHORITY_COMMIT" ] \
+       || [ -z "$LIBVPX_SOURCE_AUTHORITY_TREE" ] \
+       || [ -z "$LIBVPX_SOURCE_AUTHORITY_BLOB" ] \
+       || [ -z "$LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY" ]; then
+        echo "[FATAL] $phase: committed libvpx source authority is uninitialized" >&2
+        return 1
+    fi
+    if current="$(online_source_git rev-parse --verify 'HEAD^{commit}')"; then
+        [ "$current" = "$LIBVPX_SOURCE_AUTHORITY_COMMIT" ] || {
+            echo "[FATAL] $phase: source commit changed" >&2
+            status=1
+        }
+    else
+        echo "[FATAL] $phase: cannot re-resolve source commit" >&2
+        status=1
+    fi
+    if current="$(
+        online_source_git rev-parse --verify "${LIBVPX_SOURCE_AUTHORITY_COMMIT}^{tree}"
+    )"; then
+        [ "$current" = "$LIBVPX_SOURCE_AUTHORITY_TREE" ] || {
+            echo "[FATAL] $phase: source tree changed" >&2
+            status=1
+        }
+    else
+        echo "[FATAL] $phase: cannot re-resolve source tree" >&2
+        status=1
+    fi
+    if entry="$(
+        online_source_git ls-tree --full-tree "$LIBVPX_SOURCE_AUTHORITY_COMMIT" \
+            -- res/vcpkg/libvpx/0005-cve-2026-1861.patch
+    )"; then
+        metadata="${entry%%$'\t'*}"
+        path="${entry#*$'\t'}"
+        read -r mode type blob <<<"$metadata"
+        if [ "$mode" != 100644 ] || [ "$type" != blob ] \
+           || [ "$blob" != "$LIBVPX_SOURCE_AUTHORITY_BLOB" ] \
+           || [ "$path" != res/vcpkg/libvpx/0005-cve-2026-1861.patch ]; then
+            echo "[FATAL] $phase: committed libvpx patch identity changed" >&2
+            status=1
+        fi
+    else
+        echo "[FATAL] $phase: cannot re-resolve committed libvpx patch" >&2
+        status=1
+    fi
+    if ! verify_clean_live_checkout_state "$phase"; then
+        status=1
+    fi
+    if current="$(
+        online_source_git hash-object --no-filters -- \
+            res/vcpkg/libvpx/0005-cve-2026-1861.patch
+    )"; then
+        [ "$current" = "$LIBVPX_SOURCE_AUTHORITY_BLOB" ] || {
+            echo "[FATAL] $phase: live libvpx patch differs from its committed blob" >&2
+            status=1
+        }
+    else
+        echo "[FATAL] $phase: cannot hash the live libvpx patch" >&2
+        status=1
+    fi
+    if current_key="$(libvpx_live_native_key)"; then
+        [ "$current_key" = "$LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY" ] || {
+            echo "[FATAL] $phase: live libvpx input key changed" >&2
+            status=1
+        }
+    else
+        echo "[FATAL] $phase: cannot recompute the live libvpx input key" >&2
+        status=1
+    fi
+    return "$status"
+}
+
+libvpx_native_key() {
+    [ -n "$LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY" ] \
+        || die "committed libvpx source authority is uninitialized"
+    printf '%s\n' "$LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY"
 }
 
 vcpkg_native_output_key() {
@@ -470,13 +665,26 @@ vcpkg_native_output_key() {
 
 require_libvpx_distfiles() {
     local dir="$ONLINE_DIR/vcpkg-distfiles"
-    local key
-    key="$(libvpx_native_key)"
-    [ -f "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" ] || die "libvpx source capture missing — stage_vcpkg_distfiles must run first"
-    [ "$(sha512sum "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" | awk '{print $1}')" = "$SHA512_LIBVPX_SOURCE" ] || die "libvpx source capture SHA512 mismatch"
-    [ -f "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" ] || die "libvpx security patch capture missing — stage_vcpkg_distfiles must run first"
-    [ "$(sha512sum "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" | awk '{print $1}')" = "$SHA512_LIBVPX_PATCH" ] || die "libvpx security patch capture SHA512 mismatch"
-    [ "$(cat "$dir/libvpx-native-key.txt" 2>/dev/null)" = "$key" ] || die "libvpx native key is stale — stage_vcpkg_distfiles must refresh it"
+    verify_libvpx_source_authority "before libvpx distfile consumption" \
+        || die "committed libvpx source authority changed before consumption"
+    [ -f "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" ] \
+        && [ ! -L "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" ] \
+        || die "libvpx source capture missing — stage_vcpkg_distfiles must run first"
+    [ "$(sha512sum "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" | awk '{print $1}')" \
+       = "$SHA512_LIBVPX_SOURCE" ] \
+        || die "libvpx source capture SHA512 mismatch"
+    /usr/bin/python3 -I -S "$LIBVPX_LOCAL_OUTPUT_HELPER" check \
+        --online "$ONLINE_DIR" \
+        --source-root "$REPO_ROOT" \
+        --source-patch "$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        --fix-commit "$LIBVPX_FIX_COMMIT" \
+        --patch-sha512 "$SHA512_LIBVPX_PATCH" \
+        --native-key "$(libvpx_native_key)" \
+        --source-commit "$LIBVPX_SOURCE_AUTHORITY_COMMIT" \
+        --source-tree "$LIBVPX_SOURCE_AUTHORITY_TREE" \
+        --source-blob "$LIBVPX_SOURCE_AUTHORITY_BLOB" \
+        || die "libvpx committed patch/native-key publication is incomplete or unsafe"
 }
 
 require_libyuv_distfile() {
@@ -1356,21 +1564,40 @@ stage_pub_cache() {
 # given the image's git (this SHA512 was computed in this deb-builder, git 2.17.1 — re-pin if it
 # changes; same class as the SHA256_VCPKG_120DEAC3 GitHub-archive caveat in pins.env).
 stage_libvpx_distfiles() {
-    local vpx_dir="$ONLINE_DIR/vcpkg-distfiles"
+    local lock_fd action
     stage_vcpkg_fixed_archives
-
-    local committed_patch="$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"
-    [ "$(sha512sum "$committed_patch" | awk '{print $1}')" = "$SHA512_LIBVPX_PATCH" ] || die "committed libvpx security patch does not match SHA512_LIBVPX_PATCH"
-    if [ ! -f "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" ] || \
-       [ "$(sha512sum "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" | awk '{print $1}')" != "$SHA512_LIBVPX_PATCH" ]; then
-        cp "$committed_patch" "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch.part"
-        mv "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch.part" "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch"
-    fi
-
-    printf '%s\n' "$(libvpx_native_key)" >"$vpx_dir/libvpx-native-key.txt.part"
-    mv "$vpx_dir/libvpx-native-key.txt.part" "$vpx_dir/libvpx-native-key.txt"
+    prepare_libvpx_source_authority
+    [ -f "$LIBVPX_LOCAL_OUTPUT_HELPER" ] \
+        && [ ! -L "$LIBVPX_LOCAL_OUTPUT_HELPER" ] \
+        || die "libvpx local-output helper is not one real source file"
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for libvpx local-output serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another online-output transaction already owns the online root"
+    action="$(
+        /usr/bin/python3 -I -S "$LIBVPX_LOCAL_OUTPUT_HELPER" publish \
+            --online "$ONLINE_DIR" \
+            --source-root "$REPO_ROOT" \
+            --source-patch "$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            --fix-commit "$LIBVPX_FIX_COMMIT" \
+            --patch-sha512 "$SHA512_LIBVPX_PATCH" \
+            --native-key "$(libvpx_native_key)" \
+            --source-commit "$LIBVPX_SOURCE_AUTHORITY_COMMIT" \
+            --source-tree "$LIBVPX_SOURCE_AUTHORITY_TREE" \
+            --source-blob "$LIBVPX_SOURCE_AUTHORITY_BLOB"
+    )" || die "cannot publish the committed libvpx patch/native-key transaction"
+    case "$action" in
+        complete | published) ;;
+        *) die "libvpx local-output helper returned an unknown disposition: $action" ;;
+    esac
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the libvpx local-output transaction lock"
+    exec {lock_fd}<&-
+    verify_libvpx_source_authority "after committed libvpx local publication" \
+        || die "committed libvpx source authority changed during local publication"
     require_libvpx_distfiles
-    log "libvpx source, security patch, and Windows acquisition closure captured + SHA512-verified"
+    log "libvpx source, committed security patch, native key, and Windows inputs are exact"
 }
 
 libyuv_distfile_output_tool() {
@@ -1588,7 +1815,7 @@ recover_vcpkg_native_output_staging() {
 
 stage_vcpkg_natives() {
     local builder="$DEB_BUILDER_IMAGE_ID"
-    local status=0 output_status=0 publication_status=0
+    local status=0 source_status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=()
     require_online_fetch_builder_image deb-builder "$builder"
@@ -1665,11 +1892,14 @@ stage_vcpkg_natives() {
             printf "%s\n" "$LIBVPX_NATIVE_KEY" \
                 > /outputs/native/.rustdesk-libvpx-native-key
         ' || status=$?
+    verify_libvpx_source_authority "after x64-linux vcpkg native production" \
+        || source_status=$?
     vcpkg_native_output_tool verify \
         --online "$ONLINE_DIR" --staging "$staging" \
         "${output_args[@]}" \
         || output_status=$?
-    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ]; then
         vcpkg_native_output_tool publish \
             --online "$ONLINE_DIR" --staging "$staging" \
             "${output_args[@]}" \
@@ -1679,6 +1909,7 @@ stage_vcpkg_natives() {
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the x64-linux vcpkg native transaction lock"
     exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "committed libvpx source changed during x64-linux native production"
     [ "$output_status" -eq 0 ] || die "x64-linux vcpkg native output postcondition failed"
     [ "$status" -eq 0 ] || die "x64-linux vcpkg native producer failed"
     [ "$publication_status" -eq 0 ] || die "x64-linux vcpkg native publication failed"
@@ -1837,7 +2068,7 @@ stage_android_ndk() {
 # tarball baseline ports + the overlay is equivalent + git-free.
 stage_vcpkg_natives_arm64() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
-    local status=0 output_status=0 publication_status=0
+    local status=0 source_status=0 output_status=0 publication_status=0
     local lock_fd staging staging_id
     local output_args=()
     require_online_fetch_builder_image android-builder "$builder"
@@ -1915,11 +2146,14 @@ stage_vcpkg_natives_arm64() {
             printf "%s\n" "$LIBVPX_NATIVE_KEY" \
                 > /outputs/native/.rustdesk-libvpx-native-key
         ' || status=$?
+    verify_libvpx_source_authority "after arm64-android vcpkg native production" \
+        || source_status=$?
     vcpkg_native_output_tool verify \
         --online "$ONLINE_DIR" --staging "$staging" \
         "${output_args[@]}" \
         || output_status=$?
-    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ]; then
         vcpkg_native_output_tool publish \
             --online "$ONLINE_DIR" --staging "$staging" \
             "${output_args[@]}" \
@@ -1930,6 +2164,7 @@ stage_vcpkg_natives_arm64() {
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the arm64-android vcpkg native transaction lock"
     exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "committed libvpx source changed during arm64-android native production"
     [ "$output_status" -eq 0 ] || die "arm64-android vcpkg native output postcondition failed"
     [ "$status" -eq 0 ] || die "arm64-android vcpkg native producer failed"
     [ "$publication_status" -eq 0 ] || die "arm64-android vcpkg native publication failed"

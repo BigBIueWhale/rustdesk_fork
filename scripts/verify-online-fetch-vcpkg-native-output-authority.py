@@ -84,6 +84,10 @@ def validate_lifecycle(
 ) -> None:
     for token, label in (
         (builder_token, "immutable builder"),
+        (
+            "local status=0 source_status=0 output_status=0 publication_status=0",
+            "independent producer/source/output/publication status",
+        ),
         ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"', "exclusive transaction"),
         (
             f'recover_vcpkg_native_output_staging {kind} "$builder"',
@@ -113,6 +117,16 @@ def validate_lifecycle(
             "exact static-library consumer projection",
         ),
         ("vcpkg_native_output_tool verify", "independent host postcondition"),
+        (
+            f'verify_libvpx_source_authority "after {kind} vcpkg native production"',
+            "committed libvpx source postcondition",
+        ),
+        ("|| source_status=$?", "retained source-postcondition failure"),
+        (
+            '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+            '       && [ "$output_status" -eq 0 ]; then',
+            "producer/source/output publication barrier",
+        ),
         ("vcpkg_native_output_tool publish", "checked publication"),
         (
             f'"$staging_id" {kind} "$builder"',
@@ -153,11 +167,15 @@ def validate_lifecycle(
             "/usr/bin/mktemp -d",
             "vcpkg_native_output_tool prepare",
             "online_docker_run",
+            f'verify_libvpx_source_authority "after {kind} vcpkg native production"',
             "vcpkg_native_output_tool verify",
-            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+            '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+            '       && [ "$output_status" -eq 0 ]; then',
             "vcpkg_native_output_tool publish",
             "retire_vcpkg_native_output_staging",
             '"$FLOCK_BIN" --unlock "$lock_fd"',
+            '[ "$source_status" -eq 0 ] || die '
+            f'"committed libvpx source changed during {kind} native production"',
         ),
         "{} validate-seal-publish-retire order".format(kind),
     )
@@ -524,6 +542,68 @@ MUTATIONS: Tuple[Mutation, ...] = (
         'stage_vcpkg_natives_arm64() {\n    local builder="$ANDROID_BUILDER_IMAGE_ID"',
         'stage_vcpkg_natives_arm64() {\n    local builder="ubuntu:latest"',
         "arm64 immutable builder",
+    ),
+    Mutation(
+        "shell",
+        'verify_libvpx_source_authority "after x64-linux vcpkg native production"',
+        'true # x64-linux committed libvpx source postcondition removed',
+        "x64 committed libvpx source postcondition",
+    ),
+    Mutation(
+        "shell",
+        'verify_libvpx_source_authority "after arm64-android vcpkg native production"',
+        'true # arm64-android committed libvpx source postcondition removed',
+        "arm64 committed libvpx source postcondition",
+    ),
+    Mutation(
+        "shell",
+        'verify_libvpx_source_authority "after x64-linux vcpkg native production" \\\n'
+        "        || source_status=$?\n"
+        "    vcpkg_native_output_tool verify \\\n"
+        '        --online "$ONLINE_DIR" --staging "$staging" \\\n'
+        '        "${output_args[@]}" \\\n'
+        "        || output_status=$?\n"
+        '    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+        '       && [ "$output_status" -eq 0 ]; then',
+        'verify_libvpx_source_authority "after x64-linux vcpkg native production" \\\n'
+        "        || source_status=$?\n"
+        "    vcpkg_native_output_tool verify \\\n"
+        '        --online "$ONLINE_DIR" --staging "$staging" \\\n'
+        '        "${output_args[@]}" \\\n'
+        "        || output_status=$?\n"
+        '    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then',
+        "x64 source-integrity publication barrier",
+    ),
+    Mutation(
+        "shell",
+        'verify_libvpx_source_authority "after arm64-android vcpkg native production" \\\n'
+        "        || source_status=$?\n"
+        "    vcpkg_native_output_tool verify \\\n"
+        '        --online "$ONLINE_DIR" --staging "$staging" \\\n'
+        '        "${output_args[@]}" \\\n'
+        "        || output_status=$?\n"
+        '    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \\\n'
+        '       && [ "$output_status" -eq 0 ]; then',
+        'verify_libvpx_source_authority "after arm64-android vcpkg native production" \\\n'
+        "        || source_status=$?\n"
+        "    vcpkg_native_output_tool verify \\\n"
+        '        --online "$ONLINE_DIR" --staging "$staging" \\\n'
+        '        "${output_args[@]}" \\\n'
+        "        || output_status=$?\n"
+        '    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then',
+        "arm64 source-integrity publication barrier",
+    ),
+    Mutation(
+        "shell",
+        '[ "$source_status" -eq 0 ] || die "committed libvpx source changed during x64-linux native production"',
+        'true # x64-linux source failure ignored after transaction',
+        "x64 retained source failure",
+    ),
+    Mutation(
+        "shell",
+        '[ "$source_status" -eq 0 ] || die "committed libvpx source changed during arm64-android native production"',
+        'true # arm64-android source failure ignored after transaction',
+        "arm64 retained source failure",
     ),
     Mutation(
         "shell",

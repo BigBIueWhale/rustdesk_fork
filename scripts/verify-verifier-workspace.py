@@ -11159,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11914,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12248,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15442,6 +15442,187 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         sources["hardening"],
         "R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority",
         "systemd-image fixed-input hardening ledger",
+    )
+
+
+def validate_online_fetch_libvpx_local_output_authority_contract(sources):
+    focused = sources["online_fetch_libvpx_local_output_authority_verifier"]
+    helper = sources["online_libvpx_local_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        (
+            "Bind committed libvpx patch/native-key source and publication authority",
+            "libvpx local-output focused authority binding",
+        ),
+        (
+            "MUTATIONS: Tuple[Mutation, ...]",
+            "libvpx local-output focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "libvpx local-output focused mutation dispatch",
+        ),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        (
+            "online_source_git rev-parse --git-path info/grafts",
+            "libvpx Git graft-state authority",
+        ),
+        (
+            "online_source_git for-each-ref --format='%(refname)' refs/replace",
+            "libvpx Git replacement-ref authority",
+        ),
+    ):
+        require_text(online, text, label)
+    source_authority = extract_between(
+        online,
+        "libvpx_native_key_for_commit() {",
+        "\n}\n\nlibvpx_native_key()",
+        "libvpx committed source authority",
+    )
+    for text, label in (
+        (
+            "online_source_git ls-tree -rz --full-tree",
+            "libvpx committed subtree enumeration",
+        ),
+        (
+            "online_source_git cat-file blob",
+            "libvpx committed blob hashing",
+        ),
+        (
+            "online_source_git hash-object --no-filters",
+            "libvpx live-to-blob proof",
+        ),
+        (
+            "verify_clean_live_checkout_state",
+            "libvpx clean source proof",
+        ),
+        (
+            "libvpx_live_native_key",
+            "libvpx committed/live key equality",
+        ),
+    ):
+        require_text(source_authority, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_libvpx_distfiles() {",
+        "\n}\n\nlibyuv_distfile_output_tool()",
+        "libvpx local-output lifecycle",
+    )
+    require_order(
+        lifecycle,
+        (
+            "stage_vcpkg_fixed_archives",
+            "prepare_libvpx_source_authority",
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            '"$LIBVPX_LOCAL_OUTPUT_HELPER" publish',
+            '"$FLOCK_BIN" --unlock "$lock_fd"',
+            "verify_libvpx_source_authority",
+            "require_libvpx_distfiles",
+        ),
+        "libvpx local-output transaction order",
+    )
+    for token, label in (
+        (".patch.part", "libvpx predictable patch temporary"),
+        ("libvpx-native-key.txt.part", "libvpx predictable key temporary"),
+        ('cp "$committed_patch"', "libvpx path-copy publication"),
+        ('mv "$vpx_dir/', "libvpx overwrite publication"),
+    ):
+        require_absent(lifecycle, token, label)
+    for text, label in (
+        (
+            'FORMAT = "rustdesk-libvpx-local-output-v1"',
+            "libvpx local-output state format",
+        ),
+        (
+            'if uid == 0 or gid == 0 or (os.geteuid(), os.getegid()) != (uid, gid):',
+            "libvpx local-output non-root identity",
+        ),
+        (
+            "if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:",
+            "libvpx local-output hardlink refusal",
+        ),
+        (
+            "reject_mount_at_or_below(staging)",
+            "libvpx local-output mount closure",
+        ),
+        ("RENAME_NOREPLACE = 1", "libvpx local-output no-clobber primitive"),
+        (
+            'if [record["kind"] for record in records] != ["patch", "key"]:',
+            "libvpx patch-before-key order",
+        ),
+        (
+            "reserved libvpx local-output staging remains unreconciled",
+            "libvpx consumer ambiguity refusal",
+        ),
+        (
+            'state["source_commit"] != source_commit',
+            "libvpx recorded source-authority equality",
+        ),
+        (
+            "without_identity != expected_without_identity",
+            "libvpx recorded byte-authority equality",
+        ),
+        (
+            "current_state, current_identity = read_state(staging_fd)",
+            "libvpx stable state retirement recheck",
+        ),
+        (
+            "self-test overwrote an occupied wrong libvpx destination",
+            "libvpx occupied-output fixture",
+        ),
+        (
+            "self-test accepted a symlinked stale local-output entry",
+            "libvpx symlink fixture",
+        ),
+        (
+            "self-test accepted externally hardlinked stale local-output state",
+            "libvpx hardlink fixture",
+        ),
+        (
+            "self-test accepted recorded staging from a different source authority",
+            "libvpx recorded source-authority fixture",
+        ),
+    ):
+        require_text(helper, text, label)
+    require_exact_count(
+        helper,
+        'if uid == 0 or gid == 0 or (os.geteuid(), os.getegid()) != (uid, gid):',
+        2,
+        "libvpx local-output non-root identity",
+    )
+    require_absent(
+        helper,
+        "os.replace(",
+        "libvpx overwrite-capable helper publication",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-libvpx-local-output.py self-test",
+        "libvpx local-output transaction self-test wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-online-fetch-libvpx-local-output-authority.py "
+        "--repo . --self-test",
+        "libvpx local-output focused verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cv</span>',
+        "libvpx local-output normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>249</td>",
+        "libvpx local-output Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
+        "libvpx local-output hardening ledger",
     )
 
 
@@ -20482,6 +20663,7 @@ def validate_sources(sources):
     validate_online_fetch_vcpkg_native_output_authority_contract(sources)
     validate_online_fetch_android_sdk_output_authority_contract(sources)
     validate_online_fetch_fixed_archive_authority_contract(sources)
+    validate_online_fetch_libvpx_local_output_authority_contract(sources)
     validate_online_fetch_android_ndk_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -33132,7 +33314,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
+            "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -35868,6 +36050,92 @@ def run_source_mutations(sources):
             "systemd-image fixed-input hardening ledger",
         ),
         (
+            "online_fetch_libvpx_local_output_authority_verifier",
+            "MUTATIONS: Tuple[Mutation, ...]",
+            "MUTATIONS_REMOVED: Tuple[Mutation, ...]",
+            "libvpx local-output focused mutation inventory",
+        ),
+        (
+            "online_fetch",
+            "    prepare_libvpx_source_authority\n",
+            "    true # committed libvpx source authority removed\n",
+            "libvpx local-output transaction order",
+        ),
+        (
+            "online_fetch",
+            "online_source_git rev-parse --git-path info/grafts",
+            "true # libvpx Git graft-state authority removed",
+            "libvpx Git graft-state authority",
+        ),
+        (
+            "online_fetch",
+            "online_source_git for-each-ref --format='%(refname)' refs/replace",
+            "true # libvpx Git replacement-ref authority removed",
+            "libvpx Git replacement-ref authority",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            'if uid == 0 or gid == 0 or (os.geteuid(), os.getegid()) != (uid, gid):',
+            "if False:",
+            "libvpx local-output non-root identity",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            "if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:",
+            "if not stat.S_ISREG(metadata.st_mode):",
+            "libvpx local-output hardlink refusal",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "libvpx local-output no-clobber primitive",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            'if [record["kind"] for record in records] != ["patch", "key"]:',
+            'if [record["kind"] for record in records] != ["key", "patch"]:',
+            "libvpx patch-before-key order",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            'state["source_commit"] != source_commit',
+            "False",
+            "libvpx recorded source-authority equality",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            "current_state, current_identity = read_state(staging_fd)",
+            "current_state, current_identity = state, state_identity",
+            "libvpx stable state retirement recheck",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-libvpx-local-output-authority.py "
+            "--repo . --self-test",
+            "true # libvpx local-output focused gate removed",
+            "libvpx local-output focused verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cv</span>',
+            '<span class="id">R-S11cv-disabled</span>',
+            "libvpx local-output normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>249</td>",
+            "<tr><td>249-disabled</td>",
+            "libvpx local-output Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
+            "R-S11cv/R-S11e-114 — ambient local publication authority",
+            "libvpx local-output hardening ledger",
+        ),
+        (
             "online_fetch_android_ndk_output_authority_verifier",
             "every-byte archive comparison",
             "presence-only output comparison",
@@ -37246,6 +37514,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_fixed_archive_output_helper": (
                 repo / "scripts/online-fixed-archive-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_libvpx_local_output_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-libvpx-local-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_libvpx_local_output_helper": (
+                repo / "scripts/online-libvpx-local-output.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

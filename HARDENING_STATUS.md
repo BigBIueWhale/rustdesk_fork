@@ -10348,6 +10348,89 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   maintenance-image acquisition/distribution, native/device behavior, independent image distribution, or R-V3
   external review. No root command/container, image pull/build/tag, release build, host RustDesk
   process/service/configuration/listener/firewall/network operation, or persistent cache mutation was performed.
+- **R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority —
+  SOURCE/GATES COMPLETE 2026-07-24; EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform: the unprivileged Linux
+  acquisition host. Endpoint/action: `scripts/online-fetch.sh::stage_libvpx_distfiles`, which
+  publishes the repository-owned CVE patch and the complete libvpx overlay/source key beside the
+  network-acquired vcpkg distfiles. Boundary: the exact committed source identity and two
+  deterministic local bytes ↔ the durable `online/vcpkg-distfiles` consumer namespace.
+
+  Before this slice, the shell hashed the live patch pathname, copied it into the predictable
+  `libvpx-<fix>.patch.part`, and used overwrite-capable `mv`. It then regenerated
+  `libvpx-native-key.txt.part` unconditionally and overwrote the final receipt. A symlinked
+  temporary could redirect the path write; wrong occupied state was replaced rather than rejected;
+  the hash and copy were separate pathname operations; and an interruption left ambiguous shared
+  residue. This was source-proven current-user build-input publication, namespace, and stale-state
+  authority debt. It is not evidence that either cached file changed, host root was acquired,
+  Docker escaped, a listener or port was exposed, host RustDesk/service/configuration/firewall/
+  network state changed, exploitation occurred, or the host was compromised.
+
+  `online-fetch.sh` now resolves and retains one exact Git commit and tree, requires the canonical
+  clean live checkout, explicitly refuses Git graft or replacement-ref state, and proves the fixed
+  patch is one mode-100644 tracked blob whose no-filter live object equals the committed blob. The native-input key is computed from the established pin
+  fields plus every ordinary committed blob below `res/vcpkg/libvpx`; a symlink, submodule, or
+  special committed entry is fatal. The independently retained live-tree calculation must equal
+  that committed key. Commit/tree/blob/clean-state/live-key equality is reproved after local
+  publication and after each x64-linux or arm64-Android networked vcpkg producer, and either native
+  output may publish only when that source postcondition and its independent output verdict pass.
+
+  The dedicated `scripts/online-libvpx-local-output.py` refuses UID or primary GID zero and accepts
+  only the canonical patch path below a current-user, non-group/world-writable source root. The
+  shell holds the existing nonblocking exclusive online-root lock around publication. The helper
+  stably reads the patch through a no-follow single-link descriptor, rejects xattrs and mutable
+  metadata, and independently enforces `SHA512_LIBVPX_PATCH`. It opens only the exact current-user
+  same-filesystem/same-mount/no-xattr `vcpkg-distfiles` parent. An occupied final must be a stable
+  same-mount single-link regular file in one closed current-user or historical root-owned mode
+  profile and match the exact patch or newline-terminated native-key bytes. Wrong or unsafe state
+  fails before candidate creation and is not deleted, replaced, or chmodded.
+
+  Missing output is created exclusively under an unpredictable same-filesystem mode-0700 staging
+  directory. A bounded fsynced mode-0600 state record binds online/distfile/staging identities,
+  owner, source commit/tree/blob, exactly two ordered outputs, candidate identities, lengths,
+  SHA-256 values, patch SHA-512, and key bytes. Candidates are exclusive no-follow current-owner
+  files, stably rechecked, synchronized, and sealed 0400. Patch publication deliberately precedes
+  receipt publication. Each uses descriptor-relative `renameat2(RENAME_NOREPLACE)` and fsyncs both
+  namespaces; an exact concurrently occupied final consumes only its identical staged duplicate,
+  while a different final fails. Both finals are rechecked before exact staging retirement.
+
+  Restart reconciliation accepts only bounded ordinary current-owner partial files in an
+  unprepared reserved directory, or a recorded arrangement whose exact source/byte authority still
+  equals the current transaction and in which every candidate identity is still staged or is the
+  exact final. State is stably reread before exact-identity retirement. A symlink, special file,
+  external hardlink, descendant mount, xattr, unexpected entry, changed parent, missing candidate
+  identity, or mismatched recorded authority is preserved and rejected. The read-only consumer
+  command refuses and preserves any unreconciled reserved transaction and applies the same
+  descriptor/metadata/byte verdict. The old patch/key `.part`, `cp`, overwrite `mv`, direct path-hash
+  consumer, and refresh-in-place receipt semantics are absent.
+
+  Verification: the helper self-test passes in immutable Android-builder
+  image `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
+  as numeric UID:GID 1000:1000 with `--pull=never`, no network, read-only root/source, all
+  capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded
+  non-executable scratch. It exercised cold two-file publication, exact occupied inode reuse,
+  historical-mode reuse, wrong occupied output refusal without overwrite, interrupted unprepared
+  reconciliation, successful read-only validation, preservation of unresolved read-only state,
+  preservation of a recorded transaction from a different source authority, and symlinked
+  source/staging, external-hardlink staging, and xattr refusal. The focused deliberate-mutation
+  verifier passes. The independent workspace verifier passes both its normal source contract and
+  complete source-mutation-only matrix. The adjacent vcpkg native-output verifier passes with all
+  48 mutations rejected; fixed-archive authority passes with all 59 mutations rejected; online
+  container authority passes with all 36 mutations rejected; and native-codec watch passes both
+  normal and mutation-self-test modes. A separate confined calculation proves the live and exact
+  committed libvpx native-key algorithms agree at
+  `afa7f36e0104d94645cbd9d8c08e9701b406ac1bc3e5f7f533e5b241f7a6551f`. Python AST parsing, `online-fetch.sh`/`verify.sh` Bash
+  parsing, requirements HTML parsing, synchronized requirements SHA-256
+  `e91c445b89284741bbf8e781bb5fc755bbfd1b7d6c670ee805daf05818d085a2`, and `git diff --check`
+  pass in the final confined source state. These are source/helper fixture verdicts, not a claim
+  that the persistent cache was published or that an exact release artifact was built.
+
+  Evidence boundary: this source slice runs no network producer, image operation, compiler,
+  archive extractor, or release build for the two deterministic local files. The persistent online
+  cache was not mutated. Host Cargo vendoring, Windows Flutter/Pub/WiX producers, maintenance-image
+  acquisition/distribution, exact clean R-B2/R-B10 artifacts, native/device behavior, independent
+  image distribution, and R-V3 external review remain open. No root command/container, image
+  pull/build/tag, host RustDesk process/service/configuration/listener/firewall/network operation,
+  or native device was used.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -11065,9 +11148,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-63358343d5294f2af42d749edaca0b98720853657b1e2524d3cf3236e4965018  requirements.html
+e91c445b89284741bbf8e781bb5fc755bbfd1b7d6c670ee805daf05818d085a2  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cu, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cv, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

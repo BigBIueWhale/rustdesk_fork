@@ -296,6 +296,21 @@ else
   echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
 fi
 
+echo "== (0j-local) committed libvpx local-output authority (R-S11cv/R-S11e-114) =="
+r_s11cv=
+if ! /usr/bin/python3 -I -S scripts/online-libvpx-local-output.py self-test; then
+  r_s11cv="$r_s11cv transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-libvpx-local-output-authority.py --repo . --self-test; then
+  r_s11cv="$r_s11cv authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cv" ]; then
+  echo "  FAIL R-S11cv committed libvpx local-output authority:$r_s11cv"
+  rc=1
+else
+  echo "  ok  R-S11cv the exact committed patch and native-input receipt use one clean source identity, private recoverable staging, stable no-follow validation, and durable no-clobber publication"
+fi
+
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
 r_s11cl=
 if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then

@@ -342,8 +342,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
-        '[ "$status" -eq 0 ]',
+        '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
+        "        libyuv_distfile_output_tool publish",
+        '[ "$status" -eq 0 ]; then\n'
+        "        libyuv_distfile_output_tool publish",
         "publication verdict barrier",
     ),
     Mutation(

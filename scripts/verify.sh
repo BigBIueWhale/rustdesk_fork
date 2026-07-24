@@ -326,6 +326,21 @@ else
   echo "  ok  R-S11co the networked Git producer writes one pre-created private archive inode, proves its exact pinned digest, and publishes it durably without access to any other online input or final name"
 fi
 
+echo "== (0n) online-fetch vcpkg native output authority (R-S11cp/R-S11e-108) =="
+r_s11cp=
+if ! /usr/bin/python3 -I -S scripts/online-vcpkg-native-output.py self-test; then
+  r_s11cp="$r_s11cp transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-vcpkg-native-output-authority.py --repo . --self-test; then
+  r_s11cp="$r_s11cp authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cp" ]; then
+  echo "  FAIL R-S11cp online-fetch vcpkg native output authority:$r_s11cp"
+  rc=1
+else
+  echo "  ok  R-S11cp both networked native builders see read-only inputs, write one private exact consumer projection, validate every header and archive ABI, and publish recoverably without clobber"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

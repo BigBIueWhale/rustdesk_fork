@@ -161,7 +161,7 @@ run_self_test() {
   expect_rejected patch-block-substitute "sed -i '29s/_libvpx_security_patch/_libvpx_archive/' res/vcpkg/libvpx/portfile.cmake"
   expect_rejected patch-block-reorder "sed -i '29s/.*/        0003-add-uwp-v142-and-v143-support.patch/;30s/.*/        \"\${_libvpx_security_patch}\"/' res/vcpkg/libvpx/portfile.cmake"
   expect_rejected port-version "sed -i 's/\"port-version\": 1/\"port-version\": 2/' res/vcpkg/libvpx/vcpkg.json"
-  expect_rejected linux-cache-key "sed -i 's/\\.rustdesk-libvpx-native-key/.rustdesk-libvpx-native-key-broken/g' scripts/online-fetch.sh"
+  expect_rejected linux-cache-key "sed -i 's/\\.rustdesk-vcpkg-native-output-key-v1/.rustdesk-vcpkg-native-output-key-broken/g' scripts/online-fetch.sh"
   expect_rejected windows-rebuild "sed -i '/vcpkg.exe.*remove --recurse/d' scripts/build-windows.ps1"
   rm -rf "$tmp"
   echo "native-codec-watch: self-test ok (advisory, integrity, offline acquisition, cache naming, and Windows-rebuild mutations rejected)"
@@ -341,15 +341,17 @@ if grep -qE 'vcpkg_from_(github|git|gitlab)|https?://' res/vcpkg/libvpx/portfile
 fi
 
 require_literal 'libvpx_native_key()' scripts/online-fetch.sh
+require_literal 'vcpkg_native_output_key()' scripts/online-fetch.sh
 require_literal 'vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz' scripts/online-fetch.sh
 require_literal 'vcpkg-distfiles/windows-tools/$tool_name' scripts/online-fetch.sh
 require_literal 'PowerShell-7.2.24-win-x64.zip)' scripts/online-fetch.sh
 require_literal 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.zip' scripts/online-fetch.sh
 require_literal 'https://mirror.msys2.org/mingw/mingw64/$tool_name' scripts/online-fetch.sh
 require_literal '.rustdesk-libvpx-native-key' scripts/online-fetch.sh
-require_literal 'installed/x64-linux/.rustdesk-libvpx-native-key"' scripts/online-fetch.sh
-require_literal 'installed/arm64-android/.rustdesk-libvpx-native-key"' scripts/online-fetch.sh
-require_literal '"$staged/.rustdesk-libvpx-native-key"' scripts/online-fetch.sh
+require_literal '.rustdesk-vcpkg-native-output-key-v1' scripts/online-fetch.sh
+require_literal 'vcpkg_native_output_tool check-complete' scripts/online-fetch.sh
+require_literal 'source=$staging/output,target=/outputs/native' scripts/online-fetch.sh
+require_literal 'source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled' scripts/online-fetch.sh
 require_literal 'RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles' scripts/online-fetch.sh
 require_literal 'VCPKG_BINARY_SOURCES=clear' scripts/online-fetch.sh
 

@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14681,6 +14681,241 @@ def validate_online_fetch_libyuv_output_authority_contract(sources):
         sources["hardening"],
         "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
         "online-fetch libyuv output authority hardening ledger",
+    )
+
+
+def validate_online_fetch_vcpkg_native_output_authority_contract(sources):
+    focused = sources["online_fetch_vcpkg_native_output_authority_verifier"]
+    helper = sources["online_vcpkg_native_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        (
+            "validate_lifecycle(",
+            "vcpkg native focused two-lifecycle binding",
+        ),
+        (
+            "sole writable output",
+            "vcpkg native focused mount binding",
+        ),
+        (
+            "validate-seal-publish-postcheck order",
+            "vcpkg native focused publication binding",
+        ),
+        (
+            "MUTATIONS: Tuple[Mutation, ...]",
+            "vcpkg native focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "vcpkg native focused mutation dispatch",
+        ),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("vcpkg_native_output_key() {", "vcpkg complete output key"),
+        (
+            "find res/vcpkg -type f -print0 | LC_ALL=C sort -z",
+            "vcpkg complete overlay binding",
+        ),
+        (
+            "find res/vcpkg -type d -print0 | LC_ALL=C sort -z",
+            "vcpkg complete overlay-directory binding",
+        ),
+        (
+            '[ -d "$REPO_ROOT/res/vcpkg" ] && [ ! -L "$REPO_ROOT/res/vcpkg" ]',
+            "vcpkg real overlay-root binding",
+        ),
+        (
+            "printf 'OVERLAY_FILE\\0%s\\0' \"$file\"",
+            "vcpkg unambiguous overlay-file framing",
+        ),
+        (
+            "find res/vcpkg -mindepth 1 ! -type d ! -type f -print -quit",
+            "vcpkg overlay special-entry refusal",
+        ),
+        (
+            "recover_vcpkg_native_output_staging() {",
+            "vcpkg restart recovery",
+        ),
+        ("stage_vcpkg_natives() {", "x64 native lifecycle"),
+        ("stage_vcpkg_natives_arm64() {", "arm64 native lifecycle"),
+        (
+            'source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled',
+            "vcpkg read-only online input",
+        ),
+        (
+            'source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled',
+            "vcpkg read-only overlay input",
+        ),
+        (
+            "source=$staging/output,target=/outputs/native",
+            "vcpkg sole writable output",
+        ),
+        (
+            "for archive in libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do",
+            "x64 exact archive projection",
+        ),
+        (
+            "for archive in libjpeg.a liboboe.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do",
+            "arm64 exact archive projection",
+        ),
+        (
+            "vcpkg_native_output_tool verify",
+            "vcpkg host output postcondition",
+        ),
+        (
+            "vcpkg_native_output_tool publish",
+            "vcpkg checked publication",
+        ),
+    ):
+        require_text(online, text, label)
+    require_exact_count(
+        online,
+        "source=$staging/output,target=/outputs/native",
+        2,
+        "two vcpkg exact writable mounts",
+    )
+    for text, label in (
+        (
+            'STATE_NAME = ".rustdesk-vcpkg-native-output-state-v1"',
+            "vcpkg bounded transaction record",
+        ),
+        ("MAX_FILES = 256\n", "vcpkg file bound"),
+        ("MAX_BYTES = 256 * 1024 * 1024\n", "vcpkg byte bound"),
+        (
+            "if metadata.st_nlink != 1:\n"
+            '                    fail(f"vcpkg native output contains an external hardlink: {child_relative}")',
+            "vcpkg external-hardlink refusal",
+        ),
+        (
+            'if relative_regular_files(root / "include") != set(spec.headers):',
+            "vcpkg exact header inventory",
+        ),
+        (
+            "if observed_libraries != set(spec.libraries):",
+            "vcpkg exact library inventory",
+        ),
+        (
+            "elf_type != 1 or observed_machine != machine or version != 1",
+            "vcpkg archive ABI proof",
+        ),
+        (
+            "or header_size != 64\n"
+            "        or section_header_size != 64\n"
+            "        or section_header_count == 0\n"
+            "        or section_header_offset < 64\n"
+            "        or section_header_offset\n"
+            "        > len(data) - section_header_size * section_header_count",
+            "vcpkg bounded ELF64 structure proof",
+        ),
+        (
+            'OUTPUT_MARKER = ".rustdesk-vcpkg-native-output-key-v1"',
+            "vcpkg complete output receipt",
+        ),
+        (
+            'AUDITED_STALE_LEGACY_OUTPUTS = {\n'
+            '    "x64-linux": (\n'
+            '        "2f1a0d9ec38bec3b32c2154a752119c3240c9944ab0ce1c4dfaf91e6a4bfac23",\n'
+            '        "4fbb47ef3e8cdd79f96697e9650fc3a31e368dd38a54aa3af372bb5e59b0fa46",',
+            "vcpkg exact x64 stale historical receipt",
+        ),
+        (
+            '"arm64-android": (\n'
+            '        "2f1a0d9ec38bec3b32c2154a752119c3240c9944ab0ce1c4dfaf91e6a4bfac23",\n'
+            '        "913588e8746761275c3115279789e1590bff9af614072882c09e5fc827e4ad55",',
+            "vcpkg exact arm64 stale historical receipt",
+        ),
+        (
+            "LEGACY_OUTPUT_BINDINGS: dict[str, tuple[str, str]] = {}",
+            "vcpkg empty historical acceptance set",
+        ),
+        (
+            "if expected != (output_key, digest):",
+            "vcpkg historical current-key and full-tree binding",
+        ),
+        (
+            "digest = validate_output(\n"
+            "        output,\n"
+            "        uid,\n"
+            "        gid,\n"
+            "        kind,\n"
+            "        output_key,\n"
+            "        libvpx_key,\n"
+            "        legacy=legacy,",
+            "vcpkg historical full-tree digest propagation",
+        ),
+        (
+            "historical vcpkg native output ambiguously carries the new marker",
+            "vcpkg closed legacy compatibility",
+        ),
+        (
+            "stat.S_IMODE(metadata.st_mode) not in (0o644, 0o664, 0o755)",
+            "vcpkg closed legacy file modes",
+        ),
+        (
+            'for archive in sorted(root.rglob("*.a"), key=lambda path: os.fsencode(path)):',
+            "vcpkg complete legacy archive ABI inventory",
+        ),
+        ("os.chmod(destination, 0o500", "vcpkg final-root sealing"),
+        ("RENAME_NOREPLACE = 1", "vcpkg no-clobber primitive"),
+        (
+            'renameat2(staging_fd, "output", parent_fd, kind, RENAME_NOREPLACE)',
+            "vcpkg descriptor-relative publication",
+        ),
+        (
+            "vcpkg native publication rollback also failed",
+            "vcpkg publication rollback",
+        ),
+        (
+            "output transaction state is incoherent and was preserved",
+            "vcpkg ambiguous-state refusal",
+        ),
+        (
+            "self-test accepted a static archive for the wrong ABI",
+            "vcpkg wrong-ABI fixture",
+        ),
+        (
+            "self-test accepted malformed ELF64 object structure",
+            "vcpkg malformed-ELF fixture",
+        ),
+        (
+            "self-test accepted an externally hardlinked vcpkg native output",
+            "vcpkg hardlink fixture",
+        ),
+        (
+            "self-test accepted a stale historical full-tree receipt",
+            "vcpkg stale historical-receipt fixture",
+        ),
+        (
+            "if arguments.uid <= 0 or arguments.gid <= 0:",
+            "vcpkg root acquisition refusal",
+        ),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-vcpkg-native-output-authority.py --repo . --self-test",
+        "Online-fetch vcpkg native output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-vcpkg-native-output.py self-test",
+        "Online-fetch vcpkg native transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cp</span>',
+        "online-fetch vcpkg native output authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>243</td>",
+        "online-fetch vcpkg native output authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cp/R-S11e-108 — networked vcpkg native output authority",
+        "online-fetch vcpkg native output authority hardening ledger",
     )
 
 
@@ -19434,6 +19669,7 @@ def validate_sources(sources):
     validate_online_fetch_cargo_tool_output_authority_contract(sources)
     validate_online_fetch_pub_cache_output_authority_contract(sources)
     validate_online_fetch_libyuv_output_authority_contract(sources)
+    validate_online_fetch_vcpkg_native_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -32053,7 +32289,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
+            "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34297,9 +34533,11 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
-            '[ "$status" -eq 0 ]',
-            "libyuv independent verdict barrier",
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
+            "        libyuv_distfile_output_tool publish",
+            '[ "$status" -eq 0 ]; then\n'
+            "        libyuv_distfile_output_tool publish",
+            "libyuv checked transaction order",
         ),
         (
             "online_libyuv_output_helper",
@@ -34356,6 +34594,169 @@ def run_source_mutations(sources):
             "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
             "R-S11co/R-S11e-107 — ambient libyuv distfile output authority",
             "online-fetch libyuv output authority hardening ledger",
+        ),
+        (
+            "online_fetch_vcpkg_native_output_authority_verifier",
+            "sole writable output",
+            "ambient writable output",
+            "vcpkg native focused mount binding",
+        ),
+        (
+            "online_fetch",
+            "find res/vcpkg -type f -print0 | LC_ALL=C sort -z",
+            "find res/vcpkg/libvpx -type f -print0 | LC_ALL=C sort -z",
+            "vcpkg complete overlay binding",
+        ),
+        (
+            "online_fetch",
+            "find res/vcpkg -mindepth 1 ! -type d ! -type f -print -quit",
+            "find res/vcpkg -mindepth 1 -type l -print -quit",
+            "vcpkg overlay special-entry refusal",
+        ),
+        (
+            "online_fetch",
+            "find res/vcpkg -type d -print0 | LC_ALL=C sort -z",
+            "find res/vcpkg/libvpx -type d -print0 | LC_ALL=C sort -z",
+            "vcpkg complete overlay-directory binding",
+        ),
+        (
+            "online_fetch",
+            '[ -d "$REPO_ROOT/res/vcpkg" ] && [ ! -L "$REPO_ROOT/res/vcpkg" ]',
+            '[ -e "$REPO_ROOT/res/vcpkg" ]',
+            "vcpkg real overlay-root binding",
+        ),
+        (
+            "online_fetch",
+            "printf 'OVERLAY_FILE\\0%s\\0' \"$file\"",
+            "printf 'OVERLAY_FILE=%s\\n' \"$file\"",
+            "vcpkg unambiguous overlay-file framing",
+        ),
+        (
+            "online_fetch",
+            "for archive in libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do",
+            "for archive in libvpx.a libyuv.a; do",
+            "x64 exact archive projection",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "elf_type != 1 or observed_machine != machine or version != 1",
+            "elf_type != 1 or version != 1",
+            "vcpkg archive ABI proof",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "or header_size != 64\n"
+            "        or section_header_size != 64\n"
+            "        or section_header_count == 0\n"
+            "        or section_header_offset < 64\n"
+            "        or section_header_offset\n"
+            "        > len(data) - section_header_size * section_header_count",
+            "or header_size < 1",
+            "vcpkg bounded ELF64 structure proof",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "if observed_libraries != set(spec.libraries):",
+            "if not observed_libraries:",
+            "vcpkg exact library inventory",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "stat.S_IMODE(metadata.st_mode) not in (0o644, 0o664, 0o755)",
+            "stat.S_IMODE(metadata.st_mode) not in (0o644, 0o664, 0o666, 0o755)",
+            "vcpkg closed legacy file modes",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            'for archive in sorted(root.rglob("*.a"), key=lambda path: os.fsencode(path)):',
+            'for archive in sorted((root / "lib").glob("*.a"), key=lambda path: os.fsencode(path)):',
+            "vcpkg complete legacy archive ABI inventory",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "if expected != (output_key, digest):",
+            "if expected is None:",
+            "vcpkg historical current-key and full-tree binding",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "digest = validate_output(\n"
+            "        output,\n"
+            "        uid,\n"
+            "        gid,\n"
+            "        kind,\n"
+            "        output_key,\n"
+            "        libvpx_key,\n"
+            "        legacy=legacy,",
+            "validate_output(\n"
+            "        output,\n"
+            "        uid,\n"
+            "        gid,\n"
+            "        kind,\n"
+            "        output_key,\n"
+            "        libvpx_key,\n"
+            "        legacy=legacy,",
+            "vcpkg historical full-tree digest propagation",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            '"4fbb47ef3e8cdd79f96697e9650fc3a31e368dd38a54aa3af372bb5e59b0fa46"',
+            '"0fbb47ef3e8cdd79f96697e9650fc3a31e368dd38a54aa3af372bb5e59b0fa46"',
+            "vcpkg exact x64 stale historical receipt",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            '"913588e8746761275c3115279789e1590bff9af614072882c09e5fc827e4ad55"',
+            '"013588e8746761275c3115279789e1590bff9af614072882c09e5fc827e4ad55"',
+            "vcpkg exact arm64 stale historical receipt",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "LEGACY_OUTPUT_BINDINGS: dict[str, tuple[str, str]] = {}",
+            "LEGACY_OUTPUT_BINDINGS = AUDITED_STALE_LEGACY_OUTPUTS",
+            "vcpkg empty historical acceptance set",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "if arguments.uid <= 0 or arguments.gid <= 0:",
+            "if arguments.uid < 0 or arguments.gid < 0:",
+            "vcpkg root acquisition refusal",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            'renameat2(staging_fd, "output", parent_fd, kind, RENAME_NOREPLACE)',
+            "os.replace(output, destination)",
+            "vcpkg descriptor-relative publication",
+        ),
+        (
+            "online_vcpkg_native_output_helper",
+            "output transaction state is incoherent and was preserved",
+            "output transaction state was discarded",
+            "vcpkg ambiguous-state refusal",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-online-fetch-vcpkg-native-output-authority.py --repo . --self-test",
+            "true # online-fetch vcpkg native output authority gate removed",
+            "Online-fetch vcpkg native output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cp</span>',
+            '<span class="id">R-S11cp-disabled</span>',
+            "online-fetch vcpkg native output authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>243</td>",
+            "<tr><td>243-disabled</td>",
+            "online-fetch vcpkg native output authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cp/R-S11e-108 — networked vcpkg native output authority",
+            "R-S11cp/R-S11e-108 — ambient vcpkg native output authority",
+            "online-fetch vcpkg native output authority hardening ledger",
         ),
         (
             "android_main_service",
@@ -35619,6 +36020,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_libyuv_output_helper": (
                 repo / "scripts/online-libyuv-distfile-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_vcpkg_native_output_authority_verifier": (
+                repo / "scripts/verify-online-fetch-vcpkg-native-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_vcpkg_native_output_helper": (
+                repo / "scripts/online-vcpkg-native-output.py"
             ).read_text(encoding="utf-8"),
             "android_apk_build": (
                 repo / "scripts/android-apk-build.sh"

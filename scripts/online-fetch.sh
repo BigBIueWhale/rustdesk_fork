@@ -355,6 +355,55 @@ libvpx_native_key() {
     ) | sha256sum | awk '{print $1}'
 }
 
+vcpkg_native_output_key() {
+    local kind="$1" builder="$2" ports unexpected_overlay
+    case "$kind" in
+        x64-linux)
+            ports="libvpx libyuv opus"
+            ;;
+        arm64-android)
+            ports="libvpx libyuv opus oboe"
+            ;;
+        *)
+            die "unsupported vcpkg native output kind: $kind"
+            ;;
+    esac
+    [ -d "$REPO_ROOT/res/vcpkg" ] && [ ! -L "$REPO_ROOT/res/vcpkg" ] \
+        || die "vcpkg overlay root is not one real directory"
+    unexpected_overlay="$(
+        cd "$REPO_ROOT"
+        find res/vcpkg -mindepth 1 ! -type d ! -type f -print -quit
+    )"
+    [ -z "$unexpected_overlay" ] \
+        || die "vcpkg overlay contains an unhashable non-file entry: $unexpected_overlay"
+    (
+        printf 'FORMAT=rustdesk-vcpkg-native-output-v1\n'
+        printf 'KIND=%s\n' "$kind"
+        printf 'PORTS=%s\n' "$ports"
+        printf 'BUILDER=%s\n' "$builder"
+        printf 'VCPKG_BASELINE=%s\n' "$VCPKG_BASELINE"
+        printf 'SHA256_VCPKG=%s\n' "$SHA256_VCPKG_120DEAC3"
+        printf 'LIBVPX_NATIVE_KEY=%s\n' "$(libvpx_native_key)"
+        printf 'LIBYUV_COMMIT=%s\n' "$LIBYUV_COMMIT"
+        printf 'SHA512_LIBYUV=%s\n' "$SHA512_LIBYUV"
+        if [ "$kind" = arm64-android ]; then
+            printf 'ANDROID_NDK_VERSION=%s\n' "$ANDROID_NDK_VERSION"
+            printf 'SHA256_ANDROID_NDK=%s\n' "$SHA256_ANDROID_NDK_R28C"
+        fi
+        cd "$REPO_ROOT"
+        find res/vcpkg -type d -print0 | LC_ALL=C sort -z \
+            | while IFS= read -r -d '' directory; do
+                printf 'OVERLAY_DIRECTORY\0%s\0' "$directory"
+            done
+        find res/vcpkg -type f -print0 | LC_ALL=C sort -z \
+            | while IFS= read -r -d '' file; do
+                printf 'OVERLAY_FILE\0%s\0' "$file"
+                sha256sum "$file" | cut -d' ' -f1 | tr -d '\n'
+                printf '\0'
+            done
+    ) | sha256sum | awk '{print $1}'
+}
+
 require_libvpx_distfiles() {
     local dir="$ONLINE_DIR/vcpkg-distfiles"
     local key
@@ -364,6 +413,14 @@ require_libvpx_distfiles() {
     [ -f "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" ] || die "libvpx security patch capture missing — stage_vcpkg_distfiles must run first"
     [ "$(sha512sum "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch" | awk '{print $1}')" = "$SHA512_LIBVPX_PATCH" ] || die "libvpx security patch capture SHA512 mismatch"
     [ "$(cat "$dir/libvpx-native-key.txt" 2>/dev/null)" = "$key" ] || die "libvpx native key is stale — stage_vcpkg_distfiles must refresh it"
+}
+
+require_libyuv_distfile() {
+    local archive="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
+    [ -f "$archive" ] && [ ! -L "$archive" ] \
+        || die "libyuv source capture missing — stage_vcpkg_distfiles must run first"
+    [ "$(sha512sum "$archive" | awk '{print $1}')" = "$SHA512_LIBYUV" ] \
+        || die "libyuv source capture SHA512 mismatch"
 }
 
 # ── Rust crate world: vendor the committed lockfile (incl. 38 git-sourced records) ──
@@ -1338,23 +1395,115 @@ stage_vcpkg_distfiles() {
 # built x64-linux tree is then staged read-only for the offline build. Built from the repo's
 # patched, pinned res/vcpkg overlay ports atop the baseline registry snapshot (the vcpkg
 # source archive is pinned at VCPKG_BASELINE). vcpkg's bootstrap needs `zip` (in the image).
+vcpkg_native_output_tool() {
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-vcpkg-native-output.py" "$@"
+}
+
+vcpkg_native_output_args() {
+    local kind="$1" builder="$2"
+    printf '%s\0' \
+        --uid "$ONLINE_FETCH_UID" \
+        --gid "$ONLINE_FETCH_GID" \
+        --kind "$kind" \
+        --output-key "$(vcpkg_native_output_key "$kind" "$builder")" \
+        --libvpx-key "$(libvpx_native_key)" \
+        --builder "$builder"
+}
+
+retire_vcpkg_native_output_staging() {
+    local staging="$1" staging_id="$2" kind="$3" builder="$4" disposition
+    local output_args=()
+    mapfile -d '' output_args < <(vcpkg_native_output_args "$kind" "$builder")
+    disposition="$(
+        vcpkg_native_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private $kind vcpkg native staging"
+    log "$kind vcpkg native staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private $kind vcpkg native staging traversal"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private $kind vcpkg native staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private $kind vcpkg native staging survived retirement"
+}
+
+recover_vcpkg_native_output_staging() {
+    local kind="$1" builder="$2"
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-vcpkg-native-${kind}.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved $kind vcpkg native staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_vcpkg_native_output_staging "$staging" "$staging_id" "$kind" "$builder"
+    done
+}
+
 stage_vcpkg_natives() {
     local builder="$DEB_BUILDER_IMAGE_ID"
+    local status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id
+    local output_args=()
     require_online_fetch_builder_image deb-builder "$builder"
     require_libvpx_distfiles
-    local native_key
-    native_key="$(libvpx_native_key)"
-    if [ -d "$ONLINE_DIR/vcpkg/installed/x64-linux/lib" ] && \
-       [ "$(cat "$ONLINE_DIR/vcpkg/installed/x64-linux/.rustdesk-libvpx-native-key" 2>/dev/null)" = "$native_key" ]; then
-        log "vcpkg native codecs already staged for libvpx key $native_key, skipping"; return 0
+    require_libyuv_distfile
+    verify_sha256 \
+        "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
+        "$SHA256_VCPKG_120DEAC3"
+    mapfile -d '' output_args < <(vcpkg_native_output_args x64-linux "$builder")
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for x64-linux vcpkg native serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another vcpkg native output transaction already owns the online root"
+    recover_vcpkg_native_output_staging x64-linux "$builder"
+    if [ -e "$ONLINE_DIR/vcpkg/installed/x64-linux" ] \
+       || [ -L "$ONLINE_DIR/vcpkg/installed/x64-linux" ]; then
+        vcpkg_native_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing x64-linux vcpkg native output is incomplete, stale, or unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the x64-linux vcpkg native transaction lock"
+        exec {lock_fd}<&-
+        log "x64-linux vcpkg native codecs already staged and structurally verified"
+        return 0
     fi
-    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg must run first"
-    log "staging the vcpkg native codecs (libvpx/libyuv/opus, x64-linux static) -> ./online/vcpkg/installed"
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-vcpkg-native-x64-linux.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private x64-linux vcpkg native staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! vcpkg_native_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed x64-linux preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed x64-linux preparation left non-retirable private staging"
+        die "cannot prepare private x64-linux vcpkg native staging"
+    fi
+    log "building the exact x64-linux vcpkg native consumer projection"
     online_docker_run \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
-        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$staging/output,target=/outputs/native" \
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
-        --env LIBVPX_NATIVE_KEY="$native_key" \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$(vcpkg_native_output_key x64-linux "$builder")" \
+        --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
         "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
             export HOME=/tmp/home; mkdir -p "$HOME"
             VR=/tmp/vcpkg; mkdir -p "$VR"
@@ -1368,17 +1517,34 @@ stage_vcpkg_natives() {
             "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
             "$VR"/vcpkg install --triplet x64-linux --overlay-ports=/overlay \
                 libvpx libyuv opus
-            # Stage only the x64-linux install tree (lib/*.a + include/) that
-            # scrap/magnum-opus link_vcpkg read via VCPKG_ROOT/installed/x64-linux.
-            mkdir -p /online/vcpkg/installed
-            staged="/online/vcpkg/installed/.x64-linux-${LIBVPX_NATIVE_KEY}.tmp"
-            rm -rf /online/vcpkg/installed/.x64-linux-*.tmp
-            cp -a "$VR"/installed/x64-linux "$staged"
-            printf "%s\n" "$LIBVPX_NATIVE_KEY" >"$staged/.rustdesk-libvpx-native-key"
-            rm -rf /online/vcpkg/installed/x64-linux
-            mv "$staged" /online/vcpkg/installed/x64-linux
-        '
-    log "vcpkg natives staged ($(ls "$ONLINE_DIR"/vcpkg/installed/x64-linux/lib/*.a 2>/dev/null | wc -l) static libs)"
+            install -d -m 0700 /outputs/native/include /outputs/native/lib
+            cp -a "$VR"/installed/x64-linux/include/. /outputs/native/include/
+            for archive in libjpeg.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do
+                cp -a "$VR/installed/x64-linux/lib/$archive" /outputs/native/lib/
+            done
+            printf "%s\n" "$VCPKG_NATIVE_OUTPUT_KEY" \
+                > /outputs/native/.rustdesk-vcpkg-native-output-key-v1
+            printf "%s\n" "$LIBVPX_NATIVE_KEY" \
+                > /outputs/native/.rustdesk-libvpx-native-key
+        ' || status=$?
+    vcpkg_native_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        vcpkg_native_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_vcpkg_native_output_staging "$staging" "$staging_id" x64-linux "$builder"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the x64-linux vcpkg native transaction lock"
+    exec {lock_fd}<&-
+    [ "$output_status" -eq 0 ] || die "x64-linux vcpkg native output postcondition failed"
+    [ "$status" -eq 0 ] || die "x64-linux vcpkg native producer failed"
+    [ "$publication_status" -eq 0 ] || die "x64-linux vcpkg native publication failed"
+    log "x64-linux vcpkg natives checked and published (5 static libraries)"
 }
 
 # ── The Android NDK r28c, extracted for the cargo-ndk JNI cross-compile ─────────
@@ -1412,22 +1578,64 @@ stage_android_ndk() {
 # tarball baseline ports + the overlay is equivalent + git-free.
 stage_vcpkg_natives_arm64() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id
+    local output_args=()
     require_online_fetch_builder_image android-builder "$builder"
     require_libvpx_distfiles
-    local native_key
-    native_key="$(libvpx_native_key)"
-    if [ -d "$ONLINE_DIR/vcpkg/installed/arm64-android/lib" ] && \
-       [ "$(cat "$ONLINE_DIR/vcpkg/installed/arm64-android/.rustdesk-libvpx-native-key" 2>/dev/null)" = "$native_key" ]; then
-        log "vcpkg arm64-android codecs already staged for libvpx key $native_key, skipping"; return 0
-    fi
+    require_libyuv_distfile
     [ -d "$ONLINE_DIR/android-ndk/toolchains" ] || die "android NDK not extracted — stage_android_ndk must run first"
-    [ -f "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" ] || die "vcpkg source archive missing — fetch_vcpkg must run first"
-    log "staging the vcpkg arm64-android natives (libvpx/libyuv/opus + oboe audio) -> ./online/vcpkg/installed/arm64-android"
+    verify_sha256 \
+        "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" \
+        "$SHA256_ANDROID_NDK_R28C"
+    verify_sha256 \
+        "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz" \
+        "$SHA256_VCPKG_120DEAC3"
+    mapfile -d '' output_args < <(vcpkg_native_output_args arm64-android "$builder")
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for arm64-android vcpkg native serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another vcpkg native output transaction already owns the online root"
+    recover_vcpkg_native_output_staging arm64-android "$builder"
+    if [ -e "$ONLINE_DIR/vcpkg/installed/arm64-android" ] \
+       || [ -L "$ONLINE_DIR/vcpkg/installed/arm64-android" ]; then
+        vcpkg_native_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing arm64-android vcpkg native output is incomplete, stale, or unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the arm64-android vcpkg native transaction lock"
+        exec {lock_fd}<&-
+        log "arm64-android vcpkg native codecs already staged and structurally verified"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-vcpkg-native-arm64-android.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private arm64-android vcpkg native staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! vcpkg_native_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed arm64-android preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed arm64-android preparation left non-retirable private staging"
+        die "cannot prepare private arm64-android vcpkg native staging"
+    fi
+    log "building the exact arm64-android vcpkg native consumer projection"
     online_docker_run \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
-        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/res/vcpkg,target=/overlay,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$staging/output,target=/outputs/native" \
         --env RUSTDESK_VCPKG_DISTFILES_DIR=/online/vcpkg-distfiles \
-        --env LIBVPX_NATIVE_KEY="$native_key" \
+        --env VCPKG_NATIVE_OUTPUT_KEY="$(vcpkg_native_output_key arm64-android "$builder")" \
+        --env LIBVPX_NATIVE_KEY="$(libvpx_native_key)" \
         "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
             export HOME=/tmp/home; mkdir -p "$HOME"
             export ANDROID_NDK_HOME=/online/android-ndk
@@ -1438,15 +1646,35 @@ stage_vcpkg_natives_arm64() {
             "$VR"/bootstrap-vcpkg.sh -disableMetrics >/dev/null
             "$VR"/vcpkg install --triplet arm64-android --overlay-ports=/overlay \
                 libvpx libyuv opus oboe
-            mkdir -p /online/vcpkg/installed
-            staged="/online/vcpkg/installed/.arm64-android-${LIBVPX_NATIVE_KEY}.tmp"
-            rm -rf /online/vcpkg/installed/.arm64-android-*.tmp
-            cp -a "$VR"/installed/arm64-android "$staged"
-            printf "%s\n" "$LIBVPX_NATIVE_KEY" >"$staged/.rustdesk-libvpx-native-key"
-            rm -rf /online/vcpkg/installed/arm64-android
-            mv "$staged" /online/vcpkg/installed/arm64-android
-        '
-    log "vcpkg arm64-android codecs staged ($(ls "$ONLINE_DIR"/vcpkg/installed/arm64-android/lib/*.a 2>/dev/null | wc -l) static libs)"
+            install -d -m 0700 /outputs/native/include /outputs/native/lib
+            cp -a "$VR"/installed/arm64-android/include/. /outputs/native/include/
+            for archive in libjpeg.a liboboe.a libopus.a libturbojpeg.a libvpx.a libyuv.a; do
+                cp -a "$VR/installed/arm64-android/lib/$archive" /outputs/native/lib/
+            done
+            printf "%s\n" "$VCPKG_NATIVE_OUTPUT_KEY" \
+                > /outputs/native/.rustdesk-vcpkg-native-output-key-v1
+            printf "%s\n" "$LIBVPX_NATIVE_KEY" \
+                > /outputs/native/.rustdesk-libvpx-native-key
+        ' || status=$?
+    vcpkg_native_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        vcpkg_native_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_vcpkg_native_output_staging \
+        "$staging" "$staging_id" arm64-android "$builder"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the arm64-android vcpkg native transaction lock"
+    exec {lock_fd}<&-
+    [ "$output_status" -eq 0 ] || die "arm64-android vcpkg native output postcondition failed"
+    [ "$status" -eq 0 ] || die "arm64-android vcpkg native producer failed"
+    [ "$publication_status" -eq 0 ] || die "arm64-android vcpkg native publication failed"
+    log "arm64-android vcpkg natives checked and published (6 static libraries)"
 }
 
 # ── cargo-ndk (R-B7): the JNI cross-compile orchestrator, staged ───────────────────

@@ -754,16 +754,17 @@ unreachable and a source/test/AST gate prevents reintroduction.
   empty wrapper keys are rejected, and current-version encryption failures return empty values rather than
   plaintext.
 - **R-S11b-3g — trust-anchor/proxy-shaped option writes are pinned empty — CLOSED 2026-07-09.**
-  Platforms: all desktop main IPC and every shared `Config` option write path. Endpoint/action:
-  `Config::set_option`, `Config::set_options`, `MainIpcRequest::SetOption`, and callers that sync or cache
-  the shared options map. Boundary: local option writers ↔ trust-anchor and proxy credential material.
+  Platforms: all desktop main IPC and the shared `Config` option write path. Endpoint/action:
+  `Config::set_option`, `MainIpcRequest::SetOption`, and callers that cache the shared options map.
+  Boundary: local option writers ↔ trust-anchor and proxy credential material.
   Attack surface closed: the legacy `key` option cannot persist a rendezvous trust-anchor override, and
   `proxy-username`/`proxy-password` cannot persist proxy credential material through ordinary options IPC,
   UI/FFI setters, or server-pushed option maps. R-S11b-3j subsequently deletes the structured proxy store and
   transport. The retired option names remain pinned empty here because whole-map reads must still mask stale
   stored/default/signed-custom values rather than disclose old proxy-shaped credential strings. `get_key`
   continues to return the baked `RS_PUB_KEY`, now with no stored override to ignore. Verification closure:
-  `config_it` asserts the pins read empty and reject both single-key and whole-map writes; the `get_key`
+  `config_it` asserts the pins read empty and reject single-key writes; R-S11b-3o subsequently deletes the
+  production-dead whole-map writer entirely. The `get_key`
   unit test asserts rejected persistence plus constant anchor reads; `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` assert the source pins and the absence of trusted-device/key-confirmation
   writer symbols.
@@ -952,6 +953,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   shared, Apple, Dart-codegen, and independent semantic mutation gates bind every authority edge and retired
   surface. Appendix C #238 records the source-level closure; exact native/reproducible artifact and installed
   device evidence remain under R-B2.
+- **R-S11b-3o — production-dead whole-options config writer excised — CLOSED/GATED 2026-07-24.**
+  Platforms: every desktop and mobile build linking `hbb_common`. Endpoint/action: the public
+  `Config::set_options` API and its private `purify_options` batch filter. Boundary: any current or future
+  in-process caller ↔ replacement of the complete persisted options map. After R-S11b-3n deleted the last
+  IPC, UI, Flutter, and web batch mutation path, repository-wide authored-source review found no production
+  caller of this shared writer; only same-module and integration tests preserved its batch semantics. The API
+  was therefore an obsolete lost-update and future authority-regression surface, not a demonstrated reachable
+  IPC write, credential change, local privilege escalation, Android lifecycle defect, host modification,
+  exploitation event, or compromise.
+  Closure deletes `Config::set_options`, `purify_options`, and the batch-only test steps. Effective whole-map
+  reads remain through `Config::get_options`, which still overlays compile-time pins last; every live options
+  mutation now addresses one key through `Config::set_option`. Shared and Apple source gates reject either
+  whole-map writer symbol, and the independent semantic validator binds source, both gates, R-S16, Appendix C
+  #239, and this row with deliberate mutations. Exact native/reproducible artifact and installed-device evidence
+  remain under R-B2.
 - **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
   Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
   deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
@@ -10222,7 +10238,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-30d66306566cacc376188aa7d14c39514bbe2be5051c86e0c6c4c0fe26b17020  requirements.html
+ffb7df02d3efc011b25f6747357a2292309e3813f5c1747de68b0fc872ec17da  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,

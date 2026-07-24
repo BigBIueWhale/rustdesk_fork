@@ -3069,21 +3069,6 @@ impl Config {
         res
     }
 
-    #[inline]
-    fn purify_options(v: &mut HashMap<String, String>) {
-        v.retain(|k, v| is_option_can_save(&OVERWRITE_SETTINGS, k, &DEFAULT_SETTINGS, v));
-    }
-
-    pub fn set_options(mut v: HashMap<String, String>) {
-        Self::purify_options(&mut v);
-        let mut config = CONFIG2.write().unwrap();
-        if config.options == v {
-            return;
-        }
-        config.options = v;
-        config.store();
-    }
-
     pub fn get_option(k: &str) -> String {
         // R-S16(b): pin the read funnel. The controlled-side policy table is the
         // single source of truth — a pinned key returns its compile-time value
@@ -6299,44 +6284,6 @@ unrelated = "preserved"
             .write()
             .unwrap()
             .insert("d".to_string(), "c".to_string());
-        let mut res: HashMap<String, String> = Default::default();
-        res.insert("b".to_owned(), "c".to_string());
-        res.insert("d".to_owned(), "c".to_string());
-        res.insert("c".to_owned(), "a".to_string());
-        Config::purify_options(&mut res);
-        assert!(res.len() == 0);
-        res.insert("b".to_owned(), "c".to_string());
-        res.insert("d".to_owned(), "c".to_string());
-        res.insert("c".to_owned(), "a".to_string());
-        res.insert("f".to_owned(), "a".to_string());
-        Config::purify_options(&mut res);
-        assert!(res.len() == 1);
-        res.insert("b".to_owned(), "c".to_string());
-        res.insert("d".to_owned(), "c".to_string());
-        res.insert("c".to_owned(), "a".to_string());
-        res.insert("f".to_owned(), "a".to_string());
-        res.insert("e".to_owned(), "d".to_string());
-        Config::purify_options(&mut res);
-        assert!(res.len() == 2);
-        res.insert("b".to_owned(), "c".to_string());
-        res.insert("d".to_owned(), "c".to_string());
-        res.insert("c".to_owned(), "a".to_string());
-        res.insert("f".to_owned(), "a".to_string());
-        res.insert("c".to_owned(), "d".to_string());
-        res.insert("d".to_owned(), "cc".to_string());
-        Config::purify_options(&mut res);
-        DEFAULT_SETTINGS
-            .write()
-            .unwrap()
-            .insert("f".to_string(), "c".to_string());
-        Config::purify_options(&mut res);
-        assert!(res.len() == 2);
-        DEFAULT_SETTINGS
-            .write()
-            .unwrap()
-            .insert("f".to_string(), "a".to_string());
-        Config::purify_options(&mut res);
-        assert!(res.len() == 1);
         let res = Config::get_options();
         assert!(res["a"] == "b");
         assert!(res["c"] == "f");

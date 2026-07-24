@@ -1252,6 +1252,12 @@ for token in \
   grep -Fq "$token" "$REPO/src/ipc.rs" "$REPO/src/ui_interface.rs" "$REPO/src/flutter_ffi.rs" "$REPO/flutter/lib/web/bridge.dart" &&
     r_s11b2="$r_s11b2 retired-whole-options-surface-present:$token"
 done
+for token in \
+  'pub fn set_options(' \
+  'fn purify_options('; do
+  grep -Fq "$token" "$REPO/libs/hbb_common/src/config.rs" &&
+    r_s11b2="$r_s11b2 retired-whole-options-config-writer-present:$token"
+done
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
@@ -1281,7 +1287,9 @@ grep -q 'ipc::is_local_permanent_password_set()' "$REPO/src/ui_interface.rs" || 
 grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 credential-mirror-ledger-missing"
 grep -Fq '<tr><td>237</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 credential-mirror-appendix-missing"
 grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 single-option-ledger-missing"
+grep -Fq 'R-S11b-3o — production-dead whole-options config writer excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 whole-options-config-ledger-missing"
 grep -Fq '<tr><td>238</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 single-option-appendix-missing"
+grep -Fq '<tr><td>239</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 whole-options-config-appendix-missing"
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS raw password IPC:$r_s11b2"
   rc=1

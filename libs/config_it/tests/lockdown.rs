@@ -108,13 +108,7 @@ fn pinned_policy_is_the_single_source_of_truth() {
     assert_eq!(Config::get_option("enable-terminal"), "Y");
     assert_eq!(Config::get_option("stop-service"), "N");
 
-    let mut whole_options_write = std::collections::HashMap::new();
-    whole_options_write.insert("proxy-username".to_owned(), "mitm-user".to_owned());
-    whole_options_write.insert("proxy-password".to_owned(), "mitm-pass".to_owned());
-    whole_options_write.insert("key".to_owned(), "ATTACKER-REPOINTED-TRUST-ANCHOR=".to_owned());
-    Config::set_options(whole_options_write);
-
-    // The rejected writes cannot shadow the effective whole-map read.
+    // The rejected single-key writes cannot shadow the effective whole-map read.
     let opts = Config::get_options();
     for (k, expected) in [
         ("access-mode", "full"),

@@ -16994,8 +16994,15 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
 
 
 def validate_main_ipc_single_option_mutation_contract(sources):
+    config = sources["config_source"]
     ipc = sources["ipc_source"]
     ui = sources["ui_interface_source"]
+
+    for text, label in (
+        ("pub fn set_options(", "whole-options Config mutation API"),
+        ("fn purify_options(", "whole-options Config mutation helper"),
+    ):
+        require_absent(config, text, label)
 
     for source, text, label in (
         (ipc, "MainIpcRequest::SetOptions", "whole-options main request"),
@@ -17188,9 +17195,12 @@ def validate_main_ipc_single_option_mutation_contract(sources):
         "value: Config::get_option(&key_name)",
         "options.insert(key.clone(), effective);",
         "retired-whole-options-surface-present",
+        "retired-whole-options-config-writer-present",
         "ipc::test::main_option_mutation_is_single_key_and_receiver_effective",
         "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
+        "R-S11b-3o — production-dead whole-options config writer excised",
         "<tr><td>238</td>",
+        "<tr><td>239</td>",
     ):
         require_text(shared_gate, text, "shared single-option mutation source gate")
 
@@ -17206,8 +17216,11 @@ def validate_main_ipc_single_option_mutation_contract(sources):
         "value: Config::get_option(&key_name)",
         "options.insert(key.clone(), effective);",
         "retired-whole-options-surface-present",
+        "retired-whole-options-config-writer-present",
         "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
+        "R-S11b-3o — production-dead whole-options config writer excised",
         "<tr><td>238</td>",
+        "<tr><td>239</td>",
     ):
         require_text(apple_gate, text, "Apple single-option mutation source gate")
 
@@ -17247,6 +17260,10 @@ def validate_main_ipc_single_option_mutation_contract(sources):
             "expose a batch JSON/FFI bridge",
             "whole-options bridge normative prohibition",
         ),
+        (
+            "MUST NOT</span> expose <code>Config::set_options</code>, <code>purify_options</code>, or another whole-map replacement primitive",
+            "whole-options Config API normative prohibition",
+        ),
     ):
         require_text(requirement, text, label)
     require_text(
@@ -17255,9 +17272,19 @@ def validate_main_ipc_single_option_mutation_contract(sources):
         "single-option mutation Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>239</td>",
+        "whole-options Config writer Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
         "single-option mutation hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3o — production-dead whole-options config writer excised",
+        "whole-options Config writer hardening ledger",
     )
 
     mutation_matrix = extract_between(
@@ -17268,6 +17295,8 @@ def validate_main_ipc_single_option_mutation_contract(sources):
     )
     for text, label in (
         ("single-option typed main request", "single-option request mutation"),
+        ("whole-options Config mutation API", "Config API mutation"),
+        ("whole-options Config mutation helper", "Config helper mutation"),
         (
             "single-option receiver authority and effective-state order",
             "receiver sink/effective-state mutations",
@@ -17284,8 +17313,17 @@ def validate_main_ipc_single_option_mutation_contract(sources):
         ("Apple single-option mutation source gate", "Apple-gate mutation"),
         ("Dart authored bridge absence gate", "Dart-gate mutation"),
         ("single-option normative receiver sink", "requirements mutation"),
+        (
+            "whole-options Config API normative prohibition",
+            "Config API requirement mutation",
+        ),
         ("single-option mutation Appendix C row", "Appendix mutation"),
+        ("whole-options Config writer Appendix C row", "Config Appendix mutation"),
         ("single-option mutation hardening ledger", "hardening-ledger mutation"),
+        (
+            "whole-options Config writer hardening ledger",
+            "Config hardening-ledger mutation",
+        ),
         ("single-option protocol regression", "focused-regression mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -30073,6 +30111,18 @@ def run_source_mutations(sources):
             "single-option typed main request",
         ),
         (
+            "config_source",
+            "    pub fn get_options() -> HashMap<String, String> {",
+            "    pub fn set_options(_: HashMap<String, String>) {}\n\n    pub fn get_options() -> HashMap<String, String> {",
+            "whole-options Config mutation API",
+        ),
+        (
+            "config_source",
+            "    pub fn get_options() -> HashMap<String, String> {",
+            "    fn purify_options(_: &mut HashMap<String, String>) {}\n\n    pub fn get_options() -> HashMap<String, String> {",
+            "whole-options Config mutation helper",
+        ),
+        (
             "ipc_source",
             "                Config::set_option(key_name.clone(), value.value);",
             "                Config::set_options(HashMap::from([(key_name.clone(), value.value)]));",
@@ -30121,9 +30171,21 @@ def run_source_mutations(sources):
             "shared single-option mutation source gate",
         ),
         (
+            "verify",
+            "retired-whole-options-config-writer-present",
+            "retired-whole-options-config-writer-check-disabled",
+            "shared single-option mutation source gate",
+        ),
+        (
             "apple",
             "retired-whole-options-surface-present",
             "retired-whole-options-source-check-disabled",
+            "Apple single-option mutation source gate",
+        ),
+        (
+            "apple",
+            "retired-whole-options-config-writer-present",
+            "retired-whole-options-config-writer-check-disabled",
             "Apple single-option mutation source gate",
         ),
         (
@@ -30140,15 +30202,33 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            "MUST NOT</span> expose <code>Config::set_options</code>, <code>purify_options</code>, or another whole-map replacement primitive",
+            "MAY</span> expose <code>Config::set_options</code>, <code>purify_options</code>, or another whole-map replacement primitive",
+            "whole-options Config API normative prohibition",
+        ),
+        (
+            "requirements",
             "<tr><td>238</td>",
             "<tr><td>238-disabled</td>",
             "single-option mutation Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>239</td>",
+            "<tr><td>239-disabled</td>",
+            "whole-options Config writer Appendix C row",
         ),
         (
             "hardening",
             "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
             "R-S11b-3n — ordinary main IPC option mutation remains batch-shaped",
             "single-option mutation hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11b-3o — production-dead whole-options config writer excised",
+            "R-S11b-3o — production-dead whole-options config writer retained",
+            "whole-options Config writer hardening ledger",
         ),
         (
             "ipc_source",

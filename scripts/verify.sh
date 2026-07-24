@@ -3137,11 +3137,20 @@ for token in \
     r_s11b3="$r_s11b3 retired-whole-options-surface-present:$token"
   fi
 done
+for token in \
+  'pub fn set_options(' \
+  'fn purify_options('; do
+  if grep -Fq "$token" libs/hbb_common/src/config.rs; then
+    r_s11b3="$r_s11b3 retired-whole-options-config-writer-present:$token"
+  fi
+done
 grep -q 'ipc::test::main_option_mutation_is_single_key_and_receiver_effective' scripts/verify.sh || r_s11b3="$r_s11b3 focused-single-option-test-missing"
 grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' HARDENING_STATUS.md || r_s11b3="$r_s11b3 single-option-ledger-missing"
+grep -Fq 'R-S11b-3o — production-dead whole-options config writer excised' HARDENING_STATUS.md || r_s11b3="$r_s11b3 whole-options-config-ledger-missing"
 grep -Fq '<tr><td>238</td>' requirements.html || r_s11b3="$r_s11b3 single-option-appendix-missing"
+grep -Fq '<tr><td>239</td>' requirements.html || r_s11b3="$r_s11b3 whole-options-config-appendix-missing"
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
-  echo "  ok  R-S11b-3/R-S11b-3n service-owned --server rejects option writes; user-owned mutation is one allowlisted key with receiver-effective ACK/cache state and no whole-map bridge; Windows share_rdp remains only a typed elevated _service action"; fi
+  echo "  ok  R-S11b-3/R-S11b-3n/R-S11b-3o service-owned --server rejects option writes; every live mutation is one allowlisted key with receiver-effective ACK/cache state and no whole-map bridge or shared config writer; Windows share_rdp remains only a typed elevated _service action"; fi
 
 # (3b-iii-d2) R-S11e-23: the current MSI owns the only uninstall-registry namespace that may
 # classify this Windows installation or store service-owned RDP session-sharing policy. Retired
@@ -8018,9 +8027,10 @@ if [ -n "$r_s11c10v" ]; then echo "  FAIL R-S11c-10v obsolete generated Docker b
 # (3b-iv) R-S11/R-A6 config-write reachability tripwire: the closed ordinary main request handler
 # contains no credential writer. Password commits terminate only behind dedicated raw endpoints;
 # generic config, identity, salt, and proxy writes remain absent.
-# set_options is EXCLUDED (it self-filters via is_option_can_save, R-S16, including trust-anchor/proxy
-# credential option keys). Pin the count: a new bypassing write trips this, forcing the author to deny
-# its Data variant in main_channel_admits.
+# Whole-options replacement is absent; `Config::set_option` is the sole shared option writer and
+# self-filters via is_option_can_save (R-S16, including trust-anchor/proxy credential option keys).
+# Pin the count: a new bypassing write trips this, forcing the author to deny its Data variant in
+# main_channel_admits.
 hb_cfg_writes=$(
   awk '/^async fn handle_main_ipc_request\(/,/^}/' src/ipc.rs |
     grep -cE '\bConfig::set_socks|\bConfig::set_permanent_password|\bConfig::set_id|\bConfig::set_salt|\bConfig::set\(|\bConfig2::set\(' || {

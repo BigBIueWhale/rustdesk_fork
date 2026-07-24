@@ -263,6 +263,13 @@ def validate(sources: Dict[str, str]) -> None:
         "\n}\n\nstage_pub_cache() {",
         "Pub-cache semantic replay",
     )
+    semantic_profile = extract_between(
+        shell,
+        "online_docker_run_pub_semantic() {",
+        "\n}\n\n# Exact archive acquisition",
+        "Pub-cache semantic execution profile",
+    )
+    semantic_authority = semantic_profile + "\n" + semantic
     stage = extract_between(
         shell,
         "stage_pub_cache() {",
@@ -308,10 +315,20 @@ def validate(sources: Dict[str, str]) -> None:
         ('grep -qE "^name:[[:space:]]*$package\\$"',
          "locked package identity"),
     ):
-        require(semantic, token, label)
+        require(semantic_authority, token, label)
+    require(
+        semantic,
+        "online_docker_run_pub_semantic \\",
+        "shared Pub semantic profile use",
+    )
     validate_git_specs(semantic, sources["pub_lock"])
 
-    require_count(semantic, "--network=none", 1, "offline semantic network removal")
+    require_count(
+        semantic_profile,
+        "--network=none",
+        1,
+        "offline semantic network removal",
+    )
     require_count(
         semantic,
         "dart pub get --offline --enforce-lockfile",
@@ -563,15 +580,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "verify_pub_cache_resolution() {\n"
-        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
-        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
-        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "online_docker_run_pub_semantic() {\n"
         "    online_docker run --rm --pull=never --network=none --read-only",
-        "verify_pub_cache_resolution() {\n"
-        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
-        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
-        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "online_docker_run_pub_semantic() {\n"
         "    online_docker run --rm --pull=never --network=bridge --read-only",
         "networkless semantic replay",
     ),
@@ -611,8 +622,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]',
-        '[[ -n "$receipt" ]]',
+        '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+        '            digest="${BASH_REMATCH[1]}"',
+        '[[ -n "$receipt" ]]; then\n'
+        '            digest="${BASH_REMATCH[1]}"',
         "verified digest receipt",
     ),
     Mutation(
@@ -623,8 +636,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        '&& [ "$semantic_status" -eq 0 ]; then',
-        "; then # semantic verdict omitted",
+        '&& [ "$semantic_status" -eq 0 ]; then\n'
+        "            pub_cache_output_tool publish",
+        "; then # semantic verdict omitted\n"
+        "            pub_cache_output_tool publish",
         "semantic publication barrier",
     ),
     Mutation(

@@ -258,7 +258,7 @@ def validate(sources: Dict[str, str]) -> None:
         "closed image-provenance environment",
     )
 
-    require_count(shell, "online_docker_run ", 9, "ordinary acquisition launch inventory")
+    require_count(shell, "online_docker_run ", 8, "ordinary acquisition launch inventory")
     require_count(
         shell,
         "stage_cargo_installed_tool ",
@@ -277,9 +277,9 @@ def validate(sources: Dict[str, str]) -> None:
     )
     semantic = extract(
         shell,
-        "verify_pub_cache_resolution() {",
-        "\n}\n\nstage_pub_cache() {",
-        "Pub-cache networkless semantic launch",
+        "online_docker_run_pub_semantic() {",
+        "\n}\n\n# Exact archive acquisition",
+        "Pub-cache networkless semantic funnel",
     )
     for token, label in (
         ("online_docker run --rm --pull=never --network=none --read-only",
@@ -293,13 +293,25 @@ def validate(sources: Dict[str, str]) -> None:
          "bounded scratch"),
     ):
         require(semantic, token, "Pub-cache semantic {}".format(label))
-    forbid_container_authority(semantic, "Pub-cache semantic launch")
+    forbid_container_authority(semantic, "Pub-cache semantic funnel")
+    resolution = extract(
+        shell,
+        "verify_pub_cache_resolution() {",
+        "\n}\n\nstage_pub_cache() {",
+        "Pub-cache networkless semantic launch",
+    )
+    require(
+        resolution,
+        "online_docker_run_pub_semantic \\",
+        "Pub-cache semantic funnel use",
+    )
+    forbid_container_authority(resolution, "Pub-cache semantic launch")
 
     require_count(
         shell,
         "online_docker run ",
         5,
-        "ordinary, two networkless, networked archive, and Pub-cache Docker primitives",
+        "ordinary, archive-expansion, Cargo/Pub semantic, and networked archive Docker primitives",
     )
     for token, label in (
         ("--pull=", "pull policy"),
@@ -317,13 +329,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         'local builder="$DEB_BUILDER_IMAGE_ID"',
-        6,
+        5,
         "exact Debian builder consumers",
     )
     require_count(
         shell,
         'local builder="$ANDROID_BUILDER_IMAGE_ID"',
-        7,
+        8,
         "exact Android builder consumers",
     )
     require_count(
@@ -574,15 +586,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "verify_pub_cache_resolution() {\n"
-        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
-        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
-        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "online_docker_run_pub_semantic() {\n"
         "    online_docker run --rm --pull=never --network=none --read-only",
-        "verify_pub_cache_resolution() {\n"
-        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
-        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
-        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "online_docker_run_pub_semantic() {\n"
         "    online_docker run --rm --pull=never --network=bridge --read-only",
         "Pub-cache semantic network removal",
     ),

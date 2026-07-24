@@ -108,7 +108,7 @@ def validate(sources: Dict[str, str]) -> None:
     lifecycle = extract_between(
         shell,
         "stage_windows_engine() {",
-        "\n}\n\n# ── The windows flutter_tools pub cache",
+        "\n}\n\n# ── The Windows flutter_tools Pub cache",
         "Windows-engine output lifecycle",
     )
     online_profile = extract_between(
@@ -335,8 +335,10 @@ def mutations() -> Tuple[Mutation, ...]:
         ),
         Mutation(
             "shell",
-            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
-            "source=$ONLINE_DIR,target=/inputs/flutter.tar.xz",
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$staging/output,target=/outputs/engine.tar.gz",
+            "source=$ONLINE_DIR,target=/inputs/flutter.tar.xz\" \\\n"
+            "        --mount \"type=bind,source=$staging/output,target=/outputs/engine.tar.gz",
             "exact read-only source mount",
         ),
         Mutation(

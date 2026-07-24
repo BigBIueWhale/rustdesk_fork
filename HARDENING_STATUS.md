@@ -10708,9 +10708,143 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Evidence boundary: no root command/container, image pull/build/tag, persistent online-cache
   mutation, release build, native device, listener, published port, firewall/network
   configuration change, or host RustDesk service/configuration operation is part of this
-  slice. Windows Flutter Pub/WiX producers, maintenance-image acquisition/distribution, exact
-  clean R-B2/R-B10 artifacts, native/device behavior, independent image distribution, and R-V3
-  external review remain open.
+  slice. The Windows flutter_tools Pub-cache producer is closed separately by R-S11cy; WiX
+  acquisition, maintenance-image acquisition/distribution, exact clean R-B2/R-B10 artifacts,
+  native/device behavior, independent image distribution, and R-V3 external review remain open.
+- **R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority —
+  SOURCE, TRANSACTION FIXTURE, DISPOSABLE REPRODUCTION, ARCHIVE SEMANTIC, OFFLINE RESOLUTION,
+  AND MUTATION VERIFIED 2026-07-25; EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform:
+  the unprivileged Linux acquisition host, immutable Android-builder, and offline Windows
+  `flutter_tools` provision input. Endpoint/action:
+  `scripts/online-fetch.sh::stage_flutter_pub_cache`, which projects the already complete
+  R-S11cn hosted cache into `flutter-pub-cache.tar.gz`. Boundary: a validated immutable
+  Pub-cache source and pinned Flutter SDK/lock ↔ one bounded candidate inode and the durable
+  Windows toolchain cache.
+
+  Before this slice, any occupied regular final skipped without size, digest, metadata,
+  structure, or actual offline-resolution validation. A cold packager selected the immutable
+  Debian builder, mounted the complete 25+ GiB `online` root read-write, and truncated
+  `/online/flutter-pub-cache.tar.gz` directly. Its only archive postcondition grepped one
+  `test-1.25.7` member. The packager therefore held current-user write/delete authority over
+  every unrelated offline release input, interruption could leave a partial durable final,
+  and presence plus one name could authorize stale or incoherent bytes. Direct reproduction
+  also proved that the current Debian builder's tar 1.29/gzip 1.6 produces a different
+  198,142,789-byte archive at SHA-256
+  `3293010dacbc9f41915a0fbb0eaa8391fca1f9e5993b9598ea88c57aa70bd0d0`;
+  the already pinned Android builder's tar 1.35/gzip 1.12 reproduces the reviewed bytes.
+  This was acquisition-input/output, namespace, stale-state, reproducibility, and
+  denial-of-service authority debt. It is not evidence that the historical archive or source
+  cache changed, Flutter/Pub was malicious, host root was acquired, Docker escaped, a listener
+  or public port was exposed, host RustDesk/service/configuration/firewall/network state
+  changed, exploitation occurred, or the host was compromised.
+
+  The transaction now uses the retained clean exact-commit source authority and calls the
+  R-S11cn stable no-follow/mount-closed `check-complete` validator over `online/pub-cache`.
+  Its exact tree receipt is recorded in the transaction and rechecked after both packaging and
+  semantic replay. The exact 693,186,548-byte Flutter 3.24.5 source archive is verified by
+  SHA-256 and size before, between, and after those processes. The extracted
+  `packages/flutter_tools/pubspec.lock` is independently pinned at SHA-256
+  `66955192347d2d4eb24476745462c80a11d9bbf19a461f3504bbbd86e366ee8e`.
+  The output remains the established 198,126,354-byte archive at SHA-256
+  `2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c`;
+  this slice does not repin it.
+
+  UID or primary GID zero is refused. The canonical current-user mode-0700 online root is
+  exclusively locked before reconciliation, occupied-output validation, staging, or
+  publication. Every reserved `.rustdesk-flutter-pub-cache.*` transaction is reconciled
+  first. An occupied final passes the same stable no-follow, real-regular-file,
+  same-filesystem, single-link, xattr-free, exact-size, exact-SHA-256, and full semantic
+  parser as a new candidate, then the same separate offline resolution. A new final is
+  current-owner mode 0400; only the exact historical root:root mode-0644 metadata profile is
+  admitted after the identical byte and semantic verdict. Wrong occupied state is preserved
+  without chmod, deletion, replacement, or reacquisition.
+
+  A cold transaction creates one unpredictable current-owner mode-0700 same-filesystem
+  directory and one pre-created mode-0600 output inode. Its bounded fsynced mode-0600 state
+  binds online/staging/output identities, UID/GID, source-tree digest, Flutter version,
+  source and lock digests, immutable Android-builder ID, output length/SHA-256, and fixed
+  destination. Packaging uses `--pull=never`, `--network=none`, a read-only root, numeric
+  UID:GID, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU limits,
+  and bounded non-executable tmpfs. It receives exactly three host mounts: `pub-cache`
+  read-only with recursive submount inclusion disabled, the exact committed helper read-only,
+  and the one recorded candidate inode writable. It receives no online root, final name,
+  live checkout, Docker socket, device, port, other writable host path, or host namespace.
+
+  The C-locale producer selects only `hosted` and `hosted-hashes`, applies GNU tar name
+  sorting, numeric owner/group zero, epoch 1700000000, and
+  `u+rwX,go+rX,go-w`, then `gzip -n -9`. That general normalization would collapse the
+  historical source's two mode-0754 files to 0755. The helper therefore operates as a
+  streaming raw-tar normalizer: it validates each header checksum and complete padded
+  payload, changes exactly the two reviewed short-name regular headers from 0755 to 0754,
+  recomputes each checksum, requires both exactly once, preserves GNU LongLink records and
+  all other bytes, and rejects partial records, wrong input modes/types, too few terminal
+  zero blocks, or later nonzero data. Its bounded writer opens only the existing no-follow
+  empty single-link mode-0600 inode, checks current ownership and no xattrs, refuses the first
+  byte beyond the exact compressed length, rejects a short or wrong-digest stream, and fsyncs.
+
+  `scripts/online-flutter-pub-cache-output.py` then independently performs stable
+  no-follow hashing and parses rather than extracts the gzip tar. The logical contract is
+  exactly 24,807 members: 5,348 directories, 19,459 regular files, and 409,644,171 regular
+  bytes. It binds 24,543 hosted members, 264 hosted-hash members, 262 direct package
+  directories, 262 direct `.sha256` records, 257 direct metadata-cache records, four exact
+  historical empty files, required `test-1.25.7`, and both advisory-cache records. Every
+  name is unique bounded relative ASCII rooted in one of the two admitted trees with maximum
+  path length 181 and depth 16. Links, link targets, devices, FIFOs, sparse/special entries,
+  traversal, backslashes, PAX metadata, names, device fields, wrong ownership/time/mode, and
+  duplicates are rejected. All directories are 0755; regular modes are exactly 18,991 at
+  0644, 466 at 0755, and the two named files at 0754. Exact ordered metadata SHA-256
+  `1c46903c18501ccf33c84f8f469082a9747b6f3787a48c54cb820db98bcb4353`,
+  concatenated payload SHA-256
+  `6d7f2bf0178ef22678492a6f174921601a1f2828f3df05078f4c4720fe9e404a`,
+  and name-bound per-file SHA-256
+  `61afffd626dc838bf66abc3e49c0188da48b29cc9cd5a86e3eb1c9a08b0dd7fb`
+  make the full ordering/name/mode/size/content claim executable. The candidate is fsynced,
+  sealed mode 0400, and completely revalidated.
+
+  A separate immutable numeric-nonroot Android-builder process uses no pull, no network,
+  read-only root, no capabilities, no-new-privileges, fixed resource ceilings, and bounded
+  executable tmpfs. It receives only the pinned Flutter archive, sealed candidate, and exact
+  helper read-only. It copies the archive into disposable scratch, checks the complete byte
+  and logical contract there, and only then extracts both reviewed archives into scratch
+  without restoring owner or permission authority. It touches only regular files below
+  `hosted/pub.dev/.cache`, matching the Windows consumer's advisory-freshness step, closes
+  HOME/Pub/Git/PATH configuration, proves the exact lock digest, runs
+  `dart pub get --offline --enforce-lockfile`, and proves the lock unchanged. Producer,
+  Pub-source, Flutter-input, structural-output, offline-semantic, and publication statuses are
+  independent.
+
+  Only all-green verdicts permit fsynced descriptor-relative
+  `renameat2(RENAME_NOREPLACE)` publication. Both namespaces and the published inode are
+  synchronized and revalidated. Later failure attempts exact no-clobber rollback and preserves
+  both errors. Recovery accepts only exact bounded unprepared, unpublished,
+  destination-raced, or published arrangements. Malformed state, links, mounts, xattrs,
+  foreign ownership, unexpected entries, changed identities, and contradictions are
+  preserved. Exact-identity traversal restoration and external-inode-closure removal retire
+  only reconciled staging. The broad writable online mount, Debian-builder choice,
+  direct-final truncation, presence-only skip, single-member grep, and unchecked shell
+  publication path are absent.
+
+  Confined source-fixture verification used immutable image
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
+  as numeric UID:GID 1000:1000, with no network, read-only roots/inputs, all capabilities
+  dropped, no-new-privileges, and fixed resource/tmpfs ceilings. The transaction self-test
+  covers cold publication/recovery, wrong digest, independently pinned but semantically wrong
+  archive, occupied destination preservation, interrupted state, symlink, external hardlink,
+  xattr, both special-mode header rewrites, and a missing-special rejection. A disposable
+  read-only source projection reproduced exactly 198,126,354 bytes and SHA-256
+  `2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c`;
+  its full semantic parser passed. A second fresh no-network disposable process extracted
+  only into tmpfs and completed the exact flutter_tools offline enforced-lock replay with the
+  lock digest unchanged. The persistent source cache and archive remained read-only and were
+  not modified, chmodded, renamed, replaced, or deleted.
+
+  The focused mutation verifier and independent workspace mutation matrix bind the helper,
+  producer topology, pins, shared gate, R-S11cy, Appendix C #252, and this ledger. Exact test
+  counts and synchronized requirements identity are recorded in the audit ledger after the
+  final staged source state passes. This source/acquisition compatibility proof is not the
+  clean exact-commit R-B2 release transaction. WiX acquisition, maintenance-image
+  distribution, exact release artifacts, installed/native/device behavior, independent image
+  distribution, and R-V3 external review remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -11428,9 +11562,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5ab6061f988e039f8de8ff57893e1e6d2036dacc68669b2145a6c19428eb04c3  requirements.html
+5218234eefdd41df0132028b42642c3ef7960f070e7102d1d421a437acc368c2  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cx, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cy, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

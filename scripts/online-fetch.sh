@@ -33,6 +33,7 @@ readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
 readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
+readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-output.py"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
@@ -381,6 +382,18 @@ online_docker_run_cargo_semantic() {
         --cap-drop=ALL --security-opt=no-new-privileges \
         --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g \
+        "$@"
+}
+
+# Pub resolution needs the pinned Flutter SDK and a complete cache in executable
+# scratch. Both the networked cache producer and the archive projection replay use
+# this one networkless, non-root, capability-free semantic authority.
+online_docker_run_pub_semantic() {
+    online_docker run --rm --pull=never --network=none --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=512 --memory=8g --memory-swap=8g --cpus=4 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=5g \
         "$@"
 }
 
@@ -1618,11 +1631,7 @@ verify_pub_cache_resolution() {
     local cache="$1" builder="$DEB_BUILDER_IMAGE_ID"
     [ -d "$cache" ] && [ ! -L "$cache" ] \
         || die "Pub-cache semantic candidate is not one real directory"
-    online_docker run --rm --pull=never --network=none --read-only \
-        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
-        --cap-drop=ALL --security-opt=no-new-privileges \
-        --pids-limit=512 --memory=8g --memory-swap=8g --cpus=4 \
-        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=5g \
+    online_docker_run_pub_semantic \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$cache,target=/online/pub-cache,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/authority,readonly,bind-recursive=disabled" \
@@ -3189,44 +3198,308 @@ if written != limit:
     log "Windows Flutter engine acquired, independently validated, and checked-published"
 }
 
-# ── The windows flutter_tools pub cache (§12.2): hosted deps incl. flutter_tools' DEV deps ──
-# The §12.2 golden-provision's IN-VM `dart pub get --offline` on flutter_tools FAILS over the bundled
-# cache alone: the flutter SDK zip bundles flutter_tools' RUNTIME deps but NOT its DEV deps (test 1.25.7,
-# test_core, test_api, fake_async, …), so `--offline` cannot solve the full set ("Because flutter_tools
-# depends on test 1.25.7 which doesn't match any versions, version solving failed"). The non-offline
-# resolve makes ~98 pub.dev metadata round-trips that STALL over the guest's slirp NAT. So the COMPLETE
-# flutter_tools hosted closure is staged HERE on a real network and shipped into the golden (TOOLCHAINS
-# CD), then pre-placed at the builder's %LOCALAPPDATA%\Pub\Cache so the in-VM resolve is a 0-download.
-# Derived from stage_pub_cache's ./online/pub-cache (the rustdesk `flutter pub get` resolved a superset
-# of flutter_tools' pinned pubspec.lock — docker-verified the 95 hosted pkgs are all present at their
-# pinned versions). We package ONLY hosted/ + hosted-hashes/ (flutter_tools needs no git deps); the
-# internal layout begins at hosted/ so it extracts under a Pub\Cache root. Deterministic tar + gzip -n.
-stage_flutter_pub_cache() {
-    local builder="$DEB_BUILDER_IMAGE_ID"
-    require_online_fetch_builder_image deb-builder "$builder"
-    local out="$ONLINE_DIR/flutter-pub-cache.tar.gz"
-    [ -f "$out" ] && { log "windows flutter pub cache already staged, skipping"; return 0; }
-    # stage_pub_cache must have populated ./online/pub-cache first (the hosted closure lives there).
-    [ -d "$ONLINE_DIR/pub-cache/hosted/pub.dev" ] || die "pub-cache/hosted not staged — stage_pub_cache must run first"
-    [ -d "$ONLINE_DIR/pub-cache/hosted-hashes/pub.dev" ] || die "pub-cache/hosted-hashes not staged — stage_pub_cache must run first"
-    log "staging the windows flutter_tools pub cache (hosted + hosted-hashes) -> ./online/flutter-pub-cache.tar.gz"
-    # Deterministic: sorted names + fixed mtime/owner/numeric-owner + gzip -n -> stable R-B12 SHA.
-    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+# ── The Windows flutter_tools Pub cache (§12.2): exact hosted closure ───────────
+flutter_pub_cache_output_tool() {
+    [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ] \
+        || die "Flutter Pub-cache output authority requires the exact source snapshot"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/online-flutter-pub-cache-output.py" "$@"
+}
+
+flutter_pub_cache_output_args() {
+    local source_digest="$1"
+    printf '%s\0' \
+        --uid "$ONLINE_FETCH_UID" \
+        --gid "$ONLINE_FETCH_GID" \
+        --flutter-version "$FLUTTER_VERSION" \
+        --builder "$ANDROID_BUILDER_IMAGE_ID" \
+        --source-digest "$source_digest" \
+        --flutter-source-sha256 "$SHA256_FLUTTER_3_24_5" \
+        --flutter-tools-lock-sha256 "$SHA256_FLUTTER_TOOLS_LOCK" \
+        --sha256 "$SHA256_FLUTTER_PUB_CACHE" \
+        --size "$SIZE_FLUTTER_PUB_CACHE"
+}
+
+verify_flutter_pub_cache_source() {
+    local phase="$1" receipt
+    receipt="$(
+        pub_cache_output_tool check-complete \
+            --online "$ONLINE_DIR" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+    )" || die "$phase: Pub-cache source projection is incomplete or unsafe"
+    if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+    else
+        die "$phase: Pub-cache source validator returned a malformed receipt"
+    fi
+}
+
+verify_flutter_pub_cache_flutter_source() {
+    local phase="$1" source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
+    [ -f "$source" ] && [ ! -L "$source" ] \
+        || die "$phase: Flutter source archive is not one real file"
+    [ "$(/usr/bin/stat -c '%s' -- "$source")" = "$SIZE_FLUTTER_3_24_5" ] \
+        || die "$phase: Flutter source archive length changed"
+    verify_sha256 "$source" "$SHA256_FLUTTER_3_24_5"
+}
+
+retire_flutter_pub_cache_staging() {
+    local staging="$1" staging_id="$2" source_digest="$3" disposition
+    local output_args=()
+    mapfile -d '' output_args < <(flutter_pub_cache_output_args "$source_digest")
+    disposition="$(
+        flutter_pub_cache_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private Flutter Pub-cache staging"
+    log "Flutter Pub-cache staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Flutter Pub-cache staging traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Flutter Pub-cache staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private Flutter Pub-cache staging survived retirement"
+}
+
+recover_flutter_pub_cache_staging() {
+    local source_digest="$1"
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-flutter-pub-cache.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Flutter Pub-cache staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_flutter_pub_cache_staging \
+            "$staging" "$staging_id" "$source_digest"
+    done
+}
+
+verify_flutter_pub_cache_archive_resolution() {
+    local archive="$1" builder="$ANDROID_BUILDER_IMAGE_ID"
+    local source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
+    [ -f "$archive" ] && [ ! -L "$archive" ] \
+        || die "Flutter Pub-cache semantic input is not one real file"
+    online_docker_run_pub_semantic \
+        --mount "type=bind,source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$archive,target=/inputs/pub-cache.tar.gz,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/online-flutter-pub-cache-output.py,target=/authority/online-flutter-pub-cache-output.py,readonly,bind-recursive=disabled" \
+        --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
+        --env "RUSTDESK_FLUTTER_PUB_CACHE_SHA256=$SHA256_FLUTTER_PUB_CACHE" \
+        --env "RUSTDESK_FLUTTER_PUB_CACHE_SIZE=$SIZE_FLUTTER_PUB_CACHE" \
         "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-        cd /online/pub-cache
-        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - hosted hosted-hashes \
-            | gzip -n -9 > /online/flutter-pub-cache.tar.gz
+        umask 077
+        /usr/bin/mkdir /tmp/toolchain /tmp/pub-cache /tmp/home
+        /usr/bin/cp /inputs/pub-cache.tar.gz /tmp/pub-cache.tar.gz
+        /usr/bin/chmod 0400 /tmp/pub-cache.tar.gz
+        /usr/bin/python3 -I -S \
+            /authority/online-flutter-pub-cache-output.py verify-archive \
+            --archive /tmp/pub-cache.tar.gz \
+            --uid "'"$ONLINE_FETCH_UID"'" --gid "'"$ONLINE_FETCH_GID"'" \
+            --sha256 "$RUSTDESK_FLUTTER_PUB_CACHE_SHA256" \
+            --size "$RUSTDESK_FLUTTER_PUB_CACHE_SIZE"
+        /usr/bin/tar -C /tmp/toolchain --extract --file=/inputs/flutter.tar.xz \
+            --no-same-owner --no-same-permissions
+        /usr/bin/tar -C /tmp/pub-cache --extract --file=/tmp/pub-cache.tar.gz \
+            --no-same-owner --no-same-permissions
+        [ -d /tmp/pub-cache/hosted/pub.dev/.cache ]
+        /usr/bin/find /tmp/pub-cache/hosted/pub.dev/.cache \
+            -type f -exec /usr/bin/touch -- {} +
+        export HOME=/tmp/home
+        export PUB_CACHE=/tmp/pub-cache
+        export PUB_HOSTED_URL=https://pub.dev
+        export CI=true
+        export FLUTTER_SUPPRESS_ANALYTICS=true
+        export GIT_CONFIG_NOSYSTEM=1
+        export GIT_CONFIG_GLOBAL=/dev/null
+        export GIT_ATTR_NOSYSTEM=1
+        export GIT_NO_REPLACE_OBJECTS=1
+        export GIT_OPTIONAL_LOCKS=0
+        export PATH=/tmp/toolchain/flutter/bin:/tmp/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+        tools=/tmp/toolchain/flutter/packages/flutter_tools
+        before="$(
+            /usr/bin/sha256sum "$tools/pubspec.lock" \
+                | /usr/bin/cut -d" " -f1
+        )"
+        [ "$before" = "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
+        (
+            cd "$tools"
+            dart pub get --offline --enforce-lockfile >/dev/null
+        )
+        after="$(
+            /usr/bin/sha256sum "$tools/pubspec.lock" \
+                | /usr/bin/cut -d" " -f1
+        )"
+        [ "$after" = "$before" ]
     '
-    [ -f "$out" ] || die "windows flutter pub cache staging failed"
-    # Sanity: flutter_tools' load-bearing DEV dep (test 1.25.7) MUST be in the archive, else the in-VM
-    # offline resolve would still "version solving failed" — the exact failure this step exists to fix.
-    zcat "$out" | tar -t 2>/dev/null | grep -q 'hosted/pub.dev/test-1.25.7/pubspec.yaml' \
-        || die "flutter-pub-cache.tar.gz lacks test-1.25.7 — flutter_tools dev deps missing; the offline resolve would fail"
-    log "windows flutter pub cache staged: $out ($(du -h "$out" | cut -f1))"
-    # NB the tarball deliberately includes hosted/pub.dev/.cache/ (pub's metadata + advisory cache). The in-VM
-    # win-guest-setup STAMPS that .cache fresh after extraction: the deterministic --mtime above pins it to 2023
-    # so dart would treat the advisory cache as expired and re-fetch it from pub.dev (fatal on the fresh-Win11
-    # guest whose TLS handshake to pub.dev fails). Stamping it NOW keeps the flutter_tools resolve 0-network.
+}
+
+# Flutter's Windows SDK bundles only flutter_tools runtime dependencies. The
+# exact hosted + hosted-hashes projection supplies its locked development closure
+# to the networkless Windows provision. Packaging is itself offline: the complete
+# source cache is read-only, one pre-created private inode is the only writable
+# host mount, and an independent process validates the complete logical archive
+# and resolves the pinned flutter_tools lock before no-clobber publication.
+stage_flutter_pub_cache() {
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local status=0 source_status=0 input_status=0 output_status=0
+    local semantic_status=0 publication_status=0 lock_fd staging staging_id
+    local source_digest after_digest
+    local destination="$ONLINE_DIR/flutter-pub-cache.tar.gz"
+    local source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
+    local output_args=()
+    require_online_fetch_builder_image android-builder "$builder"
+    assert_online_fetch_source_tools
+    prepare_gradle_source
+    retire_gradle_source_build
+    [ -f "$FLUTTER_PUB_CACHE_OUTPUT_HELPER" ] \
+        && [ ! -L "$FLUTTER_PUB_CACHE_OUTPUT_HELPER" ] \
+        || die "Flutter Pub-cache output helper is not one real source file"
+    [ -f "$GRADLE_SOURCE_AUTHORITY/scripts/online-flutter-pub-cache-output.py" ] \
+        && [ ! -L "$GRADLE_SOURCE_AUTHORITY/scripts/online-flutter-pub-cache-output.py" ] \
+        || die "exact source authority lacks the Flutter Pub-cache output helper"
+    verify_flutter_pub_cache_flutter_source \
+        "before Flutter Pub-cache transaction"
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Flutter Pub-cache serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another online-output transaction already owns the online root"
+    source_digest="$(
+        verify_flutter_pub_cache_source \
+            "before Flutter Pub-cache transaction"
+    )"
+    mapfile -d '' output_args < <(flutter_pub_cache_output_args "$source_digest")
+    recover_flutter_pub_cache_staging "$source_digest"
+    if [ -e "$destination" ] || [ -L "$destination" ]; then
+        flutter_pub_cache_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing Flutter Pub-cache archive is incomplete or unsafe"
+        verify_flutter_pub_cache_archive_resolution "$destination" \
+            || die "existing Flutter Pub-cache archive fails offline flutter_tools resolution"
+        after_digest="$(
+            verify_flutter_pub_cache_source \
+                "after occupied Flutter Pub-cache validation"
+        )"
+        [ "$after_digest" = "$source_digest" ] \
+            || die "Pub-cache source changed during occupied-output validation"
+        verify_flutter_pub_cache_flutter_source \
+            "after occupied Flutter Pub-cache validation"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the Flutter Pub-cache transaction lock"
+        exec {lock_fd}<&-
+        log "Windows flutter_tools Pub cache already staged and exactly validated"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d \
+            "$ONLINE_DIR/.rustdesk-flutter-pub-cache.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Flutter Pub-cache staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! flutter_pub_cache_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Flutter Pub-cache preparation left non-restorable staging"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed Flutter Pub-cache preparation left non-retirable staging"
+        die "cannot prepare private Flutter Pub-cache staging"
+    fi
+    log "packaging the exact flutter_tools Pub cache into one private output"
+    online_docker_run_offline \
+        --mount "type=bind,source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/online-flutter-pub-cache-output.py,target=/authority/online-flutter-pub-cache-output.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$staging/output,target=/outputs/pub-cache.tar.gz" \
+        --env "RUSTDESK_FLUTTER_PUB_CACHE_SHA256=$SHA256_FLUTTER_PUB_CACHE" \
+        --env "RUSTDESK_FLUTTER_PUB_CACHE_SIZE=$SIZE_FLUTTER_PUB_CACHE" \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+        export LC_ALL=C
+        cd /inputs/pub-cache
+        /usr/bin/tar --sort=name --mtime=@1700000000 \
+            --owner=0 --group=0 --numeric-owner \
+            --mode="u+rwX,go+rX,go-w" \
+            -cf - hosted hosted-hashes \
+            | /usr/bin/python3 -I -S \
+                /authority/online-flutter-pub-cache-output.py normalize-tar \
+            | /usr/bin/gzip -n -9 \
+            | /usr/bin/python3 -I -S \
+                /authority/online-flutter-pub-cache-output.py write-bounded \
+                --output /outputs/pub-cache.tar.gz \
+                --uid "'"$ONLINE_FETCH_UID"'" --gid "'"$ONLINE_FETCH_GID"'" \
+                --sha256 "$RUSTDESK_FLUTTER_PUB_CACHE_SHA256" \
+                --size "$RUSTDESK_FLUTTER_PUB_CACHE_SIZE"
+    ' || status=$?
+    if after_digest="$(
+        verify_flutter_pub_cache_source \
+            "after Flutter Pub-cache producer"
+    )"; then
+        [ "$after_digest" = "$source_digest" ] || source_status=1
+    else
+        source_status=1
+    fi
+    verify_flutter_pub_cache_flutter_source \
+        "after Flutter Pub-cache producer" \
+        || input_status=$?
+    flutter_pub_cache_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] \
+       && [ "$source_status" -eq 0 ] \
+       && [ "$input_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ]; then
+        verify_flutter_pub_cache_archive_resolution "$staging/output" \
+            || semantic_status=$?
+    else
+        semantic_status=1
+    fi
+    if after_digest="$(
+        verify_flutter_pub_cache_source \
+            "after Flutter Pub-cache semantic validation"
+    )"; then
+        [ "$after_digest" = "$source_digest" ] || source_status=1
+    else
+        source_status=1
+    fi
+    verify_flutter_pub_cache_flutter_source \
+        "after Flutter Pub-cache semantic validation" \
+        || input_status=$?
+    if [ "$status" -eq 0 ] \
+       && [ "$source_status" -eq 0 ] \
+       && [ "$input_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ] \
+       && [ "$semantic_status" -eq 0 ]; then
+        flutter_pub_cache_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_flutter_pub_cache_staging \
+        "$staging" "$staging_id" "$source_digest"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Flutter Pub-cache transaction lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "Flutter Pub-cache source postcondition failed"
+    [ "$input_status" -eq 0 ] || die "Flutter source postcondition failed"
+    [ "$output_status" -eq 0 ] || die "Flutter Pub-cache output postcondition failed"
+    [ "$status" -eq 0 ] || die "Flutter Pub-cache packager failed"
+    [ "$semantic_status" -eq 0 ] || die "Flutter Pub-cache semantic replay failed"
+    [ "$publication_status" -eq 0 ] || die "Flutter Pub-cache publication failed"
+    log "Windows flutter_tools Pub cache exactly validated and checked-published"
 }
 
 # ── The WiX v4.0.5 NuGet closure (§12.2 milestone-2, the .msi) ──────────────────────────────

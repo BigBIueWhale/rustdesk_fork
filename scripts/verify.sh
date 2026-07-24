@@ -341,6 +341,21 @@ else
   echo "  ok  R-S11cx the exact Flutter source drives one confined network producer with a bounded private output, closed archive semantics, networkless replay, and durable no-clobber publication"
 fi
 
+echo "== (0j-flutter-pub) exact Windows flutter_tools Pub-cache output authority (R-S11cy/R-S11e-117) =="
+r_s11cy=
+if ! /usr/bin/python3 -I -S scripts/online-flutter-pub-cache-output.py self-test; then
+  r_s11cy="$r_s11cy transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-flutter-pub-cache-output-authority.py --repo . --self-test; then
+  r_s11cy="$r_s11cy authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cy" ]; then
+  echo "  FAIL R-S11cy exact Windows flutter_tools Pub-cache output authority:$r_s11cy"
+  rc=1
+else
+  echo "  ok  R-S11cy the validated hosted cache projection is packaged offline by the reproducible immutable builder into one bounded private inode, completely parsed, independently resolved against the exact flutter_tools lock, and durably no-clobber published"
+fi
+
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
 r_s11cl=
 if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then

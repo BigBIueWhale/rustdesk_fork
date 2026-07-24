@@ -11159,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11914,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12248,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13883,9 +13883,9 @@ def validate_online_fetch_container_authority_contract(sources):
         require_text(archive_launch_funnel, text, label)
     pub_semantic = extract_between(
         online,
-        "verify_pub_cache_resolution() {",
-        "\n}\n\nstage_pub_cache() {",
-        "Pub-cache networkless semantic launch",
+        "online_docker_run_pub_semantic() {",
+        "\n}\n\n# Exact archive acquisition",
+        "Pub-cache networkless semantic funnel",
     )
     for text, label in (
         ("online_docker run --rm --pull=never --network=none --read-only",
@@ -13898,6 +13898,17 @@ def validate_online_fetch_container_authority_contract(sources):
          "Pub-cache semantic resource ceilings"),
     ):
         require_text(pub_semantic, text, label)
+    pub_resolution = extract_between(
+        online,
+        "verify_pub_cache_resolution() {",
+        "\n}\n\nstage_pub_cache() {",
+        "Pub-cache networkless semantic launch",
+    )
+    require_text(
+        pub_resolution,
+        "online_docker_run_pub_semantic \\",
+        "Pub-cache semantic funnel use",
+    )
     require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",
@@ -14534,8 +14545,11 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache offline Flutter lock enforcement"),
         ('[ "${#git_specs[@]}" -eq 8 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
-        ('[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]',
-         "Pub-cache digest receipt"),
+        (
+            '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+            '            digest="${BASH_REMATCH[1]}"',
+            "Pub-cache digest receipt",
+        ),
         ('--expected-digest "$digest"', "Pub-cache digest-bound publication"),
         ("pub_cache_output_tool verify", "Pub-cache structural output verdict"),
         ("pub_cache_output_tool publish", "Pub-cache checked publication"),
@@ -15757,7 +15771,7 @@ def validate_online_fetch_windows_engine_output_authority_contract(sources):
     lifecycle = extract_between(
         online,
         "stage_windows_engine() {",
-        "\n}\n\n# ── The windows flutter_tools pub cache",
+        "\n}\n\n# ── The Windows flutter_tools Pub cache",
         "Windows-engine acquisition lifecycle",
     )
     offline_profile = extract_between(
@@ -15899,6 +15913,237 @@ def validate_online_fetch_windows_engine_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
         "Windows-engine hardening ledger",
+    )
+
+
+def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
+    focused = sources[
+        "online_fetch_flutter_pub_cache_output_authority_verifier"
+    ]
+    helper = sources["online_flutter_pub_cache_output_helper"]
+    online = sources["online_fetch"]
+    try:
+        focused_module = ast.parse(focused)
+        ast.parse(helper)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Flutter Pub-cache verifier/helper does not parse: {error}"
+        ) from error
+    if not any(
+        isinstance(node, ast.FunctionDef) and node.name == "mutations"
+        for node in focused_module.body
+    ):
+        raise VerificationError(
+            "Flutter Pub-cache focused mutation inventory is absent"
+        )
+    lifecycle = extract_between(
+        online,
+        "stage_flutter_pub_cache() {",
+        "\n}\n\n# ── The WiX",
+        "Flutter Pub-cache acquisition lifecycle",
+    )
+    semantic_profile = extract_between(
+        online,
+        "online_docker_run_pub_semantic() {",
+        "\n}\n\n# Exact archive acquisition",
+        "Flutter Pub-cache networkless semantic profile",
+    )
+    semantic_replay = extract_between(
+        online,
+        "verify_flutter_pub_cache_archive_resolution() {",
+        "\n}\n\n# Flutter's Windows SDK",
+        "Flutter Pub-cache semantic replay",
+    )
+    for text, label in (
+        ("--pull=never --network=none --read-only", "network removal"),
+        (
+            '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+            "numeric non-root identity",
+        ),
+        (
+            "--cap-drop=ALL --security-opt=no-new-privileges",
+            "privilege removal",
+        ),
+        (
+            "--pids-limit=512 --memory=8g --memory-swap=8g --cpus=4",
+            "resource ceiling",
+        ),
+        (
+            "--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=5g",
+            "bounded executable scratch",
+        ),
+    ):
+        require_text(semantic_profile, text, f"Pub semantic {label}")
+    for text, label in (
+        (
+            "def mutations() -> Tuple[Mutation, ...]:",
+            "focused mutation inventory",
+        ),
+        ("exact read-only source", "focused input authority binding"),
+        ("sole writable output", "focused output authority binding"),
+        ("networkless semantic profile", "focused semantic binding"),
+        (
+            "validate-package-replay-publish lifecycle",
+            "focused lifecycle binding",
+        ),
+        ("complete logical contract", "focused archive binding"),
+        ("run_mutations(sources)", "focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("flutter_pub_cache_output_tool() {", "fixed output helper"),
+        ("flutter_pub_cache_output_args() {", "closed output contract"),
+        ("verify_flutter_pub_cache_source() {", "source-tree validator"),
+        (
+            "verify_flutter_pub_cache_flutter_source() {",
+            "Flutter source validator",
+        ),
+        (
+            "verify_flutter_pub_cache_archive_resolution() {",
+            "offline semantic replay",
+        ),
+        ("recover_flutter_pub_cache_staging() {", "restart recovery"),
+        (
+            'if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+            '        printf \'%s\\n\' "${BASH_REMATCH[1]}"',
+            "exact source receipt",
+        ),
+    ):
+        require_text(online, text, label)
+    for text, label in (
+        (
+            "source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled",
+            "exact read-only source mount",
+        ),
+        (
+            "source=$staging/output,target=/outputs/pub-cache.tar.gz",
+            "sole writable candidate",
+        ),
+        ('--mode="u+rwX,go+rX,go-w"', "mode normalization"),
+        ("normalize-tar", "raw tar normalization"),
+        ("write-bounded", "bounded output writer"),
+        ("flutter_pub_cache_output_tool verify", "host structural verdict"),
+        (
+            "verify_flutter_pub_cache_archive_resolution",
+            "networkless semantic replay",
+        ),
+        ("flutter_pub_cache_output_tool publish", "checked publication"),
+    ):
+        require_text(lifecycle, text, label)
+    for text, label in (
+        ("online_docker_run_pub_semantic", "shared semantic profile"),
+        (
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "exact Flutter source mount",
+        ),
+        (
+            "source=$archive,target=/inputs/pub-cache.tar.gz,readonly,bind-recursive=disabled",
+            "exact candidate archive mount",
+        ),
+        ("verify-archive", "complete archive validation"),
+        (
+            "--no-same-owner --no-same-permissions",
+            "bounded extraction metadata",
+        ),
+        (
+            "dart pub get --offline --enforce-lockfile",
+            "exact offline resolution",
+        ),
+    ):
+        require_text(semantic_replay, text, label)
+    for text, label in (
+        ('local builder="$DEB_BUILDER_IMAGE_ID"', "wrong Debian builder"),
+        ("target=/online", "broad online mount"),
+        ("> /online/flutter-pub-cache.tar.gz", "direct final write"),
+        ('[ -f "$out" ]', "presence-only reuse"),
+        ("zcat \"$out\"", "single-member archive check"),
+    ):
+        require_absent(lifecycle, text, label)
+    require_order(
+        lifecycle,
+        (
+            "verify_flutter_pub_cache_source",
+            "recover_flutter_pub_cache_staging",
+            "check-complete",
+            "flutter_pub_cache_output_tool prepare",
+            "online_docker_run_offline \\",
+            "flutter_pub_cache_output_tool verify",
+            "verify_flutter_pub_cache_archive_resolution",
+            "flutter_pub_cache_output_tool publish",
+            "retire_flutter_pub_cache_staging",
+        ),
+        "Flutter Pub-cache checked transaction",
+    )
+    for text, label in (
+        (
+            'STATE_NAME = ".rustdesk-flutter-pub-cache-state-v1"',
+            "transaction state",
+        ),
+        ("PRODUCTION_CONTRACT = ArchiveContract(", "closed archive contract"),
+        ("member_count=24_807", "exact member count"),
+        ("total_bytes=409_644_171", "exact uncompressed byte count"),
+        (
+            "if uid <= 0 or gid <= 0:\n"
+            '        fail("Flutter Pub-cache transaction refuses UID or primary GID zero")',
+            "non-root identity",
+        ),
+        (
+            "if metadata.st_nlink != 1:\n"
+            '        fail("Flutter Pub-cache archive has a hardlink '
+            'outside the transaction")',
+            "external-hardlink refusal",
+        ),
+        ("if list_xattrs(archive):", "xattr refusal"),
+        ("if member.pax_headers:", "PAX refusal"),
+        ("if actual != expected:", "complete semantic contract"),
+        (
+            'mutable[100:108] = b"0000754\\0"',
+            "historical special modes",
+        ),
+        ("if patched != SPECIAL_MODES:", "special-mode inventory"),
+        (
+            "if total + len(block) > expected_size:",
+            "bounded writer ceiling",
+        ),
+        ("RENAME_NOREPLACE = 1", "no-clobber primitive"),
+        (
+            'renameat2(staging_fd, "output", online_fd, DESTINATION)',
+            "descriptor-relative publication",
+        ),
+        (
+            "online-flutter-pub-cache-output: PASS",
+            "transaction fixtures",
+        ),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/online-flutter-pub-cache-output.py self-test",
+        "Flutter Pub-cache transaction self-test wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-online-fetch-flutter-pub-cache-output-authority.py "
+        "--repo . --self-test",
+        "Flutter Pub-cache focused verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cy</span>',
+        "Flutter Pub-cache normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>252</td>",
+        "Flutter Pub-cache Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache "
+        "acquisition-output authority",
+        "Flutter Pub-cache hardening ledger",
     )
 
 
@@ -20943,6 +21188,7 @@ def validate_sources(sources):
     validate_online_fetch_cargo_vendor_output_authority_contract(sources)
     validate_online_fetch_android_ndk_output_authority_contract(sources)
     validate_online_fetch_windows_engine_output_authority_contract(sources)
+    validate_online_fetch_flutter_pub_cache_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -33592,7 +33838,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
+            "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -35791,8 +36037,10 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]',
-            '[[ -n "$receipt" ]]',
+            '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+            '            digest="${BASH_REMATCH[1]}"',
+            '[[ -n "$receipt" ]]; then\n'
+            '            digest="${BASH_REMATCH[1]}"',
             "Pub-cache digest receipt",
         ),
         (
@@ -36531,8 +36779,10 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
-            "source=$ONLINE_DIR,target=/inputs/flutter.tar.xz",
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$staging/output,target=/outputs/engine.tar.gz",
+            "source=$ONLINE_DIR,target=/inputs/flutter.tar.xz\" \\\n"
+            "        --mount \"type=bind,source=$staging/output,target=/outputs/engine.tar.gz",
             "exact source mount",
         ),
         (
@@ -36632,6 +36882,142 @@ def run_source_mutations(sources):
             "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
             "R-S11cx/R-S11e-116 — ambient Windows-engine authority",
             "Windows-engine hardening ledger",
+        ),
+        (
+            "online_fetch_flutter_pub_cache_output_authority_verifier",
+            "def mutations() -> Tuple[Mutation, ...]:",
+            "def disabled_mutations() -> Tuple[Mutation, ...]:",
+            "Flutter Pub-cache focused mutation inventory",
+        ),
+        (
+            "online_fetch",
+            "source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled",
+            "source=$ONLINE_DIR,target=/inputs/pub-cache",
+            "exact read-only source mount",
+        ),
+        (
+            "online_fetch",
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$archive,target=/inputs/pub-cache.tar.gz",
+            "source=$ONLINE_DIR,target=/inputs/flutter.tar.xz\" \\\n"
+            "        --mount \"type=bind,source=$archive,target=/inputs/pub-cache.tar.gz",
+            "exact Flutter source mount",
+        ),
+        (
+            "online_fetch",
+            "source=$archive,target=/inputs/pub-cache.tar.gz,readonly,bind-recursive=disabled",
+            "source=$ONLINE_DIR,target=/inputs/pub-cache.tar.gz",
+            "exact candidate archive mount",
+        ),
+        (
+            "online_fetch",
+            'if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+            '        printf \'%s\\n\' "${BASH_REMATCH[1]}"',
+            'if [[ -n "$receipt" ]]; then\n'
+            '        printf \'%s\\n\' "${receipt}"',
+            "exact source receipt",
+        ),
+        (
+            "online_fetch",
+            "source=$staging/output,target=/outputs/pub-cache.tar.gz",
+            "source=$ONLINE_DIR,target=/outputs/pub-cache.tar.gz",
+            "sole writable candidate",
+        ),
+        (
+            "online_fetch",
+            '--mode="u+rwX,go+rX,go-w"',
+            '--mode="a=rX"',
+            "mode normalization",
+        ),
+        (
+            "online_fetch",
+            "flutter_pub_cache_output_tool publish",
+            "true # Flutter Pub-cache publication removed",
+            "checked publication",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if uid <= 0 or gid <= 0:\n"
+            '        fail("Flutter Pub-cache transaction refuses UID or primary GID zero")',
+            "if False:\n"
+            '        fail("Flutter Pub-cache transaction refuses UID or primary GID zero")',
+            "non-root identity",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if metadata.st_nlink != 1:\n"
+            '        fail("Flutter Pub-cache archive has a hardlink outside the transaction")',
+            "if False:\n"
+            '        fail("Flutter Pub-cache archive has a hardlink outside the transaction")',
+            "external-hardlink refusal",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if list_xattrs(archive):",
+            "if False:",
+            "xattr refusal",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if member.pax_headers:",
+            "if False:",
+            "PAX refusal",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if actual != expected:",
+            "if False:",
+            "complete semantic contract",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            'mutable[100:108] = b"0000754\\0"',
+            'mutable[100:108] = b"0000755\\0"',
+            "historical special modes",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if patched != SPECIAL_MODES:",
+            "if False:",
+            "special-mode inventory",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "if total + len(block) > expected_size:",
+            "if False:",
+            "bounded writer ceiling",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "no-clobber primitive",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-flutter-pub-cache-output-authority.py "
+            "--repo . --self-test",
+            "true # Flutter Pub-cache focused gate removed",
+            "Flutter Pub-cache focused verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cy</span>',
+            '<span class="id">R-S11cy-disabled</span>',
+            "Flutter Pub-cache normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>252</td>",
+            "<tr><td>252-disabled</td>",
+            "Flutter Pub-cache Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority",
+            "R-S11cy/R-S11e-117 — ambient Flutter Pub-cache authority",
+            "Flutter Pub-cache hardening ledger",
         ),
         (
             "online_fetch_android_ndk_output_authority_verifier",
@@ -38033,6 +38419,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_windows_engine_output_helper": (
                 repo / "scripts/online-windows-engine-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_flutter_pub_cache_output_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-flutter-pub-cache-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_flutter_pub_cache_output_helper": (
+                repo / "scripts/online-flutter-pub-cache-output.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

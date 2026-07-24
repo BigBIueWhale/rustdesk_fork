@@ -33,8 +33,8 @@ pub use permanent_password::{
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
-    encrypt_permanent_password_prs_storage, password_is_empty_or_not_hashed, DEFAULT_SALT_LEN,
-    PASSWORD_ENC_VERSION, PERMANENT_PASSWORD_H1_LEN,
+    encrypt_permanent_password_prs_storage, DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
+    PERMANENT_PASSWORD_H1_LEN,
 };
 
 use crate::{
@@ -1311,20 +1311,6 @@ impl Config2 {
 
     fn store(&self) {
         Config::store_(self, "2");
-    }
-
-    pub fn get() -> Config2 {
-        return CONFIG2.read().unwrap().clone();
-    }
-
-    pub fn set(cfg: Config2) -> bool {
-        let mut lock = CONFIG2.write().unwrap();
-        if *lock == cfg {
-            return false;
-        }
-        *lock = cfg;
-        lock.store();
-        true
     }
 }
 
@@ -3487,63 +3473,12 @@ impl Config {
         local_permanent_password_storage_is_usable_for_auth(&local_storage, &local_salt)
     }
 
-    // This shouldn't happen under normal circumstances because the salt
-    // should be automatically generated when migrating to hash storage.
-    // Actually, it is better to avoid calling set_salt at all.
-    pub fn set_salt(salt: &str) {
-        let mut config = CONFIG.write().unwrap();
-        if salt == config.salt {
-            return;
-        }
-        if !password_is_empty_or_not_hashed(&config.password) {
-            if config.salt.is_empty() {
-                log::warn!("Salt is empty but permanent password is hashed and salt is empty");
-            } else {
-                log::error!("Refusing to set salt because permanent password is hashed");
-                return;
-            }
-        }
-        config.salt = salt.into();
-        config.store();
-    }
-
     pub fn get_salt() -> String {
         CONFIG.read().unwrap().salt.clone()
     }
 
-    pub fn get() -> Config {
-        return CONFIG.read().unwrap().clone();
-    }
-
     pub fn ensure_loaded() {
         drop(CONFIG.read().unwrap());
-    }
-
-    pub fn set(mut cfg: Config) -> bool {
-        let mut lock = CONFIG.write().unwrap();
-        cfg.id = lock.id.clone();
-        cfg.enc_id = lock.enc_id.clone();
-        if *lock == cfg {
-            return false;
-        }
-        *lock = cfg;
-        lock.store();
-        // Drop CONFIG lock before acquiring KEY_PAIR lock to avoid potential deadlock.
-        let new_key_pair = lock.key_pair.clone();
-        drop(lock);
-        Self::invalidate_key_pair_cache_if_changed(&new_key_pair);
-        true
-    }
-
-    /// Invalidate KEY_PAIR cache if it differs from the new key_pair.
-    fn invalidate_key_pair_cache_if_changed(new_key_pair: &KeyPair) {
-        let mut key_pair_cache = KEY_PAIR.lock().unwrap();
-        if let Some(cached) = key_pair_cache.as_ref() {
-            if cached != new_key_pair {
-                *key_pair_cache = None;
-                log::info!("key pair cache invalidated");
-            }
-        }
     }
 
     fn with_extension(path: PathBuf) -> PathBuf {
@@ -5212,7 +5147,8 @@ unrelated = "preserved"
         assert!(config.password.is_empty());
         assert!(config.password_prs.is_empty());
         drop(config);
-        Config::get().store();
+        let durable_config = CONFIG.read().unwrap().clone();
+        durable_config.store();
         let saved_config: Config = load_path(file);
         assert!(saved_config.password.is_empty());
         assert!(saved_config.password_prs.is_empty());
@@ -5260,7 +5196,8 @@ unrelated = "preserved"
             durable
         );
         drop(config);
-        Config::get().store();
+        let durable_config = CONFIG.read().unwrap().clone();
+        durable_config.store();
         let saved_config: Config = load_path(file);
         assert_eq!((saved_config.password, saved_config.password_prs), durable);
     }
@@ -5398,7 +5335,7 @@ unrelated = "preserved"
     impl ConfigStateTestGuard {
         fn new(config: Config, hard_settings: HashMap<String, String>) -> Self {
             let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
-            let original_config = Config::get();
+            let original_config = CONFIG.read().unwrap().clone();
             let original_hard_settings = HARD_SETTINGS.read().unwrap().clone();
             let original_runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().clone();
             *CONFIG.write().unwrap() = config;
@@ -5989,7 +5926,7 @@ unrelated = "preserved"
 
         with_config_and_hard_settings(config, HashMap::new(), || {
             assert_eq!(Config::get_id(), "");
-            assert!(Config::get().id.is_empty());
+            assert!(CONFIG.read().unwrap().id.is_empty());
         });
     }
 
@@ -6029,7 +5966,7 @@ unrelated = "preserved"
     fn test_get_salt_is_side_effect_free() {
         with_config_and_hard_settings(Config::default(), HashMap::new(), || {
             assert_eq!(Config::get_salt(), "");
-            assert!(Config::get().salt.is_empty());
+            assert!(CONFIG.read().unwrap().salt.is_empty());
         });
     }
 
@@ -6432,25 +6369,6 @@ unrelated = "preserved"
     }
 
     #[test]
-    fn test_set_does_not_validate_or_decrypt_permanent_password_storage_in_memory() {
-        let mut cfg = Config::default();
-        let invalid_payload =
-            crate::password_security::symmetric_crypt(b"not-a-hash", true).unwrap();
-        let invalid_storage = PERMANENT_PASSWORD_ENC_VERSION.to_owned()
-            + &base64::encode(invalid_payload, base64::Variant::Original);
-        cfg.password = invalid_storage.clone();
-
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            assert!(Config::set(cfg));
-
-            let updated = Config::get();
-            assert_eq!(updated.password, invalid_storage);
-            assert!(updated.salt.is_empty());
-            assert!(updated.id.is_empty());
-        });
-    }
-
-    #[test]
     fn test_store_preserves_existing_enc_id() {
         let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
         let _file_guard = ConfigFileRestoreGuard::new(Config::file_(""));
@@ -6487,61 +6405,6 @@ unrelated = "preserved"
         assert!(encrypted);
         assert_eq!(stored_id, original_id);
         assert_eq!(Config::load().id, original_id);
-    }
-
-    #[test]
-    fn test_set_preserves_existing_id_fields() {
-        let current_id = "123456789";
-        let current_enc_id =
-            encrypt_str_or_original(current_id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        let mut current = Config::default();
-        current.id = current_id.to_owned();
-        current.enc_id = current_enc_id.clone();
-
-        let mut next = Config::default();
-        next.id = "987654321".to_owned();
-        next.enc_id = encrypt_str_or_original(&next.id, PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-        next.password = "legacy-secret".to_owned();
-
-        with_config_and_hard_settings(current, HashMap::new(), || {
-            assert!(Config::set(next));
-
-            let updated = Config::get();
-            assert_eq!(updated.id, current_id);
-            assert_eq!(updated.enc_id, current_enc_id);
-            assert_eq!(updated.password, "legacy-secret");
-        });
-    }
-
-    #[test]
-    fn test_set_does_not_convert_plaintext_permanent_password_to_storage_format_in_memory() {
-        let mut cfg = Config::default();
-        cfg.password = "legacy-secret".to_owned();
-        cfg.salt = "".to_owned();
-
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            assert!(Config::set(cfg));
-
-            let updated = Config::get();
-            assert!(!updated.password.starts_with(PASSWORD_ENC_VERSION));
-            assert_eq!(updated.password, "legacy-secret");
-            assert!(updated.salt.is_empty());
-        });
-    }
-
-    #[test]
-    fn test_set_keeps_plaintext_permanent_password_with_current_prefix_in_memory() {
-        let mut cfg = Config::default();
-        cfg.password = "01legacy-secret".to_owned();
-        cfg.salt = "".to_owned();
-
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            assert!(Config::set(cfg));
-
-            let updated = Config::get();
-            assert_eq!(updated.password, "01legacy-secret");
-            assert!(updated.salt.is_empty());
-        });
     }
 
     #[test]

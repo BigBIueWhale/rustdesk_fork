@@ -720,8 +720,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   material. Attack surface closed:
   `Config::get_id()` is a pure read; new direct-IP configs no longer auto-generate a numeric RustDesk ID
   at load time; the old MAC-derived generator, Change-ID writer, and `mac_address` dependency are gone;
-  config load/store no longer migrates or rewrites legacy ID storage; whole-config `Config::set` preserves
-  existing ID fields instead of importing new ones; `Config::get_salt()` is a pure read and no longer
+  config load/store no longer migrates or rewrites legacy ID storage; the obsolete whole-config
+  `Config::set` entry point is deleted by R-S11b-3k; `Config::get_salt()` is a pure read and no longer
   creates/persists a salt;
   startup logging no longer reads the ID; and the server login gate no longer accepts a non-address
   username by matching the local numeric ID. Existing stored `enc_id` values remain readable for
@@ -729,8 +729,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   into local config and no longer fetches/copies `salt` as a side effect of asking for the ID.
   Verification closure: `scripts/verify.sh` and config unit tests assert the getter body has no
   generation/write/store path, fresh config load does not mint an ID, salt reads do not mint a salt,
-  empty IDs are stored absent, legacy IDs are not migrated or rewritten by load/store, whole-config set
-  does not import ID fields, the old ID generator/writer/key/dependency symbols are absent, the server
+  empty IDs are stored absent, legacy IDs are not migrated or rewritten by load/store, the whole-config
+  setter remains absent, the old ID generator/writer/key/dependency symbols are absent, the server
   login fallback is absent, and the IPC helper cannot reintroduce id/salt copy-back.
 - **R-S11b-3f — desktop at-rest wrapper no longer creates service identity/key material — CLOSED 2026-07-09.**
   Platforms: Windows/Linux/macOS desktop installed-service and user-owned desktop paths. Endpoint/action:
@@ -801,6 +801,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   the complete source/module/dependency absence, the direct-only connector shape, the retained stale-value pins,
   and the focused regression. The synchronized machine inventory proves 905 Cargo packages, 36 Git records from
   26 source URLs (26 rustdesk-org records from 20 URLs), and 871 lexical unsafe blocks across 247 Rust files.
+- **R-S11b-3k — obsolete whole-config and standalone-salt authority APIs excised — CLOSED/GATED
+  2026-07-24.** Platforms: every desktop and mobile build linking `hbb_common`. Endpoint/action: the public
+  in-process `Config::get`/`Config::set`, `Config2::get`/`Config2::set`, and `Config::set_salt` APIs.
+  Boundary: an ordinary current or future application caller ↔ the complete credential-, identity-, trust-,
+  policy-, and salt-bearing configuration stores. Source review proved no production caller remained: the
+  whole-snapshot methods were referenced only by same-module legacy tests, `Config2`'s methods had no callers,
+  and the standalone salt writer had no caller at all. This was therefore an obsolete authority-shaped API and
+  future-regression surface, not a demonstrated reachable IPC write, credential change, privilege escalation,
+  exploitation, or host compromise. Closure deletes all five public methods, the whole-set key-pair-cache
+  side effect, and the now-dead standalone-salt eligibility predicate rather than retaining guards around an
+  invalid abstraction. Useful tests inspect private module state directly; tests whose only purpose was to
+  preserve whole-config replacement or standalone-salt semantics are deleted.
+  Legitimate live mutation remains typed: filtered option writes, durable password provisioning (which owns
+  salt creation atomically), user-owned credential synchronization, and service-owned runtime replicas.
+  `Config::get_salt` remains a side-effect-free read. `scripts/verify.sh` rejects reintroduction of either
+  whole-config public API or a standalone salt writer while retaining the pure-read check and the ordinary-main
+  zero-writer gate. Appendix C #234 records the source-level closure. Exact native and reproducible artifact
+  evidence remains part of R-B2 and is not inferred from this API deletion.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -5277,7 +5295,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `PINNED_SETTINGS` last after R-S11b-3i, so broad reads cannot surface stale default/stored/signed-custom
   values for pinned policy keys; and the main IPC mutation
   policy is exhaustive after R-S11b-3h, with no wildcard arm that could admit a future
-  identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate.
+  identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate. R-S11b-3k also
+  deletes the unused public whole-`Config`/`Config2` get/set surfaces and standalone salt writer, leaving
+  only typed field-specific mutation APIs.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad/default permissions across production listeners.
@@ -10117,7 +10137,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a9626a3124a65d19cc9b8458859aa3b856f46f25251656442c4d09457e09bf39  requirements.html
+17b6673b96ac5a6268b2d9872f3f254f3d40a01c30bb363e772993c5214635ce  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,

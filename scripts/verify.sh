@@ -601,9 +601,29 @@ fi
 if grep -q 'encrypt_str_or_original(&config.id' libs/hbb_common/src/config.rs; then
   r_s11="$r_s11 config-store-rewrites-numeric-id"
 fi
-config_set_body=$(awk '/pub fn set\(mut cfg: Config\) -> bool \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
-echo "$config_set_body" | grep -q 'cfg.id = lock.id.clone();' || r_s11="$r_s11 config-set-imports-id"
-echo "$config_set_body" | grep -q 'cfg.enc_id = lock.enc_id.clone();' || r_s11="$r_s11 config-set-imports-enc-id"
+obsolete_config_authority_apis=$(
+  python3 - libs/hbb_common/src/config.rs <<'PY'
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+patterns = (
+    ("whole-config-get", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+get\s*\(\s*\)\s*->\s*Config\b"),
+    ("whole-config-set", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+set\s*\([^)]*:\s*Config\s*[,)]"),
+    ("whole-config2-get", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+get\s*\(\s*\)\s*->\s*Config2\b"),
+    ("whole-config2-set", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+set\s*\([^)]*:\s*Config2\s*[,)]"),
+    ("standalone-salt-set", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+set_salt\s*\("),
+)
+print(" ".join(label for label, pattern in patterns if re.search(pattern, source)))
+PY
+)
+[ -z "$obsolete_config_authority_apis" ] \
+  || r_s11="$r_s11 obsolete-config-authority-api-present:$obsolete_config_authority_apis"
+grep -qF 'R-S11b-3k — obsolete whole-config and standalone-salt authority APIs excised' HARDENING_STATUS.md \
+  || r_s11="$r_s11 obsolete-config-authority-ledger-missing"
+grep -qF '<tr><td>234</td>' requirements.html \
+  || r_s11="$r_s11 obsolete-config-authority-appendix-missing"
 if grep -RInE 'set_id\(|fn gen_id\(|fn get_auto_id\(|update_id\(|is_disable_change_id|OPTION_ALLOW_HOSTNAME_AS_ID|OPTION_DISABLE_CHANGE_ID' src libs --include='*.rs' 2>/dev/null \
   | grep -v '//' >"$VERIFY_TMP/rd_verify_identity_writers"; then
   r_s11="$r_s11 numeric-id-writer-or-generator-present"

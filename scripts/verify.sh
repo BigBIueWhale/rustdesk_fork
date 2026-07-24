@@ -341,6 +341,21 @@ else
   echo "  ok  R-S11cp both networked native builders see read-only inputs, write one private exact consumer projection, validate every header and archive ABI, and publish recoverably without clobber"
 fi
 
+echo "== (0o) online-fetch Android NDK output authority (R-S11cq/R-S11e-109) =="
+r_s11cq=
+if ! /usr/bin/python3 -I -S scripts/online-android-ndk-output.py self-test; then
+  r_s11cq="$r_s11cq transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-android-ndk-output-authority.py --repo . --self-test; then
+  r_s11cq="$r_s11cq authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cq" ]; then
+  echo "  FAIL R-S11cq online-fetch Android NDK output authority:$r_s11cq"
+  rc=1
+else
+  echo "  ok  R-S11cq the pinned Android NDK archive is parsed and extracted networklessly with bounded exact ZIP semantics, every output byte is rechecked, and the sealed tree is published recoverably without clobber"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

@@ -9682,8 +9682,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   No real networked Git acquisition was run, so this is source and negative transaction evidence
   rather than cold acquisition reproduction. Both x64-linux and arm64-android vcpkg native
-  producers are closed by R-S11cp/R-S11e-108 immediately below. Host-side downloads, Android
-  SDK/NDK extraction, Windows archive packagers, maintenance
+  producers are closed by R-S11cp/R-S11e-108 immediately below, and Android NDK extraction is
+  closed by R-S11cq/R-S11e-109 after that. Host-side downloads, Android SDK extraction, Windows
+  archive packagers, maintenance
   candidate-image publication, exact cold R-B2 artifacts, native/device evidence, and external
   R-V3 review remain open. No online acquisition, image pull/build/tag, release build, root command,
   or host RustDesk process/service/config/listener/firewall/network operation was executed for this
@@ -9720,8 +9721,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   framing, refusal of any other overlay entry type, and, for Android, the NDK version and archive
   SHA-256. Both stages reverify the
   vcpkg archive and the exact libvpx/libyuv captures before execution; the Android stage also
-  reverifies the retained NDK archive. The NDK extracted tree remains a separate producer-boundary
-  item and is not claimed closed by this output slice.
+  reverifies the retained NDK archive. The NDK extracted tree is a separate producer boundary,
+  closed immediately below by R-S11cq/R-S11e-109 rather than claimed by this output slice.
 
   Each architecture holds a nonblocking exclusive lock over the canonical current-user-private
   online root, reconciles its unpredictable `.rustdesk-vcpkg-native-<kind>.*` namespace, and
@@ -9821,11 +9822,144 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `git diff --check` pass.
 
   No networked vcpkg build was run, no current cache was changed, and no release artifact was
-  built. Exact read-only historical-cache denial is recorded above. Android SDK/NDK extraction, other
+  built. Exact read-only historical-cache denial is recorded above. Android NDK extraction is
+  closed separately by R-S11cq/R-S11e-109 immediately below; Android SDK and other
   host-side/archive producers, maintenance candidate-image publication, exact cold R-B2 artifacts,
   native/device evidence, and external R-V3 review remain open. No image pull/build/tag, root
   command, or host RustDesk process/service/config/listener/firewall/network operation was
   executed for this slice.
+- **R-S11cq/R-S11e-109 — Android NDK extraction and output authority — SOURCE,
+  ADVERSARIAL TRANSACTION, EXACT PINNED-ARCHIVE LIFECYCLE, AND FOCUSED MUTATION EVIDENCE
+  IMPLEMENTED 2026-07-24; COLD NETWORK ACQUISITION AND RELEASE EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux acquisition host and immutable Android-builder container.
+  Endpoint/action: `scripts/online-fetch.sh::stage_android_ndk`, which expands the pinned r28c
+  archive and publishes durable `online/android-ndk`. Boundary: archive parser/extractor effects
+  ↔ every pinned offline input and the final Android NDK consumer tree.
+
+  Before this slice, the host invoked general-purpose `unzip` with `ONLINE_DIR` as its extraction
+  parent, recursively removed predictable `.ndk-tmp` and prior final trees, selected the first
+  extracted top-level directory, and moved it into the permanent name without a durable state
+  record, no-clobber primitive, rollback, or restart reconciliation. An existing output bypassed
+  extraction and complete validation whenever one toolchain `bin` directory existed. The archive
+  was SHA-256 pinned, but that digest alone did not bound extractor path/type/resource semantics,
+  prove every published byte and symlink, prevent an archive member from addressing unrelated
+  online state, or distinguish a complete current tree from partial/stale output. This is
+  source-proven host-side acquisition-output/publication and stale-cache authority debt, not
+  evidence that the pinned archive was malicious, an input changed, a container escaped, host root
+  was acquired, a listener was exposed, host RustDesk/service/config/firewall/network state
+  changed, exploitation occurred, or the host was compromised.
+
+  `stage_android_ndk` now verifies the exact immutable Android-builder ID and archive SHA-256,
+  exclusively locks the canonical current-user-private online root, reconciles every reserved
+  `.rustdesk-android-ndk.*` transaction, and validates a present final tree instead of
+  presence-trusting or deleting it. A cold run creates unpredictable mode-0700 same-filesystem
+  staging. `scripts/online-android-ndk-output.py` writes a bounded, mode-0600, fsynced state record
+  that binds the exact online/staging/output/archive identities, UID/GID, r28c version and
+  `28.2.13676358` revision, archive digest, immutable builder, destination, candidate identity,
+  verification phase, and canonical full-tree digest. Every transaction and extraction command
+  refuses UID or GID 0.
+
+  The new offline launch funnel retains the fixed Docker-client/private-configuration proof and
+  uses the already present exact Android builder with `--pull=never`, `--network=none`, read-only
+  root, numeric UID:GID, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU
+  ceilings, and bounded non-executable scratch. It publishes no port and receives no host
+  network/PID/IPC/UTS namespace, device, Docker socket, live repository, host root, online root, or
+  final path. Its exact read-only inputs are the one archive file and one helper file; its sole
+  writable durable host mount is the pre-created private `/outputs/android-ndk` root. The helper
+  allows that exact output-root bind only during extraction and rejects every descendant mount;
+  host-side transaction checks reject a mounted candidate root.
+
+  The helper implements a closed ZIP contract rather than delegating security semantics to
+  `extractall` or host `unzip`. It caps the archive at 1 GiB, 10,000 entries, 1,000 directories,
+  9,000 regular files, 128 symlinks, 20 path components, 3 GiB expanded bytes, and 256 MiB per
+  regular member. Every member must have one printable ASCII relative name below the sole exact
+  `android-ndk-r28c` root, one unique output path, explicit real directory parents, Unix-created
+  directory/regular/symlink type, observed mode 0755/0644/0777 as applicable, and stored or
+  deflated compression with no encryption, unsupported flag, archive/member comment, NUL
+  truncation, set-id/sticky bit, or special type. Bounded printable relative symlinks must resolve
+  through an acyclic graph to an exact in-root member. Exact `source.properties`, the
+  r28c/revision mapping, required NDK build/CMake/clang/sysroot consumers, and
+  `clang -> clang-19` are mandatory.
+
+  Extraction creates explicit directories and regular files before symlinks. Each regular file is
+  created with `O_EXCL|O_NOFOLLOW`, streamed under its exact size, and mode-set from the validated
+  manifest. The archive's stable type and digest are independently rechecked after container
+  termination even when extraction fails. The host then demands exact archive/output inventory,
+  same-filesystem mount closure, one owner profile, exact type/mode, no xattrs or external
+  hardlinks, bounded paths/counts/bytes, exact symlink targets, and equality of every regular-file
+  byte against a fresh validated archive stream. Successful candidates are sealed to 0444/0555
+  files and 0555 inner directories and fully synchronized. Only green extractor and host-output
+  verdicts permit descriptor-relative `renameat2(RENAME_NOREPLACE)` into the still-absent
+  `android-ndk` name. The root is then sealed mode 0555, namespace directories are synchronized,
+  and exact identity/content/digest are rechecked. A later failure rolls the exact inode back
+  without clobber. Recovery accepts only bounded unprepared, prepared-empty, verified-unpublished,
+  occupied-destination, or exact-published arrangements and preserves incoherent state.
+  Exact-identity mode restoration and external-inode-closure removal retire reconciled staging.
+
+  The adversarial helper self-test passes in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as UID/GID 1000:1000 with no pull/network, read-only root/source, zero capabilities,
+  no-new-privileges, and bounded resources. It covers normal publication and recovery,
+  destination no-clobber/recovery, byte tampering, extra output, external hardlinks, path
+  traversal, escaping symlinks, duplicate paths, special members, wrong archive digest,
+  interrupted/unprepared state, and xattr rejection where supported.
+
+  The exact cached archive was inspected read-only: it is 722,261,334 bytes with SHA-256
+  `dfb20d396df28ca02a8c708314b814a4d961dc9074f9a161932746f815aa552f`; its closed manifest
+  contains 8,996 entries—547 directories, 8,414 regular files, and 35 symlinks—and the exact
+  r28c revision metadata. A disposable tmpfs transaction in immutable Android builder
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
+  ran as UID/GID 1000:1000 with no pull/network, read-only root and input binds, zero capabilities,
+  no-new-privileges, and bounded resources. It copied the read-only archive into a private
+  production-shaped online root, then passed the complete prepare, extraction, host verify/seal,
+  no-clobber publish, and final `check-complete` lifecycle over all 8,414 files and 35 symlinks.
+  A separate full extraction mounted a 3-GiB private tmpfs at the exact production
+  `/outputs/android-ndk` root and passed all 8,414-file/35-symlink checks, directly exercising the
+  narrow root-mount allowance while retaining descendant-mount refusal.
+  The tmpfs vanished with the container. The real archive and established host output were not
+  chmodded, replaced, removed, or otherwise changed.
+
+  A read-only copy of the established host output intentionally failed `check-complete`: it has no
+  missing archive entry, but has 27 extras—five `__pycache__` directories and 22 `.pyc` files below
+  the embedded toolchain Python 3.11 library. These were created while the former NDK tree remained
+  writable to build tooling. A second disposable copy removed only those 27 extras and then passed
+  the complete archive-derived legacy-user check, proving all retained entry bytes, targets, modes,
+  and inventory match the pinned archive. The live tree was not changed. Consequently a future
+  `online-fetch` now fails closed on that stale tree until the operator deliberately retires it and
+  lets the checked transaction recreate it; this slice does not silently delete or normalize
+  established final state.
+
+  `scripts/verify-online-fetch-android-ndk-output-authority.py` binds the audited pins, networkless
+  runtime floor, exact three-mount topology, transaction order, archive postcondition, closed ZIP
+  parser, complete byte comparison, mount/link/xattr/owner/type/mode bounds, durability,
+  no-clobber/rollback/recovery, shared gate, R-S11cq, Appendix C #244, this ledger, and independent
+  workspace ownership through deliberate mutations. It passes and rejects all 32 deliberate
+  weakenings. The independent workspace validator passes normally, and its complete in-memory
+  source-mutation catalog passes against the final source after the new offline funnel was bound as
+  its own extracted launch rather than by a global token search. During verifier development the
+  first complete catalog run exposed that an unrelated Pub semantic no-network launch could mask
+  the weakened NDK funnel; the independent validator was narrowed accordingly. Two subsequent
+  runs correctly rejected the mutation but stopped because their expected diagnostic labels did
+  not match the stricter validator labels; those mutation labels and the explicit verdict-barrier
+  assertion were corrected before the final green catalog. The adjacent ordinary-container,
+  Gradle-source, Gradle-output, Cargo-output, Pub-output, libyuv-output, and vcpkg-output gates pass
+  and reject 33/38/30/36/40/27/42 mutations. The Pub gate's formerly global no-network mutation
+  target was also narrowed to its own semantic-replay function after the new offline funnel made
+  that old target ambiguous.
+
+  Dependency inventory passes normally and rejects all 103 fixtures: 905 Cargo packages/36 Git
+  records, 199 Flutter lock packages/eight Git records, 58 Flutter dependencies/six development
+  dependencies, six build scripts, and 871 lexical `unsafe {` blocks across 247 tracked Rust
+  files. Native-codec watch normal and mutation modes, Bash syntax, Python compilation, requirements
+  HTML parsing, exact synchronized requirements SHA-256
+  `d0276a47dab437b448ec9549a2c3adc7f49ac8a213df123c769f4fb6e87d0051`, and diff hygiene pass.
+
+  No network acquisition, image pull/build/tag, release build, root command, or host RustDesk
+  process/service/config/listener/firewall/network operation was executed for this slice. This is
+  source, negative transaction, and exact pinned-archive extraction/publication evidence—not a cold
+  fetch or exact release artifact. Android SDK and other archive/packaging producers, maintenance
+  candidate-image publication, exact cold R-B2 artifacts, native/device evidence, and external
+  R-V3 review remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -10543,9 +10677,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-94bff7811d9677399e1c8f429c5e2f16f9c4d7d3b7a9e99da0259f5cc3fc01ec  requirements.html
+d0276a47dab437b448ec9549a2c3adc7f49ac8a213df123c769f4fb6e87d0051  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cp, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cq, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

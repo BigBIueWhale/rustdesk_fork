@@ -137,6 +137,38 @@ def validate(sources: Dict[str, str]) -> None:
         require(run, token, "launch funnel {}".format(label))
     forbid_container_authority(run, "launch funnel")
 
+    offline_run = extract(
+        shell,
+        "online_docker_run_offline() {",
+        '        "$@"\n}',
+        "networkless archive launch funnel",
+    )
+    for token, label in (
+        ("online_docker run --rm", "ephemeral container"),
+        ("--pull=never", "no-pull policy"),
+        ("--network=none", "network removal"),
+        ("--read-only", "read-only root"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "numeric nonroot identity"),
+        ("--cap-drop=ALL", "complete capability drop"),
+        ("--security-opt=no-new-privileges", "no-new-privileges"),
+        ("--pids-limit=512", "PID ceiling"),
+        ("--memory=4g", "memory ceiling"),
+        ("--memory-swap=4g", "no-swap expansion"),
+        ("--cpus=2", "CPU ceiling"),
+        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+         "bounded non-executable scratch"),
+    ):
+        require(
+            offline_run,
+            token,
+            "networkless archive launch funnel {}".format(label),
+        )
+    forbid_container_authority(
+        offline_run,
+        "networkless archive launch funnel",
+    )
+
     provenance = extract(
         shell,
         "online_image_provenance() {",
@@ -202,8 +234,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         "online_docker run ",
-        2,
-        "ordinary funnel plus Pub-cache semantic Docker primitives",
+        3,
+        "ordinary, networkless archive, and Pub-cache Docker primitives",
     )
     for token, label in (
         ("--pull=", "pull policy"),
@@ -217,7 +249,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("--cpus=", "CPU policy"),
         ("--tmpfs ", "scratch policy"),
     ):
-        require_count(shell, token, 2, "two-launch {}".format(label))
+        require_count(shell, token, 3, "three-launch {}".format(label))
     require_count(
         shell,
         'local builder="$DEB_BUILDER_IMAGE_ID"',
@@ -227,13 +259,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         'local builder="$ANDROID_BUILDER_IMAGE_ID"',
-        5,
+        6,
         "exact Android builder consumers",
     )
     require_count(
         shell,
         "require_online_fetch_builder_image ",
-        9,
+        10,
         "per-launch-site exact-image verification",
     )
 
@@ -362,8 +394,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("shell", "size=12g", "size=120g", "scratch ceiling"),
     Mutation(
         "shell",
-        "online_docker run --rm --pull=never --network=none --read-only",
-        "online_docker run --rm --pull=never --network=bridge --read-only",
+        "online_docker_run_offline() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only",
+        "online_docker_run_offline() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
+        "networkless archive network removal",
+    ),
+    Mutation(
+        "shell",
+        "--pids-limit=512 --memory=4g --memory-swap=4g --cpus=2",
+        "--pids-limit=-1 --memory=4g --memory-swap=4g --cpus=2",
+        "networkless archive PID ceiling",
+    ),
+    Mutation(
+        "shell",
+        "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+        "--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
+        "networkless archive non-executable scratch",
+    ),
+    Mutation(
+        "shell",
+        "verify_pub_cache_resolution() {\n"
+        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
+        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
+        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "    online_docker run --rm --pull=never --network=none --read-only",
+        "verify_pub_cache_resolution() {\n"
+        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
+        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
+        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
         "Pub-cache semantic network removal",
     ),
     Mutation("shell", 'build_frb_codegen() {\n    local builder="$DEB_BUILDER_IMAGE_ID"',

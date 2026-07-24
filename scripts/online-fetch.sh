@@ -228,6 +228,18 @@ online_docker_run() {
         "$@"
 }
 
+# Host-side archive expansion is not an acquisition-network consumer. Keep its
+# otherwise identical immutable non-root authority on an explicitly networkless
+# profile with non-executable bounded scratch.
+online_docker_run_offline() {
+    online_docker run --rm --pull=never --network=none --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m \
+        "$@"
+}
+
 if [ -e "$ONLINE_DIR" ] || [ -L "$ONLINE_DIR" ]; then
     [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
         || die "online cache root is not one real directory"
@@ -1548,24 +1560,145 @@ stage_vcpkg_natives() {
 }
 
 # ── The Android NDK r28c, extracted for the cargo-ndk JNI cross-compile ─────────
-# fetch_toolchains fetched the NDK zip; build-android.sh expects it at ANDROID_NDK_HOME=
-# /online/android-ndk. Unzip it ONCE here (~2GB extracted) so the offline build reuses it.
-# (The SDK build-tools/platform are staged separately via sdkmanager; the rust JNI lib also
-# needs the aarch64-linux-android std + cargo-ndk + the arm64-android vcpkg set.)
+# The archive is one immutable read-only input. Its checked extractor receives one
+# fresh private output root and no online namespace or final-name authority.
+android_ndk_output_tool() {
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-android-ndk-output.py" "$@"
+}
+
+android_ndk_output_args() {
+    local builder="$1"
+    printf '%s\0' \
+        --archive "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" \
+        --uid "$ONLINE_FETCH_UID" \
+        --gid "$ONLINE_FETCH_GID" \
+        --version "$ANDROID_NDK_VERSION" \
+        --sha256 "$SHA256_ANDROID_NDK_R28C" \
+        --builder "$builder"
+}
+
+retire_android_ndk_output_staging() {
+    local staging="$1" staging_id="$2" builder="$3" disposition
+    local output_args=()
+    mapfile -d '' output_args < <(android_ndk_output_args "$builder")
+    disposition="$(
+        android_ndk_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private Android NDK staging"
+    log "Android NDK staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Android NDK staging traversal"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Android NDK staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private Android NDK staging survived retirement"
+}
+
+recover_android_ndk_output_staging() {
+    local builder="$1"
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-android-ndk.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Android NDK staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_android_ndk_output_staging \
+            "$staging" "$staging_id" "$builder"
+    done
+}
+
 stage_android_ndk() {
-    require_cmd unzip
-    if [ -d "$ONLINE_DIR/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin" ]; then
-        log "android NDK already extracted, skipping"; return 0
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id
+    local output_args=()
+    local archive="$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip"
+    require_online_fetch_builder_image android-builder "$builder"
+    verify_sha256 "$archive" "$SHA256_ANDROID_NDK_R28C"
+    mapfile -d '' output_args < <(android_ndk_output_args "$builder")
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Android NDK serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Android NDK output transaction already owns the online root"
+    recover_android_ndk_output_staging "$builder"
+    if [ -e "$ONLINE_DIR/android-ndk" ] || [ -L "$ONLINE_DIR/android-ndk" ]; then
+        android_ndk_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing Android NDK output is incomplete, stale, or unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the Android NDK output transaction lock"
+        exec {lock_fd}<&-
+        log "Android NDK already staged and exactly archive-verified"
+        return 0
     fi
-    [ -f "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" ] || die "android NDK zip missing — fetch_toolchains must run first"
-    log "extracting the Android NDK ${ANDROID_NDK_VERSION} -> ./online/android-ndk"
-    rm -rf "$ONLINE_DIR/.ndk-tmp" "$ONLINE_DIR/android-ndk"; mkdir -p "$ONLINE_DIR/.ndk-tmp"
-    unzip -q "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" -d "$ONLINE_DIR/.ndk-tmp"
-    local extracted=()
-    mapfile -d '' extracted < <(find "$ONLINE_DIR/.ndk-tmp" -mindepth 1 -maxdepth 1 -type d -name 'android-ndk-*' -print0)
-    [ "${#extracted[@]}" -eq 1 ] || die "pinned Android NDK archive did not extract exactly one android-ndk-* directory"
-    mv "${extracted[0]}" "$ONLINE_DIR/android-ndk"
-    rm -rf "$ONLINE_DIR/.ndk-tmp"
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-android-ndk.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Android NDK staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! android_ndk_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Android NDK preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed Android NDK preparation left non-retirable private staging"
+        die "cannot prepare private Android NDK staging"
+    fi
+    log "extracting exact Android NDK ${ANDROID_NDK_VERSION} into private checked output"
+    online_docker_run_offline \
+        --mount "type=bind,source=$archive,target=/inputs/android-ndk.zip,readonly" \
+        --mount "type=bind,source=$SCRIPT_DIR/online-android-ndk-output.py,target=/authority/online-android-ndk-output.py,readonly" \
+        --mount "type=bind,source=$staging/output,target=/outputs/android-ndk" \
+        "$builder" \
+        /usr/bin/python3 -I -S \
+        /authority/online-android-ndk-output.py extract \
+        --archive /inputs/android-ndk.zip \
+        --output /outputs/android-ndk \
+        --version "$ANDROID_NDK_VERSION" \
+        --sha256 "$SHA256_ANDROID_NDK_R28C" \
+        || status=$?
+    if [ ! -f "$archive" ] || [ -L "$archive" ] || \
+       [ "$(/usr/bin/sha256sum -- "$archive" | /usr/bin/awk '{print $1}')" != \
+         "$SHA256_ANDROID_NDK_R28C" ]
+    then
+        echo "[FATAL] Android NDK archive changed during extraction" >&2
+        output_status=1
+    fi
+    android_ndk_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        android_ndk_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_android_ndk_output_staging \
+        "$staging" "$staging_id" "$builder"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Android NDK output transaction lock"
+    exec {lock_fd}<&-
+    [ "$output_status" -eq 0 ] || die "Android NDK output postcondition failed"
+    [ "$status" -eq 0 ] || die "Android NDK extractor failed"
+    [ "$publication_status" -eq 0 ] || die "Android NDK publication failed"
+    log "Android NDK checked and published without broad online write authority"
 }
 
 # ── The vcpkg-built arm64-android native codecs (R-R1 pinned overlay) ─────────────

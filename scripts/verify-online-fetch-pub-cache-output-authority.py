@@ -563,8 +563,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "online_docker run --rm --pull=never --network=none --read-only",
-        "online_docker run --rm --pull=never --network=bridge --read-only",
+        "verify_pub_cache_resolution() {\n"
+        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
+        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
+        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "    online_docker run --rm --pull=never --network=none --read-only",
+        "verify_pub_cache_resolution() {\n"
+        "    local cache=\"$1\" builder=\"$DEB_BUILDER_IMAGE_ID\"\n"
+        "    [ -d \"$cache\" ] && [ ! -L \"$cache\" ] \\\n"
+        "        || die \"Pub-cache semantic candidate is not one real directory\"\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
         "networkless semantic replay",
     ),
     Mutation(

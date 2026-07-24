@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14916,6 +14916,290 @@ def validate_online_fetch_vcpkg_native_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cp/R-S11e-108 — networked vcpkg native output authority",
         "online-fetch vcpkg native output authority hardening ledger",
+    )
+
+
+def validate_online_fetch_android_ndk_output_authority_contract(sources):
+    focused = sources["online_fetch_android_ndk_output_authority_verifier"]
+    helper = sources["online_android_ndk_output_helper"]
+    online = sources["online_fetch"]
+    offline_run = extract_between(
+        online,
+        "online_docker_run_offline() {",
+        "\n}\n\nif [ -e \"$ONLINE_DIR\" ]",
+        "Android NDK networkless launch funnel",
+    )
+    for text, label in (
+        (
+            "--pull=never --network=none --read-only",
+            "Android NDK networkless no-pull launch",
+        ),
+        (
+            '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+            "Android NDK offline numeric nonroot identity",
+        ),
+        (
+            "--cap-drop=ALL --security-opt=no-new-privileges",
+            "Android NDK offline privilege removal",
+        ),
+        (
+            "--pids-limit=512 --memory=4g --memory-swap=4g --cpus=2",
+            "Android NDK offline resource ceilings",
+        ),
+        (
+            "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+            "Android NDK offline bounded scratch",
+        ),
+    ):
+        require_text(offline_run, text, label)
+    for text, label in (
+        (
+            "networkless archive launch funnel",
+            "Android NDK focused runtime-floor binding",
+        ),
+        (
+            "sole writable output",
+            "Android NDK focused mount binding",
+        ),
+        (
+            "validate-seal-publish-postcheck order",
+            "Android NDK focused publication binding",
+        ),
+        (
+            "every-byte archive comparison",
+            "Android NDK focused content binding",
+        ),
+        (
+            "nested-mount rejection",
+            "Android NDK focused mount-closure binding",
+        ),
+        (
+            "MUTATIONS = (",
+            "Android NDK focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "Android NDK focused mutation dispatch",
+        ),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        (
+            "online_docker_run_offline() {",
+            "Android NDK networkless launch funnel",
+        ),
+        (
+            "--pull=never --network=none --read-only",
+            "Android NDK network and rootfs removal",
+        ),
+        (
+            "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+            "Android NDK bounded non-executable scratch",
+        ),
+        (
+            "recover_android_ndk_output_staging() {",
+            "Android NDK restart recovery",
+        ),
+        ("stage_android_ndk() {", "Android NDK lifecycle"),
+        (
+            "source=$archive,target=/inputs/android-ndk.zip,readonly",
+            "Android NDK exact read-only archive",
+        ),
+        (
+            "source=$SCRIPT_DIR/online-android-ndk-output.py,"
+            "target=/authority/online-android-ndk-output.py,readonly",
+            "Android NDK exact read-only helper",
+        ),
+        (
+            "source=$staging/output,target=/outputs/android-ndk",
+            "Android NDK sole writable output",
+        ),
+        (
+            "Android NDK archive changed during extraction",
+            "Android NDK archive postcondition",
+        ),
+        (
+            "android_ndk_output_tool verify",
+            "Android NDK host output postcondition",
+        ),
+        (
+            "android_ndk_output_tool publish",
+            "Android NDK checked publication",
+        ),
+    ):
+        require_text(online, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_android_ndk() {",
+        "\n}\n\n# ── The vcpkg-built arm64-android native codecs",
+        "Android NDK output authority lifecycle",
+    )
+    require_exact_count(
+        lifecycle,
+        "--mount ",
+        3,
+        "Android NDK exact mount inventory",
+    )
+    require_exact_count(
+        lifecycle,
+        "source=$staging/output,target=/outputs/android-ndk",
+        1,
+        "Android NDK exact writable mount",
+    )
+    require_absent(
+        lifecycle,
+        "source=$ONLINE_DIR,target=/online",
+        "Android NDK broad online mount",
+    )
+    require_absent(lifecycle, "unzip ", "Android NDK host unzip")
+    require_absent(lifecycle, ".ndk-tmp", "Android NDK shared temporary tree")
+    require_text(
+        lifecycle,
+        '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
+        "        android_ndk_output_tool publish",
+        "Android NDK independent verdict barrier",
+    )
+    require_order(
+        lifecycle,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "recover_android_ndk_output_staging",
+            "check-complete",
+            "/usr/bin/mktemp -d",
+            "android_ndk_output_tool prepare",
+            "online_docker_run_offline",
+            "sha256sum -- \"$archive\"",
+            "android_ndk_output_tool verify",
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+            "android_ndk_output_tool publish",
+            "retire_android_ndk_output_staging",
+            '"$FLOCK_BIN" --unlock "$lock_fd"',
+        ),
+        "Android NDK checked transaction order",
+    )
+    for text, label in (
+        (
+            'STATE_NAME = ".rustdesk-android-ndk-output-state-v1"',
+            "Android NDK bounded transaction record",
+        ),
+        (
+            '"r28c": NdkSpec("r28c", "28.2.13676358", "android-ndk-r28c")',
+            "Android NDK closed release specification",
+        ),
+        ("MAX_ENTRIES = 10000\n", "Android NDK entry bound"),
+        (
+            "MAX_TOTAL_BYTES = 3 * 1024 * 1024 * 1024",
+            "Android NDK expanded byte bound",
+        ),
+        (
+            'component in ("", ".", "..")',
+            "Android NDK path traversal refusal",
+        ),
+        ("if relative in entries:", "Android NDK duplicate-path refusal"),
+        (
+            "if info.flag_bits & ~0x2:",
+            "Android NDK encrypted/unsupported flag refusal",
+        ),
+        (
+            "validate_symlink_graph(entries)",
+            "Android NDK symlink graph proof",
+        ),
+        (
+            "Android NDK source.properties does not match the pinned revision",
+            "Android NDK revision binding",
+        ),
+        (
+            "(mountpoint == encoded and not allow_root)\n"
+            "            or mountpoint.startswith(prefix)",
+            "Android NDK descendant-mount refusal",
+        ),
+        (
+            "allow_root_mount=True",
+            "Android NDK extractor root-mount exception",
+        ),
+        (
+            "if set(observed) != set(entries):",
+            "Android NDK exact output inventory",
+        ),
+        ("if expected != actual:", "Android NDK every-byte comparison"),
+        (
+            "not stat.S_ISREG(before.st_mode) or before.st_nlink != 1",
+            "Android NDK external-hardlink refusal",
+        ),
+        ("if list_xattrs(path):", "Android NDK xattr refusal"),
+        (
+            "seal_and_sync_tree(candidate, entries)",
+            "Android NDK read-only sealing",
+        ),
+        ("RENAME_NOREPLACE = 1", "Android NDK no-clobber publication"),
+        (
+            'renameat2(\n            output_fd,\n            spec.root,\n'
+            '            online_fd,\n            "android-ndk",\n'
+            "            RENAME_NOREPLACE,",
+            "Android NDK descriptor-relative publication",
+        ),
+        (
+            "Android NDK publication rollback also failed",
+            "Android NDK publication rollback",
+        ),
+        (
+            "Android NDK output transaction state is incoherent and was preserved",
+            "Android NDK ambiguous-state refusal",
+        ),
+        (
+            "self-test accepted Android NDK archive path traversal",
+            "Android NDK path negative fixture",
+        ),
+        (
+            "self-test accepted an escaping Android NDK symlink",
+            "Android NDK symlink negative fixture",
+        ),
+        (
+            "self-test accepted an externally hardlinked Android NDK output",
+            "Android NDK hardlink negative fixture",
+        ),
+        (
+            "self-test did not classify an interrupted Android NDK state write",
+            "Android NDK interrupted state-write fixture",
+        ),
+        (
+            "if arguments.uid <= 0 or arguments.gid <= 0:",
+            "Android NDK root transaction refusal",
+        ),
+    ):
+        require_text(helper, text, label)
+    require_exact_count(
+        helper,
+        "allow_root_mount=True",
+        2,
+        "Android NDK extractor-only root-mount exceptions",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-online-fetch-android-ndk-output-authority.py "
+        "--repo . --self-test",
+        "Online-fetch Android NDK output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-android-ndk-output.py self-test",
+        "Online-fetch Android NDK transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cq</span>',
+        "online-fetch Android NDK output authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>244</td>",
+        "online-fetch Android NDK output authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cq/R-S11e-109 — Android NDK extraction and output authority",
+        "online-fetch Android NDK output authority hardening ledger",
     )
 
 
@@ -19670,6 +19954,7 @@ def validate_sources(sources):
     validate_online_fetch_pub_cache_output_authority_contract(sources)
     validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_online_fetch_vcpkg_native_output_authority_contract(sources)
+    validate_online_fetch_android_ndk_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -32289,7 +32574,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#243",
+            "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34759,6 +35044,127 @@ def run_source_mutations(sources):
             "online-fetch vcpkg native output authority hardening ledger",
         ),
         (
+            "online_fetch_android_ndk_output_authority_verifier",
+            "every-byte archive comparison",
+            "presence-only output comparison",
+            "Android NDK focused content binding",
+        ),
+        (
+            "online_fetch",
+            "online_docker_run_offline() {\n"
+            "    online_docker run --rm --pull=never --network=none --read-only",
+            "online_docker_run_offline() {\n"
+            "    online_docker run --rm --pull=always --network=bridge",
+            "Android NDK networkless no-pull launch",
+        ),
+        (
+            "online_fetch",
+            "source=$archive,target=/inputs/android-ndk.zip,readonly",
+            "source=$ONLINE_DIR,target=/inputs/android-ndk.zip",
+            "Android NDK exact read-only archive",
+        ),
+        (
+            "online_fetch",
+            "source=$staging/output,target=/outputs/android-ndk",
+            "source=$ONLINE_DIR,target=/outputs/android-ndk",
+            "Android NDK sole writable output",
+        ),
+        (
+            "online_fetch",
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
+            "        android_ndk_output_tool publish",
+            '[ "$status" -eq 0 ]; then\n'
+            "        android_ndk_output_tool publish",
+            "Android NDK independent verdict barrier",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            'component in ("", ".", "..")',
+            'component in ("", ".")',
+            "Android NDK path traversal refusal",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "if relative in entries:",
+            "if False:",
+            "Android NDK duplicate-path refusal",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "if info.flag_bits & ~0x2:",
+            "if False:",
+            "Android NDK encrypted/unsupported flag refusal",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "validate_symlink_graph(entries)",
+            "return entries # symlink graph skipped",
+            "Android NDK symlink graph proof",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "(mountpoint == encoded and not allow_root)\n"
+            "            or mountpoint.startswith(prefix)",
+            "mountpoint == encoded and not allow_root",
+            "Android NDK descendant-mount refusal",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "if set(observed) != set(entries):",
+            "if False:",
+            "Android NDK exact output inventory",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "if expected != actual:",
+            "if len(expected) != len(actual):",
+            "Android NDK every-byte comparison",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "not stat.S_ISREG(before.st_mode) or before.st_nlink != 1",
+            "not stat.S_ISREG(before.st_mode) or before.st_nlink < 1",
+            "Android NDK external-hardlink refusal",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "Android NDK no-clobber publication",
+        ),
+        (
+            "online_android_ndk_output_helper",
+            "Android NDK output transaction state is incoherent and was preserved",
+            "Android NDK output transaction state was discarded",
+            "Android NDK ambiguous-state refusal",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-android-ndk-output-authority.py "
+            "--repo . --self-test",
+            "true # online-fetch Android NDK output authority gate removed",
+            "Online-fetch Android NDK output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cq</span>',
+            '<span class="id">R-S11cq-disabled</span>',
+            "online-fetch Android NDK output authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>244</td>",
+            "<tr><td>244-disabled</td>",
+            "online-fetch Android NDK output authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cq/R-S11e-109 — Android NDK extraction and output authority",
+            "R-S11cq/R-S11e-109 — unchecked Android NDK extraction",
+            "online-fetch Android NDK output authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -36026,6 +36432,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_vcpkg_native_output_helper": (
                 repo / "scripts/online-vcpkg-native-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_android_ndk_output_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-android-ndk-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_android_ndk_output_helper": (
+                repo / "scripts/online-android-ndk-output.py"
             ).read_text(encoding="utf-8"),
             "android_apk_build": (
                 repo / "scripts/android-apk-build.sh"

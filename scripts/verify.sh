@@ -326,6 +326,21 @@ else
   echo "  ok  R-S11cw Cargo vendoring uses an exact committed source, pinned Rust and builder inputs, narrow private outputs, independent sealed-closure checks, networkless lockfile resolution, and durable no-clobber publication"
 fi
 
+echo "== (0j-windows-engine) exact Windows Flutter-engine output authority (R-S11cx/R-S11e-116) =="
+r_s11cx=
+if ! /usr/bin/python3 -I -S scripts/online-windows-engine-output.py self-test; then
+  r_s11cx="$r_s11cx transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-windows-engine-output-authority.py --repo . --self-test; then
+  r_s11cx="$r_s11cx authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cx" ]; then
+  echo "  FAIL R-S11cx exact Windows Flutter-engine output authority:$r_s11cx"
+  rc=1
+else
+  echo "  ok  R-S11cx the exact Flutter source drives one confined network producer with a bounded private output, closed archive semantics, networkless replay, and durable no-clobber publication"
+fi
+
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
 r_s11cl=
 if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then

@@ -11159,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11914,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12248,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+        "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15736,6 +15736,169 @@ def validate_online_fetch_cargo_vendor_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cw/R-S11e-115 — exact Cargo vendor acquisition-output authority",
         "Cargo vendor hardening ledger",
+    )
+
+
+def validate_online_fetch_windows_engine_output_authority_contract(sources):
+    focused = sources["online_fetch_windows_engine_output_authority_verifier"]
+    helper = sources["online_windows_engine_output_helper"]
+    online = sources["online_fetch"]
+    try:
+        focused_module = ast.parse(focused)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Windows-engine focused verifier does not parse: {error}"
+        ) from error
+    if not any(
+        isinstance(node, ast.FunctionDef) and node.name == "mutations"
+        for node in focused_module.body
+    ):
+        raise VerificationError("Windows-engine focused mutation inventory is absent")
+    lifecycle = extract_between(
+        online,
+        "stage_windows_engine() {",
+        "\n}\n\n# ── The windows flutter_tools pub cache",
+        "Windows-engine acquisition lifecycle",
+    )
+    offline_profile = extract_between(
+        online,
+        "online_docker_run_offline() {",
+        "\n}\n\n# Offline Cargo resolution",
+        "Windows-engine networkless semantic profile",
+    )
+    for text, label in (
+        ("--pull=never --network=none --read-only", "networkless no-pull profile"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "numeric non-root profile"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges", "privilege-free profile"),
+        ("--pids-limit=512 --memory=4g --memory-swap=4g --cpus=2",
+         "semantic resource ceiling"),
+        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+         "semantic scratch ceiling"),
+    ):
+        require_text(offline_profile, text, label)
+    for text, label in (
+        ("def mutations() -> Tuple[Mutation, ...]:", "focused mutation inventory"),
+        ("sole writable output inode", "focused output authority binding"),
+        ("networkless semantic replay", "focused semantic binding"),
+        ("validate-seal-replay-publish lifecycle", "focused lifecycle binding"),
+        ("exact member inventory", "focused archive binding"),
+        ("run_mutations(sources)", "focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("windows_engine_output_tool() {", "fixed output helper"),
+        ("windows_engine_output_args() {", "closed output contract"),
+        ("verify_windows_engine_source() {", "source postcondition"),
+        ("recover_windows_engine_staging() {", "restart recovery"),
+    ):
+        require_text(online, text, label)
+    for text, label in (
+        (
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "exact source mount",
+        ),
+        (
+            "source=$staging/output,target=/outputs/engine.tar.gz",
+            "sole writable candidate",
+        ),
+        ("written + len(block) > limit", "producer output byte ceiling"),
+        (
+            "bin/cache/artifacts/engine/windows-x64-profile",
+            "exact profile-engine projection",
+        ),
+        (
+            "bin/cache/artifacts/engine/windows-x64-release",
+            "exact release-engine projection",
+        ),
+        ("bin/cache/libimobiledevice.stamp", "exact libimobiledevice stamp"),
+        ("bin/cache/usbmuxd.stamp", "exact usbmuxd stamp"),
+        ("bin/cache/windows-sdk.stamp", "exact Windows SDK stamp"),
+        (
+            '$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73',
+            "exact producer inventory count",
+        ),
+        ("-exec /usr/bin/chmod 0666 {} +", "ordinary-file mode normalization"),
+        ("/usr/bin/chmod 0644 \\", "snapshot/stamp mode normalization"),
+        ("windows_engine_output_tool verify", "host structural verdict"),
+        ("online_docker_run_offline", "networkless semantic replay"),
+        ("verify-archive", "closed semantic command"),
+        ("windows_engine_output_tool publish", "checked publication"),
+    ):
+        require_text(lifecycle, text, label)
+    for text, label in (
+        ("target=/online", "broad online mount"),
+        ("> /online/flutter-windows-engine.tar.gz", "direct final write"),
+        ('git config --global --add safe.directory "*"', "wildcard Git trust"),
+        ('[ -f "$out" ] &&', "presence-only reuse"),
+        ("-newer /tmp/marker", "cache-wide timestamp inference"),
+        ("/tmp/before.txt", "cache-wide before/after inference"),
+    ):
+        require_absent(lifecycle, text, label)
+    require_order(
+        lifecycle,
+        (
+            "recover_windows_engine_staging",
+            "check-complete",
+            "windows_engine_output_tool prepare",
+            "online_docker_run \\",
+            "windows_engine_output_tool verify",
+            "online_docker_run_offline \\",
+            "windows_engine_output_tool publish",
+            "retire_windows_engine_staging",
+        ),
+        "Windows-engine checked transaction",
+    )
+    for text, label in (
+        ('STATE_NAME = ".rustdesk-windows-engine-state-v1"', "transaction state"),
+        ("PRODUCTION_CONTRACT = ArchiveContract(", "closed archive contract"),
+        ("total_bytes=817_399_293", "exact uncompressed byte count"),
+        ("if uid <= 0 or gid <= 0:", "non-root identity"),
+        (
+            "if metadata.st_nlink != 1:\n"
+            '        fail("Windows engine archive has a hardlink outside the transaction")',
+            "external-hardlink refusal",
+        ),
+        ("if list_xattrs(archive):", "xattr refusal"),
+        (
+            "member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE)",
+            "regular-member-only contract",
+        ),
+        ("if names != contract.names:", "exact inventory"),
+        ("if total_bytes != contract.total_bytes:", "exact byte total"),
+        ("historical root-owned Windows engine archive is not mode 0644",
+         "historical compatibility closure"),
+        ("RENAME_NOREPLACE = 1", "no-clobber primitive"),
+        (
+            'renameat2(staging_fd, "output", online_fd, DESTINATION)',
+            "descriptor-relative publication",
+        ),
+        ("online-windows-engine-output: PASS", "transaction fixtures"),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-windows-engine-output.py self-test",
+        "Windows-engine transaction self-test wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-windows-engine-output-authority.py --repo . --self-test",
+        "Windows-engine focused verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cx</span>',
+        "Windows-engine normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>251</td>",
+        "Windows-engine Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
+        "Windows-engine hardening ledger",
     )
 
 
@@ -20779,6 +20942,7 @@ def validate_sources(sources):
     validate_online_fetch_libvpx_local_output_authority_contract(sources)
     validate_online_fetch_cargo_vendor_output_authority_contract(sources)
     validate_online_fetch_android_ndk_output_authority_contract(sources)
+    validate_online_fetch_windows_engine_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -33428,7 +33592,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
+            "R-S11n through R-S11cx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#251",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -36360,6 +36524,116 @@ def run_source_mutations(sources):
             "Cargo vendor hardening ledger",
         ),
         (
+            "online_fetch_windows_engine_output_authority_verifier",
+            "def mutations() -> Tuple[Mutation, ...]:",
+            "def disabled_mutations() -> Tuple[Mutation, ...]:",
+            "Windows-engine focused mutation inventory",
+        ),
+        (
+            "online_fetch",
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "source=$ONLINE_DIR,target=/inputs/flutter.tar.xz",
+            "exact source mount",
+        ),
+        (
+            "online_fetch",
+            "source=$staging/output,target=/outputs/engine.tar.gz",
+            "source=$ONLINE_DIR,target=/outputs/engine.tar.gz",
+            "sole writable candidate",
+        ),
+        (
+            "online_fetch",
+            "written + len(block) > limit",
+            "False",
+            "producer output byte ceiling",
+        ),
+        (
+            "online_fetch",
+            '$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73',
+            '$(/usr/bin/wc -l < /tmp/stage.txt)" -gt 0',
+            "exact producer inventory count",
+        ),
+        (
+            "online_fetch",
+            "-exec /usr/bin/chmod 0666 {} +",
+            "-exec /usr/bin/chmod 0644 {} +",
+            "ordinary-file mode normalization",
+        ),
+        (
+            "online_fetch",
+            "windows_engine_output_tool publish",
+            "true # Windows-engine publication removed",
+            "checked publication",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "if uid <= 0 or gid <= 0:",
+            "if False:",
+            "non-root identity",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "if metadata.st_nlink != 1:",
+            "if False:",
+            "external-hardlink refusal",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "if list_xattrs(archive):",
+            "if False:",
+            "xattr refusal",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE)",
+            "False",
+            "regular-member-only contract",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "if names != contract.names:",
+            "if False:",
+            "exact inventory",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "if total_bytes != contract.total_bytes:",
+            "if False:",
+            "exact byte total",
+        ),
+        (
+            "online_windows_engine_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "no-clobber primitive",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-windows-engine-output-authority.py "
+            "--repo . --self-test",
+            "true # Windows-engine focused gate removed",
+            "Windows-engine focused verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cx</span>',
+            '<span class="id">R-S11cx-disabled</span>',
+            "Windows-engine normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>251</td>",
+            "<tr><td>251-disabled</td>",
+            "Windows-engine Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
+            "R-S11cx/R-S11e-116 — ambient Windows-engine authority",
+            "Windows-engine hardening ledger",
+        ),
+        (
             "online_fetch_android_ndk_output_authority_verifier",
             "every-byte archive comparison",
             "presence-only output comparison",
@@ -37752,6 +38026,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_cargo_vendor_output_helper": (
                 repo / "scripts/online-cargo-vendor-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_windows_engine_output_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-windows-engine-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_windows_engine_output_helper": (
+                repo / "scripts/online-windows-engine-output.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

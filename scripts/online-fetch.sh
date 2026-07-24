@@ -32,6 +32,7 @@ readonly FLOCK_BIN=/usr/bin/flock
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
 readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
+readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
@@ -2948,42 +2949,244 @@ stage_gradle() {
 }
 
 # ── The windows flutter ENGINE (precache --windows): ~780MB of windows-x64{,-profile,-release} ──
-# The §12.2 golden-provision's IN-VM `flutter precache --windows` 780MB CDN fetch STALLS mid-transfer
-# over the guest's slirp NAT, so the engine is staged HERE on a real network (~22s) and shipped into the
-# golden (TOOLCHAINS CD) instead. The LINUX flutter's `precache --windows` pulls the WINDOWS-x64 engine
-# (platform data, host-agnostic); precache writes ONLY artifacts/engine/windows-x64* (no external
-# stamps), so the captured set is the complete cached state — with it pre-placed the in-VM precache
-# validates in ~4s and downloads nothing (docker-verified). Deterministic tar + gzip -n => stable SHA.
+windows_engine_output_tool() {
+    /usr/bin/python3 -I -S "$WINDOWS_ENGINE_OUTPUT_HELPER" "$@"
+}
+
+windows_engine_output_args() {
+    printf '%s\0' \
+        --uid "$ONLINE_FETCH_UID" \
+        --gid "$ONLINE_FETCH_GID" \
+        --flutter-version "$FLUTTER_VERSION" \
+        --builder "$ANDROID_BUILDER_IMAGE_ID" \
+        --source-sha256 "$SHA256_FLUTTER_3_24_5" \
+        --sha256 "$SHA256_FLUTTER_WIN_ENGINE" \
+        --size "$SIZE_FLUTTER_WIN_ENGINE"
+}
+
+verify_windows_engine_source() {
+    local phase="$1"
+    local source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
+    [ -f "$source" ] && [ ! -L "$source" ] \
+        || die "$phase: Flutter source archive is not one real file"
+    [ "$(/usr/bin/stat -c '%s' -- "$source")" = "$SIZE_FLUTTER_3_24_5" ] \
+        || die "$phase: Flutter source archive length changed"
+    verify_sha256 "$source" "$SHA256_FLUTTER_3_24_5"
+}
+
+retire_windows_engine_staging() {
+    local staging="$1" staging_id="$2" disposition
+    local output_args=()
+    mapfile -d '' output_args < <(windows_engine_output_args)
+    disposition="$(
+        windows_engine_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private Windows-engine staging"
+    log "Windows-engine staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Windows-engine staging traversal"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Windows-engine staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private Windows-engine staging survived retirement"
+}
+
+recover_windows_engine_staging() {
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-windows-engine.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Windows-engine staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_windows_engine_staging "$staging" "$staging_id"
+    done
+}
+
+# ── The Windows Flutter engine (`precache --windows`): 817,399,293 bytes ────────
+# The §12.2 golden provision's in-VM download stalls over guest slirp NAT, so the
+# exact Flutter 3.24.5 Linux SDK acquires the host-independent Windows engine here.
+# The networked tool sees the source archive read-only and one private output inode
+# writable. It never sees the online root or the durable output name. An independent
+# networkless process verifies the exact digest and closed 73-file tar contract
+# before descriptor-relative, durable, no-clobber publication.
 stage_windows_engine() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local status=0 source_status=0 output_status=0 semantic_status=0
+    local publication_status=0 lock_fd staging staging_id
+    local source="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
+    local destination="$ONLINE_DIR/flutter-windows-engine.tar.gz"
+    local output_args=()
     require_online_fetch_builder_image android-builder "$builder"
-    local out="$ONLINE_DIR/flutter-windows-engine.tar.gz"
-    [ -f "$out" ] && { log "windows flutter engine already staged, skipping"; return 0; }
-    log "staging the windows flutter engine (linux flutter precache --windows) -> ./online/flutter-windows-engine.tar.gz"
-    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
+    [ -f "$WINDOWS_ENGINE_OUTPUT_HELPER" ] \
+        && [ ! -L "$WINDOWS_ENGINE_OUTPUT_HELPER" ] \
+        || die "Windows-engine output helper is not one real source file"
+    (verify_windows_engine_source "before Windows-engine transaction")
+    mapfile -d '' output_args < <(windows_engine_output_args)
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Windows-engine serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another online-output transaction already owns the online root"
+    recover_windows_engine_staging
+    if [ -e "$destination" ] || [ -L "$destination" ]; then
+        windows_engine_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing Windows-engine archive is incomplete or unsafe"
+        (verify_windows_engine_source "after Windows-engine occupied-output validation")
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the Windows-engine transaction lock"
+        exec {lock_fd}<&-
+        log "Windows Flutter engine already staged and exactly validated"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-windows-engine.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Windows-engine staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! windows_engine_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Windows-engine preparation left non-restorable staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed Windows-engine preparation left non-retirable staging"
+        die "cannot prepare private Windows-engine staging"
+    fi
+    log "acquiring the pinned Windows Flutter engine into one private output"
+    online_docker_run \
+        --env FLUTTER_VERSION="$FLUTTER_VERSION" \
+        --env SHA256_FLUTTER_WIN_ENGINE="$SHA256_FLUTTER_WIN_ENGINE" \
+        --env SIZE_FLUTTER_WIN_ENGINE="$SIZE_FLUTTER_WIN_ENGINE" \
+        --mount "type=bind,source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$staging/output,target=/outputs/engine.tar.gz" \
         "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-        tar -C /tmp -xf /online/flutter-*.tar.xz
-        export PATH=/tmp/flutter/bin:$PATH CI=true
-        export HOME=/tmp/home; mkdir -p "$HOME"; git config --global --add safe.directory "*"
-        cd /tmp/flutter
-        find bin/cache -type f | sort > /tmp/before.txt
-        touch /tmp/marker
-        flutter precache --windows >/dev/null 2>&1
-        # Stage the NEW files (the engine binaries — they keep PRESERVED-OLD mtimes from the zip, so
-        # find -newer misses them) PLUS the files precache MODIFIED with a fresh mtime (find -newer) --
-        # crucially bin/cache/windows-sdk.stamp, the freshness marker the WINDOWS flutter checks. Without
-        # it the windows flutter RE-DOWNLOADS the engine even though the artifacts are present (the linux
-        # flutter accepts without it, which is why a linux-only verify is misleading; the windows flutter
-        # does not -- this wedged the in-VM precache over slirp). Exclude the transient bin/cache/lockfile.
-        { comm -13 /tmp/before.txt <(find bin/cache -type f | sort); find bin/cache -type f -newer /tmp/marker; } \
-            | sort -u | grep -v "bin/cache/lockfile$" > /tmp/stage.txt
-        grep -q "artifacts/engine/windows-x64" /tmp/stage.txt || { echo "precache produced no windows-x64 engine"; exit 1; }
-        grep -q "windows-sdk.stamp" /tmp/stage.txt || { echo "windows-sdk.stamp not captured -- windows flutter would re-download"; exit 1; }
-        # deterministic: sorted names + fixed mtime/owner + gzip -n -> stable R-B12 SHA
-        tar --sort=name --mtime=@1700000000 --owner=0 --group=0 --numeric-owner -cf - -T /tmp/stage.txt | gzip -n -9 > /online/flutter-windows-engine.tar.gz
-    '
-    [ -f "$out" ] || die "windows flutter engine staging failed"
-    log "windows flutter engine staged: $out ($(du -h "$out" | cut -f1))"
+            umask 077
+            /usr/bin/mkdir -p /tmp/toolchain /tmp/home
+            /usr/bin/tar -C /tmp/toolchain -xf /inputs/flutter.tar.xz
+            export HOME=/tmp/home
+            export CI=true
+            export FLUTTER_SUPPRESS_ANALYTICS=true
+            export GIT_CONFIG_NOSYSTEM=1
+            export GIT_CONFIG_GLOBAL=/dev/null
+            export GIT_ATTR_NOSYSTEM=1
+            export GIT_NO_REPLACE_OBJECTS=1
+            export GIT_OPTIONAL_LOCKS=0
+            export PATH=/tmp/toolchain/flutter/bin:/tmp/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+            cd /tmp/toolchain/flutter
+            flutter precache --windows >/dev/null
+            {
+                /usr/bin/find \
+                    bin/cache/artifacts/engine/windows-x64 \
+                    bin/cache/artifacts/engine/windows-x64-profile \
+                    bin/cache/artifacts/engine/windows-x64-release \
+                    -type f -print
+                /usr/bin/printf '%s\n' \
+                    bin/cache/libimobiledevice.stamp \
+                    bin/cache/usbmuxd.stamp \
+                    bin/cache/windows-sdk.stamp
+            } | /usr/bin/sort -u > /tmp/stage.txt
+            [ "$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73 ] || {
+                echo "precache output does not match the exact 73-file Windows projection" >&2
+                exit 1
+            }
+            /usr/bin/find \
+                bin/cache/artifacts/engine/windows-x64 \
+                bin/cache/artifacts/engine/windows-x64-profile \
+                bin/cache/artifacts/engine/windows-x64-release \
+                -type f -exec /usr/bin/chmod 0666 {} +
+            /usr/bin/chmod 0644 \
+                bin/cache/artifacts/engine/windows-x64/gen_snapshot.exe \
+                bin/cache/artifacts/engine/windows-x64-profile/gen_snapshot.exe \
+                bin/cache/artifacts/engine/windows-x64-release/gen_snapshot.exe \
+                bin/cache/libimobiledevice.stamp \
+                bin/cache/usbmuxd.stamp \
+                bin/cache/windows-sdk.stamp
+            /usr/bin/tar --sort=name --mtime=@1700000000 \
+                --owner=0 --group=0 --numeric-owner \
+                -cf - -T /tmp/stage.txt \
+                | /usr/bin/gzip -n -9 \
+                | /usr/bin/python3 -c "import os
+import sys
+limit = int(os.environ[\"SIZE_FLUTTER_WIN_ENGINE\"])
+written = 0
+while True:
+    block = sys.stdin.buffer.read(1024 * 1024)
+    if not block:
+        break
+    if written + len(block) > limit:
+        raise SystemExit(\"Windows engine output exceeded its byte bound\")
+    sys.stdout.buffer.write(block)
+    written += len(block)
+if written != limit:
+    raise SystemExit(\"Windows engine output length differs from its pin\")
+" > /outputs/engine.tar.gz
+            got="$(
+                /usr/bin/sha256sum /outputs/engine.tar.gz \
+                    | /usr/bin/cut -d" " -f1
+            )"
+            [ "$got" = "$SHA256_FLUTTER_WIN_ENGINE" ] || {
+                echo "Windows engine SHA-256 mismatch: got $got" >&2
+                exit 1
+            }
+        ' || status=$?
+    (verify_windows_engine_source "after Windows-engine producer") \
+        || source_status=$?
+    windows_engine_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] \
+       && [ "$source_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ]; then
+        online_docker_run_offline \
+            --mount "type=bind,source=$WINDOWS_ENGINE_OUTPUT_HELPER,target=/authority/online-windows-engine-output.py,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$staging/output,target=/inputs/engine.tar.gz,readonly,bind-recursive=disabled" \
+            "$builder" /usr/bin/python3 -I -S \
+                /authority/online-windows-engine-output.py verify-archive \
+                --archive /inputs/engine.tar.gz \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                --sha256 "$SHA256_FLUTTER_WIN_ENGINE" \
+                --size "$SIZE_FLUTTER_WIN_ENGINE" \
+                || semantic_status=$?
+    else
+        semantic_status=1
+    fi
+    (verify_windows_engine_source "after Windows-engine semantic validation") \
+        || source_status=$?
+    if [ "$status" -eq 0 ] \
+       && [ "$source_status" -eq 0 ] \
+       && [ "$output_status" -eq 0 ] \
+       && [ "$semantic_status" -eq 0 ]; then
+        windows_engine_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_windows_engine_staging "$staging" "$staging_id"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Windows-engine transaction lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "Windows-engine source postcondition failed"
+    [ "$output_status" -eq 0 ] || die "Windows-engine output postcondition failed"
+    [ "$status" -eq 0 ] || die "Windows-engine acquisition producer failed"
+    [ "$semantic_status" -eq 0 ] || die "Windows-engine semantic replay failed"
+    [ "$publication_status" -eq 0 ] || die "Windows-engine publication failed"
+    log "Windows Flutter engine acquired, independently validated, and checked-published"
 }
 
 # ── The windows flutter_tools pub cache (§12.2): hosted deps incl. flutter_tools' DEV deps ──

@@ -281,6 +281,21 @@ else
   echo "  ok  R-S11cr exact pinned Android archives are acquired through four narrow mounts, independently parsed and byte-compared, sealed, and no-clobber published; Gradle receives the SDK read-only"
 fi
 
+echo "== (0j-archives) fixed toolchain archive authority (R-S11cs/R-S11e-111) =="
+r_s11cs=
+if ! /usr/bin/python3 -I -S scripts/online-fixed-archive-output.py self-test; then
+  r_s11cs="$r_s11cs transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-fixed-archive-authority.py --self-test; then
+  r_s11cs="$r_s11cs authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cs" ]; then
+  echo "  FAIL R-S11cs fixed toolchain archive authority:$r_s11cs"
+  rc=1
+else
+  echo "  ok  R-S11cs all fourteen fixed SHA-256 archives use one exact-length manifest, a private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
+fi
+
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
 r_s11cl=
 if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then

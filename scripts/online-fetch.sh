@@ -17,8 +17,8 @@
 #
 # R-B12 requires each first pin be established by an audited, dual-sourced
 # bootstrap (publisher hash/signature cross-checked) and recorded in pins.env
-# BEFORE this script is allowed to fetch it. fetch_verify enforces that by
-# rejecting the SHA_PENDING sentinel before touching the network.
+# BEFORE this script is allowed to fetch it. The fixed-archive transaction
+# rejects SHA_PENDING, wrong lengths, and wrong digests before publication.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
@@ -29,6 +29,7 @@ readonly DOCKER_BIN=/usr/bin/docker
 readonly GIT_BIN=/usr/bin/git
 readonly TAR_BIN=/usr/bin/tar
 readonly FLOCK_BIN=/usr/bin/flock
+readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
 readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
@@ -54,6 +55,93 @@ esac
 for variable in DOCKER_CONFIG DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
     [ -z "${!variable+x}" ] || die "$variable must not influence online acquisition"
 done
+
+readonly -a FIXED_ARCHIVE_ARGS=(
+    --entry
+    "android-cmdline-tools.zip"
+    "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"
+    "$SIZE_ANDROID_CMDLINE_TOOLS"
+    "$SHA256_ANDROID_CMDLINE_TOOLS"
+    "dl.google.com"
+    --entry
+    "android-ndk-${ANDROID_NDK_VERSION}.zip"
+    "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip"
+    "$SIZE_ANDROID_NDK_R28C"
+    "$SHA256_ANDROID_NDK_R28C"
+    "dl.google.com"
+    --entry
+    "flutter-${FLUTTER_VERSION}.tar.xz"
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
+    "$SIZE_FLUTTER_3_24_5"
+    "$SHA256_FLUTTER_3_24_5"
+    "storage.googleapis.com"
+    --entry
+    "flutter-windows-${FLUTTER_VERSION}.zip"
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${FLUTTER_VERSION}-stable.zip"
+    "$SIZE_FLUTTER_WIN_3_24_5"
+    "$SHA256_FLUTTER_WIN_3_24_5"
+    "storage.googleapis.com"
+    --entry
+    "frb-${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz"
+    "https://github.com/fzyzcjy/flutter_rust_bridge/archive/refs/tags/v${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz"
+    "$SIZE_FRB_1_80_1"
+    "$SHA256_FRB_1_80_1"
+    "github.com,codeload.github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    --entry
+    "llvm-${LLVM_VERSION}.tar.xz"
+    "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-18.04.tar.xz"
+    "$SIZE_LLVM_15_0_6"
+    "$SHA256_LLVM_15_0_6"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    --entry
+    "llvm-windows-${LLVM_VERSION}.exe"
+    "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-win64.exe"
+    "$SIZE_LLVM_WIN_15_0_6"
+    "$SHA256_LLVM_WIN_15_0_6"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    --entry
+    "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"
+    "https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"
+    "$SIZE_OLEFILE_0_47"
+    "$SHA256_OLEFILE_0_47"
+    "files.pythonhosted.org"
+    --entry
+    "python-windows-${PYTHON_VERSION}.exe"
+    "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe"
+    "$SIZE_PYTHON_WIN_3_11_9"
+    "$SHA256_PYTHON_WIN_3_11_9"
+    "www.python.org,python.org"
+    --entry
+    "rust-${RUST_VERSION}.tar.xz"
+    "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz"
+    "$SIZE_RUST_1_75"
+    "$SHA256_RUST_1_75"
+    "static.rust-lang.org"
+    --entry
+    "rust-std-${RUST_VERSION}-aarch64-linux-android.tar.xz"
+    "https://static.rust-lang.org/dist/2023-12-28/rust-std-${RUST_VERSION}.0-aarch64-linux-android.tar.xz"
+    "$SIZE_RUST_STD_ANDROID_1_75"
+    "$SHA256_RUST_STD_ANDROID_1_75"
+    "static.rust-lang.org"
+    --entry
+    "vcpkg-${VCPKG_BASELINE}.tar.gz"
+    "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz"
+    "$SIZE_VCPKG_120DEAC3"
+    "$SHA256_VCPKG_120DEAC3"
+    "github.com,codeload.github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    --entry
+    "win/Git-2.45.2-64-bit.exe"
+    "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe"
+    "$SIZE_GIT_WIN_2_45_2"
+    "$SHA256_GIT_WIN_2_45_2"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+    --entry
+    "win/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi"
+    "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi"
+    "$SIZE_RUST_MSVC_1_75"
+    "$SHA256_RUST_MSVC_1_75"
+    "static.rust-lang.org"
+)
 
 ONLINE_FETCH_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-online-fetch.XXXXXXXXXX)" \
     || die "cannot create the private online-fetch workspace"
@@ -264,29 +352,6 @@ fi
     || die "online cache root is not current-user-private mode 0700"
 assert_online_fetch_docker_authority
 
-# fetch_verify URL DEST_BASENAME EXPECTED_SHA: idempotent download + verify.
-# Skips re-download if the cached file already verifies; aborts on any SHA failure
-# or the R-B12 sentinel (verify_sha256 enforces both). Never "download anyway".
-fetch_verify() {
-    local url="$1" name="$2" sha="$3"
-    local dest="$ONLINE_DIR/$name"
-    if [ -f "$dest" ] && [ "$sha" != "${SHA_PENDING}" ] && \
-       [ "$(sha256sum "$dest" | awk '{print $1}')" = "$sha" ]; then
-        log "cached + verified, skipping: $name"
-        return 0
-    fi
-    # Refuse before reaching for the network if provenance isn't established.
-    [ "$sha" != "${SHA_PENDING}" ] || \
-        die "refusing to fetch $name — its pins.env SHA-256 is the R-B12 sentinel; record audited provenance first"
-    log "fetching: $url -> $name"
-    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"; then
-        rm -f "$dest.part"
-        die "failed to fetch $name"
-    fi
-    mv "$dest.part" "$dest"
-    verify_sha256 "$dest" "$sha"
-}
-
 fetch_verify_sha512() {
     local url="$1" name="$2" sha="$3"
     local dest="$ONLINE_DIR/$name"
@@ -459,80 +524,116 @@ vendor_cargo() {
     log "cargo vendor done — config at ./online/cargo-vendor-config.toml"
 }
 
-# ── Toolchains / SDKs (each SHA-pinned in pins.env, R-B5a/§3.2) ────────────────
-fetch_toolchains() {
-    # Rust 1.75 toolchain (rustup-init or the offline toolchain tarball).
-    fetch_verify "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-unknown-linux-gnu.tar.xz" \
-        "rust-${RUST_VERSION}.tar.xz" "${SHA256_RUST_1_75}"
-    # Rust std for aarch64-linux-android — the cargo-ndk JNI cross-compile target (the host
-    # tarball above ships only x86_64). Dated path = the immutable 1.75.0 release (2023-12-28).
-    fetch_verify "https://static.rust-lang.org/dist/2023-12-28/rust-std-${RUST_VERSION}.0-aarch64-linux-android.tar.xz" \
-        "rust-std-${RUST_VERSION}-aarch64-linux-android.tar.xz" "${SHA256_RUST_STD_ANDROID_1_75}"
-    # Flutter SDK 3.24.5.
-    fetch_verify "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
-        "flutter-${FLUTTER_VERSION}.tar.xz" "${SHA256_FLUTTER_3_24_5}"
-    # Android NDK r28c.
-    fetch_verify "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" \
-        "android-ndk-${ANDROID_NDK_VERSION}.zip" "${SHA256_ANDROID_NDK_R28C}"
-    # Android command-line-tools is the local seed for the later exact SDK archive transaction.
-    # The versioned build number is pinned in pins.env; the filename's historical `_latest`
-    # suffix does not select a moving build because the numeric build and digest are both fixed.
-    fetch_verify "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip" \
-        "android-cmdline-tools.zip" "${SHA256_ANDROID_CMDLINE_TOOLS}"
-    # LLVM/Clang 15.0.6 (libclang for bindgen determinism, R-B12).
-    fetch_verify "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-18.04.tar.xz" \
-        "llvm-${LLVM_VERSION}.tar.xz" "${SHA256_LLVM_15_0_6}"
-    # flutter_rust_bridge_codegen 1.80.1 (R-B7 — the uncommitted bridge generator).
-    fetch_verify "https://github.com/fzyzcjy/flutter_rust_bridge/archive/refs/tags/v${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz" \
-        "frb-${FLUTTER_RUST_BRIDGE_VERSION}.tar.gz" "${SHA256_FRB_1_80_1}"
+# ── Fixed toolchain / installer archives ──────────────────────────────────────
+# Remote bytes receive one private output transaction, not the online root or a
+# final name. The host independently checks every exact length/digest before a
+# descriptor-relative no-clobber publication.
+fixed_archive_tool() {
+    local command="$1" staging="$2" helper_sha256="$3" builder="$4"
+    shift 4
+    /usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" "$command" \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        --builder-id "$builder" --helper-sha256 "$helper_sha256" \
+        "${FIXED_ARCHIVE_ARGS[@]}" "$@"
 }
 
-# ── Windows toolchains (the §12.2 KVM-VM build; stably-addressable downloads) ──────
-# Windows can't be cross-built from Linux (MSVC + WiX are Windows-only), so these stage
-# into ./online for the guest setup to install OFFLINE (provision-windows-vm.sh mounts
-# ./online as C:\online). The flutter/llvm in fetch_toolchains are the LINUX .tar.xz; the
-# guest needs the WINDOWS distributions. (The Win11 ISO + the VS Build Tools layout are
-# evergreen — not stably SHA-addressable upstream — so they are CAPTURED and pinned
-# separately by SHA per R-B12(c), not fetched here.)
-fetch_windows_toolchains() {
-    # Windows Flutter SDK 3.24.5 — the .zip distribution (the linux .tar.xz won't run on Windows).
-    fetch_verify "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${FLUTTER_VERSION}-stable.zip" \
-        "flutter-windows-${FLUTTER_VERSION}.zip" "${SHA256_FLUTTER_WIN_3_24_5}"
-    # Windows LLVM/clang 15.0.6 installer (libclang for FRB/bindgen determinism, R-B12). The guest
-    # installs it silently (/S); VS Build Tools' bundled clang is a different, non-pinned version.
-    fetch_verify "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-win64.exe" \
-        "llvm-windows-${LLVM_VERSION}.exe" "${SHA256_LLVM_WIN_15_0_6}"
-    # Python for the §12.2 build host: build.py orchestrates the windows build + libs/portable/generate.py
-    # (imports brotli) packs the portable installer. The golden installs it + `pip install brotli` networked.
-    fetch_verify "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe" \
-        "python-windows-${PYTHON_VERSION}.exe" "${SHA256_PYTHON_WIN_3_11_9}"
-    fetch_verify "https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \
-        "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "${SHA256_OLEFILE_0_47}"
-    # The golden's Rust compiler MSI + Git installer — publicly re-fetchable and DUAL-SOURCE-pinned
-    # (pins.env), so fetch + verify them here like the other windows toolchains instead of relying on
-    # an operator hand-stage. rustup-init has NO stable versioned URL (its 'latest' drifts), so it
-    # stays OPERATOR-CAPTURED in online/win/ and is SHA-verified at provision time (R-B12(c)); fail
-    # loud here with the exact stage-it command if it is missing so nothing silently proceeds.
-    mkdir -p "$ONLINE_DIR/win"
-    fetch_verify "https://static.rust-lang.org/dist/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi" \
-        "win/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi" "${SHA256_RUST_MSVC_1_75}"
-    fetch_verify "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe" \
-        "win/Git-2.45.2-64-bit.exe" "${SHA256_GIT_WIN_2_45_2}"
-    if [ -f "$ONLINE_DIR/win/rustup-init.exe" ]; then
+retire_fixed_archive_staging() {
+    local staging="$1" expected_identity="$2"
+    /usr/bin/python3 "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$expected_identity"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "fixed-archive transaction staging remains after retirement"
+}
+
+reconcile_fixed_archive_transactions() {
+    local helper_sha256="$1" builder="$2" staging staging_identity restore_nullglob=0
+    local -a transactions=()
+    if ! shopt -q nullglob; then
+        shopt -s nullglob
+        restore_nullglob=1
+    fi
+    transactions=("$ONLINE_DIR"/.rustdesk-fixed-archives.*)
+    [ "$restore_nullglob" -eq 0 ] || shopt -u nullglob
+    for staging in "${transactions[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "fixed-archive transaction path is not one real directory: $staging"
+        staging_identity="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        if [ -e "$staging/state.json" ] || [ -L "$staging/state.json" ]; then
+            fixed_archive_tool reconcile "$staging" "$helper_sha256" "$builder"
+        fi
+        retire_fixed_archive_staging "$staging" "$staging_identity"
+    done
+}
+
+stage_fixed_archives() {
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local lock_fd helper_sha256 staging staging_identity action
+    local producer_status=0 verification_status=0 publication_status=0
+    require_online_fetch_builder_image android-builder "$builder"
+    [ -f "$FIXED_ARCHIVE_HELPER" ] && [ ! -L "$FIXED_ARCHIVE_HELPER" ] \
+        || die "fixed-archive helper is not one real source file"
+    helper_sha256="$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}')"
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for fixed-archive transaction locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another online output transaction owns the online root"
+    reconcile_fixed_archive_transactions "$helper_sha256" "$builder"
+    staging="$(umask 077 && /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-fixed-archives.XXXXXXXXXX")" \
+        || die "cannot create private fixed-archive transaction staging"
+    staging_identity="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    action="$(fixed_archive_tool prepare "$staging" "$helper_sha256" "$builder")" \
+        || die "cannot prepare fixed-archive transaction"
+    case "$action" in
+        complete)
+            fixed_archive_tool reconcile "$staging" "$helper_sha256" "$builder" \
+                || die "cannot reconcile complete fixed-archive transaction"
+            retire_fixed_archive_staging "$staging" "$staging_identity"
+            "$FLOCK_BIN" --unlock "$lock_fd" \
+                || die "cannot release the fixed-archive transaction lock"
+            exec {lock_fd}<&-
+            log "all fixed toolchain and installer archives are present and exact"
+            return 0
+            ;;
+        acquire) ;;
+        *) die "fixed-archive transaction returned an unknown action: $action" ;;
+    esac
+    log "acquiring missing fixed toolchain and installer archives through the private transaction"
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly" \
+        --mount "type=bind,source=$staging/state.json,target=/state.json,readonly" \
+        --mount "type=bind,source=$staging/output,target=/outputs" \
+        "$builder" \
+        /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire \
+            --state /state.json --output /outputs \
+            --builder-id "$builder" --helper-sha256 "$helper_sha256" \
+        || producer_status=$?
+    if [ "$producer_status" -eq 0 ]; then
+        fixed_archive_tool verify "$staging" "$helper_sha256" "$builder" \
+            || verification_status=$?
+    fi
+    if [ "$producer_status" -eq 0 ] && [ "$verification_status" -eq 0 ]; then
+        fixed_archive_tool publish "$staging" "$helper_sha256" "$builder" \
+            || publication_status=$?
+    fi
+    fixed_archive_tool reconcile "$staging" "$helper_sha256" "$builder" \
+        || die "fixed-archive transaction is incoherent and was preserved at $staging"
+    retire_fixed_archive_staging "$staging" "$staging_identity"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the fixed-archive transaction lock"
+    exec {lock_fd}<&-
+    [ "$producer_status" -eq 0 ] || die "fixed-archive acquisition failed"
+    [ "$verification_status" -eq 0 ] || die "fixed-archive host verification failed"
+    [ "$publication_status" -eq 0 ] || die "fixed-archive publication failed"
+    log "fixed toolchain and installer archives acquired, verified, and no-clobber published"
+}
+
+require_windows_operator_toolchain() {
+    if [ -f "$ONLINE_DIR/win/rustup-init.exe" ] && [ ! -L "$ONLINE_DIR/win/rustup-init.exe" ]; then
         verify_sha256 "$ONLINE_DIR/win/rustup-init.exe" "${SHA256_RUSTUP_INIT_WIN}"
     else
-        die "online/win/rustup-init.exe missing — it is operator-captured (rustup-init has no stable versioned URL; R-B12(c)). Stage it, then it is SHA-verified against SHA256_RUSTUP_INIT_WIN:
-    curl -fsSL --proto '=https' --tlsv1.2 -o online/win/rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
-  (if upstream rustup has moved on, its SHA will mismatch the pin — re-pin SHA256_RUSTUP_INIT_WIN deliberately in scripts/pins.env after review.)"
+        die "online/win/rustup-init.exe missing — it is operator-captured because the upstream 'latest' URL drifts. Stage and deliberately re-pin it outside this fixed-archive transaction before provisioning Windows"
     fi
-}
-
-# ── vcpkg registry snapshot ───────────────────────────────────────────────────
-fetch_vcpkg() {
-    # vcpkg @ the pinned baseline commit (then `vcpkg install` builds the native
-    # set offline from the overlay ports in res/vcpkg).
-    fetch_verify "https://github.com/microsoft/vcpkg/archive/${VCPKG_BASELINE}.tar.gz" \
-        "vcpkg-${VCPKG_BASELINE}.tar.gz" "${SHA256_VCPKG_120DEAC3}"
 }
 
 require_image_pin() {
@@ -2480,9 +2581,8 @@ main() {
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images
     vendor_cargo
-    fetch_toolchains
+    stage_fixed_archives
     verify_online_glob_cardinality
-    fetch_vcpkg
     build_frb_codegen
     stage_pub_cache
     stage_vcpkg_distfiles
@@ -2492,7 +2592,7 @@ main() {
     stage_cargo_ndk
     stage_android_sdk
     stage_gradle
-    fetch_windows_toolchains
+    require_windows_operator_toolchain
     stage_windows_engine
     stage_flutter_pub_cache
     stage_windows_wix_nuget

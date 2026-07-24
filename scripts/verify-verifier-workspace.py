@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13769,6 +13769,8 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition focused forbidden-authority enforcement"),
         ("ordinary acquisition launch inventory",
          "online acquisition focused launch inventory"),
+        ("networked archive acquisition launch funnel",
+         "online acquisition focused archive-launch inventory"),
         ("MUTATIONS: Tuple[Mutation, ...]",
          "online acquisition focused mutation inventory"),
         ("run_mutations(sources)",
@@ -13827,6 +13829,25 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition funnel resource ceilings"),
     ):
         require_text(launch_funnel, text, label)
+    archive_launch_funnel = extract_between(
+        online,
+        "online_docker_run_archive_acquisition() {",
+        '        "$@"\n}',
+        "online fixed-archive acquisition launch funnel",
+    )
+    for text, label in (
+        ("online_docker run --rm --pull=never --network=bridge --read-only",
+         "online fixed-archive funnel confinement"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "online fixed-archive numeric nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges",
+         "online fixed-archive privilege confinement"),
+        ("--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
+         "online fixed-archive resource ceilings"),
+        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+         "online fixed-archive non-executable scratch"),
+    ):
+        require_text(archive_launch_funnel, text, label)
     pub_semantic = extract_between(
         online,
         "verify_pub_cache_resolution() {",
@@ -15143,6 +15164,175 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "online-fetch Android SDK hardening ledger",
+    )
+
+
+def validate_online_fetch_fixed_archive_authority_contract(sources):
+    focused = sources["online_fetch_fixed_archive_authority_verifier"]
+    helper = sources["online_fixed_archive_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        (
+            "Bind the fixed SHA-256 archive acquisition/publication authority",
+            "fixed-archive focused authority binding",
+        ),
+        (
+            "EXPECTED_SIZES = {",
+            "fixed-archive focused exact-length inventory",
+        ),
+        (
+            "EXPECTED_SHA256 = {",
+            "fixed-archive focused digest inventory",
+        ),
+        (
+            "EXPECTED_MANIFEST = (",
+            "fixed-archive focused manifest mapping",
+        ),
+        (
+            "run_mutations(sources)",
+            "fixed-archive focused mutation dispatch",
+        ),
+    ):
+        require_text(focused, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_fixed_archives() {",
+        "\n}\n\nrequire_windows_operator_toolchain()",
+        "fixed-archive acquisition lifecycle",
+    )
+    for text, label in (
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "fixed-archive exclusive transaction",
+        ),
+        (
+            '/usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-fixed-archives.XXXXXXXXXX"',
+            "fixed-archive unpredictable same-filesystem staging",
+        ),
+        (
+            "fixed_archive_tool prepare",
+            "fixed-archive durable prepare",
+        ),
+        (
+            "fixed_archive_tool verify",
+            "fixed-archive independent host verdict",
+        ),
+        (
+            "fixed_archive_tool publish",
+            "fixed-archive checked publication",
+        ),
+        (
+            "fixed_archive_tool reconcile",
+            "fixed-archive restart recovery",
+        ),
+        (
+            "source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly",
+            "fixed-archive exact helper mount",
+        ),
+        (
+            "source=$staging/state.json,target=/state.json,readonly",
+            "fixed-archive exact state mount",
+        ),
+        (
+            "source=$staging/output,target=/outputs",
+            "fixed-archive sole writable output",
+        ),
+        (
+            '[ "$producer_status" -eq 0 ] && [ "$verification_status" -eq 0 ]',
+            "fixed-archive independent verdict barrier",
+        ),
+    ):
+        require_text(lifecycle, text, label)
+    require_exact_count(lifecycle, "--mount ", 3, "fixed-archive exact mount inventory")
+    require_absent(lifecycle, "source=$ONLINE_DIR,target=", "fixed-archive broad online mount")
+    for text, label in (
+        (
+            'FORMAT = "rustdesk-fixed-archive-output-v1"',
+            "fixed-archive state format",
+        ),
+        (
+            "if len(specs) != 14:",
+            "fixed-archive closed manifest cardinality",
+        ),
+        (
+            "urllib.request.ProxyHandler({})",
+            "fixed-archive ambient proxy removal",
+        ),
+        (
+            "MAX_REDIRECTS = 5",
+            "fixed-archive redirect bound",
+        ),
+        (
+            'response.headers.get("Content-Length")',
+            "fixed-archive exact response length",
+        ),
+        (
+            'response.headers.get("Transfer-Encoding")',
+            "fixed-archive bounded chunked response framing",
+        ),
+        (
+            "digest.hexdigest() != spec.sha256",
+            "fixed-archive exact response digest",
+        ),
+        (
+            "os.O_EXCL",
+            "fixed-archive exclusive candidate creation",
+        ),
+        (
+            "os.O_NOFOLLOW",
+            "fixed-archive no-follow descriptor policy",
+        ),
+        (
+            "regular_file_sha256(Path(__file__)) != helper_sha256",
+            "fixed-archive helper-byte binding",
+        ),
+        (
+            "RENAME_NOREPLACE = 1",
+            "fixed-archive no-clobber primitive",
+        ),
+        (
+            "validate_publication_layout(",
+            "fixed-archive interrupted-publication recovery",
+        ),
+        (
+            "self-test accepted an occupied wrong archive destination",
+            "fixed-archive occupied-destination fixture",
+        ),
+        (
+            "self-test accepted an unsafe nested archive parent as missing",
+            "fixed-archive unsafe-parent fixture",
+        ),
+        (
+            "self-test accepted a response without admitted length framing",
+            "fixed-archive unframed-response fixture",
+        ),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-online-fetch-fixed-archive-authority.py --self-test",
+        "fixed-archive focused verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-fixed-archive-output.py self-test",
+        "fixed-archive transaction self-test wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cs</span>',
+        "fixed-archive normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>246</td>",
+        "fixed-archive Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority",
+        "fixed-archive hardening ledger",
     )
 
 
@@ -20182,6 +20372,7 @@ def validate_sources(sources):
     validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_online_fetch_vcpkg_native_output_authority_contract(sources)
     validate_online_fetch_android_sdk_output_authority_contract(sources)
+    validate_online_fetch_fixed_archive_authority_contract(sources)
     validate_online_fetch_android_ndk_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -32802,7 +32993,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
+            "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34627,6 +34818,14 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
+            "online_docker_run_archive_acquisition() {\n"
+            "    online_docker run --rm --pull=never --network=bridge --read-only",
+            "online_docker_run_archive_acquisition() {\n"
+            "    online_docker run --rm --pull=never --network=host --read-only",
+            "online fixed-archive funnel confinement",
+        ),
+        (
+            "online_fetch",
             '--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
             '--image-ref "$role" --role "$role" --expected-id "$image_id"',
             "online acquisition exact loaded-image verification",
@@ -35292,7 +35491,7 @@ def run_source_mutations(sources):
             "    online_docker run --rm --pull=never --network=bridge --read-only",
             "online_docker_run_archive_acquisition() {\n"
             "    online_docker run --rm --pull=always --network=host",
-            "Android SDK no-pull/root floor",
+            "online fixed-archive funnel confinement",
         ),
         (
             "online_fetch",
@@ -35375,6 +35574,91 @@ def run_source_mutations(sources):
             "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
             "R-S11cr/R-S11e-110 — ambient Android SDK authority",
             "online-fetch Android SDK/Gradle correction hardening ledger",
+        ),
+        (
+            "online_fetch_fixed_archive_authority_verifier",
+            "EXPECTED_SIZES = {",
+            "REMOVED_SIZE_INVENTORY = {",
+            "fixed-archive focused exact-length inventory",
+        ),
+        (
+            "online_fetch_fixed_archive_authority_verifier",
+            "EXPECTED_SHA256 = {",
+            "REMOVED_DIGEST_INVENTORY = {",
+            "fixed-archive focused digest inventory",
+        ),
+        (
+            "online_fetch_fixed_archive_authority_verifier",
+            "EXPECTED_MANIFEST = (",
+            "REMOVED_MANIFEST = (",
+            "fixed-archive focused manifest mapping",
+        ),
+        (
+            "online_fetch",
+            "stage_fixed_archives() {",
+            "stage_fixed_archives_disabled() {",
+            "fixed-archive acquisition lifecycle",
+        ),
+        (
+            "online_fetch",
+            "source=$staging/state.json,target=/state.json,readonly",
+            "source=$staging/state.json,target=/state.json",
+            "fixed-archive exact state mount",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "if len(specs) != 14:",
+            "if len(specs) < 1:",
+            "fixed-archive closed manifest cardinality",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "urllib.request.ProxyHandler({})",
+            "urllib.request.ProxyHandler()",
+            "fixed-archive ambient proxy removal",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            'response.headers.get("Content-Length")',
+            'response.headers.get("X-Content-Length")',
+            "fixed-archive exact response length",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            'response.headers.get("Transfer-Encoding")',
+            'response.headers.get("X-Transfer-Encoding")',
+            "fixed-archive bounded chunked response framing",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "fixed-archive no-clobber primitive",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-fixed-archive-authority.py --self-test",
+            "true # fixed-archive authority gate removed",
+            "fixed-archive focused verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cs</span>',
+            '<span class="id">R-S11cs-disabled</span>',
+            "fixed-archive normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>246</td>",
+            "<tr><td>246-disabled</td>",
+            "fixed-archive Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority",
+            "R-S11cs-disabled/R-S11e-111 — ambient archive acquisition authority",
+            "fixed-archive hardening ledger",
         ),
         (
             "online_fetch_android_ndk_output_authority_verifier",
@@ -36748,6 +37032,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_android_sdk_output_helper": (
                 repo / "scripts/online-android-sdk-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_fixed_archive_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-fixed-archive-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_fixed_archive_output_helper": (
+                repo / "scripts/online-fixed-archive-output.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

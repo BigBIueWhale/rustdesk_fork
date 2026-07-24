@@ -10070,13 +10070,109 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   closure, durable transaction, no-clobber publication, read-only Gradle SDK, shared gates,
   R-S11cr, Appendix C #245, this ledger, and independent workspace ownership through deliberate
   mutations. The adjacent container gate now treats the archive funnel as its own fourth Docker
-  primitive and passes with 33 mutations rejected.
+  primitive and passes with 36 mutations rejected.
 
   No root command, image pull/build/tag, release build, host RustDesk process/service/config/
   listener/firewall/network operation, or live online SDK mutation occurred. The networked action
   was limited to the disposable container proof above. This is source, negative-fixture, exact
   archive, and complete temporary acquisition evidence—not exact clean R-B2/R-B10 release output or
   installed Android device evidence.
+- **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
+  SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
+  FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
+  acquisition host and immutable Android-builder container. Endpoint/action: the former generic
+  `fetch_verify` family used by Rust, Flutter, Android, LLVM, Python, FRB, vcpkg, and Windows archive
+  acquisition. Boundary: remote HTTPS response/redirect behavior and network-client execution ↔ the durable
+  exact offline-input namespace and every later offline release consumer.
+
+  Before this slice, host `curl -L` wrote predictable `<final>.part` names directly under `online` and
+  an overwrite-capable `mv` installed the final name. A final SHA-256 caught a completed wrong response,
+  but the host network client had no reviewed final-host set, response-length ceiling, content-encoding
+  contract, private output namespace, durable state, independent output verdict, or no-clobber publication.
+  The generic helper served fourteen release inputs and three wrapper families. This was build-host
+  network-execution, acquisition-output/publication, stale-state, and denial-of-service authority debt—not
+  evidence that a cached archive was malicious or changed, host root was acquired, a container escaped, a
+  port/listener was exposed, host RustDesk/service/configuration/firewall/network state changed,
+  exploitation occurred, or the host was compromised.
+
+  Source closure: `scripts/pins.env` now binds the exact byte length next to the established digest for
+  every fixed archive. One sorted fourteen-entry manifest names Android command-line tools and NDK;
+  Linux and Windows Flutter; FRB; Linux and Windows LLVM; olefile and Windows Python; Linux Rust and the Android
+  standard library; vcpkg; Git for Windows; and the Windows Rust MSI. Each entry carries one exact
+  credential-free HTTPS URL, length, SHA-256, and a bounded reviewed initial/final redirect-host set.
+  `fetch_verify`, `fetch_toolchains`, `fetch_windows_toolchains`, and `fetch_vcpkg` are deleted; the main
+  path calls the fixed transaction once, so the inherited redundant vcpkg fetch cannot recur. The moving,
+  operator-captured `rustup-init.exe` remains outside this manifest and is still digest-verified before
+  Windows use.
+
+  `scripts/online-fixed-archive-output.py` rejects root UID/GID, mutable image identity, malformed or
+  pending pins, noncanonical destinations/URLs/hosts, duplicates, and any manifest count/order other than
+  the exact fourteen. The host exclusively locks the current-user-private mode-0700 online root,
+  reconciles every reserved same-filesystem transaction, and fully validates present output by stable
+  no-follow descriptor reads. Reuse requires exact type, same filesystem/mount, closed ownership/mode
+  profile, single link, no xattrs, length, and SHA-256. Historical current-user 0644/0664 and root
+  0444/0644 files are accepted only below that private root after the same byte check; new output is
+  current-owner mode 0400. A wrong occupied final fails without deletion, replacement, chmod, or download.
+
+  A cold transaction creates unpredictable mode-0700 staging with one private output and a bounded
+  single-link mode-0600 fsynced state record. That record binds the online/staging/output identities,
+  UID/GID, complete manifest digest and records, immutable Android-builder content ID, exact helper digest,
+  missing set, phase, and per-file publication progress. The producer runs through the established archive
+  funnel by exact image ID with `--pull=never`, isolated bridge egress, a read-only root, numeric non-root
+  identity, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded
+  non-executable scratch. Its only mounts are the exact helper and state read-only and the private output
+  writable. It receives no online root, final path, live repository, Docker socket, device, published port,
+  other writable host path, or host network/PID/IPC/UTS namespace.
+
+  Python proxy discovery is disabled. Every request begins at the exact HTTPS URL; at most five redirects
+  may remain credential-free HTTPS within that entry's host set. Status must be 200, the final host remains
+  allowed, and content encoding is absent or identity. A present decimal `Content-Length` must equal the
+  pin before streaming; an absent length is admitted only with explicit chunked transfer framing.
+  The producer creates each candidate exclusively with no-follow semantics and, under either framing, stops at the exact byte
+  ceiling, requires final length and SHA-256, synchronizes it, and seals it 0400 without executing or
+  extracting it. After producer exit, the host independently checks exact inventory, recorded inode,
+  ownership/modes, filesystem/mount, type/link/xattr closure, and stable complete bytes. Producer and host
+  verdicts remain independent.
+
+  Only a verified transaction may publish. Each archive uses descriptor-relative
+  `renameat2(RENAME_NOREPLACE)` and synchronizes both namespaces. An exact destination race is independently
+  revalidated before the identical staged duplicate is removed; a different destination is fatal. State is
+  synchronized after each archive, and all fourteen finals are rechecked before completion. Recovery
+  accepts prepared discard, verified-unpublished, exact interrupted per-file publication, and complete
+  arrangements; incoherent state is preserved. Coherent staging is removed only through the shared
+  identity-bound, same-filesystem, no-follow private-tree closure.
+
+  Verification recorded so far: the helper adversarial self-test passes as numeric UID/GID 1000 in the
+  immutable Android builder with no pull/network, read-only root/source, all capabilities dropped,
+  no-new-privileges, bounded resources, no port/socket/device/host namespace, and disposable tmpfs. It
+  proves exact fourteen-file and nested `win/` publication, idempotent completion, an interruption after
+  no-clobber rename but before state advancement, wrong length/digest cleanup, redirect-host refusal,
+  bounded chunked delivery, unframed-response refusal, symlink rejection, unsafe nested-parent refusal,
+  and wrong occupied-destination refusal. The focused source verifier binds the exact
+  manifest/pins, three-mount producer, root/network/redirect/response/file/output/recovery/publication
+  contracts, shared-gate wiring, R-S11cs, Appendix C #246, and this ledger through 36 deliberate
+  mutations.
+
+  Complete live acquisition proof: one disposable immutable Android-builder container ran as numeric
+  UID:GID 1000:1000 with `--pull=never`, isolated bridge egress, read-only root, all capabilities dropped,
+  no-new-privileges, fixed PID/8-GiB-memory/no-swap/two-CPU ceilings, and bounded non-executable `/tmp` and
+  `/proof` tmpfs. The exact helper was its only read-only host bind; it received no writable host path,
+  source tree, online cache, final host name, Docker socket, device, port, or host namespace. It downloaded
+  all 14 exact responses (4,233,346,963 bytes), exercised Google/Python/static-Rust/GitHub redirect and
+  fixed-length/chunked delivery, checked every streaming ceiling and SHA-256, independently verified the
+  complete candidate, and passed durable no-clobber publication plus reconciliation entirely inside
+  `/proof`. The container exited green with `fixed archive complete live network lifecycle: PASS
+  (14 archives)`; its tmpfs and every downloaded byte then vanished. Two preceding fail-closed attempts
+  exposed and corrected the source manifest's `frb`/`flutter` ordering and GitHub codeload's explicit
+  chunked/no-`Content-Length` response contract; neither attempt published persistent output.
+
+  Evidence boundary: this is complete disposable cold acquisition evidence for the fixed fourteen-archive
+  transaction, not a run against or mutation of the live online cache and not a release build. The separate
+  SHA-512 codec/systemd paths, host Cargo vendoring, Windows Flutter
+  engine and Pub-cache archive producers, WiX capture, maintenance-image acquisition/publication, exact
+  cold R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain open. No root command
+  or root container, image pull/build/tag, release build, host RustDesk process/service/configuration/
+  listener/firewall/network operation, or live online archive mutation was performed.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -10794,9 +10890,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5644686a2b1eefdefc430eba436e67e5cb6bfe510d7d0eb8d447247020e9f575  requirements.html
+154f5ac091d0090796da6db498fc8c187fc346ed838f06793d6828fe938b7116  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cr, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cs, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

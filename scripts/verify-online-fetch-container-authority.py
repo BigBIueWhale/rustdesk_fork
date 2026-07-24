@@ -291,13 +291,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         'local builder="$ANDROID_BUILDER_IMAGE_ID"',
-        6,
+        7,
         "exact Android builder consumers",
     )
     require_count(
         shell,
         "require_online_fetch_builder_image ",
-        10,
+        11,
         "per-launch-site exact-image verification",
     )
 
@@ -467,6 +467,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "        --pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
         "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
         "networkless archive non-executable scratch",
+    ),
+    Mutation(
+        "shell",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=host --read-only",
+        "networked archive isolated bridge",
+    ),
+    Mutation(
+        "shell",
+        "--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
+        "--pids-limit=-1 --memory=4g --memory-swap=4g --cpus=2",
+        "networked archive PID ceiling",
+    ),
+    Mutation(
+        "shell",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
+        "networked archive non-executable scratch",
     ),
     Mutation(
         "shell",

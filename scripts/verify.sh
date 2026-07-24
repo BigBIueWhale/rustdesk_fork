@@ -2983,8 +2983,8 @@ if [ -n "$r_s11e19" ]; then echo "  FAIL R-S11e-19 Windows service-owned child t
   echo "  ok  R-S11e-19 Windows SCM owns one creation-time job-bound server tree; raw credential admission linearizes with stop, admitted credential work drains before child shutdown, runtime replacement follows main-exit and job-zero proof, and SERVICE_STOPPED follows exact job accounting"; fi
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
 # connect-equivalent at rest, so the code-owned boundary is:
-#   * no PRS/key material is exported over main IPC;
-#   * service-owned receivers deny generic main-IPC password-storage/salt snapshots;
+#   * no PRS, password-storage/salt, or key material is exported over ordinary main IPC;
+#   * desktop UI state uses only receiver-derived nonsecret password-status responses;
 #   * macOS's service-owned LaunchAgent receives only an audit-token/launchd-proved runtime
 #     snapshot that never enters persisted Config;
 #   * every TOML/raw config writer uses the same durable platform transaction.
@@ -2993,22 +2993,42 @@ echo "== R-S11b-4 config/PRS secrecy boundary =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::windows_config_acl_sddl_is_protected_owner_system_only --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::runtime_password_snapshot_does_not_persist --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_when_value_matches_preset --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_password_status_but_not_credential_storage --color never
 r_s11b4=""
-r_s11b4_storage_block=$(awk '/MainConfigKey::PermanentPasswordStorageAndSalt =>/,/MainConfigKey::PermanentPasswordSet =>/' src/ipc.rs)
 r_s11b4_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' src/ipc.rs)
-grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-not-authority-gated"
-grep -q 'Rejected permanent-password storage read from service-owned main IPC' <<<"$r_s11b4_storage_block" || r_s11b4="$r_s11b4 storage-sync-service-deny-log-missing"
+r_s11b4_main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOptions\(value\) => \{/' src/ipc.rs)
+echo "$r_s11b4_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b4="$r_s11b4 credential-storage-main-config-key-present"
 if echo "$r_s11b4_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)'; then
   r_s11b4="$r_s11b4 standalone-salt-main-config-key-present"
 fi
+for token in \
+  'sync_permanent_password_storage_from_daemon' \
+  'apply_permanent_password_storage_and_salt_payload' \
+  'current_process_allows_main_channel_permanent_password_storage_sync' \
+  'allows_main_channel_password_storage_sync'; do
+  grep -qF "$token" src/ipc.rs && r_s11b4="$r_s11b4 ordinary-main-credential-mirror-symbol-present:$token"
+done
+for token in \
+  'get_local_permanent_password_storage_and_salt' \
+  'get_existing_key_pair' \
+  'get_key_pair(' \
+  'password_prs' \
+  'get_salt('; do
+  grep -qF "$token" <<<"$r_s11b4_main_config_handler" && r_s11b4="$r_s11b4 main-config-handler-secret-read-present:$token"
+done
+grep -qF 'set_permanent_password_storage_for_sync' libs/hbb_common/src/config.rs && r_s11b4="$r_s11b4 persistent-credential-sync-writer-present"
+grep -qF 'storage + "\n" + &salt' src/ipc.rs && r_s11b4="$r_s11b4 credential-storage-string-payload-present"
+grep -q 'LocalPermanentPasswordSet' <<<"$r_s11b4_config_enum" || r_s11b4="$r_s11b4 local-password-status-key-missing"
+grep -q 'MainConfigKey::LocalPermanentPasswordSet => Some' src/ipc.rs || r_s11b4="$r_s11b4 local-password-status-handler-missing"
+grep -q 'permanent_password_is_local_for_current_process().await' src/ipc.rs || r_s11b4="$r_s11b4 receiver-derived-local-password-status-missing"
+grep -q 'pub fn is_local_permanent_password_set() -> bool' src/ipc.rs || r_s11b4="$r_s11b4 local-password-status-client-missing"
+grep -q 'ipc::is_local_permanent_password_set()' src/ui_interface.rs || r_s11b4="$r_s11b4 ui-local-password-status-not-daemon-derived"
+grep -q 'main_config_keys_expose_password_status_but_not_credential_storage' src/ipc.rs || r_s11b4="$r_s11b4 nonsecret-main-config-regression-missing"
 grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-request-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-launchd-proof-missing"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-snapshot-nonpersist-test-missing"
 grep -q 'test_set_permanent_password_persists_when_value_matches_preset' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 explicit-password-set-preset-noop-test-missing"
-if grep -InE 'password_prs|get_permanent_password_prs|get_existing_key_pair|get_key_pair|key_pair' src/ipc.rs >"$VERIFY_TMP/rd_verify_r_s11b4"; then
-  r_s11b4="$r_s11b4 ipc-exports-prs-or-key-material"
-fi
 grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 toml-store-transaction-missing"
 grep -q 'store_config_bytes_transaction(&path, data, ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 raw-store-transaction-missing"
 unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)
@@ -3044,8 +3064,10 @@ done
 if grep -InE ';;;(BA|BU|AU|WD|CO)' libs/hbb_common/src/config.rs >"$VERIFY_TMP/rd_verify_r_s11b4_acl"; then
   r_s11b4="$r_s11b4 windows-config-acl-grants-broad-or-inherited-principal"
 fi
+grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' HARDENING_STATUS.md || r_s11b4="$r_s11b4 credential-mirror-ledger-missing"
+grep -Fq '<tr><td>237</td>' requirements.html || r_s11b4="$r_s11b4 credential-mirror-appendix-missing"
 if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_s11b4"; rc=1; else
-  echo "  ok  R-S11b-4 main IPC exports no PRS/key material, service-owned storage/salt reads are denied, macOS snapshots are launchd-bound runtime overlays, and TOML/raw stores share owner-proved durable Unix or protected-DACL Windows transactions"; fi
+  echo "  ok  R-S11b-4/R-S11b-4e ordinary main IPC exports only receiver-derived password status, purpose-specific service snapshots remain nonpersistent, and TOML/raw stores share owner-proved durable Unix or protected-DACL Windows transactions"; fi
 
 # (3b-iii-d) R-S11b-3a/R-S11b-3d: service-owned machine policy is not an ordinary
 # main IPC policy write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;
@@ -8080,19 +8102,13 @@ echo "== (3c) file-transfer no-follow write + path-traversal tests (R-S8/R-A5) =
 echo "== (3c-i) IPC _service path-sharing across uids (R-S11a/R-X13) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_service_ipc_path_is_shared_across_uids --color never
 
-# (3c-i-b) Permanent-password PRS credential durability (R-S9): config.password (the storage
-# envelope) and config.password_prs (the live CPace PRS) BOTH encode the same 32 PRS bytes, so a
-# credential snapshot carrying only `storage` rebuilds password_prs from it. This keeps a set/rotate
-# durable: password_prs stays in step with `storage`, so the headless --server reads a live PRS and
-# listens (R-S9) with the current password on restart. This pins the reconstruction:
-# base64(decode(storage)) == derive_cpace_prs(password), and the rebuilt at-rest PRS decrypts back to it.
-# Its complement — re-syncing an already-consistent credential is a NO-OP (idempotent, so no needless
-# config rewrite), and the "unchanged" decision compares the DECRYPTED PRS, never the ciphertext bytes
-# (symmetric_crypt uses a random nonce, so those bytes are unstable) — is pinned by the third test.
+# (3c-i-b) Permanent-password PRS credential durability (R-S9): durable provisioning writes
+# config.password (the storage envelope) and config.password_prs (the live CPace PRS) together from
+# the same 32 PRS bytes. Purpose-specific service replica protocols may reconstruct a nonpersistent
+# runtime PRS from the storage envelope, but ordinary main IPC never mirrors either credential form.
 echo "== (3c-i-b) permanent-password PRS credential durability (R-S9) =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::permanent_password::tests::prs_storage_reconstructs_from_password_storage --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::sync_rebuilds_password_prs_from_storage --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_permanent_password_sync_treats_same_encrypted_hash_as_unchanged --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::runtime_password_snapshot_does_not_persist --color never
 
 # (3c-i-c) At-rest config-load robustness (R-S9/R-P1 residuals — data-loss + coherence, all
 # fail-closed at the CPace boundary). Four defensive invariants on the shared at-rest state

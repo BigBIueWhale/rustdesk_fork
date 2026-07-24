@@ -816,7 +816,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   invalid abstraction. Useful tests inspect private module state directly; tests whose only purpose was to
   preserve whole-config replacement or standalone-salt semantics are deleted.
   Legitimate live mutation remains typed: filtered option writes, durable password provisioning (which owns
-  salt creation atomically), user-owned credential synchronization, and service-owned runtime replicas.
+  salt creation atomically), and purpose-specific nonpersistent service-owned runtime replicas.
   `Config::get_salt` remains a side-effect-free read. `scripts/verify.sh` rejects reintroduction of either
   whole-config public API or a standalone salt writer while retaining the pure-read check and the ordinary-main
   zero-writer gate. Appendix C #234 records the source-level closure. Exact native and reproducible artifact
@@ -912,6 +912,27 @@ unreachable and a source/test/AST gate prevents reintroduction.
   corrupt-payload preservation and hardening, absence of direct `File::create(Self::path())` / ignored `write_all`
   in those stores, and the raw/TOML recovery permission, symlink-rejection, replacement, transient-load,
   RDP-password, and alias-path cleanup-policy regression tests.
+- **R-S11b-4e — ordinary main IPC credential mirror excised — CLOSED/GATED 2026-07-24.**
+  Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action: the former
+  `MainConfigKey::PermanentPasswordStorageAndSalt` response, its newline-delimited string payload, the GUI-side
+  sync parser, and `Config::set_permanent_password_storage_for_sync`. Boundary: the daemon process that owns the
+  controlled-side credential ↔ an ordinary desktop main-IPC client and its independent in-memory/persisted config.
+  The response was admitted only for a user-owned receiver and rejected by service-owned receivers, so source
+  review did not prove a cross-UID credential disclosure, local-to-root escalation, authentication bypass,
+  exploitation event, Android lifecycle defect, or host compromise. It nevertheless contradicted R-S11's
+  nonsecret-main-protocol contract: `config.password` plus its salt reconstruct the connect-equivalent CPace PRS,
+  and the raw password protocol made copying that credential envelope into the GUI unnecessary.
+  Closure deletes the main-protocol variant and handler, string facade, parser, synchronous/asynchronous mirror
+  clients, post-mutation mirror, public persistent sync writer, private apply helper, authority predicate, and
+  tests whose only purpose was to preserve mirroring. The daemon now returns only the receiver-derived
+  `LocalPermanentPasswordSet` status needed by desktop presentation; the UI no longer consults or rewrites its own
+  controlled-side credential after a daemon query. Durable password mutation remains solely on the proved raw
+  password protocol. The separate Linux PRS replica and macOS/Windows storage-envelope replica paths remain
+  purpose-specific, mutually authenticated, generation-bound, and nonpersistent in the retained service child.
+  Shared and Apple source gates reject every mirror symbol/payload and bind the nonsecret replacement; the focused
+  main-protocol regression rejects the retired string key. The independent semantic validator deliberately
+  mutates every source/gate/spec/ledger edge. Appendix C #237 records the source-level closure; native and exact
+  artifact evidence remains part of R-B2.
 - **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
   Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
   deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
@@ -5602,14 +5623,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   by R-S11c-10r; Linux Flutter runner core-library load provenance is closed by R-S11c-10s; Linux Debian package
   tree authority is closed by R-S11c-10t; Linux XDO libxdo dynamic-library provenance is closed by
   R-S11c-10u.
-- **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09.** Platforms: all. Surface: at-rest password/PRS
+- **R-S11b-4 — config secrecy statement after IPC closure — CLOSED 2026-07-09; ordinary-main mirror excised by R-S11b-4e on 2026-07-24.** Platforms: all. Surface: at-rest password/PRS
   wrapper keyed by machine UUID. Boundary: local endpoint read ↔ connect-equivalent credential. Status:
   accepted residual only when endpoint compromise/local config read is in scope-out; not a permission boundary
-  and not a substitute for IPC secrecy. Current state: R-S11b-4a closes the service-IPC export half for the
-  desktop main channel: `src/ipc.rs` exports no `password_prs` or key-pair material, and the remaining
-  password-storage/salt snapshot requests are denied for service-owned receivers by the same
-  `current_process_allows_main_channel_permanent_password_storage_sync()` authority gate used by
-  R-S11b-2. macOS's service-owned LaunchAgent root-credential delivery is not a generic snapshot path: it is the
+  and not a substitute for IPC secrecy. Current state: R-S11b-4a closed direct PRS/key-pair exports, and
+  R-S11b-4e deletes the later-discovered ordinary-main password-storage/salt mirror entirely rather than retaining
+  its user-owned/service-owned authority split. Main IPC now reports only receiver-derived nonsecret password
+  status; raw password mutation never triggers a credential copy into the GUI process. macOS's service-owned
+  LaunchAgent root-credential delivery is not a generic snapshot path: it is the
   typed R-S11b-2e `_service` runtime snapshot, accepted only after socket audit-token installed-app proof, exact live
   argv, and parsed root-owned plist command-shape proof for the LaunchAgent job, and applied only to
   `RUNTIME_PERMANENT_PASSWORD_PRS`, never to serialized `Config`.
@@ -5621,8 +5642,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   file that cannot first be secured. The Windows DACL is explicit and protected, grants full access only to
   LocalSystem and the current process user SID, deduplicates the LocalSystem case, and does not rely on inherited
   `%APPDATA%`/profile ACLs. Verification closure: `scripts/verify.sh` runs the Unix mode test and the Windows SDDL
-  shape test, asserts no main-IPC PRS/key export, service-owned storage/salt denial, the launchd-bound macOS
-  runtime snapshot overlay, Unix 0600 writer shape, Windows protected-DACL API wiring, Windows load/store
+  shape test, asserts no main-IPC PRS/key/password-storage export, the receiver-derived local-password status,
+  the launchd-bound macOS runtime snapshot overlay, Unix 0600 writer shape, Windows protected-DACL API wiring, Windows load/store
   fail-closed hooks, and the absence of broad Windows principals in
   the config DACL source. Any future stronger storage (TPM/OS keychain) is defense-in-depth, not the cure for the
   IPC class. R-S11b-4d also hardens corrupt-config recovery files: preserved TOML/raw encrypted payload backups are
@@ -10179,9 +10200,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-44deb9171b3f9c61a694de46cf078f5aa7d6a1b9717c6380bf14e5982bed25b0  requirements.html
+b9d7bf518b013e043f850530fe74a2f4b475803ee68f41a1352bb553d704a996  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

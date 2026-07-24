@@ -1173,8 +1173,7 @@ fi
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="
 r_s11b2=$(<"$apple_password_gate_dir/r_s11b2")
 grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11b2="$r_s11b2 agent-server-not-marked"
-grep -q 'test_permanent_password_sync_does_not_publish_unpersisted_state' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 snapshot-persistence-failure-regression-test-missing"
-grep -q 'set_permanent_password_storage_for_sync_with_store' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 snapshot-persistence-result-not-enforced"
+grep -qF 'set_permanent_password_storage_for_sync' "$REPO/libs/hbb_common/src/config.rs" && r_s11b2="$r_s11b2 ordinary-main-credential-sync-writer-present"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-nonpersist-test-missing"
 grep -q 'test_set_permanent_password_persists_when_value_matches_preset' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 explicit-password-set-preset-noop-test-missing"
@@ -1238,10 +1237,31 @@ echo "$set_options_fn" | grep -q 'Config::set_options' && r_s11b2="$r_s11b2 opti
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
-main_config_storage=$(awk '/MainConfigKey::PermanentPasswordStorageAndSalt =>/,/MainConfigKey::PermanentPasswordSet =>/' "$REPO/src/ipc.rs")
-echo "$main_config_storage" | grep -q 'current_process_allows_main_channel_permanent_password_storage_sync()' || r_s11b2="$r_s11b2 storage-read-not-authority-gated"
-echo "$main_config_storage" | grep -q 'Rejected permanent-password storage read from service-owned main IPC' || r_s11b2="$r_s11b2 storage-read-not-denied"
+main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOptions\(value\) => \{/' "$REPO/src/ipc.rs")
+echo "$main_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b2="$r_s11b2 credential-storage-main-config-key-present"
 echo "$main_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)' && r_s11b2="$r_s11b2 standalone-salt-main-config-key-present"
+for token in \
+  'sync_permanent_password_storage_from_daemon' \
+  'apply_permanent_password_storage_and_salt_payload' \
+  'current_process_allows_main_channel_permanent_password_storage_sync' \
+  'allows_main_channel_password_storage_sync'; do
+  grep -qF "$token" "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 ordinary-main-credential-mirror-symbol-present:$token"
+done
+for token in \
+  'get_local_permanent_password_storage_and_salt' \
+  'get_existing_key_pair' \
+  'get_key_pair(' \
+  'password_prs' \
+  'get_salt('; do
+  grep -qF "$token" <<<"$main_config_handler" && r_s11b2="$r_s11b2 main-config-handler-secret-read-present:$token"
+done
+grep -qF 'storage + "\n" + &salt' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 credential-storage-string-payload-present"
+grep -q 'LocalPermanentPasswordSet' <<<"$main_config_enum" || r_s11b2="$r_s11b2 local-password-status-key-missing"
+grep -q 'MainConfigKey::LocalPermanentPasswordSet => Some' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-password-status-handler-missing"
+grep -q 'permanent_password_is_local_for_current_process().await' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 receiver-derived-local-password-status-missing"
+grep -q 'ipc::is_local_permanent_password_set()' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-local-password-status-not-daemon-derived"
+grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 credential-mirror-ledger-missing"
+grep -Fq '<tr><td>237</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 credential-mirror-appendix-missing"
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS raw password IPC:$r_s11b2"
   rc=1

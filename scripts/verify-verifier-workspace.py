@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16626,6 +16626,373 @@ def validate_typed_permanent_password_prs_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_main_ipc_credential_mirror_excision_contract(sources):
+    config = sources["config_source"]
+    ipc = sources["ipc_source"]
+    ui = sources["ui_interface_source"]
+
+    for text, label in (
+        (
+            "pub fn set_permanent_password_storage_for_sync",
+            "persistent credential sync writer",
+        ),
+        (
+            "fn set_permanent_password_storage_for_sync_with_store",
+            "persistent credential sync transaction",
+        ),
+        (
+            "fn apply_permanent_password_storage_for_sync",
+            "persistent credential sync apply helper",
+        ),
+    ):
+        require_absent(config, text, label)
+
+    for text, label in (
+        (
+            "PermanentPasswordStorageAndSalt",
+            "credential-storage main config variant",
+        ),
+        (
+            "sync_permanent_password_storage_from_daemon",
+            "ordinary-main credential mirror client",
+        ),
+        (
+            "apply_permanent_password_storage_and_salt_payload",
+            "ordinary-main credential mirror parser",
+        ),
+        (
+            "current_process_allows_main_channel_permanent_password_storage_sync",
+            "ordinary-main credential mirror process predicate",
+        ),
+        (
+            "allows_main_channel_password_storage_sync",
+            "ordinary-main credential mirror authority predicate",
+        ),
+        (
+            'storage + "\\n" + &salt',
+            "ordinary-main credential string payload",
+        ),
+    ):
+        require_absent(ipc, text, label)
+
+    main_config = extract_between(
+        ipc,
+        "pub enum MainConfigKey {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]",
+        "nonsecret main config vocabulary",
+    )
+    require_text(
+        main_config,
+        "LocalPermanentPasswordSet",
+        "local-password status main config key",
+    )
+    for text in ("password", "storage", "salt", "prs", "key_pair"):
+        if text == "password":
+            continue
+        require_absent(
+            main_config.lower(),
+            text,
+            f"credential-shaped main config vocabulary token {text}",
+        )
+
+    handler = extract_between(
+        ipc,
+        "        MainIpcRequest::Config(key) => {",
+        "\n        MainIpcRequest::SetOptions(value) => {",
+        "main config receiver dispatch",
+    )
+    for text, label in (
+        (
+            "MainConfigKey::LocalPermanentPasswordSet => Some(",
+            "local-password status receiver arm",
+        ),
+        (
+            "permanent_password_is_local_for_current_process().await",
+            "receiver-derived local-password status",
+        ),
+    ):
+        require_text(handler, text, label)
+    for text, label in (
+        (
+            "get_local_permanent_password_storage_and_salt",
+            "main receiver credential-storage read",
+        ),
+        ("get_existing_key_pair", "main receiver existing-key-pair read"),
+        ("get_key_pair(", "main receiver key-pair read"),
+        ("password_prs", "main receiver PRS read"),
+        ("get_salt(", "main receiver salt read"),
+        ("set_permanent_password", "main receiver credential mutation"),
+        ('"\\n"', "main receiver newline credential framing"),
+    ):
+        require_absent(handler, text, label)
+
+    require_exact_count(
+        ipc,
+        "async fn permanent_password_is_local_for_current_process() -> bool {",
+        2,
+        "platform-complete local-password status derivation",
+    )
+    require_exact_count(
+        ipc,
+        "Config::has_permanent_password() && !Config::is_using_preset_password()",
+        2,
+        "local-versus-preset status decision",
+    )
+    require_text(
+        ipc,
+        "let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;",
+        "macOS service-owned status refresh",
+    )
+
+    key_parser = extract_between(
+        ipc,
+        "fn main_config_key(name: &str) -> Option<MainConfigKey> {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\nasync fn connect_user_owned_password_main",
+        "main config string facade",
+    )
+    require_text(
+        key_parser,
+        '"local-permanent-password-set" => Some(MainConfigKey::LocalPermanentPasswordSet)',
+        "local-password status string facade",
+    )
+    require_absent(
+        key_parser,
+        "permanent-password-storage-and-salt",
+        "credential-storage string facade",
+    )
+
+    status_client = extract_between(
+        ipc,
+        "pub fn is_local_permanent_password_set() -> bool {",
+        "\n}\n\n/// T1 / BR-4",
+        "local-password status client",
+    )
+    require_text(
+        status_client,
+        'get_config("local-permanent-password-set")',
+        "local-password status query",
+    )
+    require_absent(
+        status_client,
+        "Config::",
+        "local-password status client-side config fallback",
+    )
+
+    ui_status = extract_between(
+        ui,
+        "pub fn is_local_permanent_password_set() -> bool {",
+        "\n}\n\npub fn can_set_user_owned_permanent_password",
+        "desktop/mobile local-password status facade",
+    )
+    require_text(
+        ui_status,
+        "ipc::is_local_permanent_password_set()",
+        "desktop daemon-derived local-password status",
+    )
+    require_text(
+        ui_status,
+        "Config::has_local_permanent_password()",
+        "mobile in-process local-password status",
+    )
+
+    post_mutation = extract_between(
+        ipc,
+        "async fn set_user_owned_permanent_password_with_ack_async(",
+        "\n}\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\npub fn set_service_owned_unattended_password",
+        "user-owned raw password completion",
+    )
+    require_text(
+        post_mutation,
+        "complete_main_password_mutation(operation_id, &v, false, ms_timeout).await?",
+        "raw password completion authority",
+    )
+    for text in ("storage", "salt", "Config::"):
+        require_absent(
+            post_mutation,
+            text,
+            f"post-mutation credential mirror token {text}",
+        )
+
+    regression = extract_between(
+        ipc,
+        "fn main_config_keys_expose_password_status_but_not_credential_storage() {",
+        "\n    }\n\n    #[cfg(any(target_os = \"linux\", target_os = \"macos\"))]",
+        "nonsecret main config regression",
+    )
+    require_text(
+        regression,
+        'main_config_key("permanent-password-storage-and-salt").is_none()',
+        "retired credential-storage key rejection",
+    )
+    require_text(
+        regression,
+        "Some(MainConfigKey::LocalPermanentPasswordSet)",
+        "replacement local-password status regression",
+    )
+
+    shared_gate = extract_between(
+        sources["verify"],
+        "# R-S11b-4: config/PRS secrecy after IPC closure.",
+        "# (3b-iii-d) R-S11b-3a/R-S11b-3d:",
+        "shared main-IPC credential-mirror source gate",
+    )
+    for text in (
+        "echo \"$r_s11b4_config_enum\" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b4=\"$r_s11b4 credential-storage-main-config-key-present\"",
+        "sync_permanent_password_storage_from_daemon",
+        "set_permanent_password_storage_for_sync",
+        "LocalPermanentPasswordSet",
+        "permanent_password_is_local_for_current_process().await",
+        "main_config_keys_expose_password_status_but_not_credential_storage",
+        "R-S11b-4e — ordinary main IPC credential mirror excised",
+        "<tr><td>237</td>",
+    ):
+        require_text(
+            shared_gate,
+            text,
+            "shared main-IPC credential-mirror source gate",
+        )
+    require_text(
+        shared_gate,
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_password_status_but_not_credential_storage --color never',
+        "focused main-IPC credential-storage regression invocation",
+    )
+    for text in (
+        "r_s11b4_main_config_handler=$(awk",
+        "main-config-handler-secret-read-present",
+    ):
+        require_text(
+            shared_gate,
+            text,
+            "shared main-IPC handler-secret gate",
+        )
+
+    apple_gate = extract_between(
+        sources["apple"],
+        'echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="',
+        'echo "== (2b-ii-a) R-S11e-16 macOS password provisioning ingress =="',
+        "Apple main-IPC credential-mirror source gate",
+    )
+    for text in (
+        "echo \"$main_config_enum\" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b2=\"$r_s11b2 credential-storage-main-config-key-present\"",
+        "sync_permanent_password_storage_from_daemon",
+        "set_permanent_password_storage_for_sync",
+        "LocalPermanentPasswordSet",
+        "permanent_password_is_local_for_current_process().await",
+        "R-S11b-4e — ordinary main IPC credential mirror excised",
+        "<tr><td>237</td>",
+    ):
+        require_text(
+            apple_gate,
+            text,
+            "Apple main-IPC credential-mirror source gate",
+        )
+    for text in (
+        "main_config_handler=$(awk",
+        "main-config-handler-secret-read-present",
+    ):
+        require_text(
+            apple_gate,
+            text,
+            "Apple main-IPC handler-secret gate",
+        )
+
+    require_text(
+        sources["requirements"],
+        "R-S11b-4e subsequently deletes the ordinary-main user-owned credential mirror",
+        "whole-config API disposition corrected for mirror deletion",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>237</td>",
+        "ordinary-main credential-mirror Appendix C row",
+    )
+    for text in (
+        "<code>MainConfigKey::PermanentPasswordStorageAndSalt</code>",
+        "<code>Config::set_permanent_password_storage_for_sync</code>",
+        "receiver-derived <code>LocalPermanentPasswordSet</code>",
+    ):
+        require_text(
+            sources["requirements"],
+            text,
+            "ordinary-main credential-mirror disposition",
+        )
+    require_text(
+        sources["hardening"],
+        "R-S11b-4e — ordinary main IPC credential mirror excised",
+        "ordinary-main credential-mirror hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "ordinary-main credential-mirror deliberate-mutation matrix",
+    )
+    for text, label in (
+        (
+            "persistent credential sync writer",
+            "persistent sync-writer mutation",
+        ),
+        (
+            "credential-storage main config variant",
+            "main config variant mutation",
+        ),
+        (
+            "ordinary-main credential mirror client",
+            "mirror-client mutation",
+        ),
+        (
+            "receiver-derived local-password status",
+            "receiver status mutation",
+        ),
+        (
+            "main receiver credential-storage read",
+            "receiver secret-read mutation",
+        ),
+        (
+            "desktop daemon-derived local-password status",
+            "UI status mutation",
+        ),
+        (
+            "retired credential-storage key rejection",
+            "negative regression mutation",
+        ),
+        (
+            "shared main-IPC credential-mirror source gate",
+            "shared-gate mutation",
+        ),
+        (
+            "shared main-IPC handler-secret gate",
+            "shared handler-gate mutation",
+        ),
+        (
+            "focused main-IPC credential-storage regression invocation",
+            "focused-regression invocation mutation",
+        ),
+        (
+            "Apple main-IPC credential-mirror source gate",
+            "Apple-gate mutation",
+        ),
+        (
+            "Apple main-IPC handler-secret gate",
+            "Apple handler-gate mutation",
+        ),
+        (
+            "whole-config API disposition corrected for mirror deletion",
+            "requirements correction mutation",
+        ),
+        (
+            "ordinary-main credential-mirror Appendix C row",
+            "Appendix mutation",
+        ),
+        (
+            "ordinary-main credential-mirror hardening ledger",
+            "hardening-ledger mutation",
+        ),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_rendezvous_compatibility_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -18199,6 +18566,7 @@ def validate_sources(sources):
     validate_account_control_plane_excision_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_typed_permanent_password_prs_contract(sources)
+    validate_main_ipc_credential_mirror_excision_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
     validate_public_server_selection_excision_contract(sources)
@@ -29311,6 +29679,96 @@ def run_source_mutations(sources):
         ),
         (
             "config_source",
+            "    pub fn set_permanent_password_storage_for_runtime(\n",
+            "    pub fn set_permanent_password_storage_for_sync(_: &str, _: &str) -> crate::ResultType<bool> { Ok(false) }\n\n    pub fn set_permanent_password_storage_for_runtime(\n",
+            "persistent credential sync writer",
+        ),
+        (
+            "ipc_source",
+            "    Id,\n    PermanentPasswordSet,",
+            "    Id,\n    PermanentPasswordStorageAndSalt,\n    PermanentPasswordSet,",
+            "credential-storage main config variant",
+        ),
+        (
+            "ipc_source",
+            "#[cfg(target_os = \"macos\")]\npub async fn refresh_macos_service_owned_permanent_password_snapshot(",
+            "#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\npub fn sync_permanent_password_storage_from_daemon() -> ResultType<()> { Ok(()) }\n\n#[cfg(target_os = \"macos\")]\npub async fn refresh_macos_service_owned_permanent_password_snapshot(",
+            "ordinary-main credential mirror client",
+        ),
+        (
+            "ipc_source",
+            "if permanent_password_is_local_for_current_process().await {",
+            "if Config::has_local_permanent_password() {",
+            "receiver-derived local-password status",
+        ),
+        (
+            "ipc_source",
+            "if permanent_password_is_local_for_current_process().await {",
+            "if { let _ = Config::get_local_permanent_password_storage_and_salt(); permanent_password_is_local_for_current_process().await } {",
+            "main receiver credential-storage read",
+        ),
+        (
+            "ui_interface_source",
+            "        ipc::is_local_permanent_password_set()",
+            "        Config::has_local_permanent_password()",
+            "desktop daemon-derived local-password status",
+        ),
+        (
+            "ipc_source",
+            "main_config_key(\"permanent-password-storage-and-salt\").is_none()",
+            "main_config_key(\"permanent-password-storage-and-salt\").is_some()",
+            "retired credential-storage key rejection",
+        ),
+        (
+            "verify",
+            "echo \"$r_s11b4_config_enum\" | grep -q 'PermanentPasswordStorageAndSalt'",
+            "echo \"$r_s11b4_config_enum\" | grep -q 'PermanentPasswordStorageAndSaltDisabled'",
+            "shared main-IPC credential-mirror source gate",
+        ),
+        (
+            "verify",
+            "r_s11b4_main_config_handler=$(awk",
+            "r_s11b4_main_config_handler_disabled=$(awk",
+            "shared main-IPC handler-secret gate",
+        ),
+        (
+            "verify",
+            "ipc::test::main_config_keys_expose_password_status_but_not_credential_storage",
+            "ipc::tests::main_config_keys_expose_password_status_but_not_credential_storage",
+            "focused main-IPC credential-storage regression invocation",
+        ),
+        (
+            "apple",
+            "echo \"$main_config_enum\" | grep -q 'PermanentPasswordStorageAndSalt'",
+            "echo \"$main_config_enum\" | grep -q 'PermanentPasswordStorageAndSaltDisabled'",
+            "Apple main-IPC credential-mirror source gate",
+        ),
+        (
+            "apple",
+            "main_config_handler=$(awk",
+            "main_config_handler_disabled=$(awk",
+            "Apple main-IPC handler-secret gate",
+        ),
+        (
+            "requirements",
+            "R-S11b-4e subsequently deletes the ordinary-main user-owned credential mirror",
+            "R-S11b-4e may retain the ordinary-main user-owned credential mirror",
+            "whole-config API disposition corrected for mirror deletion",
+        ),
+        (
+            "requirements",
+            "<tr><td>237</td>",
+            "<tr><td>237-disabled</td>",
+            "ordinary-main credential-mirror Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11b-4e — ordinary main IPC credential mirror excised",
+            "R-S11b-4e — ordinary main IPC credential mirror deferred",
+            "ordinary-main credential-mirror hardening ledger",
+        ),
+        (
+            "config_source",
             "pub const CONNECT_TIMEOUT: u64 = 18_000;",
             "pub const RENDEZVOUS_TIMEOUT: u64 = 12_000;\npub const REG_INTERVAL: i64 = 15_000;\npub const CONNECT_TIMEOUT: u64 = 18_000;",
             "rendezvous operation timeout",
@@ -30469,7 +30927,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#236",
+            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

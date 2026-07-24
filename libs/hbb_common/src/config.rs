@@ -33,8 +33,7 @@ pub use permanent_password::{
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
-    encrypt_permanent_password_prs_storage, DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION,
-    PERMANENT_PASSWORD_H1_LEN,
+    DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION, PERMANENT_PASSWORD_H1_LEN,
 };
 
 use crate::{
@@ -3255,42 +3254,6 @@ impl Config {
         (config.password.clone(), config.salt.clone())
     }
 
-    /// Persist permanent password storage and salt from a daemon credential snapshot.
-    pub fn set_permanent_password_storage_for_sync(
-        storage: &str,
-        salt: &str,
-    ) -> crate::ResultType<bool> {
-        Self::set_permanent_password_storage_for_sync_with_store(
-            storage,
-            salt,
-            Config::store_result,
-        )
-    }
-
-    fn set_permanent_password_storage_for_sync_with_store<F>(
-        storage: &str,
-        salt: &str,
-        persist: F,
-    ) -> crate::ResultType<bool>
-    where
-        F: FnOnce(&Config) -> crate::ResultType<()>,
-    {
-        let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
-        let old_effective_prs = Self::read_permanent_password_prs_unlocked();
-        let mut config = CONFIG.write().unwrap();
-        let mut next = config.clone();
-        if !Self::apply_permanent_password_storage_for_sync(&mut next, storage, salt)? {
-            return Ok(false);
-        }
-        persist(&next)?;
-        *config = next;
-        drop(config);
-        if Self::read_permanent_password_prs_unlocked() != old_effective_prs {
-            advance_permanent_password_credential_generation(&mut generation);
-        }
-        Ok(true)
-    }
-
     pub fn set_permanent_password_storage_for_runtime(
         storage: &str,
         salt: &str,
@@ -3326,62 +3289,6 @@ impl Config {
         }
         *runtime_prs = Some(prs.to_owned());
         advance_permanent_password_credential_generation(&mut generation);
-        Ok(true)
-    }
-
-    fn apply_permanent_password_storage_for_sync(
-        config: &mut Config,
-        storage: &str,
-        salt: &str,
-    ) -> Result<bool> {
-        if storage.is_empty() {
-            // A cleared credential must clear BOTH at-rest forms. Leaving config.password_prs set after
-            // the storage is cleared would keep the CPace handshake authenticating with the just-cleared
-            // password (the typed PRS reader reads password_prs, not password) — R-S9.
-            if config.password.is_empty()
-                && config.password_prs.is_empty()
-                && (salt.is_empty() || config.salt == salt)
-            {
-                return Ok(false);
-            }
-            config.password.clear();
-            config.password_prs.clear();
-            if !salt.is_empty() {
-                config.salt = salt.to_owned();
-            }
-            return Ok(true);
-        }
-        if salt.is_empty() {
-            return Err(anyhow!(
-                "Refusing to persist permanent password storage without salt"
-            ));
-        }
-        let prs_string = Self::permanent_password_prs_from_storage(storage, salt)?;
-        // R-S9: the service->user sync carries ONLY `storage` (config.password) + salt, never
-        // config.password_prs. config.password and config.password_prs encode the SAME 32 PRS bytes,
-        // so rebuild password_prs from the decoded bytes here. This keeps the two at-rest forms in step:
-        // a synced set/rotate writes a fresh `password` and the matching password_prs together, so the
-        // next --server restart reads a live PRS and listens (R-S9) with the current password. Rebuilding it
-        // is what makes a set/rotate durable across restarts on the headless/root box (which has no
-        // whole-config root<->user repair path).
-        let Some(prs_storage) = encrypt_permanent_password_prs_storage(&prs_string) else {
-            return Err(anyhow!(
-                "Failed to rebuild the CPace PRS storage from the synced permanent password"
-            ));
-        };
-        // Idempotent only when password + salt already match AND password_prs already decrypts to the
-        // same PRS (the at-rest ciphertext uses a random nonce, so compare the decrypted PRS, not bytes).
-        if config.password == storage
-            && config.salt == salt
-            && decrypt_permanent_password_prs_storage(&config.password_prs).as_deref()
-                == Some(prs_string.as_str())
-        {
-            return Ok(false);
-        }
-
-        config.password = storage.to_owned();
-        config.salt = salt.to_owned();
-        config.password_prs = prs_storage;
         Ok(true)
     }
 
@@ -5017,50 +4924,7 @@ impl Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        permanent_password::{
-            encode_permanent_password_encrypted_storage_from_h1, PERMANENT_PASSWORD_ENC_VERSION,
-        },
-        *,
-    };
-
-    #[test]
-    fn sync_rebuilds_password_prs_from_storage() {
-        // R-S9: a credential snapshot may carry only (storage, salt), never
-        // password_prs, so the apply path rebuilds password_prs from the storage envelope (both encode
-        // the SAME 32 PRS bytes). This keeps the box listening with a live PRS (R-S9) and
-        // authenticating the current password after a restart. This exercises the
-        // private sync-apply on a LOCAL Config (no global state), so it is hermetic and parallel-safe.
-        let (storage, prs_storage) =
-            derive_permanent_password_storages("correct horse battery staple").unwrap();
-        let salt = "sync-salt"; // the sync requires a non-empty salt
-        let mut config = Config::default();
-        assert!(config.password_prs.is_empty(), "a fresh config has no PRS");
-
-        // apply the daemon credential snapshot payload (storage + salt only):
-        let changed =
-            Config::apply_permanent_password_storage_for_sync(&mut config, &storage, salt).unwrap();
-        assert!(changed, "a new credential is a change");
-        assert!(
-            !config.password_prs.is_empty(),
-            "the sync MUST rebuild password_prs from the storage, not leave it empty"
-        );
-        assert_eq!(
-            decrypt_permanent_password_prs_storage(&config.password_prs),
-            decrypt_permanent_password_prs_storage(&prs_storage),
-            "the rebuilt PRS must equal the credential's real live PRS"
-        );
-
-        // the sibling fix: clearing (empty storage) must clear password_prs too, else the box keeps
-        // authenticating the just-cleared credential.
-        let cleared =
-            Config::apply_permanent_password_storage_for_sync(&mut config, "", salt).unwrap();
-        assert!(cleared);
-        assert!(
-            config.password_prs.is_empty(),
-            "clearing the credential must clear password_prs (not leave it live)"
-        );
-    }
+    use super::{permanent_password::encode_permanent_password_encrypted_storage_from_h1, *};
 
     #[test]
     fn direct_only_password_config_is_not_empty() {
@@ -5508,23 +5372,6 @@ unrelated = "preserved"
             let result = Config::set_permanent_password_with_store("new-password", |_| {
                 Err(anyhow!("injected persistence failure"))
             });
-            assert!(result.is_err());
-            let config = CONFIG.read().unwrap();
-            assert!(config.password.is_empty());
-            assert!(config.password_prs.is_empty());
-            assert!(config.salt.is_empty());
-        });
-    }
-
-    #[test]
-    fn test_permanent_password_sync_does_not_publish_unpersisted_state() {
-        let (storage, _) = derive_permanent_password_storages("new-password").unwrap();
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            let result = Config::set_permanent_password_storage_for_sync_with_store(
-                &storage,
-                "sync-salt",
-                |_| Err(anyhow!("injected persistence failure")),
-            );
             assert!(result.is_err());
             let config = CONFIG.read().unwrap();
             assert!(config.password.is_empty());
@@ -6418,126 +6265,6 @@ unrelated = "preserved"
         Config::validate_or_decrypt_permanent_password_storage(&mut cfg).unwrap();
         assert_eq!(cfg.password, plain);
         assert!(cfg.salt.is_empty());
-    }
-
-    #[test]
-    fn test_permanent_password_sync_treats_same_encrypted_hash_as_unchanged() {
-        // R-S9 idempotency — the complement of sync_rebuilds_password_prs_from_storage:
-        // re-syncing the credential already at rest is a no-op (returns `false` = unchanged),
-        // so the daemon does not needlessly rewrite the config. config.password (the
-        // encrypted-hash storage envelope) and config.password_prs (the live CPace PRS) are
-        // the two at-rest forms of the SAME 32 PRS bytes and are always written together, so
-        // the real steady state has BOTH present and consistent — that is what "unchanged"
-        // requires. (Were password_prs missing or stale, the sync would instead REBUILD it
-        // from the storage and report a change.) The at-rest ciphertext carries a random
-        // nonce (symmetric_crypt), so the unchanged decision compares the DECRYPTED PRS, never
-        // the unstable ciphertext bytes — this pins that.
-        let (storage, prs_storage) = derive_permanent_password_storages("p@ssw0rd").unwrap();
-        let salt = "salt123";
-        let mut cfg = Config::default();
-        cfg.password = storage.clone();
-        cfg.password_prs = prs_storage;
-        cfg.salt = salt.to_owned();
-
-        assert!(
-            !Config::apply_permanent_password_storage_for_sync(&mut cfg, &storage, salt).unwrap(),
-            "re-syncing the identical already-stored credential must be a no-op (unchanged)"
-        );
-    }
-
-    #[test]
-    fn test_permanent_password_sync_stores_incoming_encrypted_hash_when_local_empty() {
-        let salt = "salt123";
-        let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
-        let incoming = encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
-        let mut cfg = Config::default();
-
-        assert!(
-            Config::apply_permanent_password_storage_for_sync(&mut cfg, &incoming, salt).unwrap()
-        );
-        assert_eq!(cfg.password, incoming);
-        assert_eq!(cfg.salt, salt);
-    }
-
-    #[test]
-    fn test_permanent_password_sync_rejects_non_current_storage_payloads() {
-        let invalid_payload = vec![42u8; sodiumoxide::crypto::secretbox::MACBYTES + 1];
-        let invalid_storage = PERMANENT_PASSWORD_ENC_VERSION.to_owned()
-            + &base64::encode(invalid_payload, base64::Variant::Original);
-        let encrypted_legacy_plaintext =
-            encrypt_str_or_original("legacy-secret", PASSWORD_ENC_VERSION, ENCRYPT_MAX_LEN);
-
-        let encrypted = crate::password_security::symmetric_crypt(b"not-a-hash", true).unwrap();
-        let encrypted_non_hash = PERMANENT_PASSWORD_ENC_VERSION.to_owned()
-            + &base64::encode(encrypted, base64::Variant::Original);
-        for storage in [
-            "00secret",
-            &encrypted_legacy_plaintext,
-            &invalid_storage,
-            "01invalid",
-            &encrypted_non_hash,
-        ] {
-            let mut cfg = Config::default();
-            assert!(Config::apply_permanent_password_storage_for_sync(
-                &mut cfg, storage, "salt123"
-            )
-            .is_err());
-            assert!(cfg.password.is_empty());
-            assert!(cfg.salt.is_empty());
-        }
-
-        let mut cfg = Config::default();
-        cfg.password = invalid_storage.clone();
-        cfg.salt = "salt123".to_owned();
-        assert!(Config::apply_permanent_password_storage_for_sync(
-            &mut cfg,
-            &invalid_storage,
-            "salt123"
-        )
-        .is_err());
-        assert_eq!(cfg.password, invalid_storage);
-        assert_eq!(cfg.salt, "salt123");
-    }
-
-    #[test]
-    fn test_permanent_password_sync_rejects_non_empty_storage_without_salt() {
-        let mut cfg = Config::default();
-        let h1 = compute_permanent_password_h1("p@ssw0rd", "salt123");
-        let incoming = encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
-
-        assert!(
-            Config::apply_permanent_password_storage_for_sync(&mut cfg, &incoming, "").is_err()
-        );
-        assert!(cfg.password.is_empty());
-        assert!(cfg.salt.is_empty());
-    }
-
-    #[test]
-    fn test_permanent_password_sync_empty_storage_clears_existing_password() {
-        let salt = "salt123";
-        let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
-        let mut cfg = Config::default();
-        cfg.password = encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
-        cfg.salt = salt.to_owned();
-
-        assert!(Config::apply_permanent_password_storage_for_sync(&mut cfg, "", "").unwrap());
-        assert!(cfg.password.is_empty());
-        assert_eq!(cfg.salt, salt);
-    }
-
-    #[test]
-    fn test_permanent_password_sync_empty_storage_uses_incoming_salt() {
-        let old_salt = "old-salt";
-        let h1 = compute_permanent_password_h1("p@ssw0rd", old_salt);
-        let mut cfg = Config::default();
-        cfg.password = encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
-        cfg.salt = old_salt.to_owned();
-
-        assert!(
-            Config::apply_permanent_password_storage_for_sync(&mut cfg, "", "new-salt").unwrap()
-        );
-        assert!(cfg.password.is_empty());
-        assert_eq!(cfg.salt, "new-salt");
     }
 
     #[test]

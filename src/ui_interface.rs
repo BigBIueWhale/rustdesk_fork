@@ -431,19 +431,7 @@ pub fn is_permanent_password_set() -> bool {
     return Config::has_permanent_password();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let daemon_is_set = ipc::is_permanent_password_set();
-        // `daemon_is_set` is authoritative for the return value. Local storage is only used to
-        // decide whether we should attempt a sync to clear stale user-side state.
-        let local_storage_is_empty = if daemon_is_set {
-            true
-        } else {
-            let (storage, _) = Config::get_local_permanent_password_storage_and_salt();
-            storage.is_empty()
-        };
-        if daemon_is_set || !local_storage_is_empty {
-            allow_err!(ipc::sync_permanent_password_storage_from_daemon());
-        }
-        daemon_is_set
+        ipc::is_permanent_password_set()
     }
 }
 
@@ -453,8 +441,7 @@ pub fn is_local_permanent_password_set() -> bool {
     return Config::has_local_permanent_password();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        allow_err!(ipc::sync_permanent_password_storage_from_daemon());
-        Config::has_local_permanent_password()
+        ipc::is_local_permanent_password_set()
     }
 }
 

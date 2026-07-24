@@ -1788,8 +1788,8 @@ pub enum Data {
 #[serde(tag = "t")]
 pub enum MainConfigKey {
     Id,
-    PermanentPasswordStorageAndSalt,
     PermanentPasswordSet,
+    LocalPermanentPasswordSet,
     PermanentPasswordIsPreset,
     UserOwnedPermanentPasswordWritable,
     HideConnectionManager,
@@ -3410,20 +3410,16 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
         MainIpcRequest::Config(key) => {
             let value = match key {
                 MainConfigKey::Id => Some(Config::get_id()),
-                MainConfigKey::PermanentPasswordStorageAndSalt => {
-                    if current_process_allows_main_channel_permanent_password_storage_sync() {
-                        let (storage, salt) =
-                            Config::get_local_permanent_password_storage_and_salt();
-                        Some(storage + "\n" + &salt)
-                    } else {
-                        log::warn!(
-                            "Rejected permanent-password storage read from service-owned main IPC"
-                        );
-                        None
-                    }
-                }
                 MainConfigKey::PermanentPasswordSet => Some(
                     if permanent_password_is_set_for_current_process().await {
+                        "Y"
+                    } else {
+                        "N"
+                    }
+                    .to_owned(),
+                ),
+                MainConfigKey::LocalPermanentPasswordSet => Some(
+                    if permanent_password_is_local_for_current_process().await {
                         "Y"
                     } else {
                         "N"
@@ -4006,9 +4002,6 @@ impl MainIpcAuthority {
     fn allows_main_channel_voice_call_input_write(self) -> bool {
         matches!(self, Self::UserOwned)
     }
-    fn allows_main_channel_password_storage_sync(self) -> bool {
-        matches!(self, Self::UserOwned)
-    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4021,12 +4014,6 @@ fn current_process_allows_user_owned_permanent_password_write() -> bool {
 #[inline]
 fn current_process_allows_main_channel_options_write() -> bool {
     MainIpcAuthority::for_current_process().allows_main_channel_options_write()
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[inline]
-fn current_process_allows_main_channel_permanent_password_storage_sync() -> bool {
-    MainIpcAuthority::for_current_process().allows_main_channel_password_storage_sync()
 }
 
 #[cfg(target_os = "linux")]
@@ -5339,6 +5326,14 @@ async fn permanent_password_is_set_for_current_process() -> bool {
 }
 
 #[cfg(target_os = "macos")]
+async fn permanent_password_is_local_for_current_process() -> bool {
+    if crate::common::is_service_owned_server_process() {
+        let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;
+    }
+    Config::has_permanent_password() && !Config::is_using_preset_password()
+}
+
+#[cfg(target_os = "macos")]
 async fn permanent_password_is_preset_for_current_process() -> bool {
     if crate::common::is_service_owned_server_process() {
         let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;
@@ -5365,6 +5360,11 @@ async fn refresh_macos_service_owned_permanent_password_snapshot_for_status() ->
 #[cfg(not(target_os = "macos"))]
 async fn permanent_password_is_set_for_current_process() -> bool {
     Config::has_permanent_password()
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn permanent_password_is_local_for_current_process() -> bool {
+    Config::has_permanent_password() && !Config::is_using_preset_password()
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -6252,10 +6252,8 @@ async fn get_config_async(name: &str, ms_timeout: u64) -> ResultType<Option<Stri
 fn main_config_key(name: &str) -> Option<MainConfigKey> {
     match name {
         "id" => Some(MainConfigKey::Id),
-        "permanent-password-storage-and-salt" => {
-            Some(MainConfigKey::PermanentPasswordStorageAndSalt)
-        }
         "permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet),
+        "local-permanent-password-set" => Some(MainConfigKey::LocalPermanentPasswordSet),
         "permanent-password-is-preset" => Some(MainConfigKey::PermanentPasswordIsPreset),
         "permanent-password-user-owned-writable" => {
             Some(MainConfigKey::UserOwnedPermanentPasswordWritable)
@@ -6560,32 +6558,6 @@ pub async fn set_voice_call_input_device(value: String) -> ResultType<()> {
     set_voice_call_input_device_async(value).await
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn apply_permanent_password_storage_and_salt_payload(payload: Option<&str>) -> ResultType<()> {
-    let Some(payload) = payload else {
-        return Ok(());
-    };
-    let Some((storage, salt)) = payload.split_once('\n') else {
-        bail!("Invalid permanent-password-storage-and-salt payload");
-    };
-
-    Config::set_permanent_password_storage_for_sync(storage, salt)?;
-    Ok(())
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn sync_permanent_password_storage_from_daemon() -> ResultType<()> {
-    let v = get_config("permanent-password-storage-and-salt")?;
-    apply_permanent_password_storage_and_salt_payload(v.as_deref())
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn sync_permanent_password_storage_from_daemon_async() -> ResultType<()> {
-    let ms_timeout = 1_000;
-    let v = get_config_async("permanent-password-storage-and-salt", ms_timeout).await?;
-    apply_permanent_password_storage_and_salt_payload(v.as_deref())
-}
-
 #[cfg(target_os = "macos")]
 pub async fn refresh_macos_service_owned_permanent_password_snapshot(
     ms_timeout: u64,
@@ -6654,6 +6626,11 @@ pub fn is_permanent_password_set() -> bool {
     }
     log::warn!("Failed to query permanent password state from daemon");
     false
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn is_local_permanent_password_set() -> bool {
+    matches!(get_config("local-permanent-password-set"), Ok(Some(v)) if v.trim() == "Y")
 }
 
 /// T1 / BR-4 (verify-ground-truth): query the daemon (`--server`) for the REAL direct-listener
@@ -6773,17 +6750,11 @@ async fn set_user_owned_permanent_password_with_ack_async(
     let ms_timeout = 5_000;
     let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
     let result = complete_main_password_mutation(operation_id, &v, false, ms_timeout).await?;
-    let accepted = match result {
+    Ok(match result {
         IpcMutationResult::Applied => true,
         IpcMutationResult::Rejected => false,
         IpcMutationResult::InternalFailure => bail!("password mutation failed internally"),
-    };
-    if accepted {
-        if let Err(err) = sync_permanent_password_storage_from_daemon_async().await {
-            log::warn!("Failed to sync permanent password storage from daemon: {err}");
-        }
-    }
-    Ok(accepted)
+    })
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -8203,11 +8174,19 @@ mod test {
         assert!(user_owned.allows_main_channel_user_owned_password_write());
         assert!(user_owned.allows_main_channel_options_write());
         assert!(user_owned.allows_main_channel_voice_call_input_write());
-        assert!(user_owned.allows_main_channel_password_storage_sync());
         assert!(!service_owned.allows_main_channel_user_owned_password_write());
         assert!(!service_owned.allows_main_channel_options_write());
         assert!(!service_owned.allows_main_channel_voice_call_input_write());
-        assert!(!service_owned.allows_main_channel_password_storage_sync());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn main_config_keys_expose_password_status_but_not_credential_storage() {
+        assert_eq!(
+            main_config_key("local-permanent-password-set"),
+            Some(MainConfigKey::LocalPermanentPasswordSet)
+        );
+        assert!(main_config_key("permanent-password-storage-and-salt").is_none());
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]

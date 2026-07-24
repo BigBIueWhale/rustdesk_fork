@@ -904,9 +904,7 @@ lazy_static::lazy_static! {
     pub static ref HELPER_URL: HashMap<&'static str, &'static str> = HashMap::new();
 }
 
-// R-X7: NUM_CHARS / get_auto_numeric_password removed — the numeric one-time password is excised.
-
-const CHARS: &[char] = &[
+const PERMANENT_PASSWORD_STORAGE_SALT_CHARS: &[char] = &[
     '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
     'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
@@ -2654,9 +2652,19 @@ impl Config {
         Ok(())
     }
 
+    fn generate_permanent_password_storage_salt() -> String {
+        let mut rng = rand::thread_rng();
+        (0..DEFAULT_SALT_LEN)
+            .map(|_| {
+                PERMANENT_PASSWORD_STORAGE_SALT_CHARS
+                    [rng.gen::<usize>() % PERMANENT_PASSWORD_STORAGE_SALT_CHARS.len()]
+            })
+            .collect()
+    }
+
     fn ensure_permanent_password_salt(config: &mut Config) {
         if config.salt.is_empty() {
-            config.salt = Config::get_auto_password(DEFAULT_SALT_LEN);
+            config.salt = Self::generate_permanent_password_storage_salt();
         }
     }
 
@@ -2988,17 +2996,6 @@ impl Config {
         } else {
             SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0)
         }
-    }
-
-    pub fn get_auto_password(length: usize) -> String {
-        Self::get_auto_password_with_chars(length, CHARS)
-    }
-
-    fn get_auto_password_with_chars(length: usize, chars: &[char]) -> String {
-        let mut rng = rand::thread_rng();
-        (0..length)
-            .map(|_| chars[rng.gen::<usize>() % chars.len()])
-            .collect()
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -5501,6 +5498,11 @@ unrelated = "preserved"
         let saved_config: Config = load_path(file);
         assert!(!saved_config.password.is_empty());
         assert!(!saved_config.password_prs.is_empty());
+        assert_eq!(saved_config.salt.len(), DEFAULT_SALT_LEN);
+        assert!(saved_config
+            .salt
+            .chars()
+            .all(|c| PERMANENT_PASSWORD_STORAGE_SALT_CHARS.contains(&c)));
     }
 
     #[test]

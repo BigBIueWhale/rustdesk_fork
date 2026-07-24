@@ -529,6 +529,7 @@ echo "== (3b-iii) bounded closed main IPC transactions (R-S11/R-S11g) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::password::tests --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_id_is_side_effect_free --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_salt_is_side_effect_free --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_when_value_matches_preset --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_does_not_generate_id_for_empty_config --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_reads_legacy_plaintext_id_without_storing --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_store_clears_empty_id_storage --color never
@@ -12366,23 +12367,35 @@ else
   echo "  ok  R-S5/R-A9/R-F1/R-D6 port-forward/RDP tunnel restored INSIDE the secretbox — relay rides send_bytes(seal)/next(open) on the keyed Stream (both sides), zero set_raw callers in app code, viewer asserts is_secured() pre-tunnel, R-A9 wire-ciphertext test present, hbb_common set_raw stays an assert-only backstop"
 fi
 # R-X7 (Rust OTP excision): the rotating one-time (temporary) password is EXCISED from the Rust tree
-# — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 lists
-# TEMPORARY_PASSWORD/update_temporary_password/check_update_temporary_password/get_auto_*numeric* as
-# must-be-ZERO; the 2FA half of R-X7 was already gated above, this closes the OTP half. The whole
-# chain is gone: the TEMPORARY_PASSWORD store + numeric generator (password_security/config), the
-# FFI/IPC/sciter forwarders (ui_interface/ipc/ui/flutter_ffi), the consecutive-wrong-attempt rotation
-# (connection.rs TEMPORARY_PASSWORD_FAILURES), and the dead option keys. `Config::get_auto_password`
-# STAYS (shared with the Hash challenge — R-T15(c) deferred — and salt generation). The FRB-generated
-# bridge is excluded (gitignored, regenerated from flutter_ffi.rs, so it tracks this automatically).
+# — the permanent password is the sole credential and sole CPace PRS (R-S9/R-P1). R-A6 names the
+# generic get_auto_password token as must-be-ZERO, not merely the old numeric wrapper. Permanent-
+# password provisioning owns its storage salt through one private fixed-purpose/fixed-length helper;
+# a password-shaped public generator is not a salt API. The 2FA half of R-X7 was already gated above,
+# and the OTP chain is gone: store/generators, FFI/IPC/sciter forwarders, failure-triggered rotation,
+# and dead option keys. The FRB-generated bridge is excluded (gitignored, regenerated from
+# flutter_ffi.rs, so it tracks this automatically).
 # NOTE (gate-hole fix): R-A6 also lists the OPTION token `use-temporary-password` grep-zero, but the
 # underscore-only pattern below historically missed the hyphenated key AND the CamelCase resolver
 # variant `OnlyUseTemporaryPassword`, letting a dead OTP resolver branch survive. Both forms are now
 # covered here (Rust) and in the Dart check that follows.
-rx7otp_hits=$(grep -rInE 'TEMPORARY_PASSWORD|TEMPORARY_PASSWD|temporary_password|temporary_enabled|get_auto_numeric_password|use-temporary-password|OnlyUseTemporaryPassword' src libs --include='*.rs' 2>/dev/null | grep -vE 'bridge_generated' | grep -vE ':[0-9]+:[[:space:]]*//|R-X7' || true)
-if [ -n "$rx7otp_hits" ]; then
-  echo "  FAIL R-X7: the temporary/one-time-password machinery must be absent from the Rust tree (the OTP half of R-X7 — permanent password is the sole credential):"; echo "$rx7otp_hits" | sed 's/^/      /'; rc=1
+rx7otp_hits=$(grep -rInE 'TEMPORARY_PASSWORD|TEMPORARY_PASSWD|temporary_password|temporary_enabled|get_auto_numeric_password|get_auto_password|use-temporary-password|OnlyUseTemporaryPassword' src libs --include='*.rs' 2>/dev/null | grep -vE 'bridge_generated' | grep -vE ':[0-9]+:[[:space:]]*//|R-X7' || true)
+rx7otp_shape=
+grep -qF 'const PERMANENT_PASSWORD_STORAGE_SALT_CHARS: &[char] = &[' libs/hbb_common/src/config.rs || rx7otp_shape="$rx7otp_shape salt-alphabet-missing"
+grep -qF 'fn generate_permanent_password_storage_salt() -> String {' libs/hbb_common/src/config.rs || rx7otp_shape="$rx7otp_shape salt-generator-missing"
+grep -qF 'config.salt = Self::generate_permanent_password_storage_salt();' libs/hbb_common/src/config.rs || rx7otp_shape="$rx7otp_shape salt-provisioning-owner-missing"
+if grep -qE '^[[:space:]]*pub([[:space:]]*\([^)]*\))?[[:space:]]+fn[[:space:]]+generate_permanent_password_storage_salt' libs/hbb_common/src/config.rs; then
+  rx7otp_shape="$rx7otp_shape salt-generator-public"
+fi
+grep -qF 'R-S11b-3l/R-X7b — generic automatic-password generator excised' HARDENING_STATUS.md || rx7otp_shape="$rx7otp_shape hardening-ledger-missing"
+grep -qF '<tr><td>235</td>' requirements.html || rx7otp_shape="$rx7otp_shape appendix-c-row-missing"
+if [ -n "$rx7otp_hits" ] || [ -n "$rx7otp_shape" ]; then
+  echo "  FAIL R-X7/R-A6: temporary/one-time-password machinery and generic automatic-password generators must be absent; permanent-password storage salt generation must remain private, fixed-purpose, and provisioning-owned (hits below; structural defects:$rx7otp_shape)"
+  if [ -n "$rx7otp_hits" ]; then
+    echo "$rx7otp_hits" | sed 's/^/      /'
+  fi
+  rc=1
 else
-  echo "  ok  R-X7 temporary/one-time-password machinery excised (Rust: store/generator/FFI/IPC/rotation/dead-keys + the use-temporary-password token/OnlyUseTemporaryPassword variant; get_auto_password kept for salt)"
+  echo "  ok  R-X7/R-A6 temporary/one-time-password machinery and generic automatic-password API excised; permanent-password storage salt is private, fixed-purpose, fixed-length, and provisioning-owned"
 fi
 # R-X7/R-A6 (Dart side of the same token): the `use-temporary-password` option key and its Dart const
 # `kUseTemporaryPassword` are excised from the flutter tree too (the OTP verification-method is gone;

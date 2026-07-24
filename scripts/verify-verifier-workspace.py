@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16315,6 +16315,163 @@ def validate_account_control_plane_excision_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_temporary_password_generator_excision_contract(sources):
+    config = sources["config_source"]
+    require_absent(
+        config,
+        "get_auto_password",
+        "generic automatic-password generator",
+    )
+    require_absent(
+        config,
+        "\nconst CHARS:",
+        "generic automatic-password alphabet",
+    )
+    require_text(
+        config,
+        "const PERMANENT_PASSWORD_STORAGE_SALT_CHARS: &[char] = &[",
+        "fixed-purpose storage-salt alphabet",
+    )
+    require_absent(
+        config,
+        "pub fn generate_permanent_password_storage_salt",
+        "public storage-salt generator",
+    )
+    salt_generator = extract_between(
+        config,
+        "    fn generate_permanent_password_storage_salt() -> String {",
+        "\n    fn ensure_permanent_password_salt",
+        "private storage-salt generator",
+    )
+    for text in (
+        "rand::thread_rng()",
+        "0..DEFAULT_SALT_LEN",
+        "PERMANENT_PASSWORD_STORAGE_SALT_CHARS",
+        "PERMANENT_PASSWORD_STORAGE_SALT_CHARS.len()",
+    ):
+        require_text(
+            salt_generator,
+            text,
+            "fixed-purpose fixed-length storage-salt generator",
+        )
+    salt_provisioning = extract_between(
+        config,
+        "    fn ensure_permanent_password_salt(config: &mut Config) {",
+        "\n    fn prepare_config_for_store",
+        "permanent-password storage-salt provisioning",
+    )
+    require_text(
+        salt_provisioning,
+        "if config.salt.is_empty() {",
+        "empty-only storage-salt provisioning",
+    )
+    require_text(
+        salt_provisioning,
+        "config.salt = Self::generate_permanent_password_storage_salt();",
+        "fixed-purpose storage-salt provisioning",
+    )
+    require_exact_count(
+        config,
+        "generate_permanent_password_storage_salt",
+        2,
+        "sole storage-salt generator owner and caller",
+    )
+
+    salt_regression = extract_between(
+        config,
+        "    fn test_set_permanent_password_persists_when_value_matches_preset() {",
+        "\n    #[test]\n    fn test_set_permanent_password_does_not_publish_unpersisted_state()",
+        "permanent-password storage-salt regression",
+    )
+    for text in (
+        "assert_eq!(saved_config.salt.len(), DEFAULT_SALT_LEN);",
+        "PERMANENT_PASSWORD_STORAGE_SALT_CHARS.contains(&c)",
+    ):
+        require_text(salt_regression, text, "storage-salt regression")
+
+    rust_otp_gate = extract_between(
+        sources["verify"],
+        "# R-X7 (Rust OTP excision)",
+        "# R-X7/R-A6 (Dart side of the same token)",
+        "shared automatic-password source gate",
+    )
+    for text in (
+        "get_auto_numeric_password|get_auto_password|use-temporary-password",
+        "fn generate_permanent_password_storage_salt() -> String {",
+        "config.salt = Self::generate_permanent_password_storage_salt();",
+        "salt-generator-public",
+        "R-S11b-3l/R-X7b — generic automatic-password generator excised",
+        "<tr><td>235</td>",
+    ):
+        require_text(rust_otp_gate, text, "shared automatic-password source gate")
+    require_absent(
+        rust_otp_gate,
+        "STAYS",
+        "stale automatic-password preservation claim",
+    )
+    require_absent(
+        rust_otp_gate,
+        "kept for salt",
+        "stale automatic-password salt claim",
+    )
+    require_text(
+        sources["verify"],
+        "config::tests::test_set_permanent_password_persists_when_value_matches_preset",
+        "shared storage-salt regression execution",
+    )
+
+    r_x7 = extract_html_requirement(
+        sources["requirements"], "R-X7", "R-X7 automatic-password deletion requirement"
+    )
+    require_text(
+        r_x7,
+        "<code>get_auto_password</code>",
+        "R-X7 automatic-password deletion requirement",
+    )
+    r_a6 = extract_html_requirement(
+        sources["requirements"], "R-A6", "R-A6 automatic-password zero-hit requirement"
+    )
+    require_text(
+        r_a6,
+        "<code>get_auto_password</code>",
+        "R-A6 automatic-password zero-hit requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>235</td>",
+        "automatic-password API Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3l/R-X7b — generic automatic-password generator excised",
+        "automatic-password API hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "automatic-password deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("generic automatic-password generator", "generic-generator mutation"),
+        ("public storage-salt generator", "public salt-generator mutation"),
+        ("fixed-purpose storage-salt provisioning", "salt-provisioning mutation"),
+        ("shared automatic-password source gate", "shared source-gate mutation"),
+        (
+            "R-X7 automatic-password deletion requirement",
+            "R-X7 requirement mutation",
+        ),
+        (
+            "R-A6 automatic-password zero-hit requirement",
+            "R-A6 requirement mutation",
+        ),
+        ("automatic-password API Appendix C row", "Appendix mutation"),
+        ("automatic-password API hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_rendezvous_compatibility_excision_contract(sources):
     config2 = extract_between(
         sources["config_source"],
@@ -17886,6 +18043,7 @@ def validate_sources(sources):
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
+    validate_temporary_password_generator_excision_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
     validate_public_server_selection_excision_contract(sources)
@@ -28890,9 +29048,57 @@ def run_source_mutations(sources):
         ),
         (
             "config_source",
-            "    pub fn get_auto_password(length: usize) -> String {",
-            "    pub fn get_rendezvous_server() -> String { String::new() }\n\n    pub fn get_auto_password(length: usize) -> String {",
+            "    fn generate_permanent_password_storage_salt() -> String {",
+            "    pub fn get_rendezvous_server() -> String { String::new() }\n\n    fn generate_permanent_password_storage_salt() -> String {",
             "rendezvous resolver",
+        ),
+        (
+            "config_source",
+            "    fn generate_permanent_password_storage_salt() -> String {",
+            "    pub fn get_auto_password(length: usize) -> String {\n        \"x\".repeat(length)\n    }\n\n    fn generate_permanent_password_storage_salt() -> String {",
+            "generic automatic-password generator",
+        ),
+        (
+            "config_source",
+            "    fn generate_permanent_password_storage_salt() -> String {",
+            "    pub fn generate_permanent_password_storage_salt() -> String {",
+            "public storage-salt generator",
+        ),
+        (
+            "config_source",
+            "            config.salt = Self::generate_permanent_password_storage_salt();",
+            "            config.salt = String::new();",
+            "fixed-purpose storage-salt provisioning",
+        ),
+        (
+            "verify",
+            "get_auto_numeric_password|get_auto_password|use-temporary-password",
+            "get_auto_numeric_password|use-temporary-password",
+            "shared automatic-password source gate",
+        ),
+        (
+            "requirements",
+            "<code>TEMPORARY_PASSWORD</code>, <code>get_auto_password</code>, <code>update_temporary_password</code>",
+            "<code>TEMPORARY_PASSWORD</code>, <code>update_temporary_password</code>",
+            "R-X7 automatic-password deletion requirement",
+        ),
+        (
+            "requirements",
+            "<code>check_update_temporary_password</code> · <code>get_auto_password</code> · <code>use-temporary-password</code>",
+            "<code>check_update_temporary_password</code> · <code>use-temporary-password</code>",
+            "R-A6 automatic-password zero-hit requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>235</td>",
+            "<tr><td>235-disabled</td>",
+            "automatic-password API Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11b-3l/R-X7b — generic automatic-password generator excised",
+            "R-S11b-3l/R-X7b — generic automatic-password generator deferred",
+            "automatic-password API hardening ledger",
         ),
         (
             "config_source",
@@ -30054,7 +30260,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233",
+            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

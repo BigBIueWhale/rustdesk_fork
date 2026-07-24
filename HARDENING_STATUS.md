@@ -819,6 +819,24 @@ unreachable and a source/test/AST gate prevents reintroduction.
   whole-config public API or a standalone salt writer while retaining the pure-read check and the ordinary-main
   zero-writer gate. Appendix C #234 records the source-level closure. Exact native and reproducible artifact
   evidence remains part of R-B2 and is not inferred from this API deletion.
+- **R-S11b-3l/R-X7b — generic automatic-password generator excised — CLOSED/GATED 2026-07-24.**
+  Platforms: every desktop and mobile build linking `hbb_common`. Endpoint/action: the public, arbitrary-length
+  `Config::get_auto_password` API and its generic character-set helper. Boundary: any current or future
+  in-process caller ↔ password-shaped random material and the permanent-password credential/storage-salt
+  lifecycle. Repository-wide source review proved the only surviving production caller was
+  `ensure_permanent_password_salt`; the old Hash challenge and temporary-password callers were already deleted.
+  This was therefore a conceptual authority/API and verifier-spec mismatch, not a second live credential,
+  reachable authentication bypass, credential change, privilege escalation, exploitation, host compromise, or
+  evidence of an Android-only resource leak. R-X7 and R-A6 already required the exact `get_auto_password` token
+  to be absent, but the shared verifier contradicted them by explicitly preserving it for the deleted challenge
+  path and salt generation. Closure deletes the public arbitrary-length API and generic helper/alphabet.
+  Durable permanent-password provisioning now owns one private, parameterless, fixed-length storage-salt
+  generator with a purpose-specific alphabet; it runs only when the durable salt is empty and remains in the
+  same atomic password-provisioning transaction. The focused persistence regression proves the generated salt's
+  fixed length and alphabet. The shared source gate now rejects the exact generic token, requires the private
+  provisioning-owned shape, executes the regression, and binds this ledger plus Appendix C #235. The independent
+  workspace validator semantically checks those invariants and deliberately mutates the source, gate,
+  requirements, Appendix row, and ledger. Exact native and reproducible artifact evidence remains under R-B2.
 - **R-S11c-13 — service-owned process close has dedicated receiver authority — CLOSED 2026-07-09; tightened 2026-07-12.**
   Platforms: Windows installed service-owned main server; the Linux/macOS main protocol has no process-close
   request. Endpoint/action: process close is absent from `MainIpcRequest` and general `_service`. Windows uses the
@@ -5297,7 +5315,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   policy is exhaustive after R-S11b-3h, with no wildcard arm that could admit a future
   identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate. R-S11b-3k also
   deletes the unused public whole-`Config`/`Config2` get/set surfaces and standalone salt writer, leaving
-  only typed field-specific mutation APIs.
+  only typed field-specific mutation APIs. R-S11b-3l removes the remaining public arbitrary-length
+  automatic-password generator and makes storage-salt generation private, fixed-purpose, fixed-length, and
+  solely owned by durable permanent-password provisioning.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad/default permissions across production listeners.
@@ -10137,9 +10157,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-17b6673b96ac5a6268b2d9872f3f254f3d40a01c30bb363e772993c5214635ce  requirements.html
+21bada0ad8302584bce5b93baa45e1d2b92fdb2fdc7f2e83cdb12b82c7a09371  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#233. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#235. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

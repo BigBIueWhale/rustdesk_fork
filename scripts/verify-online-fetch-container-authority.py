@@ -169,6 +169,38 @@ def validate(sources: Dict[str, str]) -> None:
         "networkless archive launch funnel",
     )
 
+    cargo_semantic_run = extract(
+        shell,
+        "online_docker_run_cargo_semantic() {",
+        '        "$@"\n}',
+        "networkless Cargo semantic launch funnel",
+    )
+    for token, label in (
+        ("online_docker run --rm", "ephemeral container"),
+        ("--pull=never", "no-pull policy"),
+        ("--network=none", "network removal"),
+        ("--read-only", "read-only root"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "numeric nonroot identity"),
+        ("--cap-drop=ALL", "complete capability drop"),
+        ("--security-opt=no-new-privileges", "no-new-privileges"),
+        ("--pids-limit=256", "PID ceiling"),
+        ("--memory=4g", "memory ceiling"),
+        ("--memory-swap=4g", "no-swap expansion"),
+        ("--cpus=2", "CPU ceiling"),
+        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g",
+         "bounded executable scratch"),
+    ):
+        require(
+            cargo_semantic_run,
+            token,
+            "networkless Cargo semantic launch funnel {}".format(label),
+        )
+    forbid_container_authority(
+        cargo_semantic_run,
+        "networkless Cargo semantic launch funnel",
+    )
+
     acquisition_run = extract(
         shell,
         "online_docker_run_archive_acquisition() {",
@@ -226,7 +258,7 @@ def validate(sources: Dict[str, str]) -> None:
         "closed image-provenance environment",
     )
 
-    require_count(shell, "online_docker_run ", 8, "ordinary acquisition launch inventory")
+    require_count(shell, "online_docker_run ", 9, "ordinary acquisition launch inventory")
     require_count(
         shell,
         "stage_cargo_installed_tool ",
@@ -266,8 +298,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         "online_docker run ",
-        4,
-        "ordinary, networkless archive, networked archive, and Pub-cache Docker primitives",
+        5,
+        "ordinary, two networkless, networked archive, and Pub-cache Docker primitives",
     )
     for token, label in (
         ("--pull=", "pull policy"),
@@ -281,11 +313,11 @@ def validate(sources: Dict[str, str]) -> None:
         ("--cpus=", "CPU policy"),
         ("--tmpfs ", "scratch policy"),
     ):
-        require_count(shell, token, 4, "four-launch {}".format(label))
+        require_count(shell, token, 5, "five-launch {}".format(label))
     require_count(
         shell,
         'local builder="$DEB_BUILDER_IMAGE_ID"',
-        5,
+        6,
         "exact Debian builder consumers",
     )
     require_count(
@@ -297,7 +329,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         "require_online_fetch_builder_image ",
-        11,
+        12,
         "per-launch-site exact-image verification",
     )
 
@@ -470,6 +502,40 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
+        "online_docker_run_cargo_semantic() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only",
+        "online_docker_run_cargo_semantic() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
+        "Cargo semantic network removal",
+    ),
+    Mutation(
+        "shell",
+        "online_docker_run_cargo_semantic() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+        "online_docker_run_cargo_semantic() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+        "        --user 0:0",
+        "Cargo semantic numeric nonroot identity",
+    ),
+    Mutation(
+        "shell",
+        "online_docker_run_cargo_semantic() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g",
+        "online_docker_run_cargo_semantic() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=40g",
+        "Cargo semantic scratch ceiling",
+    ),
+    Mutation(
+        "shell",
         "online_docker_run_archive_acquisition() {\n"
         "    online_docker run --rm --pull=never --network=bridge --read-only",
         "online_docker_run_archive_acquisition() {\n"
@@ -478,8 +544,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
-        "--pids-limit=-1 --memory=4g --memory-swap=4g --cpus=2",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=-1 --memory=4g --memory-swap=4g --cpus=2",
         "networked archive PID ceiling",
     ),
     Mutation(

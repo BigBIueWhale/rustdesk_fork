@@ -31,6 +31,7 @@ readonly TAR_BIN=/usr/bin/tar
 readonly FLOCK_BIN=/usr/bin/flock
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
+readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
@@ -370,6 +371,18 @@ online_docker_run_offline() {
         "$@"
 }
 
+# Offline Cargo resolution installs the pinned Rust toolchain in scratch before it
+# parses the complete 2.3 GiB vendor closure. Give that semantic check executable,
+# bounded scratch without granting it acquisition networking or any writable input.
+online_docker_run_cargo_semantic() {
+    online_docker run --rm --pull=never --network=none --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g \
+        "$@"
+}
+
 # Exact archive acquisition needs outbound HTTPS but no compiler-sized scratch,
 # executable temporary storage, or broad cache/source authority.
 online_docker_run_archive_acquisition() {
@@ -695,17 +708,262 @@ require_libyuv_distfile() {
         || die "libyuv source capture SHA512 mismatch"
 }
 
-# ── Rust crate world: vendor the committed lockfile (incl. 38 git-sourced records) ──
-# `cargo vendor --locked` reproduces the exact lockfile-pinned crate set offline.
-# It is itself a network step and belongs here, not in the offline build.
+# ── Rust crate world: vendor the committed lockfile (incl. git-sourced records) ──
+# Cargo receives one exact committed source snapshot, one pinned Rust archive, and
+# two private outputs. The live checkout, broad online cache, and final names are
+# never producer mounts. A separate networkless Cargo process must resolve the
+# lockfile from the sealed candidate before the host authorizes publication.
+cargo_vendor_output_tool() {
+    [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ] \
+        || die "Cargo vendor output authority requires the exact source snapshot"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/online-cargo-vendor-output.py" "$@"
+}
+
+cargo_vendor_output_args() {
+    printf '%s\0' \
+        --source-commit "$GRADLE_SOURCE_COMMIT" \
+        --source-tree "$GRADLE_SOURCE_TREE" \
+        --source-archive-sha256 "$GRADLE_SOURCE_ARCHIVE_SHA256" \
+        --builder "$DEB_BUILDER_IMAGE_ID" \
+        --rust-sha256 "$SHA256_RUST_1_75" \
+        --vendor-sha256 "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        --config-sha256 "$SHA256_CARGO_VENDOR_CONFIG" \
+        --config-vendor-path "$REPO_ROOT/online/cargo-vendor" \
+        --config-size "$SIZE_CARGO_VENDOR_CONFIG" \
+        --files "$CARGO_VENDOR_FILES_V1" \
+        --directories "$CARGO_VENDOR_DIRECTORIES_V1" \
+        --content-bytes "$CARGO_VENDOR_CONTENT_BYTES_V1"
+}
+
+retire_cargo_vendor_output_staging() {
+    local staging="$1" staging_id="$2" disposition candidate candidate_id
+    local output_args=()
+    mapfile -d '' output_args < <(cargo_vendor_output_args)
+    disposition="$(
+        cargo_vendor_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private Cargo vendor staging"
+    log "Cargo vendor staging reconciliation: $disposition"
+    candidate="${staging}.tree"
+    if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+        [ -d "$candidate" ] && [ ! -L "$candidate" ] \
+            || die "reserved Cargo vendor tree is not one real directory: $candidate"
+        candidate_id="$(/usr/bin/stat -c '%d:%i' -- "$candidate")"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+            --root "$candidate" --expected-identity "$candidate_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "cannot restore private Cargo vendor candidate traversal"
+        /usr/bin/python3 -I -S \
+            "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+            --remove-private-root "$candidate" --expected-identity "$candidate_id" \
+            || die "cannot retire private Cargo vendor candidate"
+    fi
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Cargo vendor transaction traversal"
+    /usr/bin/python3 -I -S \
+        "$GRADLE_SOURCE_AUTHORITY/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Cargo vendor transaction"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        && [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "private Cargo vendor transaction survived retirement"
+}
+
+recover_cargo_vendor_output_staging() {
+    local reserved=() staging staging_id base
+    mapfile -d '' reserved < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-cargo-vendor.*" -print0
+    )
+    for staging in "${reserved[@]}"; do
+        case "$staging" in
+            *.tree)
+                [[ "${staging##*/}" =~ ^\.rustdesk-cargo-vendor\.[A-Za-z0-9_]{8,64}\.tree$ ]] \
+                    || die "reserved Cargo vendor candidate name is malformed: $staging"
+                base="${staging%.tree}"
+                [ -d "$base" ] && [ ! -L "$base" ] \
+                    || die "orphaned Cargo vendor candidate has no transaction: $staging"
+                ;;
+            *)
+                [[ "${staging##*/}" =~ ^\.rustdesk-cargo-vendor\.[A-Za-z0-9_]{8,64}$ ]] \
+                    || die "reserved Cargo vendor transaction name is malformed: $staging"
+                [ -d "$staging" ] && [ ! -L "$staging" ] \
+                    || die "reserved Cargo vendor transaction is not one real directory: $staging"
+                ;;
+        esac
+    done
+    for staging in "${reserved[@]}"; do
+        case "$staging" in
+            *.tree) continue ;;
+        esac
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_cargo_vendor_output_staging "$staging" "$staging_id"
+    done
+}
+
+verify_cargo_vendor_source_unchanged() {
+    (
+        prepare_gradle_source
+        retire_gradle_source_build
+    )
+}
+
 vendor_cargo() {
-    require_cmd cargo
-    log "cargo vendor (--locked) -> ./online/cargo-vendor (+ its [source] config)"
-    # Capture the printed [source] config (crates-io + all 38 git-sourced records) so
-    # the offline build can replay it; build-debian.sh rewrites its directory path.
-    ( cd "$REPO_ROOT" && cargo vendor --locked --versioned-dirs "$ONLINE_DIR/cargo-vendor" \
-        > "$ONLINE_DIR/cargo-vendor-config.toml" )
-    log "cargo vendor done — config at ./online/cargo-vendor-config.toml"
+    local builder="$DEB_BUILDER_IMAGE_ID"
+    local producer_status=0 source_status=0 input_status=0
+    local output_status=0 semantic_status=0 publication_status=0
+    local lock_fd staging staging_id candidate
+    local output_args=()
+    require_online_fetch_builder_image deb-builder "$builder"
+    assert_online_fetch_source_tools
+    [ -f "$CARGO_VENDOR_OUTPUT_HELPER" ] && [ ! -L "$CARGO_VENDOR_OUTPUT_HELPER" ] \
+        || die "Cargo vendor output helper is not one real source file"
+    verify_sha256 \
+        "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"
+    prepare_gradle_source
+    retire_gradle_source_build
+    mapfile -d '' output_args < <(cargo_vendor_output_args)
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Cargo vendor serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Cargo vendor transaction already owns the online root"
+    recover_cargo_vendor_output_staging
+    if [ -e "$ONLINE_DIR/cargo-vendor" ] || [ -L "$ONLINE_DIR/cargo-vendor" ] \
+       || [ -e "$ONLINE_DIR/cargo-vendor-config.toml" ] \
+       || [ -L "$ONLINE_DIR/cargo-vendor-config.toml" ]
+    then
+        cargo_vendor_output_tool check-complete \
+            --online "$ONLINE_DIR" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${output_args[@]}" \
+            || die "existing Cargo vendor closure is incomplete, stale, or unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the Cargo vendor transaction lock"
+        exec {lock_fd}<&-
+        log "Cargo vendor closure and source map already exact, skipping"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-cargo-vendor.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Cargo vendor staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! cargo_vendor_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${output_args[@]}"
+    then
+        retire_cargo_vendor_output_staging "$staging" "$staging_id"
+        die "cannot prepare private Cargo vendor staging"
+    fi
+    candidate="${staging}.tree"
+    log "vendoring the exact committed lockfile into one private checked output"
+    online_docker_run \
+        --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/source,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz,target=/inputs/rust.tar.xz,readonly" \
+        --mount "type=bind,source=$candidate,target=/outputs/vendor" \
+        --mount "type=bind,source=$staging/raw-config.toml,target=/outputs/raw-config.toml" \
+        --workdir /source \
+        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+            umask 077
+            mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home /tmp/cargo-target
+            tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
+            installer="/tmp/toolchain/rust-${RUSTDESK_RUST_VERSION}.0-x86_64-unknown-linux-gnu/install.sh"
+            "$installer" --prefix=/tmp/rust --disable-ldconfig \
+                --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+            export HOME=/tmp/home
+            export CARGO_HOME=/tmp/cargo-home
+            export CARGO_TARGET_DIR=/tmp/cargo-target
+            export CARGO_NET_GIT_FETCH_WITH_CLI=false
+            export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+            export GIT_ATTR_NOSYSTEM=1 GIT_OPTIONAL_LOCKS=0
+            export PATH=/tmp/rust/bin:/usr/bin:/bin
+            cargo vendor --locked --versioned-dirs \
+                --manifest-path /source/Cargo.toml /outputs/vendor \
+                > /outputs/raw-config.toml
+        ' || producer_status=$?
+    verify_sha256 \
+        "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
+        || input_status=$?
+    verify_cargo_vendor_source_unchanged || source_status=$?
+    cargo_vendor_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$producer_status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]
+    then
+        online_docker_run_cargo_semantic \
+            --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
+            --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY,target=/source,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz,target=/inputs/rust.tar.xz,readonly" \
+            --mount "type=bind,source=$candidate,target=/vendor,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$staging/cargo-vendor-config.toml,target=/inputs/config.toml,readonly" \
+            --workdir /source \
+            "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
+                umask 077
+                mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home /tmp/cargo-target
+                tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
+                installer="/tmp/toolchain/rust-${RUSTDESK_RUST_VERSION}.0-x86_64-unknown-linux-gnu/install.sh"
+                "$installer" --prefix=/tmp/rust --disable-ldconfig \
+                    --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
+                /usr/bin/python3 -I -S -c "import sys; from pathlib import Path; source = Path(\\"/inputs/config.toml\\").read_bytes(); lines = source.splitlines(keepends=True); matches = [index for index, line in enumerate(lines) if line.startswith(b\\"directory = \\")]; len(matches) == 1 or sys.exit(\\"Cargo vendor directory authority is ambiguous\\"); lines[matches[0]] = b\\"directory = \\\\\\"/vendor\\\\\\"\\\\n\\"; Path(\\"/tmp/cargo-home/config.toml\\").write_bytes(b\\"\\".join(lines))"
+                chmod 0400 /tmp/cargo-home/config.toml
+                export HOME=/tmp/home
+                export CARGO_HOME=/tmp/cargo-home
+                export CARGO_TARGET_DIR=/tmp/cargo-target
+                export CARGO_NET_OFFLINE=true CARGO_NET_RETRY=0
+                export CARGO_NET_GIT_FETCH_WITH_CLI=false
+                export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+                export GIT_ATTR_NOSYSTEM=1 GIT_OPTIONAL_LOCKS=0
+                export PATH=/tmp/rust/bin:/usr/bin:/bin
+                cargo fetch --offline --locked --manifest-path /source/Cargo.toml
+            ' || semantic_status=$?
+    fi
+    verify_sha256 \
+        "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
+        || input_status=$?
+    verify_cargo_vendor_source_unchanged || source_status=$?
+    if [ "$producer_status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ] \
+       && [ "$semantic_status" -eq 0 ]
+    then
+        cargo_vendor_output_tool authorize \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${output_args[@]}" \
+            || output_status=$?
+    fi
+    if [ "$producer_status" -eq 0 ] && [ "$source_status" -eq 0 ] \
+       && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ] \
+       && [ "$semantic_status" -eq 0 ]
+    then
+        cargo_vendor_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_cargo_vendor_output_staging "$staging" "$staging_id"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Cargo vendor transaction lock"
+    exec {lock_fd}<&-
+    [ "$source_status" -eq 0 ] || die "Cargo vendor source authority changed"
+    [ "$input_status" -eq 0 ] || die "Cargo vendor pinned input changed"
+    [ "$output_status" -eq 0 ] || die "Cargo vendor output verification failed"
+    [ "$producer_status" -eq 0 ] || die "Cargo vendor producer failed"
+    [ "$semantic_status" -eq 0 ] || die "Cargo vendor offline resolution failed"
+    [ "$publication_status" -eq 0 ] || die "Cargo vendor publication failed"
+    log "Cargo vendor closure resolved, sealed, and no-clobber published"
 }
 
 # ── Fixed archive transactions ────────────────────────────────────────────────
@@ -2832,8 +3090,8 @@ main() {
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images
-    vendor_cargo
     stage_fixed_archives
+    vendor_cargo
     verify_online_glob_cardinality
     build_frb_codegen
     stage_pub_cache

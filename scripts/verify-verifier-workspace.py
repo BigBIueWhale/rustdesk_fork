@@ -11159,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11914,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12248,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+        "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15623,6 +15623,119 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
         "libvpx local-output hardening ledger",
+    )
+
+
+def validate_online_fetch_cargo_vendor_output_authority_contract(sources):
+    focused = sources["online_fetch_cargo_vendor_output_authority_verifier"]
+    helper = sources["online_cargo_vendor_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        (
+            "Bind Cargo vendoring to exact inputs, private outputs, and offline resolution",
+            "Cargo vendor focused authority binding",
+        ),
+        ("def mutations()", "Cargo vendor focused mutation inventory"),
+        ("self_test(sources)", "Cargo vendor focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("cargo_vendor_output_tool() {", "Cargo vendor fixed helper"),
+        ("cargo_vendor_output_args() {", "Cargo vendor closed contract"),
+        (
+            "recover_cargo_vendor_output_staging() {",
+            "Cargo vendor restart recovery",
+        ),
+        ("verify_cargo_vendor_source_unchanged() {", "Cargo source postcondition"),
+        (
+            'source=$GRADLE_SOURCE_AUTHORITY,target=/source,readonly,bind-recursive=disabled',
+            "Cargo vendor exact source mount",
+        ),
+        (
+            'source=$candidate,target=/outputs/vendor',
+            "Cargo vendor narrow producer output",
+        ),
+        (
+            "online_docker_run_cargo_semantic",
+            "Cargo vendor networkless semantic profile",
+        ),
+        (
+            "cargo fetch --offline --locked --manifest-path /source/Cargo.toml",
+            "Cargo vendor offline semantic resolution",
+        ),
+        ("cargo_vendor_output_tool authorize", "Cargo vendor authorization"),
+        ("cargo_vendor_output_tool publish", "Cargo vendor checked publication"),
+    ):
+        require_text(online, text, label)
+    main = extract_between(
+        online,
+        "main() {",
+        '\n}\n\nmain "$@"',
+        "Cargo vendor acquisition main",
+    )
+    require_order(
+        main,
+        ("load_builder_images", "stage_fixed_archives", "vendor_cargo"),
+        "Cargo vendor fixed-input order",
+    )
+    for text, label in (
+        ('FORMAT = "rustdesk-cargo-vendor-output-v1"', "Cargo vendor state format"),
+        ("phase_dispositions", "Cargo vendor journal transition closure"),
+        ("metadata.st_nlink != 1", "Cargo vendor hardlink refusal"),
+        ("reject_mount_at_or_below", "Cargo vendor mount closure"),
+        (
+            "if (root_metadata.st_uid, root_metadata.st_gid) != owner:",
+            "Cargo vendor final current-user ownership",
+        ),
+        ("allowed = {0o500}", "Cargo vendor sealed final directory mode"),
+        ("allowed = {0o400, 0o500}", "Cargo vendor sealed final file modes"),
+        (
+            "else {0o400, 0o500}",
+            "Cargo vendor sealed traversed final file modes",
+        ),
+        (
+            "or (metadata.st_uid, metadata.st_gid) != (uid, gid)\n"
+            "            or stat.S_IMODE(metadata.st_mode) != 0o400",
+            "Cargo vendor sealed final config metadata",
+        ),
+        ("run_provenance(root, contract.vendor_sha256)", "Cargo vendor exact root"),
+        ("RENAME_NOREPLACE = 1", "Cargo vendor no-clobber primitive"),
+        (
+            "renameat2(online_fd, candidate.name, online_fd, VENDOR_NAME)",
+            "Cargo vendor same-parent publication",
+        ),
+        (
+            'if latest["phase"] in ("prepared", "verified"):',
+            "Cargo vendor unauthorized-state retirement",
+        ),
+        ("online-cargo-vendor-output: PASS", "Cargo vendor runtime fixtures"),
+    ):
+        require_text(helper, text, label)
+    require_absent(helper, "os.replace(", "Cargo vendor overwrite publication")
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-cargo-vendor-output.py self-test",
+        "Cargo vendor transaction self-test wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-vendor-output-authority.py --repo . --self-test",
+        "Cargo vendor focused verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cw</span>',
+        "Cargo vendor normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>250</td>",
+        "Cargo vendor Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cw/R-S11e-115 — exact Cargo vendor acquisition-output authority",
+        "Cargo vendor hardening ledger",
     )
 
 
@@ -20664,6 +20777,7 @@ def validate_sources(sources):
     validate_online_fetch_android_sdk_output_authority_contract(sources)
     validate_online_fetch_fixed_archive_authority_contract(sources)
     validate_online_fetch_libvpx_local_output_authority_contract(sources)
+    validate_online_fetch_cargo_vendor_output_authority_contract(sources)
     validate_online_fetch_android_ndk_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -33314,7 +33428,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#249",
+            "R-S11n through R-S11cw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#250",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -35393,8 +35507,24 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            '"$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"',
-            '"$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$untrusted_hash"',
+            '    verify_sha256 \\\n'
+            '        "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"\n'
+            '    recover_cargo_tool_output_staging "$kind"',
+            '    verify_sha256 \\\n'
+            '        "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$untrusted_hash"\n'
+            '    recover_cargo_tool_output_staging "$kind"',
+            "Cargo-tool pre/post Rust archive checks",
+        ),
+        (
+            "online_fetch",
+            '    (\n'
+            '        verify_sha256 \\\n'
+            '            "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75"\n'
+            '    ) || input_status=$?',
+            '    (\n'
+            '        verify_sha256 \\\n'
+            '            "$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz" "$untrusted_hash"\n'
+            '    ) || input_status=$?',
             "Cargo-tool pre/post Rust archive checks",
         ),
         (
@@ -36134,6 +36264,100 @@ def run_source_mutations(sources):
             "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
             "R-S11cv/R-S11e-114 — ambient local publication authority",
             "libvpx local-output hardening ledger",
+        ),
+        (
+            "online_fetch_cargo_vendor_output_authority_verifier",
+            "def mutations()",
+            "def disabled_mutations()",
+            "Cargo vendor focused mutation inventory",
+        ),
+        (
+            "online_fetch",
+            "stage_fixed_archives\n    vendor_cargo",
+            "vendor_cargo\n    stage_fixed_archives",
+            "Cargo vendor fixed-input order",
+        ),
+        (
+            "online_fetch",
+            "cargo fetch --offline --locked --manifest-path /source/Cargo.toml",
+            "cargo fetch --locked --manifest-path /source/Cargo.toml",
+            "Cargo vendor offline semantic resolution",
+        ),
+        (
+            "online_fetch",
+            "cargo_vendor_output_tool authorize",
+            "true # Cargo vendor authorization removed",
+            "Cargo vendor authorization",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "Cargo vendor no-clobber primitive",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            "if (root_metadata.st_uid, root_metadata.st_gid) != owner:",
+            "if False:",
+            "Cargo vendor final current-user ownership",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            "allowed = {0o500}",
+            "allowed = {0o500, 0o700, 0o755}",
+            "Cargo vendor sealed final directory mode",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            "allowed = {0o400, 0o500}",
+            "allowed = {0o400, 0o500, 0o600, 0o644}",
+            "Cargo vendor sealed final file modes",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            "else {0o400, 0o500}",
+            "else {0o400, 0o500, 0o600, 0o644}",
+            "Cargo vendor sealed traversed final file modes",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            "or (metadata.st_uid, metadata.st_gid) != (uid, gid)\n"
+            "            or stat.S_IMODE(metadata.st_mode) != 0o400",
+            "or False\n"
+            "            or False",
+            "Cargo vendor sealed final config metadata",
+        ),
+        (
+            "online_cargo_vendor_output_helper",
+            'if latest["phase"] in ("prepared", "verified"):',
+            'if latest["phase"] == "prepared":',
+            "Cargo vendor unauthorized-state retirement",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-cargo-vendor-output-authority.py "
+            "--repo . --self-test",
+            "true # Cargo vendor focused gate removed",
+            "Cargo vendor focused verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cw</span>',
+            '<span class="id">R-S11cw-disabled</span>',
+            "Cargo vendor normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>250</td>",
+            "<tr><td>250-disabled</td>",
+            "Cargo vendor Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cw/R-S11e-115 — exact Cargo vendor acquisition-output authority",
+            "R-S11cw/R-S11e-115 — ambient Cargo vendor authority",
+            "Cargo vendor hardening ledger",
         ),
         (
             "online_fetch_android_ndk_output_authority_verifier",
@@ -37521,6 +37745,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_libvpx_local_output_helper": (
                 repo / "scripts/online-libvpx-local-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_cargo_vendor_output_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-cargo-vendor-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_cargo_vendor_output_helper": (
+                repo / "scripts/online-cargo-vendor-output.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

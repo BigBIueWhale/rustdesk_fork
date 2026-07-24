@@ -311,6 +311,21 @@ else
   echo "  ok  R-S11cv the exact committed patch and native-input receipt use one clean source identity, private recoverable staging, stable no-follow validation, and durable no-clobber publication"
 fi
 
+echo "== (0j-cargo) exact Cargo vendor output authority (R-S11cw/R-S11e-115) =="
+r_s11cw=
+if ! /usr/bin/python3 -I -S scripts/online-cargo-vendor-output.py self-test; then
+  r_s11cw="$r_s11cw transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-cargo-vendor-output-authority.py --repo . --self-test; then
+  r_s11cw="$r_s11cw authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cw" ]; then
+  echo "  FAIL R-S11cw exact Cargo vendor output authority:$r_s11cw"
+  rc=1
+else
+  echo "  ok  R-S11cw Cargo vendoring uses an exact committed source, pinned Rust and builder inputs, narrow private outputs, independent sealed-closure checks, networkless lockfile resolution, and durable no-clobber publication"
+fi
+
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
 r_s11cl=
 if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then

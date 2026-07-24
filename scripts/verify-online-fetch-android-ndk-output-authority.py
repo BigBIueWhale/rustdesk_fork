@@ -101,7 +101,7 @@ def validate(sources: dict[str, str]) -> None:
     offline_run = extract_between(
         shell,
         "online_docker_run_offline() {",
-        "\n}\n\nif [ -e \"$ONLINE_DIR\" ]",
+        '        "$@"\n}',
         "networkless archive launch funnel",
     )
     for token, label in (
@@ -426,8 +426,10 @@ MUTATIONS = (
              "resource ceilings"),
     Mutation(
         "shell",
-        "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-        "--tmpfs /tmp:rw,exec,mode=1777",
+        "--pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+        "--pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,exec,mode=1777",
         "bounded non-executable scratch",
     ),
     Mutation(

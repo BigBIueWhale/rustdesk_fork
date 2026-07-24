@@ -13,8 +13,8 @@
 # APK_MODE selects the requested Android build operation:
 #   offline: project the read-only warm /online/gradle-home into a private writable cache
 #            whose tracked init authority enables Gradle's actual offline start parameter.
-#   warm:    the caller supplies exactly two private /outputs mounts: GRADLE_USER_HOME and
-#            a writable Android SDK clone. The complete /online input closure stays read-only.
+#   warm:    the caller supplies one private GRADLE_USER_HOME output. The complete /online
+#            input closure, including the exact Android SDK, stays read-only.
 #   rust-check: generate the real Flutter bridge and type-check the aarch64 Android Rust library;
 #               Gradle is not entered.
 set -euo pipefail
@@ -27,9 +27,9 @@ esac
 if [ "$APK_MODE" = warm ]; then
     [ "${RUSTDESK_GRADLE_WARM_HOME:-}" = /outputs/gradle-home ] \
         || { echo "[FATAL] warm Gradle output must be the exact private /outputs/gradle-home mount" >&2; exit 1; }
-    [ "${RUSTDESK_ANDROID_SDK_HOME:-}" = /outputs/android-sdk ] \
-        || { echo "[FATAL] warm Android SDK output must be the exact private /outputs/android-sdk mount" >&2; exit 1; }
-    ANDROID_BUILD_SDK="$RUSTDESK_ANDROID_SDK_HOME"
+    [ -z "${RUSTDESK_ANDROID_SDK_HOME+x}" ] \
+        || { echo "[FATAL] warm builds may not redirect the read-only Android SDK" >&2; exit 1; }
+    ANDROID_BUILD_SDK=/online/android-sdk
 else
     [ -z "${RUSTDESK_GRADLE_WARM_HOME+x}" ] \
         || { echo "[FATAL] RUSTDESK_GRADLE_WARM_HOME is warm-build-internal" >&2; exit 1; }

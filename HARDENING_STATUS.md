@@ -9336,8 +9336,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   R-S11e-105 immediately following closes the two Cargo-installed tool outputs. The Pub output is
   closed by R-S11cn/R-S11e-106 below, and the libyuv single-file archive is closed by
   R-S11co/R-S11e-107 below, and both x64-linux/arm64-android vcpkg native outputs are closed by
-  R-S11cp/R-S11e-108 below. SDK and other archive producers still have separate broad writable
-  online mounts; host-side download/extraction
+  R-S11cp/R-S11e-108 below. The SDK producer and the Gradle SDK-write/publication path are
+  superseded and closed by R-S11cr/R-S11e-110 below; other archive producers and host-side acquisition
   and maintenance candidate-image publication, exact cold R-B2 artifacts, native/device evidence,
   and external R-V3 review remain open.
 - **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — SOURCE IMPLEMENTED
@@ -9957,9 +9957,126 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   No network acquisition, image pull/build/tag, release build, root command, or host RustDesk
   process/service/config/listener/firewall/network operation was executed for this slice. This is
   source, negative transaction, and exact pinned-archive extraction/publication evidence—not a cold
-  fetch or exact release artifact. Android SDK and other archive/packaging producers, maintenance
-  candidate-image publication, exact cold R-B2 artifacts, native/device evidence, and external
-  R-V3 review remain open.
+  fetch or exact release artifact. R-S11cr/R-S11e-110 immediately below closes Android SDK
+  acquisition and removes Gradle's SDK write/publication authority. Other archive/packaging
+  producers, maintenance candidate-image publication, exact cold R-B2 artifacts, native/device
+  evidence, and external R-V3 review remain open.
+- **R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority — SOURCE,
+  ADVERSARIAL TRANSACTION, COMPLETE DISPOSABLE NETWORK ACQUISITION, AND FOCUSED MUTATION EVIDENCE
+  IMPLEMENTED 2026-07-24; EXACT CLEAN RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: the
+  unprivileged Linux acquisition host and immutable Android-builder container. Endpoint/action:
+  `scripts/online-fetch.sh::stage_android_sdk` and the downstream `stage_gradle` warm-cache
+  transaction. Boundary: remote Android repository resolution and dependency-controlled Gradle
+  execution ↔ the complete offline-input cache and the durable exact SDK name.
+
+  Before this slice, `stage_android_sdk` treated `sdkmanager` package paths as content pins. It
+  requested moving `platform-tools`, `build-tools;34.0.0`, and `platforms;android-34`, ignored a
+  license-command failure, gave the networked resolver a writable mount of all `online`, recursively
+  removed the prior SDK, and copied the resolver's broad mutable tree into the final name.
+  Repository inspection proved that `platforms;android-34` currently occurs under multiple extension
+  revisions, so the alias is not a stable byte identity. `stage_gradle` then cloned the SDK into a
+  writable output and atomically exchanged that clone back into the final SDK. File transfer versus
+  screen-control behavior in the Android runtime is unrelated to this build-harness finding; this
+  slice changes no host or mobile RustDesk process, service, configuration, listener, firewall, or
+  network state.
+
+  `scripts/pins.env` now records exact SHA-256 values for six fixed Google repository archives:
+  `build-tools_r30.0.3-linux.zip`, `build-tools_r34-linux.zip`, `platform-31_r01.zip`,
+  `platform-32_r01.zip`, `platform-33-ext3_r03.zip`, and `platform-34-ext7_r03.zip`. Each record
+  also carries the exact byte length and independently checked official repository XML SHA-1 in its
+  provenance comment. The existing command-line-tools revision-21 archive remains the seventh exact
+  input. The final closure intentionally omits unused moving `platform-tools`, resolver licenses,
+  `.temp`, `.knownPackages`, and generated `package.xml` files.
+
+  `stage_android_sdk` now exclusively locks the canonical current-user-private online root,
+  reconciles every `.rustdesk-android-sdk.*` transaction, and fully checks a present final tree
+  rather than presence-trusting or deleting it. A cold run creates unpredictable mode-0700
+  same-filesystem staging with separate `downloads` and `output` children. The bounded fsynced
+  transaction record binds the exact online/staging/container/archive identities, UID/GID, complete
+  pin map, immutable builder, destination, verification phase, candidate inode, and tree digest.
+  Every command rejects UID or GID 0.
+
+  The new networked archive-acquisition funnel keeps the fixed Docker client, fixed local socket,
+  and private empty Docker configuration. It uses the already loaded immutable Android builder with
+  `--pull=never`, isolated bridge egress, read-only root, numeric UID:GID, zero capabilities,
+  no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded non-executable scratch. The
+  producer receives exactly four mounts: the command-line ZIP and exact helper read-only, plus only
+  the private downloads and SDK-output directories writable. It receives no online root, final
+  name, repository, Docker socket, device, published port, or host network/PID/IPC/UTS namespace.
+
+  `scripts/online-android-sdk-output.py` downloads only the six fixed filenames from
+  `https://dl.google.com/android/repository/`. It rejects redirects, non-200 status, transformed
+  content, absent or wrong lengths, per-file/aggregate excess, and SHA-256 mismatch; creates every
+  file exclusively; synchronizes it; and never executes an archive. Its ZIP contract binds each
+  exact length, digest, entry count, root, destination, Unix mode set, and observed general-purpose
+  flag set. It rejects comments, unsupported flags/compression, NUL truncation, non-ASCII or
+  absolute/traversing/deep/long names, duplicates, special/set-id/sticky members, size/count
+  overflow, and cross-package collisions. Extraction creates explicit directories and
+  `O_EXCL|O_NOFOLLOW` regular files and normalizes only the archive-derived executable bit.
+
+  After the producer stops, the host reopens and rehashes all seven archives, requires exact output
+  inventory and same-filesystem/mount closure, current ownership, raw modes, no symlink, special
+  object, xattr, or external hardlink, and equality of every regular-file byte with a fresh archive
+  stream. Consumer semantics require command-line tools revision 21 and executable `sdkmanager`,
+  both exact build-tools revisions with `aapt2`, `apksigner`, and `zipalign`, and platforms 31–34
+  with their exact API-level property and `android.jar`. The normalized complete tree is independently
+  bound at SHA-256
+  `031dedf9f4bd8eda3fa0ed24903d94d640607c8e805ba9f044ea8fcbddd91403`,
+  43,468 files, 11,293 directories, and 876,007,562 regular-file bytes. Every file and inner
+  directory is sealed 0444/0555 and synchronized before descriptor-relative publication. The
+  candidate root stays private mode 0700 because Linux must update its `..` entry during a
+  cross-parent directory rename. `renameat2(RENAME_NOREPLACE)` installs the absent final name, then a
+  descriptor-bound exact-identity transition seals that root 0555 and synchronizes it before
+  postcheck. Restart recovery independently revalidates every archive and output byte before
+  completing only the exact recorded post-rename/pre-root-seal arrangement; postcheck, rollback, and
+  exact private retirement bind every other inode arrangement.
+
+  The established live `online/android-sdk` was inspected read-only and is intentionally not
+  accepted: it is root-owned resolver output and contains moving/resolver state outside the exact
+  archive closure. The new flow fails closed on it and tells the operator to retire it explicitly;
+  it does not delete, replace, or chmod it. This is the same deliberate legacy-state rule used for
+  the stale Android NDK output.
+
+  The corrected Gradle warmer no longer clones or mounts an SDK output. Its sole writable durable
+  mount is private `/outputs/gradle-home`; the exact SDK remains at read-only
+  `/online/android-sdk`, and `RUSTDESK_ANDROID_SDK_HOME` is rejected in warm mode. The transaction
+  records and rehashes the live SDK before warming, after the producer, after Gradle-home
+  publication, and during recovery. Only Gradle home is synchronized and installed with
+  `RENAME_NOREPLACE`; there is no `RENAME_EXCHANGE`, SDK rollback, SDK-only recovery, `adb`
+  requirement, or SDK publication authority. This explicitly supersedes the writable-SDK-clone and
+  two-name-publication portion of R-S11cl/R-S11e-104 while retaining its lock, wrapper checksum,
+  structural/semantic, no-clobber Gradle, recovery, and private-retirement protections.
+
+  Both transaction helpers pass their adversarial self-tests in the immutable Android builder as
+  numeric non-root with no pull/network, read-only root/source, zero capabilities,
+  no-new-privileges, and bounded resources. SDK fixtures cover exact publication/recovery, byte
+  tampering, extra entries, external hardlinks, occupied destination, wrong archive digest,
+  traversal, and exact post-rename/pre-root-seal recovery. Gradle fixtures cover one-name
+  publication/recovery, SDK mutation, occupied destination, wrong publisher checksum, and symlink
+  rejection.
+
+  A disposable networked proof used immutable Android-builder image
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
+  as UID:GID 1000:1000 with no pull, read-only root and exact input binds, no capabilities or
+  privilege gain, no port/device/socket/host namespace, fixed resources, and container-only tmpfs
+  outputs. It fetched all six exact archives, verified their lengths and hashes, expanded the full
+  seven-package closure, compared all 43,468 files to the archives, passed consumer semantics, and
+  independently produced the recorded whole-tree digest. The tmpfs vanished with the container;
+  no archive or SDK output was published to the host.
+
+  `scripts/verify-online-fetch-android-sdk-output-authority.py` and the corrected Gradle focused
+  verifier bind the exact pins, archive names/lengths, four-mount producer topology, runtime floor,
+  network response checks, closed ZIP and byte/inventory/resource contract, independent tree
+  closure, durable transaction, no-clobber publication, read-only Gradle SDK, shared gates,
+  R-S11cr, Appendix C #245, this ledger, and independent workspace ownership through deliberate
+  mutations. The adjacent container gate now treats the archive funnel as its own fourth Docker
+  primitive and passes with 33 mutations rejected.
+
+  No root command, image pull/build/tag, release build, host RustDesk process/service/config/
+  listener/firewall/network operation, or live online SDK mutation occurred. The networked action
+  was limited to the disposable container proof above. This is source, negative-fixture, exact
+  archive, and complete temporary acquisition evidence—not exact clean R-B2/R-B10 release output or
+  installed Android device evidence.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -10677,9 +10794,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d0276a47dab437b448ec9549a2c3adc7f49ac8a213df123c769f4fb6e87d0051  requirements.html
+5644686a2b1eefdefc430eba436e67e5cb6bfe510d7d0eb8d447247020e9f575  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cq, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cr, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

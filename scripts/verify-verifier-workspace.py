@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+        "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14112,7 +14112,7 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
     wrapper = sources["gradle_wrapper"]
     for text, label in (
         ("Gradle output transaction", "Gradle-output focused lifecycle binding"),
-        ("checked two-name publication", "Gradle-output focused publication binding"),
+        ("checked one-name publication", "Gradle-output focused publication binding"),
         ("MUTATIONS: Tuple[Mutation, ...]", "Gradle-output focused mutation inventory"),
         ("run_mutations(sources)", "Gradle-output focused mutation dispatch"),
     ):
@@ -14132,23 +14132,56 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
          "Gradle-output read-only online mount"),
         ('source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home',
          "Gradle-output narrow Gradle mount"),
-        ('source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk',
-         "Gradle-output narrow SDK mount"),
+        ("android_sdk_output_tool check-complete",
+         "Gradle-output exact SDK precondition"),
+        (
+            "android_sdk_output_tool check-complete \\\n"
+            '        --online "$ONLINE_DIR" "${sdk_args[@]}"',
+            "Gradle-output exact SDK precondition",
+        ),
         ('[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]',
          "Gradle-output publication barrier"),
         ("gradle_output_tool publish", "Gradle-output checked publisher"),
         ("retire_gradle_output_staging", "Gradle-output private retirement"),
     ):
         require_text(online, text, label)
+    stage = extract_between(
+        online,
+        "stage_gradle() {",
+        "\n}\n\n# ── The windows flutter ENGINE",
+        "Gradle-output lifecycle",
+    )
+    require_exact_count(
+        stage,
+        "target=/outputs/gradle-home",
+        1,
+        "Gradle-output sole writable mount",
+    )
+    require_absent(
+        stage,
+        "target=/outputs/android-sdk",
+        "Gradle-output writable SDK mount",
+    )
+    require_absent(
+        stage,
+        "--env RUSTDESK_ANDROID_SDK_HOME",
+        "Gradle-output writable SDK redirection",
+    )
     for text, label in (
         ('[ "${RUSTDESK_GRADLE_WARM_HOME:-}" = /outputs/gradle-home ]',
          "Gradle-output exact inner cache path"),
-        ('[ "${RUSTDESK_ANDROID_SDK_HOME:-}" = /outputs/android-sdk ]',
-         "Gradle-output exact inner SDK path"),
         ('[ -z "${RUSTDESK_GRADLE_WARM_HOME+x}" ]',
          "Gradle-output non-warm cache override rejection"),
         ('[ -z "${RUSTDESK_ANDROID_SDK_HOME+x}" ]',
-         "Gradle-output non-warm SDK override rejection"),
+         "Gradle-output SDK override rejection"),
+        ("ANDROID_BUILD_SDK=/online/android-sdk",
+         "Gradle-output read-only SDK selection"),
+        (
+            'read-only Android SDK" >&2; exit 1; }\n'
+            "    ANDROID_BUILD_SDK=/online/android-sdk\n"
+            "else",
+            "Gradle-output warm read-only SDK selection",
+        ),
         ('export ANDROID_SDK_ROOT="$ANDROID_BUILD_SDK" ANDROID_HOME="$ANDROID_BUILD_SDK"',
          "Gradle-output inner SDK selection"),
     ):
@@ -14172,23 +14205,26 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         ("output tree contains a special file", "Gradle-output special-file refusal"),
         ("live Android SDK changed while the networked producer ran",
          "Gradle-output live-input postcondition"),
+        ("read-only Android SDK content postcondition failed",
+         "Gradle-output publication SDK postcondition"),
+        ("Android SDK changed during Gradle output recovery",
+         "Gradle-output recovery SDK postcondition"),
         ("exactly one pinned distribution archive",
          "Gradle-output wrapper semantic gate"),
         ('for name in ("aapt2", "apksigner", "zipalign"):\n'
          "        require_file(tools / name, executable=True, nonempty=True)",
          "Gradle-output SDK semantic gate"),
-        ('sync_tree(staging / "android-sdk")', "Gradle-output SDK durability"),
         ('sync_tree(staging / "gradle-home")', "Gradle-output cache durability"),
-        ("RENAME_EXCHANGE = 2", "Gradle-output atomic SDK exchange"),
         ("RENAME_NOREPLACE = 1", "Gradle-output no-clobber cache install"),
-        ("rollback_publication(online_fd, staging_fd, sdk_swapped, gradle_moved)",
+        ("rollback_publication(online_fd, staging_fd)",
          "Gradle-output rollback"),
-        ('return "sdk-rolled-back"', "Gradle-output restart rollback"),
+        ('return "unpublished"', "Gradle-output unpublished recovery"),
+        ('return "published"', "Gradle-output published recovery"),
         ("state is incoherent and was preserved", "Gradle-output ambiguous-state refusal"),
         ("self-test did not classify completed publication",
          "Gradle-output completed-transaction fixture"),
-        ("self-test did not roll back an SDK-only publication",
-         "Gradle-output SDK-only fixture"),
+        ("self-test accepted a changed read-only Android SDK",
+         "Gradle-output SDK mutation fixture"),
         ("self-test accepted an occupied Gradle publication destination",
          "Gradle-output destination-race fixture"),
     ):
@@ -14197,15 +14233,24 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         helper,
         (
             "verify_staged(",
-            'sync_tree(staging / "android-sdk")',
-            'renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)',
+            'sync_tree(staging / "gradle-home")',
             'renameat2(staging_fd, "gradle-home", online_fd, "gradle-home", RENAME_NOREPLACE)',
-            "published Android SDK identity postcondition failed",
+            "read-only Android SDK identity postcondition failed",
+            "read-only Android SDK content postcondition failed",
             "published Gradle identity postcondition failed",
             "validate_semantics(",
         ),
-        "Gradle-output atomic SDK exchange and checked two-name publication",
+        "Gradle-output checked one-name publication",
     )
+    for text, label in (
+        ("RENAME_EXCHANGE", "Gradle-output SDK exchange"),
+        ("staged_sdk_identity", "Gradle-output staged SDK identity"),
+        ('sync_tree(staging / "android-sdk")', "Gradle-output SDK durability"),
+        ('renameat2(staging_fd, "android-sdk"', "Gradle-output SDK publication"),
+        ('require_file(sdk / "platform-tools" / "adb"', "Gradle-output unused adb"),
+        ("copy_tree(", "Gradle-output SDK clone"),
+    ):
+        require_absent(helper, text, label)
     require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test",
@@ -14228,8 +14273,8 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority",
-        "online-fetch Gradle output authority hardening ledger",
+        "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
+        "online-fetch Android SDK/Gradle correction hardening ledger",
     )
 
 
@@ -14919,6 +14964,188 @@ def validate_online_fetch_vcpkg_native_output_authority_contract(sources):
     )
 
 
+def validate_online_fetch_android_sdk_output_authority_contract(sources):
+    focused = sources["online_fetch_android_sdk_output_authority_verifier"]
+    helper = sources["online_android_sdk_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        (
+            "exact Android SDK acquisition, extraction, and publication authority",
+            "Android SDK focused authority binding",
+        ),
+        (
+            "SDK producer mount inventory",
+            "Android SDK focused mount binding",
+        ),
+        (
+            "Android SDK transaction order",
+            "Android SDK focused lifecycle binding",
+        ),
+        (
+            "output byte comparison",
+            "Android SDK focused byte binding",
+        ),
+        (
+            "MUTATIONS: Tuple[Mutation, ...]",
+            "Android SDK focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "Android SDK focused mutation dispatch",
+        ),
+    ):
+        require_text(focused, text, label)
+    funnel = extract_between(
+        online,
+        "online_docker_run_archive_acquisition() {",
+        "\n}\n\nif [ -e \"$ONLINE_DIR\" ]",
+        "Android SDK archive acquisition funnel",
+    )
+    for text, label in (
+        ("--pull=never --network=bridge --read-only", "Android SDK no-pull/root floor"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"', "Android SDK nonroot identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges", "Android SDK privilege floor"),
+        (
+            "--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
+            "Android SDK resource floor",
+        ),
+        (
+            "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+            "Android SDK non-executable scratch",
+        ),
+    ):
+        require_text(funnel, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_android_sdk() {",
+        "\n}\n\n# ── The warm gradle cache",
+        "Android SDK acquisition lifecycle",
+    )
+    for text, label in (
+        ("recover_android_sdk_output_staging", "Android SDK restart recovery"),
+        ("android_sdk_output_tool check-complete", "Android SDK existing check"),
+        ("android_sdk_output_tool prepare", "Android SDK transaction prepare"),
+        (
+            "source=$cmdline_archive,target=/inputs/android-cmdline-tools.zip,readonly",
+            "Android SDK command-line archive input",
+        ),
+        (
+            "source=$SCRIPT_DIR/online-android-sdk-output.py,"
+            "target=/authority/online-android-sdk-output.py,readonly",
+            "Android SDK helper input",
+        ),
+        (
+            "source=$staging/downloads,target=/outputs/downloads",
+            "Android SDK download output",
+        ),
+        (
+            "source=$staging/output,target=/outputs/sdk",
+            "Android SDK tree output",
+        ),
+        ("android_sdk_output_tool verify", "Android SDK host postcondition"),
+        ("android_sdk_output_tool publish", "Android SDK checked publication"),
+        ("retire_android_sdk_output_staging", "Android SDK staging retirement"),
+        (
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
+            "        android_sdk_output_tool publish",
+            "Android SDK independent verdict barrier",
+        ),
+    ):
+        require_text(lifecycle, text, label)
+    require_exact_count(
+        lifecycle,
+        "--mount ",
+        4,
+        "Android SDK exact mount inventory",
+    )
+    require_absent(lifecycle, "target=/online", "Android SDK broad online mount")
+    require_absent(lifecycle, "target=/src", "Android SDK repository mount")
+    require_absent(lifecycle, "sdkmanager", "Android SDK moving resolver")
+    for text, label in (
+        (
+            'DOWNLOAD_BASE = "https://dl.google.com/android/repository/"',
+            "Android SDK fixed origin",
+        ),
+        (
+            '"031dedf9f4bd8eda3fa0ed24903d94d640607c8e805ba9f044ea8fcbddd91403"',
+            "Android SDK independent tree digest",
+        ),
+        ("EXPECTED_TREE_FILES = 43468", "Android SDK file count"),
+        ("EXPECTED_TREE_DIRECTORIES = 11293", "Android SDK directory count"),
+        ("EXPECTED_TREE_BYTES = 876007562", "Android SDK byte count"),
+        ("response.geturl() != url", "Android SDK redirect refusal"),
+        ("digest.hexdigest() != pins[spec.key]", "Android SDK package digest"),
+        ("archive member escapes its exact root", "Android SDK traversal refusal"),
+        ("archive contains a special member", "Android SDK special-member refusal"),
+        ("output bytes differ from the pinned archive", "Android SDK byte comparison"),
+        ("output inventory differs from the pinned archives", "Android SDK inventory"),
+        ("carries extended attributes", "Android SDK xattr refusal"),
+        ("reject_mount_at_or_below(root)", "Android SDK mount closure"),
+        ("seal_and_sync_tree", "Android SDK durability/sealing"),
+        (
+            "if mode == 0o700:\n"
+            '        downloads = staging / "downloads"',
+            "Android SDK post-rename recovery completion",
+        ),
+        ("validate_required_summary", "Android SDK whole-tree closure"),
+        (
+            "validate_required_summary(summary)\n"
+            "        validate_semantics(candidate)\n"
+            "        candidate_identity = identity(os.lstat(candidate))",
+            "Android SDK pre-seal whole-tree closure",
+        ),
+        ("RENAME_NOREPLACE = 1", "Android SDK no-clobber primitive"),
+        ("publication rollback also failed", "Android SDK rollback"),
+        ("state is incoherent and was preserved", "Android SDK ambiguous-state refusal"),
+        ("self-test accepted changed Android SDK output bytes", "Android SDK tamper fixture"),
+        (
+            "self-test accepted externally hardlinked Android SDK output",
+            "Android SDK hardlink fixture",
+        ),
+        (
+            "self-test accepted an occupied Android SDK destination",
+            "Android SDK no-clobber fixture",
+        ),
+        (
+            "self-test accepted Android SDK archive path traversal",
+            "Android SDK traversal fixture",
+        ),
+    ):
+        require_text(helper, text, label)
+    require_absent(
+        helper,
+        "os.chmod(destination",
+        "Android SDK post-publication mode mutation",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-online-fetch-android-sdk-output-authority.py "
+        "--repo . --self-test",
+        "Online-fetch Android SDK output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-android-sdk-output.py self-test",
+        "Online-fetch Android SDK transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cr</span>',
+        "online-fetch Android SDK output requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>245</td>",
+        "online-fetch Android SDK Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
+        "online-fetch Android SDK hardening ledger",
+    )
+
+
 def validate_online_fetch_android_ndk_output_authority_contract(sources):
     focused = sources["online_fetch_android_ndk_output_authority_verifier"]
     helper = sources["online_android_ndk_output_helper"]
@@ -14926,7 +15153,7 @@ def validate_online_fetch_android_ndk_output_authority_contract(sources):
     offline_run = extract_between(
         online,
         "online_docker_run_offline() {",
-        "\n}\n\nif [ -e \"$ONLINE_DIR\" ]",
+        '        "$@"\n}',
         "Android NDK networkless launch funnel",
     )
     for text, label in (
@@ -19954,6 +20181,7 @@ def validate_sources(sources):
     validate_online_fetch_pub_cache_output_authority_contract(sources)
     validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_online_fetch_vcpkg_native_output_authority_contract(sources)
+    validate_online_fetch_android_sdk_output_authority_contract(sources)
     validate_online_fetch_android_ndk_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
@@ -32574,7 +32802,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#244",
+            "R-S11n through R-S11cr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#245",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34379,14 +34607,20 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "online_docker run --rm --pull=never --network=bridge --read-only",
-            "online_docker run --rm --network=host",
-            "online acquisition runtime confinement",
+            "online_docker_run() {\n"
+            "    online_docker run --rm --pull=never --network=bridge --read-only",
+            "online_docker_run() {\n"
+            "    online_docker run --rm --network=host",
+            "online acquisition funnel confinement",
         ),
         (
             "online_fetch",
+            "online_docker_run() {\n"
+            "    online_docker run --rm --pull=never "
             '--network=bridge --read-only \\\n'
             '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+            "online_docker_run() {\n"
+            "    online_docker run --rm --pull=never "
             '--network=bridge --read-only \\\n'
             "        --user 0:0",
             "online acquisition numeric nonroot identity",
@@ -34538,7 +34772,7 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch_gradle_output_authority_verifier",
-            "checked two-name publication",
+            "checked one-name publication",
             "unchecked output replacement",
             "Gradle-output focused publication binding",
         ),
@@ -34558,11 +34792,9 @@ def run_source_mutations(sources):
         ),
         (
             "online_gradle_output_helper",
-            'renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)\n'
-            "        sdk_swapped = True",
-            'os.replace(staging / "android-sdk", online / "android-sdk")\n'
-            "        sdk_swapped = True",
-            "Gradle-output atomic SDK exchange",
+            "read-only Android SDK content postcondition failed",
+            "read-only Android SDK mutation accepted",
+            "Gradle-output publication SDK postcondition",
         ),
         (
             "online_fetch",
@@ -34576,15 +34808,20 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            'source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk',
-            'source=$ONLINE_DIR,target=/outputs/android-sdk',
-            "Gradle-output narrow SDK mount",
+            "android_sdk_output_tool check-complete \\\n"
+            '        --online "$ONLINE_DIR" "${sdk_args[@]}"',
+            "true # exact Android SDK precondition removed",
+            "Gradle-output exact SDK precondition",
         ),
         (
             "android_apk_build",
-            '[ "${RUSTDESK_ANDROID_SDK_HOME:-}" = /outputs/android-sdk ]',
-            '[ -n "${RUSTDESK_ANDROID_SDK_HOME:-}" ]',
-            "Gradle-output exact inner SDK path",
+            'read-only Android SDK" >&2; exit 1; }\n'
+            "    ANDROID_BUILD_SDK=/online/android-sdk\n"
+            "else",
+            'read-only Android SDK" >&2; exit 1; }\n'
+            '    ANDROID_BUILD_SDK="$RUSTDESK_ANDROID_SDK_HOME"\n'
+            "else",
+            "Gradle-output warm read-only SDK selection",
         ),
         (
             "gradle_wrapper",
@@ -34612,9 +34849,9 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority",
-            "R-S11cl/R-S11e-104 — ambient Gradle output authority",
-            "online-fetch Gradle output authority hardening ledger",
+            "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
+            "R-S11cr/R-S11e-110 — ambient Android SDK authority",
+            "online-fetch Android SDK/Gradle correction hardening ledger",
         ),
         (
             "online_fetch_cargo_tool_output_authority_verifier",
@@ -35042,6 +35279,102 @@ def run_source_mutations(sources):
             "R-S11cp/R-S11e-108 — networked vcpkg native output authority",
             "R-S11cp/R-S11e-108 — ambient vcpkg native output authority",
             "online-fetch vcpkg native output authority hardening ledger",
+        ),
+        (
+            "online_fetch_android_sdk_output_authority_verifier",
+            "SDK producer mount inventory",
+            "ambient SDK output mount",
+            "Android SDK focused mount binding",
+        ),
+        (
+            "online_fetch",
+            "online_docker_run_archive_acquisition() {\n"
+            "    online_docker run --rm --pull=never --network=bridge --read-only",
+            "online_docker_run_archive_acquisition() {\n"
+            "    online_docker run --rm --pull=always --network=host",
+            "Android SDK no-pull/root floor",
+        ),
+        (
+            "online_fetch",
+            "source=$cmdline_archive,target=/inputs/android-cmdline-tools.zip,readonly",
+            "source=$ONLINE_DIR,target=/inputs/android-cmdline-tools.zip",
+            "Android SDK command-line archive input",
+        ),
+        (
+            "online_fetch",
+            "source=$staging/downloads,target=/outputs/downloads",
+            "source=$ONLINE_DIR,target=/outputs/downloads",
+            "Android SDK download output",
+        ),
+        (
+            "online_fetch",
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then\n'
+            "        android_sdk_output_tool publish",
+            '[ "$status" -eq 0 ]; then\n'
+            "        android_sdk_output_tool publish",
+            "Android SDK independent verdict barrier",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "response.geturl() != url",
+            "False",
+            "Android SDK redirect refusal",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "output bytes differ from the pinned archive",
+            "output mismatch accepted",
+            "Android SDK byte comparison",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "validate_required_summary(summary)\n"
+            "        validate_semantics(candidate)\n"
+            "        candidate_identity = identity(os.lstat(candidate))",
+            "pass # Android SDK tree digest omitted\n"
+            "        validate_semantics(candidate)\n"
+            "        candidate_identity = identity(os.lstat(candidate))",
+            "Android SDK pre-seal whole-tree closure",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "if mode == 0o700:\n"
+            '        downloads = staging / "downloads"',
+            "if False:\n"
+            '        downloads = staging / "downloads"',
+            "Android SDK post-rename recovery completion",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "Android SDK no-clobber primitive",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-online-fetch-android-sdk-output-authority.py "
+            "--repo . --self-test",
+            "true # Android SDK authority gate removed",
+            "Online-fetch Android SDK output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cr</span>',
+            '<span class="id">R-S11cr-disabled</span>',
+            "online-fetch Android SDK output requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>245</td>",
+            "<tr><td>245-disabled</td>",
+            "online-fetch Android SDK Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
+            "R-S11cr/R-S11e-110 — ambient Android SDK authority",
+            "online-fetch Android SDK/Gradle correction hardening ledger",
         ),
         (
             "online_fetch_android_ndk_output_authority_verifier",
@@ -36408,6 +36741,13 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_gradle_output_helper": (
                 repo / "scripts/online-gradle-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_android_sdk_output_authority_verifier": (
+                repo
+                / "scripts/verify-online-fetch-android-sdk-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_android_sdk_output_helper": (
+                repo / "scripts/online-android-sdk-output.py"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

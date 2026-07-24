@@ -266,6 +266,21 @@ else
   echo "  ok  R-S11ck the networked Gradle warmer uses one clean exact-commit private writable source, a separate read-only inner-program authority, before/after input proofs, and no live-repository mount"
 fi
 
+echo "== (0j-sdk) exact Android SDK output authority (R-S11cr/R-S11e-110) =="
+r_s11cr=
+if ! /usr/bin/python3 -I -S scripts/online-android-sdk-output.py self-test; then
+  r_s11cr="$r_s11cr transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-android-sdk-output-authority.py --repo . --self-test; then
+  r_s11cr="$r_s11cr authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cr" ]; then
+  echo "  FAIL R-S11cr exact Android SDK output authority:$r_s11cr"
+  rc=1
+else
+  echo "  ok  R-S11cr exact pinned Android archives are acquired through four narrow mounts, independently parsed and byte-compared, sealed, and no-clobber published; Gradle receives the SDK read-only"
+fi
+
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
 r_s11cl=
 if ! /usr/bin/python3 -I -S scripts/online-gradle-output.py self-test; then
@@ -278,7 +293,7 @@ if [ -n "$r_s11cl" ]; then
   echo "  FAIL R-S11cl online-fetch Gradle output authority:$r_s11cl"
   rc=1
 else
-  echo "  ok  R-S11cl the networked Gradle warmer sees read-only online inputs, writes only private cache/SDK outputs, validates them, and uses recoverable checked publication"
+  echo "  ok  R-S11cl the networked Gradle warmer sees the exact SDK and all online inputs read-only, writes only one private Gradle cache, validates it, and uses recoverable no-clobber publication"
 fi
 
 echo "== (0k) online-fetch Cargo-tool output authority (R-S11cm/R-S11e-105) =="

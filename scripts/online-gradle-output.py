@@ -5,30 +5,25 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import errno
-import fcntl
 import hashlib
 import json
 import os
 import re
-import shutil
 import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 
-STATE_NAME = ".rustdesk-gradle-output-state-v1"
-STATE_VERSION = 1
+STATE_NAME = ".rustdesk-gradle-output-state-v2"
+STATE_VERSION = 2
 STAGING_PATTERN = re.compile(r"\.rustdesk-gradle-warm\.[A-Za-z0-9_]{8,}\Z")
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 GRADLE_LIMITS = (100_000, 100_000, 12 * 1024**3, 2 * 1024**3)
 SDK_LIMITS = (100_000, 100_000, 4 * 1024**3, 2 * 1024**3)
 BLOCK_SIZE = 1024 * 1024
 MOUNTINFO_LIMIT = 8 * 1024 * 1024
-FICLONE = 0x40049409
 RENAME_NOREPLACE = 1
-RENAME_EXCHANGE = 2
 
 
 class OutputError(RuntimeError):
@@ -307,71 +302,6 @@ def inspect_tree(
     return TreeSummary(digest.hexdigest(), files, directories, content_bytes)
 
 
-def copy_regular(source: Path, destination: Path, metadata: os.stat_result) -> None:
-    source_fd = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
-    destination_fd = -1
-    try:
-        before = os.fstat(source_fd)
-        if stable_metadata(before) != stable_metadata(metadata):
-            fail(f"SDK source changed before copy: {source}")
-        destination_fd = os.open(
-            destination,
-            os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
-            0o600,
-        )
-        try:
-            try:
-                fcntl.ioctl(destination_fd, FICLONE, source_fd)
-            except OSError as error:
-                if error.errno not in (errno.EXDEV, errno.EOPNOTSUPP, errno.ENOTTY, errno.EINVAL):
-                    raise
-                while True:
-                    block = os.read(source_fd, BLOCK_SIZE)
-                    if not block:
-                        break
-                    view = memoryview(block)
-                    while view:
-                        written = os.write(destination_fd, view)
-                        if written <= 0:
-                            fail("short write while cloning Android SDK")
-                        view = view[written:]
-            os.fchmod(destination_fd, 0o700 if before.st_mode & 0o111 else 0o600)
-        finally:
-            os.close(destination_fd)
-            destination_fd = -1
-        if stable_metadata(before) != stable_metadata(os.fstat(source_fd)):
-            fail(f"SDK source changed while copied: {source}")
-    finally:
-        if destination_fd >= 0:
-            os.close(destination_fd)
-        os.close(source_fd)
-
-
-def copy_tree(source: Path, destination: Path) -> None:
-    destination.mkdir(mode=0o700)
-
-    def descend(src: Path, dst: Path) -> None:
-        with os.scandir(src) as iterator:
-            entries = sorted(iterator, key=lambda entry: os.fsencode(entry.name))
-        for entry in entries:
-            source_path = src / entry.name
-            destination_path = dst / entry.name
-            metadata = entry.stat(follow_symlinks=False)
-            if stat.S_ISDIR(metadata.st_mode):
-                destination_path.mkdir(mode=0o700)
-                descend(source_path, destination_path)
-            elif stat.S_ISREG(metadata.st_mode):
-                copy_regular(source_path, destination_path, metadata)
-            else:
-                fail(f"SDK source contains a link or special file: {source_path}")
-
-    try:
-        descend(source, destination)
-    except BaseException:
-        shutil.rmtree(destination, ignore_errors=True)
-        raise
-
-
 def atomic_write_state(staging: Path, value: dict[str, object]) -> None:
     temporary = staging / f"{STATE_NAME}.part"
     state = staging / STATE_NAME
@@ -425,7 +355,21 @@ def load_state(online: Path, staging: Path, uid: int, gid: int) -> dict[str, obj
         value = json.loads(data)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         fail(f"Gradle output state is malformed: {error}")
-    if not isinstance(value, dict) or value.get("version") != STATE_VERSION:
+    expected_keys = {
+        "version",
+        "online",
+        "staging",
+        "online_identity",
+        "staging_identity",
+        "original_sdk_identity",
+        "staged_gradle_identity",
+        "sdk_source_digest",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != expected_keys
+        or value.get("version") != STATE_VERSION
+    ):
         fail("Gradle output state has the wrong version")
     if value.get("online") != os.fspath(online) or value.get("staging") != os.fspath(staging):
         fail("Gradle output state path binding is invalid")
@@ -453,9 +397,7 @@ def prepare(online: Path, staging: Path, uid: int, gid: int) -> None:
         limits=SDK_LIMITS,
         hash_contents=True,
     )
-    staged_sdk = staging / "android-sdk"
     staged_gradle = staging / "gradle-home"
-    copy_tree(sdk, staged_sdk)
     staged_gradle.mkdir(mode=0o700)
     after_summary = inspect_tree(
         sdk,
@@ -464,14 +406,8 @@ def prepare(online: Path, staging: Path, uid: int, gid: int) -> None:
         hash_contents=True,
         expected_identity=identity(sdk_metadata),
     )
-    copied_summary = inspect_tree(
-        staged_sdk,
-        owners={(uid, gid)},
-        limits=SDK_LIMITS,
-        hash_contents=True,
-    )
-    if source_summary != after_summary or source_summary != copied_summary:
-        fail("Android SDK changed while its private writable copy was created")
+    if source_summary != after_summary:
+        fail("Android SDK changed while Gradle output was prepared")
     state = {
         "version": STATE_VERSION,
         "online": os.fspath(online),
@@ -479,7 +415,6 @@ def prepare(online: Path, staging: Path, uid: int, gid: int) -> None:
         "online_identity": encode_identity(identity(online_metadata)),
         "staging_identity": encode_identity(identity(staging_metadata)),
         "original_sdk_identity": encode_identity(identity(sdk_metadata)),
-        "staged_sdk_identity": encode_identity(identity(os.lstat(staged_sdk))),
         "staged_gradle_identity": encode_identity(identity(os.lstat(staged_gradle))),
         "sdk_source_digest": source_summary.digest,
     }
@@ -556,7 +491,6 @@ def validate_semantics(
     platform = sdk / "platforms" / f"android-{compile_sdk}"
     require_property(platform / "source.properties", "AndroidVersion.ApiLevel", compile_sdk)
     require_file(platform / "android.jar", nonempty=True)
-    require_file(sdk / "platform-tools" / "adb", executable=True, nonempty=True)
 
 
 def verify_staged(
@@ -582,16 +516,7 @@ def verify_staged(
     )
     if source.digest != state.get("sdk_source_digest"):
         fail("live Android SDK changed while the networked producer ran")
-    staged_sdk = staging / "android-sdk"
     staged_gradle = staging / "gradle-home"
-    inspect_tree(
-        staged_sdk,
-        owners={(uid, gid)},
-        limits=SDK_LIMITS,
-        hash_contents=False,
-        normalize=True,
-        expected_identity=decode_identity(state.get("staged_sdk_identity"), "staged SDK"),
-    )
     inspect_tree(
         staged_gradle,
         owners={(uid, gid)},
@@ -601,7 +526,7 @@ def verify_staged(
         expected_identity=decode_identity(state.get("staged_gradle_identity"), "staged Gradle"),
     )
     validate_semantics(
-        staged_sdk,
+        original_sdk,
         staged_gradle,
         gradle_version=gradle_version,
         gradle_sha256=gradle_sha256,
@@ -700,18 +625,18 @@ def open_directory(path: Path) -> int:
     return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
 
 
-def rollback_publication(online_fd: int, staging_fd: int, sdk_swapped: bool, gradle_moved: bool) -> None:
+def rollback_publication(online_fd: int, staging_fd: int) -> None:
     failures = []
-    if gradle_moved:
-        try:
-            renameat2(online_fd, "gradle-home", staging_fd, "gradle-home", RENAME_NOREPLACE)
-        except OSError as error:
-            failures.append(f"Gradle rollback failed: {error}")
-    if sdk_swapped:
-        try:
-            renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)
-        except OSError as error:
-            failures.append(f"SDK rollback failed: {error}")
+    try:
+        renameat2(
+            online_fd,
+            "gradle-home",
+            staging_fd,
+            "gradle-home",
+            RENAME_NOREPLACE,
+        )
+    except OSError as error:
+        failures.append(f"Gradle rollback failed: {error}")
     try:
         os.fsync(staging_fd)
         os.fsync(online_fd)
@@ -745,26 +670,32 @@ def publish(
     state = load_state(online, staging, uid, gid)
     if (online / "gradle-home").exists() or (online / "gradle-home").is_symlink():
         fail("Gradle output destination appeared before no-clobber publication")
-    sync_tree(staging / "android-sdk")
     sync_tree(staging / "gradle-home")
     fsync_directory(staging)
     online_fd = open_directory(online)
     staging_fd = open_directory(staging)
-    sdk_swapped = False
     gradle_moved = False
     try:
-        renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)
-        sdk_swapped = True
-        os.fsync(staging_fd)
-        os.fsync(online_fd)
         renameat2(staging_fd, "gradle-home", online_fd, "gradle-home", RENAME_NOREPLACE)
         gradle_moved = True
         os.fsync(staging_fd)
         os.fsync(online_fd)
         if identity(os.lstat(online / "android-sdk")) != decode_identity(
-            state.get("staged_sdk_identity"), "staged SDK"
+            state.get("original_sdk_identity"), "original SDK"
         ):
-            fail("published Android SDK identity postcondition failed")
+            fail("read-only Android SDK identity postcondition failed")
+        sdk_summary = inspect_tree(
+            online / "android-sdk",
+            owners={(uid, gid)},
+            limits=SDK_LIMITS,
+            hash_contents=True,
+            expected_identity=decode_identity(
+                state.get("original_sdk_identity"),
+                "original SDK",
+            ),
+        )
+        if sdk_summary.digest != state.get("sdk_source_digest"):
+            fail("read-only Android SDK content postcondition failed")
         if identity(os.lstat(online / "gradle-home")) != decode_identity(
             state.get("staged_gradle_identity"), "staged Gradle"
         ):
@@ -778,10 +709,11 @@ def publish(
             compile_sdk=compile_sdk,
         )
     except BaseException as primary:
-        try:
-            rollback_publication(online_fd, staging_fd, sdk_swapped, gradle_moved)
-        except BaseException as rollback:
-            primary.add_note(f"publication rollback also failed: {rollback}")
+        if gradle_moved:
+            try:
+                rollback_publication(online_fd, staging_fd)
+            except BaseException as rollback:
+                primary.add_note(f"publication rollback also failed: {rollback}")
         raise
     finally:
         os.close(staging_fd)
@@ -798,43 +730,28 @@ def optional_identity(path: Path) -> tuple[int, int] | None:
 def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
     state = load_state(online, staging, uid, gid)
     original_sdk = decode_identity(state.get("original_sdk_identity"), "original SDK")
-    staged_sdk = decode_identity(state.get("staged_sdk_identity"), "staged SDK")
     staged_gradle = decode_identity(state.get("staged_gradle_identity"), "staged Gradle")
     live_sdk = optional_identity(online / "android-sdk")
-    private_sdk = optional_identity(staging / "android-sdk")
     live_gradle = optional_identity(online / "gradle-home")
     private_gradle = optional_identity(staging / "gradle-home")
+    if live_sdk == original_sdk:
+        summary = inspect_tree(
+            online / "android-sdk",
+            owners={(uid, gid)},
+            limits=SDK_LIMITS,
+            hash_contents=True,
+            expected_identity=original_sdk,
+        )
+        if summary.digest != state.get("sdk_source_digest"):
+            fail("Android SDK changed during Gradle output recovery")
     if (
         live_sdk == original_sdk
-        and private_sdk == staged_sdk
         and live_gradle is None
         and private_gradle == staged_gradle
     ):
         return "unpublished"
     if (
-        live_sdk == staged_sdk
-        and private_sdk == original_sdk
-        and live_gradle is None
-        and private_gradle == staged_gradle
-    ):
-        online_fd = open_directory(online)
-        staging_fd = open_directory(staging)
-        try:
-            renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)
-            os.fsync(staging_fd)
-            os.fsync(online_fd)
-        finally:
-            os.close(staging_fd)
-            os.close(online_fd)
-        if (
-            optional_identity(online / "android-sdk") != original_sdk
-            or optional_identity(staging / "android-sdk") != staged_sdk
-        ):
-            fail("SDK-only publication rollback postcondition failed")
-        return "sdk-rolled-back"
-    if (
-        live_sdk == staged_sdk
-        and private_sdk == original_sdk
+        live_sdk == original_sdk
         and live_gradle == staged_gradle
         and private_gradle is None
     ):
@@ -857,10 +774,6 @@ def create_fake_sdk(root: Path, build_tools: str, compile_sdk: str) -> None:
         encoding="utf-8",
     )
     (platform / "android.jar").write_bytes(b"jar\n")
-    platform_tools = root / "platform-tools"
-    platform_tools.mkdir()
-    (platform_tools / "adb").write_bytes(b"adb\n")
-    (platform_tools / "adb").chmod(0o700)
 
 
 def create_fake_gradle(root: Path, version: str, archive: bytes) -> None:
@@ -916,7 +829,6 @@ def self_test() -> None:
         staging = make_stage(online)
         prepare(online, staging, uid, gid)
         create_fake_gradle(staging / "gradle-home", version, archive)
-        (staging / "android-sdk" / "warm-package").write_bytes(b"installed\n")
         return online, staging
 
     with tempfile.TemporaryDirectory(prefix="online-gradle-output-test-") as temporary:
@@ -955,16 +867,29 @@ def self_test() -> None:
         )
         remove_stage(staging)
 
-        online, staging = fixture(base / "sdk-only")
-        online_fd = open_directory(online)
-        staging_fd = open_directory(staging)
+        online, staging = fixture(base / "sdk-mutation")
+        (
+            online
+            / "android-sdk"
+            / "platforms"
+            / f"android-{compile_sdk}"
+            / "android.jar"
+        ).write_bytes(b"changed\n")
         try:
-            renameat2(staging_fd, "android-sdk", online_fd, "android-sdk", RENAME_EXCHANGE)
-        finally:
-            os.close(staging_fd)
-            os.close(online_fd)
-        if recover(online, staging, uid, gid) != "sdk-rolled-back":
-            fail("self-test did not roll back an SDK-only publication")
+            verify_staged(
+                online,
+                staging,
+                uid,
+                gid,
+                gradle_version=version,
+                gradle_sha256=archive_hash,
+                build_tools=build_tools,
+                compile_sdk=compile_sdk,
+            )
+        except OutputError:
+            pass
+        else:
+            fail("self-test accepted a changed read-only Android SDK")
         remove_stage(staging)
 
         online, staging = fixture(base / "destination-race")

@@ -240,6 +240,17 @@ online_docker_run_offline() {
         "$@"
 }
 
+# Exact archive acquisition needs outbound HTTPS but no compiler-sized scratch,
+# executable temporary storage, or broad cache/source authority.
+online_docker_run_archive_acquisition() {
+    online_docker run --rm --pull=never --network=bridge --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m \
+        "$@"
+}
+
 if [ -e "$ONLINE_DIR" ] || [ -L "$ONLINE_DIR" ]; then
     [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
         || die "online cache root is not one real directory"
@@ -463,9 +474,9 @@ fetch_toolchains() {
     # Android NDK r28c.
     fetch_verify "https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip" \
         "android-ndk-${ANDROID_NDK_VERSION}.zip" "${SHA256_ANDROID_NDK_R28C}"
-    # Android cmdline-tools (then build-tools 34.0.0 / platform-34 via sdkmanager, offline).
-    # Versioned build (R-B2 reproducibility): NOT the moving "...-latest.zip" — the exact build
-    # number is pinned in pins.env so a Google "latest" bump can never silently change the artifact.
+    # Android command-line-tools is the local seed for the later exact SDK archive transaction.
+    # The versioned build number is pinned in pins.env; the filename's historical `_latest`
+    # suffix does not select a moving build because the numeric build and digest are both fixed.
     fetch_verify "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip" \
         "android-cmdline-tools.zip" "${SHA256_ANDROID_CMDLINE_TOOLS}"
     # LLVM/Clang 15.0.6 (libclang for bindgen determinism, R-B12).
@@ -1820,34 +1831,167 @@ stage_cargo_ndk() {
     stage_cargo_installed_tool cargo-ndk "$builder"
 }
 
-# ── The Android SDK (build-tools + platform), via sdkmanager ────────────────────────
-# `flutter build apk` + apksigner need the SDK; online-fetch fetched the cmdline-tools zip,
-# but the build-tools/platform packages are sdkmanager-installed HERE (networked). The exact
-# versions are pinned (ANDROID_BUILD_TOOLS / ANDROID_COMPILE_SDK) and sdkmanager verifies each
-# package's checksum against the SDK repository XML, so the install is reproducible. Staged to
-# ./online/android-sdk (build-tools = aapt2/apksigner/zipalign; platform-N = the android.jar).
+# ── The exact Android SDK archive closure ──────────────────────────────────────
+# SDK package aliases are repository-resolution inputs, not content pins. Fetch six
+# exact Google archive names under independently recorded hashes, combine them with
+# the already pinned command-line-tools archive, validate every ZIP member and output
+# byte, then publish one sealed tree. The producer receives only two read-only files
+# and two fresh private writable directories; it never sees online, the repository,
+# Docker, a final name, or any host namespace/device/port.
+android_sdk_output_tool() {
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-android-sdk-output.py" "$@"
+}
+
+android_sdk_output_args() {
+    local builder="$1"
+    printf '%s\0' \
+        --cmdline-archive "$ONLINE_DIR/android-cmdline-tools.zip" \
+        --uid "$ONLINE_FETCH_UID" \
+        --gid "$ONLINE_FETCH_GID" \
+        --builder "$builder" \
+        --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS" \
+        --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3" \
+        --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0" \
+        --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31" \
+        --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32" \
+        --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33" \
+        --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+}
+
+retire_android_sdk_output_staging() {
+    local staging="$1" staging_id="$2" builder="$3" disposition
+    local output_args=()
+    mapfile -d '' output_args < <(android_sdk_output_args "$builder")
+    disposition="$(
+        android_sdk_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private Android SDK staging"
+    log "Android SDK staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private Android SDK staging traversal"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private Android SDK staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private Android SDK staging survived retirement"
+}
+
+recover_android_sdk_output_staging() {
+    local builder="$1"
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-android-sdk.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved Android SDK staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_android_sdk_output_staging \
+            "$staging" "$staging_id" "$builder"
+    done
+}
+
 stage_android_sdk() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
+    local status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id
+    local output_args=() container_pins=()
+    local cmdline_archive="$ONLINE_DIR/android-cmdline-tools.zip"
     require_online_fetch_builder_image android-builder "$builder"
-    if [ -d "$ONLINE_DIR/android-sdk/build-tools/${ANDROID_BUILD_TOOLS}" ]; then
-        log "android SDK already staged, skipping"; return 0
+    [ -f "$cmdline_archive" ] && [ ! -L "$cmdline_archive" ] \
+        || die "Android command-line-tools archive is absent or unsafe"
+    verify_sha256 "$cmdline_archive" "$SHA256_ANDROID_CMDLINE_TOOLS"
+    mapfile -d '' output_args < <(android_sdk_output_args "$builder")
+    container_pins=(
+        --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS"
+        --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3"
+        --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0"
+        --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31"
+        --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32"
+        --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33"
+        --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+    )
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for Android SDK serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Android SDK transaction already owns the online root"
+    recover_android_sdk_output_staging "$builder"
+    if [ -e "$ONLINE_DIR/android-sdk" ] || [ -L "$ONLINE_DIR/android-sdk" ]; then
+        android_sdk_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing Android SDK is incomplete, stale, or structurally unsafe; retire it explicitly before reacquisition"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the Android SDK transaction lock"
+        exec {lock_fd}<&-
+        log "Android SDK already staged and exact-closure verified"
+        return 0
     fi
-    [ -f "$ONLINE_DIR/android-cmdline-tools.zip" ] || die "android cmdline-tools zip missing — fetch_toolchains must run first"
-    log "staging the Android SDK (build-tools ${ANDROID_BUILD_TOOLS} + platform-${ANDROID_COMPILE_SDK}) -> ./online/android-sdk"
-    online_docker_run --mount "type=bind,source=$ONLINE_DIR,target=/online" \
-        "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-        export HOME=/tmp/home; mkdir -p "$HOME"
-        mkdir -p /tmp/sdk/cmdline-tools
-        unzip -q /online/android-cmdline-tools.zip -d /tmp/sdk/cmdline-tools
-        mv /tmp/sdk/cmdline-tools/cmdline-tools /tmp/sdk/cmdline-tools/latest
-        export ANDROID_SDK_ROOT=/tmp/sdk ANDROID_HOME=/tmp/sdk
-        SDKMGR=/tmp/sdk/cmdline-tools/latest/bin/sdkmanager
-        yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
-        "$SDKMGR" "platform-tools" "build-tools;'"${ANDROID_BUILD_TOOLS}"'" \
-            "platforms;android-'"${ANDROID_COMPILE_SDK}"'" >/dev/null
-        rm -rf /online/android-sdk
-        cp -a /tmp/sdk /online/android-sdk
-    '
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-android-sdk.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private Android SDK staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! android_sdk_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed Android SDK preparation left non-restorable staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed Android SDK preparation left non-retirable staging"
+        die "cannot prepare private Android SDK staging"
+    fi
+    log "acquiring and composing the exact Android SDK archive closure"
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$cmdline_archive,target=/inputs/android-cmdline-tools.zip,readonly" \
+        --mount "type=bind,source=$SCRIPT_DIR/online-android-sdk-output.py,target=/authority/online-android-sdk-output.py,readonly" \
+        --mount "type=bind,source=$staging/downloads,target=/outputs/downloads" \
+        --mount "type=bind,source=$staging/output,target=/outputs/sdk" \
+        "$builder" \
+        /usr/bin/python3 -I -S \
+        /authority/online-android-sdk-output.py acquire \
+        --cmdline-archive /inputs/android-cmdline-tools.zip \
+        --downloads /outputs/downloads \
+        --output /outputs/sdk \
+        "${container_pins[@]}" \
+        || status=$?
+    if [ ! -f "$cmdline_archive" ] || [ -L "$cmdline_archive" ] || \
+       [ "$(/usr/bin/sha256sum -- "$cmdline_archive" | /usr/bin/awk '{print $1}')" != \
+         "$SHA256_ANDROID_CMDLINE_TOOLS" ]
+    then
+        echo "[FATAL] Android command-line-tools archive changed during acquisition" >&2
+        output_status=1
+    fi
+    android_sdk_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        android_sdk_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_android_sdk_output_staging \
+        "$staging" "$staging_id" "$builder"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Android SDK transaction lock"
+    exec {lock_fd}<&-
+    [ "$output_status" -eq 0 ] || die "Android SDK output postcondition failed"
+    [ "$status" -eq 0 ] || die "Android SDK acquisition failed"
+    [ "$publication_status" -eq 0 ] || die "Android SDK publication failed"
+    log "Android SDK checked, sealed, and published without broad online authority"
 }
 
 # ── The warm gradle cache (R-B7): GRADLE_USER_HOME, populated by ONE online apk build ──
@@ -1855,9 +1999,9 @@ stage_android_sdk() {
 # plugin deps from google()/mavenCentral()/gradlePluginPortal(); the offline build_apk
 # (--network=none) cannot. Populate the cache HERE (the ONE networked step) by running the SAME
 # shared android build flow online (APK_MODE=warm, scripts/android-apk-build.sh) — it writes
-# /online/gradle-home AND auto-installs the extra SDK packages gradle pulls (build-tools 30.0.3,
-# platform-33/32 beyond stage_android_sdk's 34.0.0/platform-34). build_apk then projects this cache
-# into private writable execution state whose tracked init authority enables Gradle offline mode.
+# one private /outputs/gradle-home candidate. The exact SDK closure is already complete and stays
+# read-only throughout warming. build_apk later projects the Gradle cache into private writable
+# execution state whose tracked init authority enables offline mode.
 prepare_gradle_source() {
     local archive_attribute_status=0 invalid_tree_entry current
     if [ -n "${GRADLE_SOURCE_AUTHORITY:-}" ]; then
@@ -2109,22 +2253,13 @@ prepare_gradle_output_staging() {
             || die "failed Gradle output preparation left non-retirable private staging"
         die "cannot prepare private Gradle output staging"
     fi
-    GRADLE_OUTPUT_SDK_ID="$(
-        /usr/bin/stat -c '%d:%i' -- "$GRADLE_OUTPUT_STAGING/android-sdk"
-    )"
     GRADLE_OUTPUT_CACHE_ID="$(
         /usr/bin/stat -c '%d:%i' -- "$GRADLE_OUTPUT_STAGING/gradle-home"
     )"
-    readonly GRADLE_OUTPUT_SDK_ID GRADLE_OUTPUT_CACHE_ID
+    readonly GRADLE_OUTPUT_CACHE_ID
 }
 
 restore_gradle_output_traversal() {
-    /usr/bin/python3 -I -S \
-        "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
-        --root "$GRADLE_OUTPUT_STAGING/android-sdk" \
-        --expected-identity "$GRADLE_OUTPUT_SDK_ID" \
-        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
-        || die "cannot restore private Android SDK output traversal"
     /usr/bin/python3 -I -S \
         "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
         --root "$GRADLE_OUTPUT_STAGING/gradle-home" \
@@ -2136,7 +2271,7 @@ restore_gradle_output_traversal() {
 stage_gradle() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
     local status=0 source_status=0 output_status=0 publication_status=0
-    local lock_fd semantic_args=()
+    local lock_fd semantic_args=() sdk_args=()
     require_online_fetch_builder_image android-builder "$builder"
     assert_online_fetch_source_tools
     exec {lock_fd}<"$ONLINE_DIR" \
@@ -2149,6 +2284,10 @@ stage_gradle() {
     prepare_gradle_source
     recover_gradle_output_staging
     mapfile -d '' semantic_args < <(gradle_output_semantic_args)
+    mapfile -d '' sdk_args < <(android_sdk_output_args "$builder")
+    android_sdk_output_tool check-complete \
+        --online "$ONLINE_DIR" "${sdk_args[@]}" \
+        || die "exact Android SDK input is incomplete, stale, or unsafe"
     if [ -e "$ONLINE_DIR/gradle-home" ] || [ -L "$ONLINE_DIR/gradle-home" ]; then
         gradle_output_tool check-complete \
             --online "$ONLINE_DIR" \
@@ -2163,16 +2302,14 @@ stage_gradle() {
         return 0
     fi
     prepare_gradle_output_staging
-    log "warming Gradle into private cache/SDK outputs; ./online remains read-only"
+    log "warming Gradle into one private cache output; the exact SDK and ./online remain read-only"
     online_docker_run \
         --env APK_MODE=warm \
         --env RUSTDESK_GRADLE_WARM_HOME=/outputs/gradle-home \
-        --env RUSTDESK_ANDROID_SDK_HOME=/outputs/android-sdk \
         --mount "type=bind,source=$GRADLE_SOURCE_BUILD,target=/src" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/gradle-home,target=/outputs/gradle-home" \
-        --mount "type=bind,source=$GRADLE_OUTPUT_STAGING/android-sdk,target=/outputs/android-sdk" \
         --workdir /src \
         "$builder" /bin/bash --noprofile --norc /authority/android-apk-build.sh \
         || status=$?

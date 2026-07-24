@@ -169,6 +169,38 @@ def validate(sources: Dict[str, str]) -> None:
         "networkless archive launch funnel",
     )
 
+    acquisition_run = extract(
+        shell,
+        "online_docker_run_archive_acquisition() {",
+        '        "$@"\n}',
+        "networked archive acquisition launch funnel",
+    )
+    for token, label in (
+        ("online_docker run --rm", "ephemeral container"),
+        ("--pull=never", "no-pull policy"),
+        ("--network=bridge", "isolated acquisition egress"),
+        ("--read-only", "read-only root"),
+        ('--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+         "numeric nonroot identity"),
+        ("--cap-drop=ALL", "complete capability drop"),
+        ("--security-opt=no-new-privileges", "no-new-privileges"),
+        ("--pids-limit=256", "PID ceiling"),
+        ("--memory=4g", "memory ceiling"),
+        ("--memory-swap=4g", "no-swap expansion"),
+        ("--cpus=2", "CPU ceiling"),
+        ("--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+         "bounded non-executable scratch"),
+    ):
+        require(
+            acquisition_run,
+            token,
+            "networked archive acquisition launch funnel {}".format(label),
+        )
+    forbid_container_authority(
+        acquisition_run,
+        "networked archive acquisition launch funnel",
+    )
+
     provenance = extract(
         shell,
         "online_image_provenance() {",
@@ -194,7 +226,7 @@ def validate(sources: Dict[str, str]) -> None:
         "closed image-provenance environment",
     )
 
-    require_count(shell, "online_docker_run ", 9, "ordinary acquisition launch inventory")
+    require_count(shell, "online_docker_run ", 8, "ordinary acquisition launch inventory")
     require_count(
         shell,
         "stage_cargo_installed_tool ",
@@ -234,8 +266,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         "online_docker run ",
-        3,
-        "ordinary, networkless archive, and Pub-cache Docker primitives",
+        4,
+        "ordinary, networkless archive, networked archive, and Pub-cache Docker primitives",
     )
     for token, label in (
         ("--pull=", "pull policy"),
@@ -249,7 +281,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("--cpus=", "CPU policy"),
         ("--tmpfs ", "scratch policy"),
     ):
-        require_count(shell, token, 3, "three-launch {}".format(label))
+        require_count(shell, token, 4, "four-launch {}".format(label))
     require_count(
         shell,
         'local builder="$DEB_BUILDER_IMAGE_ID"',
@@ -347,22 +379,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "online_docker run --rm --pull=never --network=bridge --read-only",
-        "online_docker run --rm --pull=always --network=bridge --read-only",
+        "online_docker_run() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
+        "online_docker_run() {\n"
+        "    online_docker run --rm --pull=always --network=bridge --read-only",
         "no-pull policy",
     ),
-    Mutation("shell", "--network=bridge", "--network=host", "isolated acquisition network"),
     Mutation(
         "shell",
-        "online_docker run --rm --pull=never --network=bridge --read-only",
-        "online_docker run --rm --pull=never --network=bridge --hostname=online-fetch",
+        "online_docker_run() {\n"
+        "    online_docker run --rm --pull=never --network=bridge",
+        "online_docker_run() {\n"
+        "    online_docker run --rm --pull=never --network=host",
+        "isolated acquisition network",
+    ),
+    Mutation(
+        "shell",
+        "online_docker_run() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only",
+        "online_docker_run() {\n"
+        "    online_docker run --rm --pull=never --network=bridge "
+        "--hostname=online-fetch",
         "read-only root",
     ),
     Mutation(
         "shell",
-        '--network=bridge --read-only \\\n'
+        'online_docker_run() {\n'
+        '    online_docker run --rm --pull=never --network=bridge --read-only \\\n'
         '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
-        '--network=bridge --read-only \\\n'
+        'online_docker_run() {\n'
+        '    online_docker run --rm --pull=never --network=bridge --read-only \\\n'
         "        --user 0:0",
         "numeric nonroot identity",
     ),
@@ -408,8 +454,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
-        "--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
+        "online_docker_run_offline() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=256m",
+        "online_docker_run_offline() {\n"
+        "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=512 --memory=4g --memory-swap=4g --cpus=2 \\\n"
+        "        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
         "networkless archive non-executable scratch",
     ),
     Mutation(

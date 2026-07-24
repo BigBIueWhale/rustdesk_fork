@@ -6062,7 +6062,7 @@ grep -q 'hmacsha256::authenticate' src/ipc.rs || r_s11c11="$r_s11c11 no-hmac-pro
 grep -q 'hmacsha256::verify' src/ipc.rs || r_s11c11="$r_s11c11 no-hmac-verify"
 grep -q 'CM_SERVER_PROOF_CONTEXT' src/ipc.rs || r_s11c11="$r_s11c11 no-directional-server-proof-context"
 grep -q 'verify_cm_server_proof' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-proof-verify"
-grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await' src/server/connection.rs || r_s11c11="$r_s11c11 server-does-not-authenticate-cm-launch-proof"
+grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)' src/server/connection.rs || r_s11c11="$r_s11c11 server-does-not-authenticate-role-bound-cm-launch-proof"
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' src/ui_cm_interface.rs || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
 grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
@@ -6115,13 +6115,13 @@ if [ -z "$server_auth_fn_line" ] || [ -z "$server_proof_send_line" ] || [ -z "$s
   r_s11c11="$r_s11c11 server-peer-proof-not-before-endpoint-challenge"
 fi
 macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs | head -1 | cut -d: -f1)
-macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\)\)\.await/ { print NR; exit }' src/server/connection.rs)
+macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\), expected_arg\)/ { print NR; exit }' src/server/connection.rs)
 if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
   r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
 fi
 windows_auth_fn_line=$(grep -n 'pub(crate) async fn connect_authenticated_windows_cm' src/ipc.rs | head -1 | cut -d: -f1)
 windows_process_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_windows_cm_endpoint\(&stream, expected_arg\)/ { print NR; exit }' src/ipc.rs)
-windows_proof_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, launch_token\)\.await/ { print NR; exit }' src/ipc.rs)
+windows_proof_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, launch_token, expected_arg\)\.await/ { print NR; exit }' src/ipc.rs)
 if [ -z "$windows_auth_fn_line" ] || [ -z "$windows_process_line" ] || [ -z "$windows_proof_line" ] || [ "$windows_process_line" -ge "$windows_proof_line" ]; then
   r_s11c11="$r_s11c11 windows-cm-proof-not-after-process-shape-check"
 fi

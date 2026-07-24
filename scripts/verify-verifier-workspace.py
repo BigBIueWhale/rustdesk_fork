@@ -13699,10 +13699,35 @@ def validate_apple_verifier_authority_contract(sources):
          "Apple private read-only vendor"),
         ("cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
          "Apple locked offline cross-check"),
-        ("apple_sdk_boundary_after_workspace()",
-         "Apple ordered SDK-boundary classifier"),
-        ("boundary_line > workspace_line",
-         "Apple SDK boundary after workspace ordering"),
+        ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+         '  --package hbb_common --target "$target"',
+         "Apple locked serialized workspace anchor command"),
+        ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+         '  --target "$target" --features "$features"',
+         "Apple locked serialized full Cargo command"),
+        ('--package hbb_common --target "$target"',
+         "Apple deterministic workspace anchor"),
+        ('if [ "$anchor_rc" -ne 0 ]',
+         "Apple workspace anchor success requirement"),
+        ('if ! /usr/bin/python3 -I -S "$REPO/scripts/restore-private-directory-modes.py"',
+         "Apple private-workspace directory restoration"),
+        ('--expected-identity "$APPLE_CHECK_TMP_IDENTITY"',
+         "Apple private-workspace cleanup identity"),
+        ('echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2\n'
+         "    status=1",
+         "Apple private-workspace restoration failure status"),
+        ("apple_sdk_boundary_after_successful_workspace_anchor()",
+         "Apple post-anchor SDK-boundary classifier"),
+        ("apple_sdk_boundary_self_test()",
+         "Apple SDK-boundary classifier self-test"),
+        ("\napple_sdk_boundary_self_test\n\n# ---- preflight ----",
+         "Apple SDK-boundary classifier self-test invocation"),
+        ("accepted = boundary_line > 0",
+         "Apple SDK boundary presence"),
+        ("rust_error_line == 0 || rust_error_line > boundary_line",
+         "Apple prior Rust diagnostic refusal"),
+        ('$0 !~ /^[[:space:]]*error: failed to run custom build command for `[^`]+`$/',
+         "Apple exact Cargo custom-build wrapper exception"),
         ('[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
          "Apple real-source postcondition"),
         ('[ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ]',
@@ -33606,15 +33631,70 @@ def run_source_mutations(sources):
         ),
         (
             "apple",
-            "--config /tmp/cargo-config.toml --jobs 1",
-            "--config /tmp/cargo-config.toml --jobs 4",
-            "Apple locked offline cross-check",
+            "check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+            '  --package hbb_common --target "$target"',
+            "check --config /tmp/cargo-config.toml --jobs 4 \\\n"
+            '  --package hbb_common --target "$target"',
+            "Apple locked serialized workspace anchor",
         ),
         (
             "apple",
-            "boundary_line > workspace_line",
-            "boundary_line > 0",
-            "Apple SDK boundary after workspace ordering",
+            "check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+            '  --target "$target" --features "$features"',
+            "check --config /tmp/cargo-config.toml --jobs 4 \\\n"
+            '  --target "$target" --features "$features"',
+            "Apple locked serialized full Cargo command",
+        ),
+        (
+            "apple",
+            '--package hbb_common --target "$target"',
+            '--package coreaudio-sys --target "$target"',
+            "Apple locked serialized workspace anchor command",
+        ),
+        (
+            "apple",
+            'if [ "$anchor_rc" -ne 0 ]; then',
+            "if false; then",
+            "Apple workspace anchor success requirement",
+        ),
+        (
+            "apple",
+            "accepted = boundary_line > 0",
+            "accepted = boundary_line >= 0",
+            "Apple SDK boundary presence",
+        ),
+        (
+            "apple",
+            "rust_error_line == 0 || rust_error_line > boundary_line",
+            "rust_error_line >= 0",
+            "Apple prior Rust diagnostic refusal",
+        ),
+        (
+            "apple",
+            '$0 !~ /^[[:space:]]*error: failed to run custom build command for `[^`]+`$/',
+            '$0 !~ /error: failed/',
+            "Apple exact Cargo custom-build wrapper exception",
+        ),
+        (
+            "apple",
+            "\napple_sdk_boundary_self_test\n\n# ---- preflight ----",
+            "\ntrue # Apple SDK boundary self-test removed\n\n# ---- preflight ----",
+            "Apple SDK-boundary classifier self-test invocation",
+        ),
+        (
+            "apple",
+            'if ! /usr/bin/python3 -I -S "$REPO/scripts/restore-private-directory-modes.py" \\\n'
+            '      --root "$APPLE_CHECK_TMP"',
+            'if ! true \\\n'
+            '      --root "$APPLE_CHECK_TMP"',
+            "Apple private-workspace directory restoration",
+        ),
+        (
+            "apple",
+            'echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2\n'
+            "    status=1",
+            'echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2',
+            "Apple private-workspace restoration failure status",
         ),
         (
             "verify",

@@ -27,9 +27,20 @@ verify_scan_preflight
 
 APPLE_CHECK_TMP=$(umask 077 && mktemp -d /tmp/rustdesk-apple-check.XXXXXXXXXX)
 readonly APPLE_CHECK_TMP
+readonly APPLE_CHECK_TMP_IDENTITY="$(stat -c '%d:%i' -- "$APPLE_CHECK_TMP")"
+readonly APPLE_CHECK_TMP_UID="$(id -u)"
+readonly APPLE_CHECK_TMP_GID="$(id -g)"
 cleanup_apple_check_tmp() {
   local status=$?
   trap - EXIT HUP INT TERM
+  if ! /usr/bin/python3 -I -S "$REPO/scripts/restore-private-directory-modes.py" \
+      --root "$APPLE_CHECK_TMP" \
+      --expected-identity "$APPLE_CHECK_TMP_IDENTITY" \
+      --owner "$APPLE_CHECK_TMP_UID" \
+      --group "$APPLE_CHECK_TMP_GID"; then
+    echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2
+    status=1
+  fi
   if ! rm -rf -- "$APPLE_CHECK_TMP"; then
     echo "apple-conform-check: failed to remove private workspace: $APPLE_CHECK_TMP" >&2
     status=1
@@ -118,16 +129,20 @@ echo "== (0) Apple checker host scratch uses one private workspace (R-S11c-10x) 
 r_s11c10x=
 grep -qE '^APPLE_CHECK_TMP=\$\(umask 077 && mktemp -d /tmp/rustdesk-apple-check\.XXXXXXXXXX\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-private-workspace-create"
 grep -qE '^readonly APPLE_CHECK_TMP$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x workspace-not-readonly"
+grep -qF 'readonly APPLE_CHECK_TMP_IDENTITY="$(stat -c '\''%d:%i'\'' -- "$APPLE_CHECK_TMP")"' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x workspace-identity-not-retained"
 grep -qE '^trap cleanup_apple_check_tmp EXIT$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-exit-cleanup"
 grep -qE "^trap 'exit 129' HUP$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-hup-failure"
 grep -qE "^trap 'exit 130' INT$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-int-failure"
 grep -qE "^trap 'exit 143' TERM$" "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x no-term-failure"
 grep -qE '^[[:space:]]+trap - EXIT HUP INT TERM$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-traps-not-disarmed"
+grep -qE '^  if ! /usr/bin/python3 -I -S "\$REPO/scripts/restore-private-directory-modes\.py"' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x nofollow-directory-mode-restorer-missing"
+grep -qE '^[[:space:]]+--expected-identity "\$APPLE_CHECK_TMP_IDENTITY"' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-identity-not-reproved"
 grep -qE '^[[:space:]]+if ! rm -rf -- "\$APPLE_CHECK_TMP"; then$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x cleanup-not-fail-closed"
 grep -qE '^metadata = os\.lstat\(sys\.argv\[1\]\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x nofollow-metadata-proof-missing"
 grep -qE '^[[:space:]]+not stat\.S_ISDIR\(metadata\.st_mode\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x directory-type-not-enforced"
 grep -qE '^[[:space:]]+or metadata\.st_uid != os\.geteuid\(\)$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x owner-not-enforced"
 grep -qE '^[[:space:]]+or stat\.S_IMODE\(metadata\.st_mode\) != 0o700$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x mode-not-enforced"
+grep -qE '^[[:space:]]+anchor_log="\$APPLE_CHECK_TMP/apple-anchor-\$target\.log"$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x anchor-log-not-private"
 grep -qE '^[[:space:]]+log="\$APPLE_CHECK_TMP/apple-xcheck-\$target\.log"$' "$REPO/scripts/apple-conform-check.sh" || r_s11c10x="$r_s11c10x target-log-not-private"
 if grep -nE '/tmp/(r_s11b3_apple|r[d]_apple|apple-xcheck-)' "$REPO/scripts/apple-conform-check.sh"; then
   r_s11c10x="$r_s11c10x predictable-host-scratch-name-present"
@@ -163,11 +178,13 @@ target_triplet(){
 }
 target_env_lower(){ echo "$1" | tr '-' '_'; }
 target_env_upper(){ echo "$1" | tr '[:lower:]-' '[:upper:]_'; }
-apple_sdk_boundary_after_workspace() {
+apple_sdk_boundary_after_successful_workspace_anchor() {
   awk '
-    workspace_line == 0 &&
-      /^[[:space:]]*Checking (rustdesk|hbb_common|scrap) v/ {
-        workspace_line = NR
+    rust_error_line == 0 &&
+      (/^[[:space:]]*error\[[A-Z][0-9]+\]:/ ||
+       (/^[[:space:]]*error:/ &&
+        $0 !~ /^[[:space:]]*error: failed to run custom build command for `[^`]+`$/)) {
+        rust_error_line = NR
       }
     boundary_line == 0 &&
       (/fatal error: .* file not found/ ||
@@ -175,12 +192,54 @@ apple_sdk_boundary_after_workspace() {
        /ld: framework not found/ ||
        /ld: library not found for/) {
         boundary_line = NR
-      }
+    }
     END {
-      exit !(workspace_line > 0 && boundary_line > workspace_line)
+      accepted = boundary_line > 0 &&
+        (rust_error_line == 0 || rust_error_line > boundary_line)
+      exit !accepted
     }
   ' "$1"
 }
+
+apple_sdk_boundary_self_test() {
+  local fixture="$APPLE_CHECK_TMP/apple-sdk-boundary-self-test.log"
+  printf '%s\n' \
+    'error: failed to run custom build command for `coreaudio-sys v0.2.15`' \
+    "wrapper.h:1:10: fatal error: 'AudioUnit/AudioUnit.h' file not found" \
+    >"$fixture"
+  apple_sdk_boundary_after_successful_workspace_anchor "$fixture" \
+    || die "Apple SDK classifier rejected an exact boundary after the successful workspace anchor"
+  printf '%s\n' \
+    '   Compiling coreaudio-sys v0.2.15' \
+    >"$fixture"
+  if apple_sdk_boundary_after_successful_workspace_anchor "$fixture"; then
+    die "Apple SDK classifier accepted a log without an SDK boundary"
+  fi
+  printf '%s\n' \
+    'error[E0308]: mismatched types' \
+    "wrapper.h:1:10: fatal error: 'AudioUnit/AudioUnit.h' file not found" \
+    >"$fixture"
+  if apple_sdk_boundary_after_successful_workspace_anchor "$fixture"; then
+    die "Apple SDK classifier accepted a prior coded Rust diagnostic"
+  fi
+  printf '%s\n' \
+    'error: expected item, found keyword `let`' \
+    "wrapper.h:1:10: fatal error: 'AudioUnit/AudioUnit.h' file not found" \
+    >"$fixture"
+  if apple_sdk_boundary_after_successful_workspace_anchor "$fixture"; then
+    die "Apple SDK classifier accepted a prior uncoded Rust diagnostic"
+  fi
+  printf '%s\n' \
+    'error: failed to run custom build command' \
+    "wrapper.h:1:10: fatal error: 'AudioUnit/AudioUnit.h' file not found" \
+    >"$fixture"
+  if apple_sdk_boundary_after_successful_workspace_anchor "$fixture"; then
+    die "Apple SDK classifier accepted an inexact Cargo wrapper diagnostic"
+  fi
+  rm -f -- "$fixture"
+}
+
+apple_sdk_boundary_self_test
 
 # ---- preflight ----
 [ "$BUILD_UID" -ne 0 ] || die "refusing host or container-root execution"
@@ -1465,7 +1524,7 @@ grep -q 'hmacsha256::authenticate' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-
 grep -q 'hmacsha256::verify' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-hmac-verify"
 grep -q 'CM_SERVER_PROOF_CONTEXT' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-directional-server-proof-context"
 grep -q 'verify_cm_server_proof' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-proof-verify"
-grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token()).await' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 server-does-not-authenticate-cm-launch-proof"
+grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 server-does-not-authenticate-role-bound-cm-launch-proof"
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' "$REPO/src/ui_cm_interface.rs" || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
 grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
@@ -1503,7 +1562,7 @@ if [ -z "$server_auth_fn_line" ] || [ -z "$server_proof_send_line" ] || [ -z "$s
   r_s11c11="$r_s11c11 server-peer-proof-not-before-endpoint-challenge"
 fi
 macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" | head -1 | cut -d: -f1 || true)
-macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\)\)\.await/ { print NR; exit }' "$REPO/src/server/connection.rs")
+macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\), expected_arg\)/ { print NR; exit }' "$REPO/src/server/connection.rs")
 if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
   r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
 fi
@@ -2953,8 +3012,41 @@ for target in "${SELECTED_APPLE_TARGETS[@]}"; do
   triplet=$(target_triplet "$target")
   lower_env=$(target_env_lower "$target")
   upper_env=$(target_env_upper "$target")
+  anchor_log="$APPLE_CHECK_TMP/apple-anchor-$target.log"
   log="$APPLE_CHECK_TMP/apple-xcheck-$target.log"
   echo "  -- $target features=$features"
+
+  set +e
+  "${COMMON_CHECK[@]}" \
+    --env SDKROOT=/tmp \
+    --env BINDGEN_EXTRA_CLANG_ARGS="-isysroot /tmp" \
+    --env "CC_$lower_env=/work/scripts/apple-cc-shim.sh" \
+    --env "CXX_$lower_env=/work/scripts/apple-cc-shim.sh" \
+    --env "CFLAGS_$lower_env=-isysroot /tmp" \
+    --env "CXXFLAGS_$lower_env=-isysroot /tmp" \
+    --env "CARGO_TARGET_${upper_env}_LINKER=/work/scripts/apple-cc-shim.sh" \
+    "$IMAGE_ID" /bin/bash --noprofile --norc -s -- "$target" "$triplet" <<'SH' >"$anchor_log" 2>&1
+set -euo pipefail
+target="$1"; triplet="$2"
+stub=/tmp/apple-vcpkg
+rm -rf "$stub"
+mkdir -p "$stub/installed/$triplet/include" "$stub/installed/$triplet/lib"
+for d in opus vpx libyuv; do
+  [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
+done
+export VCPKG_ROOT="$stub"
+cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \
+  --package hbb_common --target "$target"
+SH
+  anchor_rc=$?
+  set -e
+  if [ "$anchor_rc" -ne 0 ]; then
+    echo "  FAIL $target hbb_common workspace anchor did not compile cleanly:"
+    tail -40 "$anchor_log" | sed 's/^/      /'
+    rc=1
+    continue
+  fi
+  note "ok  $target hbb_common workspace anchor compiled cleanly"
 
   set +e
   "${COMMON_CHECK[@]}" \
@@ -2986,7 +3078,7 @@ SH
     echo "  FAIL $target has a Rust compiler error (real Apple-cfg coherence break):"
     grep -nE 'error\[E[0-9]{4}\]' "$log" | head -25 | sed 's/^/      /'
     rc=1
-  elif apple_sdk_boundary_after_workspace "$log"; then
+  elif apple_sdk_boundary_after_successful_workspace_anchor "$log"; then
     note "ok  $target reached the expected Apple SDK/header boundary with no Rust error"
   else
     echo "  FAIL $target failed before the accepted SDK/header boundary:"

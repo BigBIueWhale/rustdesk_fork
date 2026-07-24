@@ -101,7 +101,8 @@ def validate(sources: Dict[str, str]) -> None:
             'if postfix == "_cm"',
             "authenticate_cm_endpoint(",
             'if postfix == "_pa"',
-            "ensure_peer_process_identity_matches(",
+            "let Ok(expected) = current_linux_process_identity()",
+            'ensure_linux_process_identity_matches(&stream, &expected, "_pa")',
             "let current_uid = unsafe { hbb_common::libc::geteuid() as u32 };",
             "let peer_uid = stream.peer_uid().ok_or_else(",
             "if peer_uid != current_uid",
@@ -214,6 +215,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "async fn probe_existing_listener(postfix: &str) -> ResultType<bool>",
         "async fn probe_existing_listener(postfix: &str) -> bool",
         "fallible incumbent probe",
+    ),
+    (
+        "fs",
+        'ensure_linux_process_identity_matches(&stream, &expected, "_pa")',
+        "Ok(())",
+        "PA minimal process identity proof",
     ),
     (
         "fs",

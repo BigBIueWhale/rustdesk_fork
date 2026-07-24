@@ -92,7 +92,54 @@ def validate(sources: Dict[str, str]) -> None:
         "Apple acquisition-recipe content pin",
     )
 
+    cleanup = extract(
+        apple,
+        "cleanup_apple_check_tmp() {",
+        "}\ntrap cleanup_apple_check_tmp EXIT",
+        "private Apple workspace cleanup",
+    )
+    require_order(
+        cleanup,
+        (
+            'trap - EXIT HUP INT TERM',
+            'if ! /usr/bin/python3 -I -S "$REPO/scripts/restore-private-directory-modes.py"',
+            '--root "$APPLE_CHECK_TMP"',
+            '--expected-identity "$APPLE_CHECK_TMP_IDENTITY"',
+            '--owner "$APPLE_CHECK_TMP_UID"',
+            '--group "$APPLE_CHECK_TMP_GID"',
+            'echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2',
+            "status=1",
+            'if ! rm -rf -- "$APPLE_CHECK_TMP"',
+            'echo "apple-conform-check: failed to remove private workspace: $APPLE_CHECK_TMP" >&2',
+            'status=1',
+        ),
+        "identity-bound directory restoration before private workspace removal",
+    )
+
+    classifier = extract(
+        apple,
+        "apple_sdk_boundary_after_successful_workspace_anchor() {",
+        "}\n\napple_sdk_boundary_self_test() {",
+        "Apple SDK boundary classifier",
+    )
     for token, label in (
+        ("rust_error_line = NR", "first prior Rust diagnostic capture"),
+        ('$0 !~ /^[[:space:]]*error: failed to run custom build command for `[^`]+`$/',
+         "exact Cargo custom-build wrapper exception"),
+        ("boundary_line = NR", "first SDK boundary capture"),
+        ("boundary_line > 0", "SDK boundary presence"),
+        ("rust_error_line == 0 || rust_error_line > boundary_line",
+         "no Rust diagnostic before accepted boundary"),
+    ):
+        require(classifier, token, label)
+
+    for token, label in (
+        ('readonly APPLE_CHECK_TMP_IDENTITY="$(stat -c \'%d:%i\' -- "$APPLE_CHECK_TMP")"',
+         "private workspace retained identity"),
+        ('readonly APPLE_CHECK_TMP_UID="$(id -u)"',
+         "private workspace retained owner"),
+        ('readonly APPLE_CHECK_TMP_GID="$(id -g)"',
+         "private workspace retained group"),
         ("readonly DOCKER_BIN=/usr/bin/docker", "fixed Docker client"),
         ("readonly APPLE_DOCKER_HOST=unix:///var/run/docker.sock", "fixed local Docker endpoint"),
         ('readonly APPLE_DOCKER_CONFIG="$APPLE_CHECK_TMP/docker-config"',
@@ -135,8 +182,30 @@ def validate(sources: Dict[str, str]) -> None:
         ('"${APPLE_READ_RUN[@]}" python3 -', "confined metadata parser"),
         ("cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
          "locked offline Apple cross-check"),
-        ("apple_sdk_boundary_after_workspace()", "ordered SDK-boundary classifier"),
-        ("boundary_line > workspace_line", "SDK boundary after workspace ordering"),
+        ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+         '  --package hbb_common --target "$target"',
+         "locked serialized workspace anchor command"),
+        ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+         '  --target "$target" --features "$features"',
+         "locked serialized full Cargo command"),
+        ('--package hbb_common --target "$target"',
+         "deterministic workspace anchor package"),
+        ('if [ "$anchor_rc" -ne 0 ]',
+         "workspace anchor success requirement"),
+        ('apple_sdk_boundary_after_successful_workspace_anchor "$log"',
+         "post-anchor SDK-boundary classifier"),
+        ("apple_sdk_boundary_self_test()", "SDK-boundary classifier self-test"),
+        ("\napple_sdk_boundary_self_test\n\n# ---- preflight ----",
+         "SDK-boundary classifier self-test invocation"),
+        ('die "Apple SDK classifier accepted a log without an SDK boundary"',
+         "missing-boundary negative fixture"),
+        ('die "Apple SDK classifier accepted a prior coded Rust diagnostic"',
+         "coded Rust diagnostic negative fixture"),
+        ('die "Apple SDK classifier accepted a prior uncoded Rust diagnostic"',
+         "uncoded Rust diagnostic negative fixture"),
+        ('die "Apple SDK classifier accepted an inexact Cargo wrapper diagnostic"',
+         "inexact Cargo wrapper negative fixture"),
+        ("boundary_line > 0", "SDK boundary presence"),
         ('SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum',
          "real-source postcondition digest"),
         ('[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
@@ -158,7 +227,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(apple, "APPLE_READ_RUN=(", 1, "metadata launch definition")
     require_count(apple, "COMMON_CHECK=(", 1, "cross-check launch definition")
     require_count(apple, '"${APPLE_READ_RUN[@]}"', 1, "metadata launch use")
-    require_count(apple, '"${COMMON_CHECK[@]}"', 1, "matrix launch site")
+    require_count(apple, '"${COMMON_CHECK[@]}"', 2, "workspace-anchor/full-matrix launch sites")
     require_count(apple, "apple_docker run", 3, "complete Docker run inventory")
 
     require_order(
@@ -174,6 +243,12 @@ def validate(sources: Dict[str, str]) -> None:
             '"${APPLE_READ_RUN[@]}" python3 -',
             'for target in "${SELECTED_APPLE_TARGETS[@]}"; do',
             '"${COMMON_CHECK[@]}"',
+            '--package hbb_common --target "$target"',
+            'anchor_rc=$?',
+            'if [ "$anchor_rc" -ne 0 ]',
+            "continue",
+            '"${COMMON_CHECK[@]}"',
+            'apple_sdk_boundary_after_successful_workspace_anchor "$log"',
             "verify-subtree",
             'SOURCE_DIGEST_AFTER="$(archive_current_source',
             'FINAL_IMAGE_ID="$(apple_docker image inspect',
@@ -389,12 +464,77 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("apple", "size=2g", "size=20g", "cross-check scratch bound"),
     Mutation("apple", "--env CARGO_NET_OFFLINE=true", "--env CARGO_NET_OFFLINE=false",
              "Cargo offline policy"),
-    Mutation("apple", "check --locked --offline --config", "check --config",
-             "locked offline Cargo check"),
-    Mutation("apple", "--config /tmp/cargo-config.toml --jobs 1",
-             "--config /tmp/cargo-config.toml --jobs 4", "serialized Cargo check"),
-    Mutation("apple", "boundary_line > workspace_line", "boundary_line > 0",
-             "SDK boundary after workspace ordering"),
+    Mutation(
+        "apple",
+        "check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+        '  --package hbb_common --target "$target"',
+        "check --config /tmp/cargo-config.toml --jobs 4 \\\n"
+        '  --package hbb_common --target "$target"',
+        "locked serialized workspace anchor",
+    ),
+    Mutation(
+        "apple",
+        "check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
+        '  --target "$target" --features "$features"',
+        "check --config /tmp/cargo-config.toml --jobs 4 \\\n"
+        '  --target "$target" --features "$features"',
+        "locked serialized full Cargo check",
+    ),
+    Mutation(
+        "apple",
+        'if ! /usr/bin/python3 -I -S "$REPO/scripts/restore-private-directory-modes.py" \\\n'
+        '      --root "$APPLE_CHECK_TMP"',
+        'if ! true \\\n'
+        '      --root "$APPLE_CHECK_TMP"',
+        "private workspace directory restoration",
+    ),
+    Mutation(
+        "apple",
+        '--expected-identity "$APPLE_CHECK_TMP_IDENTITY" \\\n'
+        '      --owner "$APPLE_CHECK_TMP_UID"',
+        '--expected-identity "0:1" \\\n'
+        '      --owner "$APPLE_CHECK_TMP_UID"',
+        "private workspace cleanup identity",
+    ),
+    Mutation(
+        "apple",
+        'echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2\n'
+        "    status=1",
+        'echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2',
+        "private workspace restoration failure status",
+    ),
+    Mutation(
+        "apple",
+        '--package hbb_common --target "$target"',
+        '--package coreaudio-sys --target "$target"',
+        "workspace anchor package",
+    ),
+    Mutation(
+        "apple",
+        'if [ "$anchor_rc" -ne 0 ]; then',
+        "if false; then",
+        "workspace anchor success requirement",
+    ),
+    Mutation("apple", "accepted = boundary_line > 0", "accepted = boundary_line >= 0",
+             "SDK boundary presence"),
+    Mutation(
+        "apple",
+        "rust_error_line == 0 || rust_error_line > boundary_line",
+        "rust_error_line >= 0",
+        "prior Rust diagnostic refusal",
+    ),
+    Mutation(
+        "apple",
+        '$0 !~ /^[[:space:]]*error: failed to run custom build command for `[^`]+`$/',
+        '$0 !~ /error: failed/',
+        "exact Cargo custom-build wrapper exception",
+    ),
+    Mutation(
+        "apple",
+        "\napple_sdk_boundary_self_test\n\n# ---- preflight ----",
+        "\ntrue # Apple SDK boundary self-test removed\n\n# ---- preflight ----",
+        "SDK boundary classifier self-test invocation",
+    ),
     Mutation("apple", '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]', "true",
              "real-source stability proof"),
     Mutation("apple", '[ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ]', "true",

@@ -5660,7 +5660,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `/tmp/rustdesk-apple-check.XXXXXXXXXX` directory with checked `mktemp -d` under umask `077`, makes the path variable
   readonly, proves with `lstat` that it is a current-UID mode-`0700` directory, and places every host-created
   diagnostic and target log beneath it. One EXIT cleanup preserves status, cleanup failure is failure, and HUP/INT/
-  TERM retain nonzero signal statuses. The old host paths and scattered cleanup branches are absent. Fixed
+  TERM retain nonzero signal statuses. Because the compiler source and vendor snapshots are deliberately made
+  read-only, cleanup retains the scratch root's device/inode and current UID/GID, restores owner traversal/write
+  only on directories through the bounded same-filesystem no-follow descriptor walker, leaves regular files and
+  symlinks untouched, and only then removes the exact private tree. An identity, owner, type, mount, depth, entry,
+  or special-file mismatch fails cleanup instead of widening chmod authority or following a substitute path. The
+  old host paths and scattered cleanup branches are absent. Fixed
   `/tmp/apple-vcpkg` and SDK-root `/tmp` values remain only inside fresh trusted-image `docker run --rm` containers
   and are not host filesystem authority; the unnecessary container-local `/tmp/rfe` diagnostic is replaced by
   in-memory stderr capture. The R-S11c-10x gate uses anchored source-shape
@@ -8962,8 +8967,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   inspect/change host RustDesk, listeners, firewall/UFW/nftables/iptables, or host network state. Full golden
   behavior, Windows artifacts, double-build equality, and the complete cold release remain R-B2 obligations.
 - **R-S11ci/R-S11e-101 — Apple conformance verifier authority — SOURCE IMPLEMENTED
-  2026-07-23; FOCUSED/WORKSPACE MUTATION GATES PASS; ALL THREE FRESH SERIALIZED TARGETS FAIL CLOSED
-  BEFORE WORKSPACE CHECKING AT AN UNAVAILABLE APPLE HEADER; NATIVE APPLE, EXACT COLD RELEASE, AND
+  2026-07-24; FOCUSED/WORKSPACE MUTATION GATES AND COMPLETE THREE-TARGET APPLE SOURCE GATE PASS;
+  NATIVE APPLE, EXACT COLD RELEASE, AND
   INDEPENDENT IMAGE-PROVENANCE EVIDENCE PENDING.** Platform: the
   unprivileged Linux verification host and the Rust 1.81 Apple source-conformance container. Endpoint/action:
   the R-R2 metadata parser and three-target `cargo check` verdict reached through
@@ -9000,10 +9005,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   feature sets. Because no redistributable Apple SDK is a pinned offline input and Apple remains
   source-conformance-only on Linux, caller/ambient real-SDK modes are deleted; the checked-in compiler shim is
   the sole release mode. A check must compile cleanly or reach the existing narrowly classified Apple
-  SDK/header boundary only after the RustDesk workspace begins checking and with no Rust compiler error.
-  Cargo runs with `--jobs 1`, and the first exact missing-header/framework/library diagnostic must occur after
-  a `Checking rustdesk`, `Checking hbb_common`, or `Checking scrap` line; parallel scheduling or a merely
-  present workspace build-script marker cannot change the verdict. Native Mac
+  SDK/header boundary only after a workspace package compiles cleanly and with no prior Rust compiler error.
+  Cargo runs with `--jobs 1`. Before each full target graph, a separate equivalently confined locked/offline
+  `--package hbb_common --target <target>` anchor must exit zero in the same private target transaction; failure
+  prevents the full check. Only then may the full check accept its first exact missing-header/framework/library
+  diagnostic. Cargo's exact `error: failed to run custom build command for \`…\`` wrapper may intervene before
+  the underlying boundary; coded Rust errors, uncoded Rust errors, near-match Cargo text, or a missing boundary
+  reject. A behavioral self-test exercises the accepted and rejected classifier shapes before any image
+  operation, while source mutations independently reject removal, retargeting, unlocking, parallelizing, or
+  bypassing the anchor. Native Mac
   compilation/signing/packaging/runtime remains separate R-B2 evidence. The redundant undeclared-rustfmt path
   is deleted rather than repaired as a second syntax mode.
 
@@ -9014,7 +9024,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   it runs Rust 1.81 with `--locked --offline` and offline environment policy. No persistent named volume,
   arbitrary SDK, live repository, full `online` tree, Docker socket, device, host namespace, added capability,
   or port enters a container. Final postconditions reverify the vendor closure, real-source transaction digest,
-  Docker configuration, and image identity.
+  Docker configuration, and image identity. Cleanup then uses the retained scratch device/inode and current
+  UID/GID with `restore-private-directory-modes.py` to regain owner permissions on same-filesystem no-follow
+  directories only before removing the exact tree; cleanup failure changes the verdict to failure.
 
   Docker's own documentation establishes the semantics behind this closure: the default container user is root
   unless `USER`/`--user` changes it
@@ -9037,7 +9049,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fresh-target probe then exposed the parallel log-classification race, and source commit
   `5dad3a44071a3c5796d7438b346cf02e305ce059`, tree
   `2a70064cf8a35a6a97b3f14247a397d872122c15`, made the verdict serialized and order-sensitive.
-  Its focused normal/self-test passes and rejects 40 deliberate weakenings. The independent workspace semantic
+  Its focused normal/self-test passes and rejects 48 deliberate weakenings, including cleanup identity,
+  directory-mode restoration, the exact successful locked/offline workspace anchor, prior Rust diagnostics,
+  exact Cargo-wrapper classification, and classifier self-test invocation. The independent workspace semantic
   verifier passes both normal validation and its complete in-memory source-mutation catalog, including separate
   mutations of the focused rejection logic, actual common launch, Dockerfile content pin, shared wiring,
   requirement, Appendix row, and ledger. Both ran as UID/GID 1000 in the immutable
@@ -9045,24 +9059,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   network, read-only root/source, zero capabilities, no-new-privileges, and explicit resource ceilings.
   Dependency inventory normal plus all 103 mutations, native-codec normal/negative gates, Bash/Python syntax,
   synchronized requirements SHA-256
-  `a90bc33f6d26a92d41e85d2b13cd73cf66c0e027bbbe842a215b2730f09e82b3`, and diff checks pass.
+  `6fcc849fd6e5e423d507ff87cf3f2e1914a195496447e5419b459ef3d3572be4`, and diff checks pass.
 
-  From the clean exact final source commit, a separate private source/vendor snapshot and freshly emptied target
-  per triple exercised the exact locked/offline cross-check command in the pinned Apple image with UID/GID 1000,
-  no network, read-only root/source/vendor, zero capabilities, no-new-privileges, and the production resource
-  ceilings. The vendor closure was independently verified before and after the matrix. An initial parallel
-  diagnostic proved the old existence-only marker test was scheduler-dependent: a workspace
-  build-script line could race ahead of the missing-header report. After the gate was serialized and changed to
-  require an ordered workspace-library `Checking` line, all three targets—`aarch64-apple-darwin`,
-  `x86_64-apple-darwin`, and `aarch64-apple-ios`—failed earlier while pinned `coreaudio-sys 0.2.15` tried to
-  include unavailable `AudioUnit/AudioUnit.h`. No workspace library reached `Checking`, and the hardened
-  criterion rejects all three outcomes. This demonstrates why neither persistent target state nor parallel log
-  timing was admissible: either could conceal or inconsistently classify the missing-SDK boundary. No Apple SDK
-  was fabricated, downloaded, mounted, or accepted from the caller, and no header stub or weakened
-  classification was added. Consequently no complete `apple-conform-check PASS`, full `scripts/verify.sh`, or
-  full release-verifier verdict is claimed. Native Apple compilation/signing/artifacts, an honest Apple
-  SDK-capable source-conformance input or native check, exact clean-commit cold release evidence, and
-  independently archived Apple image provenance remain open and are not advanced by this source slice.
+  From the final source worktree, one private source/vendor snapshot and one initially empty private target
+  exercised the exact locked/offline cross-check command in the pinned Apple image with UID/GID 1000, no network,
+  read-only root/source/vendor, zero capabilities, no-new-privileges, and the production resource ceilings. The
+  vendor closure was independently verified before and after the matrix. The diagnostic history exposed verifier
+  defects rather than an Apple source defect: Cargo reports the build-script-owning package as
+  `Compiling hbb_common`, reports its exact failed-custom-build wrapper before clang's missing header, and on iOS
+  legitimately schedules `coreaudio-sys` before any incidental workspace status line. The final transaction
+  removes that scheduling dependence: each target first compiles `hbb_common` cleanly through its own locked/offline
+  confined anchor, then runs the full graph. All three targets—`aarch64-apple-darwin`,
+  `x86_64-apple-darwin`, and `aarch64-apple-ios`—then reached the pinned `coreaudio-sys 0.2.15`
+  `AudioUnit/AudioUnit.h` boundary with no prior Rust diagnostic, and the complete gate passed. The EXIT path
+  restored only private-tree directory
+  modes, removed the workspace, and preserved success. No Apple SDK was fabricated, downloaded, mounted, or
+  accepted from the caller, and no header stub was added. This is still source-conformance evidence only:
+  native Apple compilation/signing/artifacts, exact clean-commit cold release evidence, the full
+  `scripts/verify.sh` verdict (its pinned image is not locally present), and independently archived Apple image
+  provenance remain open and are not advanced by this source slice.
 - **R-S11cj/R-S11e-102 — online acquisition container execution authority — SOURCE IMPLEMENTED
   2026-07-23; FOCUSED/WORKSPACE MUTATION GATES AND EXACT-IMAGE NON-ROOT PROBES PASS; OUTPUT-PUBLICATION AUTHORITY AND EXACT COLD
   RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the one intentionally
@@ -10289,7 +10304,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8b480610975d966c7fe03e63d49abc6bdd31d41973d70b8a5191ca26c49b7b4e  requirements.html
+6fcc849fd6e5e423d507ff87cf3f2e1914a195496447e5419b459ef3d3572be4  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,

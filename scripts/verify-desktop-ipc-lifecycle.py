@@ -318,13 +318,14 @@ def validate(sources: Dict[str, str]) -> None:
     messages = (
         "main password IPC listener ended unexpectedly",
         "main IPC listener ended unexpectedly",
+        "protected service credential IPC listener ended unexpectedly",
         "protected service password IPC listener ended unexpectedly",
         "protected _service IPC listener ended unexpectedly",
         "Windows service-main control IPC listener ended unexpectedly",
         "Windows service credential IPC listener ended unexpectedly",
     )
     if ipc.count(failure_helper) != len(messages):
-        raise VerificationError("exact six IPC listener fatal producers are absent")
+        raise VerificationError("exact seven IPC listener fatal producers are absent")
     for message in messages:
         anchor = f'listener_error = Some("{message}".to_owned());'
         require(ipc, anchor, f"listener failure producer: {message}")
@@ -391,6 +392,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "static SHUTDOWN_FAILURE_LATCHED", "static SHUTDOWN_FINALIZER_STARTED: AtomicBool = AtomicBool::new(false);\nstatic SHUTDOWN_FAILURE_LATCHED", "multi-finalizer election absence"),
     ("server", "crate::server::input_service::fix_key_down_timeout_at_exit();", "crate::ipc::wait_for_local_ipc_shutdown().await;\n    crate::server::input_service::fix_key_down_timeout_at_exit();", "polling IPC barrier absence"),
     ("common", "static ref IS_SERVER:", "static ref SERVER_RUNNING: bool = false;\n    static ref IS_SERVER:", "server-running state absence"),
+    ("ipc", 'listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());\n                        crate::server::request_graceful_shutdown_after_listener_failure();', 'listener_error = Some("protected service credential IPC listener ended unexpectedly".to_owned());', "Linux service credential listener fatal latch"),
     ("requirements", '<span class="id">R-S11as</span>', '<span class="id">R-S11az</span>', "R-S11as requirement"),
     ("requirements", "<tr><td>167</td>", "<tr><td>9167</td>", "Appendix C #167"),
     ("hardening", "R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership", "R-S11e-59 — detached desktop IPC", "R-S11e-59 ledger"),

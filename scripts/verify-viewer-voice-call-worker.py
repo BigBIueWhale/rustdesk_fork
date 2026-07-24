@@ -84,7 +84,10 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "self.stop_requested.store(true, Ordering::Release);",
             "if let Some(subscription) = self.subscription.take()",
-            "CLIENT_SERVER.write().unwrap().subscribe(",
+            "CLIENT_SERVER",
+            ".write()",
+            ".unwrap()",
+            ".subscribe(",
             "audio_service::NAME",
             "subscription",
             "false",
@@ -131,7 +134,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         start,
         (
-            "let input_lease = match crate::audio_service::acquire_voice_call_input(",
+            "let input_lease =",
+            "match crate::audio_service::acquire_voice_call_input(",
             "get_default_sound_input()",
             "let client_conn_inner = ConnInner::new(",
             "client_conn_inner.clone()",
@@ -425,6 +429,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "input_lease: Option<audio_service::VoiceCallInputLease>", "input_lease_removed: Option<audio_service::VoiceCallInputLease>", "input lease owner"),
     ("io_loop", "self.stop_requested.store(true, Ordering::Release);", "", "durable stop publication"),
     ("io_loop", "if let Some(subscription) = self.subscription.take()", "if false", "exact unsubscribe"),
+    ("io_loop", ".subscribe(audio_service::NAME, subscription, false)", ".subscribe(audio_service::NAME, subscription, true)", "exact unsubscribe action"),
     ("io_loop", "drop(self.input_lease.take());", "", "exact input release"),
     ("io_loop", "receiver.blocking_recv()?", "receiver.try_recv().ok()?", "blocking receive"),
     ("io_loop", "if stop_requested.load(Ordering::Acquire) {\n        None", "if false {\n        None", "post-wake stop check"),
@@ -433,7 +438,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "cleanup_subscription,\n                        false", "cleanup_subscription,\n                        true", "worker cleanup unsubscribe"),
     ("io_loop", 'log::error!("Failed to start voice-call audio worker: {err}")', 'log::debug!("Failed to start voice-call audio worker: {err}")', "spawn failure diagnostic"),
     ("io_loop", "client_conn_inner,\n                        false", "client_conn_inner,\n                        true", "spawn rollback unsubscribe"),
-    ("io_loop", "let input_lease = match crate::audio_service::acquire_voice_call_input(", "let input_lease = match crate::audio_service::acquire_voice_call_input_removed(", "outgoing input acquisition"),
+    ("io_loop", "match crate::audio_service::acquire_voice_call_input(", "match crate::audio_service::acquire_voice_call_input_removed(", "outgoing input acquisition"),
     ("io_loop", "voice_call_thread.stop()", "voice_call_thread.thread.take()", "shutdown stop sink"),
     ("io_loop", "fn r_s11e82_voice_call_audio_wait_is_event_driven_and_stop_is_terminal()", "fn voice_call_audio_wait_is_event_driven_and_stop_is_terminal()", "terminal wait regression"),
     ("io_loop", "fn r_s11e82_voice_call_audio_wait_delivers_a_live_message()", "fn voice_call_audio_wait_delivers_a_live_message()", "live delivery regression"),

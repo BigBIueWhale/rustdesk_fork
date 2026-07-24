@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+        "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14552,6 +14552,135 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
         "online-fetch Pub-cache output authority hardening ledger",
+    )
+
+
+def validate_online_fetch_libyuv_output_authority_contract(sources):
+    focused = sources["online_fetch_libyuv_output_authority_verifier"]
+    helper = sources["online_libyuv_output_helper"]
+    online = sources["online_fetch"]
+    for text, label in (
+        ("libyuv output lifecycle", "libyuv focused lifecycle binding"),
+        ("single writable file mount", "libyuv focused mount binding"),
+        ("validate-seal-publish-postcheck order",
+         "libyuv focused publication binding"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "libyuv focused mutation inventory"),
+        ("run_mutations(sources)", "libyuv focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("libyuv_distfile_output_tool() {", "libyuv fixed output helper"),
+        ("recover_libyuv_distfile_staging() {", "libyuv restart recovery"),
+        ("stage_vcpkg_distfiles() {", "libyuv closed producer lifecycle"),
+        ('"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+         "libyuv exclusive transaction"),
+        ('"$ONLINE_DIR/.rustdesk-libyuv-distfile.XXXXXXXXXX"',
+         "libyuv unpredictable staging"),
+        ('source=$staging/output,target=/outputs/libyuv.tar.gz',
+         "libyuv sole writable host object"),
+        ('git cat-file -e "${LIBYUV_COMMIT}^{commit}"',
+         "libyuv exact commit-object proof"),
+        ('archive --format=tar "$LIBYUV_COMMIT"',
+         "libyuv exact archive request"),
+        ("| gzip -n > /outputs/libyuv.tar.gz",
+         "libyuv timestamp-free gzip"),
+        ('[ "$got" = "$SHA512_LIBYUV" ]',
+         "libyuv producer digest proof"),
+        ("libyuv_distfile_output_tool verify",
+         "libyuv host output postcondition"),
+        ("libyuv_distfile_output_tool publish",
+         "libyuv checked publication"),
+        ('[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+         "libyuv independent verdict barrier"),
+    ):
+        require_text(online, text, label)
+    lifecycle = extract_between(
+        online,
+        "stage_vcpkg_distfiles() {",
+        "\n}\n\n# ── The vcpkg-built native codecs",
+        "libyuv output authority lifecycle",
+    )
+    require_exact_count(
+        lifecycle,
+        "target=/outputs/libyuv.tar.gz",
+        1,
+        "libyuv exact writable mount",
+    )
+    require_absent(lifecycle, "target=/online", "libyuv online mount")
+    require_absent(lifecycle, "/online/libyuv-", "libyuv direct final-name write")
+    require_order(
+        lifecycle,
+        (
+            '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            "recover_libyuv_distfile_staging",
+            "check-complete",
+            "/usr/bin/mktemp -d",
+            "libyuv_distfile_output_tool prepare",
+            "online_docker_run",
+            "libyuv_distfile_output_tool verify",
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+            "libyuv_distfile_output_tool publish",
+            "retire_libyuv_distfile_staging",
+            '"$FLOCK_BIN" --unlock "$lock_fd"',
+        ),
+        "libyuv checked transaction order",
+    )
+    for text, label in (
+        ('STATE_NAME = ".rustdesk-libyuv-distfile-state-v1"',
+         "libyuv bounded transaction record"),
+        ("MAX_ARCHIVE_BYTES = 64 * 1024 * 1024",
+         "libyuv archive bound"),
+        ("reject_mount_at_or_below(staging)", "libyuv mount closure"),
+        ("if metadata.st_nlink != 1:\n"
+         '        fail("libyuv archive has a hardlink outside its single-file output")',
+         "libyuv external-hardlink refusal"),
+        ("libyuv archive carries extended attributes",
+         "libyuv extended-attribute refusal"),
+        ("if hashlib.sha512(data).hexdigest() != expected_sha512:\n"
+         '        fail("libyuv archive SHA-512 does not match its pin")',
+         "libyuv host digest proof"),
+        ("os.fchmod(descriptor, 0o400)", "libyuv read-only sealing"),
+        ("RENAME_NOREPLACE = 1", "libyuv no-clobber primitive"),
+        ("libyuv archive publication rollback also failed",
+         "libyuv publication rollback"),
+        ('return "unpublished-destination-occupied"',
+         "libyuv destination-race recovery"),
+        ('return "unprepared-state-write"',
+         "libyuv interrupted state-write recovery"),
+        ("output transaction state is incoherent and was preserved",
+         "libyuv ambiguous-state refusal"),
+        ("self-test accepted a wrong libyuv archive digest",
+         "libyuv digest negative fixture"),
+        ("self-test accepted a hardlinked libyuv output",
+         "libyuv hardlink negative fixture"),
+        ("self-test did not classify an interrupted libyuv state write",
+         "libyuv interrupted state-write fixture"),
+    ):
+        require_text(helper, text, label)
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test",
+        "Online-fetch libyuv output authority focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-libyuv-distfile-output.py self-test",
+        "Online-fetch libyuv transaction self-test",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11co</span>',
+        "online-fetch libyuv output authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>242</td>",
+        "online-fetch libyuv output authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
+        "online-fetch libyuv output authority hardening ledger",
     )
 
 
@@ -19304,6 +19433,7 @@ def validate_sources(sources):
     validate_online_fetch_gradle_output_authority_contract(sources)
     validate_online_fetch_cargo_tool_output_authority_contract(sources)
     validate_online_fetch_pub_cache_output_authority_contract(sources)
+    validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
@@ -31923,7 +32053,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
+            "R-S11n through R-S11co, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#242",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34148,6 +34278,86 @@ def run_source_mutations(sources):
             "online-fetch Pub-cache output authority hardening ledger",
         ),
         (
+            "online_fetch_libyuv_output_authority_verifier",
+            "single writable file mount",
+            "ambient writable cache mount",
+            "libyuv focused mount binding",
+        ),
+        (
+            "online_fetch",
+            "source=$staging/output,target=/outputs/libyuv.tar.gz",
+            "source=$ONLINE_DIR,target=/outputs/libyuv.tar.gz",
+            "libyuv sole writable host object",
+        ),
+        (
+            "online_fetch",
+            'git cat-file -e "${LIBYUV_COMMIT}^{commit}"',
+            "true # libyuv commit-object proof removed",
+            "libyuv exact commit-object proof",
+        ),
+        (
+            "online_fetch",
+            '[ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]',
+            '[ "$status" -eq 0 ]',
+            "libyuv independent verdict barrier",
+        ),
+        (
+            "online_libyuv_output_helper",
+            "hashlib.sha512(data).hexdigest() != expected_sha512",
+            "False",
+            "libyuv host digest proof",
+        ),
+        (
+            "online_libyuv_output_helper",
+            "if metadata.st_nlink != 1:\n"
+            '        fail("libyuv archive has a hardlink outside its single-file output")',
+            "if metadata.st_nlink < 1:\n"
+            '        fail("libyuv archive has a hardlink outside its single-file output")',
+            "libyuv external-hardlink refusal",
+        ),
+        (
+            "online_libyuv_output_helper",
+            "os.fchmod(descriptor, 0o400)",
+            "os.fchmod(descriptor, 0o600)",
+            "libyuv read-only sealing",
+        ),
+        (
+            "online_libyuv_output_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "libyuv no-clobber primitive",
+        ),
+        (
+            "online_libyuv_output_helper",
+            'return "unprepared-state-write"',
+            'return "unprepared-output"',
+            "libyuv interrupted state-write recovery",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test",
+            "true # online-fetch libyuv output authority gate removed",
+            "Online-fetch libyuv output authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11co</span>',
+            '<span class="id">R-S11co-disabled</span>',
+            "online-fetch libyuv output authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>242</td>",
+            "<tr><td>242-disabled</td>",
+            "online-fetch libyuv output authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
+            "R-S11co/R-S11e-107 — ambient libyuv distfile output authority",
+            "online-fetch libyuv output authority hardening ledger",
+        ),
+        (
             "android_main_service",
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
@@ -35403,6 +35613,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_pub_cache_output_helper": (
                 repo / "scripts/online-pub-cache-output.py"
+            ).read_text(encoding="utf-8"),
+            "online_fetch_libyuv_output_authority_verifier": (
+                repo / "scripts/verify-online-fetch-libyuv-output-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_libyuv_output_helper": (
+                repo / "scripts/online-libyuv-distfile-output.py"
             ).read_text(encoding="utf-8"),
             "android_apk_build": (
                 repo / "scripts/android-apk-build.sh"

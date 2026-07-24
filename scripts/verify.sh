@@ -311,6 +311,21 @@ else
   echo "  ok  R-S11cn the networked Pub producer sees read-only pinned inputs, writes one private cache root, and publishes only after structural, Git, and enforced-lockfile offline replay"
 fi
 
+echo "== (0m) online-fetch libyuv distfile output authority (R-S11co/R-S11e-107) =="
+r_s11co=
+if ! /usr/bin/python3 -I -S scripts/online-libyuv-distfile-output.py self-test; then
+  r_s11co="$r_s11co transaction-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test; then
+  r_s11co="$r_s11co authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11co" ]; then
+  echo "  FAIL R-S11co online-fetch libyuv distfile output authority:$r_s11co"
+  rc=1
+else
+  echo "  ok  R-S11co the networked Git producer writes one pre-created private archive inode, proves its exact pinned digest, and publishes it durably without access to any other online input or final name"
+fi
+
 [ "$rc" -eq 0 ] || {
   echo "VERIFY: FAILED before container execution"
   exit 1

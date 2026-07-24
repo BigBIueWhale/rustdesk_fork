@@ -1178,37 +1178,156 @@ stage_libvpx_distfiles() {
     log "libvpx source, security patch, and Windows acquisition closure captured + SHA512-verified"
 }
 
+libyuv_distfile_output_tool() {
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-libyuv-distfile-output.py" "$@"
+}
+
+libyuv_distfile_output_args() {
+    printf '%s\0' \
+        --uid "$ONLINE_FETCH_UID" \
+        --gid "$ONLINE_FETCH_GID" \
+        --commit "$LIBYUV_COMMIT" \
+        --sha512 "$SHA512_LIBYUV"
+}
+
+retire_libyuv_distfile_staging() {
+    local staging="$1" staging_id="$2" disposition
+    local output_args=()
+    mapfile -d '' output_args < <(libyuv_distfile_output_args)
+    disposition="$(
+        libyuv_distfile_output_tool recover \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}"
+    )" || die "cannot reconcile private libyuv distfile staging"
+    log "libyuv distfile staging reconciliation: $disposition"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/restore-private-directory-modes.py" \
+        --root "$staging" --expected-identity "$staging_id" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+        || die "cannot restore private libyuv distfile staging traversal"
+    /usr/bin/python3 -I -S \
+        "$LIB_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$staging" --expected-identity "$staging_id" \
+        || die "cannot retire private libyuv distfile staging"
+    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+        || die "private libyuv distfile staging survived retirement"
+}
+
+recover_libyuv_distfile_staging() {
+    local stale=() staging staging_id
+    mapfile -d '' stale < <(
+        /usr/bin/find "$ONLINE_DIR" -mindepth 1 -maxdepth 1 \
+            -name ".rustdesk-libyuv-distfile.*" -print0
+    )
+    for staging in "${stale[@]}"; do
+        [ -d "$staging" ] && [ ! -L "$staging" ] \
+            || die "reserved libyuv distfile staging entry is not one real directory: $staging"
+        staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+        retire_libyuv_distfile_staging "$staging" "$staging_id"
+    done
+}
+
 stage_vcpkg_distfiles() {
     stage_libvpx_distfiles
     local builder="$DEB_BUILDER_IMAGE_ID"
+    local status=0 output_status=0 publication_status=0
+    local lock_fd staging staging_id
+    local output_args=()
     require_online_fetch_builder_image deb-builder "$builder"
-    local yuv_tgz="$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"
-    if [ -f "$yuv_tgz" ]; then
-        [ "$(sha512sum "$yuv_tgz" | awk '{print $1}')" = "$SHA512_LIBYUV" ] || die "cached libyuv distfile SHA512 mismatch"
-        log "vcpkg distfile (libyuv) already captured + verified"
-        return 0
-    fi
     case "$SHA512_LIBYUV" in
         *"${SHA_PENDING}"*) die "libyuv distfile SHA512 is the R-B12 sentinel — record it in pins.env first" ;;
     esac
-    log "capturing the libyuv vcpkg distfile (reproducible git archive | gzip -n) -> ./online"
+    mapfile -d '' output_args < <(libyuv_distfile_output_args)
+    exec {lock_fd}<"$ONLINE_DIR" \
+        || die "cannot open the online root for libyuv distfile serialization"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another libyuv distfile output transaction already owns the online root"
+    recover_libyuv_distfile_staging
+    if [ -e "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" ] \
+       || [ -L "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" ]; then
+        libyuv_distfile_output_tool check-complete \
+            --online "$ONLINE_DIR" "${output_args[@]}" \
+            || die "existing libyuv distfile is incomplete or structurally unsafe"
+        "$FLOCK_BIN" --unlock "$lock_fd" \
+            || die "cannot release the libyuv distfile transaction lock"
+        exec {lock_fd}<&-
+        log "vcpkg distfile (libyuv) already captured and structurally verified"
+        return 0
+    fi
+    staging="$(
+        umask 077
+        /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-libyuv-distfile.XXXXXXXXXX"
+    )" || die "cannot create same-filesystem private libyuv distfile staging"
+    staging_id="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
+    if ! libyuv_distfile_output_tool prepare \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}"
+    then
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/restore-private-directory-modes.py" \
+            --root "$staging" --expected-identity "$staging_id" \
+            --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID" \
+            || die "failed libyuv preparation left non-restorable private staging"
+        /usr/bin/python3 -I -S \
+            "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$staging" --expected-identity "$staging_id" \
+            || die "failed libyuv preparation left non-retirable private staging"
+        die "cannot prepare private libyuv distfile staging"
+    fi
+    log "capturing the pinned libyuv Git tree into one private checked output"
     online_docker_run \
-        --mount "type=bind,source=$ONLINE_DIR,target=/online" \
         --env LIBYUV_COMMIT="$LIBYUV_COMMIT" \
         --env SHA512_LIBYUV="$SHA512_LIBYUV" \
+        --mount "type=bind,source=$staging/output,target=/outputs/libyuv.tar.gz" \
         "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
-            export HOME=/tmp/home; mkdir -p "$HOME"
-            gen() { # url commit out want-sha512
-                rm -rf /tmp/src; mkdir -p /tmp/src; cd /tmp/src; git init -q; git remote add origin "$1"
-                git fetch -q --depth 1 origin "$2" 2>/dev/null || { cd /tmp; rm -rf /tmp/src; git clone -q "$1" /tmp/src >/dev/null 2>&1; cd /tmp/src; }
-                git -c core.autocrlf=false archive --format=tar "$2" | gzip -n > "$3"
-                local got; got=$(sha512sum "$3" | cut -d" " -f1)
-                [ "$got" = "$4" ] || { echo "R-B12(a) SHA512 MISMATCH $3: got $got want $4" >&2; exit 1; }
+            export HOME=/tmp/home
+            export GIT_CONFIG_NOSYSTEM=1
+            export GIT_CONFIG_GLOBAL=/dev/null
+            export GIT_ATTR_NOSYSTEM=1
+            export GIT_NO_REPLACE_OBJECTS=1
+            mkdir -p "$HOME" /tmp/src
+            cd /tmp/src
+            git init -q
+            git remote add origin https://chromium.googlesource.com/libyuv/libyuv
+            if ! git -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null \
+                fetch -q --depth 1 origin "$LIBYUV_COMMIT"
+            then
+                cd /tmp
+                rm -rf /tmp/src
+                git -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null \
+                    clone -q --no-checkout \
+                    https://chromium.googlesource.com/libyuv/libyuv /tmp/src
+                cd /tmp/src
+            fi
+            git cat-file -e "${LIBYUV_COMMIT}^{commit}"
+            git -c core.autocrlf=false -c core.hooksPath=/dev/null \
+                -c core.attributesFile=/dev/null \
+                archive --format=tar "$LIBYUV_COMMIT" \
+                | gzip -n > /outputs/libyuv.tar.gz
+            got="$(sha512sum /outputs/libyuv.tar.gz | cut -d" " -f1)"
+            [ "$got" = "$SHA512_LIBYUV" ] || {
+                echo "R-B12(a) libyuv SHA512 mismatch: got $got want $SHA512_LIBYUV" >&2
+                exit 1
             }
-            gen https://chromium.googlesource.com/libyuv/libyuv "$LIBYUV_COMMIT" "/online/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
-            echo "libyuv distfile captured + SHA512-verified"
-        '
-    log "vcpkg distfile captured (libyuv, SHA512-verified)"
+        ' || status=$?
+    libyuv_distfile_output_tool verify \
+        --online "$ONLINE_DIR" --staging "$staging" \
+        "${output_args[@]}" \
+        || output_status=$?
+    if [ "$status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        libyuv_distfile_output_tool publish \
+            --online "$ONLINE_DIR" --staging "$staging" \
+            "${output_args[@]}" \
+            || publication_status=$?
+    fi
+    retire_libyuv_distfile_staging "$staging" "$staging_id"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the libyuv distfile transaction lock"
+    exec {lock_fd}<&-
+    [ "$output_status" -eq 0 ] || die "networked libyuv distfile output postcondition failed"
+    [ "$status" -eq 0 ] || die "networked libyuv distfile producer failed"
+    [ "$publication_status" -eq 0 ] || die "networked libyuv distfile publication failed"
+    log "vcpkg distfile captured (libyuv, SHA512-verified and checked-published)"
 }
 
 # ── The vcpkg-built native codecs (R-R1 pinned overlay ports): vpx/yuv/opus ──

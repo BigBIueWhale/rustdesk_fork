@@ -413,9 +413,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "        GIT_CONFIG_GLOBAL=/dev/null",
         "system Git config exclusion",
     ),
-    Mutation("shell", "GIT_NO_REPLACE_OBJECTS=1",
-             "GIT_REPLACE_REF_BASE=refs/replace",
-             "replacement-object exclusion"),
+    Mutation(
+        "shell",
+        "GIT_ATTR_NOSYSTEM=1 \\\n"
+        "        GIT_NO_REPLACE_OBJECTS=1 \\\n"
+        "        GIT_OPTIONAL_LOCKS=0",
+        "GIT_ATTR_NOSYSTEM=1 \\\n"
+        "        GIT_REPLACE_REF_BASE=refs/replace \\\n"
+        "        GIT_OPTIONAL_LOCKS=0",
+        "replacement-object exclusion",
+    ),
     Mutation(
         "shell",
         "GIT_NO_REPLACE_OBJECTS=1 \\\n"

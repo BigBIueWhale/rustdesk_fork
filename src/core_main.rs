@@ -505,7 +505,10 @@ pub fn core_main() -> Option<Vec<String>> {
                     let options = crate::ipc::get_options();
                     println!("{}", options.get(&args[1]).unwrap_or(&"".to_owned()));
                 } else if args.len() == 3 {
-                    crate::ipc::set_option(&args[1], &args[2]);
+                    if let Err(err) = crate::ipc::set_option(&args[1], &args[2]) {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
                 }
             } else {
                 println!("Installation and administrative privileges required!");

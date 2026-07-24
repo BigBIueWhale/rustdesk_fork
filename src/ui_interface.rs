@@ -333,19 +333,6 @@ pub fn get_sound_inputs() -> Vec<String> {
 }
 
 #[inline]
-pub fn set_options(m: HashMap<String, String>) {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        match ipc::set_options(m.clone()) {
-            Ok(()) => *OPTIONS.lock().unwrap() = m,
-            Err(err) => log::warn!("Failed to set options via IPC: {err}"),
-        }
-    }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    Config::set_options(m);
-}
-
-#[inline]
 pub fn set_option(key: String, value: String) {
     // R-X9/R-X10: the installed desktop service is ALWAYS present + auto-start and is un-killable at
     // runtime. The `stop-service` set_option special-case (value=="Y" -> uninstall_service, else ->
@@ -358,15 +345,14 @@ pub fn set_option(key: String, value: String) {
     // a Config write — so no option-write path reaches the Android listener either.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let mut options = OPTIONS.lock().unwrap().clone();
-        if value.is_empty() {
-            options.remove(&key);
-        } else {
-            options.insert(key.clone(), value.clone());
-        }
-        match ipc::set_options(options.clone()) {
-            Ok(()) => {
-                *OPTIONS.lock().unwrap() = options;
+        match ipc::set_option(&key, &value) {
+            Ok(effective) => {
+                let mut options = OPTIONS.lock().unwrap();
+                if effective.is_empty() {
+                    options.remove(&key);
+                } else {
+                    options.insert(key.clone(), effective);
+                }
                 if &key == "audio-input" {
                     crate::audio_service::restart();
                 }

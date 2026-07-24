@@ -988,35 +988,6 @@ pub fn main_get_options_sync() -> SyncReturn<String> {
     SyncReturn(get_options())
 }
 
-pub fn main_set_options(json: String) {
-    let mut map: HashMap<String, String> = serde_json::from_str(&json).unwrap_or(HashMap::new());
-    #[cfg(target_os = "android")]
-    {
-        let allow_perm_change_in_accept_window = config::option2bool(
-            config::keys::OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
-            &crate::get_builtin_option(config::keys::OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW),
-        );
-        if !allow_perm_change_in_accept_window && crate::ui_cm_interface::has_active_clients() {
-            for key in [
-                config::keys::OPTION_ENABLE_CLIPBOARD,
-                config::keys::OPTION_ENABLE_FILE_TRANSFER,
-                config::keys::OPTION_ENABLE_AUDIO,
-            ] {
-                if let Some(value) = map.remove(key) {
-                    log::info!(
-                        "blocked main_set_options item by policy, key={}, value={}",
-                        key,
-                        value
-                    );
-                }
-            }
-        }
-    }
-    if !map.is_empty() {
-        set_options(map)
-    }
-}
-
 pub fn main_get_app_name() -> String {
     get_app_name()
 }

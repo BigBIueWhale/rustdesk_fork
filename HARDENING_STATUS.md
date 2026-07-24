@@ -665,14 +665,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   plist proof for exact `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive`. Password mutation has no JSON
   request and no ordinary-main fallback. Shutdown closes admission, drains accepted tasks and mutations, then
   clears entries, HMAC key, and tags.
-- **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08.** Platforms:
+- **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08; narrowed 2026-07-24.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
-  and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `MainIpcRequest::SetOptions`.
+  and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `MainIpcRequest::SetOption`.
   Boundary: user-owned IPC caller ↔ service-owned remote-access policy. Attack surface closed: service-owned
-  receivers reject typed option writes before `privacy_mode::switch` or `Config::set_options`; the daemon returns
-  `MainIpcResponse::OptionsSet(IpcMutationResult::{Applied,Rejected,InternalFailure})`; IPC callers persist/cache
-  only after `Applied` and do not locally persist when the daemon is unreachable. User-owned
-  `--server` option writes remain user-owned through the same typed ACK path. Verification
+  receivers reject typed option writes before `privacy_mode::switch` or `Config::set_option`; the daemon returns
+  `MainIpcResponse::OptionSet { result, effective }`; IPC callers cache only the receiver-derived effective value
+  after `Applied` and do not locally persist when the daemon is unreachable. User-owned `--server` option writes
+  remain user-owned through the same typed ACK path, narrowed to one allowlisted key by R-S11b-3n. Verification
   closure: `scripts/verify.sh` tests the user-owned vs service-owned allowlist and asserts the typed ACK/NACK,
   no-local-fallback rule, receiver gate, and UI cache ordering; `scripts/apple-conform-check.sh` mirrors
   the macOS source assertions.
@@ -755,7 +755,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   plaintext.
 - **R-S11b-3g — trust-anchor/proxy-shaped option writes are pinned empty — CLOSED 2026-07-09.**
   Platforms: all desktop main IPC and every shared `Config` option write path. Endpoint/action:
-  `Config::set_option`, `Config::set_options`, `MainIpcRequest::SetOptions`, and callers that sync or cache
+  `Config::set_option`, `Config::set_options`, `MainIpcRequest::SetOption`, and callers that sync or cache
   the shared options map. Boundary: local option writers ↔ trust-anchor and proxy credential material.
   Attack surface closed: the legacy `key` option cannot persist a rendezvous trust-anchor override, and
   `proxy-username`/`proxy-password` cannot persist proxy credential material through ordinary options IPC,
@@ -933,6 +933,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   main-protocol regression rejects the retired string key. The independent semantic validator deliberately
   mutates every source/gate/spec/ledger edge. Appendix C #237 records the source-level closure; native and exact
   artifact evidence remains part of R-B2.
+- **R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective — CLOSED/GATED
+  2026-07-24.** Platforms: Linux, Windows, and macOS desktop main IPC. Endpoint/action: the former whole-map
+  `MainIpcRequest::SetOptions`, its caller-side cached-snapshot expansion, the receiver's allowlisted-map
+  replacement, and the unused JSON `main_set_options` Flutter/web bridge. Boundary: an ordinary desktop
+  user-owned main-IPC caller ↔ the user-owned daemon's current option state. A one-key UI change previously
+  cloned and sent every cached option, while the receiver removed and replaced every allowlisted entry. A stale
+  caller could overwrite unrelated concurrent receiver changes, and the `Applied`-only response let the UI trust
+  its requested snapshot even when a pinned or unsaveable key was dropped by the receiver. Service-owned
+  receivers already rejected this operation, so source review did not prove a cross-principal write, local
+  privilege escalation, credential disclosure, exploitation event, Android lifecycle defect, or host compromise.
+  Closure replaces the batch protocol with `SetOption(MainStatusOption)`: the receiver validates exactly one
+  allowlisted key/value, invokes `Config::set_option` only for that key, reads the resulting value through
+  `Config::get_option`, and returns `OptionSet { result, effective }`. The client requires an applied response
+  with the same key; the UI updates or removes only that cache entry using the receiver-derived value. The
+  whole-map merge helper, IPC batch client, UI whole-map setter, unused JSON FFI, and authored web batch method
+  are deleted. The CLI reports rejection/unavailability and exits nonzero. A focused protocol regression and
+  shared, Apple, Dart-codegen, and independent semantic mutation gates bind every authority edge and retired
+  surface. Appendix C #238 records the source-level closure; exact native/reproducible artifact and installed
+  device evidence remain under R-B2.
 - **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
   Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
   deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
@@ -5336,13 +5355,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11b-3 — service-owned remote-access policy, identity, and trust material.** Platforms: all desktop
   installed-service paths. Linux/macOS no longer have the `_service` whole-config bus after R-S11b-1, and
   the desktop main IPC no longer has a whole-config request/response/import path after R-S11b-3b; Windows
-  remains high risk because main IPC is same-session. Endpoints: `MainIpcRequest::SetOptions`, trusted-device removals,
+  remains high risk because main IPC is same-session. Endpoints: `MainIpcRequest::SetOption`, trusted-device removals,
   remaining server/direct-listener policy writers, and any hidden UI/CLI/FFI path that persists
   controlled-side policy. Boundary: user-session process ↔ privileged host policy. Attack surface: a local
   caller can alter who can reach the service, how it binds, which trust/identity state it uses, or which
-  hardened policy pins are effective. Current state: ordinary whole-options IPC writes are closed for
+  hardened policy pins are effective. Current state: ordinary option IPC writes are closed for
   service-marked servers by R-S11b-3a, including typed daemon ACK/NACK and no local persistence fallback inside
-  the IPC helper; user-owned `--server` option writes remain user-owned; whole user config is never imported
+  the IPC helper; user-owned `--server` option writes remain user-owned and are single-key/receiver-effective
+  after R-S11b-3n; whole user config is never imported
   over IPC after R-S11b-3b; generic config writes, generic config helpers, and the proxy IPC variant are absent
   after R-S11b-3c; Windows `share_rdp` is no longer a UI-side shell/registry write after R-S11b-3d and is
   committed only by the LocalSystem service through a typed elevated `_service` request and, after R-S11e-23,
@@ -5360,7 +5380,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   automatic-password generator and makes storage-salt generation private, fixed-purpose, fixed-length, and
   solely owned by durable permanent-password provisioning. R-S11b-3m then deletes every legacy PRS
   string-flattening adapter and keeps `Available`/`Empty`/`UndecryptableStorage` typed through the CPace admission
-  decision.
+  decision. R-S11b-3n narrows ordinary option mutation to one allowlisted key, has the receiver return the
+  effective value through the pinned read funnel, updates only that caller cache entry, and deletes the whole-map
+  IPC/FFI bridge and stale-snapshot replacement path.
 **Contained hardening items from the same audit:**
 - **R-S11c-6 — Windows named-pipe endpoint hardening.** Platform: Windows desktop. Endpoint:
   predictable `\\.\pipe\<APP>\query{postfix}` names and broad/default permissions across production listeners.
@@ -10200,9 +10222,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b9d7bf518b013e043f850530fe74a2f4b475803ee68f41a1352bb553d704a996  requirements.html
+30d66306566cacc376188aa7d14c39514bbe2be5051c86e0c6c4c0fe26b17020  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

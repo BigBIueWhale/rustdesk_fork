@@ -234,6 +234,15 @@ if grep -qE 'logOut|log_out|apiServer|/api/logout' \
   echo "  FAIL R-SV6a: freshly generated bridge regained account logout/API-server presentation vocabulary"; exit 1
 fi
 echo "  ok  R-SV6a freshly generated bridge has no account logout/API-server presentation vocabulary"
+# R-S11b-3n: the unused JSON whole-options FFI was the presentation half of the
+# desktop whole-map IPC mutation. Option changes are one typed key/value operation,
+# and freshly generated bindings must not recreate the deleted batch authority.
+dg_clean 'mainSetOptions|main_set_options|wire_main_set_options' 'R-S11b-3n whole-options Flutter bridge'
+if grep -qE 'mainSetOptions|main_set_options|wire_main_set_options' \
+  flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart; then
+  echo "  FAIL R-S11b-3n: freshly generated bridge regained whole-options mutation authority"; exit 1
+fi
+echo "  ok  R-S11b-3n freshly generated bridge exposes no whole-options mutation"
 # R-G4 / §19: the "Network"/server-config UI is deleted — config UI for the rendezvous / relay /
 # api-server infrastructure the fork structurally removed. Desktop: the _Network/_NetworkState
 # classes ("ID/Relay Server" editor + SOCKS proxy + WebSocket switch) + the SettingsTabKey.network

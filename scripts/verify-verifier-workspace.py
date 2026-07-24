@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16698,7 +16698,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     handler = extract_between(
         ipc,
         "        MainIpcRequest::Config(key) => {",
-        "\n        MainIpcRequest::SetOptions(value) => {",
+        "\n        MainIpcRequest::SetOption(value) => {",
         "main config receiver dispatch",
     )
     for text, label in (
@@ -16989,6 +16989,304 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
             "ordinary-main credential-mirror hardening ledger",
             "hardening-ledger mutation",
         ),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_main_ipc_single_option_mutation_contract(sources):
+    ipc = sources["ipc_source"]
+    ui = sources["ui_interface_source"]
+
+    for source, text, label in (
+        (ipc, "MainIpcRequest::SetOptions", "whole-options main request"),
+        (ipc, "MainIpcResponse::OptionsSet", "whole-options main response"),
+        (ipc, "merge_main_status_options", "whole-options receiver merge"),
+        (ipc, "pub async fn set_options", "whole-options IPC client"),
+        (ui, "ipc::set_options", "whole-options UI IPC call"),
+        (ui, "pub fn set_options", "whole-options UI setter"),
+        (
+            sources["flutter_ffi_source"],
+            "pub fn main_set_options",
+            "whole-options Flutter FFI",
+        ),
+        (sources["web_bridge_dart"], "mainSetOptions", "whole-options web bridge"),
+    ):
+        require_absent(source, text, label)
+
+    request_protocol = extract_between(
+        ipc,
+        "pub enum MainIpcRequest {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n#[derive(Debug, Serialize, Deserialize, Clone)]\n#[serde(tag = \"t\", content = \"c\")]\npub enum MainIpcResponse",
+        "single-option main request protocol",
+    )
+    require_text(
+        request_protocol,
+        "SetOption(MainStatusOption)",
+        "single-option typed main request",
+    )
+    response_protocol = extract_between(
+        ipc,
+        "pub enum MainIpcResponse {",
+        "\n}\n\n#[cfg(any(target_os = \"windows\", test))]",
+        "single-option main response protocol",
+    )
+    for text, label in (
+        ("OptionSet {", "single-option typed response"),
+        ("result: IpcMutationResult", "single-option mutation result"),
+        (
+            "effective: Option<MainStatusOption>",
+            "receiver-effective option response",
+        ),
+    ):
+        require_text(response_protocol, text, label)
+
+    option_value = extract_between(
+        ipc,
+        "impl MainStatusOption {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]",
+        "single-option wire validation",
+    )
+    require_order(
+        option_value,
+        (
+            "MainStatusOptionKey::from_str(key)",
+            "Self { key, value }.validate()",
+            "self.value.len() > MAIN_IPC_MAX_OPTION_VALUE_BYTES",
+        ),
+        "single-option key and value validation",
+    )
+
+    handler = extract_between(
+        ipc,
+        "        MainIpcRequest::SetOption(value) => {",
+        "\n        MainIpcRequest::ValidateCmConnection",
+        "single-option receiver dispatch",
+    )
+    require_order(
+        handler,
+        (
+            "if !current_process_allows_main_channel_options_write()",
+            "result: IpcMutationResult::Rejected",
+            "let value = match value.validate()",
+            "try_acquire_main_ipc_blocking_mutation_slot()",
+            "tokio::task::spawn_blocking(move ||",
+            "let key_name = key.as_str().to_owned()",
+            "Config::set_option(key_name.clone(), value.value);",
+            "value: Config::get_option(&key_name)",
+            "result: IpcMutationResult::Applied",
+            "effective: Some(effective)",
+        ),
+        "single-option receiver authority and effective-state order",
+    )
+    for text, label in (
+        ("Config::set_options", "whole-options receiver persistence"),
+        ("Config::get_options", "whole-options receiver snapshot"),
+        ("merge_main_status_options", "whole-options receiver merge"),
+    ):
+        require_absent(handler, text, label)
+
+    client = extract_between(
+        ipc,
+        "pub async fn set_option(key: &str, value: &str) -> ResultType<String> {",
+        "\n}\n\n// R-SV6a/R-D4:",
+        "single-option IPC client",
+    )
+    require_order(
+        client,
+        (
+            "MainStatusOption::from_pair(key, value.to_owned())?",
+            "let requested_key = requested.key",
+            "MainIpcRequest::SetOption(requested)",
+            "result: IpcMutationResult::Applied",
+            "effective: Some(effective)",
+            "effective.into_pair()?",
+            "if effective_key != requested_key",
+            "Ok(effective_value)",
+        ),
+        "single-option client response correlation",
+    )
+    for text, label in (
+        ("Config::set_option", "single-option client local persistence"),
+        ("Config::set_options", "single-option client whole-map persistence"),
+        ("get_options()", "single-option client cached-snapshot expansion"),
+    ):
+        require_absent(client, text, label)
+
+    ui_setter = extract_between(
+        ui,
+        "pub fn set_option(key: String, value: String) {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n#[inline]\npub fn is_installed",
+        "desktop/mobile single-option UI setter",
+    )
+    require_order(
+        ui_setter,
+        (
+            "match ipc::set_option(&key, &value)",
+            "Ok(effective) => {",
+            "let mut options = OPTIONS.lock().unwrap()",
+            "if effective.is_empty()",
+            "options.remove(&key)",
+            "options.insert(key.clone(), effective)",
+        ),
+        "single-option UI receiver-effective cache update",
+    )
+    require_absent(
+        ui_setter,
+        "OPTIONS.lock().unwrap().clone()",
+        "UI whole-options snapshot cloning",
+    )
+    require_absent(
+        ui_setter,
+        "*OPTIONS.lock().unwrap() =",
+        "UI whole-options cache replacement",
+    )
+
+    option_cli = extract_between(
+        sources["core_main"],
+        '} else if args[0] == "--option" {',
+        '\n        } else if args[0] == "--terminal-helper" {',
+        "single-option CLI",
+    )
+    require_order(
+        option_cli,
+        (
+            "if let Err(err) = crate::ipc::set_option(&args[1], &args[2])",
+            'eprintln!("{err}")',
+            "std::process::exit(1)",
+        ),
+        "single-option CLI failure finality",
+    )
+
+    regression = extract_between(
+        ipc,
+        "fn main_option_mutation_is_single_key_and_receiver_effective() {",
+        "\n    }\n\n    #[tokio::test(flavor = \"current_thread\")]",
+        "single-option protocol regression",
+    )
+    for text, label in (
+        (
+            'r#"{"t":"SetOption","c":{"key":"AudioInput","value":"microphone"}}"#',
+            "single-key request wire regression",
+        ),
+        ('"receiver-device"', "receiver-effective response regression"),
+        (
+            "assert_eq!(key, MainStatusOptionKey::AudioInput)",
+            "effective response key regression",
+        ),
+    ):
+        require_text(regression, text, label)
+
+    shared_gate = extract_between(
+        sources["verify"],
+        "# (3b-iii-d) R-S11b-3a/R-S11b-3d:",
+        "# (3b-iii-d2) R-S11e-23:",
+        "shared single-option mutation source gate",
+    )
+    for text in (
+        "MainIpcRequest::SetOption(value)",
+        "Config::set_option(key_name.clone(), value.value);",
+        "value: Config::get_option(&key_name)",
+        "options.insert(key.clone(), effective);",
+        "retired-whole-options-surface-present",
+        "ipc::test::main_option_mutation_is_single_key_and_receiver_effective",
+        "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
+        "<tr><td>238</td>",
+    ):
+        require_text(shared_gate, text, "shared single-option mutation source gate")
+
+    apple_gate = extract_between(
+        sources["apple"],
+        'echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="',
+        'echo "== (2b-ii-a) R-S11e-16 macOS password provisioning ingress =="',
+        "Apple single-option mutation source gate",
+    )
+    for text in (
+        "MainIpcRequest::SetOption(requested)",
+        "Config::set_option(key_name.clone(), value.value);",
+        "value: Config::get_option(&key_name)",
+        "options.insert(key.clone(), effective);",
+        "retired-whole-options-surface-present",
+        "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
+        "<tr><td>238</td>",
+    ):
+        require_text(apple_gate, text, "Apple single-option mutation source gate")
+
+    for text, label in (
+        (
+            "R-S11b-3n whole-options Flutter bridge",
+            "Dart authored bridge absence gate",
+        ),
+        (
+            "freshly generated bridge regained whole-options mutation authority",
+            "Dart generated bridge absence gate",
+        ),
+    ):
+        require_text(sources["dart_verify"], text, label)
+
+    requirement = extract_html_requirement(
+        sources["requirements"], "R-S16", "single-option mutation requirement"
+    )
+    for text, label in (
+        (
+            "<code>MainIpcRequest::SetOption</code>",
+            "single-option normative request",
+        ),
+        (
+            "mutate only that key at the receiver",
+            "single-option normative receiver sink",
+        ),
+        (
+            "return that receiver-derived value",
+            "receiver-effective normative acknowledgement",
+        ),
+        (
+            "update only the corresponding caller cache entry",
+            "single-option normative cache update",
+        ),
+        (
+            "expose a batch JSON/FFI bridge",
+            "whole-options bridge normative prohibition",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>238</td>",
+        "single-option mutation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
+        "single-option mutation hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "single-option deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("single-option typed main request", "single-option request mutation"),
+        (
+            "single-option receiver authority and effective-state order",
+            "receiver sink/effective-state mutations",
+        ),
+        ("single-option client response correlation", "client-correlation mutation"),
+        (
+            "single-option UI receiver-effective cache update",
+            "UI-cache mutation",
+        ),
+        ("whole-options Flutter FFI", "Flutter-FFI mutation"),
+        ("whole-options web bridge", "web-bridge mutation"),
+        ("single-option CLI failure finality", "CLI-finality mutation"),
+        ("shared single-option mutation source gate", "shared-gate mutation"),
+        ("Apple single-option mutation source gate", "Apple-gate mutation"),
+        ("Dart authored bridge absence gate", "Dart-gate mutation"),
+        ("single-option normative receiver sink", "requirements mutation"),
+        ("single-option mutation Appendix C row", "Appendix mutation"),
+        ("single-option mutation hardening ledger", "hardening-ledger mutation"),
+        ("single-option protocol regression", "focused-regression mutation"),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -18567,6 +18865,7 @@ def validate_sources(sources):
     validate_temporary_password_generator_excision_contract(sources)
     validate_typed_permanent_password_prs_contract(sources)
     validate_main_ipc_credential_mirror_excision_contract(sources)
+    validate_main_ipc_single_option_mutation_contract(sources)
     validate_rendezvous_compatibility_excision_contract(sources)
     validate_peer_presence_excision_contract(sources)
     validate_public_server_selection_excision_contract(sources)
@@ -29768,6 +30067,96 @@ def run_source_mutations(sources):
             "ordinary-main credential-mirror hardening ledger",
         ),
         (
+            "ipc_source",
+            "    SetOption(MainStatusOption),",
+            "    SetOptions(MainStatusOptions),",
+            "single-option typed main request",
+        ),
+        (
+            "ipc_source",
+            "                Config::set_option(key_name.clone(), value.value);",
+            "                Config::set_options(HashMap::from([(key_name.clone(), value.value)]));",
+            "single-option receiver authority and effective-state order",
+        ),
+        (
+            "ipc_source",
+            "                    value: Config::get_option(&key_name),",
+            "                    value: String::new(),",
+            "single-option receiver authority and effective-state order",
+        ),
+        (
+            "ipc_source",
+            "            if effective_key != requested_key {",
+            "            if false {",
+            "single-option client response correlation",
+        ),
+        (
+            "ui_interface_source",
+            "                    options.insert(key.clone(), effective);",
+            "                    options.insert(key.clone(), value.clone());",
+            "single-option UI receiver-effective cache update",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn main_get_app_name() -> String {",
+            "pub fn main_set_options(_: String) {}\n\npub fn main_get_app_name() -> String {",
+            "whole-options Flutter FFI",
+        ),
+        (
+            "web_bridge_dart",
+            "  Future<String> mainGetAppName({dynamic hint}) {",
+            "  Future<void> mainSetOptions({required String json, dynamic hint}) async {}\n\n  Future<String> mainGetAppName({dynamic hint}) {",
+            "whole-options web bridge",
+        ),
+        (
+            "core_main",
+            "                    if let Err(err) = crate::ipc::set_option(&args[1], &args[2]) {",
+            "                    if let Ok(err) = crate::ipc::set_option(&args[1], &args[2]) {",
+            "single-option CLI failure finality",
+        ),
+        (
+            "verify",
+            "retired-whole-options-surface-present",
+            "retired-whole-options-source-check-disabled",
+            "shared single-option mutation source gate",
+        ),
+        (
+            "apple",
+            "retired-whole-options-surface-present",
+            "retired-whole-options-source-check-disabled",
+            "Apple single-option mutation source gate",
+        ),
+        (
+            "dart_verify",
+            "R-S11b-3n whole-options Flutter bridge",
+            "R-S11b-3n authored bridge check disabled",
+            "Dart authored bridge absence gate",
+        ),
+        (
+            "requirements",
+            "mutate only that key at the receiver",
+            "replace the receiver options snapshot",
+            "single-option normative receiver sink",
+        ),
+        (
+            "requirements",
+            "<tr><td>238</td>",
+            "<tr><td>238-disabled</td>",
+            "single-option mutation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective",
+            "R-S11b-3n — ordinary main IPC option mutation remains batch-shaped",
+            "single-option mutation hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "fn main_option_mutation_is_single_key_and_receiver_effective() {",
+            "fn main_option_mutation_regression_disabled() {",
+            "single-option protocol regression",
+        ),
+        (
             "config_source",
             "pub const CONNECT_TIMEOUT: u64 = 18_000;",
             "pub const RENDEZVOUS_TIMEOUT: u64 = 12_000;\npub const REG_INTERVAL: i64 = 15_000;\npub const CONNECT_TIMEOUT: u64 = 18_000;",
@@ -30927,7 +31316,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#237",
+            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

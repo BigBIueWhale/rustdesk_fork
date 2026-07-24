@@ -525,6 +525,7 @@ echo "== (3b-iv-a) custom-client app-name is a constrained system identifier (R-
 echo "== (3b-iii) bounded closed main IPC transactions (R-S11/R-S11g) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_protocol_rejects_global_data_frames --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_authority_keeps_service_owned_mutations_closed --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_option_mutation_is_single_key_and_receiver_effective --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::password::tests --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_id_is_side_effect_free --color never
@@ -562,7 +563,7 @@ grep -q 'sensitive password endpoints require the raw transport' src/ipc.rs     
 grep -q 'REQUEST_HEADER_BYTES: usize = 36' src/ipc/password.rs                         || r_s11="$r_s11 raw-password-header-cap-missing"
 grep -q 'STATUS_FRAME_BYTES: usize = 32' src/ipc/password.rs                           || r_s11="$r_s11 raw-password-status-cap-missing"
 grep -q 'ACK_FRAME_BYTES: usize = 28' src/ipc/password.rs                              || r_s11="$r_s11 windows-password-ack-cap-missing"
-grep -q 'MainIpcRequest::SetOptions(value)' src/ipc.rs                                || r_s11="$r_s11 typed-options-arm-missing"
+grep -q 'MainIpcRequest::SetOption(value)' src/ipc.rs                                 || r_s11="$r_s11 typed-option-arm-missing"
 grep -q 'MainIpcRequest::SetVoiceCallInput(value)' src/ipc.rs                         || r_s11="$r_s11 typed-voice-input-arm-missing"
 grep -q 'SyncConfig' src/ipc.rs && r_s11="$r_s11 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' src/server.rs && r_s11="$r_s11 server-whole-config-import-present"
@@ -2996,7 +2997,7 @@ echo "== R-S11b-4 config/PRS secrecy boundary =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_password_status_but_not_credential_storage --color never
 r_s11b4=""
 r_s11b4_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' src/ipc.rs)
-r_s11b4_main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOptions\(value\) => \{/' src/ipc.rs)
+r_s11b4_main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOption\(value\) => \{/' src/ipc.rs)
 echo "$r_s11b4_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b4="$r_s11b4 credential-storage-main-config-key-present"
 if echo "$r_s11b4_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)'; then
   r_s11b4="$r_s11b4 standalone-salt-main-config-key-present"
@@ -3070,13 +3071,13 @@ if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_
   echo "  ok  R-S11b-4/R-S11b-4e ordinary main IPC exports only receiver-derived password status, purpose-specific service snapshots remain nonpersistent, and TOML/raw stores share owner-proved durable Unix or protected-DACL Windows transactions"; fi
 
 # (3b-iii-d) R-S11b-3a/R-S11b-3d: service-owned machine policy is not an ordinary
-# main IPC policy write or a UI-side privileged registry write. Options writes use a typed daemon ACK/NACK;
-# IPC callers persist only after an accepted ACK and never fall back to hidden local persistence when the
-# daemon is unreachable. Windows share_rdp is a typed _service action committed by the LocalSystem service.
+# main IPC policy write or a UI-side privileged registry write. One option write carries one allowlisted
+# key/value and returns the receiver-derived effective value; there is no whole-map mutation or caller-trusted
+# cache replacement. Windows share_rdp is a typed _service action committed by the LocalSystem service.
 echo "== (3b-iii-d) service-owned policy writes reject ordinary IPC (R-S11b-3a/R-S11b-3d) =="
 r_s11b3=
 grep -q 'allows_main_channel_options_write' src/ipc.rs                                || r_s11b3="$r_s11b3 options-policy-missing"
-grep -q 'MainIpcRequest::SetOptions(value)' src/ipc.rs                                || r_s11b3="$r_s11b3 options-main-gate-missing"
+grep -q 'MainIpcRequest::SetOption(value)' src/ipc.rs                                 || r_s11b3="$r_s11b3 option-main-gate-missing"
 grep -q 'current_process_allows_main_channel_options_write()' src/ipc.rs              || r_s11b3="$r_s11b3 options-handler-gate-missing"
 grep -qF '(OPTION_KEY, "")' libs/hbb_common/src/config.rs                             || r_s11b3="$r_s11b3 trust-anchor-option-not-pinned-empty"
 grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs                  || r_s11b3="$r_s11b3 proxy-username-not-pinned-empty"
@@ -3086,11 +3087,11 @@ grep -qF 'fn overlay_pinned_settings(options: &mut HashMap<String, String>)' lib
 if verify_scan_capture "$VERIFY_TMP/r_s11b3_trust_writers" -rInE --include='*.rs' 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' src libs; then
   r_s11b3="$r_s11b3 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11b3_trust_writers")"
 fi
-grep -q 'OptionsSet(IpcMutationResult)' src/ipc.rs                                    || r_s11b3="$r_s11b3 options-typed-result-missing"
-grep -q 'MainIpcResponse::OptionsSet(IpcMutationResult::Rejected)' src/ipc.rs          || r_s11b3="$r_s11b3 options-reject-nack-missing"
-grep -q 'Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Applied))' src/ipc.rs       || r_s11b3="$r_s11b3 caller-accepted-ack-missing"
-grep -q 'Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Rejected))' src/ipc.rs      || r_s11b3="$r_s11b3 caller-reject-nack-missing"
-grep -q 'Options write requires daemon ACK' src/ipc.rs                                || r_s11b3="$r_s11b3 local-fallback-not-blocked"
+grep -q 'OptionSet {' src/ipc.rs                                                       || r_s11b3="$r_s11b3 option-typed-result-missing"
+grep -q 'result: IpcMutationResult::Rejected' src/ipc.rs                               || r_s11b3="$r_s11b3 option-reject-nack-missing"
+grep -q 'result: IpcMutationResult::Applied' src/ipc.rs                                || r_s11b3="$r_s11b3 option-accepted-ack-missing"
+grep -q 'effective: Some(effective)' src/ipc.rs                                       || r_s11b3="$r_s11b3 receiver-effective-option-missing"
+grep -q 'Option write requires daemon ACK' src/ipc.rs                                 || r_s11b3="$r_s11b3 local-fallback-not-blocked"
 grep -q 'RequestServiceOwnedShareRdp(bool)' src/ipc.rs                                || r_s11b3="$r_s11b3 windows-share-rdp-request-missing"
 grep -q 'ServiceOwnedShareRdpResult(bool)' src/ipc.rs                                 || r_s11b3="$r_s11b3 windows-share-rdp-result-missing"
 main_request_enum=$(awk '/pub enum MainIpcRequest {/,/^}/' src/ipc.rs)
@@ -3107,18 +3108,40 @@ grep -q 'future: bind.mainIsRoot()' flutter/lib/desktop/pages/desktop_setting_pa
 if grep -Eq 'reg add .*share_rdp|run_cmds\([^)]*share_rdp|pub fn set_share_rdp' src/platform/windows.rs; then
   r_s11b3="$r_s11b3 windows-share-rdp-direct-shell-writer-present"
 fi
-set_options_fn=$(awk '/pub async fn set_options/,/^}/' src/ipc.rs)
-if echo "$set_options_fn" | grep -q 'crate::platform::is_installed'; then
+set_option_fn=$(awk '/pub async fn set_option/,/^}/' src/ipc.rs)
+if echo "$set_option_fn" | grep -q 'crate::platform::is_installed'; then
   r_s11b3="$r_s11b3 options-fallback-uses-install-heuristic"
 fi
-if grep -q 'Config::set_options' <<<"$set_options_fn"; then
+if grep -q 'Config::set_option' <<<"$set_option_fn"; then
   r_s11b3="$r_s11b3 options-caller-persists-without-daemon-authority"
 fi
-grep -q 'MainIpcRequest::SetOptions(wire_options)' <<<"$set_options_fn" || r_s11b3="$r_s11b3 options-caller-typed-request-missing"
-grep -q 'Ok(()) => \*OPTIONS.lock().unwrap() = m' src/ui_interface.rs                 || r_s11b3="$r_s11b3 ui-cache-accepted-branch-missing"
-grep -q 'Ok(()) => {' src/ui_interface.rs                                             || r_s11b3="$r_s11b3 ui-set-option-ack-branch-missing"
+grep -q 'MainIpcRequest::SetOption(requested)' <<<"$set_option_fn" || r_s11b3="$r_s11b3 option-caller-typed-request-missing"
+option_handler=$(awk '/MainIpcRequest::SetOption\(value\) => \{/,/MainIpcRequest::ValidateCmConnection/' src/ipc.rs)
+grep -q 'Config::set_option(key_name.clone(), value.value);' <<<"$option_handler"       || r_s11b3="$r_s11b3 exact-option-persistence-missing"
+grep -q 'value: Config::get_option(&key_name)' <<<"$option_handler"                    || r_s11b3="$r_s11b3 receiver-effective-read-missing"
+if grep -q 'Config::set_options' <<<"$option_handler"; then
+  r_s11b3="$r_s11b3 whole-options-replacement-present"
+fi
+grep -q 'match ipc::set_option(&key, &value)' src/ui_interface.rs                      || r_s11b3="$r_s11b3 ui-exact-option-request-missing"
+grep -q 'Ok(effective) => {' src/ui_interface.rs                                       || r_s11b3="$r_s11b3 ui-receiver-effective-branch-missing"
+grep -q 'options.insert(key.clone(), effective);' src/ui_interface.rs                  || r_s11b3="$r_s11b3 ui-exact-cache-update-missing"
+for token in \
+  'MainIpcRequest::SetOptions' \
+  'MainIpcResponse::OptionsSet' \
+  'merge_main_status_options' \
+  'ipc::set_options' \
+  'pub async fn set_options' \
+  'pub fn main_set_options' \
+  'mainSetOptions'; do
+  if grep -Fq "$token" src/ipc.rs src/ui_interface.rs src/flutter_ffi.rs flutter/lib/web/bridge.dart; then
+    r_s11b3="$r_s11b3 retired-whole-options-surface-present:$token"
+  fi
+done
+grep -q 'ipc::test::main_option_mutation_is_single_key_and_receiver_effective' scripts/verify.sh || r_s11b3="$r_s11b3 focused-single-option-test-missing"
+grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' HARDENING_STATUS.md || r_s11b3="$r_s11b3 single-option-ledger-missing"
+grep -Fq '<tr><td>238</td>' requirements.html || r_s11b3="$r_s11b3 single-option-appendix-missing"
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
-  echo "  ok  R-S11b-3 service-owned --server rejects typed option writes before privacy/config side effects; callers require typed ACK before persistence; Windows share_rdp remains only a typed elevated _service action"; fi
+  echo "  ok  R-S11b-3/R-S11b-3n service-owned --server rejects option writes; user-owned mutation is one allowlisted key with receiver-effective ACK/cache state and no whole-map bridge; Windows share_rdp remains only a typed elevated _service action"; fi
 
 # (3b-iii-d2) R-S11e-23: the current MSI owns the only uninstall-registry namespace that may
 # classify this Windows installation or store service-owned RDP session-sharing policy. Retired

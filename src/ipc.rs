@@ -1978,13 +1978,7 @@ impl MainStatusOptions {
         }
         let mut entries = Vec::with_capacity(options.len());
         for (key, value) in options {
-            let Some(key) = MainStatusOptionKey::from_str(&key) else {
-                bail!("main IPC option is not allowlisted");
-            };
-            if value.len() > MAIN_IPC_MAX_OPTION_VALUE_BYTES {
-                bail!("main IPC option value is oversized");
-            }
-            entries.push(MainStatusOption { key, value });
+            entries.push(MainStatusOption::from_pair(&key, value)?);
         }
         entries.sort_by_key(|entry| entry.key.as_str());
         if entries.windows(2).any(|pair| pair[0].key == pair[1].key) {
@@ -2028,13 +2022,25 @@ impl MainStatusOptions {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn merge_main_status_options(
-    mut existing: HashMap<String, String>,
-    updates: HashMap<String, String>,
-) -> HashMap<String, String> {
-    existing.retain(|key, _| MainStatusOptionKey::from_str(key).is_none());
-    existing.extend(updates);
-    existing
+impl MainStatusOption {
+    fn from_pair(key: &str, value: String) -> ResultType<Self> {
+        let Some(key) = MainStatusOptionKey::from_str(key) else {
+            bail!("main IPC option is not allowlisted");
+        };
+        Self { key, value }.validate()
+    }
+
+    fn validate(self) -> ResultType<Self> {
+        if self.value.len() > MAIN_IPC_MAX_OPTION_VALUE_BYTES {
+            bail!("main IPC option value is oversized");
+        }
+        Ok(self)
+    }
+
+    fn into_pair(self) -> ResultType<(MainStatusOptionKey, String)> {
+        let value = self.validate()?;
+        Ok((value.key, value.value))
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2451,7 +2457,7 @@ pub enum MainIpcRequest {
     PasswordMutationStatus {
         operation_id: String,
     },
-    SetOptions(MainStatusOptions),
+    SetOption(MainStatusOption),
     ValidateCmConnection {
         id: i32,
         conn_type: CmAuthConnType,
@@ -2481,7 +2487,10 @@ pub enum MainIpcResponse {
     },
     VoiceCallInputSet(IpcMutationResult),
     PasswordMutation(PasswordMutationStatus),
-    OptionsSet(IpcMutationResult),
+    OptionSet {
+        result: IpcMutationResult,
+        effective: Option<MainStatusOption>,
+    },
     RequestFailed(IpcMutationResult),
     CmConnectionValidation(CmConnectionAuthority),
     #[cfg(target_os = "linux")]
@@ -3501,34 +3510,54 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
             };
             MainIpcResponse::PasswordMutation(password_mutations().status(&operation_id, kind))
         }
-        MainIpcRequest::SetOptions(value) => {
+        MainIpcRequest::SetOption(value) => {
             if !current_process_allows_main_channel_options_write() {
-                return MainIpcResponse::OptionsSet(IpcMutationResult::Rejected);
+                return MainIpcResponse::OptionSet {
+                    result: IpcMutationResult::Rejected,
+                    effective: None,
+                };
             }
-            let value = match value.into_map() {
+            let value = match value.validate() {
                 Ok(value) => value,
                 Err(err) => {
-                    log::warn!("Rejected invalid main IPC options write: {err}");
-                    return MainIpcResponse::OptionsSet(IpcMutationResult::Rejected);
+                    log::warn!("Rejected invalid main IPC option write: {err}");
+                    return MainIpcResponse::OptionSet {
+                        result: IpcMutationResult::Rejected,
+                        effective: None,
+                    };
                 }
             };
             let Some(permit) = try_acquire_main_ipc_blocking_mutation_slot() else {
-                return MainIpcResponse::OptionsSet(IpcMutationResult::InternalFailure);
+                return MainIpcResponse::OptionSet {
+                    result: IpcMutationResult::InternalFailure,
+                    effective: None,
+                };
             };
-            let accepted = tokio::task::spawn_blocking(move || {
+            let applied = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let _restart = CheckIfRestart::new();
-                Config::set_options(merge_main_status_options(Config::get_options(), value));
+                let key = value.key;
+                let key_name = key.as_str().to_owned();
+                Config::set_option(key_name.clone(), value.value);
+                MainStatusOption {
+                    key,
+                    value: Config::get_option(&key_name),
+                }
             })
             .await;
-            let accepted = match accepted {
-                Ok(()) => IpcMutationResult::Applied,
+            match applied {
+                Ok(effective) => MainIpcResponse::OptionSet {
+                    result: IpcMutationResult::Applied,
+                    effective: Some(effective),
+                },
                 Err(err) => {
-                    log::error!("options mutation worker failed: {err}");
-                    IpcMutationResult::InternalFailure
+                    log::error!("option mutation worker failed: {err}");
+                    MainIpcResponse::OptionSet {
+                        result: IpcMutationResult::InternalFailure,
+                        effective: None,
+                    }
                 }
-            };
-            MainIpcResponse::OptionsSet(accepted)
+            }
         }
         MainIpcRequest::ValidateCmConnection {
             id,
@@ -7146,32 +7175,39 @@ pub async fn get_option_async(key: &str) -> String {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn set_option(key: &str, value: &str) {
-    let mut options = get_options();
-    if value.is_empty() {
-        options.remove(key);
-    } else {
-        options.insert(key.to_owned(), value.to_owned());
-    }
-    if let Err(err) = set_options(options) {
-        log::warn!("Failed to set option via IPC: key={}, err={}", key, err);
-    }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
-    let wire_options = MainStatusOptions::from_map(value.clone())?;
-    match main_ipc_request(MainIpcRequest::SetOptions(wire_options), 2_000).await {
-        Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Applied)) => Ok(()),
-        Ok(MainIpcResponse::OptionsSet(IpcMutationResult::Rejected)) => {
-            bail!("Options write was rejected by daemon")
+pub async fn set_option(key: &str, value: &str) -> ResultType<String> {
+    let requested = MainStatusOption::from_pair(key, value.to_owned())?;
+    let requested_key = requested.key;
+    match main_ipc_request(MainIpcRequest::SetOption(requested), 2_000).await {
+        Ok(MainIpcResponse::OptionSet {
+            result: IpcMutationResult::Applied,
+            effective: Some(effective),
+        }) => {
+            let (effective_key, effective_value) = effective.into_pair()?;
+            if effective_key != requested_key {
+                bail!("Option write response did not match the requested key");
+            }
+            Ok(effective_value)
         }
-        Ok(MainIpcResponse::OptionsSet(IpcMutationResult::InternalFailure)) => {
-            bail!("Options write failed internally")
+        Ok(MainIpcResponse::OptionSet {
+            result: IpcMutationResult::Applied,
+            effective: None,
+        }) => bail!("Option write response omitted receiver-derived state"),
+        Ok(MainIpcResponse::OptionSet {
+            result: IpcMutationResult::Rejected,
+            ..
+        }) => {
+            bail!("Option write was rejected by daemon")
         }
-        Ok(_) => bail!("Invalid options write response"),
-        Err(err) => bail!("Options write requires daemon ACK: {err}"),
+        Ok(MainIpcResponse::OptionSet {
+            result: IpcMutationResult::InternalFailure,
+            ..
+        }) => {
+            bail!("Option write failed internally")
+        }
+        Ok(_) => bail!("Invalid option write response"),
+        Err(err) => bail!("Option write requires daemon ACK: {err}"),
     }
 }
 
@@ -8301,19 +8337,35 @@ mod test {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
-    fn main_status_option_replacement_preserves_non_disclosed_values() {
-        use hbb_common::config::keys;
-
-        let merged = merge_main_status_options(
-            HashMap::from([
-                (keys::OPTION_KEY.to_owned(), "secret".to_owned()),
-                (keys::OPTION_ENABLE_KEYBOARD.to_owned(), "Y".to_owned()),
-            ]),
-            HashMap::from([(keys::OPTION_ENABLE_CLIPBOARD.to_owned(), "N".to_owned())]),
+    fn main_option_mutation_is_single_key_and_receiver_effective() {
+        let request = MainIpcRequest::SetOption(
+            MainStatusOption::from_pair("audio-input", "microphone".to_owned()).unwrap(),
         );
-        assert_eq!(merged.get(keys::OPTION_KEY).unwrap(), "secret");
-        assert!(!merged.contains_key(keys::OPTION_ENABLE_KEYBOARD));
-        assert_eq!(merged.get(keys::OPTION_ENABLE_CLIPBOARD).unwrap(), "N");
+        let request_json = serde_json::to_string(&request).unwrap();
+        assert_eq!(
+            request_json,
+            r#"{"t":"SetOption","c":{"key":"AudioInput","value":"microphone"}}"#
+        );
+
+        let response = MainIpcResponse::OptionSet {
+            result: IpcMutationResult::Applied,
+            effective: Some(
+                MainStatusOption::from_pair("audio-input", "receiver-device".to_owned()).unwrap(),
+            ),
+        };
+        let response_json = serde_json::to_string(&response).unwrap();
+        let response: MainIpcResponse = serde_json::from_str(&response_json).unwrap();
+        match response {
+            MainIpcResponse::OptionSet {
+                result: IpcMutationResult::Applied,
+                effective: Some(effective),
+            } => {
+                let (key, value) = effective.into_pair().unwrap();
+                assert_eq!(key, MainStatusOptionKey::AudioInput);
+                assert_eq!(value, "receiver-device");
+            }
+            _ => panic!("unexpected option mutation response"),
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

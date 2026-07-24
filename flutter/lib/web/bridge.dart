@@ -730,10 +730,6 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['options']);
   }
 
-  Future<void> mainSetOptions({required String json, dynamic hint}) {
-    return Future(() => js.context.callMethod('setByName', ['options', json]));
-  }
-
   Future<String> mainGetAppName({dynamic hint}) {
     return Future.value(mainGetAppNameSync(hint: hint));
   }

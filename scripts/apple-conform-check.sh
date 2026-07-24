@@ -1226,18 +1226,36 @@ grep -qF '(OPTION_PROXY_PASSWORD, "")' "$REPO/libs/hbb_common/src/config.rs" || 
 if verify_scan_capture "$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers" -rInE --include='*.rs' 'RemoveTrustedDevices|ClearTrustedDevices|main(Get|Remove|Clear)TrustedDevices|add_trusted_device|set_key_confirmed\(' "$REPO/src" "$REPO/libs"; then
   r_s11b2="$r_s11b2 trusted-device-or-key-confirmation-writer-present:$(tr '\n' ';' <"$APPLE_CHECK_TMP/r_s11b3_apple_trust_writers")"
 fi
-grep -q 'MainIpcRequest::SetOptions(wire_options)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-typed"
+grep -q 'MainIpcRequest::SetOption(requested)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 option-write-not-typed"
 grep -q 'current_process_allows_main_channel_options_write()' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-write-not-authority-gated"
-grep -q 'OptionsSet(IpcMutationResult)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-typed-result-missing"
-grep -q 'MainIpcResponse::OptionsSet(IpcMutationResult::Rejected)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 options-reject-nack-missing"
-grep -q 'Options write requires daemon ACK' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-fallback-not-blocked"
-set_options_fn=$(awk '/pub async fn set_options/,/^}/' "$REPO/src/ipc.rs")
-echo "$set_options_fn" | grep -q 'crate::platform::is_installed' && r_s11b2="$r_s11b2 options-fallback-uses-install-heuristic"
-echo "$set_options_fn" | grep -q 'Config::set_options' && r_s11b2="$r_s11b2 options-caller-local-persistence-present"
+grep -q 'OptionSet {' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 option-typed-result-missing"
+grep -q 'result: IpcMutationResult::Rejected' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 option-reject-nack-missing"
+grep -q 'effective: Some(effective)' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 receiver-effective-option-missing"
+grep -q 'Option write requires daemon ACK' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-fallback-not-blocked"
+set_option_fn=$(awk '/pub async fn set_option/,/^}/' "$REPO/src/ipc.rs")
+echo "$set_option_fn" | grep -q 'crate::platform::is_installed' && r_s11b2="$r_s11b2 options-fallback-uses-install-heuristic"
+echo "$set_option_fn" | grep -q 'Config::set_option' && r_s11b2="$r_s11b2 option-caller-local-persistence-present"
+option_handler=$(awk '/MainIpcRequest::SetOption\(value\) => \{/,/MainIpcRequest::ValidateCmConnection/' "$REPO/src/ipc.rs")
+grep -q 'Config::set_option(key_name.clone(), value.value);' <<<"$option_handler" || r_s11b2="$r_s11b2 exact-option-persistence-missing"
+grep -q 'value: Config::get_option(&key_name)' <<<"$option_handler" || r_s11b2="$r_s11b2 receiver-effective-read-missing"
+echo "$option_handler" | grep -q 'Config::set_options' && r_s11b2="$r_s11b2 whole-options-replacement-present"
+grep -q 'match ipc::set_option(&key, &value)' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-exact-option-request-missing"
+grep -q 'options.insert(key.clone(), effective);' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-exact-cache-update-missing"
+for token in \
+  'MainIpcRequest::SetOptions' \
+  'MainIpcResponse::OptionsSet' \
+  'merge_main_status_options' \
+  'ipc::set_options' \
+  'pub async fn set_options' \
+  'pub fn main_set_options' \
+  'mainSetOptions'; do
+  grep -Fq "$token" "$REPO/src/ipc.rs" "$REPO/src/ui_interface.rs" "$REPO/src/flutter_ffi.rs" "$REPO/flutter/lib/web/bridge.dart" &&
+    r_s11b2="$r_s11b2 retired-whole-options-surface-present:$token"
+done
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
-main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOptions\(value\) => \{/' "$REPO/src/ipc.rs")
+main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOption\(value\) => \{/' "$REPO/src/ipc.rs")
 echo "$main_config_enum" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b2="$r_s11b2 credential-storage-main-config-key-present"
 echo "$main_config_enum" | grep -Eq '^[[:space:]]*Salt([[:space:]]|,)' && r_s11b2="$r_s11b2 standalone-salt-main-config-key-present"
 for token in \
@@ -1262,6 +1280,8 @@ grep -q 'permanent_password_is_local_for_current_process().await' "$REPO/src/ipc
 grep -q 'ipc::is_local_permanent_password_set()' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-local-password-status-not-daemon-derived"
 grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 credential-mirror-ledger-missing"
 grep -Fq '<tr><td>237</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 credential-mirror-appendix-missing"
+grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 single-option-ledger-missing"
+grep -Fq '<tr><td>238</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 single-option-appendix-missing"
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS raw password IPC:$r_s11b2"
   rc=1

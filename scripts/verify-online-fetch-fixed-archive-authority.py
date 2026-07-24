@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
-"""Bind the fixed SHA-256 archive acquisition/publication authority."""
+"""Bind the fixed toolchain and vcpkg archive acquisition authority."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlsplit
 
 
 FILES = {
     "shell": Path("scripts/online-fetch.sh"),
     "helper": Path("scripts/online-fixed-archive-output.py"),
     "pins": Path("scripts/pins.env"),
+    "vcpkg_manifest": Path("res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"),
+    "windows_tools": Path("res/vcpkg/libvpx/windows-tools.sha512"),
     "verify": Path("scripts/verify.sh"),
     "requirements": Path("requirements.html"),
     "ledger": Path("HARDENING_STATUS.md"),
 }
+
+EXPECTED_VCPKG_MANIFEST_SHA256 = (
+    "c90310083a22b9da7cebb9412275f3a551dd03f146fcf7f25fed84ab633b5a8f"
+)
 
 EXPECTED_SIZES = {
     "SIZE_ANDROID_CMDLINE_TOOLS": "174244366",
@@ -184,6 +192,8 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     shell = sources["shell"]
     helper = sources["helper"]
     pins = sources["pins"]
+    vcpkg_manifest = sources["vcpkg_manifest"]
+    windows_tools = sources["windows_tools"]
     verify = sources["verify"]
     requirements = sources["requirements"]
     ledger = sources["ledger"]
@@ -216,21 +226,76 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             f"exact archive digest pin changed: {variable}",
         )
         require(manifest.count(f'"${variable}"') == 1, f"digest pin is not consumed once: {variable}")
+    require(
+        hashlib.sha256(vcpkg_manifest.encode("utf-8")).hexdigest()
+        == EXPECTED_VCPKG_MANIFEST_SHA256,
+        "vcpkg fixed-archive acquisition manifest bytes changed",
+    )
+    require(
+        pins.count(
+            f'SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION="{EXPECTED_VCPKG_MANIFEST_SHA256}"'
+        )
+        == 1,
+        "vcpkg fixed-archive acquisition manifest pin changed",
+    )
+    vcpkg_records = [line.split("|") for line in vcpkg_manifest.splitlines()]
+    require(
+        len(vcpkg_records) == 33 and all(len(record) == 5 for record in vcpkg_records),
+        "vcpkg fixed-archive acquisition manifest is not exactly 33 five-field records",
+    )
+    vcpkg_names = [record[0] for record in vcpkg_records]
+    require(vcpkg_names == sorted(vcpkg_names), "vcpkg archive manifest is not sorted")
+    require(len(set(vcpkg_names)) == 33, "vcpkg archive manifest repeats a destination")
+    require(
+        vcpkg_names[0] == "vcpkg-distfiles/libvpx-v1.15.2.tar.gz",
+        "vcpkg archive manifest source destination changed",
+    )
+    for name, size, digest, url, hosts_raw in vcpkg_records:
+        require(size.isdigit() and 0 < int(size) <= 2_000_000_000, f"bad size: {name}")
+        require(
+            re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
+            f"bad acquisition SHA-256: {name}",
+        )
+        parsed_url = urlsplit(url)
+        hosts = hosts_raw.split(",")
+        require(
+            parsed_url.scheme == "https"
+            and parsed_url.hostname in hosts
+            and 1 <= len(hosts) <= 4
+            and len(hosts) == len(set(hosts)),
+            f"bad URL/host contract: {name}",
+        )
+    canonical_tool_names = {
+        line.split()[1]
+        for line in windows_tools.splitlines()
+        if len(line.split()) == 2
+    }
+    acquisition_tool_names = {
+        name.removeprefix("vcpkg-distfiles/windows-tools/")
+        for name in vcpkg_names[1:]
+    }
+    require(
+        len(canonical_tool_names) == 32
+        and acquisition_tool_names == canonical_tool_names,
+        "vcpkg acquisition manifest and SHA-512 consumer manifest names differ",
+    )
     require_all(
         shell,
         (
             'readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"',
+            'readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"',
             "readonly -a FIXED_ARCHIVE_ARGS=(",
-            "reconcile_fixed_archive_transactions",
+            "load_vcpkg_fixed_archive_manifest",
+            "reconcile_archive_bundle_transactions",
             "if ! shopt -q nullglob; then",
-            'transactions=("$ONLINE_DIR"/.rustdesk-fixed-archives.*)',
-            '/usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-fixed-archives.XXXXXXXXXX"',
+            'transactions=("$ONLINE_DIR"/"$prefix".*)',
+            '/usr/bin/mktemp -d "$ONLINE_DIR/$prefix.XXXXXXXXXX"',
             '/usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" "$command"',
             '/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk',
-            'fixed_archive_tool prepare "$staging"',
-            'fixed_archive_tool verify "$staging"',
-            'fixed_archive_tool publish "$staging"',
-            'fixed_archive_tool reconcile "$staging"',
+            'archive_bundle_tool "$kind" prepare "$staging"',
+            'archive_bundle_tool "$kind" verify "$staging"',
+            'archive_bundle_tool "$kind" publish "$staging"',
+            'archive_bundle_tool "$kind" reconcile "$staging"',
             'exec {lock_fd}<"$ONLINE_DIR"',
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
             '"$FLOCK_BIN" --unlock "$lock_fd"',
@@ -241,6 +306,9 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             '"$builder" \\\n        /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire',
             '--builder-id "$builder" --helper-sha256 "$helper_sha256"',
             "stage_fixed_archives",
+            "stage_vcpkg_fixed_archives",
+            "stage_archive_bundle toolchain .rustdesk-fixed-archives",
+            "stage_archive_bundle vcpkg .rustdesk-vcpkg-fixed-archives",
             "require_windows_operator_toolchain",
         ),
         "fixed archive shell transaction",
@@ -249,7 +317,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         shell.count('--builder-id "$builder" --helper-sha256 "$helper_sha256"') == 2,
         "host and container do not share the exact builder/helper binding",
     )
-    stage = function_block(shell, "stage_fixed_archives")
+    stage = function_block(shell, "stage_archive_bundle")
     require(
         'source=$ONLINE_DIR,target=' not in stage,
         "fixed archive producer receives the online root",
@@ -262,6 +330,17 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         main.index("load_builder_images") < main.index("stage_fixed_archives") < main.index("build_frb_codegen"),
         "fixed archive stage ordering changed",
     )
+    libvpx_stage = function_block(shell, "stage_libvpx_distfiles")
+    require(
+        libvpx_stage.count("stage_vcpkg_fixed_archives") == 1,
+        "libvpx distfile stage does not invoke one fixed vcpkg archive transaction",
+    )
+    require(
+        "fetch_verify_sha512()" not in shell
+        and "curl -fsSL" not in libvpx_stage
+        and ".part\" \"$tool_url\"" not in libvpx_stage,
+        "legacy host SHA-512 codec downloader remains reachable",
+    )
 
     require_all(
         helper,
@@ -269,7 +348,11 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'FORMAT = "rustdesk-fixed-archive-output-v1"',
             "MAX_REDIRECTS = 5",
             "CHUNK_SIZE = 1024 * 1024",
-            "if len(specs) != 14:",
+            "if len(specs) == 14:",
+            "if len(specs) == 33:",
+            "validate_manifest_shape(specs)",
+            "exactly 32 windows-tools/ archives",
+            'char in "._+~-"',
             'parsed.scheme != "https"',
             "urllib.request.ProxyHandler({})",
             "BoundedRedirectHandler(spec.redirect_hosts)",
@@ -300,6 +383,8 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "self-test accepted a redirect outside the host allowlist",
             "self-test accepted an occupied wrong archive destination",
             "self-test accepted an unsafe nested archive parent as missing",
+            "self-test accepted an unsafe vcpkg archive parent",
+            "vcpkg self-test publication omitted an archive",
             "self-test accepted a response without admitted length framing",
         ),
         "fixed archive helper",
@@ -346,8 +431,14 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         '<span class="id">R-S11cs</span>' in requirements,
         "requirements omit the normative R-S11cs block",
     )
+    require(
+        '<span class="id">R-S11ct</span>' in requirements,
+        "requirements omit the normative R-S11ct block",
+    )
     require("<td>246</td>" in requirements, "Appendix C omits item 246")
+    require("<td>247</td>" in requirements, "Appendix C omits item 247")
     require("R-S11cs/R-S11e-111" in ledger, "hardening ledger omits R-S11e-111")
+    require("R-S11ct/R-S11e-112" in ledger, "hardening ledger omits R-S11e-112")
 
 
 @dataclass(frozen=True)
@@ -361,17 +452,27 @@ class Mutation:
 MUTATIONS = (
     Mutation(
         "shell",
-        "fetch_verify_sha512() {",
-        "fetch_verify() {\n    :\n}\n\nfetch_verify_sha512() {",
+        "stage_vcpkg_fixed_archives() {",
+        "fetch_verify_sha512() {\n    :\n}\n\nstage_vcpkg_fixed_archives() {",
         "legacy downloader absence",
     ),
     Mutation("shell", "--entry\n", "--entry-removed\n", "manifest entry count"),
-    Mutation("shell", "stage_fixed_archives", "stage_fixed_archives_removed", "stage wiring"),
+    Mutation(
+        "shell",
+        "    stage_fixed_archives\n",
+        "    stage_archives_removed\n",
+        "stage wiring",
+    ),
     Mutation("shell", "target=/online-fixed-archive-output.py,readonly", "target=/online-fixed-archive-output.py", "helper read-only mount"),
     Mutation("shell", "target=/state.json,readonly", "target=/state.json", "state read-only mount"),
     Mutation("shell", "target=/outputs\"", "target=/outputs,readonly\"", "sole output write mount"),
     Mutation("shell", "--builder-id \"$builder\"", "--builder-id sha256:bad", "builder binding"),
-    Mutation("shell", "fixed_archive_tool publish", "fixed_archive_tool publish_removed", "publication"),
+    Mutation(
+        "shell",
+        'archive_bundle_tool "$kind" publish',
+        'archive_bundle_tool "$kind" publish_removed',
+        "publication",
+    ),
     Mutation(
         "shell",
         '--remove-private-root "$staging" --expected-identity "$expected_identity"',
@@ -380,7 +481,7 @@ MUTATIONS = (
     ),
     Mutation(
         "shell",
-        'transactions=("$ONLINE_DIR"/.rustdesk-fixed-archives.*)',
+        'transactions=("$ONLINE_DIR"/"$prefix".*)',
         "transactions=()",
         "complete stale-transaction inventory",
     ),
@@ -403,7 +504,42 @@ MUTATIONS = (
         "www.python.org,python.org,example.invalid",
         "manifest redirect-host mapping",
     ),
-    Mutation("helper", "if len(specs) != 14:", "if len(specs) < 1:", "closed manifest count"),
+    Mutation(
+        "vcpkg_manifest",
+        "26fcd3db88045dee380e581862a6ef106f49b74b6396ee95c2993a260b4636aa",
+        "36fcd3db88045dee380e581862a6ef106f49b74b6396ee95c2993a260b4636aa",
+        "vcpkg acquisition manifest bytes",
+    ),
+    Mutation(
+        "pins",
+        f'SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION="{EXPECTED_VCPKG_MANIFEST_SHA256}"',
+        'SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION="bad"',
+        "vcpkg acquisition manifest pin",
+    ),
+    Mutation(
+        "windows_tools",
+        "  msys2-bash-5.2.037-2-x86_64.pkg.tar.zst",
+        "  msys2-bash-5.2.037-3-x86_64.pkg.tar.zst",
+        "SHA-512 consumer/acquisition name equality",
+    ),
+    Mutation(
+        "shell",
+        "stage_vcpkg_fixed_archives\n",
+        "stage_vcpkg_archives_removed\n",
+        "vcpkg transaction invocation",
+    ),
+    Mutation(
+        "helper",
+        "if len(specs) == 33:",
+        "if len(specs) == 32:",
+        "closed vcpkg manifest count",
+    ),
+    Mutation(
+        "helper",
+        'char in "._+~-"',
+        'char in "._+-"',
+        "canonical tilde-bearing tool name",
+    ),
     Mutation("helper", 'parsed.scheme != "https"', 'parsed.scheme not in ("http", "https")', "HTTPS only"),
     Mutation("helper", "urllib.request.ProxyHandler({})", "urllib.request.ProxyHandler()", "ambient proxy removal"),
     Mutation("helper", "MAX_REDIRECTS = 5", "MAX_REDIRECTS = 6", "redirect bound"),
@@ -465,10 +601,23 @@ MUTATIONS = (
     ),
     Mutation("requirements", "<td>246</td>", "<td>246-removed</td>", "Appendix disposition"),
     Mutation(
+        "requirements",
+        '<span class="id">R-S11ct</span>',
+        '<span class="id">R-S11ct-removed</span>',
+        "vcpkg normative requirement",
+    ),
+    Mutation("requirements", "<td>247</td>", "<td>247-removed</td>", "vcpkg Appendix disposition"),
+    Mutation(
         "ledger",
         "R-S11cs/R-S11e-111",
         "R-S11cs-removed/R-S11e-111",
         "ledger disposition",
+    ),
+    Mutation(
+        "ledger",
+        "R-S11ct/R-S11e-112",
+        "R-S11ct-removed/R-S11e-112",
+        "vcpkg ledger disposition",
     ),
 )
 

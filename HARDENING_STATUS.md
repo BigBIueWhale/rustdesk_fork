@@ -10168,11 +10168,91 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   Evidence boundary: this is complete disposable cold acquisition evidence for the fixed fourteen-archive
   transaction, not a run against or mutation of the live online cache and not a release build. The separate
-  SHA-512 codec/systemd paths, host Cargo vendoring, Windows Flutter
+  Debian systemd-image path, host Cargo vendoring, Windows Flutter
   engine and Pub-cache archive producers, WiX capture, maintenance-image acquisition/publication, exact
   cold R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain open. No root command
   or root container, image pull/build/tag, release build, host RustDesk process/service/configuration/
   listener/firewall/network operation, or live online archive mutation was performed.
+- **R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority —
+  SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE DISPOSABLE
+  33-ARCHIVE LIVE ACQUISITION EVIDENCE RECORDED.** Platform: the unprivileged Linux acquisition host and
+  immutable Android-builder container. Endpoint/action: the former `fetch_verify_sha512` path for the
+  libvpx source archive and the 32 archives in `res/vcpkg/libvpx/windows-tools.sha512`. Boundary: remote
+  HTTPS response/redirect behavior and network-client execution ↔ the durable `online/vcpkg-distfiles`
+  namespace consumed by the native codec and Windows release pipelines.
+
+  Before this slice, host `curl -L` wrote predictable `<final>.part` names directly below that durable
+  namespace and an overwrite-capable `mv` installed each final. A final SHA-512 caught wrong completed
+  bytes, but delivery had no exact length, response ceiling, content-encoding, reviewed final-host,
+  private-output, independent-verdict, durable-state, or no-clobber contract. The MSYS2 branch began at
+  `mirror.msys2.org`, which currently redirects to a geographically selected third-party mirror. This
+  was build-host network-execution, acquisition-output/publication, stale-state, and denial-of-service
+  authority debt—not evidence that a cached input changed, host root was acquired, a container escaped,
+  a port/listener was exposed, host RustDesk/service/configuration/firewall/network state changed,
+  exploitation occurred, or the host was compromised.
+
+  Source closure: `fetch_verify_sha512` and the per-tool URL/download loop are absent. The tracked
+  `res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt`, pinned by SHA-256
+  `c90310083a22b9da7cebb9412275f3a551dd03f146fcf7f25fed84ab633b5a8f`, contains exactly 33 sorted
+  five-field records totaling 181,392,489 bytes. It binds one libvpx source and the exact 32 downstream
+  Windows-tool names to fixed credential-free HTTPS URLs, byte lengths, acquisition SHA-256 values, and
+  reviewed redirect-host sets. MSYS2 inputs use the stable direct `repo.msys2.org` repository rather than
+  the moving mirror redirector. The shell loader checks the acquisition-manifest pin before and after
+  parsing, requires one source plus the complete unique canonical tool-name set, and cross-checks that set
+  against the independently SHA-512-pinned consumer manifest before network use.
+
+  The existing R-S11cs transaction engine is shared rather than copied. It now has two closed profiles:
+  exactly 14 toolchain/installer entries with only optional `win/` nesting, or exactly 33 vcpkg entries
+  comprising one `vcpkg-distfiles/libvpx-*.tar.gz` child and 32
+  `vcpkg-distfiles/windows-tools/*` children. Its candidate-inventory and recovery checks derive the
+  complete ancestor-directory set, so the deeper profile cannot smuggle an adjacent entry. Both profiles
+  retain the current-user-private online-root lock, stable no-follow existing-output verdict, recorded
+  manifest/helper/image identities, same-filesystem private state/output, exact three-mount immutable
+  numeric-nonroot acquisition container, disabled proxy discovery, bounded HTTPS redirect/status/
+  encoding/framing/length processing, exclusive no-follow creation, independent host byte/metadata
+  verification, mode-0400 sealing, descriptor-relative `RENAME_NOREPLACE`, per-file state/fsync,
+  restart reconciliation, and exact-identity retirement. The producer receives no online root, final
+  destination, live repository, Docker socket, device, port, host namespace, or other writable host path.
+  Existing historical current-user mode-0664 files remain reusable only after their exact size and
+  acquisition SHA-256 pass; downstream `require_libvpx_distfiles` and Windows build gates still enforce
+  every established SHA-512 independently.
+
+  Verification recorded so far: the shared executable self-test passes as numeric UID:GID 1000 with no
+  network, read-only source/root, all capabilities dropped, no-new-privileges, and bounded resources. It
+  now exercises a complete 33-entry three-level prepare/download/independent-verify/no-clobber-publish
+  lifecycle and rejects an unsafe nested `windows-tools` parent. The focused authority verifier binds the
+  exact acquisition-manifest bytes/pin/shape, SHA-512 consumer-name equality, shell loader, legacy path
+  absence, dual closed profiles, narrow producer, response/file/publication/recovery rules, R-S11ct,
+  Appendix C #247, and this ledger through 44 deliberate mutations. Bash/Python parsing, the normal
+  independent workspace verifier, its complete semantic source-mutation matrix, and the native-codec
+  normal/mutation gates are green.
+
+  Complete live acquisition proof: one disposable immutable Android-builder container ran as numeric
+  UID:GID 1000:1000 with `--pull=never`, isolated bridge egress, read-only root, all capabilities dropped,
+  no-new-privileges, fixed PID/2-GiB-memory/no-swap/two-CPU ceilings, and bounded non-executable `/tmp` and
+  `/proof` tmpfs. Its only host mounts were the exact helper, acquisition manifest, and SHA-512 consumer
+  manifest, all read-only. It received no source tree, online cache, final host name, writable host path,
+  Docker socket, device, port, or host namespace. The transaction downloaded all 33 exact responses
+  totaling 181,392,489 bytes, checked HTTPS status/host/encoding/framing/length and acquisition SHA-256,
+  independently verified the complete three-level candidate, passed durable no-clobber publication and
+  reconciliation, then rechecked the libvpx source and all 32 tools against their established downstream
+  SHA-512 pins. It exited green with `vcpkg fixed archive live lifecycle: PASS`; its tmpfs and every
+  downloaded byte then vanished. The first disposable attempt failed before network use because the
+  shared path grammar omitted the `~` present in the canonical MinGW pkgconf name. The grammar and
+  behavioral/mutation fixtures were corrected before the successful attempt; the failed attempt
+  downloaded and published nothing.
+
+  Evidence boundary: the current live cache was also inspected read-only inside a numeric-nonroot,
+  networkless, capability-free container: all 32 tool files and the libvpx source matched their
+  established SHA-512 pins, and their measured acquisition SHA-256/length values produced the tracked
+  manifest. No live cache byte or metadata was changed. This live proof is a disposable cold acquisition
+  transaction, not a release build or a mutation of the persistent online closure. The separate Debian
+  systemd-image acquisition, committed local
+  security-patch/native-key publication, host Cargo vendoring, Windows Flutter engine/Pub-cache/WiX
+  producers, maintenance-image acquisition/publication, exact cold R-B2/R-B10 artifacts, native/device
+  behavior, and R-V3 external review remain open. No root command/container, image pull/build/tag,
+  release build, host RustDesk process/service/configuration/listener/firewall/network operation, or live
+  online-cache mutation was performed.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -10890,9 +10970,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-154f5ac091d0090796da6db498fc8c187fc346ed838f06793d6828fe938b7116  requirements.html
+835244ecac942ba134a34c138c8447e8c9e3d75492e8e6bc4eb9e2ed74c25cbe  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cs, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ct, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

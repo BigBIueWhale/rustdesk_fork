@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15173,7 +15173,7 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     online = sources["online_fetch"]
     for text, label in (
         (
-            "Bind the fixed SHA-256 archive acquisition/publication authority",
+            "Bind the fixed toolchain and vcpkg archive acquisition authority",
             "fixed-archive focused authority binding",
         ),
         (
@@ -15196,8 +15196,8 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         require_text(focused, text, label)
     lifecycle = extract_between(
         online,
-        "stage_fixed_archives() {",
-        "\n}\n\nrequire_windows_operator_toolchain()",
+        "stage_archive_bundle() {",
+        "\n}\n\nstage_fixed_archives()",
         "fixed-archive acquisition lifecycle",
     )
     for text, label in (
@@ -15206,23 +15206,23 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive exclusive transaction",
         ),
         (
-            '/usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-fixed-archives.XXXXXXXXXX"',
+            '/usr/bin/mktemp -d "$ONLINE_DIR/$prefix.XXXXXXXXXX"',
             "fixed-archive unpredictable same-filesystem staging",
         ),
         (
-            "fixed_archive_tool prepare",
+            'archive_bundle_tool "$kind" prepare',
             "fixed-archive durable prepare",
         ),
         (
-            "fixed_archive_tool verify",
+            'archive_bundle_tool "$kind" verify',
             "fixed-archive independent host verdict",
         ),
         (
-            "fixed_archive_tool publish",
+            'archive_bundle_tool "$kind" publish',
             "fixed-archive checked publication",
         ),
         (
-            "fixed_archive_tool reconcile",
+            'archive_bundle_tool "$kind" reconcile',
             "fixed-archive restart recovery",
         ),
         (
@@ -15251,8 +15251,12 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive state format",
         ),
         (
-            "if len(specs) != 14:",
-            "fixed-archive closed manifest cardinality",
+            "if len(specs) == 14:",
+            "fixed-archive closed toolchain cardinality",
+        ),
+        (
+            "if len(specs) == 33:",
+            "fixed-archive closed vcpkg cardinality",
         ),
         (
             "urllib.request.ProxyHandler({})",
@@ -15303,6 +15307,10 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive unsafe-parent fixture",
         ),
         (
+            "self-test accepted an unsafe vcpkg archive parent",
+            "fixed-archive unsafe-vcpkg-parent fixture",
+        ),
+        (
             "self-test accepted a response without admitted length framing",
             "fixed-archive unframed-response fixture",
         ),
@@ -15326,13 +15334,28 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11ct</span>',
+        "vcpkg fixed-archive normative requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>246</td>",
         "fixed-archive Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>247</td>",
+        "vcpkg fixed-archive Appendix C row",
     )
     require_text(
         sources["hardening"],
         "R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority",
         "fixed-archive hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority",
+        "vcpkg fixed-archive hardening ledger",
     )
 
 
@@ -32993,7 +33016,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cs, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#246",
+            "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -35595,8 +35618,8 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "stage_fixed_archives() {",
-            "stage_fixed_archives_disabled() {",
+            "stage_archive_bundle() {",
+            "stage_archive_bundle_disabled() {",
             "fixed-archive acquisition lifecycle",
         ),
         (
@@ -35607,9 +35630,9 @@ def run_source_mutations(sources):
         ),
         (
             "online_fixed_archive_output_helper",
-            "if len(specs) != 14:",
-            "if len(specs) < 1:",
-            "fixed-archive closed manifest cardinality",
+            "if len(specs) == 33:",
+            "if len(specs) == 32:",
+            "fixed-archive closed vcpkg cardinality",
         ),
         (
             "online_fixed_archive_output_helper",
@@ -35655,10 +35678,28 @@ def run_source_mutations(sources):
             "fixed-archive Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11ct</span>',
+            '<span class="id">R-S11ct-disabled</span>',
+            "vcpkg fixed-archive normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>247</td>",
+            "<tr><td>247-disabled</td>",
+            "vcpkg fixed-archive Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority",
             "R-S11cs-disabled/R-S11e-111 — ambient archive acquisition authority",
             "fixed-archive hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority",
+            "R-S11ct-disabled/R-S11e-112 — ambient vcpkg archive authority",
+            "vcpkg fixed-archive hardening ledger",
         ),
         (
             "online_fetch_android_ndk_output_authority_verifier",

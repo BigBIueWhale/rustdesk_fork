@@ -150,8 +150,8 @@ run_self_test() {
   expect_rejected hardening-ledger-requirements-hash "sed -i 's/^[0-9a-f]\\{64\\}  requirements[.]html$/0000000000000000000000000000000000000000000000000000000000000000  requirements.html/' HARDENING_STATUS.md"
   expect_rejected patch-byte "printf '\\n' >> res/vcpkg/libvpx/0005-cve-2026-1861.patch"
   expect_rejected windows-tool-manifest "sed -i '1s/dda8/dda9/' res/vcpkg/libvpx/windows-tools.sha512"
-  expect_rejected powershell-acquisition "sed -i 's#PowerShell/releases/download/v7.2.24#PowerShell/releases/download/latest#' scripts/online-fetch.sh"
-  expect_rejected mingw-pkgconf-acquisition "sed -i 's#mirror.msys2.org/mingw/mingw64#mirror.msys2.org/mingw/ucrt64#' scripts/online-fetch.sh"
+  expect_rejected powershell-acquisition "sed -i 's#PowerShell/releases/download/v7.2.24#PowerShell/releases/download/latest#' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
+  expect_rejected mingw-pkgconf-acquisition "sed -i 's#repo.msys2.org/mingw/mingw64#repo.msys2.org/mingw/ucrt64#' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
   expect_rejected guest-distfile-passthrough "sed -i '/VCPKG_KEEP_ENV_VARS/d' scripts/build-windows.ps1"
   expect_rejected guest-origin-fallback "sed -i '/X_VCPKG_ASSET_SOURCES/d' scripts/build-windows.ps1"
   expect_rejected guest-cache-name "sed -i \"s/-ceq '7zr.exe'/-ceq '7za.exe'/\" scripts/build-windows.ps1"
@@ -180,6 +180,7 @@ require_file res/vcpkg/libvpx/vcpkg.json
 require_file res/vcpkg/libvpx/portfile.cmake
 require_file res/vcpkg/libvpx/0005-cve-2026-1861.patch
 require_file res/vcpkg/libvpx/windows-tools.sha512
+require_file res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt
 require_file res/vcpkg/libyuv/vcpkg.json
 require_file res/vcpkg/libyuv/portfile.cmake
 require_file res/vcpkg/opus/vcpkg.json
@@ -197,6 +198,7 @@ command -v python3 >/dev/null 2>&1 || {
 : "${LIBVPX_FIX_COMMIT:?native-codec-watch: LIBVPX_FIX_COMMIT unset in scripts/pins.env}"
 : "${SHA512_LIBVPX_PATCH:?native-codec-watch: SHA512_LIBVPX_PATCH unset in scripts/pins.env}"
 : "${SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST:?native-codec-watch: SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST unset in scripts/pins.env}"
+: "${SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION:?native-codec-watch: SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION unset in scripts/pins.env}"
 : "${LIBYUV_COMMIT:?native-codec-watch: LIBYUV_COMMIT unset in scripts/pins.env}"
 : "${SHA512_LIBYUV:?native-codec-watch: SHA512_LIBYUV unset in scripts/pins.env}"
 
@@ -315,6 +317,8 @@ grep -qF "SHA512 $SHA512_LIBYUV" res/vcpkg/libyuv/portfile.cmake \
   || fail "libvpx security patch bytes do not match SHA512_LIBVPX_PATCH"
 [ "$(sha256sum res/vcpkg/libvpx/windows-tools.sha512 | awk '{print $1}')" = "$SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST" ] \
   || fail "libvpx Windows acquisition manifest does not match its pin"
+[ "$(sha256sum res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt | awk '{print $1}')" = "$SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION" ] \
+  || fail "vcpkg fixed-archive acquisition manifest does not match its pin"
 [ "$(wc -l < res/vcpkg/libvpx/windows-tools.sha512)" -eq 32 ] \
   || fail "libvpx Windows acquisition manifest must contain 25 MSYS2 runtime archives, MinGW pkgconf, and six pinned build tools"
 if [ "$(awk '{print $2}' res/vcpkg/libvpx/windows-tools.sha512 | sort -u | wc -l)" -ne 32 ]; then
@@ -343,10 +347,13 @@ fi
 require_literal 'libvpx_native_key()' scripts/online-fetch.sh
 require_literal 'vcpkg_native_output_key()' scripts/online-fetch.sh
 require_literal 'vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz' scripts/online-fetch.sh
-require_literal 'vcpkg-distfiles/windows-tools/$tool_name' scripts/online-fetch.sh
-require_literal 'PowerShell-7.2.24-win-x64.zip)' scripts/online-fetch.sh
-require_literal 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.zip' scripts/online-fetch.sh
-require_literal 'https://mirror.msys2.org/mingw/mingw64/$tool_name' scripts/online-fetch.sh
+require_literal 'stage_vcpkg_fixed_archives' scripts/online-fetch.sh
+require_literal 'vcpkg-distfiles/windows-tools/PowerShell-7.2.24-win-x64.zip' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt
+require_literal 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.zip' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt
+require_literal 'https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-pkgconf-1~2.4.3-1-any.pkg.tar.zst' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt
+if grep -qF 'mirror.msys2.org' res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt; then
+  fail "vcpkg fixed-archive acquisition manifest still delegates to an MSYS2 mirror redirector"
+fi
 require_literal '.rustdesk-libvpx-native-key' scripts/online-fetch.sh
 require_literal '.rustdesk-vcpkg-native-output-key-v1' scripts/online-fetch.sh
 require_literal 'vcpkg_native_output_tool check-complete' scripts/online-fetch.sh

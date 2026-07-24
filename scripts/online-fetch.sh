@@ -30,6 +30,7 @@ readonly GIT_BIN=/usr/bin/git
 readonly TAR_BIN=/usr/bin/tar
 readonly FLOCK_BIN=/usr/bin/flock
 readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
+readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
 readonly ONLINE_FETCH_GID="$(/usr/bin/id -g)"
@@ -142,6 +143,7 @@ readonly -a FIXED_ARCHIVE_ARGS=(
     "$SHA256_RUST_MSVC_1_75"
     "static.rust-lang.org"
 )
+declare -a VCPKG_FIXED_ARCHIVE_ARGS=()
 
 ONLINE_FETCH_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-online-fetch.XXXXXXXXXX)" \
     || die "cannot create the private online-fetch workspace"
@@ -352,26 +354,6 @@ fi
     || die "online cache root is not current-user-private mode 0700"
 assert_online_fetch_docker_authority
 
-fetch_verify_sha512() {
-    local url="$1" name="$2" sha="$3"
-    local dest="$ONLINE_DIR/$name"
-    if [ -f "$dest" ] && [ "$(sha512sum "$dest" | awk '{print $1}')" = "$sha" ]; then
-        log "cached + SHA512-verified, skipping: $name"
-        return 0
-    fi
-    log "fetching: $url -> $name"
-    mkdir -p "$(dirname "$dest")"
-    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"; then
-        rm -f "$dest.part"
-        die "failed to fetch $name"
-    fi
-    [ "$(sha512sum "$dest.part" | awk '{print $1}')" = "$sha" ] || {
-        rm -f "$dest.part"
-        die "SHA512 mismatch for $name"
-    }
-    mv "$dest.part" "$dest"
-}
-
 # The installed-systemd behavior gate needs a real PID-1/cgroup environment but
 # must never borrow the host manager or host cgroup tree. Keep its immutable,
 # publisher-hashed Debian base in the private harness state used for VM images.
@@ -524,21 +506,84 @@ vendor_cargo() {
     log "cargo vendor done — config at ./online/cargo-vendor-config.toml"
 }
 
-# ── Fixed toolchain / installer archives ──────────────────────────────────────
+# ── Fixed archive transactions ────────────────────────────────────────────────
 # Remote bytes receive one private output transaction, not the online root or a
 # final name. The host independently checks every exact length/digest before a
-# descriptor-relative no-clobber publication.
-fixed_archive_tool() {
-    local command="$1" staging="$2" helper_sha256="$3" builder="$4"
-    shift 4
+# descriptor-relative no-clobber publication. The two admitted manifests are the
+# fourteen toolchain/installer archives and the 33 vcpkg source/tool distfiles.
+load_vcpkg_fixed_archive_manifest() {
+    local name size digest url hosts extra tool_name tool_hash tool_extra count=0
+    local manifest_sha256
+    declare -A acquisition_tools=()
+    [ "${#VCPKG_FIXED_ARCHIVE_ARGS[@]}" -eq 0 ] \
+        || die "vcpkg fixed-archive manifest was loaded more than once"
+    [ -f "$VCPKG_FIXED_ARCHIVE_MANIFEST" ] && [ ! -L "$VCPKG_FIXED_ARCHIVE_MANIFEST" ] \
+        || die "vcpkg fixed-archive acquisition manifest is not one real file"
+    [ "$(/usr/bin/sha256sum "$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512" \
+         | /usr/bin/awk '{print $1}')" = "$SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST" ] \
+        || die "libvpx Windows tool manifest differs from its pin"
+    manifest_sha256="$(/usr/bin/sha256sum "$VCPKG_FIXED_ARCHIVE_MANIFEST" | /usr/bin/awk '{print $1}')"
+    [ "$manifest_sha256" = "$SHA256_VCPKG_FIXED_ARCHIVE_ACQUISITION" ] \
+        || die "vcpkg fixed-archive acquisition manifest differs from its pin"
+    while IFS='|' read -r name size digest url hosts extra; do
+        [ -n "$name" ] && [ -n "$size" ] && [ -n "$digest" ] \
+            && [ -n "$url" ] && [ -n "$hosts" ] && [ -z "$extra" ] \
+            || die "vcpkg fixed-archive acquisition manifest has a malformed record"
+        case "$name" in
+            "vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz")
+                ;;
+            vcpkg-distfiles/windows-tools/*)
+                tool_name="${name#vcpkg-distfiles/windows-tools/}"
+                [ -n "$tool_name" ] && [ -z "${acquisition_tools[$tool_name]+x}" ] \
+                    || die "vcpkg fixed-archive manifest has a duplicate tool name"
+                acquisition_tools["$tool_name"]=1
+                ;;
+            *)
+                die "vcpkg fixed-archive manifest has an unexpected destination: $name"
+                ;;
+        esac
+        VCPKG_FIXED_ARCHIVE_ARGS+=(--entry "$name" "$url" "$size" "$digest" "$hosts")
+        count=$((count + 1))
+    done <"$VCPKG_FIXED_ARCHIVE_MANIFEST"
+    [ "$count" -eq 33 ] \
+        || die "vcpkg fixed-archive acquisition manifest must contain exactly 33 records"
+    while read -r tool_hash tool_name tool_extra; do
+        [ -n "$tool_hash" ] && [ -n "$tool_name" ] && [ -z "$tool_extra" ] \
+            || die "libvpx Windows tool manifest has a malformed record"
+        case "$tool_hash" in
+            *[!0-9a-f]*|'') die "libvpx Windows tool manifest has a malformed SHA-512" ;;
+        esac
+        [ "${#tool_hash}" -eq 128 ] \
+            || die "libvpx Windows tool manifest has a malformed SHA-512 length"
+        [ -n "${acquisition_tools[$tool_name]+x}" ] \
+            || die "vcpkg fixed-archive manifest omits Windows tool: $tool_name"
+        unset 'acquisition_tools[$tool_name]'
+    done <"$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
+    [ "${#acquisition_tools[@]}" -eq 0 ] \
+        || die "vcpkg fixed-archive manifest adds a noncanonical Windows tool"
+    [ "$(/usr/bin/sha256sum "$VCPKG_FIXED_ARCHIVE_MANIFEST" | /usr/bin/awk '{print $1}')" \
+       = "$manifest_sha256" ] \
+        || die "vcpkg fixed-archive acquisition manifest changed while loading"
+    readonly -a VCPKG_FIXED_ARCHIVE_ARGS
+}
+
+archive_bundle_tool() {
+    local kind="$1" command="$2" staging="$3" helper_sha256="$4" builder="$5"
+    local -a archive_args=()
+    shift 5
+    case "$kind" in
+        toolchain) archive_args=("${FIXED_ARCHIVE_ARGS[@]}") ;;
+        vcpkg) archive_args=("${VCPKG_FIXED_ARCHIVE_ARGS[@]}") ;;
+        *) die "unknown fixed-archive bundle kind: $kind" ;;
+    esac
     /usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" "$command" \
         --online "$ONLINE_DIR" --staging "$staging" \
         --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
         --builder-id "$builder" --helper-sha256 "$helper_sha256" \
-        "${FIXED_ARCHIVE_ARGS[@]}" "$@"
+        "${archive_args[@]}" "$@"
 }
 
-retire_fixed_archive_staging() {
+retire_archive_bundle_staging() {
     local staging="$1" expected_identity="$2"
     /usr/bin/python3 "$LIB_DIR/verify-private-tree-closure.py" \
         --remove-private-root "$staging" --expected-identity "$expected_identity"
@@ -546,27 +591,29 @@ retire_fixed_archive_staging() {
         || die "fixed-archive transaction staging remains after retirement"
 }
 
-reconcile_fixed_archive_transactions() {
-    local helper_sha256="$1" builder="$2" staging staging_identity restore_nullglob=0
+reconcile_archive_bundle_transactions() {
+    local kind="$1" prefix="$2" helper_sha256="$3" builder="$4"
+    local staging staging_identity restore_nullglob=0
     local -a transactions=()
     if ! shopt -q nullglob; then
         shopt -s nullglob
         restore_nullglob=1
     fi
-    transactions=("$ONLINE_DIR"/.rustdesk-fixed-archives.*)
+    transactions=("$ONLINE_DIR"/"$prefix".*)
     [ "$restore_nullglob" -eq 0 ] || shopt -u nullglob
     for staging in "${transactions[@]}"; do
         [ -d "$staging" ] && [ ! -L "$staging" ] \
             || die "fixed-archive transaction path is not one real directory: $staging"
         staging_identity="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
         if [ -e "$staging/state.json" ] || [ -L "$staging/state.json" ]; then
-            fixed_archive_tool reconcile "$staging" "$helper_sha256" "$builder"
+            archive_bundle_tool "$kind" reconcile "$staging" "$helper_sha256" "$builder"
         fi
-        retire_fixed_archive_staging "$staging" "$staging_identity"
+        retire_archive_bundle_staging "$staging" "$staging_identity"
     done
 }
 
-stage_fixed_archives() {
+stage_archive_bundle() {
+    local kind="$1" prefix="$2" label="$3"
     local builder="$ANDROID_BUILDER_IMAGE_ID"
     local lock_fd helper_sha256 staging staging_identity action
     local producer_status=0 verification_status=0 publication_status=0
@@ -578,27 +625,27 @@ stage_fixed_archives() {
         || die "cannot open the online root for fixed-archive transaction locking"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
         || die "another online output transaction owns the online root"
-    reconcile_fixed_archive_transactions "$helper_sha256" "$builder"
-    staging="$(umask 077 && /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-fixed-archives.XXXXXXXXXX")" \
+    reconcile_archive_bundle_transactions "$kind" "$prefix" "$helper_sha256" "$builder"
+    staging="$(umask 077 && /usr/bin/mktemp -d "$ONLINE_DIR/$prefix.XXXXXXXXXX")" \
         || die "cannot create private fixed-archive transaction staging"
     staging_identity="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
-    action="$(fixed_archive_tool prepare "$staging" "$helper_sha256" "$builder")" \
+    action="$(archive_bundle_tool "$kind" prepare "$staging" "$helper_sha256" "$builder")" \
         || die "cannot prepare fixed-archive transaction"
     case "$action" in
         complete)
-            fixed_archive_tool reconcile "$staging" "$helper_sha256" "$builder" \
+            archive_bundle_tool "$kind" reconcile "$staging" "$helper_sha256" "$builder" \
                 || die "cannot reconcile complete fixed-archive transaction"
-            retire_fixed_archive_staging "$staging" "$staging_identity"
+            retire_archive_bundle_staging "$staging" "$staging_identity"
             "$FLOCK_BIN" --unlock "$lock_fd" \
                 || die "cannot release the fixed-archive transaction lock"
             exec {lock_fd}<&-
-            log "all fixed toolchain and installer archives are present and exact"
+            log "all $label are present and exact"
             return 0
             ;;
         acquire) ;;
         *) die "fixed-archive transaction returned an unknown action: $action" ;;
     esac
-    log "acquiring missing fixed toolchain and installer archives through the private transaction"
+    log "acquiring missing $label through the private transaction"
     online_docker_run_archive_acquisition \
         --mount "type=bind,source=$FIXED_ARCHIVE_HELPER,target=/online-fixed-archive-output.py,readonly" \
         --mount "type=bind,source=$staging/state.json,target=/state.json,readonly" \
@@ -609,23 +656,34 @@ stage_fixed_archives() {
             --builder-id "$builder" --helper-sha256 "$helper_sha256" \
         || producer_status=$?
     if [ "$producer_status" -eq 0 ]; then
-        fixed_archive_tool verify "$staging" "$helper_sha256" "$builder" \
+        archive_bundle_tool "$kind" verify "$staging" "$helper_sha256" "$builder" \
             || verification_status=$?
     fi
     if [ "$producer_status" -eq 0 ] && [ "$verification_status" -eq 0 ]; then
-        fixed_archive_tool publish "$staging" "$helper_sha256" "$builder" \
+        archive_bundle_tool "$kind" publish "$staging" "$helper_sha256" "$builder" \
             || publication_status=$?
     fi
-    fixed_archive_tool reconcile "$staging" "$helper_sha256" "$builder" \
+    archive_bundle_tool "$kind" reconcile "$staging" "$helper_sha256" "$builder" \
         || die "fixed-archive transaction is incoherent and was preserved at $staging"
-    retire_fixed_archive_staging "$staging" "$staging_identity"
+    retire_archive_bundle_staging "$staging" "$staging_identity"
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the fixed-archive transaction lock"
     exec {lock_fd}<&-
     [ "$producer_status" -eq 0 ] || die "fixed-archive acquisition failed"
     [ "$verification_status" -eq 0 ] || die "fixed-archive host verification failed"
     [ "$publication_status" -eq 0 ] || die "fixed-archive publication failed"
-    log "fixed toolchain and installer archives acquired, verified, and no-clobber published"
+    log "$label acquired, verified, and no-clobber published"
+}
+
+stage_fixed_archives() {
+    stage_archive_bundle toolchain .rustdesk-fixed-archives \
+        "fixed toolchain and installer archives"
+}
+
+stage_vcpkg_fixed_archives() {
+    load_vcpkg_fixed_archive_manifest
+    stage_archive_bundle vcpkg .rustdesk-vcpkg-fixed-archives \
+        "fixed libvpx source and Windows tool archives"
 }
 
 require_windows_operator_toolchain() {
@@ -1304,10 +1362,7 @@ stage_pub_cache() {
 # changes; same class as the SHA256_VCPKG_120DEAC3 GitHub-archive caveat in pins.env).
 stage_libvpx_distfiles() {
     local vpx_dir="$ONLINE_DIR/vcpkg-distfiles"
-    mkdir -p "$vpx_dir"
-    fetch_verify_sha512 \
-        "https://github.com/webmproject/libvpx/archive/refs/tags/${LIBVPX_SOURCE_REF}.tar.gz" \
-        "vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" "$SHA512_LIBVPX_SOURCE"
+    stage_vcpkg_fixed_archives
 
     local committed_patch="$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"
     [ "$(sha512sum "$committed_patch" | awk '{print $1}')" = "$SHA512_LIBVPX_PATCH" ] || die "committed libvpx security patch does not match SHA512_LIBVPX_PATCH"
@@ -1316,42 +1371,6 @@ stage_libvpx_distfiles() {
         cp "$committed_patch" "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch.part"
         mv "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch.part" "$vpx_dir/libvpx-${LIBVPX_FIX_COMMIT}.patch"
     fi
-
-    local tool_hash tool_name tool_extra tool_url
-    [ "$(sha256sum "$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512" | awk '{print $1}')" = "$SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST" ] || die "libvpx Windows acquisition manifest does not match its pin"
-    while read -r tool_hash tool_name tool_extra; do
-        [ -z "$tool_extra" ] || die "malformed libvpx Windows tool manifest entry: $tool_hash $tool_name $tool_extra"
-        case "$tool_hash" in *[!0-9a-f]*|'') die "malformed SHA512 in libvpx Windows tool manifest: $tool_hash" ;; esac
-        [ "${#tool_hash}" -eq 128 ] || die "malformed SHA512 length in libvpx Windows tool manifest: $tool_hash"
-        case "$tool_name" in
-            msys2-*.pkg.tar.zst)
-                tool_url="https://mirror.msys2.org/msys/x86_64/${tool_name#msys2-}"
-                ;;
-            mingw-w64-x86_64-pkgconf-1~2.4.3-1-any.pkg.tar.zst)
-                tool_url="https://mirror.msys2.org/mingw/mingw64/$tool_name"
-                ;;
-            nasm-2.16.03-win64.zip)
-                tool_url="https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/$tool_name"
-                ;;
-            cmake-3.30.1-windows-i386.zip)
-                tool_url="https://github.com/Kitware/CMake/releases/download/v3.30.1/$tool_name"
-                ;;
-            ninja-win-1.12.1.zip)
-                tool_url="https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip"
-                ;;
-            7z2409.7z.exe)
-                tool_url="https://github.com/ip7z/7zip/releases/download/24.09/7z2409.exe"
-                ;;
-            7zr.exe)
-                tool_url="https://github.com/ip7z/7zip/releases/download/24.09/7zr.exe"
-                ;;
-            PowerShell-7.2.24-win-x64.zip)
-                tool_url="https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.zip"
-                ;;
-            *) die "unexpected libvpx Windows tool archive: $tool_name" ;;
-        esac
-        fetch_verify_sha512 "$tool_url" "vcpkg-distfiles/windows-tools/$tool_name" "$tool_hash"
-    done <"$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
 
     printf '%s\n' "$(libvpx_native_key)" >"$vpx_dir/libvpx-native-key.txt.part"
     mv "$vpx_dir/libvpx-native-key.txt.part" "$vpx_dir/libvpx-native-key.txt"

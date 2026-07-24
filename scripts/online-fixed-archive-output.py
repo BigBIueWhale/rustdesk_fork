@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Acquire and transactionally publish the fixed SHA-256 archive bundle."""
+"""Acquire and transactionally publish exact fixed SHA-256 archive bundles."""
 
 from __future__ import annotations
 
@@ -158,10 +158,8 @@ def validate_name(name: str) -> tuple[str, ...]:
         fail("archive destination name is not ASCII")
     path = Path(name)
     parts = path.parts
-    if path.is_absolute() or len(parts) not in (1, 2):
-        fail(f"archive destination is not a top-level or win/ path: {name}")
-    if len(parts) == 2 and parts[0] != "win":
-        fail(f"the only admitted nested archive directory is win/: {name}")
+    if path.is_absolute() or len(parts) not in (1, 2, 3):
+        fail(f"archive destination is not a bounded relative path: {name}")
     for component in parts:
         if (
             component in ("", ".", "..")
@@ -170,9 +168,45 @@ def validate_name(name: str) -> tuple[str, ...]:
             or len(component) > 160
         ):
             fail(f"archive destination has an unsafe component: {name}")
-        if not all(char.isalnum() or char in "._+-" for char in component):
+        if not all(char.isalnum() or char in "._+~-" for char in component):
             fail(f"archive destination has a noncanonical component: {name}")
     return parts
+
+
+def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
+    names = tuple(spec.name for spec in specs)
+    if len(specs) == 14:
+        if any(
+            len(validate_name(name)) > 1 and validate_name(name)[0] != "win"
+            for name in names
+        ):
+            fail("the fourteen-entry toolchain manifest has a non-win/ nested path")
+        return
+    if len(specs) == 33:
+        source_names = tuple(
+            name
+            for name in names
+            if len(validate_name(name)) == 2
+            and validate_name(name)[0] == "vcpkg-distfiles"
+            and validate_name(name)[1].startswith("libvpx-")
+            and validate_name(name)[1].endswith(".tar.gz")
+        )
+        tool_names = tuple(
+            name
+            for name in names
+            if len(validate_name(name)) == 3
+            and validate_name(name)[:2] == ("vcpkg-distfiles", "windows-tools")
+        )
+        if len(source_names) != 1 or len(tool_names) != 32:
+            fail(
+                "the vcpkg distfile manifest must contain one libvpx archive "
+                "and exactly 32 windows-tools/ archives"
+            )
+        return
+    fail(
+        "the archive manifest must contain exactly 14 toolchain entries "
+        f"or 33 vcpkg distfile entries, got {len(specs)}"
+    )
 
 
 def validate_url(url: str, redirect_hosts: tuple[str, ...]) -> None:
@@ -224,8 +258,7 @@ def parse_specs(raw_entries: Sequence[Sequence[str]]) -> tuple[ArchiveSpec, ...]
             fail(f"archive redirect-host allowlist is invalid: {name}")
         validate_url(url, hosts)
         specs.append(ArchiveSpec(name, url, int(size_raw), digest, hosts))
-    if len(specs) != 14:
-        fail(f"the fixed archive manifest must contain exactly 14 entries, got {len(specs)}")
+    validate_manifest_shape(specs)
     if tuple(sorted(spec.name for spec in specs)) != tuple(spec.name for spec in specs):
         fail("the fixed archive manifest is not sorted by destination name")
     return tuple(specs)
@@ -518,9 +551,10 @@ def validate_candidate_tree(
         directories, files = scan_candidate_tree(output_fd, uid, gid)
         expected_files = {spec.name for spec in specs}
         expected_directories = {
-            "/".join(validate_name(spec.name)[:-1])
+            "/".join(parts[:depth])
             for spec in specs
-            if len(validate_name(spec.name)) == 2
+            for parts in (validate_name(spec.name),)
+            for depth in range(1, len(parts))
         }
         if files != expected_files or directories != expected_directories:
             fail("archive candidate inventory differs from the transaction manifest")
@@ -554,7 +588,16 @@ def validate_publication_layout(
         )
         directories, files = scan_candidate_tree(output_fd, uid, gid)
         expected_names = {spec.name for spec in missing}
-        if not files.issubset(expected_names) or not directories.issubset({"win"}):
+        expected_directories = {
+            "/".join(parts[:depth])
+            for spec in missing
+            for parts in (validate_name(spec.name),)
+            for depth in range(1, len(parts))
+        }
+        if (
+            not files.issubset(expected_names)
+            or not directories.issubset(expected_directories)
+        ):
             fail("archive publication staging contains an unowned entry")
         for spec in missing:
             source_present = validate_archive_at(
@@ -1268,6 +1311,31 @@ def test_specs() -> tuple[ArchiveSpec, ...]:
     return parse_specs(records)
 
 
+def test_vcpkg_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for index in range(33):
+        if index == 0:
+            name = "vcpkg-distfiles/libvpx-v1.2.3.tar.gz"
+        elif index == 1:
+            name = (
+                "vcpkg-distfiles/windows-tools/"
+                "mingw-w64-x86_64-pkgconf-1~2.4.3-1-any.pkg.tar.zst"
+            )
+        else:
+            name = f"vcpkg-distfiles/windows-tools/tool-{index:02d}.bin"
+        payload = f"vcpkg-payload-{index}".encode("ascii")
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def self_test() -> None:
     uid = os.geteuid()
     gid = os.getegid()
@@ -1350,6 +1418,72 @@ def self_test() -> None:
                     fail("self-test publication omitted an archive")
         finally:
             os.close(online_fd)
+
+        vcpkg_specs = test_vcpkg_specs()
+        vcpkg_online = root / "vcpkg-online"
+        vcpkg_staging = root / "vcpkg-staging"
+        vcpkg_online.mkdir(mode=0o700)
+        vcpkg_staging.mkdir(mode=0o700)
+        if (
+            prepare_transaction(
+                vcpkg_online,
+                vcpkg_staging,
+                vcpkg_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+            != "acquire"
+        ):
+            fail("vcpkg self-test transaction unexpectedly reused output")
+        vcpkg_state = read_state(vcpkg_staging)
+        vcpkg_output = vcpkg_staging / OUTPUT_NAME
+        vcpkg_output_fd = open_directory(vcpkg_output)
+        try:
+            for index, spec in enumerate(vcpkg_specs):
+                payload = f"vcpkg-payload-{index}".encode("ascii")
+                download_archive(
+                    vcpkg_output_fd,
+                    spec,
+                    FakeOpener(FakeResponse(payload, spec.url)),
+                )
+        finally:
+            os.close(vcpkg_output_fd)
+        validate_candidate_tree(
+            vcpkg_output,
+            vcpkg_specs,
+            uid,
+            gid,
+            str(vcpkg_state["output"]),
+        )
+        verify_transaction(
+            vcpkg_online,
+            vcpkg_staging,
+            vcpkg_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        publish_transaction(
+            vcpkg_online,
+            vcpkg_staging,
+            vcpkg_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        vcpkg_online_fd = open_directory(vcpkg_online)
+        try:
+            for spec in vcpkg_specs:
+                if not validate_archive_at(
+                    vcpkg_online_fd, spec, uid, gid, candidate=False
+                ):
+                    fail("vcpkg self-test publication omitted an archive")
+        finally:
+            os.close(vcpkg_online_fd)
 
         bad_output = root / "bad-output"
         bad_output.mkdir(mode=0o700)
@@ -1481,6 +1615,33 @@ def self_test() -> None:
             pass
         else:
             fail("self-test accepted an unsafe nested archive parent as missing")
+
+        unsafe_vcpkg_online = root / "unsafe-vcpkg-online"
+        unsafe_vcpkg_staging = root / "unsafe-vcpkg-staging"
+        unsafe_vcpkg_online.mkdir(mode=0o700)
+        unsafe_vcpkg_staging.mkdir(mode=0o700)
+        (unsafe_vcpkg_online / "vcpkg-distfiles").mkdir(mode=0o700)
+        (unsafe_vcpkg_online / "vcpkg-distfiles" / "windows-tools").mkdir(
+            mode=0o700
+        )
+        os.chmod(
+            unsafe_vcpkg_online / "vcpkg-distfiles" / "windows-tools",
+            0o777,
+        )
+        try:
+            prepare_transaction(
+                unsafe_vcpkg_online,
+                unsafe_vcpkg_staging,
+                vcpkg_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+        except ContractError:
+            pass
+        else:
+            fail("self-test accepted an unsafe vcpkg archive parent")
     print("fixed archive transaction self-test: PASS")
 
 

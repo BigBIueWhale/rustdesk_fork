@@ -591,11 +591,6 @@ echo "$config_get_id_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-i
 if echo "$config_get_id_body" | grep -qE 'Config::set_id|set_id\(|Config::gen_id|gen_id\(|CONFIG\.write|store\('; then
   r_s11="$r_s11 config-get-id-mutates-identity"
 fi
-config_get_salt_body=$(awk '/pub fn get_salt\(\) -> String \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
-echo "$config_get_salt_body" | grep -q 'CONFIG.read' || r_s11="$r_s11 config-get-salt-not-reading-config"
-if echo "$config_get_salt_body" | grep -qE 'Config::set_salt|set_salt\(|get_auto_password|CONFIG\.write|store\('; then
-  r_s11="$r_s11 config-get-salt-mutates-salt"
-fi
 config_load_body=$(awk '/fn load\(\) -> Config \{/{flag=1} flag{print} flag && /^[[:space:]]{4}\}/{exit}' libs/hbb_common/src/config.rs)
 if echo "$config_load_body" | grep -qE 'config\.store\(|Config::set_id|set_id\(|encrypt_str_or_original\(&config\.id'; then
   r_s11="$r_s11 config-load-persists-identity"
@@ -616,6 +611,9 @@ patterns = (
     ("whole-config2-get", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+get\s*\(\s*\)\s*->\s*Config2\b"),
     ("whole-config2-set", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+set\s*\([^)]*:\s*Config2\s*[,)]"),
     ("standalone-salt-set", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+set_salt\s*\("),
+    ("standalone-salt-read", r"\bfn\s+get_salt\s*\("),
+    ("effective-password-salt-read", r"\bfn\s+get_effective_permanent_password_salt\s*\("),
+    ("preset-password-envelope-read", r"\bpub(?:\s*\([^)]*\))?\s+fn\s+get_preset_password_storage_and_salt\s*\("),
 )
 print(" ".join(label for label, pattern in patterns if re.search(pattern, source)))
 PY
@@ -624,6 +622,9 @@ PY
   || r_s11="$r_s11 obsolete-config-authority-api-present:$obsolete_config_authority_apis"
 grep -qF 'R-S11b-3k — obsolete whole-config and standalone-salt authority APIs excised' HARDENING_STATUS.md \
   || r_s11="$r_s11 obsolete-config-authority-ledger-missing"
+grep -qF 'R-S11b-3p — production-dead effective and standalone salt readers excised' HARDENING_STATUS.md \
+  || r_s11="$r_s11 obsolete-salt-reader-ledger-missing"
+grep -qF '<tr><td>240</td>' requirements.html || r_s11="$r_s11 obsolete-salt-reader-appendix-missing"
 grep -qF '<tr><td>234</td>' requirements.html \
   || r_s11="$r_s11 obsolete-config-authority-appendix-missing"
 if grep -RInE 'set_id\(|fn gen_id\(|fn get_auto_id\(|update_id\(|is_disable_change_id|OPTION_ALLOW_HOSTNAME_AS_ID|OPTION_DISABLE_CHANGE_ID' src libs --include='*.rs' 2>/dev/null \

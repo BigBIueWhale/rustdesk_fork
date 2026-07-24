@@ -1258,6 +1258,13 @@ for token in \
   grep -Fq "$token" "$REPO/libs/hbb_common/src/config.rs" &&
     r_s11b2="$r_s11b2 retired-whole-options-config-writer-present:$token"
 done
+for token in \
+  'fn get_salt(' \
+  'fn get_effective_permanent_password_salt(' \
+  'pub fn get_preset_password_storage_and_salt('; do
+  grep -Fq "$token" "$REPO/libs/hbb_common/src/config.rs" &&
+    r_s11b2="$r_s11b2 retired-salt-reader-surface-present:$token"
+done
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b2="$r_s11b2 server-whole-config-import-present"
 main_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' "$REPO/src/ipc.rs")
@@ -1288,8 +1295,10 @@ grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' "$REPO/HARD
 grep -Fq '<tr><td>237</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 credential-mirror-appendix-missing"
 grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 single-option-ledger-missing"
 grep -Fq 'R-S11b-3o — production-dead whole-options config writer excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 whole-options-config-ledger-missing"
+grep -Fq 'R-S11b-3p — production-dead effective and standalone salt readers excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 obsolete-salt-reader-ledger-missing"
 grep -Fq '<tr><td>238</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 single-option-appendix-missing"
 grep -Fq '<tr><td>239</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 whole-options-config-appendix-missing"
+grep -Fq '<tr><td>240</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 obsolete-salt-reader-appendix-missing"
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS raw password IPC:$r_s11b2"
   rc=1

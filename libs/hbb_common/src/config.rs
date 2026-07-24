@@ -3309,7 +3309,7 @@ impl Config {
     }
 
     fn has_usable_preset_password() -> bool {
-        let (preset_storage, preset_salt) = Self::get_preset_password_storage_and_salt();
+        let (preset_storage, preset_salt) = Self::preset_password_storage_and_salt();
         preset_permanent_password_storage_is_usable_for_auth(&preset_storage, &preset_salt)
     }
 
@@ -3321,38 +3321,16 @@ impl Config {
         local_storage.is_empty() && Self::has_usable_preset_password()
     }
 
-    pub fn get_preset_password_storage_and_salt() -> (String, String) {
+    fn preset_password_storage_and_salt() -> (String, String) {
         let hard_settings = HARD_SETTINGS.read().unwrap();
         let storage = hard_settings.get("password").cloned().unwrap_or_default();
         let salt = hard_settings.get("salt").cloned().unwrap_or_default();
         (storage, salt)
     }
 
-    pub fn get_effective_permanent_password_salt() -> String {
-        let (local_storage, local_salt) = Self::get_local_permanent_password_storage_and_salt();
-        if !local_storage.is_empty() {
-            if local_permanent_password_storage_is_usable_for_auth(&local_storage, &local_salt) {
-                return Self::get_salt();
-            }
-            return String::new();
-        }
-        let (preset_storage, preset_salt) = Self::get_preset_password_storage_and_salt();
-        if !preset_salt.is_empty() {
-            if preset_permanent_password_storage_is_usable_for_auth(&preset_storage, &preset_salt) {
-                return preset_salt;
-            }
-            return String::new();
-        }
-        Self::get_salt()
-    }
-
     pub fn has_local_permanent_password() -> bool {
         let (local_storage, local_salt) = Self::get_local_permanent_password_storage_and_salt();
         local_permanent_password_storage_is_usable_for_auth(&local_storage, &local_salt)
-    }
-
-    pub fn get_salt() -> String {
-        CONFIG.read().unwrap().salt.clone()
     }
 
     pub fn ensure_loaded() {
@@ -5260,24 +5238,19 @@ unrelated = "preserved"
             assert!(Config::has_permanent_password());
             assert!(Config::has_usable_preset_password());
             assert!(Config::is_using_preset_password());
-            assert_eq!(Config::get_effective_permanent_password_salt(), salt);
         });
     }
 
     #[test]
-    fn test_legacy_plain_preset_password_with_00_hash_shape_without_salt_keeps_old_behavior() {
+    fn test_legacy_plain_preset_password_with_00_hash_shape_remains_usable() {
         let h1 = compute_permanent_password_h1("p@ssw0rd", "salt123");
         let storage = "00".to_owned() + &base64::encode(h1, base64::Variant::Original);
         let hard_settings = HashMap::from([("password".to_owned(), storage.clone())]);
 
-        let mut config = Config::default();
-        config.salt = "local1".to_owned();
-
-        with_config_and_hard_settings(config, hard_settings, || {
+        with_config_and_hard_settings(Config::default(), hard_settings, || {
             assert!(Config::has_permanent_password());
             assert!(Config::has_usable_preset_password());
             assert!(Config::is_using_preset_password());
-            assert_eq!(Config::get_effective_permanent_password_salt(), "local1");
         });
     }
 
@@ -5295,28 +5268,10 @@ unrelated = "preserved"
     }
 
     #[test]
-    fn test_invalid_local_hashed_password_does_not_generate_effective_salt() {
-        let h1 = compute_permanent_password_h1("p@ssw0rd", "salt123");
-        let mut config = Config::default();
-        config.password = encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
-
-        with_config_and_hard_settings(config, HashMap::new(), || {
-            assert_eq!(Config::get_effective_permanent_password_salt(), "");
-            assert_eq!(
-                Config::get_local_permanent_password_storage_and_salt().1,
-                ""
-            );
-        });
-    }
-
-    #[test]
-    fn test_legacy_plain_preset_password_uses_local_salt_for_challenge() {
-        let mut config = Config::default();
-        config.salt = "local1".to_owned();
+    fn test_legacy_plain_preset_password_remains_usable_without_preset_salt() {
         let hard_settings = HashMap::from([("password".to_owned(), "legacy-password".to_owned())]);
 
-        with_config_and_hard_settings(config, hard_settings, || {
-            assert_eq!(Config::get_effective_permanent_password_salt(), "local1");
+        with_config_and_hard_settings(Config::default(), hard_settings, || {
             assert!(Config::has_permanent_password());
             assert!(Config::is_using_preset_password());
         });
@@ -5568,11 +5523,6 @@ unrelated = "preserved"
             ]);
 
             with_config_and_hard_settings(Config::default(), hard_settings, || {
-                assert_eq!(Config::get_effective_permanent_password_salt(), "");
-                assert_eq!(
-                    Config::get_local_permanent_password_storage_and_salt().1,
-                    ""
-                );
                 assert!(!Config::has_permanent_password());
                 assert!(!Config::is_using_preset_password());
             });
@@ -5792,14 +5742,6 @@ unrelated = "preserved"
         let raw = Config::load_::<Config>("");
         assert!(raw.id.is_empty());
         assert!(raw.enc_id.is_empty());
-    }
-
-    #[test]
-    fn test_get_salt_is_side_effect_free() {
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
-            assert_eq!(Config::get_salt(), "");
-            assert!(CONFIG.read().unwrap().salt.is_empty());
-        });
     }
 
     #[test]

@@ -16472,6 +16472,152 @@ def validate_temporary_password_generator_excision_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_permanent_password_salt_reader_excision_contract(sources):
+    config = sources["config_source"]
+    for text, label in (
+        ("fn get_salt(", "standalone config salt reader"),
+        (
+            "fn get_effective_permanent_password_salt(",
+            "challenge-era effective password salt reader",
+        ),
+    ):
+        require_absent(config, text, label)
+    require_absent(
+        config,
+        "pub fn get_preset_password_storage_and_salt(",
+        "public preset credential-envelope reader",
+    )
+    require_text(
+        config,
+        "    fn preset_password_storage_and_salt() -> (String, String) {",
+        "private preset credential-envelope helper",
+    )
+    require_exact_count(
+        config,
+        "preset_password_storage_and_salt",
+        2,
+        "sole private preset credential-envelope owner and caller",
+    )
+    preset_usable = extract_between(
+        config,
+        "    fn has_usable_preset_password() -> bool {",
+        "\n    pub fn is_using_preset_password()",
+        "preset credential usability classifier",
+    )
+    require_text(
+        preset_usable,
+        "Self::preset_password_storage_and_salt()",
+        "private preset credential-envelope consumer",
+    )
+    require_text(
+        config,
+        "pub fn get_local_permanent_password_storage_and_salt() -> (String, String)",
+        "purpose-specific local credential-envelope snapshot",
+    )
+
+    shared_gate = extract_between(
+        sources["verify"],
+        "obsolete_config_authority_apis=$(",
+        "ipc_get_id_body=$(awk",
+        "shared salt-reader excision source gate",
+    )
+    for text in (
+        '"standalone-salt-read"',
+        '"effective-password-salt-read"',
+        '"preset-password-envelope-read"',
+        "obsolete-salt-reader-ledger-missing",
+        "obsolete-salt-reader-appendix-missing",
+    ):
+        require_text(shared_gate, text, "shared salt-reader excision source gate")
+
+    apple_gate = extract_between(
+        sources["apple"],
+        "for token in \\\n  'pub fn set_options('",
+        "grep -q 'SyncConfig'",
+        "Apple salt-reader excision source gate",
+    )
+    for text in (
+        "'fn get_salt('",
+        "'fn get_effective_permanent_password_salt('",
+        "'pub fn get_preset_password_storage_and_salt('",
+        "retired-salt-reader-surface-present",
+    ):
+        require_text(apple_gate, text, "Apple salt-reader excision source gate")
+    require_text(
+        sources["apple"],
+        "obsolete-salt-reader-ledger-missing",
+        "Apple salt-reader ledger gate",
+    )
+    require_text(
+        sources["apple"],
+        "obsolete-salt-reader-appendix-missing",
+        "Apple salt-reader Appendix gate",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11b-3p",
+        "credential salt-reader excision requirement",
+    )
+    for text, label in (
+        ("<code>get_salt</code>", "standalone salt-reader normative prohibition"),
+        (
+            "<code>get_effective_permanent_password_salt</code>",
+            "effective salt-reader normative prohibition",
+        ),
+        (
+            "preset credential-envelope reader <span class=\"kw\">MUST NOT</span> be public",
+            "preset envelope visibility prohibition",
+        ),
+        (
+            "read storage and salt atomically as one pair",
+            "purpose-specific credential-envelope read contract",
+        ),
+        (
+            "<code>Hash{salt, challenge}</code>",
+            "challenge-era abstraction disposition",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>240</td>",
+        "salt-reader excision Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3p — production-dead effective and standalone salt readers excised",
+        "salt-reader excision hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "salt-reader excision deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("standalone config salt reader", "standalone-reader mutation"),
+        (
+            "challenge-era effective password salt reader",
+            "effective-reader mutation",
+        ),
+        (
+            "public preset credential-envelope reader",
+            "preset-envelope visibility mutation",
+        ),
+        ("shared salt-reader excision source gate", "shared-gate mutation"),
+        ("Apple salt-reader excision source gate", "Apple-gate mutation"),
+        (
+            "credential salt-reader excision requirement",
+            "normative-requirement mutation",
+        ),
+        ("salt-reader excision Appendix C row", "Appendix mutation"),
+        ("salt-reader excision hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_typed_permanent_password_prs_contract(sources):
     config = sources["config_source"]
     server = sources["server_source"]
@@ -18901,6 +19047,7 @@ def validate_sources(sources):
     validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
+    validate_permanent_password_salt_reader_excision_contract(sources)
     validate_typed_permanent_password_prs_contract(sources)
     validate_main_ipc_credential_mirror_excision_contract(sources)
     validate_main_ipc_single_option_mutation_contract(sources)
@@ -29959,6 +30106,54 @@ def run_source_mutations(sources):
             "R-S11b-3l/R-X7b — generic automatic-password generator excised",
             "R-S11b-3l/R-X7b — generic automatic-password generator deferred",
             "automatic-password API hardening ledger",
+        ),
+        (
+            "config_source",
+            "    fn preset_password_storage_and_salt() -> (String, String) {",
+            "    fn get_salt() -> String { CONFIG.read().unwrap().salt.clone() }\n\n    fn preset_password_storage_and_salt() -> (String, String) {",
+            "standalone config salt reader",
+        ),
+        (
+            "config_source",
+            "    fn preset_password_storage_and_salt() -> (String, String) {",
+            "    fn get_effective_permanent_password_salt() -> String { Self::get_local_permanent_password_storage_and_salt().1 }\n\n    fn preset_password_storage_and_salt() -> (String, String) {",
+            "challenge-era effective password salt reader",
+        ),
+        (
+            "config_source",
+            "    fn preset_password_storage_and_salt() -> (String, String) {",
+            "    pub fn get_preset_password_storage_and_salt() -> (String, String) {",
+            "public preset credential-envelope reader",
+        ),
+        (
+            "verify",
+            '("standalone-salt-read", r"\\bfn\\s+get_salt\\s*\\("),',
+            '("standalone-salt-read-disabled", r"\\bfn\\s+get_salt\\s*\\("),',
+            "shared salt-reader excision source gate",
+        ),
+        (
+            "apple",
+            "'fn get_effective_permanent_password_salt('",
+            "'fn get_effective_permanent_password_salt_disabled('",
+            "Apple salt-reader excision source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11b-3p</span>',
+            '<span class="id">R-S11b-3p-disabled</span>',
+            "credential salt-reader excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>240</td>",
+            "<tr><td>240-disabled</td>",
+            "salt-reader excision Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11b-3p — production-dead effective and standalone salt readers excised",
+            "R-S11b-3p — production-dead salt readers retained",
+            "salt-reader excision hardening ledger",
         ),
         (
             "config_source",

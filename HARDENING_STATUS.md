@@ -723,14 +723,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `Config::get_id()` is a pure read; new direct-IP configs no longer auto-generate a numeric RustDesk ID
   at load time; the old MAC-derived generator, Change-ID writer, and `mac_address` dependency are gone;
   config load/store no longer migrates or rewrites legacy ID storage; the obsolete whole-config
-  `Config::set` entry point is deleted by R-S11b-3k; `Config::get_salt()` is a pure read and no longer
-  creates/persists a salt;
+  `Config::set` entry point is deleted by R-S11b-3k; the former standalone `Config::get_salt()` read was
+  side-effect-free here and is subsequently deleted altogether by R-S11b-3p;
   startup logging no longer reads the ID; and the server login gate no longer accepts a non-address
   username by matching the local numeric ID. Existing stored `enc_id` values remain readable for
   compatibility, but an empty ID is valid and stored as absent. The UI helper no longer copies daemon `id`
   into local config and no longer fetches/copies `salt` as a side effect of asking for the ID.
-  Verification closure: `scripts/verify.sh` and config unit tests assert the getter body has no
-  generation/write/store path, fresh config load does not mint an ID, salt reads do not mint a salt,
+  Verification closure: `scripts/verify.sh` and config unit tests assert the identity getter body has no
+  generation/write/store path, fresh config load does not mint an ID, standalone salt reads remain absent,
   empty IDs are stored absent, legacy IDs are not migrated or rewritten by load/store, the whole-config
   setter remains absent, the old ID generator/writer/key/dependency symbols are absent, the server
   login fallback is absent, and the IPC helper cannot reintroduce id/salt copy-back.
@@ -818,9 +818,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   preserve whole-config replacement or standalone-salt semantics are deleted.
   Legitimate live mutation remains typed: filtered option writes, durable password provisioning (which owns
   salt creation atomically), and purpose-specific nonpersistent service-owned runtime replicas.
-  `Config::get_salt` remains a side-effect-free read. `scripts/verify.sh` rejects reintroduction of either
-  whole-config public API or a standalone salt writer while retaining the pure-read check and the ordinary-main
-  zero-writer gate. Appendix C #234 records the source-level closure. Exact native and reproducible artifact
+  R-S11b-3p subsequently deletes the production-dead standalone and effective salt readers.
+  `scripts/verify.sh` rejects reintroduction of either whole-config public API, a standalone salt writer, or
+  either retired salt reader while retaining the ordinary-main zero-writer gate. Appendix C #234 records the
+  source-level closure. Exact native and reproducible artifact
   evidence remains part of R-B2 and is not inferred from this API deletion.
 - **R-S11b-3l/R-X7b — generic automatic-password generator excised — CLOSED/GATED 2026-07-24.**
   Platforms: every desktop and mobile build linking `hbb_common`. Endpoint/action: the public, arbitrary-length
@@ -968,6 +969,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   whole-map writer symbol, and the independent semantic validator binds source, both gates, R-S16, Appendix C
   #239, and this row with deliberate mutations. Exact native/reproducible artifact and installed-device evidence
   remain under R-B2.
+- **R-S11b-3p — production-dead effective and standalone salt readers excised — CLOSED/GATED
+  2026-07-24.** Platforms: every desktop and mobile build linking `hbb_common`. Endpoint/action:
+  `Config::get_effective_permanent_password_salt`, `Config::get_salt`, and the public
+  `Config::get_preset_password_storage_and_salt` surface. Boundary: any current or future in-process caller ↔
+  credential-envelope salt material and the choice between local and signed-preset credential state.
+  Repository-wide authored-source review proved the “effective” selector had no production caller and was
+  referenced only by same-module tests; the standalone getter was referenced only by that selector and one
+  getter test; and the public preset-envelope getter had only one live same-module caller. The selector encoded
+  the deleted legacy `Hash{salt, challenge}` flow even though live CPace admission consumes the typed PRS and
+  uses a separate fixed Argon2id domain-separation salt. This was a misleading credential-state and future
+  disclosure surface, not evidence of a reachable secret disclosure, authentication bypass, credential change,
+  local privilege escalation, Android lifecycle defect, host modification, exploitation, or compromise.
+  Closure deletes both dead salt readers and their challenge-only assertions and makes the preset-envelope helper
+  private. Preset usability classification remains intact. Durable password provisioning remains the sole salt
+  creator and owns it atomically with password storage; the externally used local storage-and-salt snapshot
+  remains unchanged for the purpose-specific authenticated service credential-replica paths that require the
+  pair. Shared and Apple source gates reject all three retired public/salt-reader shapes. The independent semantic
+  validator binds source, both gates, R-S11b-3p, Appendix C #240, and this row with deliberate mutations. Exact
+  native/reproducible artifact and installed-device evidence remain under R-B2.
 - **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
   Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
   deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
@@ -5392,7 +5412,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   policy is exhaustive after R-S11b-3h, with no wildcard arm that could admit a future
   identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate. R-S11b-3k also
   deletes the unused public whole-`Config`/`Config2` get/set surfaces and standalone salt writer, leaving
-  only typed field-specific mutation APIs. R-S11b-3l removes the remaining public arbitrary-length
+  only typed field-specific mutation APIs. R-S11b-3p deletes the production-dead standalone and challenge-era
+  effective salt readers and makes the sole preset credential-envelope helper private. R-S11b-3l removes the
+  remaining public arbitrary-length
   automatic-password generator and makes storage-salt generation private, fixed-purpose, fixed-length, and
   solely owned by durable permanent-password provisioning. R-S11b-3m then deletes every legacy PRS
   string-flattening adapter and keeps `Available`/`Empty`/`UndecryptableStorage` typed through the CPace admission
@@ -10238,7 +10260,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ffb7df02d3efc011b25f6747357a2292309e3813f5c1747de68b0fc872ec17da  requirements.html
+87fdb3da7df6383cd0866dc4cce40127e9cb6effa027976a073d5661291b53fe  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,

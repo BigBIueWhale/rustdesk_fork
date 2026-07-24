@@ -281,7 +281,7 @@ else
   echo "  ok  R-S11cr exact pinned Android archives are acquired through four narrow mounts, independently parsed and byte-compared, sealed, and no-clobber published; Gradle receives the SDK read-only"
 fi
 
-echo "== (0j-archives) fixed archive authority (R-S11cs/R-S11ct; R-S11e-111/R-S11e-112) =="
+echo "== (0j-archives) fixed input authority (R-S11cs/R-S11ct/R-S11cu; R-S11e-111/R-S11e-112/R-S11e-113) =="
 r_s11cs=
 if ! /usr/bin/python3 -I -S scripts/online-fixed-archive-output.py self-test; then
   r_s11cs="$r_s11cs transaction-self-test-failed"
@@ -293,7 +293,7 @@ if [ -n "$r_s11cs" ]; then
   echo "  FAIL R-S11cs fixed toolchain archive authority:$r_s11cs"
   rc=1
 else
-  echo "  ok  R-S11cs/R-S11ct the fourteen toolchain archives and 33 vcpkg distfiles use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
+  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
 fi
 
 echo "== (0j) online-fetch Gradle output authority (R-S11cl/R-S11e-104) =="
@@ -7042,24 +7042,37 @@ for executable in "$systemd_host" "$systemd_guest" "$systemd_loginctl"; do
 done
 grep -qF 'DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD="20260712-2537"' scripts/pins.env \
   || r_s11c27m="$r_s11c27m dated-image-build-pin-missing"
+grep -qF 'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="346882048"' scripts/pins.env \
+  || r_s11c27m="$r_s11c27m image-size-pin-missing"
+grep -qF 'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999"' scripts/pins.env \
+  || r_s11c27m="$r_s11c27m acquisition-image-hash-pin-missing"
 grep -qF 'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"' scripts/pins.env \
   || r_s11c27m="$r_s11c27m publisher-image-hash-pin-missing"
 for token in \
   'fetch_debian_systemd_smoke_image()' \
-  'cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$name' \
+  'readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(' \
+  'cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$SYSTEMD_SMOKE_IMAGE_NAME' \
+  'cloud.debian.org,laotzu.ftp.acc.umu.se' \
   '[ -d "$harness_state" ] && [ ! -L "$harness_state" ]' \
-  '"$(stat -c '\''%u:%a'\'' "$harness_state")" = "$current_uid:700"' \
-  'curl -fsSL --proto '\''=https'\'' --tlsv1.2 -o "$dest.part" "$url"' \
-  'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE' \
-  '"$(stat -c '\''%u:%a:%h'\'' "$dest")" = "$current_uid:444:1"' \
+  '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700"' \
+  'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image' \
+  'verify_sha512 "$dest" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"' \
+  '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1"' \
+  '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:444:1"' \
   '--debian-systemd-smoke-image)'; do
   grep -qF -- "$token" scripts/online-fetch.sh \
     || r_s11c27m="$r_s11c27m online-fetch:${token%% *}"
 done
+if grep -qF -- 'dest.part' scripts/online-fetch.sh \
+   || grep -qF -- 'curl -fsSL --proto '\''=https'\'' --tlsv1.2' scripts/online-fetch.sh; then
+  r_s11c27m="$r_s11c27m host-systemd-image-downloader-regressed"
+fi
 for token in \
   '[ "$(id -u)" -ne 0 ]' \
   '[ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]' \
-  '"$(stat -c '\''%u:%a:%h'\'' "$IMAGE")" = "$(id -u):444:1"' \
+  'IMAGE_METADATA="$(stat -c '\''%u:%g:%a:%h'\'' "$IMAGE")"' \
+  '"$(id -u):$(id -g):400:1"' \
+  '"$(id -u):$(id -g):444:1"' \
   'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"' \
   'qemu-img check -q "$IMAGE"' \
   'docker run --rm --network none --read-only --pids-limit 64' \

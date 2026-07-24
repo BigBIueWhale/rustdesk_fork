@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind the fixed toolchain and vcpkg archive acquisition authority."""
+"""Bind fixed toolchain, vcpkg, and Debian image acquisition authority."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ FILES = {
     "pins": Path("scripts/pins.env"),
     "vcpkg_manifest": Path("res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"),
     "windows_tools": Path("res/vcpkg/libvpx/windows-tools.sha512"),
+    "systemd_smoke": Path("scripts/smoke-debian-systemd-lifecycle.sh"),
     "verify": Path("scripts/verify.sh"),
     "requirements": Path("requirements.html"),
     "ledger": Path("HARDENING_STATUS.md"),
@@ -26,6 +27,17 @@ FILES = {
 
 EXPECTED_VCPKG_MANIFEST_SHA256 = (
     "c90310083a22b9da7cebb9412275f3a551dd03f146fcf7f25fed84ab633b5a8f"
+)
+EXPECTED_SYSTEMD_IMAGE_NAME = (
+    "debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
+)
+EXPECTED_SYSTEMD_IMAGE_SIZE = "346882048"
+EXPECTED_SYSTEMD_IMAGE_SHA256 = (
+    "b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999"
+)
+EXPECTED_SYSTEMD_IMAGE_SHA512 = (
+    "6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b"
+    "7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"
 )
 
 EXPECTED_SIZES = {
@@ -194,6 +206,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     pins = sources["pins"]
     vcpkg_manifest = sources["vcpkg_manifest"]
     windows_tools = sources["windows_tools"]
+    systemd_smoke = sources["systemd_smoke"]
     verify = sources["verify"]
     requirements = sources["requirements"]
     ledger = sources["ledger"]
@@ -226,6 +239,52 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             f"exact archive digest pin changed: {variable}",
         )
         require(manifest.count(f'"${variable}"') == 1, f"digest pin is not consumed once: {variable}")
+    systemd_manifest_start = shell.find("readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(")
+    require(systemd_manifest_start >= 0, "systemd image manifest declaration is absent")
+    systemd_manifest_end = shell.find("\n)\n", systemd_manifest_start)
+    require(systemd_manifest_end >= 0, "systemd image manifest terminator is absent")
+    systemd_manifest = shell[systemd_manifest_start : systemd_manifest_end + 3]
+    expected_systemd_manifest = "\n".join(
+        (
+            '    --entry',
+            '    "$SYSTEMD_SMOKE_IMAGE_NAME"',
+            '    "https://cloud.debian.org/images/cloud/bookworm/'
+            '${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$SYSTEMD_SMOKE_IMAGE_NAME"',
+            '    "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            '    "$SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            '    "cloud.debian.org,laotzu.ftp.acc.umu.se"',
+        )
+    )
+    require(
+        systemd_manifest.count("--entry\n") == 1
+        and systemd_manifest.count(expected_systemd_manifest) == 1,
+        "systemd image manifest is not the exact one-entry acquisition profile",
+    )
+    require(
+        shell.count(f'readonly SYSTEMD_SMOKE_IMAGE_NAME="{EXPECTED_SYSTEMD_IMAGE_NAME}"') == 1,
+        "systemd image destination is not derived exactly from the dated build pin",
+    )
+    require(
+        pins.count(
+            f'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="{EXPECTED_SYSTEMD_IMAGE_SIZE}"'
+        )
+        == 1,
+        "systemd image exact size pin changed",
+    )
+    require(
+        pins.count(
+            f'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="{EXPECTED_SYSTEMD_IMAGE_SHA256}"'
+        )
+        == 1,
+        "systemd image acquisition SHA-256 pin changed",
+    )
+    require(
+        pins.count(
+            f'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="{EXPECTED_SYSTEMD_IMAGE_SHA512}"'
+        )
+        == 1,
+        "systemd image publisher SHA-512 pin changed",
+    )
     require(
         hashlib.sha256(vcpkg_manifest.encode("utf-8")).hexdigest()
         == EXPECTED_VCPKG_MANIFEST_SHA256,
@@ -285,18 +344,19 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"',
             'readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"',
             "readonly -a FIXED_ARCHIVE_ARGS=(",
+            "readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(",
             "load_vcpkg_fixed_archive_manifest",
             "reconcile_archive_bundle_transactions",
             "if ! shopt -q nullglob; then",
-            'transactions=("$ONLINE_DIR"/"$prefix".*)',
-            '/usr/bin/mktemp -d "$ONLINE_DIR/$prefix.XXXXXXXXXX"',
+            'transactions=("$root"/"$prefix".*)',
+            '/usr/bin/mktemp -d "$root/$prefix.XXXXXXXXXX"',
             '/usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" "$command"',
             '/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk',
-            'archive_bundle_tool "$kind" prepare "$staging"',
-            'archive_bundle_tool "$kind" verify "$staging"',
-            'archive_bundle_tool "$kind" publish "$staging"',
-            'archive_bundle_tool "$kind" reconcile "$staging"',
-            'exec {lock_fd}<"$ONLINE_DIR"',
+            'archive_bundle_tool "$kind" "$root" prepare "$staging"',
+            'archive_bundle_tool "$kind" "$root" verify "$staging"',
+            'archive_bundle_tool "$kind" "$root" publish "$staging"',
+            'archive_bundle_tool "$kind" "$root" reconcile "$staging"',
+            'exec {lock_fd}<"$root"',
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
             '"$FLOCK_BIN" --unlock "$lock_fd"',
             '--remove-private-root "$staging" --expected-identity "$expected_identity"',
@@ -307,8 +367,9 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             '--builder-id "$builder" --helper-sha256 "$helper_sha256"',
             "stage_fixed_archives",
             "stage_vcpkg_fixed_archives",
-            "stage_archive_bundle toolchain .rustdesk-fixed-archives",
-            "stage_archive_bundle vcpkg .rustdesk-vcpkg-fixed-archives",
+            'stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-fixed-archives',
+            'stage_archive_bundle vcpkg "$ONLINE_DIR" .rustdesk-vcpkg-fixed-archives',
+            'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image',
             "require_windows_operator_toolchain",
         ),
         "fixed archive shell transaction",
@@ -319,12 +380,20 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     )
     stage = function_block(shell, "stage_archive_bundle")
     require(
-        'source=$ONLINE_DIR,target=' not in stage,
-        "fixed archive producer receives the online root",
+        'source=$root,target=' not in stage and 'source=$ONLINE_DIR,target=' not in stage,
+        "fixed archive producer receives a publication root",
     )
     require("--privileged" not in stage and "--cap-add" not in stage, "archive stage widens privilege")
     require("-p " not in stage and "--publish" not in stage, "archive stage publishes a port")
     main = function_block(shell, "main")
+    require_all(
+        main,
+        (
+            'if [ "${1:-}" != "--debian-systemd-smoke-image" ]; then',
+            "prepare_online_root",
+        ),
+        "systemd image online-root separation",
+    )
     require(main.count("stage_fixed_archives") == 1, "main does not invoke one fixed archive stage")
     require(
         main.index("load_builder_images") < main.index("stage_fixed_archives") < main.index("build_frb_codegen"),
@@ -341,6 +410,38 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         and ".part\" \"$tool_url\"" not in libvpx_stage,
         "legacy host SHA-512 codec downloader remains reachable",
     )
+    systemd_fetch = function_block(shell, "fetch_debian_systemd_smoke_image")
+    require_all(
+        systemd_fetch,
+        (
+            '[ -d "$harness_state" ] && [ ! -L "$harness_state" ]',
+            '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700"',
+            'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image',
+            'verify_sha512 "$dest" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1"',
+            '"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:444:1"',
+        ),
+        "systemd image transaction",
+    )
+    require(
+        "curl " not in systemd_fetch
+        and ".part" not in systemd_fetch
+        and "rm -f" not in systemd_fetch
+        and "\nmv " not in systemd_fetch
+        and "\nchmod " not in systemd_fetch,
+        "legacy host systemd image download/publication remains reachable",
+    )
+    require_all(
+        systemd_smoke,
+        (
+            'IMAGE_METADATA="$(stat -c \'%u:%g:%a:%h\' "$IMAGE")"',
+            '"$(id -u):$(id -g):400:1"',
+            '"$(id -u):$(id -g):444:1"',
+            'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            'qemu-img check -q "$IMAGE"',
+        ),
+        "systemd image independent consumer",
+    )
 
     require_all(
         helper,
@@ -348,8 +449,17 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'FORMAT = "rustdesk-fixed-archive-output-v1"',
             "MAX_REDIRECTS = 5",
             "CHUNK_SIZE = 1024 * 1024",
+            "DOWNLOAD_TIMEOUT_SECONDS = 120",
+            "SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 300",
+            "def download_timeout_seconds(spec: ArchiveSpec) -> int:",
+            "timeout=download_timeout_seconds(spec)",
+            "if len(specs) == 1:",
             "if len(specs) == 14:",
             "if len(specs) == 33:",
+            "is_debian_systemd_image_name(names[0])",
+            "the one-entry systemd image manifest has a noncanonical destination",
+            "if is_debian_systemd_image_name(spec.name):",
+            "root_profiles: set[tuple[int, int, int]] = set()",
             "validate_manifest_shape(specs)",
             "exactly 32 windows-tools/ archives",
             'char in "._+~-"',
@@ -384,6 +494,11 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "self-test accepted an occupied wrong archive destination",
             "self-test accepted an unsafe nested archive parent as missing",
             "self-test accepted an unsafe vcpkg archive parent",
+            "systemd-image self-test publication omitted its image",
+            "systemd-image self-test rejected historical mode-0444 output",
+            "systemd-image self-test accepted writable published output",
+            "systemd-image self-test lost its bounded large-image timeout",
+            "archive self-test widened the ordinary download timeout",
             "vcpkg self-test publication omitted an archive",
             "self-test accepted a response without admitted length framing",
         ),
@@ -396,6 +511,10 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     require(
         helper.count("except MissingPathError:") == 2,
         "missing and unsafe parent paths are not distinguished at both decision points",
+    )
+    require(
+        helper.count("if is_debian_systemd_image_name(spec.name):") == 2,
+        "systemd image timeout and metadata predicates are not both singular",
     )
     require(
         "os.O_WRONLY\n                | os.O_CREAT\n                | os.O_EXCL\n                | os.O_CLOEXEC\n                | os.O_NOFOLLOW"
@@ -435,10 +554,22 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         '<span class="id">R-S11ct</span>' in requirements,
         "requirements omit the normative R-S11ct block",
     )
+    require(
+        '<span class="id">R-S11cu</span>' in requirements,
+        "requirements omit the normative R-S11cu block",
+    )
+    require(
+        "exactly <code>cloud.debian.org</code> and the currently reviewed "
+        "Debian-selected final host <code>laotzu.ftp.acc.umu.se</code>"
+        in requirements,
+        "requirements omit the exact systemd image redirect-host boundary",
+    )
     require("<td>246</td>" in requirements, "Appendix C omits item 246")
     require("<td>247</td>" in requirements, "Appendix C omits item 247")
+    require("<td>248</td>" in requirements, "Appendix C omits item 248")
     require("R-S11cs/R-S11e-111" in ledger, "hardening ledger omits R-S11e-111")
     require("R-S11ct/R-S11e-112" in ledger, "hardening ledger omits R-S11e-112")
+    require("R-S11cu/R-S11e-113" in ledger, "hardening ledger omits R-S11e-113")
 
 
 @dataclass(frozen=True)
@@ -469,8 +600,8 @@ MUTATIONS = (
     Mutation("shell", "--builder-id \"$builder\"", "--builder-id sha256:bad", "builder binding"),
     Mutation(
         "shell",
-        'archive_bundle_tool "$kind" publish',
-        'archive_bundle_tool "$kind" publish_removed',
+        'archive_bundle_tool "$kind" "$root" publish',
+        'archive_bundle_tool "$kind" "$root" publish_removed',
         "publication",
     ),
     Mutation(
@@ -481,7 +612,7 @@ MUTATIONS = (
     ),
     Mutation(
         "shell",
-        'transactions=("$ONLINE_DIR"/"$prefix".*)',
+        'transactions=("$root"/"$prefix".*)',
         "transactions=()",
         "complete stale-transaction inventory",
     ),
@@ -536,9 +667,77 @@ MUTATIONS = (
     ),
     Mutation(
         "helper",
+        "if len(specs) == 1:",
+        "if len(specs) == 2:",
+        "closed systemd image manifest count",
+    ),
+    Mutation(
+        "helper",
+        "if is_debian_systemd_image_name(spec.name):\n"
+        "                    current_profiles = {",
+        "if False:\n"
+        "                    current_profiles = {",
+        "systemd image read-only metadata profiles",
+    ),
+    Mutation(
+        "pins",
+        f'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="{EXPECTED_SYSTEMD_IMAGE_SIZE}"',
+        'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="346882049"',
+        "systemd image length pin",
+    ),
+    Mutation(
+        "pins",
+        f'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="{EXPECTED_SYSTEMD_IMAGE_SHA256}"',
+        'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="bad"',
+        "systemd image acquisition digest pin",
+    ),
+    Mutation(
+        "shell",
+        'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image',
+        'stage_archive_bundle systemd "$ONLINE_DIR" .rustdesk-debian-systemd-image',
+        "systemd image publication namespace",
+    ),
+    Mutation(
+        "shell",
+        "cloud.debian.org,laotzu.ftp.acc.umu.se",
+        "cloud.debian.org",
+        "systemd image exact redirect-host set",
+    ),
+    Mutation(
+        "shell",
+        'if [ "${1:-}" != "--debian-systemd-smoke-image" ]; then',
+        'if [ -n "${1:-}" ]; then',
+        "systemd image online-root separation",
+    ),
+    Mutation(
+        "systemd_smoke",
+        'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+        "true # publisher digest bypassed",
+        "systemd image downstream SHA-512 proof",
+    ),
+    Mutation(
+        "helper",
         'char in "._+~-"',
         'char in "._+-"',
         "canonical tilde-bearing tool name",
+    ),
+    Mutation(
+        "helper",
+        "DOWNLOAD_TIMEOUT_SECONDS = 120",
+        "DOWNLOAD_TIMEOUT_SECONDS = 300",
+        "ordinary archive I/O timeout",
+    ),
+    Mutation(
+        "helper",
+        "SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 300",
+        "SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 301",
+        "systemd image I/O timeout",
+    ),
+    Mutation(
+        "helper",
+        "timeout=download_timeout_seconds(spec)",
+        "timeout=DOWNLOAD_TIMEOUT_SECONDS",
+        "profile-specific I/O timeout selection",
     ),
     Mutation("helper", 'parsed.scheme != "https"', 'parsed.scheme not in ("http", "https")', "HTTPS only"),
     Mutation("helper", "urllib.request.ProxyHandler({})", "urllib.request.ProxyHandler()", "ambient proxy removal"),
@@ -608,6 +807,24 @@ MUTATIONS = (
     ),
     Mutation("requirements", "<td>247</td>", "<td>247-removed</td>", "vcpkg Appendix disposition"),
     Mutation(
+        "requirements",
+        '<span class="id">R-S11cu</span>',
+        '<span class="id">R-S11cu-removed</span>',
+        "systemd image normative requirement",
+    ),
+    Mutation(
+        "requirements",
+        "Debian-selected final host <code>laotzu.ftp.acc.umu.se</code>",
+        "ambient Debian mirror set",
+        "systemd image normative redirect-host boundary",
+    ),
+    Mutation(
+        "requirements",
+        "<td>248</td>",
+        "<td>248-removed</td>",
+        "systemd image Appendix disposition",
+    ),
+    Mutation(
         "ledger",
         "R-S11cs/R-S11e-111",
         "R-S11cs-removed/R-S11e-111",
@@ -618,6 +835,12 @@ MUTATIONS = (
         "R-S11ct/R-S11e-112",
         "R-S11ct-removed/R-S11e-112",
         "vcpkg ledger disposition",
+    ),
+    Mutation(
+        "ledger",
+        "R-S11cu/R-S11e-113",
+        "R-S11cu-removed/R-S11e-113",
+        "systemd image ledger disposition",
     ),
 )
 

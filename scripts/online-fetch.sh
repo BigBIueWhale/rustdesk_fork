@@ -144,6 +144,15 @@ readonly -a FIXED_ARCHIVE_ARGS=(
     "static.rust-lang.org"
 )
 declare -a VCPKG_FIXED_ARCHIVE_ARGS=()
+readonly SYSTEMD_SMOKE_IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
+readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(
+    --entry
+    "$SYSTEMD_SMOKE_IMAGE_NAME"
+    "https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$SYSTEMD_SMOKE_IMAGE_NAME"
+    "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+    "$SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+    "cloud.debian.org,laotzu.ftp.acc.umu.se"
+)
 
 ONLINE_FETCH_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-online-fetch.XXXXXXXXXX)" \
     || die "cannot create the private online-fetch workspace"
@@ -341,17 +350,19 @@ online_docker_run_archive_acquisition() {
         "$@"
 }
 
-if [ -e "$ONLINE_DIR" ] || [ -L "$ONLINE_DIR" ]; then
-    [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
-        || die "online cache root is not one real directory"
-    [ "$(/usr/bin/stat -c '%u:%g' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" ] \
-        || die "online cache root is not owned by the acquisition identity"
-    /usr/bin/chmod 0700 "$ONLINE_DIR"
-else
-    /usr/bin/install -d -m 0700 "$ONLINE_DIR"
-fi
-[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
-    || die "online cache root is not current-user-private mode 0700"
+prepare_online_root() {
+    if [ -e "$ONLINE_DIR" ] || [ -L "$ONLINE_DIR" ]; then
+        [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
+            || die "online cache root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" ] \
+            || die "online cache root is not owned by the acquisition identity"
+        /usr/bin/chmod 0700 "$ONLINE_DIR"
+    else
+        /usr/bin/install -d -m 0700 "$ONLINE_DIR"
+    fi
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "online cache root is not current-user-private mode 0700"
+}
 assert_online_fetch_docker_authority
 
 # The installed-systemd behavior gate needs a real PID-1/cgroup environment but
@@ -362,53 +373,36 @@ assert_online_fetch_docker_authority
 fetch_debian_systemd_smoke_image() {
     local harness_state="$REPO_ROOT/.harness-state"
     local state_dir="$harness_state/debian-systemd-smoke"
-    local name="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
-    local dest="$state_dir/$name"
-    local url="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}/$name"
-    local current_uid
-    current_uid=$(id -u)
+    local dest="$state_dir/$SYSTEMD_SMOKE_IMAGE_NAME"
+    local metadata
     if [ -e "$harness_state" ] || [ -L "$harness_state" ]; then
         [ -d "$harness_state" ] && [ ! -L "$harness_state" ] \
             || die "harness state root is not one real directory"
     else
-        mkdir -m 0700 -- "$harness_state"
+        /usr/bin/install -d -m 0700 -- "$harness_state"
     fi
-    [ "$(stat -c '%u:%a' "$harness_state")" = "$current_uid:700" ] \
-        || die "harness state root is not current-user-owned mode 0700"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$harness_state")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "harness state root is not acquisition-identity-owned mode 0700"
     if [ -e "$state_dir" ] || [ -L "$state_dir" ]; then
         [ -d "$state_dir" ] && [ ! -L "$state_dir" ] \
             || die "systemd smoke state directory is not one real directory"
     else
-        mkdir -m 0700 -- "$state_dir"
+        /usr/bin/install -d -m 0700 -- "$state_dir"
     fi
-    [ "$(stat -c '%u:%a' "$state_dir")" = "$current_uid:700" ] \
-        || die "systemd smoke state directory is not current-user-owned mode 0700"
-    if [ -f "$dest" ] && [ ! -L "$dest" ] \
-       && [ "$(sha512sum "$dest" | awk '{print $1}')" = "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE" ]; then
-        [ "$(stat -c '%u:%h' "$dest")" = "$current_uid:1" ] \
-            || die "cached systemd smoke image has unsafe ownership or links"
-        chmod 0444 "$dest"
-        [ "$(stat -c '%u:%a:%h' "$dest")" = "$current_uid:444:1" ] \
-            || die "cached systemd smoke image has unsafe ownership, mode, or links"
-        log "cached + SHA512-verified, skipping: $name"
-        return 0
-    fi
-    [ ! -e "$dest.part" ] && [ ! -L "$dest.part" ] \
-        || die "stale systemd smoke image download temporary exists: $dest.part"
-    log "fetching pinned Debian systemd smoke image: $url"
-    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$dest.part" "$url"; then
-        rm -f "$dest.part"
-        die "failed to fetch pinned Debian systemd smoke image"
-    fi
-    [ "$(sha512sum "$dest.part" | awk '{print $1}')" = "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE" ] || {
-        rm -f "$dest.part"
-        die "SHA512 mismatch for pinned Debian systemd smoke image"
-    }
-    chmod 0444 "$dest.part"
-    mv "$dest.part" "$dest"
-    [ "$(stat -c '%u:%a:%h' "$dest")" = "$current_uid:444:1" ] \
-        || die "fetched systemd smoke image has unsafe ownership, mode, or links"
-    log "Debian systemd smoke image cached + SHA512-verified: $dest"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$state_dir")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "systemd smoke state directory is not acquisition-identity-owned mode 0700"
+    stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image \
+        "pinned Debian systemd smoke image"
+    verify_sha512 "$dest" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+    metadata="$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$dest")"
+    case "$metadata" in
+        "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" | \
+        "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:444:1") ;;
+        *) die "systemd smoke image is outside its closed read-only metadata profiles" ;;
+    esac
+    log "Debian systemd smoke image acquired transactionally and SHA512-verified: $dest"
 }
 
 libvpx_native_key() {
@@ -568,16 +562,17 @@ load_vcpkg_fixed_archive_manifest() {
 }
 
 archive_bundle_tool() {
-    local kind="$1" command="$2" staging="$3" helper_sha256="$4" builder="$5"
+    local kind="$1" root="$2" command="$3" staging="$4" helper_sha256="$5" builder="$6"
     local -a archive_args=()
-    shift 5
+    shift 6
     case "$kind" in
+        systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
         toolchain) archive_args=("${FIXED_ARCHIVE_ARGS[@]}") ;;
         vcpkg) archive_args=("${VCPKG_FIXED_ARCHIVE_ARGS[@]}") ;;
         *) die "unknown fixed-archive bundle kind: $kind" ;;
     esac
     /usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" "$command" \
-        --online "$ONLINE_DIR" --staging "$staging" \
+        --online "$root" --staging "$staging" \
         --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
         --builder-id "$builder" --helper-sha256 "$helper_sha256" \
         "${archive_args[@]}" "$@"
@@ -592,28 +587,28 @@ retire_archive_bundle_staging() {
 }
 
 reconcile_archive_bundle_transactions() {
-    local kind="$1" prefix="$2" helper_sha256="$3" builder="$4"
+    local kind="$1" root="$2" prefix="$3" helper_sha256="$4" builder="$5"
     local staging staging_identity restore_nullglob=0
     local -a transactions=()
     if ! shopt -q nullglob; then
         shopt -s nullglob
         restore_nullglob=1
     fi
-    transactions=("$ONLINE_DIR"/"$prefix".*)
+    transactions=("$root"/"$prefix".*)
     [ "$restore_nullglob" -eq 0 ] || shopt -u nullglob
     for staging in "${transactions[@]}"; do
         [ -d "$staging" ] && [ ! -L "$staging" ] \
             || die "fixed-archive transaction path is not one real directory: $staging"
         staging_identity="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
         if [ -e "$staging/state.json" ] || [ -L "$staging/state.json" ]; then
-            archive_bundle_tool "$kind" reconcile "$staging" "$helper_sha256" "$builder"
+            archive_bundle_tool "$kind" "$root" reconcile "$staging" "$helper_sha256" "$builder"
         fi
         retire_archive_bundle_staging "$staging" "$staging_identity"
     done
 }
 
 stage_archive_bundle() {
-    local kind="$1" prefix="$2" label="$3"
+    local kind="$1" root="$2" prefix="$3" label="$4"
     local builder="$ANDROID_BUILDER_IMAGE_ID"
     local lock_fd helper_sha256 staging staging_identity action
     local producer_status=0 verification_status=0 publication_status=0
@@ -621,19 +616,19 @@ stage_archive_bundle() {
     [ -f "$FIXED_ARCHIVE_HELPER" ] && [ ! -L "$FIXED_ARCHIVE_HELPER" ] \
         || die "fixed-archive helper is not one real source file"
     helper_sha256="$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}')"
-    exec {lock_fd}<"$ONLINE_DIR" \
-        || die "cannot open the online root for fixed-archive transaction locking"
+    exec {lock_fd}<"$root" \
+        || die "cannot open the publication root for fixed-archive transaction locking"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
-        || die "another online output transaction owns the online root"
-    reconcile_archive_bundle_transactions "$kind" "$prefix" "$helper_sha256" "$builder"
-    staging="$(umask 077 && /usr/bin/mktemp -d "$ONLINE_DIR/$prefix.XXXXXXXXXX")" \
+        || die "another fixed-archive transaction owns the publication root"
+    reconcile_archive_bundle_transactions "$kind" "$root" "$prefix" "$helper_sha256" "$builder"
+    staging="$(umask 077 && /usr/bin/mktemp -d "$root/$prefix.XXXXXXXXXX")" \
         || die "cannot create private fixed-archive transaction staging"
     staging_identity="$(/usr/bin/stat -c '%d:%i' -- "$staging")"
-    action="$(archive_bundle_tool "$kind" prepare "$staging" "$helper_sha256" "$builder")" \
+    action="$(archive_bundle_tool "$kind" "$root" prepare "$staging" "$helper_sha256" "$builder")" \
         || die "cannot prepare fixed-archive transaction"
     case "$action" in
         complete)
-            archive_bundle_tool "$kind" reconcile "$staging" "$helper_sha256" "$builder" \
+            archive_bundle_tool "$kind" "$root" reconcile "$staging" "$helper_sha256" "$builder" \
                 || die "cannot reconcile complete fixed-archive transaction"
             retire_archive_bundle_staging "$staging" "$staging_identity"
             "$FLOCK_BIN" --unlock "$lock_fd" \
@@ -656,14 +651,14 @@ stage_archive_bundle() {
             --builder-id "$builder" --helper-sha256 "$helper_sha256" \
         || producer_status=$?
     if [ "$producer_status" -eq 0 ]; then
-        archive_bundle_tool "$kind" verify "$staging" "$helper_sha256" "$builder" \
+        archive_bundle_tool "$kind" "$root" verify "$staging" "$helper_sha256" "$builder" \
             || verification_status=$?
     fi
     if [ "$producer_status" -eq 0 ] && [ "$verification_status" -eq 0 ]; then
-        archive_bundle_tool "$kind" publish "$staging" "$helper_sha256" "$builder" \
+        archive_bundle_tool "$kind" "$root" publish "$staging" "$helper_sha256" "$builder" \
             || publication_status=$?
     fi
-    archive_bundle_tool "$kind" reconcile "$staging" "$helper_sha256" "$builder" \
+    archive_bundle_tool "$kind" "$root" reconcile "$staging" "$helper_sha256" "$builder" \
         || die "fixed-archive transaction is incoherent and was preserved at $staging"
     retire_archive_bundle_staging "$staging" "$staging_identity"
     "$FLOCK_BIN" --unlock "$lock_fd" \
@@ -676,13 +671,13 @@ stage_archive_bundle() {
 }
 
 stage_fixed_archives() {
-    stage_archive_bundle toolchain .rustdesk-fixed-archives \
+    stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-fixed-archives \
         "fixed toolchain and installer archives"
 }
 
 stage_vcpkg_fixed_archives() {
     load_vcpkg_fixed_archive_manifest
-    stage_archive_bundle vcpkg .rustdesk-vcpkg-fixed-archives \
+    stage_archive_bundle vcpkg "$ONLINE_DIR" .rustdesk-vcpkg-fixed-archives \
         "fixed libvpx source and Windows tool archives"
 }
 
@@ -2556,6 +2551,9 @@ stage_windows_wix_nuget() {
 }
 
 main() {
+    if [ "${1:-}" != "--debian-systemd-smoke-image" ]; then
+        prepare_online_root
+    fi
     case "${1:-}" in
         --libvpx-distfiles)
             [ "$#" -eq 1 ] || die "--libvpx-distfiles takes no arguments"

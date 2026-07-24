@@ -3134,6 +3134,11 @@ def validate_systemd_smoke_contract(
 
     for text, label in (
         ('[ "$(id -u)" -ne 0 ]', "systemd VM unprivileged host boundary"),
+        ('IMAGE_METADATA="$(stat -c \'%u:%g:%a:%h\' "$IMAGE")"', "systemd VM image metadata read"),
+        (
+            '"$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;',
+            "systemd VM closed current/historical image metadata profiles",
+        ),
         ('verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"', "systemd VM base hash proof"),
         ('qemu-img check -q "$IMAGE"', "systemd VM base structural proof"),
         ('docker run --rm --network none --read-only --pids-limit 64', "systemd VM dependency staging confinement"),
@@ -3227,19 +3232,47 @@ def validate_systemd_smoke_contract(
     )
     require_text(
         pins,
+        'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="346882048"',
+        "systemd VM acquisition size pin",
+    )
+    require_text(
+        pins,
+        'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999"',
+        "systemd VM acquisition hash pin",
+    )
+    require_text(
+        pins,
         'SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE="6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"',
         "systemd VM publisher hash pin",
     )
     for text, label in (
         ("fetch_debian_systemd_smoke_image()", "systemd VM sole fetch mode"),
+        ("readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(", "systemd VM one-entry acquisition profile"),
+        (
+            'if [ "${1:-}" != "--debian-systemd-smoke-image" ]; then',
+            "systemd VM unrelated online-root separation",
+        ),
         ('[ -d "$harness_state" ] && [ ! -L "$harness_state" ]', "systemd VM private state root"),
-        ('"$(stat -c \'%u:%a\' "$harness_state")" = "$current_uid:700"', "systemd VM private state authority"),
-        ('curl -fsSL --proto \'=https\' --tlsv1.2 -o "$dest.part" "$url"', "systemd VM HTTPS fetch"),
-        ('SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE', "systemd VM fetched-image hash proof"),
-        ('"$(stat -c \'%u:%a:%h\' "$dest")" = "$current_uid:444:1"', "systemd VM fetched-image authority"),
+        ('"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700"', "systemd VM private state authority"),
+        (
+            'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image',
+            "systemd VM confined transaction",
+        ),
+        (
+            'verify_sha512 "$dest" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            "systemd VM fetched-image publisher hash proof",
+        ),
+        ('"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1"', "systemd VM new-image authority"),
+        ('"$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:444:1"', "systemd VM historical-image authority"),
         ("--debian-systemd-smoke-image)", "systemd VM explicit fetch dispatch"),
     ):
         require_text(online_fetch, text, label)
+    require_absent(online_fetch, "dest.part", "systemd VM predictable partial download")
+    require_absent(
+        online_fetch,
+        'curl -fsSL --proto \'=https\' --tlsv1.2',
+        "systemd VM host network client",
+    )
     require_text(
         release,
         "smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference",
@@ -11126,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+        "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15019,7 +15052,7 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
     funnel = extract_between(
         online,
         "online_docker_run_archive_acquisition() {",
-        "\n}\n\nif [ -e \"$ONLINE_DIR\" ]",
+        "\n}\n\nprepare_online_root()",
         "Android SDK archive acquisition funnel",
     )
     for text, label in (
@@ -15173,7 +15206,7 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     online = sources["online_fetch"]
     for text, label in (
         (
-            "Bind the fixed toolchain and vcpkg archive acquisition authority",
+            "Bind fixed toolchain, vcpkg, and Debian image acquisition authority",
             "fixed-archive focused authority binding",
         ),
         (
@@ -15206,23 +15239,23 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive exclusive transaction",
         ),
         (
-            '/usr/bin/mktemp -d "$ONLINE_DIR/$prefix.XXXXXXXXXX"',
+            '/usr/bin/mktemp -d "$root/$prefix.XXXXXXXXXX"',
             "fixed-archive unpredictable same-filesystem staging",
         ),
         (
-            'archive_bundle_tool "$kind" prepare',
+            'archive_bundle_tool "$kind" "$root" prepare',
             "fixed-archive durable prepare",
         ),
         (
-            'archive_bundle_tool "$kind" verify',
+            'archive_bundle_tool "$kind" "$root" verify',
             "fixed-archive independent host verdict",
         ),
         (
-            'archive_bundle_tool "$kind" publish',
+            'archive_bundle_tool "$kind" "$root" publish',
             "fixed-archive checked publication",
         ),
         (
-            'archive_bundle_tool "$kind" reconcile',
+            'archive_bundle_tool "$kind" "$root" reconcile',
             "fixed-archive restart recovery",
         ),
         (
@@ -15245,10 +15278,28 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         require_text(lifecycle, text, label)
     require_exact_count(lifecycle, "--mount ", 3, "fixed-archive exact mount inventory")
     require_absent(lifecycle, "source=$ONLINE_DIR,target=", "fixed-archive broad online mount")
+    require_text(
+        online,
+        "cloud.debian.org,laotzu.ftp.acc.umu.se",
+        "fixed-archive systemd-image redirect-host set",
+    )
     for text, label in (
         (
             'FORMAT = "rustdesk-fixed-archive-output-v1"',
             "fixed-archive state format",
+        ),
+        (
+            "if len(specs) == 1:",
+            "fixed-archive closed systemd-image cardinality",
+        ),
+        (
+            "the one-entry systemd image manifest has a noncanonical destination",
+            "fixed-archive systemd-image name closure",
+        ),
+        (
+            "if is_debian_systemd_image_name(spec.name):\n"
+            "                    current_profiles = {",
+            "fixed-archive systemd-image metadata profile",
         ),
         (
             "if len(specs) == 14:",
@@ -15265,6 +15316,18 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         (
             "MAX_REDIRECTS = 5",
             "fixed-archive redirect bound",
+        ),
+        (
+            "DOWNLOAD_TIMEOUT_SECONDS = 120",
+            "fixed-archive ordinary I/O timeout",
+        ),
+        (
+            "SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 300",
+            "fixed-archive systemd-image I/O timeout",
+        ),
+        (
+            "timeout=download_timeout_seconds(spec)",
+            "fixed-archive profile-specific I/O timeout selection",
         ),
         (
             'response.headers.get("Content-Length")',
@@ -15311,6 +15374,14 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive unsafe-vcpkg-parent fixture",
         ),
         (
+            "systemd-image self-test publication omitted its image",
+            "fixed-archive systemd-image lifecycle fixture",
+        ),
+        (
+            "systemd-image self-test accepted writable published output",
+            "fixed-archive systemd-image writable-output rejection fixture",
+        ),
+        (
             "self-test accepted a response without admitted length framing",
             "fixed-archive unframed-response fixture",
         ),
@@ -15339,6 +15410,11 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11cu</span>',
+        "systemd-image fixed-input normative requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>246</td>",
         "fixed-archive Appendix C row",
     )
@@ -15346,6 +15422,11 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         sources["requirements"],
         "<tr><td>247</td>",
         "vcpkg fixed-archive Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>248</td>",
+        "systemd-image fixed-input Appendix C row",
     )
     require_text(
         sources["hardening"],
@@ -15356,6 +15437,11 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         sources["hardening"],
         "R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority",
         "vcpkg fixed-archive hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority",
+        "systemd-image fixed-input hardening ledger",
     )
 
 
@@ -30121,6 +30207,18 @@ def run_source_mutations(sources):
             "systemd VM publisher hash pin",
         ),
         (
+            "pins",
+            'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="346882048"',
+            'SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE="346882049"',
+            "systemd VM acquisition size pin",
+        ),
+        (
+            "pins",
+            'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999"',
+            'SHA256_DEBIAN_SYSTEMD_SMOKE_IMAGE="unverified"',
+            "systemd VM acquisition hash pin",
+        ),
+        (
             "online_fetch",
             "fetch_debian_systemd_smoke_image()",
             "fetch_debian_systemd_smoke_image_disabled()",
@@ -30128,9 +30226,27 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
+            'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image',
+            'stage_archive_bundle systemd "$ONLINE_DIR" .rustdesk-debian-systemd-image',
+            "systemd VM confined transaction",
+        ),
+        (
+            "online_fetch",
+            'if [ "${1:-}" != "--debian-systemd-smoke-image" ]; then',
+            'if [ -n "${1:-}" ]; then',
+            "systemd VM unrelated online-root separation",
+        ),
+        (
+            "online_fetch",
             '[ -d "$harness_state" ] && [ ! -L "$harness_state" ]',
             '[ -d "$harness_state" ]',
             "systemd VM private state root",
+        ),
+        (
+            "systemd_smoke_host",
+            '"$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;',
+            '"$(id -u):$(id -g):600:1" | "$(id -u):$(id -g):444:1") ;;',
+            "systemd VM closed current/historical image metadata profiles",
         ),
         (
             "smoke",
@@ -33016,7 +33132,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11ct, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247",
+            "R-S11n through R-S11cu, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -35636,6 +35752,38 @@ def run_source_mutations(sources):
         ),
         (
             "online_fixed_archive_output_helper",
+            "if len(specs) == 1:",
+            "if len(specs) == 2:",
+            "fixed-archive closed systemd-image cardinality",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "if is_debian_systemd_image_name(spec.name):\n"
+            "                    current_profiles = {",
+            "if False:\n"
+            "                    current_profiles = {",
+            "fixed-archive systemd-image metadata profile",
+        ),
+        (
+            "online_fetch",
+            "cloud.debian.org,laotzu.ftp.acc.umu.se",
+            "cloud.debian.org",
+            "fixed-archive systemd-image redirect-host set",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 300",
+            "SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 301",
+            "fixed-archive systemd-image I/O timeout",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "timeout=download_timeout_seconds(spec)",
+            "timeout=DOWNLOAD_TIMEOUT_SECONDS",
+            "fixed-archive profile-specific I/O timeout selection",
+        ),
+        (
+            "online_fixed_archive_output_helper",
             "urllib.request.ProxyHandler({})",
             "urllib.request.ProxyHandler()",
             "fixed-archive ambient proxy removal",
@@ -35690,6 +35838,18 @@ def run_source_mutations(sources):
             "vcpkg fixed-archive Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11cu</span>',
+            '<span class="id">R-S11cu-disabled</span>',
+            "systemd-image fixed-input normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>248</td>",
+            "<tr><td>248-disabled</td>",
+            "systemd-image fixed-input Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority",
             "R-S11cs-disabled/R-S11e-111 — ambient archive acquisition authority",
@@ -35700,6 +35860,12 @@ def run_source_mutations(sources):
             "R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority",
             "R-S11ct-disabled/R-S11e-112 — ambient vcpkg archive authority",
             "vcpkg fixed-archive hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority",
+            "R-S11cu-disabled/R-S11e-113 — ambient systemd image authority",
+            "systemd-image fixed-input hardening ledger",
         ),
         (
             "online_fetch_android_ndk_output_authority_verifier",

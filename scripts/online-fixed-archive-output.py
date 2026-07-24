@@ -29,6 +29,8 @@ RENAME_NOREPLACE = 1
 MAX_STATE_BYTES = 128 * 1024
 MAX_REDIRECTS = 5
 CHUNK_SIZE = 1024 * 1024
+DOWNLOAD_TIMEOUT_SECONDS = 120
+SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS = 300
 USER_AGENT = "rustdesk-fixed-archive-acquisition/1"
 
 
@@ -173,8 +175,33 @@ def validate_name(name: str) -> tuple[str, ...]:
     return parts
 
 
+def is_debian_systemd_image_name(name: str) -> bool:
+    parts = validate_name(name)
+    prefix = "debian-12-genericcloud-amd64-"
+    suffix = ".qcow2"
+    if len(parts) != 1 or not name.startswith(prefix) or not name.endswith(suffix):
+        return False
+    build = name[len(prefix) : -len(suffix)]
+    return (
+        len(build) == 13
+        and build[8] == "-"
+        and build[:8].isdigit()
+        and build[9:].isdigit()
+    )
+
+
+def download_timeout_seconds(spec: ArchiveSpec) -> int:
+    if is_debian_systemd_image_name(spec.name):
+        return SYSTEMD_IMAGE_DOWNLOAD_TIMEOUT_SECONDS
+    return DOWNLOAD_TIMEOUT_SECONDS
+
+
 def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
     names = tuple(spec.name for spec in specs)
+    if len(specs) == 1:
+        if not is_debian_systemd_image_name(names[0]):
+            fail("the one-entry systemd image manifest has a noncanonical destination")
+        return
     if len(specs) == 14:
         if any(
             len(validate_name(name)) > 1 and validate_name(name)[0] != "win"
@@ -204,8 +231,9 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             )
         return
     fail(
-        "the archive manifest must contain exactly 14 toolchain entries "
-        f"or 33 vcpkg distfile entries, got {len(specs)}"
+        "the archive manifest must contain exactly one Debian systemd image, "
+        "14 toolchain entries, or 33 vcpkg distfile entries, "
+        f"got {len(specs)}"
     )
 
 
@@ -467,13 +495,20 @@ def validate_archive_at(
                 if (metadata.st_uid, metadata.st_gid, mode) != (uid, gid, 0o400):
                     fail(f"archive candidate metadata is not current-owner mode 0400: {spec.name}")
             else:
-                current_profiles = {
-                    (uid, gid, 0o400),
-                    (uid, gid, 0o444),
-                    (uid, gid, 0o644),
-                    (uid, gid, 0o664),
-                }
-                root_profiles = {(0, 0, 0o444), (0, 0, 0o644)}
+                if is_debian_systemd_image_name(spec.name):
+                    current_profiles = {
+                        (uid, gid, 0o400),
+                        (uid, gid, 0o444),
+                    }
+                    root_profiles: set[tuple[int, int, int]] = set()
+                else:
+                    current_profiles = {
+                        (uid, gid, 0o400),
+                        (uid, gid, 0o444),
+                        (uid, gid, 0o644),
+                        (uid, gid, 0o664),
+                    }
+                    root_profiles = {(0, 0, 0o444), (0, 0, 0o644)}
                 if (metadata.st_uid, metadata.st_gid, mode) not in current_profiles | root_profiles:
                     fail(f"published archive metadata is outside the closed profiles: {spec.name}")
             if os.listxattr(descriptor):
@@ -690,7 +725,10 @@ def download_archive(
         digest = hashlib.sha256()
         total = 0
         try:
-            with opener.open(request, timeout=120) as response:
+            with opener.open(
+                request,
+                timeout=download_timeout_seconds(spec),
+            ) as response:
                 if getattr(response, "status", None) != 200:
                     fail(f"archive response status is not 200: {spec.name}")
                 final_url = urllib.parse.urlsplit(response.geturl())
@@ -1336,6 +1374,22 @@ def test_vcpkg_specs() -> tuple[ArchiveSpec, ...]:
     return parse_specs(records)
 
 
+def test_systemd_image_specs() -> tuple[ArchiveSpec, ...]:
+    name = "debian-12-genericcloud-amd64-20260712-2537.qcow2"
+    payload = b"systemd-image-fixture"
+    return parse_specs(
+        [
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        ]
+    )
+
+
 def self_test() -> None:
     uid = os.geteuid()
     gid = os.getegid()
@@ -1484,6 +1538,113 @@ def self_test() -> None:
                     fail("vcpkg self-test publication omitted an archive")
         finally:
             os.close(vcpkg_online_fd)
+
+        systemd_specs = test_systemd_image_specs()
+        if download_timeout_seconds(systemd_specs[0]) != 300:
+            fail("systemd-image self-test lost its bounded large-image timeout")
+        if download_timeout_seconds(specs[0]) != 120:
+            fail("archive self-test widened the ordinary download timeout")
+        systemd_online = root / "systemd-online"
+        systemd_staging = root / "systemd-staging"
+        systemd_online.mkdir(mode=0o700)
+        systemd_staging.mkdir(mode=0o700)
+        if (
+            prepare_transaction(
+                systemd_online,
+                systemd_staging,
+                systemd_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+            != "acquire"
+        ):
+            fail("systemd-image self-test transaction unexpectedly reused output")
+        systemd_state = read_state(systemd_staging)
+        systemd_output = systemd_staging / OUTPUT_NAME
+        systemd_output_fd = open_directory(systemd_output)
+        try:
+            spec = systemd_specs[0]
+            download_archive(
+                systemd_output_fd,
+                spec,
+                FakeOpener(FakeResponse(b"systemd-image-fixture", spec.url)),
+            )
+        finally:
+            os.close(systemd_output_fd)
+        validate_candidate_tree(
+            systemd_output,
+            systemd_specs,
+            uid,
+            gid,
+            str(systemd_state["output"]),
+        )
+        verify_transaction(
+            systemd_online,
+            systemd_staging,
+            systemd_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        publish_transaction(
+            systemd_online,
+            systemd_staging,
+            systemd_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        systemd_online_fd = open_directory(systemd_online)
+        try:
+            if not validate_archive_at(
+                systemd_online_fd,
+                systemd_specs[0],
+                uid,
+                gid,
+                candidate=False,
+            ):
+                fail("systemd-image self-test publication omitted its image")
+        finally:
+            os.close(systemd_online_fd)
+        systemd_final = systemd_online / systemd_specs[0].name
+        os.chmod(systemd_final, 0o444)
+        systemd_reuse_staging = root / "systemd-reuse-staging"
+        systemd_reuse_staging.mkdir(mode=0o700)
+        if (
+            prepare_transaction(
+                systemd_online,
+                systemd_reuse_staging,
+                systemd_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+            != "complete"
+        ):
+            fail("systemd-image self-test rejected historical mode-0444 output")
+        os.chmod(systemd_final, 0o644)
+        systemd_unsafe_staging = root / "systemd-unsafe-staging"
+        systemd_unsafe_staging.mkdir(mode=0o700)
+        try:
+            prepare_transaction(
+                systemd_online,
+                systemd_unsafe_staging,
+                systemd_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+        except ContractError:
+            pass
+        else:
+            fail("systemd-image self-test accepted writable published output")
+        os.chmod(systemd_final, 0o400)
 
         bad_output = root / "bad-output"
         bad_output.mkdir(mode=0o700)

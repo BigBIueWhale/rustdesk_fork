@@ -10167,8 +10167,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   chunked/no-`Content-Length` response contract; neither attempt published persistent output.
 
   Evidence boundary: this is complete disposable cold acquisition evidence for the fixed fourteen-archive
-  transaction, not a run against or mutation of the live online cache and not a release build. The separate
-  Debian systemd-image path, host Cargo vendoring, Windows Flutter
+  transaction, not a run against or mutation of the live online cache and not a release build. R-S11cu
+  subsequently closes the separate Debian systemd-image path. Host Cargo vendoring and Windows Flutter
   engine and Pub-cache archive producers, WiX capture, maintenance-image acquisition/publication, exact
   cold R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain open. No root command
   or root container, image pull/build/tag, release build, host RustDesk process/service/configuration/
@@ -10201,7 +10201,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   parsing, requires one source plus the complete unique canonical tool-name set, and cross-checks that set
   against the independently SHA-512-pinned consumer manifest before network use.
 
-  The existing R-S11cs transaction engine is shared rather than copied. It now has two closed profiles:
+  The existing R-S11cs transaction engine is shared rather than copied. At this slice it had two closed profiles:
   exactly 14 toolchain/installer entries with only optional `win/` nesting, or exactly 33 vcpkg entries
   comprising one `vcpkg-distfiles/libvpx-*.tar.gz` child and 32
   `vcpkg-distfiles/windows-tools/*` children. Its candidate-inventory and recovery checks derive the
@@ -10211,7 +10211,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   numeric-nonroot acquisition container, disabled proxy discovery, bounded HTTPS redirect/status/
   encoding/framing/length processing, exclusive no-follow creation, independent host byte/metadata
   verification, mode-0400 sealing, descriptor-relative `RENAME_NOREPLACE`, per-file state/fsync,
-  restart reconciliation, and exact-identity retirement. The producer receives no online root, final
+  restart reconciliation, and exact-identity retirement. R-S11cu subsequently adds one exact Debian-image
+  profile without admitting arbitrary one-entry input. The producer receives no online root, final
   destination, live repository, Docker socket, device, port, host namespace, or other writable host path.
   Existing historical current-user mode-0664 files remain reusable only after their exact size and
   acquisition SHA-256 pass; downstream `require_libvpx_distfiles` and Windows build gates still enforce
@@ -10246,13 +10247,107 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   networkless, capability-free container: all 32 tool files and the libvpx source matched their
   established SHA-512 pins, and their measured acquisition SHA-256/length values produced the tracked
   manifest. No live cache byte or metadata was changed. This live proof is a disposable cold acquisition
-  transaction, not a release build or a mutation of the persistent online closure. The separate Debian
-  systemd-image acquisition, committed local
-  security-patch/native-key publication, host Cargo vendoring, Windows Flutter engine/Pub-cache/WiX
+  transaction, not a release build or a mutation of the persistent online closure. R-S11cu separately closes
+  Debian systemd-image acquisition. Committed local security-patch/native-key publication, host Cargo
+  vendoring, Windows Flutter engine/Pub-cache/WiX
   producers, maintenance-image acquisition/publication, exact cold R-B2/R-B10 artifacts, native/device
   behavior, and R-V3 external review remain open. No root command/container, image pull/build/tag,
   release build, host RustDesk process/service/configuration/listener/firewall/network operation, or live
   online-cache mutation was performed.
+- **R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority —
+  SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE
+  DISPOSABLE COLD ACQUISITION EVIDENCE RECORDED.**
+  Platform: the unprivileged Linux acquisition host and immutable Android-builder container.
+  Endpoint/action: `scripts/online-fetch.sh --debian-systemd-smoke-image`, which stages the dated Debian 12
+  genericcloud QCOW2 consumed by the networkless installed-systemd lifecycle gate. Boundary: remote HTTPS
+  response/network-client execution ↔ the durable private
+  `.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-20260712-2537.qcow2` base.
+
+  Before this slice, host `curl -L` streamed remote delivery into the predictable durable sibling
+  `<image>.part`; failure removed that pathname, and a successful final SHA-512 was followed by chmod and
+  overwrite-capable `mv`. The dated Debian URL and publisher hash constrained completed bytes but not response
+  length, redirect host, content transformation, direct durable-namespace write authority, interrupted state,
+  or no-clobber publication. This was build-host network-execution, acquisition-output/publication, stale-state,
+  and denial-of-service authority debt—not evidence that the cached image changed, host root was acquired,
+  Docker escaped, a public listener/port was created, host RustDesk/service/configuration/firewall/network state
+  changed, exploitation occurred, or the host was compromised.
+
+  Source closure: the dated filename remains derived only from
+  `DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD=20260712-2537`. Debian's dated directory publishes one matching
+  `SHA512SUMS` record; the existing cache matches it exactly. The new acquisition pins bind the same
+  publisher-exact bytes to length 346,882,048 and SHA-256
+  `b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999`, while the established publisher
+  SHA-512 remains independent and mandatory at acquisition completion and again before QEMU consumption.
+  The one-entry source manifest fixes the credential-free dated HTTPS origin and admits exactly
+  `cloud.debian.org` plus the currently reviewed Debian-selected final host
+  `laotzu.ftp.acc.umu.se`. A different redirect target fails closed and requires an explicit manifest
+  review; there is no ambient Debian-mirror allowlist. A confined one-byte diagnostic observed that exact
+  final URL and the exact 346,882,048-byte object size. Because this Debian path has exceeded the shared
+  120-second I/O wait during failed-closed diagnostics, only the large systemd-image profile receives a
+  finite 300-second I/O timeout; the ordinary archive timeout remains 120 seconds.
+
+  The R-S11cs/R-S11ct transaction engine is reused rather than copied. Its third closed profile is exactly one
+  top-level `debian-12-genericcloud-amd64-YYYYMMDD-HHMM.qcow2`; every other one-entry name and every other
+  cardinality remains rejected. Generic transaction orchestration now takes an explicit publication root.
+  Toolchain/vcpkg calls retain the private canonical online root; the systemd call uses only its separately
+  proved current-UID/current-GID mode-0700 harness/state directories, so the explicit systemd mode no longer
+  prepares or locks unrelated `online`. Existing image reuse accepts only current-owner modes 0400 or
+  historical read-only 0444, one link, no xattrs, same mount, exact length, and SHA-256. It does not chmod,
+  delete, or replace an occupied image; new publication is mode 0400.
+
+  Cold acquisition uses the same durable same-filesystem private state/output transaction, exact immutable
+  Android-builder/helper binding, numeric-nonroot three-mount producer, disabled proxy discovery, bounded HTTPS
+  redirect/status/encoding/framing/length processing, exclusive no-follow creation, exact SHA-256, fsync and
+  mode-0400 sealing, independent host metadata/byte verdict, descriptor-relative `RENAME_NOREPLACE`, namespace
+  synchronization, restart reconciliation, and exact-identity retirement. The producer receives the helper and
+  state read-only plus only the private output writable. It receives no harness/publication root, final name,
+  canonical online cache, repository, Docker socket, device, port, host namespace, or other writable host path.
+  The networkless consumer independently accepts only the 0400/0444 current-owner profile and retains the
+  publisher SHA-512, `qemu-img check`, standalone-QCOW2/no-backing-file, no-network, and throwaway-CoW-overlay
+  checks.
+
+  Verification recorded: Bash parsing and Python in-memory compilation pass. The shared executable transaction
+  self-test exercises exact one-entry prepare/acquire/independent-verify/no-clobber-publish, historical-mode reuse,
+  and writable-output rejection. The focused authority verifier binds the exact size, SHA-256, publisher
+  SHA-512, two-host origin/redirect set, ordinary-versus-large-image I/O timeouts, closed manifest shape,
+  publication-root separation, narrow producer, consumer metadata/SHA-512 checks, R-S11cu, Appendix C #248,
+  and this ledger through 59 deliberate mutations. The adjacent online-fetch container-authority gate rejects
+  36 mutations. The independent workspace validator is green normally and across its complete semantic
+  source-mutation matrix after the systemd-image metadata, timeout, and redirect-host checks were made
+  unambiguous. The native-codec ledger normal and mutation gates remain green against the updated requirements
+  hash.
+
+  Complete live acquisition proof: one disposable transaction used a current-user-owned mode-0700 private
+  `/dev/shm` tree and the immutable Android-builder image. Preparation, independent verification, publication,
+  reconciliation, reuse, and final digest inspection ran networkless. The sole networked producer ran as numeric
+  UID:GID 1000:1000 with `--pull=never`, read-only root, all capabilities dropped, no-new-privileges, fixed
+  PID/2-GiB-memory/no-swap/two-CPU ceilings, and bounded non-executable `/tmp`. It received exactly three mounts:
+  the helper and state read-only and the private output directory writable. It received no source tree, harness
+  publication root, online cache, Docker socket, device, port, or host namespace. The producer downloaded all
+  346,882,048 bytes, enforced the exact HTTPS host/response/length/SHA-256 contract, and sealed the candidate
+  mode 0400. A separate networkless invocation independently verified it, descriptor-relative no-clobber
+  publication and reconciliation completed, publisher SHA-512 matched, the final current-owner/current-group
+  mode-0400 single-link file was exact, and a second prepare returned `complete` with no missing output. The run
+  exited green with `Debian systemd image cold lifecycle: PASS
+  size=346882048 mode=0400 sha256+publisher-sha512=exact reuse=complete`; the identity-checked trap then removed
+  the complete RAM-backed tree.
+
+  Failed-closed diagnostics are part of the evidence: two earlier 120-second full-download attempts reached no
+  publication; a one-byte probe proved that the canonical Debian origin currently selects
+  `laotzu.ftp.acc.umu.se`, motivating the exact second host and systemd-only 300-second I/O timeout. The first
+  post-change full transaction completed download/verification/publication/reuse but its final read-only
+  validator was invoked with Docker environment flags after the image name and failed before digest assertions;
+  its trap removed the temporary tree, and only the corrected fully green rerun is counted. Attempts to run the
+  workspace verifier's broader executable self-test in the pinned Android and Debian builders failed before
+  applicable fixtures because the former lacks `systemd-run` and the latter lacks Python `tomllib`; neither is
+  claimed. The normal validator and complete semantic source-mutation matrix are the recorded workspace evidence.
+
+  Evidence boundary: this is a source and disposable acquisition closure, not a release build or a mutation of
+  the persistent image cache. It does not close the exact clean R-B2/R-B10 transaction, committed local
+  security-patch/native-key publication, host Cargo vendoring, Windows Flutter/Pub/WiX producers,
+  maintenance-image acquisition/distribution, native/device behavior, independent image distribution, or R-V3
+  external review. No root command/container, image pull/build/tag, release build, host RustDesk
+  process/service/configuration/listener/firewall/network operation, or persistent cache mutation was performed.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -10970,9 +11065,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-835244ecac942ba134a34c138c8447e8c9e3d75492e8e6bc4eb9e2ed74c25cbe  requirements.html
+63358343d5294f2af42d749edaca0b98720853657b1e2524d3cf3236e4965018  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ct, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#247. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cu, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#248. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

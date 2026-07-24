@@ -75,8 +75,11 @@ done
     || fail 'systemd smoke state directory is not current-user-owned mode 0700'
 [ -f "$IMAGE" ] && [ ! -L "$IMAGE" ] \
     || fail "pinned Debian cloud image is absent; run scripts/online-fetch.sh --debian-systemd-smoke-image"
-[ "$(stat -c '%u:%a:%h' "$IMAGE")" = "$(id -u):444:1" ] \
-    || fail 'Debian cloud image is not current-user-owned mode 0444 with one link'
+IMAGE_METADATA="$(stat -c '%u:%g:%a:%h' "$IMAGE")"
+case "$IMAGE_METADATA" in
+    "$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;
+    *) fail 'Debian cloud image is outside its current-user read-only metadata profiles' ;;
+esac
 verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
 qemu-img check -q "$IMAGE" || fail 'Debian cloud image failed qemu-img integrity check'
 python3 - "$IMAGE" <<'PY'

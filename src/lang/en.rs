@@ -156,7 +156,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("swap-left-right-mouse", "Swap left-right mouse button"),
         ("2FA code", "2FA code"),
         ("outgoing_only_desk_tip", "This is a customized edition.\nYou can connect to other devices, but other devices cannot connect to your device."),
-        ("preset_password_warning", "This customized edition comes with a preset password. Anyone knowing this password could gain full control of your device. If you did not expect this, uninstall the software immediately."),
         ("share_warning_tip", "The fields above are shared and visible to others."),
         ("allow-only-conn-window-open-tip", "Only allow connection if RustDesk window is open"),
         ("no_need_privacy_mode_no_physical_displays_tip", "No physical displays, no need to use the privacy mode."),
@@ -181,7 +180,6 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("keep-awake-during-outgoing-sessions-label", "Keep screen awake during outgoing sessions"),
         ("keep-awake-during-incoming-sessions-label", "Keep screen awake during incoming sessions"),
         ("password-hidden-tip", "Permanent password is set (hidden)."),
-        ("preset-password-in-use-tip", "Preset password is currently in use."),
         ("allow-remote-toolbar-docking-any-edge", "Allow docking remote toolbar to any window edge"),
     ].iter().cloned().collect();
 }

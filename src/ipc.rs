@@ -1789,8 +1789,6 @@ pub enum Data {
 pub enum MainConfigKey {
     Id,
     PermanentPasswordSet,
-    LocalPermanentPasswordSet,
-    PermanentPasswordIsPreset,
     UserOwnedPermanentPasswordWritable,
     HideConnectionManager,
     VoiceCallInput,
@@ -3421,22 +3419,6 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
                 MainConfigKey::Id => Some(Config::get_id()),
                 MainConfigKey::PermanentPasswordSet => Some(
                     if permanent_password_is_set_for_current_process().await {
-                        "Y"
-                    } else {
-                        "N"
-                    }
-                    .to_owned(),
-                ),
-                MainConfigKey::LocalPermanentPasswordSet => Some(
-                    if permanent_password_is_local_for_current_process().await {
-                        "Y"
-                    } else {
-                        "N"
-                    }
-                    .to_owned(),
-                ),
-                MainConfigKey::PermanentPasswordIsPreset => Some(
-                    if permanent_password_is_preset_for_current_process().await {
                         "Y"
                     } else {
                         "N"
@@ -5355,22 +5337,6 @@ async fn permanent_password_is_set_for_current_process() -> bool {
 }
 
 #[cfg(target_os = "macos")]
-async fn permanent_password_is_local_for_current_process() -> bool {
-    if crate::common::is_service_owned_server_process() {
-        let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;
-    }
-    Config::has_permanent_password() && !Config::is_using_preset_password()
-}
-
-#[cfg(target_os = "macos")]
-async fn permanent_password_is_preset_for_current_process() -> bool {
-    if crate::common::is_service_owned_server_process() {
-        let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;
-    }
-    Config::is_using_preset_password()
-}
-
-#[cfg(target_os = "macos")]
 async fn refresh_macos_service_owned_permanent_password_snapshot_for_status() -> bool {
     match refresh_macos_service_owned_permanent_password_snapshot(1_000).await {
         Ok(is_set) => is_set,
@@ -5389,16 +5355,6 @@ async fn refresh_macos_service_owned_permanent_password_snapshot_for_status() ->
 #[cfg(not(target_os = "macos"))]
 async fn permanent_password_is_set_for_current_process() -> bool {
     Config::has_permanent_password()
-}
-
-#[cfg(not(target_os = "macos"))]
-async fn permanent_password_is_local_for_current_process() -> bool {
-    Config::has_permanent_password() && !Config::is_using_preset_password()
-}
-
-#[cfg(not(target_os = "macos"))]
-async fn permanent_password_is_preset_for_current_process() -> bool {
-    Config::is_using_preset_password()
 }
 
 #[cfg(target_os = "macos")]
@@ -6282,8 +6238,6 @@ fn main_config_key(name: &str) -> Option<MainConfigKey> {
     match name {
         "id" => Some(MainConfigKey::Id),
         "permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet),
-        "local-permanent-password-set" => Some(MainConfigKey::LocalPermanentPasswordSet),
-        "permanent-password-is-preset" => Some(MainConfigKey::PermanentPasswordIsPreset),
         "permanent-password-user-owned-writable" => {
             Some(MainConfigKey::UserOwnedPermanentPasswordWritable)
         }
@@ -6657,11 +6611,6 @@ pub fn is_permanent_password_set() -> bool {
     false
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn is_local_permanent_password_set() -> bool {
-    matches!(get_config("local-permanent-password-set"), Ok(Some(v)) if v.trim() == "Y")
-}
-
 /// T1 / BR-4 (verify-ground-truth): query the daemon (`--server`) for the REAL direct-listener
 /// state over the main "" IPC channel. Used by the desktop GUI, which runs in a SEPARATE process
 /// from the `--server` that binds :21118 (so reading its own `direct_service` atomic would always
@@ -6671,15 +6620,6 @@ pub fn is_local_permanent_password_set() -> bool {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn get_direct_listener_bound() -> bool {
     matches!(get_config("direct-listener-bound"), Ok(Some(v)) if v.trim() == "true")
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn is_permanent_password_preset() -> bool {
-    if let Ok(Some(v)) = get_config("permanent-password-is-preset") {
-        let v = v.trim();
-        return v == "Y";
-    }
-    false
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -8217,11 +8157,13 @@ mod test {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
-    fn main_config_keys_expose_password_status_but_not_credential_storage() {
+    fn main_config_keys_expose_typed_password_status_but_not_credential_storage() {
         assert_eq!(
-            main_config_key("local-permanent-password-set"),
-            Some(MainConfigKey::LocalPermanentPasswordSet)
+            main_config_key("permanent-password-set"),
+            Some(MainConfigKey::PermanentPasswordSet)
         );
+        assert!(main_config_key("local-permanent-password-set").is_none());
+        assert!(main_config_key("permanent-password-is-preset").is_none());
         assert!(main_config_key("permanent-password-storage-and-salt").is_none());
     }
 

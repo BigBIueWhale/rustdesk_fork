@@ -927,8 +927,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Closure deletes the main-protocol variant and handler, string facade, parser, synchronous/asynchronous mirror
   clients, post-mutation mirror, public persistent sync writer, private apply helper, authority predicate, and
   tests whose only purpose was to preserve mirroring. The daemon now returns only the receiver-derived
-  `LocalPermanentPasswordSet` status needed by desktop presentation; the UI no longer consults or rewrites its own
-  controlled-side credential after a daemon query. Durable password mutation remains solely on the proved raw
+  `PermanentPasswordSet` status needed by desktop presentation; R-S11b-3q subsequently deletes the redundant
+  local/preset status subtypes. The UI no longer consults or rewrites its own controlled-side credential after a
+  daemon query. Durable password mutation remains solely on the proved raw
   password protocol. The separate Linux PRS replica and macOS/Windows storage-envelope replica paths remain
   purpose-specific, mutually authenticated, generation-bound, and nonpersistent in the retained service child.
   Shared and Apple source gates reject every mirror symbol/payload and bind the nonsecret replacement; the focused
@@ -981,13 +982,39 @@ unreachable and a source/test/AST gate prevents reintroduction.
   uses a separate fixed Argon2id domain-separation salt. This was a misleading credential-state and future
   disclosure surface, not evidence of a reachable secret disclosure, authentication bypass, credential change,
   local privilege escalation, Android lifecycle defect, host modification, exploitation, or compromise.
-  Closure deletes both dead salt readers and their challenge-only assertions and makes the preset-envelope helper
-  private. Preset usability classification remains intact. Durable password provisioning remains the sole salt
-  creator and owns it atomically with password storage; the externally used local storage-and-salt snapshot
+  Closure deletes both dead salt readers and their challenge-only assertions and initially narrows the
+  preset-envelope helper to its sole classifier. R-S11b-3q subsequently deletes that classifier and envelope
+  altogether. Durable password provisioning remains the sole salt creator and owns it atomically with password
+  storage; the externally used local storage-and-salt snapshot
   remains unchanged for the purpose-specific authenticated service credential-replica paths that require the
   pair. Shared and Apple source gates reject all three retired public/salt-reader shapes. The independent semantic
   validator binds source, both gates, R-S11b-3p, Appendix C #240, and this row with deliberate mutations. Exact
   native/reproducible artifact and installed-device evidence remain under R-B2.
+- **R-S11b-3q — preset-password credential/status compatibility excised — CLOSED/GATED
+  2026-07-24.** Platforms: every desktop/mobile build linking `hbb_common`, ordinary desktop main IPC, Rust and
+  generated/authored Flutter bridges, native/mobile/web presentation, and localization catalogs. Endpoint/action:
+  the signed-custom preset password/salt classifier, preset-versus-local status protocol, and its warning UI.
+  Boundary: the durable or explicit service-runtime PRS actually consumed by CPace ↔ a parallel
+  `HARD_SETTINGS` storage classifier and storage-envelope-derived presentation state.
+  Source tracing proved `Config::read_permanent_password_prs_unlocked` reads only the explicit runtime replica or
+  durable `config.password_prs`; CPace admission consumes that typed result and no preset value. Direct startup
+  independently refuses every nonempty `HARD_SETTINGS` map. Nevertheless `Config::has_permanent_password` fell
+  through to `HARD_SETTINGS["password"]`/`["salt"]`, IPC exposed `PermanentPasswordIsPreset` and
+  `LocalPermanentPasswordSet`, and Flutter retained preset warning/status APIs. Mobile's “local” status read the
+  storage envelope, so it could also call a password-set/PRS-empty half-state configured even though CPace rejected
+  it. This was credential-status incoherence and obsolete authority/API surface, not evidence of a reachable
+  authentication bypass, credential change, local privilege escalation, Android lifecycle defect, host
+  modification, exploitation, or compromise.
+  Closure makes `Config::has_permanent_password` exactly the typed
+  `PermanentPasswordPrsRead::Available` predicate and deletes the preset decoder, storage prefix/usability
+  classifier, config envelope/status helpers, storage-derived local status, main-IPC subtype variants/helpers/
+  clients, Flutter FFI plus generated/web methods, warning widgets/calls, warning-removal built-in option, and both
+  retired localization keys from every catalog. Desktop and mobile presentation use one
+  `PermanentPasswordSet` fact; exact negative parser regressions reject the two retired string keys. The
+  independent `HARD_SETTINGS`-nonempty listener refusal remains unchanged as a managed-override invariant.
+  Focused Rust tests plus shared, Apple, Dart/code-generation, and independent semantic deliberate-mutation gates
+  bind source, single typed authority, retired-surface absence, R-S11b-3q, Appendix C #241, and this row. Exact
+  native/reproducible artifacts and installed-device evidence remain under R-B2.
 - **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
   Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
   deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
@@ -5267,7 +5294,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `get_main_status_snapshot` for local options, UI metadata, Windows file-transfer state, and connection-manager
   lifecycle. Dart invokes it only on native desktop, so Android/iOS/web do not attempt main-daemon synchronization.
   The controlled-side widget is `DirectListenerStatusWidget`; its green state still comes only from the actual
-  `direct-listener-bound` fact, while `local-permanent-password-set` selects the actionable failure explanation.
+  `direct-listener-bound` fact, while the PRS-derived `permanent-password-set` selects the actionable failure
+  explanation.
   Video/session count and protobuf per-display availability remain separate typed facts.
 
   Verification closure: `scripts/verify.sh` gates the complete Rust absence inventory and positive typed worker;
@@ -5413,7 +5441,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   identity/salt/key/proxy/trust-store write without an explicit receiver-authorized gate. R-S11b-3k also
   deletes the unused public whole-`Config`/`Config2` get/set surfaces and standalone salt writer, leaving
   only typed field-specific mutation APIs. R-S11b-3p deletes the production-dead standalone and challenge-era
-  effective salt readers and makes the sole preset credential-envelope helper private. R-S11b-3l removes the
+  effective salt readers; R-S11b-3q then deletes the preset credential-envelope classifier/status/UI surface
+  altogether and makes typed PRS availability the sole password-set fact. R-S11b-3l removes the
   remaining public arbitrary-length
   automatic-password generator and makes storage-salt generation private, fixed-purpose, fixed-length, and
   solely owned by durable permanent-password provisioning. R-S11b-3m then deletes every legacy PRS
@@ -10260,9 +10289,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-87fdb3da7df6383cd0866dc4cce40127e9cb6effa027976a073d5661291b53fe  requirements.html
+8b480610975d966c7fe03e63d49abc6bdd31d41973d70b8a5191ca26c49b7b4e  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

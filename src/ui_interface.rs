@@ -421,16 +421,6 @@ pub fn is_permanent_password_set() -> bool {
     }
 }
 
-#[inline]
-pub fn is_local_permanent_password_set() -> bool {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return Config::has_local_permanent_password();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        ipc::is_local_permanent_password_set()
-    }
-}
-
 pub fn can_set_user_owned_permanent_password() -> bool {
     if config::Config::is_disable_change_permanent_password() {
         return false;

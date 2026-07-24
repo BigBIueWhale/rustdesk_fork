@@ -161,8 +161,6 @@ const String kOptionHideWebSocketSetting = "hide-websocket-settings";
 const String kOptionHideStopService = "hide-stop-service";
 const String kOptionHideSecuritySetting = "hide-security-settings";
 const String kOptionHideNetworkSetting = "hide-network-settings";
-const String kOptionRemovePresetPasswordWarning =
-    "remove-preset-password-warning";
 const String kOptionDisableChangePermanentPassword =
     "disable-change-permanent-password";
 const kHideUsernameOnCard = "hide-username-on-card";

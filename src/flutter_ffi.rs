@@ -2081,22 +2081,6 @@ pub fn is_disable_settings() -> SyncReturn<bool> {
 // `is_disable_group_panel` FFI resolvers (whose only Dart callers were the now-deleted ab/group
 // models) are removed — the feature is deleted, not runtime-gated behind a disable-* option.
 
-pub fn is_preset_password() -> bool {
-    // On desktop, service owns the authoritative config; query it via IPC and return only a boolean.
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return crate::ipc::is_permanent_password_preset();
-
-    // On mobile, we have no service IPC; verify against local storage.
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return config::Config::is_using_preset_password();
-}
-
-// Don't call this function for desktop version.
-// We need this function because we want a sync return for mobile version.
-pub fn is_preset_password_mobile_only() -> SyncReturn<bool> {
-    SyncReturn(is_preset_password())
-}
-
 /// Send a url scheme through the ipc.
 #[allow(unused_variables)]
 pub fn send_url_scheme(_url: String) {
@@ -2216,8 +2200,6 @@ pub fn main_get_common(key: String) -> String {
             // NOT bound, so the desktop status reflects a wedge instead of the old green lie.
             return crate::ipc::get_direct_listener_bound().to_string();
         }
-    } else if key == "local-permanent-password-set" {
-        return ui_interface::is_local_permanent_password_set().to_string();
     } else {
         "".to_owned()
     }

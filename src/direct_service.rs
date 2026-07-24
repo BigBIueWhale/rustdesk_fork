@@ -228,12 +228,13 @@ pub(crate) fn assert_startup_invariants() -> Result<(), String> {
         ok = false;
     }
     // R-A4 / R-S16(d)(iv)(v): the second/third config funnels MUST carry no managed
-    // override or preset credential — BUILTIN_SETTINGS (get_builtin_option) and
-    // HARD_SETTINGS (the preset-password / conn-type funnel) MUST be empty, or a
-    // server-/preset-pushed value could shadow the pinned policy outside the
-    // get_option funnel the PINNED_SETTINGS table covers.
+    // override — BUILTIN_SETTINGS (get_builtin_option) and HARD_SETTINGS (including
+    // conn-type) MUST be empty, or a signed-custom value could shadow the pinned policy
+    // outside the get_option funnel the PINNED_SETTINGS table covers.
     if !hbb_common::config::HARD_SETTINGS.read().unwrap().is_empty() {
-        log::error!("R-A4/R-S16(d)(v): HARD_SETTINGS carries a preset/managed override — refusing to listen");
+        log::error!(
+            "R-A4/R-S16(d)(v): HARD_SETTINGS carries a managed override — refusing to listen"
+        );
         ok = false;
     }
     if !hbb_common::config::BUILTIN_SETTINGS

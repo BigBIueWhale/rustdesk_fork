@@ -1339,10 +1339,6 @@ class RustdeskImpl {
   // R-G4 / R-SV6 (§19): isDisableAb / isDisableGroupPanel / isDisableAccount web stubs removed with
   // the excised account / address-book / group front-end (orphaned inert stubs).
 
-  Future<bool> isPresetPassword({dynamic hint}) {
-    return Future.value(false);
-  }
-
   Future<void> sendUrlScheme({required String url, dynamic hint}) {
     throw UnimplementedError("sendUrlScheme");
   }
@@ -1399,10 +1395,6 @@ class RustdeskImpl {
   Future<void> setVoiceCallInputDevice(
       {required bool isCm, required String device, dynamic hint}) {
     throw UnimplementedError("setVoiceCallInputDevice");
-  }
-
-  bool isPresetPasswordMobileOnly({dynamic hint}) {
-    throw UnimplementedError("isPresetPasswordMobileOnly");
   }
 
   String mainGetBuildinOption({required String key, dynamic hint}) {

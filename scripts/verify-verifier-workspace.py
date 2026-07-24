@@ -11126,7 +11126,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11207,7 +11207,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11386,7 +11386,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11520,7 +11520,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11688,7 +11688,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11881,7 +11881,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12215,7 +12215,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+        "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16379,7 +16379,7 @@ def validate_temporary_password_generator_excision_contract(sources):
 
     salt_regression = extract_between(
         config,
-        "    fn test_set_permanent_password_persists_when_value_matches_preset() {",
+        "    fn test_set_permanent_password_persists_generated_storage_salt() {",
         "\n    #[test]\n    fn test_set_permanent_password_does_not_publish_unpersisted_state()",
         "permanent-password storage-salt regression",
     )
@@ -16416,7 +16416,7 @@ def validate_temporary_password_generator_excision_contract(sources):
     )
     require_text(
         sources["verify"],
-        "config::tests::test_set_permanent_password_persists_when_value_matches_preset",
+        "config::tests::test_set_permanent_password_persists_generated_storage_salt",
         "shared storage-salt regression execution",
     )
 
@@ -16482,33 +16482,6 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
         ),
     ):
         require_absent(config, text, label)
-    require_absent(
-        config,
-        "pub fn get_preset_password_storage_and_salt(",
-        "public preset credential-envelope reader",
-    )
-    require_text(
-        config,
-        "    fn preset_password_storage_and_salt() -> (String, String) {",
-        "private preset credential-envelope helper",
-    )
-    require_exact_count(
-        config,
-        "preset_password_storage_and_salt",
-        2,
-        "sole private preset credential-envelope owner and caller",
-    )
-    preset_usable = extract_between(
-        config,
-        "    fn has_usable_preset_password() -> bool {",
-        "\n    pub fn is_using_preset_password()",
-        "preset credential usability classifier",
-    )
-    require_text(
-        preset_usable,
-        "Self::preset_password_storage_and_salt()",
-        "private preset credential-envelope consumer",
-    )
     require_text(
         config,
         "pub fn get_local_permanent_password_storage_and_salt() -> (String, String)",
@@ -16524,7 +16497,6 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
     for text in (
         '"standalone-salt-read"',
         '"effective-password-salt-read"',
-        '"preset-password-envelope-read"',
         "obsolete-salt-reader-ledger-missing",
         "obsolete-salt-reader-appendix-missing",
     ):
@@ -16539,7 +16511,6 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
     for text in (
         "'fn get_salt('",
         "'fn get_effective_permanent_password_salt('",
-        "'pub fn get_preset_password_storage_and_salt('",
         "retired-salt-reader-surface-present",
     ):
         require_text(apple_gate, text, "Apple salt-reader excision source gate")
@@ -16564,10 +16535,6 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
         (
             "<code>get_effective_permanent_password_salt</code>",
             "effective salt-reader normative prohibition",
-        ),
-        (
-            "preset credential-envelope reader <span class=\"kw\">MUST NOT</span> be public",
-            "preset envelope visibility prohibition",
         ),
         (
             "read storage and salt atomically as one pair",
@@ -16602,10 +16569,6 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
             "challenge-era effective password salt reader",
             "effective-reader mutation",
         ),
-        (
-            "public preset credential-envelope reader",
-            "preset-envelope visibility mutation",
-        ),
         ("shared salt-reader excision source gate", "shared-gate mutation"),
         ("Apple salt-reader excision source gate", "Apple-gate mutation"),
         (
@@ -16614,6 +16577,289 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
         ),
         ("salt-reader excision Appendix C row", "Appendix mutation"),
         ("salt-reader excision hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_preset_password_excision_contract(sources):
+    config = sources["config_source"]
+    permanent_password = sources["permanent_password_source"]
+    ipc = sources["ipc_source"]
+
+    for text, label in (
+        (
+            "decode_preset_password_h1_from_storage",
+            "preset password decoder",
+        ),
+        (
+            "preset_permanent_password_storage_is_usable_for_auth",
+            "preset password usability classifier",
+        ),
+        (
+            "HBBS_PRESET_PASSWORD_HASH_PREFIX",
+            "preset password storage prefix",
+        ),
+        (
+            "local_permanent_password_storage_is_usable_for_auth",
+            "storage-derived authentication usability classifier",
+        ),
+    ):
+        require_absent(permanent_password, text, label)
+
+    for text, label in (
+        ("has_usable_preset_password", "preset password config classifier"),
+        ("is_using_preset_password", "preset password config status"),
+        ("preset_password_storage_and_salt", "preset password config envelope"),
+        ("has_local_permanent_password", "storage-derived local-password status"),
+        (
+            "OPTION_REMOVE_PRESET_PASSWORD_WARNING",
+            "preset password warning built-in option",
+        ),
+        (
+            '"remove-preset-password-warning"',
+            "preset password warning built-in key",
+        ),
+    ):
+        require_absent(config, text, label)
+
+    password_status = extract_between(
+        config,
+        "    pub fn has_permanent_password() -> bool {",
+        "\n    pub fn ensure_loaded()",
+        "typed permanent-password presentation authority",
+    )
+    require_text(
+        password_status,
+        "Self::read_permanent_password_prs().is_available()",
+        "typed PRS availability status source",
+    )
+    for text, label in (
+        ("preset_password", "preset fallback in password status"),
+        ("get_local_permanent_password_storage_and_salt", "storage fallback in password status"),
+        ("CONFIG.read", "raw config fallback in password status"),
+    ):
+        require_absent(password_status, text, label)
+
+    main_config = extract_between(
+        ipc,
+        "pub enum MainConfigKey {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]",
+        "single password-status main config vocabulary",
+    )
+    require_text(
+        main_config,
+        "PermanentPasswordSet",
+        "single typed password-status variant",
+    )
+    for text, label in (
+        ("LocalPermanentPasswordSet", "local password-status variant"),
+        ("PermanentPasswordIsPreset", "preset password-status variant"),
+        (
+            "permanent_password_is_local_for_current_process",
+            "local password-status receiver helper",
+        ),
+        (
+            "permanent_password_is_preset_for_current_process",
+            "preset password-status receiver helper",
+        ),
+        ("is_local_permanent_password_set", "local password-status IPC client"),
+        ("is_permanent_password_preset", "preset password-status IPC client"),
+    ):
+        require_absent(ipc, text, label)
+
+    regression = extract_between(
+        ipc,
+        "fn main_config_keys_expose_typed_password_status_but_not_credential_storage() {",
+        "\n    }\n\n    #[cfg(any(target_os = \"linux\", target_os = \"macos\"))]",
+        "retired password-status subtype regression",
+    )
+    for text in (
+        'main_config_key("local-permanent-password-set").is_none()',
+        'main_config_key("permanent-password-is-preset").is_none()',
+    ):
+        require_text(regression, text, "retired password-status subtype regression")
+    require_exact_count(
+        ipc,
+        '"local-permanent-password-set"',
+        1,
+        "negative-only local password-status string",
+    )
+    require_exact_count(
+        ipc,
+        '"permanent-password-is-preset"',
+        1,
+        "negative-only preset password-status string",
+    )
+
+    for source_key, tokens in (
+        (
+            "ui_interface_source",
+            ("is_local_permanent_password_set", "has_local_permanent_password"),
+        ),
+        (
+            "flutter_ffi_source",
+            ("is_preset_password", "is_permanent_password_preset"),
+        ),
+        (
+            "flutter_authored_dart",
+            (
+                "isPresetPassword",
+                "buildPresetPasswordWarning",
+                "preset_password_warning",
+                "preset-password-in-use-tip",
+                "remove-preset-password-warning",
+                "local-permanent-password-set",
+            ),
+        ),
+        (
+            "lang_sources",
+            ("preset_password_warning", "preset-password-in-use-tip"),
+        ),
+    ):
+        for token in tokens:
+            require_absent(
+                sources[source_key],
+                token,
+                f"retired preset/local password presentation token {token}",
+            )
+
+    require_text(
+        sources["connection_page_dart"],
+        "mainGetCommon(key: 'permanent-password-set')",
+        "direct-listener PRS-derived provisioning reason",
+    )
+    require_text(
+        sources["desktop_home_dart"],
+        'mainGetCommon(key: "permanent-password-set")',
+        "password dialog PRS-derived status",
+    )
+
+    hard_settings_gate = sources["direct_service_source"]
+    for text in (
+        "if !hbb_common::config::HARD_SETTINGS.read().unwrap().is_empty()",
+        "HARD_SETTINGS carries a managed override — refusing to listen",
+    ):
+        require_text(
+            hard_settings_gate,
+            text,
+            "HARD_SETTINGS fail-closed listener gate",
+        )
+    require_absent(
+        hard_settings_gate,
+        "preset credential",
+        "stale preset-credential startup comment",
+    )
+
+    shared_gate = extract_between(
+        sources["verify"],
+        "# R-S11b-4: config/PRS secrecy after IPC closure.",
+        "# (3b-iii-d) R-S11b-3a/R-S11b-3d:",
+        "shared preset-password excision source gate",
+    )
+    for text in (
+        "retired-password-status-subtype-present",
+        "retired-preset-credential-classifier-present",
+        "retired-preset-password-presentation-present",
+        "typed-password-status-authority-missing",
+        "test_hard_settings_password_does_not_create_credential",
+        "R-S11b-3q — preset-password credential/status compatibility excised",
+        "<tr><td>241</td>",
+    ):
+        require_text(
+            shared_gate,
+            text,
+            "shared preset-password excision source gate",
+        )
+
+    apple_gate = extract_between(
+        sources["apple"],
+        'echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="',
+        'echo "== (2b-ii-a) R-S11e-16 macOS password provisioning ingress =="',
+        "Apple preset-password excision source gate",
+    )
+    for text in (
+        "retired-password-status-subtype-present",
+        "retired-preset-credential-classifier-present",
+        "retired-preset-password-presentation-present",
+        "typed-password-status-authority-missing",
+        "R-S11b-3q — preset-password credential/status compatibility excised",
+        "<tr><td>241</td>",
+    ):
+        require_text(
+            apple_gate,
+            text,
+            "Apple preset-password excision source gate",
+        )
+
+    for text in (
+        "R-S11b-3q: authored/generated Dart retained a preset/local password compatibility surface",
+        "R-S11b-3q Dart exposes one PRS-derived permanent-password status and no preset/local subtype",
+    ):
+        require_text(
+            sources["dart_verify"],
+            text,
+            "Dart preset-password excision source gate",
+        )
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11b-3q",
+        "preset-password compatibility excision requirement",
+    )
+    for text in (
+        "<code>PermanentPasswordPrsRead::Available</code>",
+        "<code>HARD_SETTINGS</code>",
+        "<code>PermanentPasswordSet</code>",
+        "preset/local credential subtype",
+        "MUST NOT",
+    ):
+        require_text(
+            requirement,
+            text,
+            "preset-password compatibility excision requirement",
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>241</td>",
+        "preset-password compatibility Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11b-3q — preset-password credential/status compatibility excised",
+        "preset-password compatibility hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "preset-password compatibility deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("preset password decoder", "decoder mutation"),
+        ("preset password config status", "config-status mutation"),
+        ("storage fallback in password status", "status-authority mutation"),
+        ("local password-status variant", "IPC subtype mutation"),
+        (
+            "retired preset/local password presentation token isPresetPassword",
+            "Flutter mutation",
+        ),
+        (
+            "retired preset/local password presentation token preset_password_warning",
+            "localization mutation",
+        ),
+        ("shared preset-password excision source gate", "shared-gate mutation"),
+        ("Apple preset-password excision source gate", "Apple-gate mutation"),
+        ("Dart preset-password excision source gate", "Dart-gate mutation"),
+        (
+            "preset-password compatibility excision requirement",
+            "requirement mutation",
+        ),
+        ("preset-password compatibility Appendix C row", "Appendix mutation"),
+        (
+            "preset-password compatibility hardening ledger",
+            "hardening-ledger mutation",
+        ),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -16829,8 +17075,8 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     )
     require_text(
         main_config,
-        "LocalPermanentPasswordSet",
-        "local-password status main config key",
+        "PermanentPasswordSet",
+        "typed password-status main config key",
     )
     for text in ("password", "storage", "salt", "prs", "key_pair"):
         if text == "password":
@@ -16849,12 +17095,12 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     )
     for text, label in (
         (
-            "MainConfigKey::LocalPermanentPasswordSet => Some(",
-            "local-password status receiver arm",
+            "MainConfigKey::PermanentPasswordSet => Some(",
+            "typed password-status receiver arm",
         ),
         (
-            "permanent_password_is_local_for_current_process().await",
-            "receiver-derived local-password status",
+            "permanent_password_is_set_for_current_process().await",
+            "receiver-derived typed password status",
         ),
     ):
         require_text(handler, text, label)
@@ -16874,19 +17120,13 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
 
     require_exact_count(
         ipc,
-        "async fn permanent_password_is_local_for_current_process() -> bool {",
+        "async fn permanent_password_is_set_for_current_process() -> bool {",
         2,
-        "platform-complete local-password status derivation",
-    )
-    require_exact_count(
-        ipc,
-        "Config::has_permanent_password() && !Config::is_using_preset_password()",
-        2,
-        "local-versus-preset status decision",
+        "platform-complete typed password-status derivation",
     )
     require_text(
         ipc,
-        "let _ = refresh_macos_service_owned_permanent_password_snapshot_for_status().await;",
+        "return refresh_macos_service_owned_permanent_password_snapshot_for_status().await;",
         "macOS service-owned status refresh",
     )
 
@@ -16898,8 +17138,8 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     )
     require_text(
         key_parser,
-        '"local-permanent-password-set" => Some(MainConfigKey::LocalPermanentPasswordSet)',
-        "local-password status string facade",
+        '"permanent-password-set" => Some(MainConfigKey::PermanentPasswordSet)',
+        "typed password-status string facade",
     )
     require_absent(
         key_parser,
@@ -16909,14 +17149,14 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
 
     status_client = extract_between(
         ipc,
-        "pub fn is_local_permanent_password_set() -> bool {",
+        "pub fn is_permanent_password_set() -> bool {",
         "\n}\n\n/// T1 / BR-4",
-        "local-password status client",
+        "typed password-status client",
     )
     require_text(
         status_client,
-        'get_config("local-permanent-password-set")',
-        "local-password status query",
+        'get_config("permanent-password-set")',
+        "typed password-status query",
     )
     require_absent(
         status_client,
@@ -16926,19 +17166,19 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
 
     ui_status = extract_between(
         ui,
-        "pub fn is_local_permanent_password_set() -> bool {",
+        "pub fn is_permanent_password_set() -> bool {",
         "\n}\n\npub fn can_set_user_owned_permanent_password",
-        "desktop/mobile local-password status facade",
+        "desktop/mobile typed password-status facade",
     )
     require_text(
         ui_status,
-        "ipc::is_local_permanent_password_set()",
-        "desktop daemon-derived local-password status",
+        "ipc::is_permanent_password_set()",
+        "desktop daemon-derived typed password status",
     )
     require_text(
         ui_status,
-        "Config::has_local_permanent_password()",
-        "mobile in-process local-password status",
+        "Config::has_permanent_password()",
+        "mobile in-process typed password status",
     )
 
     post_mutation = extract_between(
@@ -16961,7 +17201,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
 
     regression = extract_between(
         ipc,
-        "fn main_config_keys_expose_password_status_but_not_credential_storage() {",
+        "fn main_config_keys_expose_typed_password_status_but_not_credential_storage() {",
         "\n    }\n\n    #[cfg(any(target_os = \"linux\", target_os = \"macos\"))]",
         "nonsecret main config regression",
     )
@@ -16972,8 +17212,8 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     )
     require_text(
         regression,
-        "Some(MainConfigKey::LocalPermanentPasswordSet)",
-        "replacement local-password status regression",
+        "Some(MainConfigKey::PermanentPasswordSet)",
+        "replacement typed password-status regression",
     )
 
     shared_gate = extract_between(
@@ -16986,9 +17226,9 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
         "echo \"$r_s11b4_config_enum\" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b4=\"$r_s11b4 credential-storage-main-config-key-present\"",
         "sync_permanent_password_storage_from_daemon",
         "set_permanent_password_storage_for_sync",
-        "LocalPermanentPasswordSet",
-        "permanent_password_is_local_for_current_process().await",
-        "main_config_keys_expose_password_status_but_not_credential_storage",
+        "PermanentPasswordSet",
+        "permanent_password_is_set_for_current_process().await",
+        "main_config_keys_expose_typed_password_status_but_not_credential_storage",
         "R-S11b-4e — ordinary main IPC credential mirror excised",
         "<tr><td>237</td>",
     ):
@@ -16999,7 +17239,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
         )
     require_text(
         shared_gate,
-        '"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_password_status_but_not_credential_storage --color never',
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_typed_password_status_but_not_credential_storage --color never',
         "focused main-IPC credential-storage regression invocation",
     )
     for text in (
@@ -17022,8 +17262,8 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
         "echo \"$main_config_enum\" | grep -q 'PermanentPasswordStorageAndSalt' && r_s11b2=\"$r_s11b2 credential-storage-main-config-key-present\"",
         "sync_permanent_password_storage_from_daemon",
         "set_permanent_password_storage_for_sync",
-        "LocalPermanentPasswordSet",
-        "permanent_password_is_local_for_current_process().await",
+        "PermanentPasswordSet",
+        "permanent_password_is_set_for_current_process().await",
         "R-S11b-4e — ordinary main IPC credential mirror excised",
         "<tr><td>237</td>",
     ):
@@ -17055,7 +17295,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
     for text in (
         "<code>MainConfigKey::PermanentPasswordStorageAndSalt</code>",
         "<code>Config::set_permanent_password_storage_for_sync</code>",
-        "receiver-derived <code>LocalPermanentPasswordSet</code>",
+        "receiver-derived <code>PermanentPasswordSet</code>",
     ):
         require_text(
             sources["requirements"],
@@ -17088,7 +17328,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
             "mirror-client mutation",
         ),
         (
-            "receiver-derived local-password status",
+            "receiver-derived typed password status",
             "receiver status mutation",
         ),
         (
@@ -17096,7 +17336,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
             "receiver secret-read mutation",
         ),
         (
-            "desktop daemon-derived local-password status",
+            "desktop daemon-derived typed password status",
             "UI status mutation",
         ),
         (
@@ -17672,7 +17912,7 @@ def validate_peer_presence_excision_contract(sources):
         ),
         ("mainGetCommon(key: 'direct-listener-bound')", "actual listener-bound status fact"),
         (
-            "mainGetCommon(key: 'local-permanent-password-set')",
+            "mainGetCommon(key: 'permanent-password-set')",
             "password-provisioning status reason",
         ),
         ('translate("Reachable on :21118")', "direct-listener reachable label"),
@@ -19048,6 +19288,7 @@ def validate_sources(sources):
     validate_account_control_plane_excision_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_permanent_password_salt_reader_excision_contract(sources)
+    validate_preset_password_excision_contract(sources)
     validate_typed_permanent_password_prs_contract(sources)
     validate_main_ipc_credential_mirror_excision_contract(sources)
     validate_main_ipc_single_option_mutation_contract(sources)
@@ -30109,21 +30350,15 @@ def run_source_mutations(sources):
         ),
         (
             "config_source",
-            "    fn preset_password_storage_and_salt() -> (String, String) {",
-            "    fn get_salt() -> String { CONFIG.read().unwrap().salt.clone() }\n\n    fn preset_password_storage_and_salt() -> (String, String) {",
+            "    pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {",
+            "    fn get_salt() -> String { CONFIG.read().unwrap().salt.clone() }\n\n    pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {",
             "standalone config salt reader",
         ),
         (
             "config_source",
-            "    fn preset_password_storage_and_salt() -> (String, String) {",
-            "    fn get_effective_permanent_password_salt() -> String { Self::get_local_permanent_password_storage_and_salt().1 }\n\n    fn preset_password_storage_and_salt() -> (String, String) {",
+            "    pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {",
+            "    fn get_effective_permanent_password_salt() -> String { Self::get_local_permanent_password_storage_and_salt().1 }\n\n    pub fn get_local_permanent_password_storage_and_salt() -> (String, String) {",
             "challenge-era effective password salt reader",
-        ),
-        (
-            "config_source",
-            "    fn preset_password_storage_and_salt() -> (String, String) {",
-            "    pub fn get_preset_password_storage_and_salt() -> (String, String) {",
-            "public preset credential-envelope reader",
         ),
         (
             "verify",
@@ -30154,6 +30389,78 @@ def run_source_mutations(sources):
             "R-S11b-3p — production-dead effective and standalone salt readers excised",
             "R-S11b-3p — production-dead salt readers retained",
             "salt-reader excision hardening ledger",
+        ),
+        (
+            "permanent_password_source",
+            "pub fn decode_permanent_password_h1_from_storage(\n",
+            "pub fn decode_preset_password_h1_from_storage(_: &str) -> Option<[u8; PERMANENT_PASSWORD_H1_LEN]> { None }\n\npub fn decode_permanent_password_h1_from_storage(\n",
+            "preset password decoder",
+        ),
+        (
+            "config_source",
+            "    pub fn ensure_loaded() {",
+            "    pub fn is_using_preset_password() -> bool { false }\n\n    pub fn ensure_loaded() {",
+            "preset password config status",
+        ),
+        (
+            "config_source",
+            "        Self::read_permanent_password_prs().is_available()",
+            "        { let _ = Self::get_local_permanent_password_storage_and_salt(); Self::read_permanent_password_prs().is_available() }",
+            "storage fallback in password status",
+        ),
+        (
+            "ipc_source",
+            "    Id,\n    PermanentPasswordSet,",
+            "    Id,\n    PermanentPasswordSet,\n    LocalPermanentPasswordSet,",
+            "local password-status variant",
+        ),
+        (
+            "flutter_authored_dart",
+            "Widget buildVirtualWindowFrame(BuildContext context, Widget child) {",
+            "bool isPresetPassword() => false;\n\nWidget buildVirtualWindowFrame(BuildContext context, Widget child) {",
+            "retired preset/local password presentation token isPresetPassword",
+        ),
+        (
+            "lang_sources",
+            "// FILE src/lang/template.rs\n",
+            "// FILE src/lang/template.rs\n        (\"preset_password_warning\", \"\"),\n",
+            "retired preset/local password presentation token preset_password_warning",
+        ),
+        (
+            "verify",
+            "retired-password-status-subtype-present",
+            "retired-password-status-subtype-disabled",
+            "shared preset-password excision source gate",
+        ),
+        (
+            "apple",
+            "retired-preset-credential-classifier-present",
+            "retired-preset-credential-classifier-disabled",
+            "Apple preset-password excision source gate",
+        ),
+        (
+            "dart_verify",
+            "R-S11b-3q Dart exposes one PRS-derived permanent-password status and no preset/local subtype",
+            "R-S11b-3q Dart gate disabled",
+            "Dart preset-password excision source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11b-3q</span>',
+            '<span class="id">R-S11b-3q-disabled</span>',
+            "preset-password compatibility excision requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>241</td>",
+            "<tr><td>241-disabled</td>",
+            "preset-password compatibility Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11b-3q — preset-password credential/status compatibility excised",
+            "R-S11b-3q — preset-password compatibility retained",
+            "preset-password compatibility hardening ledger",
         ),
         (
             "config_source",
@@ -30229,21 +30536,21 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "if permanent_password_is_local_for_current_process().await {",
-            "if Config::has_local_permanent_password() {",
-            "receiver-derived local-password status",
+            "if permanent_password_is_set_for_current_process().await {",
+            "if Config::has_permanent_password() {",
+            "receiver-derived typed password status",
         ),
         (
             "ipc_source",
-            "if permanent_password_is_local_for_current_process().await {",
-            "if { let _ = Config::get_local_permanent_password_storage_and_salt(); permanent_password_is_local_for_current_process().await } {",
+            "if permanent_password_is_set_for_current_process().await {",
+            "if { let _ = Config::get_local_permanent_password_storage_and_salt(); permanent_password_is_set_for_current_process().await } {",
             "main receiver credential-storage read",
         ),
         (
             "ui_interface_source",
-            "        ipc::is_local_permanent_password_set()",
-            "        Config::has_local_permanent_password()",
-            "desktop daemon-derived local-password status",
+            "        ipc::is_permanent_password_set()",
+            "        Config::has_permanent_password()",
+            "desktop daemon-derived typed password status",
         ),
         (
             "ipc_source",
@@ -30265,8 +30572,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "ipc::test::main_config_keys_expose_password_status_but_not_credential_storage",
-            "ipc::tests::main_config_keys_expose_password_status_but_not_credential_storage",
+            "ipc::test::main_config_keys_expose_typed_password_status_but_not_credential_storage",
+            "ipc::tests::main_config_keys_expose_typed_password_status_but_not_credential_storage",
             "focused main-IPC credential-storage regression invocation",
         ),
         (
@@ -30571,9 +30878,9 @@ def run_source_mutations(sources):
         ),
         (
             "connection_page_dart",
-            "mainGetCommon(key: 'local-permanent-password-set')",
+            "mainGetCommon(key: 'permanent-password-set')",
             "mainGetCommon(key: 'peer-online')",
-            "password-provisioning status reason",
+            "direct-listener PRS-derived provisioning reason",
         ),
         (
             "main_dart",
@@ -31591,7 +31898,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#238",
+            "R-S11n through R-S11cn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#241",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34819,6 +35126,9 @@ def main():
             "root_lib": (repo / "src/lib.rs").read_text(encoding="utf-8"),
             "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(encoding="utf-8"),
             "config_source": (repo / "libs/hbb_common/src/config.rs").read_text(encoding="utf-8"),
+            "permanent_password_source": (
+                repo / "libs/hbb_common/src/config/permanent_password.rs"
+            ).read_text(encoding="utf-8"),
             "socket_client_source": (repo / "libs/hbb_common/src/socket_client.rs").read_text(
                 encoding="utf-8"
             ),
@@ -34844,6 +35154,7 @@ def main():
             "hbb_common_platform": (repo / "libs/hbb_common/src/platform/mod.rs").read_text(encoding="utf-8"),
             "core_main": (repo / "src/core_main.rs").read_text(encoding="utf-8"),
             "main_source": (repo / "src/main.rs").read_text(encoding="utf-8"),
+            "direct_service_source": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "client_source": (repo / "src/client.rs").read_text(encoding="utf-8"),
             "client_io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
             "port_forward_source": (repo / "src/port_forward.rs").read_text(encoding="utf-8"),

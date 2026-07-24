@@ -111,7 +111,7 @@ class _DirectListenerStatusWidgetState
       final reachable =
           (await bind.mainGetCommon(key: 'direct-listener-bound')) == 'true';
       final passwordConfigured =
-          (await bind.mainGetCommon(key: 'local-permanent-password-set')) ==
+          (await bind.mainGetCommon(key: 'permanent-password-set')) ==
               'true';
       if (mounted &&
           (reachable != _reachable ||

@@ -71,7 +71,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
     final children = <Widget>[
-      if (!isOutgoingOnly) buildPresetPasswordWarning(),
       if (bind.isCustomClient())
         Align(
           alignment: Alignment.center,
@@ -730,9 +729,8 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
   final p1 = TextEditingController(text: "");
   var errMsg0 = "";
   var errMsg1 = "";
-  final localPasswordSet =
-      (await bind.mainGetCommon(key: "local-permanent-password-set")) == "true";
-  final presetPassword = await bind.isPresetPassword();
+  final passwordSet =
+      (await bind.mainGetCommon(key: "permanent-password-set")) == "true";
   var canSubmit = false;
   final RxString rxPass = "".obs;
   final rules = [
@@ -743,9 +741,7 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
     MinCharactersValidationRule(8),
   ];
   final maxLength = bind.mainMaxEncryptLen();
-  final statusTip = localPasswordSet
-      ? translate('password-hidden-tip')
-      : (presetPassword ? translate('preset-password-in-use-tip') : '');
+  final statusTip = passwordSet ? translate('password-hidden-tip') : '';
   final showStatusTipOnMobile =
       statusTip.isNotEmpty && !isDesktop && !isWebDesktop;
 
@@ -928,7 +924,7 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
           icon: Icon(Icons.done_rounded),
           onPressed: canSubmit ? submit : null,
         );
-        if (!isDesktop && !isWebDesktop && localPasswordSet) {
+        if (!isDesktop && !isWebDesktop && passwordSet) {
           return [
             Align(
               alignment: Alignment.centerRight,
@@ -951,7 +947,7 @@ void setPasswordDialog({VoidCallback? notEmptyCallback}) async {
         }
         return [
           cancelButton,
-          if (localPasswordSet) removeButton,
+          if (passwordSet) removeButton,
           okButton,
         ];
       })(),

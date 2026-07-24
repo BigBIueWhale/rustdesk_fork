@@ -99,7 +99,6 @@ class _ServerPageState extends State<ServerPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        buildPresetPasswordWarningMobile(),
                         gFFI.serverModel.isStart
                             ? ServerInfo()
                             : ServiceNotRunningNotification(),
@@ -681,4 +680,3 @@ void androidChannelInit() {
     return "";
   });
 }
-

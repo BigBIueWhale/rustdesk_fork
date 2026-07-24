@@ -24,16 +24,15 @@ use sodiumoxide::crypto::sign;
 
 mod permanent_password;
 
-pub use permanent_password::{
-    compute_permanent_password_h1, decode_permanent_password_h1_from_storage,
-    decode_preset_password_h1_from_storage, derive_cpace_prs,
-    local_permanent_password_storage_is_usable_for_auth,
-    preset_permanent_password_storage_is_usable_for_auth, ENCRYPT_MAX_LEN,
-};
+#[cfg(test)]
+use permanent_password::compute_permanent_password_h1;
 use permanent_password::{
     decode_permanent_password_h1_from_hashed_storage, decrypt_permanent_password_prs_storage,
     decrypt_permanent_password_str_or_original, derive_permanent_password_storages,
     DEFAULT_SALT_LEN, PASSWORD_ENC_VERSION, PERMANENT_PASSWORD_H1_LEN,
+};
+pub use permanent_password::{
+    decode_permanent_password_h1_from_storage, derive_cpace_prs, ENCRYPT_MAX_LEN,
 };
 
 use crate::{
@@ -3292,45 +3291,11 @@ impl Config {
     }
 
     pub fn has_permanent_password() -> bool {
-        if let Some(prs) = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().as_ref() {
-            return !prs.is_empty();
-        }
-        let (local_storage, _local_salt) = Self::get_local_permanent_password_storage_and_salt();
-        if !local_storage.is_empty() {
-            // F2 (coherence): CPace keys from the LIVE PRS (read_permanent_password_prs →
-            // config.password_prs), which is what the auth boundary actually consumes. Report a
-            // LOCAL permanent password as "set" only when that PRS is present and decryptable,
-            // so an undecryptable `01…` blob (e.g. a transient machine-UUID read failure) or a
-            // password-set/prs-empty half-state — both of which refuse EVERY connection — do
-            // NOT read as set. (Heal the SIGNAL, not the store: config.password is untouched.)
-            return Self::read_permanent_password_prs().is_available();
-        }
-        Self::has_usable_preset_password()
-    }
-
-    fn has_usable_preset_password() -> bool {
-        let (preset_storage, preset_salt) = Self::preset_password_storage_and_salt();
-        preset_permanent_password_storage_is_usable_for_auth(&preset_storage, &preset_salt)
-    }
-
-    pub fn is_using_preset_password() -> bool {
-        if RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().is_some() {
-            return false;
-        }
-        let (local_storage, _) = Self::get_local_permanent_password_storage_and_salt();
-        local_storage.is_empty() && Self::has_usable_preset_password()
-    }
-
-    fn preset_password_storage_and_salt() -> (String, String) {
-        let hard_settings = HARD_SETTINGS.read().unwrap();
-        let storage = hard_settings.get("password").cloned().unwrap_or_default();
-        let salt = hard_settings.get("salt").cloned().unwrap_or_default();
-        (storage, salt)
-    }
-
-    pub fn has_local_permanent_password() -> bool {
-        let (local_storage, local_salt) = Self::get_local_permanent_password_storage_and_salt();
-        local_permanent_password_storage_is_usable_for_auth(&local_storage, &local_salt)
+        // R-S9: this presentation fact is the exact typed state consumed at CPace admission.
+        // It includes the explicit nonpersistent service replica when present and otherwise the
+        // durable local PRS. Storage envelopes, salts, and HARD_SETTINGS are not credential
+        // authorities and cannot make the UI claim that authentication is available.
+        Self::read_permanent_password_prs().is_available()
     }
 
     pub fn ensure_loaded() {
@@ -4556,7 +4521,6 @@ pub mod keys {
     pub const OPTION_PRESET_DEVICE_GROUP_NAME: &str = "preset-device-group-name";
     pub const OPTION_PRESET_USERNAME: &str = "preset-user-name";
     pub const OPTION_PRESET_STRATEGY_NAME: &str = "preset-strategy-name";
-    pub const OPTION_REMOVE_PRESET_PASSWORD_WARNING: &str = "remove-preset-password-warning";
     pub const OPTION_HIDE_SECURITY_SETTINGS: &str = "hide-security-settings";
     pub const OPTION_HIDE_NETWORK_SETTINGS: &str = "hide-network-settings";
     pub const OPTION_HIDE_SERVER_SETTINGS: &str = "hide-server-settings";
@@ -4811,7 +4775,6 @@ pub mod keys {
         OPTION_PRESET_DEVICE_GROUP_NAME,
         OPTION_PRESET_USERNAME,
         OPTION_PRESET_STRATEGY_NAME,
-        OPTION_REMOVE_PRESET_PASSWORD_WARNING,
         OPTION_HIDE_SECURITY_SETTINGS,
         OPTION_HIDE_NETWORK_SETTINGS,
         OPTION_HIDE_SERVER_SETTINGS,
@@ -4945,7 +4908,7 @@ unrelated = "preserved"
         let file = Config::file_("");
         let _file_guard = ConfigFileRestoreGuard::new(file.clone());
         fs::remove_file(&file).ok();
-        let _state_guard = ConfigStateTestGuard::new(Config::default(), HashMap::new());
+        let _state_guard = ConfigStateTestGuard::new(Config::default());
         let (storage, prs_storage) =
             derive_permanent_password_storages("runtime snapshot password").unwrap();
 
@@ -4975,7 +4938,7 @@ unrelated = "preserved"
         let file = Config::file_("");
         let _file_guard = ConfigFileRestoreGuard::new(file.clone());
         fs::remove_file(&file).ok();
-        let _state_guard = ConfigStateTestGuard::new(Config::default(), HashMap::new());
+        let _state_guard = ConfigStateTestGuard::new(Config::default());
         assert!(Config::set_permanent_password_persisted("stale user-profile password").unwrap());
         let durable = {
             let config = CONFIG.read().unwrap();
@@ -5154,13 +5117,12 @@ unrelated = "preserved"
     }
 
     impl ConfigStateTestGuard {
-        fn new(config: Config, hard_settings: HashMap<String, String>) -> Self {
+        fn new(config: Config) -> Self {
             let mut generation = PERMANENT_PASSWORD_CREDENTIAL_GENERATION.write().unwrap();
             let original_config = CONFIG.read().unwrap().clone();
-            let original_hard_settings = HARD_SETTINGS.read().unwrap().clone();
+            let original_hard_settings = std::mem::take(&mut *HARD_SETTINGS.write().unwrap());
             let original_runtime_prs = RUNTIME_PERMANENT_PASSWORD_PRS.read().unwrap().clone();
             *CONFIG.write().unwrap() = config;
-            *HARD_SETTINGS.write().unwrap() = hard_settings;
             *RUNTIME_PERMANENT_PASSWORD_PRS.write().unwrap() = None;
             advance_permanent_password_credential_generation(&mut generation);
             Self {
@@ -5204,13 +5166,9 @@ unrelated = "preserved"
         }
     }
 
-    fn with_config_and_hard_settings<R>(
-        config: Config,
-        hard_settings: HashMap<String, String>,
-        test: impl FnOnce() -> R,
-    ) -> R {
+    fn with_config<R>(config: Config, test: impl FnOnce() -> R) -> R {
         let _guard = CONFIG_STATE_TEST_LOCK.lock().unwrap();
-        let _state_guard = ConfigStateTestGuard::new(config, hard_settings);
+        let _state_guard = ConfigStateTestGuard::new(config);
         test()
     }
 
@@ -5225,77 +5183,42 @@ unrelated = "preserved"
     }
 
     #[test]
-    fn test_hbbs_00_hashed_preset_password_storage_matches_plain_with_salt() {
-        let salt = "salt123";
-        let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
-        let storage = "00".to_owned() + &base64::encode(h1, base64::Variant::Original);
-        let hard_settings = HashMap::from([
-            ("password".to_owned(), storage),
-            ("salt".to_owned(), salt.to_owned()),
-        ]);
-
-        with_config_and_hard_settings(Config::default(), hard_settings, || {
-            assert!(Config::has_permanent_password());
-            assert!(Config::has_usable_preset_password());
-            assert!(Config::is_using_preset_password());
-        });
-    }
-
-    #[test]
-    fn test_legacy_plain_preset_password_with_00_hash_shape_remains_usable() {
-        let h1 = compute_permanent_password_h1("p@ssw0rd", "salt123");
-        let storage = "00".to_owned() + &base64::encode(h1, base64::Variant::Original);
-        let hard_settings = HashMap::from([("password".to_owned(), storage.clone())]);
-
-        with_config_and_hard_settings(Config::default(), hard_settings, || {
-            assert!(Config::has_permanent_password());
-            assert!(Config::has_usable_preset_password());
-            assert!(Config::is_using_preset_password());
-        });
-    }
-
-    #[test]
     fn test_local_hashed_permanent_password_without_salt_is_not_reported_as_set() {
         let h1 = compute_permanent_password_h1("p@ssw0rd", "salt123");
         let mut config = Config::default();
         config.password = encode_permanent_password_encrypted_storage_from_h1(&h1).unwrap();
 
-        with_config_and_hard_settings(config, HashMap::new(), || {
+        with_config(config, || {
             assert!(!Config::has_permanent_password());
-            assert!(!Config::has_local_permanent_password());
-            assert!(!Config::is_using_preset_password());
         });
     }
 
     #[test]
-    fn test_legacy_plain_preset_password_remains_usable_without_preset_salt() {
-        let hard_settings = HashMap::from([("password".to_owned(), "legacy-password".to_owned())]);
+    fn test_hard_settings_password_does_not_create_credential() {
+        with_config(Config::default(), || {
+            *HARD_SETTINGS.write().unwrap() = HashMap::from([
+                ("password".to_owned(), "signed-custom-password".to_owned()),
+                ("salt".to_owned(), "signed-custom-salt".to_owned()),
+            ]);
 
-        with_config_and_hard_settings(Config::default(), hard_settings, || {
-            assert!(Config::has_permanent_password());
-            assert!(Config::is_using_preset_password());
+            assert_eq!(
+                Config::read_permanent_password_prs(),
+                PermanentPasswordPrsRead::Empty
+            );
+            assert!(!Config::has_permanent_password());
         });
     }
 
     #[test]
-    fn test_set_permanent_password_persists_when_value_matches_preset() {
+    fn test_set_permanent_password_persists_generated_storage_salt() {
         let _lock = CONFIG_STATE_TEST_LOCK.lock().unwrap();
         let file = Config::file_("");
         let _file_guard = ConfigFileRestoreGuard::new(file.clone());
         fs::remove_file(&file).ok();
-        let salt = "preset-salt";
-        let h1 = compute_permanent_password_h1("p@ssw0rd", salt);
-        let preset_storage = "00".to_owned() + &base64::encode(h1, base64::Variant::Original);
-        let hard_settings = HashMap::from([
-            ("password".to_owned(), preset_storage),
-            ("salt".to_owned(), salt.to_owned()),
-        ]);
-        let _state_guard = ConfigStateTestGuard::new(Config::default(), hard_settings);
+        let _state_guard = ConfigStateTestGuard::new(Config::default());
 
-        assert!(Config::is_using_preset_password());
         assert!(Config::set_permanent_password("p@ssw0rd"));
-        assert!(Config::has_local_permanent_password());
-        assert!(!Config::is_using_preset_password());
+        assert!(Config::has_permanent_password());
         let saved_config: Config = load_path(file);
         assert!(!saved_config.password.is_empty());
         assert!(!saved_config.password_prs.is_empty());
@@ -5308,7 +5231,7 @@ unrelated = "preserved"
 
     #[test]
     fn test_set_permanent_password_does_not_publish_unpersisted_state() {
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
+        with_config(Config::default(), || {
             let result = Config::set_permanent_password_with_store("new-password", |_| {
                 Err(anyhow!("injected persistence failure"))
             });
@@ -5461,7 +5384,7 @@ unrelated = "preserved"
             Arc, Barrier,
         };
 
-        with_config_and_hard_settings(Config::default(), HashMap::new(), || {
+        with_config(Config::default(), || {
             let old_storage =
                 encode_permanent_password_encrypted_storage_from_h1(&[1u8; 32]).unwrap();
             let new_storage =
@@ -5512,21 +5435,6 @@ unrelated = "preserved"
         assert_eq!(root, program_data.join("RustDesk").join("config"));
         assert!(windows_service_owned_config_root_from(program_data, "../bad").is_err());
         assert!(windows_service_owned_config_root_from(Path::new("relative"), "RustDesk").is_err());
-    }
-
-    #[test]
-    fn test_malformed_preset_password_with_salt_is_not_usable() {
-        for storage in ["01secret", "00not-a-valid-hash"] {
-            let hard_settings = HashMap::from([
-                ("password".to_owned(), storage.to_owned()),
-                ("salt".to_owned(), "preset-salt".to_owned()),
-            ]);
-
-            with_config_and_hard_settings(Config::default(), hard_settings, || {
-                assert!(!Config::has_permanent_password());
-                assert!(!Config::is_using_preset_password());
-            });
-        }
     }
 
     #[test]
@@ -5664,7 +5572,7 @@ unrelated = "preserved"
         provisioned.password = storage.clone();
         provisioned.password_prs = prs_storage;
         provisioned.salt = "salt123".to_owned();
-        with_config_and_hard_settings(provisioned, HashMap::new(), || {
+        with_config(provisioned, || {
             assert!(matches!(
                 Config::read_permanent_password_prs(),
                 PermanentPasswordPrsRead::Available(_)
@@ -5677,7 +5585,7 @@ unrelated = "preserved"
         let mut half = Config::default();
         half.password = storage;
         half.salt = "salt123".to_owned();
-        with_config_and_hard_settings(half, HashMap::new(), || {
+        with_config(half, || {
             assert_eq!(
                 Config::read_permanent_password_prs(),
                 PermanentPasswordPrsRead::Empty
@@ -5691,7 +5599,7 @@ unrelated = "preserved"
         opaque.password = "01AAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned();
         opaque.password_prs = "01AAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned();
         opaque.salt = "salt123".to_owned();
-        with_config_and_hard_settings(opaque, HashMap::new(), || {
+        with_config(opaque, || {
             assert_eq!(
                 Config::read_permanent_password_prs(),
                 PermanentPasswordPrsRead::UndecryptableStorage
@@ -5706,7 +5614,7 @@ unrelated = "preserved"
         config.id.clear();
         config.enc_id.clear();
 
-        with_config_and_hard_settings(config, HashMap::new(), || {
+        with_config(config, || {
             assert_eq!(Config::get_id(), "");
             assert!(CONFIG.read().unwrap().id.is_empty());
         });

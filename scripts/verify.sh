@@ -529,8 +529,8 @@ echo "== (3b-iii) bounded closed main IPC transactions (R-S11/R-S11g) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::password::tests --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_id_is_side_effect_free --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_get_salt_is_side_effect_free --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_when_value_matches_preset --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_generated_storage_salt --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_hard_settings_password_does_not_create_credential --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_does_not_generate_id_for_empty_config --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_load_reads_legacy_plaintext_id_without_storing --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_store_clears_empty_id_storage --color never
@@ -2994,8 +2994,9 @@ echo "== R-S11b-4 config/PRS secrecy boundary =="
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::store_path_writes_owner_only_permissions --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::windows_config_acl_sddl_is_protected_owner_system_only --color never
 "${RUN[@]}" cargo test -p hbb_common --lib config::tests::runtime_password_snapshot_does_not_persist --color never
-"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_when_value_matches_preset --color never
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_password_status_but_not_credential_storage --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_set_permanent_password_persists_generated_storage_salt --color never
+"${RUN[@]}" cargo test -p hbb_common --lib config::tests::test_hard_settings_password_does_not_create_credential --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::main_config_keys_expose_typed_password_status_but_not_credential_storage --color never
 r_s11b4=""
 r_s11b4_config_enum=$(awk '/pub enum MainConfigKey/,/^}/' src/ipc.rs)
 r_s11b4_main_config_handler=$(awk '/MainIpcRequest::Config\(key\) => \{/,/MainIpcRequest::SetOption\(value\) => \{/' src/ipc.rs)
@@ -3020,17 +3021,45 @@ for token in \
 done
 grep -qF 'set_permanent_password_storage_for_sync' libs/hbb_common/src/config.rs && r_s11b4="$r_s11b4 persistent-credential-sync-writer-present"
 grep -qF 'storage + "\n" + &salt' src/ipc.rs && r_s11b4="$r_s11b4 credential-storage-string-payload-present"
-grep -q 'LocalPermanentPasswordSet' <<<"$r_s11b4_config_enum" || r_s11b4="$r_s11b4 local-password-status-key-missing"
-grep -q 'MainConfigKey::LocalPermanentPasswordSet => Some' src/ipc.rs || r_s11b4="$r_s11b4 local-password-status-handler-missing"
-grep -q 'permanent_password_is_local_for_current_process().await' src/ipc.rs || r_s11b4="$r_s11b4 receiver-derived-local-password-status-missing"
-grep -q 'pub fn is_local_permanent_password_set() -> bool' src/ipc.rs || r_s11b4="$r_s11b4 local-password-status-client-missing"
-grep -q 'ipc::is_local_permanent_password_set()' src/ui_interface.rs || r_s11b4="$r_s11b4 ui-local-password-status-not-daemon-derived"
-grep -q 'main_config_keys_expose_password_status_but_not_credential_storage' src/ipc.rs || r_s11b4="$r_s11b4 nonsecret-main-config-regression-missing"
+grep -q 'PermanentPasswordSet' <<<"$r_s11b4_config_enum" || r_s11b4="$r_s11b4 typed-password-status-key-missing"
+grep -q 'MainConfigKey::PermanentPasswordSet => Some' src/ipc.rs || r_s11b4="$r_s11b4 typed-password-status-handler-missing"
+grep -q 'permanent_password_is_set_for_current_process().await' src/ipc.rs || r_s11b4="$r_s11b4 receiver-derived-password-status-missing"
+grep -q 'pub fn is_permanent_password_set() -> bool' src/ipc.rs || r_s11b4="$r_s11b4 password-status-client-missing"
+grep -q 'ipc::is_permanent_password_set()' src/ui_interface.rs || r_s11b4="$r_s11b4 ui-password-status-not-daemon-derived"
+grep -q 'main_config_keys_expose_typed_password_status_but_not_credential_storage' src/ipc.rs || r_s11b4="$r_s11b4 nonsecret-main-config-regression-missing"
+for token in \
+  'LocalPermanentPasswordSet' \
+  'PermanentPasswordIsPreset' \
+  'permanent_password_is_local_for_current_process' \
+  'permanent_password_is_preset_for_current_process' \
+  'is_local_permanent_password_set' \
+  'is_permanent_password_preset'; do
+  grep -qF "$token" src/ipc.rs src/ui_interface.rs &&
+    r_s11b4="$r_s11b4 retired-password-status-subtype-present:$token"
+done
+for token in \
+  'decode_preset_password_h1_from_storage' \
+  'preset_permanent_password_storage_is_usable_for_auth' \
+  'has_usable_preset_password' \
+  'is_using_preset_password' \
+  'preset_password_storage_and_salt' \
+  'has_local_permanent_password'; do
+  grep -qF "$token" libs/hbb_common/src/config.rs libs/hbb_common/src/config/permanent_password.rs &&
+    r_s11b4="$r_s11b4 retired-preset-credential-classifier-present:$token"
+done
+if grep -RInE 'isPresetPassword|is_preset_password|buildPresetPasswordWarning|preset_password_warning|preset-password-in-use-tip|remove-preset-password-warning' \
+  src/flutter_ffi.rs src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib src/lang >/dev/null; then
+  r_s11b4="$r_s11b4 retired-preset-password-presentation-present"
+fi
+grep -q 'Self::read_permanent_password_prs().is_available()' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 typed-password-status-authority-missing"
+grep -q 'test_hard_settings_password_does_not_create_credential' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 hard-settings-not-a-credential-regression-missing"
+grep -qF 'R-S11b-3q — preset-password credential/status compatibility excised' HARDENING_STATUS.md || r_s11b4="$r_s11b4 preset-password-excision-ledger-missing"
+grep -qF '<tr><td>241</td>' requirements.html || r_s11b4="$r_s11b4 preset-password-excision-appendix-missing"
 grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-request-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-launchd-proof-missing"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-snapshot-nonpersist-test-missing"
-grep -q 'test_set_permanent_password_persists_when_value_matches_preset' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 explicit-password-set-preset-noop-test-missing"
+grep -q 'test_set_permanent_password_persists_generated_storage_salt' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 explicit-password-persistence-test-missing"
 grep -q 'store_config_bytes_transaction(&path, serialized.as_bytes(), ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 toml-store-transaction-missing"
 grep -q 'store_config_bytes_transaction(&path, data, ConfigStoreFault::None)' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 raw-store-transaction-missing"
 unix_config_transaction=$(awk '/fn store_config_bytes_transaction_unix\(/,/^}/' libs/hbb_common/src/config.rs)

@@ -459,7 +459,7 @@ grep -qF 'class DirectListenerStatusWidget extends StatefulWidget' "$REPO/flutte
   || r_sv6c="$r_sv6c direct-listener-widget-missing"
 grep -qF "mainGetCommon(key: 'direct-listener-bound')" "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
   || r_sv6c="$r_sv6c direct-listener-bound-fact-missing"
-grep -qF "mainGetCommon(key: 'local-permanent-password-set')" "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
+grep -qF "mainGetCommon(key: 'permanent-password-set')" "$REPO/flutter/lib/desktop/pages/connection_page.dart" \
   || r_sv6c="$r_sv6c password-provisioning-reason-missing"
 grep -qF 'await bind.mainStartStatusSync();' "$REPO/flutter/lib/main.dart" \
   || r_sv6c="$r_sv6c desktop-status-sync-trigger-missing"
@@ -1176,7 +1176,7 @@ grep -q -- '<string>--service-owned-server</string>' "$REPO/src/platform/privile
 grep -qF 'set_permanent_password_storage_for_sync' "$REPO/libs/hbb_common/src/config.rs" && r_s11b2="$r_s11b2 ordinary-main-credential-sync-writer-present"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 macos-service-password-runtime-nonpersist-test-missing"
-grep -q 'test_set_permanent_password_persists_when_value_matches_preset' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 explicit-password-set-preset-noop-test-missing"
+grep -q 'test_set_permanent_password_persists_generated_storage_salt' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 explicit-password-persistence-test-missing"
 grep -q 'effective_permanent_password_prs' "$REPO/src/direct_service.rs" || r_s11b2="$r_s11b2 macos-service-password-listener-not-effective-prs"
 grep -q 'let credential = effective_permanent_password_credential_snapshot().await' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-cpace-snapshot-missing"
 grep -q 'let (prs_status, credential_generation) = credential.into_parts();' "$REPO/src/server.rs" || r_s11b2="$r_s11b2 macos-service-password-generation-binding-missing"
@@ -1287,10 +1287,37 @@ for token in \
   grep -qF "$token" <<<"$main_config_handler" && r_s11b2="$r_s11b2 main-config-handler-secret-read-present:$token"
 done
 grep -qF 'storage + "\n" + &salt' "$REPO/src/ipc.rs" && r_s11b2="$r_s11b2 credential-storage-string-payload-present"
-grep -q 'LocalPermanentPasswordSet' <<<"$main_config_enum" || r_s11b2="$r_s11b2 local-password-status-key-missing"
-grep -q 'MainConfigKey::LocalPermanentPasswordSet => Some' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 local-password-status-handler-missing"
-grep -q 'permanent_password_is_local_for_current_process().await' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 receiver-derived-local-password-status-missing"
-grep -q 'ipc::is_local_permanent_password_set()' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-local-password-status-not-daemon-derived"
+grep -q 'PermanentPasswordSet' <<<"$main_config_enum" || r_s11b2="$r_s11b2 typed-password-status-key-missing"
+grep -q 'MainConfigKey::PermanentPasswordSet => Some' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 typed-password-status-handler-missing"
+grep -q 'permanent_password_is_set_for_current_process().await' "$REPO/src/ipc.rs" || r_s11b2="$r_s11b2 receiver-derived-password-status-missing"
+grep -q 'ipc::is_permanent_password_set()' "$REPO/src/ui_interface.rs" || r_s11b2="$r_s11b2 ui-password-status-not-daemon-derived"
+for token in \
+  'LocalPermanentPasswordSet' \
+  'PermanentPasswordIsPreset' \
+  'permanent_password_is_local_for_current_process' \
+  'permanent_password_is_preset_for_current_process' \
+  'is_local_permanent_password_set' \
+  'is_permanent_password_preset'; do
+  grep -qF "$token" "$REPO/src/ipc.rs" "$REPO/src/ui_interface.rs" &&
+    r_s11b2="$r_s11b2 retired-password-status-subtype-present:$token"
+done
+for token in \
+  'decode_preset_password_h1_from_storage' \
+  'preset_permanent_password_storage_is_usable_for_auth' \
+  'has_usable_preset_password' \
+  'is_using_preset_password' \
+  'preset_password_storage_and_salt' \
+  'has_local_permanent_password'; do
+  grep -qF "$token" "$REPO/libs/hbb_common/src/config.rs" "$REPO/libs/hbb_common/src/config/permanent_password.rs" &&
+    r_s11b2="$r_s11b2 retired-preset-credential-classifier-present:$token"
+done
+if grep -RInE 'isPresetPassword|is_preset_password|buildPresetPasswordWarning|preset_password_warning|preset-password-in-use-tip|remove-preset-password-warning' \
+  "$REPO/src/flutter_ffi.rs" "$REPO/src/bridge_generated.rs" "$REPO/src/bridge_generated.io.rs" "$REPO/flutter/lib" "$REPO/src/lang" >/dev/null; then
+  r_s11b2="$r_s11b2 retired-preset-password-presentation-present"
+fi
+grep -q 'Self::read_permanent_password_prs().is_available()' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 typed-password-status-authority-missing"
+grep -Fq 'R-S11b-3q — preset-password credential/status compatibility excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 preset-password-excision-ledger-missing"
+grep -Fq '<tr><td>241</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 preset-password-excision-appendix-missing"
 grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 credential-mirror-ledger-missing"
 grep -Fq '<tr><td>237</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 credential-mirror-appendix-missing"
 grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 single-option-ledger-missing"

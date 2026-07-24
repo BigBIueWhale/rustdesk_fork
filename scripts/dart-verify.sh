@@ -367,8 +367,13 @@ grep -qF 'class DirectListenerStatusWidget extends StatefulWidget' flutter/lib/d
   || { echo "  FAIL R-SV6c: explicit direct-listener status widget is missing"; exit 1; }
 grep -qF "mainGetCommon(key: 'direct-listener-bound')" flutter/lib/desktop/pages/connection_page.dart \
   || { echo "  FAIL R-SV6c: status widget lost real listener-bound authority"; exit 1; }
-grep -qF "mainGetCommon(key: 'local-permanent-password-set')" flutter/lib/desktop/pages/connection_page.dart \
+grep -qF "mainGetCommon(key: 'permanent-password-set')" flutter/lib/desktop/pages/connection_page.dart \
   || { echo "  FAIL R-SV6c: status widget lost password-provisioning reason"; exit 1; }
+if grep -RInE 'isPresetPassword|is_preset_password|buildPresetPasswordWarning|preset_password_warning|preset-password-in-use-tip|remove-preset-password-warning|local-permanent-password-set' \
+  flutter/lib >/dev/null; then
+  echo "  FAIL R-S11b-3q: authored/generated Dart retained a preset/local password compatibility surface"; exit 1
+fi
+echo "  ok  R-S11b-3q Dart exposes one PRS-derived permanent-password status and no preset/local subtype"
 # R-SV6d / R-G / R-D: public/custom rendezvous classification has no meaning in a direct-only
 # product. Reject authored comments/aliases as well as code, then inspect the freshly generated ABI.
 dg_clean 'using_public_server|usingPublicServer|mainIsUsingPublicServer|is_using_public_server' 'R-SV6d public/custom-rendezvous selection state'

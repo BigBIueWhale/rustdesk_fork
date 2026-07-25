@@ -197,7 +197,9 @@ require_pinned_builder_image() {
         || die "pins.env is missing $image_var, $dockerfile_var, or $dpkg_var"
     require_cmd python3 docker
     local args=()
-    if [ "$role" = android-builder ] || [ "$role" = deb-builder ]; then
+    if [ "$role" = android-builder ] \
+        || [ "$role" = deb-builder ] \
+        || [ "$role" = win-helper ]; then
         local required=(
             "${prefix}_CONFIG_ID"
             "${prefix}_MANIFEST_ID"

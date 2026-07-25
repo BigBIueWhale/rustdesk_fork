@@ -400,23 +400,27 @@ def validate_online_fetch(source: str) -> None:
         "exact-pin certified Android builder promotion",
     )
 
-    generic_capture = function_block(
+    win_bootstrap_capture = function_block(
         source,
-        "maintenance_capture_windows_helper_image",
+        "maintenance_capture_win_helper_bootstrap_image",
     )
     require_absent(
-        generic_capture,
+        win_bootstrap_capture,
         (
             "ANDROID_BUILDER",
             "android-builder",
             "capture_android_builder_image",
         ),
-        "non-Android legacy builder capture",
+        "non-Android Windows bootstrap capture",
     )
     require_absent(
         source,
-        ("capture_android_builder_image() {",),
-        "retired Docker-store Android builder capture",
+        (
+            "capture_android_builder_image() {",
+            "capture_windows_helper_image() {",
+            "maintenance_capture_windows_helper_image() {",
+        ),
+        "retired Docker-store final builder capture",
     )
     require_all(
         source,
@@ -480,7 +484,9 @@ def validate_library(source: str) -> None:
         block,
         (
             "android-builder) prefix=ANDROID_BUILDER;",
-            '[ "$role" = android-builder ] || [ "$role" = deb-builder ]',
+            '[ "$role" = android-builder ] \\\n'
+            '        || [ "$role" = deb-builder ] \\\n'
+            '        || [ "$role" = win-helper ]; then',
             '"${prefix}_CONFIG_ID"',
             '"${prefix}_MANIFEST_ID"',
             '"${prefix}_BOOTSTRAP_IMAGE_ID"',
@@ -513,7 +519,7 @@ def validate_provenance(source: str) -> None:
             '    "rd-android-builder-certified:authenticated-v1"\n'
             ")",
             "def requires_private_archive(spec: ImageSpec) -> bool:",
-            'if args.role in {"android-builder", "deb-builder"}:',
+            'if args.role in {"android-builder", "deb-builder", "win-helper"}:',
             '"android-builder-bootstrap",',
             "f\"certified {spec.display_name} runtime config differs from \"",
             "if contains_vcs_authority(statement):\n"
@@ -709,6 +715,7 @@ def validate_contract(sources: dict[str, str]) -> None:
             "validate_android_builder_authority_contract(sources)\n"
             "    validate_android_builder_image_authority_contract(sources)\n"
             "    validate_deb_builder_image_authority_contract(sources)\n"
+            "    validate_win_helper_image_authority_contract(sources)\n"
             "    validate_android_keystore_authority_contract(sources)",
             '"android_builder_image_authority_verifier": (',
             'repo / "scripts/verify-android-builder-image-authority.py"',
@@ -987,11 +994,11 @@ MUTATIONS = (
     ),
     Mutation(
         "online",
-        "maintenance_capture_windows_helper_image() {\n"
-        "    local names=(",
-        "maintenance_capture_windows_helper_image() {\n"
+        "maintenance_capture_win_helper_bootstrap_image() {\n"
+        "    require_win_helper_image_pins",
+        "maintenance_capture_win_helper_bootstrap_image() {\n"
         "    local ANDROID_BUILDER_IMAGE_ID=unreviewed\n"
-        "    local names=(",
+        "    require_win_helper_image_pins",
         "generic Android Docker-store capture absence",
     ),
     Mutation(
@@ -1212,10 +1219,12 @@ MUTATIONS = (
         "validate_android_builder_authority_contract(sources)\n"
         "    validate_android_builder_image_authority_contract(sources)\n"
         "    validate_deb_builder_image_authority_contract(sources)\n"
+        "    validate_win_helper_image_authority_contract(sources)\n"
         "    validate_android_keystore_authority_contract(sources)",
         "validate_android_builder_authority_contract(sources)\n"
         "    true # Android builder image workspace contract removed\n"
         "    validate_deb_builder_image_authority_contract(sources)\n"
+        "    validate_win_helper_image_authority_contract(sources)\n"
         "    validate_android_keystore_authority_contract(sources)",
         "independent workspace dispatch",
     ),

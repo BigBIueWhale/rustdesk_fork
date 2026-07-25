@@ -42,11 +42,21 @@ DEB_BUILDER_CERTIFICATION_EXPORT_NAME = (
 DEB_BUILDER_CERTIFICATION_EXPORT_OCI_NAME = (
     "docker.io/library/" + DEB_BUILDER_CERTIFICATION_EXPORT_NAME
 )
+WIN_HELPER_CERTIFICATION_EXPORT_NAME = (
+    "rd-win-helper-certified:authenticated-v1"
+)
+WIN_HELPER_CERTIFICATION_EXPORT_OCI_NAME = (
+    "docker.io/library/" + WIN_HELPER_CERTIFICATION_EXPORT_NAME
+)
 ANDROID_BUILDER_ENV = [
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "DEBIAN_FRONTEND=noninteractive",
 ]
 DEB_BUILDER_ENV = [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "DEBIAN_FRONTEND=noninteractive",
+]
+WIN_HELPER_ENV = [
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "DEBIAN_FRONTEND=noninteractive",
 ]
@@ -204,59 +214,89 @@ class CertifiedBuilderSpec:
 
     @property
     def display_name(self) -> str:
-        return (
-            "Android builder"
-            if self.role == "android-builder"
-            else "Debian builder"
+        if self.role == "android-builder":
+            return "Android builder"
+        if self.role == "deb-builder":
+            return "Debian builder"
+        if self.role == "win-helper":
+            return "Windows helper"
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
 
     @property
     def bootstrap_context_name(self) -> str:
-        return (
-            "android-builder-bootstrap"
-            if self.role == "android-builder"
-            else "deb-builder-bootstrap"
+        if self.role == "android-builder":
+            return "android-builder-bootstrap"
+        if self.role == "deb-builder":
+            return "deb-builder-bootstrap"
+        if self.role == "win-helper":
+            return "win-helper-bootstrap"
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
 
     @property
     def argument_prefix(self) -> str:
-        return (
-            "ANDROID_BUILDER"
-            if self.role == "android-builder"
-            else "DEB_BUILDER"
+        if self.role == "android-builder":
+            return "ANDROID_BUILDER"
+        if self.role == "deb-builder":
+            return "DEB_BUILDER"
+        if self.role == "win-helper":
+            return "WIN_HELPER"
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
 
     @property
     def export_name(self) -> str:
-        return (
-            ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME
-            if self.role == "android-builder"
-            else DEB_BUILDER_CERTIFICATION_EXPORT_NAME
+        if self.role == "android-builder":
+            return ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME
+        if self.role == "deb-builder":
+            return DEB_BUILDER_CERTIFICATION_EXPORT_NAME
+        if self.role == "win-helper":
+            return WIN_HELPER_CERTIFICATION_EXPORT_NAME
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
 
     @property
     def export_oci_name(self) -> str:
-        return (
-            ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
-            if self.role == "android-builder"
-            else DEB_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+        if self.role == "android-builder":
+            return ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+        if self.role == "deb-builder":
+            return DEB_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+        if self.role == "win-helper":
+            return WIN_HELPER_CERTIFICATION_EXPORT_OCI_NAME
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
 
     @property
     def runtime_environment(self) -> list[str]:
-        return (
-            ANDROID_BUILDER_ENV
-            if self.role == "android-builder"
-            else DEB_BUILDER_ENV
+        if self.role == "android-builder":
+            return ANDROID_BUILDER_ENV
+        if self.role == "deb-builder":
+            return DEB_BUILDER_ENV
+        if self.role == "win-helper":
+            return WIN_HELPER_ENV
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
 
     @property
     def source_location_lines(self) -> range:
-        return range(20, 44)
+        return range(20, 45) if self.role == "win-helper" else range(20, 44)
 
     @property
     def history_count(self) -> int:
-        return 20 if self.role == "android-builder" else 21
+        if self.role in {"android-builder", "win-helper"}:
+            return 20
+        if self.role == "deb-builder":
+            return 21
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
+        )
 
     @property
     def bootstrap_layer_count(self) -> int:
@@ -264,11 +304,7 @@ class CertifiedBuilderSpec:
 
     @property
     def cat_path(self) -> str:
-        return (
-            "/usr/bin/cat"
-            if self.role == "android-builder"
-            else "/bin/cat"
-        )
+        return "/bin/cat" if self.role == "deb-builder" else "/usr/bin/cat"
 
     @property
     def runtime_tools(self) -> tuple[str, ...]:
@@ -289,29 +325,52 @@ class CertifiedBuilderSpec:
                 "yasm",
                 "zip",
             )
-        return (
-            "ar",
-            "bash",
-            "cc",
-            "clang",
-            "cmake",
-            "curl",
-            "dpkg-deb",
-            "g++",
-            "gcc",
-            "git",
-            "make",
-            "nasm",
-            "ninja",
-            "pkg-config",
-            "python3",
-            "tar",
-            "unzip",
-            "wget",
-            "xz",
-            "yasm",
-            "zip",
+        if self.role == "deb-builder":
+            return (
+                "ar",
+                "bash",
+                "cc",
+                "clang",
+                "cmake",
+                "curl",
+                "dpkg-deb",
+                "g++",
+                "gcc",
+                "git",
+                "make",
+                "nasm",
+                "ninja",
+                "pkg-config",
+                "python3",
+                "tar",
+                "unzip",
+                "wget",
+                "xz",
+                "yasm",
+                "zip",
+            )
+        if self.role == "win-helper":
+            return (
+                "bash",
+                "genisoimage",
+                "grep",
+                "guestfish",
+                "head",
+                "python3",
+                "sha256sum",
+                "sort",
+                "tail",
+                "tar",
+                "virt-cat",
+                "virt-ls",
+            )
+        raise ProvenanceError(
+            f"unsupported certified builder role: {self.role}"
         )
+
+    @property
+    def runtime_python_modules(self) -> tuple[str, ...]:
+        return ("olefile",) if self.role == "win-helper" else ()
 
     @property
     def archive_tags(self) -> None:
@@ -325,7 +384,7 @@ class CertifiedBuilderSpec:
     def labels(self) -> dict[str, str]:
         labels = {
             "org.opencontainers.image.version": (
-                "24.04" if self.role == "android-builder" else "18.04"
+                "18.04" if self.role == "deb-builder" else "24.04"
             ),
             LABEL_PREFIX + "contract": CONTRACT,
             LABEL_PREFIX + "role": self.role,
@@ -992,9 +1051,9 @@ def spec_from_args(
             config_id=require_image_id(args.config_id or "", "devcheck config ID"),
             manifest_id=require_image_id(args.manifest_id or "", "devcheck manifest ID"),
         )
-    if args.role in {"android-builder", "deb-builder"}:
+    if args.role in {"android-builder", "deb-builder", "win-helper"}:
         expected_release = (
-            "24[.]04" if args.role == "android-builder" else "18[.]04"
+            "18[.]04" if args.role == "deb-builder" else "24[.]04"
         )
         if not re.fullmatch(
             rf"ubuntu:{expected_release}@sha256:[0-9a-f]{{64}}",
@@ -1047,7 +1106,7 @@ def spec_from_args(
     if not re.fullmatch(
         (
             r"(?:android|deb)-builder-bootstrap(?:-candidate)?"
-            r"|win-helper"
+            r"|win-helper-bootstrap(?:-candidate)?"
         ),
         args.role,
     ):
@@ -1057,9 +1116,14 @@ def spec_from_args(
     is_bootstrap = args.role in {
         "android-builder-bootstrap",
         "deb-builder-bootstrap",
+        "win-helper-bootstrap",
     }
     is_bootstrap_role = args.role.startswith(
-        ("android-builder-bootstrap", "deb-builder-bootstrap")
+        (
+            "android-builder-bootstrap",
+            "deb-builder-bootstrap",
+            "win-helper-bootstrap",
+        )
     )
     bootstrap_role = args.role.removesuffix("-candidate").removesuffix(
         "-bootstrap"
@@ -1212,6 +1276,7 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
     validate_inspect(inspect_image(image_ref), image_ref, spec)
     if isinstance(spec, CertifiedBuilderSpec):
         tools = " ".join(spec.runtime_tools)
+        modules = " ".join(spec.runtime_python_modules)
         marker = f"{spec.role}-certified=ok\n".encode("ascii")
         command = (
             "set -eu; "
@@ -1236,6 +1301,8 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
             f"'dpkg_manifest_sha256={spec.dpkg_sha256}')\" ]; "
             f"for tool in {tools}; do "
             "command -v \"$tool\" >/dev/null; done; "
+            f"for module in {modules}; do "
+            "/usr/bin/python3 -c \"import $module\"; done; "
             f"printf '{spec.role}-certified=ok\\n'"
         )
         result = run(
@@ -7495,10 +7562,11 @@ def create_rust_audit_fixture_archive(
     return spec
 
 
-def create_certified_android_builder_fixture_archive(
+def create_certified_builder_fixture_archive(
     path: Path,
     repo_tags: object = None,
     *,
+    role: str = "android-builder",
     add_vcs: bool = False,
     embedded_dockerfile: bytes | None = None,
     execution_network: int = 2,
@@ -7513,6 +7581,9 @@ def create_certified_android_builder_fixture_archive(
     omit_attestation: bool = False,
     extra_operation: bool = False,
 ) -> CertifiedBuilderSpec:
+    if role not in {"android-builder", "deb-builder", "win-helper"}:
+        fail(f"certified builder fixture role is unsupported: {role}")
+
     def encoded(value: object) -> bytes:
         return json.dumps(
             value,
@@ -7532,20 +7603,26 @@ def create_certified_android_builder_fixture_archive(
             **extra,
         }
 
-    dockerfile = (
-        Path(__file__)
-        .with_name("Dockerfile.android-builder-certify")
-        .read_bytes()
-    )
+    dockerfile_name = {
+        "android-builder": "Dockerfile.android-builder-certify",
+        "deb-builder": "Dockerfile.deb-builder-certify",
+        "win-helper": "Dockerfile.win-helper-certify",
+    }[role]
+    dockerfile = Path(__file__).with_name(dockerfile_name).read_bytes()
     source_dockerfile = (
         dockerfile if embedded_dockerfile is None else embedded_dockerfile
     )
     bootstrap_image_id = "sha256:" + "a" * 64
     bootstrap_manifest_id = "sha256:" + "b" * 64
     preliminary = CertifiedBuilderSpec(
-        role="android-builder",
+        role=role,
         image_id="sha256:" + "0" * 64,
-        base="ubuntu:24.04@sha256:" + "c" * 64,
+        base=(
+            "ubuntu:18.04@sha256:"
+            if role == "deb-builder"
+            else "ubuntu:24.04@sha256:"
+        )
+        + "c" * 64,
         dockerfile_sha256=hashlib.sha256(dockerfile).hexdigest(),
         recipe_sha256="d" * 64,
         dpkg_sha256="e" * 64,
@@ -7579,7 +7656,7 @@ def create_certified_android_builder_fixture_archive(
             "created_by": f"bootstrap-{position}",
             "empty_layer": True,
         }
-        for position in range(12)
+        for position in range(preliminary.history_count - 8)
     ] + [
         {
             "created": "2023-11-14T22:13:20Z",
@@ -7631,21 +7708,23 @@ def create_certified_android_builder_fixture_archive(
     context_value = (
         f"{context_scheme}://{store}@{bootstrap_image_id}"
     )
+    prefix = preliminary.argument_prefix
+    context_name = preliminary.bootstrap_context_name
     expected_args = {
-        "build-arg:ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID": (
+        f"build-arg:{prefix}_BOOTSTRAP_IMAGE_ID": (
             bootstrap_image_id
         ),
-        "build-arg:ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID": (
+        f"build-arg:{prefix}_BOOTSTRAP_MANIFEST_ID": (
             bootstrap_manifest_id
         ),
-        "build-arg:ANDROID_BUILDER_DPKG_MANIFEST_SHA256": (
+        f"build-arg:{prefix}_DPKG_MANIFEST_SHA256": (
             preliminary.dpkg_sha256
         ),
-        "build-arg:ANDROID_BUILDER_RECIPE_SHA256": (
+        f"build-arg:{prefix}_RECIPE_SHA256": (
             preliminary.recipe_sha256
         ),
         "build-arg:SOURCE_DATE_EPOCH": "1700000000",
-        "context:android-builder-bootstrap": context_value,
+        f"context:{context_name}": context_value,
         "force-network-mode": "none",
         "frontend.caps": "moby.buildkit.frontend.contexts+forward",
         "no-cache": "",
@@ -7654,15 +7733,15 @@ def create_certified_android_builder_fixture_archive(
     source_command = (
         source_runs[0][1] if len(source_runs) == 1 else "invalid-source"
     )
-    environment = ANDROID_BUILDER_ENV + [
-        f"ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID={bootstrap_image_id}",
+    environment = preliminary.runtime_environment + [
+        f"{prefix}_BOOTSTRAP_IMAGE_ID={bootstrap_image_id}",
         (
-            "ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID="
+            f"{prefix}_BOOTSTRAP_MANIFEST_ID="
             f"{bootstrap_manifest_id}"
         ),
-        f"ANDROID_BUILDER_RECIPE_SHA256={preliminary.recipe_sha256}",
+        f"{prefix}_RECIPE_SHA256={preliminary.recipe_sha256}",
         (
-            "ANDROID_BUILDER_DPKG_MANIFEST_SHA256="
+            f"{prefix}_DPKG_MANIFEST_SHA256="
             f"{preliminary.dpkg_sha256}"
         ),
         "SOURCE_DATE_EPOCH=1700000000",
@@ -7679,7 +7758,7 @@ def create_certified_android_builder_fixture_archive(
                         },
                         "identifier": (
                             "oci-layout://docker.io/library/"
-                            "android-builder-bootstrap@"
+                            f"{context_name}@"
                             f"{bootstrap_image_id}"
                         ),
                     }
@@ -7786,7 +7865,7 @@ def create_certified_android_builder_fixture_archive(
                                     "start": {"line": line},
                                     "end": {"line": line},
                                 }
-                                for line in range(20, 44)
+                                for line in preliminary.source_location_lines
                             ]
                         }
                     ]
@@ -7814,7 +7893,8 @@ def create_certified_android_builder_fixture_archive(
             "subject": [
                 {
                     "name": (
-                        "pkg:docker/rd-android-builder-certified@"
+                        "pkg:docker/"
+                        f"{preliminary.export_name.rsplit(':', 1)[0]}@"
                         "authenticated-v1?platform=linux%2Famd64"
                     ),
                     "digest": {
@@ -7835,7 +7915,7 @@ def create_certified_android_builder_fixture_archive(
                     "resolvedDependencies": [
                         {
                             "uri": (
-                                "pkg:oci/android-builder-bootstrap?"
+                                f"pkg:oci/{context_name}?"
                                 f"digest={material_id}"
                                 "&platform=linux%2Famd64"
                             ),
@@ -8010,7 +8090,7 @@ def create_certified_android_builder_fixture_archive(
     return spec
 
 
-def create_certified_android_builder_fixture_oci_export(
+def create_certified_builder_fixture_oci_export(
     archive_path: Path,
     export_path: Path,
     spec: CertifiedBuilderSpec,
@@ -8027,13 +8107,13 @@ def create_certified_android_builder_fixture_oci_export(
             extracted = archive.extractfile(member)
             if extracted is None:
                 fail(
-                    "cannot read certified Android builder fixture member: "
+                    "cannot read certified builder fixture member: "
                     f"{member.name}"
                 )
             members[member.name.rstrip("/")] = extracted.read()
     root_index = parse_json(
         members.get("index.json"),
-        "certified Android builder fixture root index",
+        "certified builder fixture root index",
     )
     descriptors = (
         root_index.get("manifests")
@@ -8043,7 +8123,7 @@ def create_certified_android_builder_fixture_oci_export(
     if not isinstance(descriptors, list) \
        or len(descriptors) != 1 \
        or not isinstance(descriptors[0], dict):
-        fail("certified Android builder fixture root descriptor is malformed")
+        fail("certified builder fixture root descriptor is malformed")
     descriptor = dict(descriptors[0])
     created = datetime.fromtimestamp(
         spec.source_date_epoch,
@@ -8053,13 +8133,13 @@ def create_certified_android_builder_fixture_oci_export(
         "io.containerd.image.name": (
             "docker.io/library/unreviewed:latest"
             if wrong_export_name
-            else ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+            else spec.export_oci_name
         ),
         "org.opencontainers.image.created": created,
         "org.opencontainers.image.ref.name": (
             "latest"
             if wrong_export_name
-            else ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME.rsplit(":", 1)[1]
+            else spec.export_name.rsplit(":", 1)[1]
         ),
     }
     output_descriptors = [descriptor]
@@ -8199,7 +8279,7 @@ def self_test() -> None:
         android_archive = (
             Path(temporary) / "certified-android-builder-image.tar.gz"
         )
-        android_spec = create_certified_android_builder_fixture_archive(
+        android_spec = create_certified_builder_fixture_archive(
             android_archive
         )
         android_bytes = android_archive.read_bytes()
@@ -8348,7 +8428,7 @@ def self_test() -> None:
             Path(temporary)
             / "certified-android-builder-direct.oci.tar"
         )
-        create_certified_android_builder_fixture_oci_export(
+        create_certified_builder_fixture_oci_export(
             android_archive,
             android_export,
             android_spec,
@@ -8422,7 +8502,7 @@ def self_test() -> None:
             Path(temporary)
             / "wrong-name-certified-android-builder.oci.tar"
         )
-        create_certified_android_builder_fixture_oci_export(
+        create_certified_builder_fixture_oci_export(
             android_archive,
             wrong_name_export,
             android_spec,
@@ -8441,7 +8521,7 @@ def self_test() -> None:
             Path(temporary)
             / "extra-referrer-certified-android-builder.oci.tar"
         )
-        create_certified_android_builder_fixture_oci_export(
+        create_certified_builder_fixture_oci_export(
             android_archive,
             referrer_export,
             android_spec,
@@ -8460,7 +8540,7 @@ def self_test() -> None:
             Path(temporary)
             / "compatibility-certified-android-builder.oci.tar"
         )
-        create_certified_android_builder_fixture_oci_export(
+        create_certified_builder_fixture_oci_export(
             android_archive,
             compatibility_export,
             android_spec,
@@ -8528,7 +8608,7 @@ def self_test() -> None:
             **arguments: object,
         ) -> None:
             candidate = Path(temporary) / name
-            candidate_spec = create_certified_android_builder_fixture_archive(
+            candidate_spec = create_certified_builder_fixture_archive(
                 candidate,
                 **arguments,
             )
@@ -8626,6 +8706,268 @@ def self_test() -> None:
             fail(
                 "certified Android builder image self-test count differs: "
                 f"{android_checks}"
+            )
+
+        win_archive = (
+            Path(temporary) / "certified-win-helper-image.tar.gz"
+        )
+        win_spec = create_certified_builder_fixture_archive(
+            win_archive,
+            role="win-helper",
+        )
+        win_bytes = win_archive.read_bytes()
+        win_sha = hashlib.sha256(win_bytes).hexdigest()
+        win_size = len(win_bytes)
+        verify_archive(
+            win_archive,
+            win_sha,
+            win_spec,
+            win_size,
+        )
+        win_payload = {
+            "Id": win_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": win_spec.runtime_config,
+        }
+        validate_inspect(
+            win_payload,
+            win_spec.image_id,
+            win_spec,
+        )
+        if win_spec.display_name != "Windows helper" \
+           or win_spec.argument_prefix != "WIN_HELPER" \
+           or win_spec.bootstrap_context_name != "win-helper-bootstrap" \
+           or win_spec.export_name != (
+               WIN_HELPER_CERTIFICATION_EXPORT_NAME
+           ) \
+           or win_spec.export_oci_name != (
+               WIN_HELPER_CERTIFICATION_EXPORT_OCI_NAME
+           ) \
+           or win_spec.runtime_environment != WIN_HELPER_ENV \
+           or win_spec.source_location_lines != range(20, 45) \
+           or win_spec.history_count != 20 \
+           or win_spec.bootstrap_layer_count != 3 \
+           or win_spec.cat_path != "/usr/bin/cat" \
+           or win_spec.runtime_python_modules != ("olefile",) \
+           or win_spec.runtime_tools != (
+               "bash",
+               "genisoimage",
+               "grep",
+               "guestfish",
+               "head",
+               "python3",
+               "sha256sum",
+               "sort",
+               "tail",
+               "tar",
+               "virt-cat",
+               "virt-ls",
+           ):
+            fail("certified Windows helper role contract differs")
+        win_checks = 3
+
+        def win_failure(
+            operation: Callable[[], object],
+            label: str,
+        ) -> None:
+            nonlocal win_checks
+            expect_failure(operation, label)
+            win_checks += 1
+
+        for label, mutation in (
+            (
+                "image identity",
+                replace(win_spec, image_id="sha256:" + "f" * 64),
+            ),
+            (
+                "config identity",
+                replace(win_spec, config_id="sha256:" + "f" * 64),
+            ),
+            (
+                "manifest identity",
+                replace(win_spec, manifest_id="sha256:" + "f" * 64),
+            ),
+            (
+                "bootstrap identity",
+                replace(
+                    win_spec,
+                    bootstrap_image_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "bootstrap manifest",
+                replace(
+                    win_spec,
+                    bootstrap_manifest_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "certification Dockerfile",
+                replace(win_spec, dockerfile_sha256="f" * 64),
+            ),
+            (
+                "bootstrap recipe",
+                replace(win_spec, recipe_sha256="f" * 64),
+            ),
+            (
+                "package manifest",
+                replace(win_spec, dpkg_sha256="f" * 64),
+            ),
+            (
+                "source epoch",
+                replace(win_spec, source_date_epoch=1700000001),
+            ),
+        ):
+            win_failure(
+                lambda mutation=mutation: verify_archive(
+                    win_archive,
+                    win_sha,
+                    mutation,
+                    win_size,
+                ),
+                f"certified Windows helper {label}",
+            )
+        win_failure(
+            lambda: validate_inspect(
+                {
+                    **win_payload,
+                    "Config": {
+                        **win_spec.runtime_config,
+                        "User": "0:0",
+                    },
+                },
+                win_spec.image_id,
+                win_spec,
+            ),
+            "certified Windows helper runtime identity",
+        )
+
+        win_export = (
+            Path(temporary) / "certified-win-helper-direct.oci.tar"
+        )
+        create_certified_builder_fixture_oci_export(
+            win_archive,
+            win_export,
+            win_spec,
+        )
+        win_contract = replace(
+            win_spec,
+            image_id="sha256:" + "0" * 64,
+        )
+        normalized_win_archive = (
+            Path(temporary) / "normalized-certified-win-helper.tar.gz"
+        )
+        (
+            normalized_win_spec,
+            normalized_win_sha,
+            normalized_win_size,
+            win_export_sha,
+            win_export_size,
+        ) = canonicalize_certified_builder_oci_export(
+            win_export,
+            normalized_win_archive,
+            win_contract,
+        )
+        if normalized_win_spec != win_spec \
+           or win_export_sha != hashlib.sha256(
+               win_export.read_bytes()
+           ).hexdigest() \
+           or win_export_size != win_export.stat().st_size \
+           or normalized_win_size != normalized_win_archive.stat().st_size \
+           or normalized_win_sha != hashlib.sha256(
+               normalized_win_archive.read_bytes()
+           ).hexdigest():
+            fail(
+                "certified Windows helper direct OCI normalization "
+                "identity differs"
+            )
+        verify_archive(
+            normalized_win_archive,
+            normalized_win_sha,
+            normalized_win_spec,
+            normalized_win_size,
+        )
+        win_checks += 1
+
+        wrong_win_name_export = (
+            Path(temporary)
+            / "wrong-name-certified-win-helper.oci.tar"
+        )
+        create_certified_builder_fixture_oci_export(
+            win_archive,
+            wrong_win_name_export,
+            win_spec,
+            wrong_export_name=True,
+        )
+        win_failure(
+            lambda: canonicalize_certified_builder_oci_export(
+                wrong_win_name_export,
+                Path(temporary)
+                / "wrong-name-normalized-win-helper.tar.gz",
+                win_contract,
+            ),
+            "certified Windows helper direct OCI exporter name",
+        )
+
+        def reject_win_fixture(
+            name: str,
+            label: str,
+            **arguments: object,
+        ) -> None:
+            candidate = Path(temporary) / name
+            candidate_spec = create_certified_builder_fixture_archive(
+                candidate,
+                role="win-helper",
+                **arguments,
+            )
+            candidate_bytes = candidate.read_bytes()
+            win_failure(
+                lambda: verify_archive(
+                    candidate,
+                    hashlib.sha256(candidate_bytes).hexdigest(),
+                    candidate_spec,
+                    len(candidate_bytes),
+                ),
+                label,
+            )
+
+        reject_win_fixture(
+            "vcs-certified-win-helper.tar.gz",
+            "certified Windows helper VCS attribution",
+            add_vcs=True,
+        )
+        reject_win_fixture(
+            "source-drift-certified-win-helper.tar.gz",
+            "certified Windows helper embedded Dockerfile",
+            embedded_dockerfile=b"FROM unreviewed\n",
+        )
+        reject_win_fixture(
+            "networked-certified-win-helper.tar.gz",
+            "certified Windows helper networked execution",
+            execution_network=0,
+        )
+        reject_win_fixture(
+            "root-certified-win-helper.tar.gz",
+            "certified Windows helper root execution",
+            execution_user="0:0",
+        )
+        reject_win_fixture(
+            "layer-map-certified-win-helper.tar.gz",
+            "certified Windows helper layer mapping",
+            wrong_layer_mapping=True,
+        )
+        verify_archive(
+            win_archive,
+            win_sha,
+            win_spec,
+            win_size,
+        )
+        win_checks += 1
+        if win_checks != 21:
+            fail(
+                "certified Windows helper image self-test count differs: "
+                f"{win_checks}"
             )
 
         verifier_archive = Path(temporary) / "devcheck-image.tar.gz"
@@ -9645,7 +9987,11 @@ def main() -> int:
         print(f"published={args.destination}")
         return 0
     if args.command == "maintenance-normalize-certified-oci":
-        if args.role not in {"android-builder", "deb-builder"} \
+        if args.role not in {
+            "android-builder",
+            "deb-builder",
+            "win-helper",
+        } \
            or args.expected_id is not None:
             fail(
                 "certified OCI normalization derives the builder "

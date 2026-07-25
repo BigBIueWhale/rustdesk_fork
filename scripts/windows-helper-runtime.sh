@@ -345,6 +345,26 @@ windows_helper_kvm_guestfish_run() {
     windows_helper_run_profile kvm-guestfish "$@"
 }
 
+windows_helper_verify_archive() {
+    [ "$#" -eq 1 ] \
+        || die "windows_helper_verify_archive requires one archive path"
+    /usr/bin/python3 "$LIB_DIR/offline-image-provenance.py" verify-archive \
+        --archive "$1" \
+        --archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
+        --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
+        --role win-helper \
+        --expected-id "$WIN_HELPER_IMAGE_ID" \
+        --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --dockerfile-sha "$SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE" \
+        --recipe-sha "$SHA256_WIN_HELPER_DOCKERFILE" \
+        --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST" \
+        --bootstrap-image-id "$WIN_HELPER_BOOTSTRAP_IMAGE_ID" \
+        --bootstrap-manifest-id "$WIN_HELPER_BOOTSTRAP_MANIFEST_ID" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --config-id "$WIN_HELPER_CONFIG_ID" \
+        --manifest-id "$WIN_HELPER_MANIFEST_ID"
+}
+
 windows_helper_runtime_resolve() {
     local archive="$1" extractor_source inspector_source kernel
     [ "$WINDOWS_HELPER_RUNTIME_READY" = 0 ] || die "Windows helper runtime is already resolved"
@@ -353,7 +373,8 @@ windows_helper_runtime_resolve() {
         || die "cannot resolve the pinned Windows helper image archive"
     [ -f "$archive" ] && [ ! -L "$archive" ] \
         || die "pinned Windows helper image archive must be a regular non-symlink file"
-    verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"
+    windows_helper_verify_archive "$archive" \
+        || die "pinned Windows helper image archive provenance verification failed"
     require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"
     windows_helper_assert_docker_config
 
@@ -376,7 +397,8 @@ windows_helper_runtime_resolve() {
             --kernel-version "$WIN_HELPER_KERNEL_VERSION" \
             --kernel-sha256 "$SHA256_WIN_HELPER_KERNEL" \
         || die "confined Windows helper kernel derivation failed"
-    verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"
+    windows_helper_verify_archive "$archive" \
+        || die "Windows helper image archive changed during kernel derivation"
     cmp -s -- "$extractor_source" \
         "$WINDOWS_HELPER_RUNTIME_ROOT/authority/windows-helper-extract-kernel.py" \
         || die "Windows helper kernel-extractor source changed during its snapshot"

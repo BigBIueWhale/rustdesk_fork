@@ -94,8 +94,8 @@ def validate(sources: Dict[str, str]) -> None:
         ('--config "$ONLINE_FETCH_DOCKER_CONFIG"', "explicit Docker configuration"),
         ("online_image_provenance()", "confined image-provenance funnel"),
         ("require_online_fetch_builder_image()", "verified immutable-image funnel"),
-        ('--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
-         "exact loaded-image verification"),
+        ('--image-ref "$WIN_HELPER_IMAGE_ID"',
+         "exact certified Windows-helper verification"),
         ('stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
          "exact WiX package acquisition funnel"),
     ):
@@ -726,8 +726,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("shell", 'stage_vcpkg_natives_arm64() {\n    local builder="$ANDROID_BUILDER_IMAGE_ID"',
              'stage_vcpkg_natives_arm64() {\n    local builder="ubuntu:24.04"',
              "exact Android image"),
-    Mutation("shell", "--image-ref \"$image_id\" --role \"$role\" --expected-id \"$image_id\"",
-             "--image-ref \"$role\" --role \"$role\" --expected-id \"$image_id\"",
+    Mutation("shell", '--image-ref "$WIN_HELPER_IMAGE_ID"',
+             '--image-ref "$WIN_HELPER_BOOTSTRAP_IMAGE_ID"',
              "exact loaded-image verification"),
     Mutation(
         "shell",

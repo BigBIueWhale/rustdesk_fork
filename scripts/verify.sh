@@ -218,7 +218,19 @@ else
   echo "  ok  R-S11db the exact historical bootstrap is binary material only; one networkless numeric-nonroot mode-max certification graph and private exact untagged archive authorize the release builder"
 fi
 
-echo "== (0d2) authenticated Android builder image distribution authority (R-S11da/R-S11e-119) =="
+echo "== (0d2) authenticated Windows helper image distribution authority (R-S11dc/R-S11e-121) =="
+r_s11dc=
+if ! /usr/bin/python3 -I -S scripts/verify-win-helper-image-authority.py --repo . --self-test; then
+  r_s11dc="$r_s11dc authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11dc" ]; then
+  echo "  FAIL R-S11dc Windows helper image distribution authority:$r_s11dc"
+  rc=1
+else
+  echo "  ok  R-S11dc the exact historical helper is bootstrap-only binary material; one networkless numeric-nonroot mode-max certification graph and private exact untagged archive authorize the release helper"
+fi
+
+echo "== (0d3) authenticated Android builder image distribution authority (R-S11da/R-S11e-119) =="
 r_s11da=
 if ! /usr/bin/python3 -I -S scripts/verify-android-builder-image-authority.py --repo . --self-test; then
   r_s11da="$r_s11da authority-or-mutation-self-test-failed"

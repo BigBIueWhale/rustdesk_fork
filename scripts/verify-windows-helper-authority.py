@@ -70,8 +70,20 @@ def validate(sources: Dict[str, str]) -> None:
         ('--config "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config"', "explicit Docker configuration"),
         ('require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
          "immutable helper image provenance"),
-        ('verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"',
-         "captured helper archive verification"),
+        ('windows_helper_verify_archive "$archive"',
+         "structural helper archive verification"),
+        ("windows_helper_verify_archive() {",
+         "structural helper archive verifier"),
+        ('--archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE"',
+         "helper archive size authority"),
+        ('--dockerfile-sha "$SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE"',
+         "helper certification recipe authority"),
+        ('--bootstrap-image-id "$WIN_HELPER_BOOTSTRAP_IMAGE_ID"',
+         "helper bootstrap identity authority"),
+        ('--config-id "$WIN_HELPER_CONFIG_ID"',
+         "helper config identity authority"),
+        ('--manifest-id "$WIN_HELPER_MANIFEST_ID"',
+         "helper runtime-manifest authority"),
         ("windows_helper_snapshot_program \"$extractor_source\"",
          "private kernel-extractor snapshot"),
         ("windows_helper_snapshot_program \"$inspector_source\"",
@@ -131,7 +143,7 @@ def validate(sources: Dict[str, str]) -> None:
 
     require_count(
         runtime,
-        'verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"',
+        'windows_helper_verify_archive "$archive"',
         2,
         "archive pre/post verification",
     )
@@ -154,6 +166,8 @@ def validate(sources: Dict[str, str]) -> None:
         ("docker pull", "image-pull fallback"),
         ("source=/var/run/docker.sock", "Docker socket mount"),
         ("/var/run/docker.sock:/var/run/docker.sock", "Docker socket volume"),
+        ('verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"',
+         "digest-only helper archive verdict"),
     ):
         forbid(runtime, token, label)
 
@@ -416,11 +430,19 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "writable Windows helper file may have aliases", "writable hard-link refusal"),
     Mutation(
         "runtime",
-        'verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"\n'
+        'windows_helper_verify_archive "$archive" \\\n'
+        '        || die "pinned Windows helper image archive provenance '
+        'verification failed"\n'
         '    require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
-        'true # archive hash removed\n'
+        'true # structural archive proof removed\n'
         '    require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
         "archive pre/post verification",
+    ),
+    Mutation(
+        "runtime",
+        '--archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE"',
+        '--archive-size "$WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE"',
+        "structural archive size authority",
     ),
     Mutation("runtime", '--kernel-sha256 "$SHA256_WIN_HELPER_KERNEL"',
              '--kernel-sha256 "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"', "independent kernel pin"),

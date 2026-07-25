@@ -422,9 +422,12 @@ def validate_online_fetch(source: str) -> None:
         "Debian bootstrap capture",
     )
     require_absent(
-        function_block(source, "maintenance_capture_windows_helper_image"),
+        function_block(
+            source,
+            "maintenance_capture_win_helper_bootstrap_image",
+        ),
         ("DEB_BUILDER", "deb-builder"),
-        "Windows-only generic capture retirement",
+        "Windows-only bootstrap capture",
     )
     require_absent(
         source,
@@ -432,9 +435,11 @@ def validate_online_fetch(source: str) -> None:
             "build_deb_builder_image() {",
             "maintenance_capture_builder_images() {",
             "capture_builder_image() {",
+            "capture_windows_helper_image() {",
+            "maintenance_capture_windows_helper_image() {",
             "--maintenance-capture-builder-images)",
         ),
-        "retired Debian Docker-store surfaces",
+        "retired final-image Docker-store surfaces",
     )
     require_all(
         source,
@@ -456,7 +461,9 @@ def validate_library(source: str) -> None:
         block,
         (
             'deb-builder) prefix=DEB_BUILDER; base="ubuntu:18.04@',
-            '[ "$role" = android-builder ] || [ "$role" = deb-builder ]',
+            '[ "$role" = android-builder ] \\\n'
+            '        || [ "$role" = deb-builder ] \\\n'
+            '        || [ "$role" = win-helper ]; then',
             '"${prefix}_CONFIG_ID"',
             '"${prefix}_MANIFEST_ID"',
             '"${prefix}_BOOTSTRAP_IMAGE_ID"',
@@ -490,7 +497,7 @@ def validate_provenance(source: str) -> None:
         source,
         (
             "class CertifiedBuilderSpec:",
-            'if args.role in {"android-builder", "deb-builder"}:',
+            'if args.role in {"android-builder", "deb-builder", "win-helper"}:',
             '"deb-builder-bootstrap",',
             'r"(?:android|deb)-builder-bootstrap(?:-candidate)?"',
             "def validate_certified_builder_attestation(",
@@ -506,7 +513,11 @@ def validate_provenance(source: str) -> None:
             "contract.export_oci_name",
             "contract.export_name.rsplit",
             "def canonicalize_certified_builder_oci_export(",
-            "if args.role not in {\"android-builder\", \"deb-builder\"}",
+            '        if args.role not in {\n'
+            '            "android-builder",\n'
+            '            "deb-builder",\n'
+            '            "win-helper",\n'
+            "        }",
             "canonicalize_certified_builder_oci_export(",
             "if requires_private_archive(spec):",
             "stat.S_IMODE(before.st_mode) != 0o400",
@@ -577,6 +588,7 @@ def validate_contract(sources: dict[str, str]) -> None:
         (
             "validate_android_builder_image_authority_contract(sources)\n"
             "    validate_deb_builder_image_authority_contract(sources)\n"
+            "    validate_win_helper_image_authority_contract(sources)\n"
             "    validate_android_keystore_authority_contract(sources)",
             '"deb_builder_image_authority_verifier": (',
             'repo / "scripts/verify-deb-builder-image-authority.py"',
@@ -804,20 +816,30 @@ MUTATIONS = (
     ),
     Mutation(
         "lib",
-        '[ "$role" = android-builder ] || [ "$role" = deb-builder ]',
-        '[ "$role" = android-builder ]',
+        '[ "$role" = android-builder ] \\\n'
+        '        || [ "$role" = deb-builder ] \\\n'
+        '        || [ "$role" = win-helper ]; then',
+        '[ "$role" = android-builder ] \\\n'
+        '        || [ "$role" = win-helper ]; then',
         "ordinary Debian certification branch",
     ),
     Mutation(
         "provenance",
-        'if args.role in {"android-builder", "deb-builder"}:',
-        'if args.role == "android-builder":',
+        'if args.role in {"android-builder", "deb-builder", "win-helper"}:',
+        'if args.role in {"android-builder", "win-helper"}:',
         "certified Debian parser role",
     ),
     Mutation(
         "provenance",
-        'if args.role not in {"android-builder", "deb-builder"} \\\n',
-        'if args.role != "android-builder" \\\n',
+        '        if args.role not in {\n'
+        '            "android-builder",\n'
+        '            "deb-builder",\n'
+        '            "win-helper",\n'
+        "        }",
+        '        if args.role not in {\n'
+        '            "android-builder",\n'
+        '            "win-helper",\n'
+        "        }",
         "Debian direct normalization role",
     ),
     Mutation(
@@ -896,9 +918,11 @@ MUTATIONS = (
         "workspace",
         "validate_android_builder_image_authority_contract(sources)\n"
         "    validate_deb_builder_image_authority_contract(sources)\n"
+        "    validate_win_helper_image_authority_contract(sources)\n"
         "    validate_android_keystore_authority_contract(sources)",
         "validate_android_builder_image_authority_contract(sources)\n"
         "    true # Debian builder workspace contract removed\n"
+        "    validate_win_helper_image_authority_contract(sources)\n"
         "    validate_android_keystore_authority_contract(sources)",
         "workspace dispatch",
     ),

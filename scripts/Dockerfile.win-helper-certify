@@ -1,0 +1,52 @@
+# scripts/Dockerfile.win-helper-certify — authenticate the reviewed Windows
+# helper bootstrap as the independently distributed release helper.
+#
+# The historical bootstrap is an exact captured binary input. Its default
+# BuildKit mode-min provenance carries unverified local-worktree VCS metadata
+# and therefore is not source authority. This networkless, numeric-nonroot
+# certification build instead names that exact bootstrap as a material,
+# validates its embedded recipe/package contract, and emits a Dockerfile-only
+# mode-max provenance graph. The resulting image is the release runtime.
+FROM win-helper-bootstrap
+
+ARG WIN_HELPER_BOOTSTRAP_IMAGE_ID
+ARG WIN_HELPER_BOOTSTRAP_MANIFEST_ID
+ARG WIN_HELPER_RECIPE_SHA256
+ARG WIN_HELPER_DPKG_MANIFEST_SHA256
+ARG SOURCE_DATE_EPOCH
+
+USER 1000:1000
+
+RUN --network=none set -eu; \
+    [ "$(/usr/bin/id -u):$(/usr/bin/id -g)" = "1000:1000" ]; \
+    [ "$(/usr/bin/sha256sum /usr/local/share/rustdesk-build-provenance/Dockerfile \
+        | /usr/bin/cut -d ' ' -f 1)" = "$WIN_HELPER_RECIPE_SHA256" ]; \
+    [ "$(LC_ALL=C /usr/bin/dpkg-query -W -f='${binary:Package}\t${Version}\n' \
+        | LC_ALL=C /usr/bin/sort \
+        | /usr/bin/sha256sum \
+        | /usr/bin/cut -d ' ' -f 1)" = "$WIN_HELPER_DPKG_MANIFEST_SHA256" ]; \
+    [ "$(/usr/bin/sha256sum \
+        /usr/local/share/rustdesk-build-provenance/dpkg-manifest.tsv \
+        | /usr/bin/cut -d ' ' -f 1)" = "$WIN_HELPER_DPKG_MANIFEST_SHA256" ]; \
+    [ "$(/usr/bin/cat /usr/local/share/rustdesk-build-provenance/contract-v1)" = \
+        "$(/usr/bin/printf '%s\n' \
+            'contract=rustdesk-build-image-v1' \
+            'role=win-helper' \
+            'base=ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54' \
+            "dockerfile_sha256=$WIN_HELPER_RECIPE_SHA256" \
+            "dpkg_manifest_sha256=$WIN_HELPER_DPKG_MANIFEST_SHA256")" ]; \
+    for tool in \
+        bash genisoimage grep guestfish head python3 sha256sum sort tail tar \
+        virt-cat virt-ls; \
+    do \
+        command -v "$tool" >/dev/null; \
+    done; \
+    /usr/bin/python3 -c 'import olefile'
+
+LABEL org.rustdesk.builder-certification.contract="rustdesk-builder-certification-v1" \
+      org.rustdesk.builder-certification.role="win-helper" \
+      org.rustdesk.builder-certification.bootstrap-image-id="${WIN_HELPER_BOOTSTRAP_IMAGE_ID}" \
+      org.rustdesk.builder-certification.bootstrap-manifest-id="${WIN_HELPER_BOOTSTRAP_MANIFEST_ID}" \
+      org.rustdesk.builder-certification.recipe-sha256="${WIN_HELPER_RECIPE_SHA256}" \
+      org.rustdesk.builder-certification.dpkg-manifest-sha256="${WIN_HELPER_DPKG_MANIFEST_SHA256}" \
+      org.rustdesk.builder-certification.source-date-epoch="${SOURCE_DATE_EPOCH}"

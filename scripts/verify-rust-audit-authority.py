@@ -570,7 +570,7 @@ def validate_contract(sources):
     build_block = function_block(
         online_fetch,
         "maintenance_build_rust_audit_image_candidate",
-        "capture_windows_helper_image",
+        "maintenance_capture_deb_builder_bootstrap_image",
     )
     require_all(
         spec_block,

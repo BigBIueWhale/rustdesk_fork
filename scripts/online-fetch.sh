@@ -1381,17 +1381,56 @@ require_android_builder_image_pins() {
     for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
-verify_or_load_builder_image() {
-    local role="$1" image_id="$2" base="$3" dockerfile_sha="$4" dpkg_sha="$5" archive_sha="$6"
-    local archive="$ONLINE_DIR/build-images/${role}.docker.tar.gz"
-    require_cmd python3
-    online_image_provenance verify-load \
-        --archive "$archive" --archive-sha "$archive_sha" \
-        --role "$role" --expected-id "$image_id" --base "$base" \
-        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
-    online_image_provenance verify-local \
-        --image-ref "$image_id" --role "$role" --expected-id "$image_id" --base "$base" \
-        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+win_helper_certification_spec_args() {
+    printf '%s\0' \
+        --role win-helper \
+        --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --dockerfile-sha "$SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE" \
+        --recipe-sha "$SHA256_WIN_HELPER_DOCKERFILE" \
+        --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST" \
+        --bootstrap-image-id "$WIN_HELPER_BOOTSTRAP_IMAGE_ID" \
+        --bootstrap-manifest-id "$WIN_HELPER_BOOTSTRAP_MANIFEST_ID" \
+        --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
+        --config-id "$WIN_HELPER_CONFIG_ID" \
+        --manifest-id "$WIN_HELPER_MANIFEST_ID"
+}
+
+win_helper_image_spec_args() {
+    printf '%s\0' --expected-id "$WIN_HELPER_IMAGE_ID"
+    win_helper_certification_spec_args
+}
+
+win_helper_bootstrap_spec_args() {
+    printf '%s\0' \
+        --role win-helper-bootstrap \
+        --expected-id "$WIN_HELPER_BOOTSTRAP_IMAGE_ID" \
+        --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" \
+        --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST" \
+        --config-id "$WIN_HELPER_BOOTSTRAP_CONFIG_ID" \
+        --manifest-id "$WIN_HELPER_BOOTSTRAP_MANIFEST_ID"
+}
+
+require_win_helper_image_pins() {
+    local names=(
+        WIN_HELPER_IMAGE_ID
+        WIN_HELPER_CONFIG_ID
+        WIN_HELPER_MANIFEST_ID
+        WIN_HELPER_IMAGE_ARCHIVE_SIZE
+        SHA256_WIN_HELPER_IMAGE_ARCHIVE
+        SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE
+        SHA256_WIN_HELPER_DOCKERFILE
+        SHA256_WIN_HELPER_DPKG_MANIFEST
+        WIN_HELPER_BOOTSTRAP_IMAGE_ID
+        WIN_HELPER_BOOTSTRAP_CONFIG_ID
+        WIN_HELPER_BOOTSTRAP_MANIFEST_ID
+        WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE
+        SHA256_WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE
+        SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT
+        SOURCE_DATE_EPOCH_PIN
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
 }
 
 verify_or_load_deb_builder_image() {
@@ -1422,17 +1461,24 @@ verify_or_load_android_builder_image() {
         "${args[@]}"
 }
 
+verify_or_load_win_helper_image() {
+    require_win_helper_image_pins
+    local args=()
+    mapfile -d '' args < <(win_helper_image_spec_args)
+    online_image_provenance verify-load \
+        --archive "$ONLINE_DIR/build-images/win-helper.docker.tar.gz" \
+        --archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
+        --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
+        "${args[@]}"
+    online_image_provenance verify-local \
+        --image-ref "$WIN_HELPER_IMAGE_ID" \
+        "${args[@]}"
+}
+
 load_builder_images() {
-    local names=(
-        WIN_HELPER_IMAGE_ID SHA256_WIN_HELPER_DOCKERFILE SHA256_WIN_HELPER_DPKG_MANIFEST SHA256_WIN_HELPER_IMAGE_ARCHIVE
-    )
-    local name
-    for name in "${names[@]}"; do require_image_pin "$name"; done
     verify_or_load_deb_builder_image
     verify_or_load_android_builder_image
-    verify_or_load_builder_image win-helper "$WIN_HELPER_IMAGE_ID" \
-        "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" "$SHA256_WIN_HELPER_DOCKERFILE" \
-        "$SHA256_WIN_HELPER_DPKG_MANIFEST" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"
+    verify_or_load_win_helper_image
 }
 
 devcheck_image_spec_args() {
@@ -1861,12 +1907,14 @@ build_android_builder_bootstrap_image() {
     printf 'ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID="%s"\n' "$image_id"
 }
 
-# ── The pinned Windows VM helper image: genisoimage + libguestfs + MSI tooling ──
+# ── The Windows VM helper bootstrap: genisoimage + libguestfs + MSI tooling ──
 # The Windows artifact path uses host-side helper containers for UDF media creation,
 # libguestfs inspection/extraction, and MSI canonicalization. Those helpers are build
 # inputs, so their apt installs belong HERE (the one networked phase), not inside
 # build-windows-vm.sh/provision-windows-vm.sh/verify-windows-golden.sh.
-build_windows_helper_image() {
+# This acquisition result is bootstrap material only; a separate networkless
+# certification transaction creates the release helper.
+build_windows_helper_bootstrap_image() {
     require_image_pin SHA256_WIN_HELPER_DOCKERFILE
     require_image_pin SHA256_WIN_HELPER_DPKG_MANIFEST
     local tag="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-helper-candidate"
@@ -1878,9 +1926,9 @@ build_windows_helper_image() {
     local image_id
     image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")"
     online_image_provenance verify-local --image-ref "$tag" \
-        --role win-helper --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
+        --role win-helper-bootstrap-candidate --expected-id "$image_id" --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
         --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST"
-    printf 'WIN_HELPER_IMAGE_ID="%s"\n' "$image_id"
+    printf 'WIN_HELPER_BOOTSTRAP_IMAGE_ID="%s"\n' "$image_id"
 }
 
 maintenance_build_image_candidates() {
@@ -1889,7 +1937,7 @@ maintenance_build_image_candidates() {
     online_docker pull "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}"
     build_deb_builder_bootstrap_image
     build_android_builder_bootstrap_image
-    build_windows_helper_image
+    build_windows_helper_bootstrap_image
 }
 
 maintenance_build_deb_builder_certified_candidate() {
@@ -2152,6 +2200,136 @@ maintenance_build_android_builder_certified_candidate() {
     printf '%s\n' "$result"
 }
 
+maintenance_build_win_helper_certified_candidate() {
+    require_win_helper_image_pins
+    local archive="$ONLINE_DIR/build-images/win-helper-bootstrap.docker.tar.gz"
+    local directory="$ONLINE_DIR/build-images"
+    local context="$ONLINE_FETCH_TMP/win-helper-certification-context"
+    local layout="$ONLINE_FETCH_TMP/win-helper-bootstrap-oci"
+    local candidate_oci="$ONLINE_FETCH_TMP/win-helper-certified-candidate.oci.tar"
+    local candidate_archive="$directory/win-helper-certified-candidate.docker.tar.gz"
+    local export_name="rd-win-helper-certified:authenticated-v1"
+    local materialization layout_sha image_id archive_sha archive_size result
+    local lock_fd bootstrap_args=() contract_args=() candidate_args=()
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.win-helper-certify" \
+        | /usr/bin/awk '{print $1}')" \
+       = "$SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE" ] \
+        || die "Windows helper certification Dockerfile differs from its pin"
+    if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+        /usr/bin/install -d -m 0700 "$directory"
+    fi
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "builder image archive root must be current-user-owned mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the builder image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another builder image archive transaction owns the archive root"
+    [ ! -e "$context" ] && [ ! -L "$context" ] \
+        || die "private Windows helper certification context already exists"
+    [ ! -e "$layout" ] && [ ! -L "$layout" ] \
+        || die "private Windows helper bootstrap OCI layout already exists"
+    [ ! -e "$candidate_oci" ] && [ ! -L "$candidate_oci" ] \
+        || die "private certified Windows helper OCI export already exists"
+    [ ! -e "$candidate_archive" ] && [ ! -L "$candidate_archive" ] \
+        || die "private certified Windows helper archive already exists"
+    /usr/bin/install -d -m 0700 "$context" "$layout"
+    /usr/bin/install -m 0400 \
+        "$SCRIPT_DIR/Dockerfile.win-helper-certify" \
+        "$context/Dockerfile"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$context")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private Windows helper certification context metadata differs"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$context/Dockerfile")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" ] \
+        || die "private Windows helper certification Dockerfile metadata differs"
+    [ "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 -type f \
+        -name Dockerfile | /usr/bin/wc -l)" -eq 1 ] \
+        && [ -z "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 \
+            ! -type f -print -quit)" ] \
+        || die "private Windows helper certification context inventory differs"
+    mapfile -d '' bootstrap_args < <(win_helper_bootstrap_spec_args)
+    materialization="$(
+        online_image_provenance materialize-oci-layout \
+            --archive "$archive" \
+            --archive-sha "$SHA256_WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE" \
+            --archive-size "$WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE" \
+            --output "$layout" \
+            "${bootstrap_args[@]}"
+    )" || die "Windows helper bootstrap OCI materialization failed"
+    layout_sha="$(printf '%s\n' "$materialization" \
+        | /usr/bin/sed -n 's/^layout_sha256=//p')"
+    [ "$layout_sha" = "$SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT" ] \
+        || die "Windows helper bootstrap OCI layout differs from its pin"
+    online_image_provenance verify-oci-layout \
+        --layout "$layout" \
+        --layout-sha "$SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT" \
+        >/dev/null \
+        || die "Windows helper bootstrap OCI layout verification failed"
+    (
+        umask 077
+        online_docker_without_vcs buildx build \
+            --network=none --pull=false --no-cache \
+            --platform=linux/amd64 --provenance=mode=max \
+            --output="type=oci,name=${export_name},dest=${candidate_oci},tar=true,compression=gzip,oci-mediatypes=true,rewrite-timestamp=true" \
+            --build-context \
+            "win-helper-bootstrap=oci-layout://${layout}@${WIN_HELPER_BOOTSTRAP_IMAGE_ID}" \
+            --build-arg "WIN_HELPER_BOOTSTRAP_IMAGE_ID=${WIN_HELPER_BOOTSTRAP_IMAGE_ID}" \
+            --build-arg "WIN_HELPER_BOOTSTRAP_MANIFEST_ID=${WIN_HELPER_BOOTSTRAP_MANIFEST_ID}" \
+            --build-arg "WIN_HELPER_RECIPE_SHA256=${SHA256_WIN_HELPER_DOCKERFILE}" \
+            --build-arg "WIN_HELPER_DPKG_MANIFEST_SHA256=${SHA256_WIN_HELPER_DPKG_MANIFEST}" \
+            --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH_PIN}" \
+            --file "$context/Dockerfile" \
+            "$context"
+    ) || die "certified Windows helper candidate build failed"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$candidate_oci")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:600:1" ] \
+        || die "private certified Windows helper OCI export metadata differs"
+    online_image_provenance verify-oci-layout \
+        --layout "$layout" \
+        --layout-sha "$SHA256_WIN_HELPER_BOOTSTRAP_OCI_LAYOUT" \
+        >/dev/null \
+        || die "Windows helper bootstrap OCI layout changed during the build"
+    mapfile -d '' contract_args < <(win_helper_certification_spec_args)
+    result="$(
+        online_image_provenance maintenance-normalize-certified-oci \
+            --input "$candidate_oci" \
+            --output "$candidate_archive" \
+            "${contract_args[@]}"
+    )" || die "certified Windows helper candidate OCI normalization failed"
+    [ "$(/usr/bin/grep -c '^image_id=' <<<"$result")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -c '^manifest_id=' <<<"$result")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -c '^config_id=' <<<"$result")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -c '^sha256=' <<<"$result")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -c '^bytes=' <<<"$result")" -eq 1 ] \
+        || die "certified Windows helper normalization result is malformed"
+    image_id="$(/usr/bin/sed -n 's/^image_id=//p' <<<"$result")"
+    archive_sha="$(/usr/bin/sed -n 's/^sha256=//p' <<<"$result")"
+    archive_size="$(/usr/bin/sed -n 's/^bytes=//p' <<<"$result")"
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        && [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] \
+        && [[ "$archive_size" =~ ^[1-9][0-9]*$ ]] \
+        || die "certified Windows helper normalization identities are malformed"
+    [ "$(/usr/bin/sed -n 's/^manifest_id=//p' <<<"$result")" \
+       = "$WIN_HELPER_MANIFEST_ID" ] \
+        && [ "$(/usr/bin/sed -n 's/^config_id=//p' <<<"$result")" \
+           = "$WIN_HELPER_CONFIG_ID" ] \
+        || die "certified Windows helper runtime identity differs from its pin"
+    candidate_args=(--expected-id "$image_id" "${contract_args[@]}")
+    online_image_provenance verify-load \
+        --archive "$candidate_archive" \
+        --archive-sha "$archive_sha" \
+        --archive-size "$archive_size" \
+        "${candidate_args[@]}" \
+        || die "certified Windows helper candidate load/runtime verification failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the builder image archive lock"
+    exec {lock_fd}<&-
+    printf 'WIN_HELPER_IMAGE_ID="%s"\n' "$image_id"
+    printf '%s\n' "$result"
+}
+
 maintenance_promote_deb_builder_certified_candidate() {
     require_deb_builder_image_pins
     local directory="$ONLINE_DIR/build-images"
@@ -2228,6 +2406,47 @@ maintenance_promote_android_builder_certified_candidate() {
         --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
         "${args[@]}" \
         || die "promoted Android builder archive verification failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the builder image archive lock"
+    exec {lock_fd}<&-
+    printf 'promoted=%s\n' "$final"
+}
+
+maintenance_promote_win_helper_certified_candidate() {
+    require_win_helper_image_pins
+    local directory="$ONLINE_DIR/build-images"
+    local candidate="$directory/win-helper-certified-candidate.docker.tar.gz"
+    local final="$directory/win-helper.docker.tar.gz"
+    local lock_fd args=()
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "builder image archive root must be current-user-owned mode 0700"
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the builder image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another builder image archive transaction owns the archive root"
+    [ -f "$candidate" ] && [ ! -L "$candidate" ] \
+        || die "certified Windows helper candidate archive is absent or unsafe"
+    [ ! -e "$final" ] && [ ! -L "$final" ] \
+        || die "final certified Windows helper archive already exists"
+    mapfile -d '' args < <(win_helper_image_spec_args)
+    online_image_provenance verify-archive \
+        --archive "$candidate" \
+        --archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
+        --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
+        "${args[@]}" \
+        || die "certified Windows helper candidate differs from the final pins"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$candidate" \
+        --destination "$final" \
+        || die "certified Windows helper candidate promotion failed"
+    online_image_provenance verify-load \
+        --archive "$final" \
+        --archive-sha "$SHA256_WIN_HELPER_IMAGE_ARCHIVE" \
+        --archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE" \
+        "${args[@]}" \
+        || die "promoted Windows helper archive verification failed"
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the builder image archive lock"
     exec {lock_fd}<&-
@@ -2495,16 +2714,6 @@ maintenance_build_rust_audit_image_candidate() {
     printf 'RUST_AUDIT_IMAGE_ID="%s"\n' "$image_id"
 }
 
-capture_windows_helper_image() {
-    local output="$1"
-    online_image_provenance maintenance-capture \
-        --output "$output" \
-        --role win-helper --expected-id "$WIN_HELPER_IMAGE_ID" \
-        --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
-        --dockerfile-sha "$SHA256_WIN_HELPER_DOCKERFILE" \
-        --dpkg-sha "$SHA256_WIN_HELPER_DPKG_MANIFEST"
-}
-
 maintenance_capture_deb_builder_bootstrap_image() {
     require_deb_builder_image_pins
     local directory="$ONLINE_DIR/build-images"
@@ -2545,35 +2754,24 @@ maintenance_capture_android_builder_bootstrap_image() {
     printf '%s\n' "$result"
 }
 
-maintenance_capture_windows_helper_image() {
-    local names=(
-        WIN_HELPER_IMAGE_ID SHA256_WIN_HELPER_DOCKERFILE SHA256_WIN_HELPER_DPKG_MANIFEST
-    )
-    local name
-    for name in "${names[@]}"; do require_image_pin "$name"; done
-    local dir="$ONLINE_DIR/build-images"
-    local win="$dir/win-helper.docker.tar.gz"
-    local win_tmp="$dir/.win-helper.docker.tar.gz.part"
-    [ ! -e "$win" ] \
-        || die "Windows helper image archive already exists"
-    [ ! -e "$win_tmp" ] \
-        || die "stale Windows helper archive capture temporary exists"
-    require_pinned_builder_image win-helper
-    /usr/bin/install -d -m 0700 "$dir"
-    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$dir")" \
+maintenance_capture_win_helper_bootstrap_image() {
+    require_win_helper_image_pins
+    local directory="$ONLINE_DIR/build-images"
+    local output="$directory/win-helper-bootstrap.docker.tar.gz"
+    local args=() result
+    /usr/bin/install -d -m 0700 "$directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
        = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
         || die "builder image archive root must be current-user-owned mode 0700"
-    local win_result
-    trap 'rm -f "$win_tmp"' EXIT HUP INT TERM
-    win_result="$(capture_windows_helper_image "$win_tmp")"
-    local win_sha
-    win_sha="$(printf '%s\n' "$win_result" | sed -n 's/^sha256=//p')"
-    case "$win_sha" in *[!0-9a-f]*|'') die "Windows helper capture returned a malformed archive hash" ;; esac
-    [ "${#win_sha}" -eq 64 ] \
-        || die "Windows helper capture returned a malformed archive hash length"
-    mv "$win_tmp" "$win"
-    trap - EXIT HUP INT TERM
-    printf 'SHA256_WIN_HELPER_IMAGE_ARCHIVE="%s"\n' "$win_sha"
+    [ ! -e "$output" ] && [ ! -L "$output" ] \
+        || die "Windows helper bootstrap archive already exists"
+    mapfile -d '' args < <(win_helper_bootstrap_spec_args)
+    result="$(
+        online_image_provenance maintenance-capture \
+            --output "$output" \
+            "${args[@]}"
+    )" || die "Windows helper bootstrap archive capture failed"
+    printf '%s\n' "$result"
 }
 
 require_online_fetch_builder_image() {
@@ -4822,6 +5020,18 @@ main() {
             maintenance_promote_android_builder_certified_candidate
             return 0
             ;;
+        --maintenance-build-win-helper-certified-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-build-win-helper-certified-candidate takes no arguments"
+            maintenance_build_win_helper_certified_candidate
+            return 0
+            ;;
+        --maintenance-promote-win-helper-certified-candidate)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-promote-win-helper-certified-candidate takes no arguments"
+            maintenance_promote_win_helper_certified_candidate
+            return 0
+            ;;
         --maintenance-build-apple-check-image-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-build-apple-check-image-candidate takes no arguments"
             maintenance_build_apple_check_image_candidate
@@ -4842,10 +5052,10 @@ main() {
             stage_dart_audit_inputs
             return 0
             ;;
-        --maintenance-capture-windows-helper-image)
+        --maintenance-capture-win-helper-bootstrap-image)
             [ "$#" -eq 1 ] \
-                || die "--maintenance-capture-windows-helper-image takes no arguments"
-            maintenance_capture_windows_helper_image
+                || die "--maintenance-capture-win-helper-bootstrap-image takes no arguments"
+            maintenance_capture_win_helper_bootstrap_image
             return 0
             ;;
         --maintenance-capture-deb-builder-bootstrap-image)
@@ -4927,7 +5137,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-windows-helper-image|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-deb-builder-bootstrap-image|--maintenance-capture-android-builder-bootstrap-image|--maintenance-capture-win-helper-bootstrap-image|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images

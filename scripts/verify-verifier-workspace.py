@@ -11159,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11914,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12248,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13494,7 +13494,7 @@ def validate_android_builder_image_authority_contract(sources):
     candidate = extract_between(
         online,
         "maintenance_build_android_builder_certified_candidate() {",
-        "\n}\n\nmaintenance_promote_android_builder_certified_candidate()",
+        "\n}\n\nmaintenance_build_win_helper_certified_candidate()",
         "Android builder certification transaction",
     )
     for text, label in (
@@ -13693,7 +13693,9 @@ def validate_android_builder_image_authority_contract(sources):
         require_text(provenance, text, label)
     require_text(
         sources["lib"],
-        '[ "$role" = android-builder ] || [ "$role" = deb-builder ]',
+        '[ "$role" = android-builder ] \\\n'
+        '        || [ "$role" = deb-builder ] \\\n'
+        '        || [ "$role" = win-helper ]; then',
         "ordinary Android builder certification verifier",
     )
     require_text(
@@ -13729,7 +13731,7 @@ def validate_deb_builder_image_authority_contract(sources):
     candidate = extract_between(
         online,
         "maintenance_build_deb_builder_certified_candidate() {",
-        "\n}\n\nmaintenance_promote_deb_builder_certified_candidate()",
+        "\n}\n\nmaintenance_build_android_builder_certified_candidate()",
         "Debian builder certification transaction",
     )
     for text, label in (
@@ -13752,7 +13754,7 @@ def validate_deb_builder_image_authority_contract(sources):
             "Debian builder image focused promotion binding",
         ),
         (
-            "Windows-only generic capture retirement",
+            "Windows-only bootstrap capture",
             "Debian builder image focused legacy-capture rejection",
         ),
         (
@@ -13846,7 +13848,7 @@ def validate_deb_builder_image_authority_contract(sources):
             "shared certified builder archive specification",
         ),
         (
-            'if args.role in {"android-builder", "deb-builder"}:',
+            'if args.role in {"android-builder", "deb-builder", "win-helper"}:',
             "Debian certified-builder parser role",
         ),
         (
@@ -13869,7 +13871,9 @@ def validate_deb_builder_image_authority_contract(sources):
         require_text(provenance, text, label)
     require_text(
         sources["lib"],
-        '[ "$role" = android-builder ] || [ "$role" = deb-builder ]',
+        '[ "$role" = android-builder ] \\\n'
+        '        || [ "$role" = deb-builder ] \\\n'
+        '        || [ "$role" = win-helper ]; then',
         "ordinary Debian builder certification verifier",
     )
     require_text(
@@ -13894,6 +13898,255 @@ def validate_deb_builder_image_authority_contract(sources):
         "R-S11db/R-S11e-120 — authenticated Debian builder image "
         "distribution authority",
         "Debian builder image authority hardening ledger",
+    )
+
+
+def validate_win_helper_image_authority_contract(sources):
+    focused = sources["win_helper_image_authority_verifier"]
+    dockerfile = sources["win_helper_certification_dockerfile"]
+    online = sources["online_fetch"]
+    provenance = sources["offline_image_provenance"]
+    runtime = sources["windows_helper_runtime"]
+    candidate = extract_between(
+        online,
+        "maintenance_build_win_helper_certified_candidate() {",
+        "\n}\n\nmaintenance_promote_deb_builder_certified_candidate()",
+        "Windows helper certification transaction",
+    )
+    for text, label in (
+        (
+            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
+            "        == pin_value(pins, "
+            '"SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE")',
+            "Windows helper focused Dockerfile-byte enforcement",
+        ),
+        (
+            "candidate-derived Windows-helper image identity",
+            "Windows helper focused candidate identity separation",
+        ),
+        (
+            "Windows-helper certification transaction",
+            "Windows helper focused build-authority binding",
+        ),
+        (
+            "Windows-helper exact-pin promotion",
+            "Windows helper focused promotion binding",
+        ),
+        (
+            "retired generic Windows-helper authority surfaces",
+            "Windows helper focused legacy-capture rejection",
+        ),
+        (
+            "certified Windows-helper provenance authority",
+            "Windows helper focused provenance binding",
+        ),
+        (
+            "Windows-helper archive pre/post verification",
+            "Windows helper focused runtime archive binding",
+        ),
+        ("MUTATIONS = (", "Windows helper focused mutation inventory"),
+        (
+            "run_mutations(sources)",
+            "Windows helper focused mutation dispatch",
+        ),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        (
+            "FROM win-helper-bootstrap",
+            "Windows helper exact bootstrap base",
+        ),
+        (
+            "USER 1000:1000",
+            "Windows helper numeric nonroot certification",
+        ),
+        (
+            "RUN --network=none set -eu;",
+            "Windows helper networkless certification",
+        ),
+        (
+            "org.rustdesk.builder-certification.bootstrap-image-id=",
+            "Windows helper bootstrap identity label",
+        ),
+        (
+            "role=win-helper",
+            "Windows helper live role-contract assertion",
+        ),
+        (
+            "/usr/bin/python3 -c 'import olefile'",
+            "Windows helper MSI parser fingerprint",
+        ),
+    ):
+        require_text(dockerfile, text, label)
+    for text, label in (
+        (
+            "win_helper_bootstrap_spec_args() {",
+            "Windows helper exact bootstrap specification",
+        ),
+        (
+            "win_helper_certification_spec_args() {",
+            "Windows helper candidate-derived certification specification",
+        ),
+        (
+            "verify_or_load_win_helper_image() {",
+            "Windows helper final-only release loader",
+        ),
+        (
+            "maintenance_build_win_helper_certified_candidate() {",
+            "Windows helper explicit certification transaction",
+        ),
+        (
+            "win-helper-bootstrap=oci-layout://${layout}@"
+            "${WIN_HELPER_BOOTSTRAP_IMAGE_ID}",
+            "Windows helper local exact OCI material",
+        ),
+        (
+            "maintenance-normalize-certified-oci",
+            "Windows helper direct OCI canonicalization",
+        ),
+        (
+            "win-helper-certified-candidate.docker.tar.gz",
+            "Windows helper persistent non-authoritative candidate",
+        ),
+        (
+            "maintenance_promote_win_helper_certified_candidate() {",
+            "Windows helper exact-pin promotion",
+        ),
+        (
+            "maintenance_capture_win_helper_bootstrap_image() {",
+            "Windows helper bootstrap-only historical capture",
+        ),
+    ):
+        require_text(online, text, label)
+    for text, label in (
+        (
+            "--network=none --pull=false --no-cache",
+            "Windows helper certification network/cache policy",
+        ),
+        (
+            "--platform=linux/amd64 --provenance=mode=max",
+            "Windows helper mode-max provenance",
+        ),
+        (
+            '--output="type=oci,name=${export_name},dest=${candidate_oci},'
+            "tar=true,compression=gzip,oci-mediatypes=true,"
+            'rewrite-timestamp=true"',
+            "Windows helper isolated deterministic OCI output",
+        ),
+    ):
+        require_text(candidate, text, label)
+    for text, label in (
+        (
+            "class CertifiedBuilderSpec:",
+            "shared certified builder archive specification",
+        ),
+        (
+            'if args.role in {"android-builder", "deb-builder", "win-helper"}:',
+            "Windows certified-builder parser role",
+        ),
+        (
+            'return ("olefile",) if self.role == "win-helper" else ()',
+            "Windows helper Python module fingerprint",
+        ),
+        (
+            "def validate_certified_builder_attestation(",
+            "Windows exact attestation validator",
+        ),
+        (
+            "def prepare_certified_builder_oci_export(",
+            "Windows exact direct OCI graph preparation",
+        ),
+        (
+            "def canonicalize_certified_builder_oci_export(",
+            "Windows deterministic direct OCI canonicalizer",
+        ),
+        (
+            'role="win-helper"',
+            "Windows behavioral fixture role",
+        ),
+        (
+            "certified Windows helper image self-test count differs",
+            "Windows behavioral fixture verdict",
+        ),
+    ):
+        require_text(provenance, text, label)
+    for text, label in (
+        (
+            "windows_helper_verify_archive() {",
+            "Windows helper structural archive verifier",
+        ),
+        (
+            '--archive-size "$WIN_HELPER_IMAGE_ARCHIVE_SIZE"',
+            "Windows helper runtime archive-size pin",
+        ),
+        (
+            '--dockerfile-sha "$SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE"',
+            "Windows helper runtime certification pin",
+        ),
+        (
+            'windows_helper_verify_archive "$archive"',
+            "Windows helper runtime pre/post archive verification",
+        ),
+        (
+            'require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
+            "Windows helper confined local-image fingerprint",
+        ),
+    ):
+        require_text(runtime, text, label)
+    require_exact_count(
+        runtime,
+        'windows_helper_verify_archive "$archive"',
+        2,
+        "Windows helper structural runtime archive verdict",
+    )
+    for text, label in (
+        (
+            'WIN_HELPER_BOOTSTRAP_IMAGE_ARCHIVE_SIZE="982288329"',
+            "Windows helper bootstrap archive size",
+        ),
+        (
+            'WIN_HELPER_IMAGE_ID="sha256:bfc0d46a9c3806e2ac44ab66337f42ee'
+            '7c46ff0b5f3fd35c5a6768883d19791e"',
+            "Windows helper final image identity",
+        ),
+        (
+            'SHA256_WIN_HELPER_IMAGE_ARCHIVE="468f99ec23c4f3bc45599ee98c011632'
+            '49f4d611f2f5545b45373455c3a5e795"',
+            "Windows helper final archive identity",
+        ),
+        (
+            'WIN_HELPER_IMAGE_ARCHIVE_SIZE="982289690"',
+            "Windows helper final archive size",
+        ),
+    ):
+        require_text(sources["pins"], text, label)
+    require_text(
+        sources["lib"],
+        '|| [ "$role" = win-helper ]; then',
+        "ordinary Windows helper certification verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-win-helper-image-authority.py "
+        "--repo . --self-test",
+        "Windows helper image authority focused verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dc</span>',
+        "Windows helper image authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>256</td>",
+        "Windows helper image authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dc/R-S11e-121 — authenticated Windows helper image "
+        "distribution authority",
+        "Windows helper image authority hardening ledger",
     )
 
 
@@ -14339,7 +14592,7 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition exact Debian builder"),
         ('local builder="$ANDROID_BUILDER_IMAGE_ID"',
          "online acquisition exact Android builder"),
-        ('--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
+        ('--image-ref "$WIN_HELPER_IMAGE_ID"',
          "online acquisition exact loaded-image verification"),
         ('stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
          "online acquisition exact WiX package funnel"),
@@ -22127,7 +22380,7 @@ def validate_rust_audit_distribution_contract(sources):
     candidate = extract_between(
         online_fetch,
         "maintenance_build_rust_audit_image_candidate() {",
-        "\n}\n\ncapture_windows_helper_image()",
+        "\n}\n\nmaintenance_capture_deb_builder_bootstrap_image()",
         "Rust audit candidate build",
     )
     for text, label in (
@@ -22493,6 +22746,7 @@ def validate_sources(sources):
     validate_android_builder_authority_contract(sources)
     validate_android_builder_image_authority_contract(sources)
     validate_deb_builder_image_authority_contract(sources)
+    validate_win_helper_image_authority_contract(sources)
     validate_android_keystore_authority_contract(sources)
     validate_windows_helper_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
@@ -35435,7 +35689,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
+            "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -37025,6 +37279,64 @@ def run_source_mutations(sources):
             "Debian builder image authority hardening ledger",
         ),
         (
+            "win_helper_image_authority_verifier",
+            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
+            "        == pin_value(pins, "
+            '"SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE")',
+            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
+            "        != pin_value(pins, "
+            '"SHA256_WIN_HELPER_CERTIFICATION_DOCKERFILE")',
+            "Windows helper focused Dockerfile-byte enforcement",
+        ),
+        (
+            "online_fetch",
+            "win-helper-bootstrap=oci-layout://${layout}@"
+            "${WIN_HELPER_BOOTSTRAP_IMAGE_ID}",
+            "win-helper-bootstrap=docker-image://"
+            "${WIN_HELPER_BOOTSTRAP_IMAGE_ID}",
+            "Windows helper local exact OCI material",
+        ),
+        (
+            "windows_helper_runtime",
+            'windows_helper_verify_archive "$archive"',
+            'verify_sha256 "$archive" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"',
+            "Windows helper structural runtime archive verdict",
+        ),
+        (
+            "offline_image_provenance",
+            'return ("olefile",) if self.role == "win-helper" else ()',
+            "return ()",
+            "Windows helper Python module fingerprint",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-win-helper-image-authority.py "
+            "--repo . --self-test",
+            "true # Windows helper image authority verifier removed",
+            "Windows helper image authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dc</span>',
+            '<span class="id">R-S11dc-disabled</span>',
+            "Windows helper image authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>256</td>",
+            "<tr><td>256-disabled</td>",
+            "Windows helper image authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dc/R-S11e-121 — authenticated Windows helper image "
+            "distribution authority",
+            "R-S11dc/R-S11e-121 — unauthenticated Windows helper tag "
+            "authority",
+            "Windows helper image authority hardening ledger",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11bj</span>',
             '<span class="id">R-S11bj-disabled</span>',
@@ -37414,8 +37726,8 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            '--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
-            '--image-ref "$role" --role "$role" --expected-id "$image_id"',
+            '--image-ref "$WIN_HELPER_IMAGE_ID"',
+            '--image-ref "$WIN_HELPER_BOOTSTRAP_IMAGE_ID"',
             "online acquisition exact loaded-image verification",
         ),
         (
@@ -39983,6 +40295,9 @@ def main():
             "deb_builder_certification_dockerfile": (
                 repo / "scripts/Dockerfile.deb-builder-certify"
             ).read_text(encoding="utf-8"),
+            "win_helper_certification_dockerfile": (
+                repo / "scripts/Dockerfile.win-helper-certify"
+            ).read_text(encoding="utf-8"),
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
@@ -40213,6 +40528,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "deb_builder_image_authority_verifier": (
                 repo / "scripts/verify-deb-builder-image-authority.py"
+            ).read_text(encoding="utf-8"),
+            "win_helper_image_authority_verifier": (
+                repo / "scripts/verify-win-helper-image-authority.py"
             ).read_text(encoding="utf-8"),
             "android_keystore_generator": (
                 repo / "scripts/gen-android-keystore.sh"

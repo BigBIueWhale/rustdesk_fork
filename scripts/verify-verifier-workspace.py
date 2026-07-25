@@ -3531,23 +3531,34 @@ def validate_smoke_contract(
         "external-helper descriptor hardening ledger",
     )
     for text, label in (
-        ('HOST_GUARD=$PWD/scripts/smoke-process-guard.py', "host process guard selection"),
-        ('mktemp -d /tmp/rustdesk-smoke-host.XXXXXXXXXX', "private host guard workspace"),
-        ('"$HOST_GUARD" record "$HOST_GUARD_ROOT/baseline.json"', "pre-smoke host selector baseline"),
-        ('"$HOST_GUARD" monitor "$HOST_GUARD_ROOT/baseline.json"', "whole-smoke host selector monitor"),
-        ('host_guard_checkpoint', "per-stage host monitor checkpoint"),
-        ('if ! stop_host_guard; then', "final host monitor drain"),
+        ('readonly DOCKER_BIN=/usr/bin/docker', "fixed root-owned Docker client"),
+        ('readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock', "fixed local Docker endpoint"),
+        ('readonly BUILD_UID="$(id -u)"', "numeric invoking build UID"),
+        ('smoke: refuses host or container-root execution', "host-root refusal"),
+        ('readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c', "fixed socket identity"),
+        ('DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG', "ambient Docker authority refusal"),
+        ('SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)', "private smoke authority root"),
+        ('readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c', "private Docker config identity"),
+        ('readonly SMOKE_BUILD_TARGET_ID="$(stat -c', "private build-target identity"),
+        ('readonly SMOKE_DOCKER_COMMAND=(', "empty-environment Docker command"),
+        ('smoke_docker_authority()', "Docker authority pre/post proof"),
+        ('smoke_docker()', "single Docker invocation funnel"),
         ("trap 'exit 129' HUP", "host guard hangup cleanup"),
         ("trap 'exit 130' INT", "host guard interrupt cleanup"),
         ("trap 'exit 143' TERM", "host guard termination cleanup"),
-        ('BUILD_RUN=(docker run --rm', "writable build-only container"),
-        ('LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE', "network-isolated lifecycle procfs authority"),
-        ('PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128', "isolated PID reuse container"),
+        ('BUILD_RUN=(smoke_docker run --rm', "confined non-root build container"),
+        ('--user "$BUILD_UID:$BUILD_GID"', "build-container invoking identity"),
+        ('--cap-drop ALL', "build-container capability removal"),
+        ('--security-opt no-new-privileges', "container privilege-gain refusal"),
+        ('-v "$SMOKE_BUILD_TARGET:/work/target:rw"', "private writable build target"),
+        ('LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE', "network-isolated lifecycle procfs authority"),
+        ('PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128', "isolated PID reuse container"),
         ('--cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP', "PID reuse minimal capability set"),
         ('--security-opt no-new-privileges --security-opt apparmor=unconfined', "PID reuse no-new-privileges and AppArmor scope"),
         ('--tmpfs /tmp:rw,nosuid,nodev,mode=1777', "PID reuse private tmpfs"),
         ('--tmpfs /run:rw,nosuid,nodev,noexec,mode=755', "PID reuse private runtime tmpfs"),
         ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
+        ('-v "$SMOKE_BUILD_TARGET:/work/target:ro"', "read-only runtime build target"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
         ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
@@ -3574,7 +3585,7 @@ def validate_smoke_contract(
         ('start_sibling_docker()', "sibling Docker orchestrator"),
         ('stop_sibling_docker()', "sibling Docker survivor drain"),
         ('sibling_container_running', "sibling Docker running check"),
-        ('sibling_out_file=$HOST_GUARD_ROOT/sibling-docker.log', "sibling Docker parent-shell output capture"),
+        ('sibling_out_file=$SMOKE_ROOT/sibling-docker.log', "sibling Docker parent-shell output capture"),
         ('if stop_sibling_docker >"$sibling_out_file" 2>&1; then', "sibling Docker stop runs in parent shell"),
         ('sibling-docker.log', "sibling Docker output cleanup"),
         ('SIBLING_DOCKER_NONINTERFERENCE=pass cid=', "sibling Docker noninterference result"),
@@ -3594,7 +3605,9 @@ def validate_smoke_contract(
         require_text(smoke, text, label)
     for forbidden in (
         "bash -euo pipefail -c", "--network=host", "--pid=host", "--privileged",
-        "--publish", "--publish-all", "sudo ", "pkill",
+        "--publish", "--publish-all", "sudo ", "pkill", "HOST_GUARD",
+        "historical-selector", "smoke-process-guard.py record",
+        "smoke-process-guard.py monitor",
     ):
         if forbidden in smoke:
             raise VerificationError(
@@ -3609,7 +3622,7 @@ def validate_smoke_contract(
     if "rustdesk --server" in smoke:
         raise VerificationError("host smoke orchestrator retains historical-selector launch text")
     sibling_match = re.search(
-        r'docker_out=\$\(docker run -d --name "\$SIBLING_NAME".*?sibling-docker-server 2>&1\)',
+        r'docker_out=\$\(smoke_docker run -d --name "\$SIBLING_NAME".*?sibling-docker-server 2>&1\)',
         smoke,
         re.S,
     )
@@ -3957,31 +3970,35 @@ def validate_smoke_contract(
     require_text(runner, 'SERVICE_ROLE_MARKER=absent', "portable-role proof")
 
     for text, label in (
-        ('SELECTOR = re.compile(br"rustdesk +--server")', "historical selector implementation"),
+        ('"""Prove exact server process identities inside isolated smoke containers."""', "container-only process proof scope"),
         ('NEUTRAL_ARGV0 = b"rd-smoke-server"', "neutral argv constant"),
         ('SERVICE_OWNED_ROLE = b"--service-owned-server"', "service-owned role constant"),
-        ('cmdline.rstrip(b"\\0").replace(b"\\0", b" ")', "NUL argv reconstruction"),
-        ('before = read_process_identity(pid, proc_root)', "pre-cmdline start identity"),
-        ('after = read_process_identity(pid, proc_root)', "post-cmdline start identity"),
-        ('matches = stable_baseline()', "stable host baseline"),
-        ('violations = new_matches(baseline, current)', "new-match rejection"),
-        ('time.sleep(MONITOR_INTERVAL_SECONDS)', "bounded host monitor polling"),
+        ('def server_argv_is_expected(argv, service_owned):', "closed exact-role helper"),
+        ('expected = [NEUTRAL_ARGV0, SERVER_ROLE]', "ordinary exact argv construction"),
+        ('expected.append(SERVICE_OWNED_ROLE)', "service-owned exact argv construction"),
+        ('return argv == expected', "closed exact argv comparison"),
+        ('cmdline = read_process_cmdline(pid)', "PID-specific command-line proof"),
+        ('time.sleep(IDENTITY_POLL_INTERVAL_SECONDS)', "bounded identity polling"),
         ('os.stat("/proc/{}/exe".format(pid))', "running executable object proof"),
-        ('return argv == expected_argv', "generic exact argv proof"),
-        ('[NEUTRAL_ARGV0, SERVER_ROLE]', "exact neutral argv and role proof"),
-        ('[NEUTRAL_ARGV0, SERVER_ROLE, SERVICE_OWNED_ROLE]', "exact service-owned sibling argv"),
         ('status.get("PPid") != str(expected_parent)', "service-owned launch-parent proof"),
         ('for capability_set in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")', "service-owned capability proof"),
         ('commands.add_parser("wait-service-server")', "service-owned identity command"),
-        ('baseline fixture did not reject a new production-shaped match', "selector baseline regression fixture"),
+        ('service_owned = ordinary + [SERVICE_OWNED_ROLE]', "service-owned positive role fixture"),
+        ('commands.add_parser("self-test")', "pure role-classification self-test"),
+        ('fail("non-exact server role fixture was accepted")', "non-exact role negative fixture"),
     ):
         require_text(process_guard, text, label)
-    require_exact_count(
-        process_guard,
-        "violations = new_matches(baseline, current)",
-        2,
-        "new-match rejection",
-    )
+    for forbidden in (
+        "SELECTOR",
+        "stable_baseline",
+        "scan_matching_processes",
+        "new_matches",
+        'commands.add_parser("record")',
+        'commands.add_parser("monitor")',
+        'commands.add_parser("request-stop")',
+        'commands.add_parser("wait-ready")',
+    ):
+        require_absent(process_guard, forbidden, "host-wide process monitor authority")
     for text, label in (
         ('static const char *const SMOKE_ARGV0 = "rd-smoke-server";', "launcher neutral argv"),
         ('static const char *const SERVER_ROLE = "--server";', "launcher exact role"),
@@ -10920,6 +10937,7 @@ def validate_windows_scm_service_entry_contract(sources):
 def validate_smoke_container_authority_contract(sources):
     smoke = sources["smoke"]
     stage = sources["smoke_stage"]
+    process_guard = sources["smoke_process_guard"]
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
@@ -10927,17 +10945,32 @@ def validate_smoke_container_authority_contract(sources):
     require_order(
         smoke,
         (
+            "readonly DOCKER_BIN=/usr/bin/docker",
+            "readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock",
+            'readonly BUILD_UID="$(id -u)"',
+            "smoke: refuses host or container-root execution",
+            'readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c',
+            "SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)",
+            "readonly SMOKE_DOCKER_COMMAND=(",
+            "smoke_docker_authority()",
+            "smoke_docker()",
             "readonly IMG=rd-devcheck",
-            "IMAGE_ID=$(docker image inspect --format '{{.Id}}' \"$IMG\") || {",
+            "IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' \"$IMG\") || {",
             'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then',
             "readonly IMAGE_ID",
-            "BUILD_RUN=(docker run",
+            "BUILD_RUN=(smoke_docker run",
         ),
-        "local smoke image resolution precedes every container",
+        "fixed smoke Docker authority and local image resolution precede every container",
     )
     require_exact_count(smoke, '"$IMG"', 1, "smoke image tag is inspect-only")
     require_exact_count(smoke, '"$IMAGE_ID"', 6, "every smoke container uses the immutable image ID")
-    require_exact_count(smoke, "docker run", 5, "complete smoke container launch inventory")
+    require_exact_count(smoke, "smoke_docker run", 5, "complete smoke container launch inventory")
+    require_exact_count(
+        smoke,
+        "smoke_docker image inspect",
+        1,
+        "single fixed-client local image resolution",
+    )
 
     build = extract_between(smoke, "BUILD_RUN=(", "\nRUN=(", "smoke build container")
     runtime = extract_between(smoke, "\nRUN=(", "\nLIFECYCLE_RUN=(", "smoke runtime container")
@@ -10949,7 +10982,7 @@ def validate_smoke_container_authority_contract(sources):
     )
     sibling = extract_through(
         smoke,
-        'docker_out=$(docker run -d --name "$SIBLING_NAME"',
+        'docker_out=$(smoke_docker run -d --name "$SIBLING_NAME"',
         "2>&1)",
         "smoke sibling container",
     )
@@ -10962,17 +10995,36 @@ def validate_smoke_container_authority_contract(sources):
         require_text(block, "--pull=never", f"smoke {label} implicit-pull refusal")
         require_text(block, '"$IMAGE_ID"', f"smoke {label} immutable image identity")
 
-    require_text(
-        build,
-        "-v rd-cargo-cache:/usr/local/cargo/registry",
-        "smoke build registry cache authority",
-    )
-    require_text(
-        build,
-        "-v rd-git-cache:/usr/local/cargo/git",
-        "smoke build Git cache authority",
-    )
+    for token, label in (
+        ('--user "$BUILD_UID:$BUILD_GID"', "numeric non-root build identity"),
+        ("--cap-drop ALL", "build capability removal"),
+        ("--security-opt no-new-privileges", "build privilege-gain refusal"),
+        ("--read-only", "build read-only root"),
+        ("--pids-limit 1024", "build PID ceiling"),
+        ("--memory 12g", "build memory ceiling"),
+        ("--memory-swap 12g", "build no-swap ceiling"),
+        ("--cpus 4", "build CPU ceiling"),
+        ("/tmp:rw,exec,nosuid,nodev,mode=1777,size=2g", "build scratch ceiling"),
+        ('-v "$PWD:/work:ro"', "build read-only live source"),
+        ('-v "$SMOKE_BUILD_TARGET:/work/target:rw"', "build private writable target"),
+        ("-v rd-cargo-cache:/usr/local/cargo/registry", "smoke build registry cache authority"),
+        ("-v rd-git-cache:/usr/local/cargo/git", "smoke build Git cache authority"),
+    ):
+        require_text(build, token, label)
+    require_absent(build, '$PWD:/work:rw', "build live-checkout write authority")
     require_absent(runtime, "/usr/local/cargo/", "smoke runtime dependency-cache authority")
+    for block, label in (
+        (runtime, "ordinary runtime"),
+        (lifecycle, "lifecycle"),
+        (pid_reuse, "PID-reuse"),
+        (sibling, "sibling"),
+    ):
+        require_text(block, '-v "$PWD:/work:ro"', f"{label} read-only source")
+        require_text(
+            block,
+            '-v "$SMOKE_BUILD_TARGET:/work/target:ro"',
+            f"{label} read-only target",
+        )
 
     complete_launch_surface = "\n".join(container_blocks)
     for token, label in (
@@ -10989,6 +11041,72 @@ def validate_smoke_container_authority_contract(sources):
         raise VerificationError("smoke short-form published port authority: forbidden contract remains present")
     if re.search(r"(?m)(?:^|[ \t])-P(?:[ \t\\]|$)", complete_launch_surface):
         raise VerificationError("smoke short-form published ports authority: forbidden contract remains present")
+
+    for token, label in (
+        ("[ -f \"$DOCKER_BIN\" ] && [ ! -L \"$DOCKER_BIN\" ]", "fixed client regular-file proof"),
+        ("0:0:755:1", "fixed client owner/mode/link proof"),
+        ("[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]", "fixed socket type proof"),
+        ("SMOKE_DOCKER_SOCKET_ID", "fixed socket identity proof"),
+        ("DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG", "ambient Docker endpoint/config refusal"),
+        ("DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS", "ambient Docker TLS refusal"),
+        ("DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST", "ambient Docker API/platform/trust refusal"),
+        ("DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS", "ambient Docker trust/header refusal"),
+        ("/usr/bin/env -i", "empty Docker client environment"),
+        ('--host "$SMOKE_DOCKER_HOST"', "explicit fixed Docker endpoint"),
+        ('--config "$SMOKE_DOCKER_CONFIG"', "explicit private Docker configuration"),
+        ("printf '{}\\n' >\"$SMOKE_DOCKER_CONFIG/config.json\"", "canonical empty Docker configuration"),
+        ('readonly SMOKE_DOCKER_CONFIG_ID="$(stat -c', "private Docker directory identity"),
+        ('readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c', "private Docker config identity"),
+        ('readonly SMOKE_BUILD_TARGET_ID="$(stat -c', "private build-target identity"),
+        ('= "$SMOKE_DOCKER_CONFIG_FILE_ID" ]', "Docker config identity recheck"),
+        ('= "$SMOKE_BUILD_TARGET_ID" ]', "build-target identity recheck"),
+        ("smoke_docker_authority || return 1", "Docker authority precondition"),
+        ('"${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?', "single fixed Docker client invocation"),
+        ("preserving changed Docker/build authority", "identity-safe cleanup refusal"),
+    ):
+        require_text(smoke, token, label)
+    require_exact_count(
+        smoke,
+        'smoke_docker_authority || return 1',
+        4,
+        "Docker authority pre/post and bounded-wait checks",
+    )
+    for token in (
+        "HOST_GUARD",
+        "historical-selector",
+        "smoke-process-guard.py record",
+        "smoke-process-guard.py monitor",
+        "smoke-process-guard.py request-stop",
+        "smoke-process-guard.py wait-ready",
+    ):
+        require_absent(smoke, token, "top-level host process inspection authority")
+    if re.search(r"(?m)(?:^|[=( ])docker (?:run|image|inspect|logs|wait|rm)(?:[ )]|$)", smoke):
+        raise VerificationError("smoke bypasses the fixed Docker-client authority funnel")
+
+    for token, label in (
+        ('"""Prove exact server process identities inside isolated smoke containers."""', "container-only process helper scope"),
+        ("def server_argv_is_expected(argv, service_owned):", "closed server-role classifier"),
+        ("expected = [NEUTRAL_ARGV0, SERVER_ROLE]", "ordinary exact server role"),
+        ("expected.append(SERVICE_OWNED_ROLE)", "service-owned exact argv construction"),
+        ("return argv == expected", "closed exact argv comparison"),
+        ('commands.add_parser("wait-server")', "ordinary exact identity operation"),
+        ('commands.add_parser("wait-service-server")', "service exact identity operation"),
+        ('service_owned = ordinary + [SERVICE_OWNED_ROLE]', "service-owned positive role fixture"),
+        ('commands.add_parser("self-test")', "pure process-helper self-test"),
+        ('fail("non-exact server role fixture was accepted")', "closed-role negative fixture"),
+    ):
+        require_text(process_guard, token, label)
+    for token in (
+        "SELECTOR",
+        "stable_baseline",
+        "scan_matching_processes",
+        "new_matches",
+        'commands.add_parser("record")',
+        'commands.add_parser("monitor")',
+        'commands.add_parser("request-stop")',
+        'commands.add_parser("wait-ready")',
+    ):
+        require_absent(process_guard, token, "retired host process-table operation")
 
     build_stage = extract_between(stage, "  build)\n", "    ;;\n  mdwe)", "smoke Cargo build stage")
     require_text(
@@ -11015,9 +11133,28 @@ def validate_smoke_container_authority_contract(sources):
         "R-S11e-64 — smoke container image, network, and dependency authority",
         "smoke container authority hardening ledger",
     )
+    authority_requirement = extract_html_requirement(
+        requirements, "R-S11dd", "smoke host/build authority requirement"
+    )
+    for token, label in (
+        ("exact root-owned non-symlink <code>/usr/bin/docker</code>", "fixed Docker client requirement"),
+        ("authority-root and build-target identities", "private object identity requirement"),
+        ("No top-level smoke operation", "host-process inspection prohibition"),
+        ("invoking numeric non-root UID/GID", "non-root compile-container requirement"),
+        ("fresh current-user-private target bind writable", "private target requirement"),
+        ("Every runtime/lifecycle/sibling container", "read-only runtime target requirement"),
+        ("R-S11e-122 ledger entry", "hardening-ledger requirement"),
+    ):
+        require_text(authority_requirement, token, label)
+    require_text(requirements, "<tr><td>257</td>", "smoke host/build authority Appendix C row")
+    require_text(
+        hardening,
+        "R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write",
+        "smoke host/build authority hardening ledger",
+    )
     require_text(
         verify,
-        "Smoke container image/network authority (R-S11ax/R-S11e-64)",
+        "Smoke container and host/build authority (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122)",
         "smoke container authority source gate",
     )
 
@@ -11159,7 +11296,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11377,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11556,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11690,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11858,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11914,7 +12051,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12248,7 +12385,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -26390,54 +26527,54 @@ def run_source_mutations(sources):
             "smoke",
             'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then',
             'if [[ -z "$IMAGE_ID" ]]; then',
-            "local smoke image resolution precedes every container",
+            "fixed smoke Docker authority and local image resolution precede every container",
         ),
         (
             "smoke",
-            "BUILD_RUN=(docker run --rm --network none --pull=never",
-            "BUILD_RUN=(docker run --rm --pull=never",
+            "BUILD_RUN=(smoke_docker run --rm --network none --pull=never",
+            "BUILD_RUN=(smoke_docker run --rm --pull=never",
             "smoke build network isolation",
         ),
         (
             "smoke",
-            "\nRUN=(docker run --rm --network none --pull=never",
-            "\nRUN=(docker run --rm --pull=never",
+            "\nRUN=(smoke_docker run --rm --network none --pull=never",
+            "\nRUN=(smoke_docker run --rm --pull=never",
             "smoke runtime network isolation",
         ),
         (
             "smoke",
-            "BUILD_RUN=(docker run --rm --network none --pull=never",
-            "BUILD_RUN=(docker run --rm --network none",
+            "BUILD_RUN=(smoke_docker run --rm --network none --pull=never",
+            "BUILD_RUN=(smoke_docker run --rm --network none",
             "smoke build implicit-pull refusal",
         ),
         (
             "smoke",
-            "\nRUN=(docker run --rm --network none --pull=never",
-            "\nRUN=(docker run --rm --network none",
+            "\nRUN=(smoke_docker run --rm --network none --pull=never",
+            "\nRUN=(smoke_docker run --rm --network none",
             "smoke runtime implicit-pull refusal",
         ),
         (
             "smoke",
-            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE --pull=never",
-            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE",
+            "LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE --pull=never",
+            "LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE",
             "smoke lifecycle implicit-pull refusal",
         ),
         (
             "smoke",
-            "PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128 --pull=never",
-            "PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128",
+            "PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128 --pull=never",
+            "PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128",
             "smoke PID-reuse implicit-pull refusal",
         ),
         (
             "smoke",
-            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE --pull=never",
-            "LIFECYCLE_RUN=(docker run --rm --cap-add SYS_PTRACE --pull=never",
+            "LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE --pull=never",
+            "LIFECYCLE_RUN=(smoke_docker run --rm --cap-add SYS_PTRACE --pull=never",
             "smoke lifecycle network isolation",
         ),
         (
             "smoke",
-            "PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128 --pull=never",
-            "PID_REUSE_RUN=(docker run --rm --read-only --pids-limit 128 --pull=never",
+            "PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128 --pull=never",
+            "PID_REUSE_RUN=(smoke_docker run --rm --read-only --pids-limit 128 --pull=never",
             "smoke PID-reuse network isolation",
         ),
         (
@@ -26448,26 +26585,26 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -w /work "$IMAGE_ID")',
-            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -v rd-cargo-cache:/usr/local/cargo/registry\n  -w /work "$IMAGE_ID")',
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v rd-cargo-cache:/usr/local/cargo/registry\n  -v "$PWD:/work:ro"',
             "smoke runtime dependency-cache authority",
         ),
         (
             "smoke",
-            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
-            'RUN=(docker run --rm --network none --pull=never --publish 21118:21118\n  -v "$PWD:/work:ro"',
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
+            'RUN=(smoke_docker run --rm --network none --pull=never --publish 21118:21118\n  -v "$PWD:/work:ro"',
             "smoke published port authority",
         ),
         (
             "smoke",
-            'RUN=(docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
-            'RUN=(docker run --rm --network none --pull=never\n  -v /var/run/docker.sock:/var/run/docker.sock\n  -v "$PWD:/work:ro"',
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v /var/run/docker.sock:/var/run/docker.sock\n  -v "$PWD:/work:ro"',
             "smoke Docker socket authority",
         ),
         (
             "smoke",
-            "readonly IMAGE_ID\nBUILD_RUN=(docker run",
-            "readonly IMAGE_ID\ndocker run --rm bad-image true\nBUILD_RUN=(docker run",
+            "readonly IMAGE_ID\nBUILD_RUN=(smoke_docker run",
+            "readonly IMAGE_ID\nsmoke_docker run --rm bad-image true\nBUILD_RUN=(smoke_docker run",
             "complete smoke container launch inventory",
         ),
         (
@@ -26478,9 +26615,99 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'docker run -d --name "$SIBLING_NAME" --network none --pull=never',
-            'docker run -d --name "$SIBLING_NAME" --network none',
+            'smoke_docker run -d --name "$SIBLING_NAME" --network none --pull=never',
+            'smoke_docker run -d --name "$SIBLING_NAME" --network none',
             "smoke sibling implicit-pull refusal",
+        ),
+        (
+            "smoke",
+            "readonly DOCKER_BIN=/usr/bin/docker",
+            "readonly DOCKER_BIN=/usr/local/bin/docker",
+            "fixed smoke Docker authority and local image resolution precede every container",
+        ),
+        (
+            "smoke",
+            "smoke: refuses host or container-root execution",
+            "smoke: root execution accepted",
+            "fixed smoke Docker authority and local image resolution precede every container",
+        ),
+        (
+            "smoke",
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG",
+            "DOCKER_HOST DOCKER_CONTEXT",
+            "ambient Docker endpoint/config refusal",
+        ),
+        (
+            "smoke",
+            "/usr/bin/env -i",
+            "/usr/bin/env",
+            "empty Docker client environment",
+        ),
+        (
+            "smoke",
+            'readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c \'%d:%i:%u:%g:%a:%h\' -- "$SMOKE_DOCKER_CONFIG/config.json")"',
+            "readonly SMOKE_DOCKER_CONFIG_FILE_ID=unchecked",
+            "private Docker config identity",
+        ),
+        (
+            "smoke",
+            'readonly SMOKE_BUILD_TARGET_ID="$(stat -c \'%d:%i:%u:%g:%a\' -- "$SMOKE_BUILD_TARGET")"',
+            "readonly SMOKE_BUILD_TARGET_ID=unchecked",
+            "private build-target identity",
+        ),
+        (
+            "smoke",
+            '[ "$(stat -c \'%d:%i:%u:%g:%a:%h\' -- "$SMOKE_DOCKER_CONFIG/config.json" 2>/dev/null)" = "$SMOKE_DOCKER_CONFIG_FILE_ID" ]',
+            '[ -f "$SMOKE_DOCKER_CONFIG/config.json" ]',
+            "Docker config identity recheck",
+        ),
+        (
+            "smoke",
+            '[ "$(stat -c \'%d:%i:%u:%g:%a\' -- "$SMOKE_BUILD_TARGET" 2>/dev/null)" = "$SMOKE_BUILD_TARGET_ID" ]',
+            '[ -d "$SMOKE_BUILD_TARGET" ]',
+            "build-target identity recheck",
+        ),
+        (
+            "smoke",
+            '  smoke_docker_authority || return 1\n  "${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?',
+            '  true # Docker authority precondition removed\n  "${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?',
+            "Docker authority pre/post and bounded-wait checks",
+        ),
+        (
+            "smoke",
+            '  --user "$BUILD_UID:$BUILD_GID"',
+            "  --user 0:0",
+            "numeric non-root build identity",
+        ),
+        (
+            "smoke",
+            '  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            '  -v "$PWD:/work:rw"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            "build read-only live source",
+        ),
+        (
+            "smoke",
+            '  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            '  -v "$PWD/target:/work/target:rw"',
+            "build private writable target",
+        ),
+        (
+            "smoke",
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:ro"',
+            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            "ordinary runtime read-only target",
+        ),
+        (
+            "smoke",
+            "readonly IMG=rd-devcheck",
+            'scripts/smoke-process-guard.py monitor /tmp/baseline.json &\nreadonly IMG=rd-devcheck',
+            "top-level host process inspection authority",
+        ),
+        (
+            "smoke_process_guard",
+            'commands.add_parser("self-test")',
+            'commands.add_parser("monitor")\n    commands.add_parser("self-test")',
+            "retired host process-table operation",
         ),
         (
             "smoke_stage",
@@ -26507,9 +26734,27 @@ def run_source_mutations(sources):
             "smoke container authority hardening ledger",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11dd</span>',
+            '<span class="id">R-S11dd-disabled</span>',
+            "smoke host/build authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>257</td>",
+            "<tr><td>257-disabled</td>",
+            "smoke host/build authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write",
+            "R-S11dd/R-S11e-122 — runtime-smoke host/build authority deferred",
+            "smoke host/build authority hardening ledger",
+        ),
+        (
             "verify",
-            "Smoke container image/network authority (R-S11ax/R-S11e-64)",
-            "Smoke container authority disabled (R-S11ax/R-S11e-64)",
+            "Smoke container and host/build authority (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122)",
+            "Smoke container authority disabled (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122)",
             "smoke container authority source gate",
         ),
         (
@@ -32059,8 +32304,8 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128',
-            'PID_REUSE_RUN=(docker run --rm --network none',
+            'PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128',
+            'PID_REUSE_RUN=(smoke_docker run --rm --network none',
             "isolated PID reuse container",
         ),
         (
@@ -32161,20 +32406,20 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            "LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE",
-            "LIFECYCLE_RUN=(docker run --rm --network none",
+            "LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE",
+            "LIFECYCLE_RUN=(smoke_docker run --rm --network none",
             "network-isolated lifecycle procfs authority",
         ),
         (
             "smoke",
-            'docker run -d --name "$SIBLING_NAME" --network none',
-            'docker run -d --name "$SIBLING_NAME"',
+            'smoke_docker run -d --name "$SIBLING_NAME" --network none',
+            'smoke_docker run -d --name "$SIBLING_NAME"',
             "smoke sibling network isolation",
         ),
         (
             "smoke",
-            'docker run -d --name "$SIBLING_NAME" --network none',
-            'docker run -d --name "$SIBLING_NAME" --network none --pid=container:service',
+            'smoke_docker run -d --name "$SIBLING_NAME" --network none',
+            'smoke_docker run -d --name "$SIBLING_NAME" --network none --pid=container:service',
             "sibling Docker must not share a host or container PID namespace",
         ),
         (
@@ -32245,9 +32490,9 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_process_guard",
-            '[NEUTRAL_ARGV0, SERVER_ROLE, SERVICE_OWNED_ROLE]',
-            '[NEUTRAL_ARGV0, SERVER_ROLE]',
-            "exact service-owned sibling argv",
+            'service_owned = ordinary + [SERVICE_OWNED_ROLE]',
+            'service_owned = ordinary',
+            "service-owned positive role fixture",
         ),
         (
             "smoke_launcher",
@@ -32563,12 +32808,6 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            '"$HOST_GUARD" record "$HOST_GUARD_ROOT/baseline.json"',
-            'true # host selector baseline removed',
-            "pre-smoke host selector baseline",
-        ),
-        (
-            "smoke",
             'bash --noprofile --norc /work/scripts/smoke-server-stage.sh parked',
             'bash -c "/work/target/debug/rustdesk --server"',
             "exact mounted stage dispatch",
@@ -32587,15 +32826,15 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_process_guard",
-            'return argv == expected_argv',
-            'return argv[-1:] == expected_argv[-1:]',
-            "generic exact argv proof",
+            'return argv == expected',
+            'return argv[-1:] == expected[-1:]',
+            "closed exact argv comparison",
         ),
         (
             "smoke_process_guard",
-            'violations = new_matches(baseline, current)',
-            'violations = [] # new matches accepted',
-            "new-match rejection",
+            'expected.append(SERVICE_OWNED_ROLE)',
+            'true # service-owned marker omitted',
+            "service-owned exact argv construction",
         ),
         (
             "smoke_launcher",
@@ -35689,7 +35928,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dc, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256",
+            "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

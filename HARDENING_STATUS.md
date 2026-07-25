@@ -4551,7 +4551,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   enforcement, requirement/ledger/gate presence, and the sibling. The focused shared source gate duplicates the
   fail-loud launch-policy checks. No container, application binary, host listener, host firewall, or host RustDesk
   service was executed or changed while closing this source slice. Exact runtime-smoke execution and release-artifact
-  evidence remain R-B2; external expert review remains R-V3.
+  evidence remain R-B2; external expert review remains R-V3. The former default-container-user and writable-checkout
+  build authority, ambient Docker-client authority, and host historical-selector monitor described by this
+  historical entry are superseded by R-S11dd/R-S11e-122.
 - **R-S11e-65 — Windows token-switched helper environment finality — SOURCE IMPLEMENTED; NATIVE WINDOWS AND
   EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: Windows installed-service active-session tray,
   connection-manager, and whiteboard launches. Surfaces: `run_user_helper` →
@@ -11614,6 +11616,88 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Windows guest artifact, test install/upgrade/uninstall lifecycle in Windows, prove
   Android/device/native installed-platform behavior, authenticate other maintenance images,
   or complete R-V3 external review.
+- **R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write
+  authority — SOURCE IMPLEMENTED 2026-07-26; CONFINED SYNTAX, HELPER SELF-TEST, WORKSPACE
+  NORMAL, AND COMPLETE SOURCE-MUTATION VERIFICATION PASS; FULL ROOT-CONTAINING RUNTIME SMOKE,
+  EXACT R-B2 ARTIFACT, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform: the unprivileged
+  Linux build host and the container-only Linux
+  runtime-smoke fixtures. Endpoint/action: `scripts/smoke-server.sh` Docker resolution,
+  compilation, ordinary runtime, service lifecycle, PID-reuse, and sibling orchestration;
+  `scripts/smoke-process-guard.py` process-identity proof. Boundary: the invoking user and
+  live repository ↔ Docker-client/daemon selection, host `/proc`, build-container identity,
+  dependency caches, and container runtime fixtures.
+
+  Before this slice, the harness invoked `docker` through `PATH` and inherited the caller's
+  Docker context, host, TLS, configuration, and related client environment. Docker documents
+  that `DOCKER_CONTEXT` overrides `DOCKER_HOST` and that client configuration participates in
+  daemon selection (https://docs.docker.com/reference/cli/docker/). The harness also executed
+  `scripts/smoke-process-guard.py` directly on the host before and throughout the smoke; its
+  `record` and `monitor` modes enumerated the complete host `/proc` process set to reject new
+  command lines matching a historical RustDesk selector. Finally, `BUILD_RUN` accepted the
+  image's default UID 0 and mounted the live checkout read-write. Docker documents both that
+  the default container user is root
+  (https://docs.docker.com/engine/containers/run/#user) and that a writable bind mount lets a
+  container create, change, or delete host files
+  (https://docs.docker.com/engine/storage/bind-mounts/#considerations-and-constraints). These
+  were unnecessary daemon-selection, host-process-inspection, and source/build authorities.
+  They are not evidence that a remote daemon was actually selected, any host process was
+  signaled, the checkout was changed, Docker escaped, host root was acquired, a listener or
+  public port was exposed, host RustDesk/service/configuration/firewall/network state changed,
+  exploitation occurred, or the host was compromised.
+
+  The host orchestrator now refuses UID or primary GID 0, admits only the verified root-owned
+  single-link mode-0755 `/usr/bin/docker` client and the non-symlink, root-owned, single-link
+  local `/var/run/docker.sock`, and binds that socket's object identity for the complete run.
+  It rejects caller Docker host, context, configuration, TLS, API/platform, content-trust, and
+  custom-header inputs. Every client invocation runs through one empty environment with a
+  fixed local Unix endpoint and a fresh current-user-private configuration containing only
+  exact mode-0600 `{}`; private root, configuration, socket, and target identities are proved
+  before and after each invocation and cleanup preserves changed state for diagnosis. The
+  immutable local image-ID, no-pull, network-none, and no-publication rules from
+  R-S11ax/R-S11e-64 remain unchanged.
+
+  `BUILD_RUN` is now the invoking numeric non-root UID:GID with all capabilities dropped,
+  no-new-privileges, a read-only container root, no network or pull, and explicit PID,
+  memory/no-swap, CPU, and executable scratch ceilings. The live checkout is mounted
+  read-only; the only Cargo output bind is a new private mode-0700 target owned by the
+  invoking user, and the locked/offline registry and Git caches retain only their existing
+  build-input role. Every ordinary, lifecycle, PID-reuse, and sibling fixture receives both
+  source and that private target read-only. The root/capability-requiring service and
+  PID-reuse fixtures remain container-only with network none, no published port, Docker
+  socket, device, host namespace, writable source, or writable build output. Their root and
+  capability semantics are intentionally not described as non-root because they exercise
+  installed-service behavior; reducing those per-fixture capabilities remains separate from
+  this host/build-authority closure.
+
+  The host-wide selector, baseline, monitor, stop-control, and record modes and every host
+  call site are deleted. `scripts/smoke-process-guard.py` now has only `wait-server`,
+  `wait-service-server`, and a pure self-test. Its `/proc` reads are PID-specific exact
+  executable/start-time/closed-argv authority proofs invoked only from isolated smoke
+  containers. The prior host-monitor evidence recorded under R-S11c-27j and related
+  historical runtime entries is historical only and no longer describes a current execution
+  path. R-S11dd and Appendix C #257 make this closure normative.
+
+  Bash syntax for the smoke and shared gate, Python syntax for the process helper and
+  independent workspace validator, the pure process-helper positive/negative self-test, the
+  workspace normal semantic contract, and its complete in-memory source-mutation catalog pass
+  in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
+  Each successful project check ran as the invoking UID:GID with no network, read-only
+  container root and repository, all capabilities dropped, no-new-privileges, no Docker
+  socket or published port, and explicit PID, memory/no-swap, CPU, and scratch ceilings. The
+  workspace validator's executable-fixture mode was intentionally not completed because its
+  managed-command fixture requires a live current-user systemd bus. Two diagnostic
+  invocations stopped at the absent `/run/user/1000` directory/socket authority check before
+  a fixture consumer ran; no host bus or runtime directory was mounted, and both exact
+  current-user-private scratch remnants were inspected as empty fixture directories and
+  removed. The complete source-mutation mode is the binding independent mutation evidence for
+  this slice.
+
+  No project application binary, root fixture, host-process scan, listener, firewall/network
+  query, or host RustDesk process/service/configuration inspection or mutation was performed
+  while implementing or verifying this source slice. The full root-containing runtime smoke
+  was intentionally not run; its current-source runtime behavior and exact artifact remain
+  R-B2 evidence, and external expert review remains R-V3.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12331,9 +12415,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-77f2cdf25123b24fcd31ecac45e8aaa988d36b7b33ed676d7e4aee15ecded230  requirements.html
+04b5f0f7953a6352f4935eeb47fe1fc46a7a4b3f1016d661ae071ed0313faa42  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dc, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#256. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dd, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

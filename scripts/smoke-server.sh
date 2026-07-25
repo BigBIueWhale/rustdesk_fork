@@ -49,8 +49,120 @@
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
+readonly DOCKER_BIN=/usr/bin/docker
+readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock
+readonly BUILD_UID="$(id -u)"
+readonly BUILD_GID="$(id -g)"
+[ "$BUILD_UID" -ne 0 ] || {
+  echo "smoke: refuses host or container-root execution" >&2
+  exit 1
+}
+[ "$BUILD_GID" -ne 0 ] || {
+  echo "smoke: refuses a root primary group" >&2
+  exit 1
+}
+[ -f "$DOCKER_BIN" ] && [ ! -L "$DOCKER_BIN" ] && [ -x "$DOCKER_BIN" ] || {
+  echo "smoke: trusted Docker client is unavailable at $DOCKER_BIN" >&2
+  exit 1
+}
+[ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_BIN" 2>/dev/null)" = "0:0:755:1" ] || {
+  echo "smoke: trusted Docker client must be a root-owned mode-0755 single-link file" >&2
+  exit 1
+}
+[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] || {
+  echo "smoke: the fixed local Docker Unix socket is unavailable" >&2
+  exit 1
+}
+readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock)"
+case "$SMOKE_DOCKER_SOCKET_ID" in
+  *:*:0:*:*:1) ;;
+  *) echo "smoke: the fixed local Docker Unix socket is not root-owned and single-link" >&2; exit 1 ;;
+esac
+for variable in \
+  DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS \
+  DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST \
+  DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS; do
+  [ -z "${!variable+x}" ] || {
+    echo "smoke: $variable must not influence the Docker client" >&2
+    exit 1
+  }
+done
+
+SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)
+readonly SMOKE_ROOT
+readonly SMOKE_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT")"
+readonly SMOKE_DOCKER_CONFIG="$SMOKE_ROOT/docker-config"
+readonly SMOKE_BUILD_TARGET="$SMOKE_ROOT/target"
+install -d -m 0700 "$SMOKE_DOCKER_CONFIG" "$SMOKE_BUILD_TARGET"
+printf '{}\n' >"$SMOKE_DOCKER_CONFIG/config.json"
+chmod 0600 "$SMOKE_DOCKER_CONFIG/config.json"
+readonly SMOKE_DOCKER_CONFIG_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG")"
+readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG/config.json")"
+readonly SMOKE_BUILD_TARGET_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET")"
+readonly SMOKE_DOCKER_COMMAND=(
+  /usr/bin/env -i
+  PATH=/usr/bin:/bin
+  HOME="$SMOKE_ROOT"
+  DOCKER_HOST="$SMOKE_DOCKER_HOST"
+  DOCKER_CONFIG="$SMOKE_DOCKER_CONFIG"
+  "$DOCKER_BIN"
+  --host "$SMOKE_DOCKER_HOST"
+  --config "$SMOKE_DOCKER_CONFIG"
+)
+
+smoke_docker_authority() {
+  [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT" 2>/dev/null)" = "$SMOKE_ROOT_ID" ] \
+    || { echo "smoke: private authority root identity changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG" 2>/dev/null)" = "$SMOKE_DOCKER_CONFIG_ID" ] \
+    || { echo "smoke: private Docker configuration identity changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG/config.json" 2>/dev/null)" = "$SMOKE_DOCKER_CONFIG_FILE_ID" ] \
+    || { echo "smoke: private Docker config.json identity changed" >&2; return 1; }
+  cmp -s -- "$SMOKE_DOCKER_CONFIG/config.json" <(printf '{}\n') \
+    || { echo "smoke: private Docker config.json bytes changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET" 2>/dev/null)" = "$SMOKE_BUILD_TARGET_ID" ] \
+    || { echo "smoke: private build-target authority changed" >&2; return 1; }
+  [ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \
+    && [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock 2>/dev/null)" = "$SMOKE_DOCKER_SOCKET_ID" ] \
+    || { echo "smoke: fixed local Docker Unix socket identity changed" >&2; return 1; }
+}
+
+smoke_docker() {
+  local status=0
+  smoke_docker_authority || return 1
+  "${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?
+  smoke_docker_authority || return 1
+  return "$status"
+}
+
+remove_smoke_authority_root() {
+  [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT" 2>/dev/null)" = "$SMOKE_ROOT_ID" ] \
+    || { echo "smoke: preserving changed private authority root" >&2; return 125; }
+  smoke_docker_authority \
+    || { echo "smoke: preserving changed Docker/build authority" >&2; return 125; }
+  rm -rf -- "$SMOKE_BUILD_TARGET" || return 125
+  rm -- "$SMOKE_DOCKER_CONFIG/config.json" || return 125
+  rmdir -- "$SMOKE_DOCKER_CONFIG" || return 125
+  if [ -e "$SMOKE_ROOT/sibling-docker.log" ] || [ -L "$SMOKE_ROOT/sibling-docker.log" ]; then
+    [ "$(stat -c '%u:%g:%a:%h' -- "$SMOKE_ROOT/sibling-docker.log" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:600:1" ] \
+      || { echo "smoke: preserving changed sibling transcript" >&2; return 125; }
+    rm -- "$SMOKE_ROOT/sibling-docker.log" || return 125
+  fi
+  rmdir -- "$SMOKE_ROOT" || return 125
+}
+
+cleanup_smoke_authority_only() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  remove_smoke_authority_root || status=125
+  exit "$status"
+}
+trap cleanup_smoke_authority_only EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 readonly IMG=rd-devcheck
-IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMG") || {
+IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' "$IMG") || {
   echo "smoke: required local image $IMG is absent" >&2
   exit 1
 }
@@ -59,94 +171,47 @@ if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   exit 1
 fi
 readonly IMAGE_ID
-BUILD_RUN=(docker run --rm --network none --pull=never
-  -v "$PWD:/work:rw"
+BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only
+  --user "$BUILD_UID:$BUILD_GID"
+  --cap-drop ALL
+  --security-opt no-new-privileges
+  --pids-limit 1024
+  --memory 12g
+  --memory-swap 12g
+  --cpus 4
+  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g
+  --env HOME=/tmp/smoke-build
+  -v "$PWD:/work:ro"
+  -v "$SMOKE_BUILD_TARGET:/work/target:rw"
   -v rd-cargo-cache:/usr/local/cargo/registry
   -v rd-git-cache:/usr/local/cargo/git
   -w /work "$IMAGE_ID")
-RUN=(docker run --rm --network none --pull=never
+RUN=(smoke_docker run --rm --network none --pull=never
   -v "$PWD:/work:ro"
+  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
-LIFECYCLE_RUN=(docker run --rm --network none --cap-add SYS_PTRACE --pull=never
+LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE --pull=never
   -v "$PWD:/work:ro"
+  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
-PID_REUSE_RUN=(docker run --rm --network none --read-only --pids-limit 128 --pull=never
+PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128 --pull=never
   --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP
   --security-opt no-new-privileges --security-opt apparmor=unconfined
   --tmpfs /tmp:rw,nosuid,nodev,mode=1777
   --tmpfs /run:rw,nosuid,nodev,noexec,mode=755
   -v "$PWD:/work:ro"
+  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
-HOST_GUARD=$PWD/scripts/smoke-process-guard.py
-HOST_GUARD_ROOT=
-HOST_GUARD_ROOT_ID=
-HOST_GUARD_PID=
-HOST_GUARD_START=
 SIBLING_ROOT=
 SIBLING_ROOT_ID=
 SIBLING_NAME=
 SIBLING_CID=
 
-host_guard_diagnostic() {
-  [ -n "$HOST_GUARD_ROOT" ] || return 0
-  [ ! -f "$HOST_GUARD_ROOT/monitor.log" ] || sed -n '1,120p' "$HOST_GUARD_ROOT/monitor.log" >&2
-  [ ! -f "$HOST_GUARD_ROOT/violation.json" ] || sed -n '1,40p' "$HOST_GUARD_ROOT/violation.json" >&2
-}
-
-host_guard_is_running() {
-  [ -n "$HOST_GUARD_PID" ] && [ -n "$HOST_GUARD_START" ] \
-    && bash scripts/smoke-ready.sh --is-running "$HOST_GUARD_PID" "$HOST_GUARD_START"
-}
-
-reap_failed_host_guard() {
-  local status=0
-  [ -n "$HOST_GUARD_PID" ] || return 1
-  if wait "$HOST_GUARD_PID"; then
-    status=0
-  else
-    status=$?
-  fi
-  HOST_GUARD_PID=
-  HOST_GUARD_START=
-  host_guard_diagnostic
-  [ "$status" -eq 0 ] || return "$status"
-  return 1
-}
-
-host_guard_checkpoint() {
-  if host_guard_is_running; then
-    return 0
-  fi
-  echo "  FAIL smoke host coexistence: historical-selector monitor exited" >&2
-  reap_failed_host_guard || true
-  return 1
-}
-
-stop_host_guard() {
-  local status=0
-  [ -n "$HOST_GUARD_PID" ] || return 0
-  if host_guard_is_running; then
-    "$HOST_GUARD" request-stop "$HOST_GUARD_ROOT/stop" || status=$?
-  fi
-  if wait "$HOST_GUARD_PID"; then
-    :
-  else
-    status=$?
-  fi
-  HOST_GUARD_PID=
-  HOST_GUARD_START=
-  if [ "$status" -ne 0 ]; then
-    host_guard_diagnostic
-    return "$status"
-  fi
-  sed -n '1,120p' "$HOST_GUARD_ROOT/monitor.log"
-}
-
 sibling_container_running() {
   [ -n "$SIBLING_CID" ] || return 1
-  [ "$(docker inspect -f '{{.State.Running}}' "$SIBLING_CID" 2>/dev/null || true)" = true ]
+  [ "$(smoke_docker inspect -f '{{.State.Running}}' "$SIBLING_CID" 2>/dev/null || true)" = true ]
 }
 
 cleanup_sibling_root() {
@@ -178,12 +243,14 @@ start_sibling_docker() {
   fi
   suffix=${SIBLING_ROOT##*.}
   SIBLING_NAME="rd-smoke-sibling-$suffix"
-  docker_out=$(docker run -d --name "$SIBLING_NAME" --network none --pull=never \
-    -v "$PWD:/work:ro" \
-    -v "$SIBLING_ROOT:/sibling:rw" \
-    -w /work "$IMAGE_ID" \
-    bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server 2>&1)
-  if [ "$?" -ne 0 ]; then
+  if docker_out=$(smoke_docker run -d --name "$SIBLING_NAME" --network none --pull=never \
+      -v "$PWD:/work:ro" \
+      -v "$SMOKE_BUILD_TARGET:/work/target:ro" \
+      -v "$SIBLING_ROOT:/sibling:rw" \
+      -w /work "$IMAGE_ID" \
+      bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server 2>&1); then
+    :
+  else
     printf '%s\n' "$docker_out" >&2
     cleanup_sibling_root || true
     return 1
@@ -192,32 +259,31 @@ start_sibling_docker() {
   for ((i = 0; i < 400; i += 1)); do
     if [ -f "$SIBLING_ROOT/ready" ] && [ ! -L "$SIBLING_ROOT/ready" ] \
       && grep -Fxq ready "$SIBLING_ROOT/ready"; then
-      ready_logs=$(docker logs "$SIBLING_CID" 2>&1) || return 1
+      ready_logs=$(smoke_docker logs "$SIBLING_CID" 2>&1) || return 1
       grep -Eq '^SIBLING_DOCKER_READY pid=[0-9]+ start=[0-9]+$' <<<"$ready_logs" || return 1
       grep -Eq '^SIBLING_CONTAINER_IDENTITY_READY pid=[0-9]+ start=[0-9]+ path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ source=[0-9]+:[0-9]+ sha256=[0-9a-f]{64} mnt=[0-9]+ pidns=[0-9]+ generation=[0-9a-f-]{36}$' <<<"$ready_logs" || return 1
-      host_guard_checkpoint
-      return "$?"
+      return 0
     fi
     if ! sibling_container_running; then
       echo "sibling docker container exited before ready" >&2
-      docker logs "$SIBLING_CID" >&2 || true
+      smoke_docker logs "$SIBLING_CID" >&2 || true
       return 1
     fi
     sleep 0.05
   done
   echo "sibling docker container did not become ready" >&2
-  docker logs "$SIBLING_CID" >&2 || true
+  smoke_docker logs "$SIBLING_CID" >&2 || true
   return 1
 }
 
 stop_sibling_docker() {
-  local cid logs wait_out wait_status
+  local cid logs wait_command_status wait_out wait_status
   [ -n "$SIBLING_CID" ] || return 0
   cid=$SIBLING_CID
   if ! sibling_container_running; then
     echo "sibling docker container exited before lifecycle completed" >&2
-    docker logs "$cid" >&2 || true
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    smoke_docker logs "$cid" >&2 || true
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
@@ -227,18 +293,25 @@ stop_sibling_docker() {
     return 1
   fi
   printf 'stop\n' >"$SIBLING_ROOT/stop" || return 1
-  wait_out=$(timeout --signal=TERM --kill-after=5s 30s docker wait "$cid" 2>&1)
-  if [ "$?" -ne 0 ]; then
+  smoke_docker_authority || return 1
+  if wait_out=$(timeout --signal=TERM --kill-after=5s 30s \
+      "${SMOKE_DOCKER_COMMAND[@]}" wait "$cid" 2>&1); then
+    wait_command_status=0
+  else
+    wait_command_status=$?
+  fi
+  smoke_docker_authority || return 1
+  if [ "$wait_command_status" -ne 0 ]; then
     printf '%s\n' "$wait_out" >&2
-    docker logs "$cid" >&2 || true
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    smoke_docker logs "$cid" >&2 || true
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
   fi
   wait_status=$(printf '%s\n' "$wait_out" | tail -n 1 | tr -d '\r')
-  logs=$(docker logs "$cid" 2>&1) || {
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+  logs=$(smoke_docker logs "$cid" 2>&1) || {
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
@@ -246,65 +319,50 @@ stop_sibling_docker() {
   printf '%s\n' "$logs"
   if [ "$wait_status" != 0 ]; then
     echo "sibling docker container exited $wait_status" >&2
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
   fi
   grep -Eq '^SIBLING_DOCKER_READY pid=[0-9]+ start=[0-9]+$' <<<"$logs" || {
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
   }
   grep -Eq '^SIBLING_DOCKER_SURVIVED=pass pid=[0-9]+ start=[0-9]+$' <<<"$logs" || {
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
   }
   grep -Eq '^SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid=[0-9]+ start=[0-9]+ path=/usr/bin/rustdesk exe=[0-9]+:[0-9]+ generation=[0-9a-f-]{36}$' <<<"$logs" || {
-    docker rm -f "$cid" >/dev/null 2>&1 || true
+    smoke_docker rm -f "$cid" >/dev/null 2>&1 || true
     SIBLING_CID=
     cleanup_sibling_root || true
     return 1
   }
-  docker rm "$cid" >/dev/null || return 1
+  smoke_docker rm "$cid" >/dev/null || return 1
   SIBLING_CID=
   cleanup_sibling_root || return "$?"
-  host_guard_checkpoint || return 1
   printf 'SIBLING_DOCKER_NONINTERFERENCE=pass cid=%s\n' "${cid:0:12}"
 }
 
-cleanup_smoke_host_guard() {
-  local status=$? cleanup_status=0 path
+cleanup_smoke() {
+  local status=$? cleanup_status=0
   trap - EXIT HUP INT TERM
   if [ -n "$SIBLING_CID" ]; then
     stop_sibling_docker >/dev/null 2>&1 || cleanup_status=$?
   elif [ -n "$SIBLING_ROOT" ]; then
     cleanup_sibling_root || cleanup_status=$?
   fi
-  if [ -n "$HOST_GUARD_PID" ]; then
-    stop_host_guard || cleanup_status=$?
-  fi
-  if [ -n "$HOST_GUARD_ROOT" ]; then
-    if [ "$(stat -c '%d:%i:%u:%g:%a' "$HOST_GUARD_ROOT" 2>/dev/null || true)" != "$HOST_GUARD_ROOT_ID" ]; then
-      echo "smoke host guard: preserving changed private workspace" >&2
-      cleanup_status=125
-    else
-      for path in baseline.json ready stop violation.json monitor.log sibling-docker.log; do
-        [ ! -e "$HOST_GUARD_ROOT/$path" ] && [ ! -L "$HOST_GUARD_ROOT/$path" ] \
-          || rm -- "$HOST_GUARD_ROOT/$path" || cleanup_status=125
-      done
-      rmdir -- "$HOST_GUARD_ROOT" || cleanup_status=125
-    fi
-  fi
+  remove_smoke_authority_root || cleanup_status=$?
   if [ "$cleanup_status" -ne 0 ]; then
     status=125
   fi
   exit "$status"
 }
-trap cleanup_smoke_host_guard EXIT
+trap cleanup_smoke EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -314,20 +372,10 @@ STAGE_STATUS=0
 run_stage() {
   local output_name=$1 captured
   shift
-  if ! host_guard_checkpoint; then
-    STAGE_STATUS=1
-    printf -v "$output_name" '%s' 'historical-selector monitor unavailable before stage'
-    return 0
-  fi
   if captured=$("$@" 2>&1); then
     STAGE_STATUS=0
   else
     STAGE_STATUS=$?
-  fi
-  if ! host_guard_checkpoint; then
-    STAGE_STATUS=1
-    captured="$captured
-historical-selector monitor failed during stage"
   fi
   printf -v "$output_name" '%s' "$captured"
 }
@@ -339,17 +387,6 @@ record_stage_status() {
     rc=1
   fi
 }
-
-"$HOST_GUARD" self-test
-HOST_GUARD_ROOT=$(mktemp -d /tmp/rustdesk-smoke-host.XXXXXXXXXX)
-HOST_GUARD_ROOT_ID=$(stat -c '%d:%i:%u:%g:%a' "$HOST_GUARD_ROOT")
-[ "${HOST_GUARD_ROOT_ID##*:}" = 700 ] || { echo "smoke host guard workspace is not mode 0700" >&2; exit 1; }
-"$HOST_GUARD" record "$HOST_GUARD_ROOT/baseline.json"
-"$HOST_GUARD" monitor "$HOST_GUARD_ROOT/baseline.json" "$HOST_GUARD_ROOT/ready" \
-  "$HOST_GUARD_ROOT/stop" "$HOST_GUARD_ROOT/violation.json" >"$HOST_GUARD_ROOT/monitor.log" 2>&1 &
-HOST_GUARD_PID=$!
-HOST_GUARD_START=$(bash scripts/smoke-ready.sh --identity "$HOST_GUARD_PID")
-"$HOST_GUARD" wait-ready "$HOST_GUARD_PID" "$HOST_GUARD_START" "$HOST_GUARD_ROOT/ready"
 
 echo "== (0a) prove the bounded process/socket/IPC readiness checker =="
 run_stage ready_out "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-ready.sh --self-test
@@ -366,7 +403,7 @@ record_stage_status R-B4-build
 echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, cross-container identity, pidfd-unavailable refusal, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27n/R-S11c-27u) =="
 lifecycle_out=
 sibling_out=
-sibling_out_file=$HOST_GUARD_ROOT/sibling-docker.log
+sibling_out_file=$SMOKE_ROOT/sibling-docker.log
 lifecycle_stage_status=1
 sibling_stage_status=1
 if start_sibling_docker; then
@@ -756,13 +793,8 @@ grep -q 'DECAYED_AFTER_WINDOW: keying ok=true' <<<"$out10" \
 DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window)"
 fi
 
-if ! stop_host_guard; then
-  echo "  FAIL smoke host coexistence: historical-selector monitor did not complete cleanly"
-  rc=1
-fi
-
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: host historical-selector baseline preserved with zero new matches + exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-S11c-27r native runit exact lifecycle, automatic recovery, native shutdown, and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  echo "SMOKE OK: exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-S11c-27r native runit exact lifecycle, automatic recovery, native shutdown, and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
 else
   echo "SMOKE FAILED"; exit 1
 fi

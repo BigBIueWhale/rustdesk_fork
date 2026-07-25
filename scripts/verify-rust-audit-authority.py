@@ -500,15 +500,51 @@ def validate_contract(sources):
             'if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:',
             "RUST_AUDIT_PASSWD = (",
             'if not isinstance(history, list) or len(history) != 29:',
-            "(VerifierSpec, DartAuditSpec, RustAuditSpec)",
+            "def requires_private_archive(spec: ImageSpec) -> bool:",
             "if rust_checks != 40:",
         ),
         "Rust audit image archive/provenance authority",
     )
+    private_archive_start = image_provenance.index(
+        "def requires_private_archive(spec: ImageSpec) -> bool:"
+    )
+    private_archive_end = image_provenance.index(
+        "\n\n\ndef fail(message: str) -> None:", private_archive_start
+    )
+    private_archive = image_provenance[
+        private_archive_start:private_archive_end
+    ]
+    require_all(
+        private_archive,
+        (
+            "CertifiedAndroidBuilderSpec",
+            "VerifierSpec",
+            "AppleCheckSpec",
+            "DartAuditSpec",
+            "RustAuditSpec",
+        ),
+        "private image archive classification",
+    )
+    provenance_capture_start = image_provenance.index(
+        "def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:"
+    )
+    provenance_capture_end = image_provenance.index(
+        "\n\n\ndef create_fixture_archive(path: Path, spec: Spec) -> str:",
+        provenance_capture_start,
+    )
+    provenance_capture = image_provenance[
+        provenance_capture_start:provenance_capture_end
+    ]
+    require_all(
+        provenance_capture,
+        (
+            "if requires_private_archive(spec):",
+            "save_ref = spec.image_id",
+        ),
+        "private image archive capture",
+    )
     require(
-        image_provenance.count(
-            "(VerifierSpec, DartAuditSpec, RustAuditSpec)"
-        ) >= 8,
+        image_provenance.count("requires_private_archive(spec)") == 6,
         "Rust audit archive must share every strict modern-image boundary",
     )
     spec_block = function_block(
@@ -714,8 +750,9 @@ def validate_contract(sources):
             'Mutation("image_provenance", "cargo_audit_tag_object: str"',
             'Mutation("image_provenance", "source_runs = dockerfile_run_contract(embedded_dockerfile)"',
             'Mutation("image_provenance", "execution_networks = (2, 2, None, 2, None, 2)"',
+            '"Rust private archive classification"',
             'Mutation("online_fetch", \'--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"\'',
-            'Mutation("online_fetch", "--network=default --pull=true --no-cache"',
+            '"Rust image candidate network authority"',
             'Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test"',
             'Mutation("requirements", \'<span class="id">R-S11bf</span>\'',
             'Mutation("hardening", "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority"',
@@ -812,8 +849,48 @@ MUTATIONS = (
     Mutation("image_provenance", "execution_networks = (2, 2, None, 2, None, 2)", "execution_networks = (None, None, None, None, None, None)", "attested build network graph"),
     Mutation("image_provenance", "RUST_AUDIT_PASSWD = (", "IGNORED_PASSWD = (", "attested passwd identity"),
     Mutation("image_provenance", "if rust_checks != 40:", "if rust_checks < 0:", "Rust image behavioral self-test count"),
+    Mutation(
+        "image_provenance",
+        (
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            DartAuditSpec,\n"
+            "            RustAuditSpec,\n"
+            "        ),\n"
+            "    )"
+        ),
+        (
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            DartAuditSpec,\n"
+            "        ),\n"
+            "    )"
+        ),
+        "Rust private archive classification",
+    ),
     Mutation("online_fetch", '--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"', '--archive "$ONLINE_DIR/verifier-images/other.docker.tar.gz"', "Rust image archive recovery path"),
-    Mutation("online_fetch", "--network=default --pull=true --no-cache", "--network=host --pull=true --no-cache", "Rust image candidate network authority"),
+    Mutation(
+        "online_fetch",
+        (
+            "    online_docker buildx build \\\n"
+            "        --network=default --pull=true --no-cache"
+        ),
+        (
+            "    online_docker buildx build \\\n"
+            "        --network=host --pull=true --no-cache"
+        ),
+        "Rust image candidate network authority",
+    ),
     Mutation("online_fetch", '"$SCRIPT_DIR/Dockerfile.audit" "$context/Dockerfile.audit"', '"$REPO_ROOT" "$context/repository"', "Dockerfile-only candidate context"),
     Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test", "python3 scripts/verify-rust-audit-authority.py --repo .", "shared mutation gate"),
     Mutation("requirements", '<span class="id">R-S11bf</span>', '<span class="id">R-S11bf-disabled</span>', "normative requirement"),

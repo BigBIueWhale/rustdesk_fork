@@ -117,6 +117,46 @@ def validate(sources: Dict[str, str]) -> None:
         "env -i \\\n        PATH=/usr/bin:/bin",
         "Docker client funnel closed environment",
     )
+    require(
+        docker_client,
+        '--host "$ONLINE_FETCH_DOCKER_HOST"',
+        "Docker client funnel fixed endpoint",
+    )
+    require(
+        docker_client,
+        '--config "$ONLINE_FETCH_DOCKER_CONFIG"',
+        "Docker client funnel private configuration",
+    )
+
+    no_vcs_docker_client = extract(
+        shell,
+        "online_docker_without_vcs() {",
+        '    return "$status"\n}',
+        "VCS-suppressed Docker client funnel",
+    )
+    for token, label in (
+        (
+            "env -i \\\n        PATH=/usr/bin:/bin",
+            "closed environment",
+        ),
+        (
+            "BUILDX_GIT_INFO=false",
+            "unverified VCS suppression",
+        ),
+        (
+            '--host "$ONLINE_FETCH_DOCKER_HOST"',
+            "fixed endpoint",
+        ),
+        (
+            '--config "$ONLINE_FETCH_DOCKER_CONFIG"',
+            "private configuration",
+        ),
+    ):
+        require(
+            no_vcs_docker_client,
+            token,
+            "VCS-suppressed Docker client funnel {}".format(label),
+        )
 
     run = extract(
         shell,
@@ -425,10 +465,58 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "    env \\\n        PATH=\"$PATH\"",
         "closed Docker environment",
     ),
-    Mutation("shell", '--host "$ONLINE_FETCH_DOCKER_HOST"', '--host "$DOCKER_HOST"',
-             "fixed endpoint use"),
-    Mutation("shell", '--config "$ONLINE_FETCH_DOCKER_CONFIG"', '--config "$HOME/.docker"',
-             "private Docker configuration use"),
+    Mutation(
+        "shell",
+        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$ONLINE_FETCH_DOCKER_HOST"',
+        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$DOCKER_HOST"',
+        "ordinary Docker fixed endpoint use",
+    ),
+    Mutation(
+        "shell",
+        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
+        '        --config "$ONLINE_FETCH_DOCKER_CONFIG"',
+        '        DOCKER_CONFIG="$ONLINE_FETCH_DOCKER_CONFIG" \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
+        '        --config "$HOME/.docker"',
+        "ordinary Docker private configuration use",
+    ),
+    Mutation(
+        "shell",
+        '        BUILDX_GIT_INFO=false \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$ONLINE_FETCH_DOCKER_HOST"',
+        '        BUILDX_GIT_INFO=false \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$DOCKER_HOST"',
+        "VCS-suppressed Docker fixed endpoint use",
+    ),
+    Mutation(
+        "shell",
+        '        BUILDX_GIT_INFO=false \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
+        '        --config "$ONLINE_FETCH_DOCKER_CONFIG"',
+        '        BUILDX_GIT_INFO=false \\\n'
+        '        "$DOCKER_BIN" \\\n'
+        '        --host "$ONLINE_FETCH_DOCKER_HOST" \\\n'
+        '        --config "$HOME/.docker"',
+        "VCS-suppressed Docker private configuration use",
+    ),
+    Mutation(
+        "shell",
+        "        BUILDX_GIT_INFO=false \\\n"
+        '        "$DOCKER_BIN"',
+        "        BUILDX_GIT_INFO=true \\\n"
+        '        "$DOCKER_BIN"',
+        "unverified VCS suppression",
+    ),
     Mutation("shell", '[ "$(cat "$ONLINE_FETCH_DOCKER_CONFIG/config.json")" = "{}" ]',
              "true", "empty Docker configuration proof"),
     Mutation(

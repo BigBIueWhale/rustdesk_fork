@@ -13486,6 +13486,232 @@ def validate_android_builder_authority_contract(sources):
         require_text(focused, text, label)
 
 
+def validate_android_builder_image_authority_contract(sources):
+    focused = sources["android_builder_image_authority_verifier"]
+    dockerfile = sources["android_builder_certification_dockerfile"]
+    online = sources["online_fetch"]
+    provenance = sources["offline_image_provenance"]
+    for text, label in (
+        (
+            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
+            "        == pin_value(pins, "
+            '"SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE")',
+            "Android builder image focused Dockerfile-byte enforcement",
+        ),
+        (
+            '            "if contains_vcs_authority(statement):\\n"\n'
+            '            "        fail(\\n"',
+            "Android builder image focused VCS-hint rejection",
+        ),
+        (
+            "certification Dockerfile bytes differ from their pin",
+            "Android builder image focused Dockerfile-byte binding",
+        ),
+        (
+            "networkless certification transaction",
+            "Android builder image focused build-authority binding",
+        ),
+        (
+            "offline image provenance authority",
+            "Android builder image focused provenance binding",
+        ),
+        (
+            "certified Android builder runtime fingerprint",
+            "Android builder image focused runtime binding",
+        ),
+        (
+            "MUTATIONS = (",
+            "Android builder image focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "Android builder image focused mutation dispatch",
+        ),
+        (
+            "isolated deterministic OCI output policy",
+            "Android builder image focused direct-export enforcement",
+        ),
+        (
+            "exact-pin certified Android builder promotion",
+            "Android builder image focused promotion enforcement",
+        ),
+        (
+            "generic Android Docker-store capture absence",
+            "Android builder image focused legacy-capture rejection",
+        ),
+        (
+            "certified Android builder direct OCI extra root referrer",
+            "Android builder image focused referrer-contamination rejection",
+        ),
+        (
+            "if android_checks != 39:",
+            "Android builder image focused adversarial decision inventory",
+        ),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        (
+            "FROM android-builder-bootstrap",
+            "Android builder exact bootstrap base",
+        ),
+        (
+            "USER 1000:1000",
+            "Android builder numeric nonroot certification",
+        ),
+        (
+            "RUN --network=none set -eu;",
+            "Android builder networkless certification",
+        ),
+        (
+            "org.rustdesk.builder-certification.bootstrap-image-id=",
+            "Android builder bootstrap identity label",
+        ),
+    ):
+        require_text(dockerfile, text, label)
+    for text, label in (
+        (
+            "BUILDX_GIT_INFO=false",
+            "Android builder unverified VCS-hint suppression",
+        ),
+        (
+            "android_builder_bootstrap_spec_args() {",
+            "Android builder exact bootstrap specification",
+        ),
+        (
+            "android_builder_certification_spec_args() {",
+            "Android builder candidate-derived certification specification",
+        ),
+        (
+            "verify_or_load_android_builder_image() {",
+            "Android builder certified release loader",
+        ),
+        (
+            "maintenance_build_android_builder_certified_candidate() {",
+            "Android builder explicit certification transaction",
+        ),
+        (
+            "--network=none --pull=false --no-cache",
+            "Android builder certification network/cache policy",
+        ),
+        (
+            "--platform=linux/amd64 --provenance=mode=max",
+            "Android builder mode-max provenance",
+        ),
+        (
+            '--output="type=oci,name=${export_name},dest=${candidate_oci},'
+            "tar=true,compression=gzip,oci-mediatypes=true,"
+            'rewrite-timestamp=true"',
+            "Android builder isolated deterministic OCI output",
+        ),
+        (
+            "android-builder-bootstrap=oci-layout://${layout}@"
+            "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}",
+            "Android builder local exact OCI material",
+        ),
+        (
+            "maintenance-normalize-certified-oci",
+            "Android builder direct OCI canonicalization",
+        ),
+        (
+            "android-builder-certified-candidate.docker.tar.gz",
+            "Android builder persistent non-authoritative candidate",
+        ),
+        (
+            "maintenance_promote_android_builder_certified_candidate() {",
+            "Android builder explicit exact-pin promotion",
+        ),
+        (
+            "--maintenance-promote-android-builder-certified-candidate)",
+            "Android builder promotion entry point",
+        ),
+    ):
+        require_text(online, text, label)
+    require_absent(
+        online,
+        "capture_android_builder_image() {",
+        "retired Docker-store Android builder capture",
+    )
+    for text, label in (
+        (
+            "class CertifiedAndroidBuilderSpec:",
+            "Android builder certified archive specification",
+        ),
+        (
+            "contains_vcs_authority(statement)",
+            "Android builder VCS-hint rejection",
+        ),
+        (
+            "def materialize_oci_layout(",
+            "Android builder safe OCI materializer",
+        ),
+        (
+            "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC",
+            "Android builder exclusive materialization",
+        ),
+        (
+            "class DirectOciExport:",
+            "Android builder direct OCI export specification",
+        ),
+        (
+            "parent_fd = open_private_directory(\n"
+            "        source.parent,\n"
+            "        0o700,\n"
+            '        "image archive publication directory",\n'
+            "    )",
+            "Android builder publication-directory descriptor identity",
+        ),
+        (
+            "def scan_direct_oci_export(",
+            "Android builder bounded direct OCI scanner",
+        ),
+        (
+            "def prepare_certified_android_builder_oci_export(",
+            "Android builder exact direct OCI graph preparation",
+        ),
+        (
+            "def canonicalize_certified_android_builder_oci_export(",
+            "Android builder deterministic direct OCI canonicalizer",
+        ),
+        (
+            "direct certified Android builder OCI export must name exactly",
+            "Android builder referrer-contamination rejection",
+        ),
+        (
+            "if android_checks != 39:",
+            "Android builder adversarial decision inventory",
+        ),
+    ):
+        require_text(provenance, text, label)
+    require_text(
+        sources["lib"],
+        'if [ "$role" = android-builder ]; then',
+        "ordinary Android builder certification verifier",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S "
+        "scripts/verify-android-builder-image-authority.py "
+        "--repo . --self-test",
+        "Android builder image authority focused verifier",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11da</span>',
+        "Android builder image authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>254</td>",
+        "Android builder image authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11da/R-S11e-119 — authenticated Android builder image "
+        "distribution authority",
+        "Android builder image authority hardening ledger",
+    )
+
+
 def validate_android_keystore_authority_contract(sources):
     focused = sources["android_keystore_authority_verifier"]
     for text, label in (
@@ -13890,6 +14116,13 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition focused mutation dispatch"),
         ("exact WiX package acquisition funnel",
          "online acquisition focused WiX authority"),
+        ("VCS-suppressed Docker client funnel",
+         "online acquisition focused VCS-suppressed client enforcement"),
+        (
+            '"BUILDX_GIT_INFO=false",\n'
+            '            "unverified VCS suppression",',
+            "online acquisition focused VCS suppression enforcement",
+        ),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -13905,6 +14138,8 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition private Docker configuration"),
         ("online_image_provenance() {",
          "online acquisition image-provenance funnel"),
+        ("online_docker_without_vcs() {",
+         "online acquisition VCS-suppressed Docker funnel"),
         ("online_docker_run() {",
          "online acquisition sole launch funnel"),
         ("online_docker run --rm --pull=never --network=bridge --read-only",
@@ -13930,6 +14165,31 @@ def validate_online_fetch_container_authority_contract(sources):
         "mcr.microsoft.com/dotnet/sdk:8.0",
         "online acquisition mutable WiX producer absence",
     )
+    no_vcs_docker_funnel = extract_between(
+        online,
+        "online_docker_without_vcs() {",
+        '    return "$status"\n}',
+        "online acquisition VCS-suppressed Docker funnel",
+    )
+    for text, label in (
+        (
+            "env -i \\\n        PATH=/usr/bin:/bin",
+            "online acquisition VCS-suppressed closed environment",
+        ),
+        (
+            "BUILDX_GIT_INFO=false",
+            "online acquisition unverified VCS suppression",
+        ),
+        (
+            '--host "$ONLINE_FETCH_DOCKER_HOST"',
+            "online acquisition VCS-suppressed fixed endpoint",
+        ),
+        (
+            '--config "$ONLINE_FETCH_DOCKER_CONFIG"',
+            "online acquisition VCS-suppressed private configuration",
+        ),
+    ):
+        require_text(no_vcs_docker_funnel, text, label)
     launch_funnel = extract_between(
         online,
         "online_docker_run() {",
@@ -21265,7 +21525,8 @@ def validate_dart_audit_authority_contract(sources):
             "Dart audit private build context",
         ),
         (
-            "--network=none --pull=false --no-cache",
+            "online_docker buildx build \\\n"
+            "        --network=none --pull=false --no-cache",
             "Dart audit networkless candidate build",
         ),
         (
@@ -21308,6 +21569,45 @@ def validate_dart_audit_authority_contract(sources):
     ):
         require_absent(candidate, text, label)
 
+    private_archive = extract_between(
+        provenance,
+        "def requires_private_archive(spec: ImageSpec) -> bool:",
+        "\n\n\ndef fail(message: str) -> None:",
+        "private image archive classification",
+    )
+    for text, label in (
+        (
+            "CertifiedAndroidBuilderSpec",
+            "certified Android builder private archive classification",
+        ),
+        ("VerifierSpec", "main verifier private archive classification"),
+        ("AppleCheckSpec", "Apple check private archive classification"),
+        ("DartAuditSpec", "Dart audit private archive classification"),
+        ("RustAuditSpec", "Rust audit private archive classification"),
+    ):
+        require_text(private_archive, text, label)
+    provenance_capture = extract_between(
+        provenance,
+        "def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:",
+        "\n\n\ndef create_fixture_archive(path: Path, spec: Spec) -> str:",
+        "private image archive capture",
+    )
+    require_text(
+        provenance_capture,
+        "if requires_private_archive(spec):",
+        "private image archive capture classification",
+    )
+    require_text(
+        provenance_capture,
+        "save_ref = spec.image_id",
+        "private image archive untagged save reference",
+    )
+    require_exact_count(
+        provenance,
+        "requires_private_archive(spec)",
+        6,
+        "private image archive boundary classification",
+    )
     for text, label in (
         ("class DartAuditSpec:", "Dart audit image provenance specification"),
         (
@@ -21367,11 +21667,6 @@ def validate_dart_audit_authority_contract(sources):
             "Dart audit untagged root descriptor",
         ),
         (
-            "(VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),",
-            "content-addressed verifier image-ID capture selection",
-        ),
-        ("save_ref = spec.image_id", "Dart audit untagged save reference"),
-        (
             "create_dart_audit_fixture_archive(",
             "Dart audit archive behavioral fixture",
         ),
@@ -21410,6 +21705,10 @@ def validate_dart_audit_authority_contract(sources):
         ('"networkless candidate build"', "Dart audit candidate-build mutation"),
         ('"VCS-attribution rejection"', "Dart audit provenance mutation"),
         ('"standalone input immutability"', "Dart audit input mutation"),
+        (
+            '"Dart private archive classification"',
+            "Dart audit private-archive mutation",
+        ),
     ):
         require_text(authority_mutations, text, label)
     require_text(
@@ -21677,10 +21976,20 @@ def validate_rust_audit_distribution_contract(sources):
             "Rust audit statement-type mutation",
         ),
         (
-            'Mutation("online_fetch", "--network=default --pull=true --no-cache", '
-            '"--network=host --pull=true --no-cache", '
-            '"Rust image candidate network authority"),',
-            "Rust audit candidate-network mutation",
+            '"        --network=default --pull=true --no-cache"',
+            "Rust audit candidate-network mutation source",
+        ),
+        (
+            '"        --network=host --pull=true --no-cache"',
+            "Rust audit candidate-network mutation replacement",
+        ),
+        (
+            '"Rust image candidate network authority"',
+            "Rust audit candidate-network mutation label",
+        ),
+        (
+            '"Rust private archive classification"',
+            "Rust audit private-archive mutation",
         ),
         (
             'Mutation("pins", \'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="d7ad706d\'',
@@ -21997,6 +22306,7 @@ def validate_sources(sources):
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_builder_authority_contract(sources)
+    validate_android_builder_image_authority_contract(sources)
     validate_android_keystore_authority_contract(sources)
     validate_windows_helper_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
@@ -34443,8 +34753,10 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
-            "--network=none --pull=false --no-cache",
-            "--network=default --pull=true --no-cache",
+            "online_docker buildx build \\\n"
+            "        --network=none --pull=false --no-cache",
+            "online_docker buildx build \\\n"
+            "        --network=default --pull=true --no-cache",
             "Dart audit networkless candidate build",
         ),
         (
@@ -34464,6 +34776,31 @@ def run_source_mutations(sources):
             "source_operations != expected_sources",
             "False",
             "Dart audit exact attested source inventory",
+        ),
+        (
+            "offline_image_provenance",
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            DartAuditSpec,\n"
+            "            RustAuditSpec,\n"
+            "        ),\n"
+            "    ) or (isinstance(spec, Spec) and spec.config_id is not None)",
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            RustAuditSpec,\n"
+            "        ),\n"
+            "    ) or (isinstance(spec, Spec) and spec.config_id is not None)",
+            "Dart audit private archive classification",
         ),
         (
             "dart_audit_image_input",
@@ -34593,13 +34930,34 @@ def run_source_mutations(sources):
         ),
         (
             "rust_audit_authority_validator",
-            'Mutation("online_fetch", "--network=default --pull=true --no-cache", '
-            '"--network=host --pull=true --no-cache", '
-            '"Rust image candidate network authority"),',
-            'Mutation("online_fetch", "--network=default --pull=true --no-cache-disabled", '
-            '"--network=host --pull=true --no-cache", '
-            '"Rust image candidate network authority"),',
+            '"        --network=default --pull=true --no-cache"',
+            '"        --network=default --pull=true --no-cache-disabled"',
             "Rust audit candidate-network mutation",
+        ),
+        (
+            "offline_image_provenance",
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            DartAuditSpec,\n"
+            "            RustAuditSpec,\n"
+            "        ),\n"
+            "    ) or (isinstance(spec, Spec) and spec.config_id is not None)",
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            DartAuditSpec,\n"
+            "        ),\n"
+            "    ) or (isinstance(spec, Spec) and spec.config_id is not None)",
+            "Rust audit private archive classification",
         ),
         (
             "verify",
@@ -36357,6 +36715,78 @@ def run_source_mutations(sources):
             "Android builder shared focused-verifier wiring",
         ),
         (
+            "android_builder_image_authority_verifier",
+            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
+            "        == pin_value(pins, "
+            '"SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE")',
+            'hashlib.sha256(source.encode("utf-8")).hexdigest()\n'
+            "        != pin_value(pins, "
+            '"SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE")',
+            "Android builder image focused Dockerfile-byte enforcement",
+        ),
+        (
+            "android_builder_image_authority_verifier",
+            '            "if contains_vcs_authority(statement):\\n"\n'
+            '            "        fail(\\n"',
+            '            "if False:\\n"\n'
+            '            "        fail(\\n"',
+            "Android builder image focused VCS-hint rejection",
+        ),
+        (
+            "online_fetch",
+            '--output="type=oci,name=${export_name},dest=${candidate_oci},'
+            "tar=true,compression=gzip,oci-mediatypes=true,"
+            'rewrite-timestamp=true"',
+            '--output="type=docker,name=${export_name},dest=${candidate_oci},'
+            "tar=true,compression=gzip,oci-mediatypes=true,"
+            'rewrite-timestamp=false"',
+            "Android builder isolated deterministic OCI output",
+        ),
+        (
+            "offline_image_provenance",
+            "if android_checks != 39:",
+            "if android_checks != 31:",
+            "Android builder adversarial decision inventory",
+        ),
+        (
+            "offline_image_provenance",
+            "parent_fd = open_private_directory(\n"
+            "        source.parent,\n"
+            "        0o700,\n"
+            '        "image archive publication directory",\n'
+            "    )",
+            "parent_fd = os.open(source.parent, os.O_RDONLY)",
+            "Android builder publication-directory descriptor identity",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S "
+            "scripts/verify-android-builder-image-authority.py "
+            "--repo . --self-test",
+            "true # Android builder image authority verifier removed",
+            "Android builder image authority focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11da</span>',
+            '<span class="id">R-S11da-disabled</span>',
+            "Android builder image authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>254</td>",
+            "<tr><td>254-disabled</td>",
+            "Android builder image authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11da/R-S11e-119 — authenticated Android builder image "
+            "distribution authority",
+            "R-S11da/R-S11e-119 — unauthenticated Android builder tag "
+            "authority",
+            "Android builder image authority hardening ledger",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11bj</span>',
             '<span class="id">R-S11bj-disabled</span>',
@@ -36707,6 +37137,14 @@ def run_source_mutations(sources):
             "forbid_container_authority(source: str, label: str)",
             "return # forbidden online acquisition authority accepted",
             "online acquisition focused forbidden-authority enforcement",
+        ),
+        (
+            "online_fetch_container_authority_verifier",
+            '            "BUILDX_GIT_INFO=false",\n'
+            '            "unverified VCS suppression",',
+            '            "BUILDX_GIT_INFO=true",\n'
+            '            "unverified VCS suppression",',
+            "online acquisition focused VCS suppression enforcement",
         ),
         (
             "online_fetch",
@@ -39301,6 +39739,9 @@ def main():
             "apple_check_dockerfile": (
                 repo / "scripts/Dockerfile.apple-check"
             ).read_text(encoding="utf-8"),
+            "android_builder_certification_dockerfile": (
+                repo / "scripts/Dockerfile.android-builder-certify"
+            ).read_text(encoding="utf-8"),
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
@@ -39483,6 +39924,7 @@ def main():
             "offline_image_provenance": (
                 repo / "scripts/offline-image-provenance.py"
             ).read_text(encoding="utf-8"),
+            "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"
             ).read_text(encoding="utf-8"),
@@ -39524,6 +39966,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_builder_authority_verifier": (
                 repo / "scripts/verify-android-builder-authority.py"
+            ).read_text(encoding="utf-8"),
+            "android_builder_image_authority_verifier": (
+                repo / "scripts/verify-android-builder-image-authority.py"
             ).read_text(encoding="utf-8"),
             "android_keystore_generator": (
                 repo / "scripts/gen-android-keystore.sh"

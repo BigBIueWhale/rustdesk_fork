@@ -196,10 +196,36 @@ require_pinned_builder_image() {
     [ -n "$image_id" ] && [ -n "$dockerfile_sha" ] && [ -n "$dpkg_sha" ] \
         || die "pins.env is missing $image_var, $dockerfile_var, or $dpkg_var"
     require_cmd python3 docker
-    local args=(
-        verify-local --role "$role" --expected-id "$image_id" --base "$base"
-        --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
-    )
+    local args=()
+    if [ "$role" = android-builder ]; then
+        local required=(
+            ANDROID_BUILDER_CONFIG_ID
+            ANDROID_BUILDER_MANIFEST_ID
+            ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID
+            ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID
+            SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE
+            SOURCE_DATE_EPOCH_PIN
+        )
+        local name
+        for name in "${required[@]}"; do
+            [ -n "${!name:-}" ] || die "pins.env is missing $name"
+        done
+        args=(
+            verify-local --role "$role" --expected-id "$image_id" --base "$base"
+            --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE"
+            --recipe-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+            --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID"
+            --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID"
+            --source-date-epoch "$SOURCE_DATE_EPOCH_PIN"
+            --config-id "$ANDROID_BUILDER_CONFIG_ID"
+            --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
+        )
+    else
+        args=(
+            verify-local --role "$role" --expected-id "$image_id" --base "$base"
+            --dockerfile-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
+        )
+    fi
     [ -z "$image_ref" ] || args+=(--image-ref "$image_ref")
     python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}" \
         || die "pinned $role image provenance verification failed"

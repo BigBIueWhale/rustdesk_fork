@@ -419,6 +419,15 @@ def validate_contract(sources):
         '\n}\n\ncapture_builder_image()',
         "Dart advisory candidate build",
     )[0]
+    require_all(
+        candidate,
+        (
+            "online_docker buildx build",
+            "--network=none --pull=false --no-cache",
+            "--platform=linux/amd64 --provenance=mode=max --load",
+        ),
+        "Dart advisory candidate build",
+    )
     for forbidden in (
         "docker pull",
         "online_docker pull",
@@ -435,6 +444,41 @@ def validate_contract(sources):
                 forbidden
             ),
         )
+    private_archive, _ = extract_between(
+        provenance,
+        "def requires_private_archive(spec: ImageSpec) -> bool:",
+        "\n\n\ndef fail(message: str) -> None:",
+        "private image archive classification",
+    )
+    require_all(
+        private_archive,
+        (
+            "CertifiedAndroidBuilderSpec",
+            "VerifierSpec",
+            "AppleCheckSpec",
+            "DartAuditSpec",
+            "RustAuditSpec",
+        ),
+        "private image archive classification",
+    )
+    capture, _ = extract_between(
+        provenance,
+        "def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:",
+        "\n\n\ndef create_fixture_archive(path: Path, spec: Spec) -> str:",
+        "private image archive capture",
+    )
+    require_all(
+        capture,
+        (
+            "if requires_private_archive(spec):",
+            "save_ref = spec.image_id",
+        ),
+        "private image archive capture",
+    )
+    require(
+        provenance.count("requires_private_archive(spec)") == 6,
+        "every private image archive boundary must use the shared classification",
+    )
     require_all(
         provenance,
         (
@@ -470,8 +514,6 @@ def validate_contract(sources):
             "base64.b64decode(source_info[\"data\"], validate=True)",
             "provenance Dockerfile differs from its pin",
             "root descriptor has undeclared annotations",
-            "if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):",
-            "save_ref = spec.image_id",
             "create_dart_audit_fixture_archive(",
             "add_extra_source=True",
             "if dart_checks != 21:",
@@ -546,6 +588,7 @@ def validate_contract(sources):
             '"networkless candidate build"',
             '"VCS-attribution rejection"',
             '"standalone input immutability"',
+            '"Dart private archive classification"',
             'Mutation("requirements", \'<span class="id">R-S11be</span>\'',
             'Mutation("hardening", "Networkless construction and distribution:"',
         ),
@@ -631,8 +674,14 @@ MUTATIONS = (
     Mutation("dockerfile", "USER 65532:65532", "USER 0:0", "nonroot build validation"),
     Mutation(
         "online_fetch",
-        "--network=none --pull=false --no-cache",
-        "--network=default --pull=true --no-cache",
+        (
+            "    online_docker buildx build \\\n"
+            "        --network=none --pull=false --no-cache"
+        ),
+        (
+            "    online_docker buildx build \\\n"
+            "        --network=default --pull=true --no-cache"
+        ),
         "networkless candidate build",
     ),
     Mutation(
@@ -694,6 +743,35 @@ MUTATIONS = (
         "if dart_checks != 21:",
         "if dart_checks < 1:",
         "Dart image behavioral coverage",
+    ),
+    Mutation(
+        "provenance",
+        (
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            DartAuditSpec,\n"
+            "            RustAuditSpec,\n"
+            "        ),\n"
+            "    )"
+        ),
+        (
+            "def requires_private_archive(spec: ImageSpec) -> bool:\n"
+            "    return isinstance(\n"
+            "        spec,\n"
+            "        (\n"
+            "            CertifiedAndroidBuilderSpec,\n"
+            "            VerifierSpec,\n"
+            "            AppleCheckSpec,\n"
+            "            RustAuditSpec,\n"
+            "        ),\n"
+            "    )"
+        ),
+        "Dart private archive classification",
     ),
     Mutation(
         "input_validator",

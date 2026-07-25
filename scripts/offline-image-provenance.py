@@ -19,12 +19,27 @@ import sys
 import tarfile
 import tempfile
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO, Callable, Union
 
 
 CONTRACT = "rustdesk-build-image-v1"
 LABEL_PREFIX = "org.rustdesk.build-input."
+ANDROID_BUILDER_CERTIFICATION_CONTRACT = "rustdesk-builder-certification-v1"
+ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX = (
+    "org.rustdesk.builder-certification."
+)
+ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME = (
+    "rd-android-builder-certified:authenticated-v1"
+)
+ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME = (
+    "docker.io/library/" + ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME
+)
+ANDROID_BUILDER_ENV = [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "DEBIAN_FRONTEND=noninteractive",
+]
 DART_AUDIT_CONTRACT = "rustdesk-dart-audit-image-v1"
 DART_AUDIT_LABEL_PREFIX = "org.rustdesk.dart-audit-input."
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -136,6 +151,8 @@ class Spec:
     base: str
     dockerfile_sha256: str
     dpkg_sha256: str
+    config_id: str | None = None
+    manifest_id: str | None = None
 
     @property
     def capture_tag(self) -> str:
@@ -157,6 +174,84 @@ class Spec:
             f"role={self.role}\n"
             f"base={self.base}\n"
             f"dockerfile_sha256={self.dockerfile_sha256}\n"
+            f"dpkg_manifest_sha256={self.dpkg_sha256}\n"
+        ).encode("ascii")
+
+
+@dataclass(frozen=True)
+class CertifiedAndroidBuilderSpec:
+    role: str
+    image_id: str
+    base: str
+    dockerfile_sha256: str
+    recipe_sha256: str
+    dpkg_sha256: str
+    bootstrap_image_id: str
+    bootstrap_manifest_id: str
+    source_date_epoch: int
+    config_id: str
+    manifest_id: str
+
+    @property
+    def archive_tags(self) -> None:
+        return None
+
+    @property
+    def root_annotations(self) -> None:
+        return None
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            "org.opencontainers.image.version": "24.04",
+            LABEL_PREFIX + "contract": CONTRACT,
+            LABEL_PREFIX + "role": self.role,
+            LABEL_PREFIX + "base": self.base,
+            LABEL_PREFIX + "dockerfile-sha256": self.recipe_sha256,
+            LABEL_PREFIX + "dpkg-manifest-sha256": self.dpkg_sha256,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX + "contract"
+            ): ANDROID_BUILDER_CERTIFICATION_CONTRACT,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX + "role"
+            ): self.role,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                + "bootstrap-image-id"
+            ): self.bootstrap_image_id,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                + "bootstrap-manifest-id"
+            ): self.bootstrap_manifest_id,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                + "recipe-sha256"
+            ): self.recipe_sha256,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                + "dpkg-manifest-sha256"
+            ): self.dpkg_sha256,
+            (
+                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                + "source-date-epoch"
+            ): str(self.source_date_epoch),
+        }
+
+    @property
+    def runtime_config(self) -> dict[str, object]:
+        return {
+            "User": "1000:1000",
+            "Env": ANDROID_BUILDER_ENV,
+            "Cmd": ["/bin/bash"],
+            "Labels": self.labels,
+        }
+
+    def bootstrap_contract_bytes(self) -> bytes:
+        return (
+            f"contract={CONTRACT}\n"
+            f"role={self.role}\n"
+            f"base={self.base}\n"
+            f"dockerfile_sha256={self.recipe_sha256}\n"
             f"dpkg_manifest_sha256={self.dpkg_sha256}\n"
         ).encode("ascii")
 
@@ -443,11 +538,38 @@ class RustAuditSpec:
 
 ImageSpec = Union[
     Spec,
+    CertifiedAndroidBuilderSpec,
     VerifierSpec,
     AppleCheckSpec,
     DartAuditSpec,
     RustAuditSpec,
 ]
+
+
+@dataclass(frozen=True)
+class DirectOciExport:
+    before: os.stat_result
+    archive_sha256: str
+    files: frozenset[str]
+    directories: frozenset[str]
+    metadata: dict[str, bytes]
+    member_sizes: dict[str, int]
+    member_hashes: dict[str, str]
+    sequence: tuple[str, ...]
+    blob_names: tuple[str, ...]
+
+
+def requires_private_archive(spec: ImageSpec) -> bool:
+    return isinstance(
+        spec,
+        (
+            CertifiedAndroidBuilderSpec,
+            VerifierSpec,
+            AppleCheckSpec,
+            DartAuditSpec,
+            RustAuditSpec,
+        ),
+    ) or (isinstance(spec, Spec) and spec.config_id is not None)
 
 
 def fail(message: str) -> None:
@@ -466,7 +588,11 @@ def require_image_id(value: str, label: str) -> str:
     return value
 
 
-def spec_from_args(args: argparse.Namespace) -> ImageSpec:
+def spec_from_args(
+    args: argparse.Namespace,
+    *,
+    expected_image_id: str | None = None,
+) -> ImageSpec:
     if args.role == "apple-check":
         if not re.fullmatch(
             r"rd-devcheck@sha256:[0-9a-f]{64}",
@@ -740,16 +866,92 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             config_id=require_image_id(args.config_id or "", "devcheck config ID"),
             manifest_id=require_image_id(args.manifest_id or "", "devcheck manifest ID"),
         )
-    if not re.fullmatch(r"(?:deb|android)-builder|win-helper", args.role):
+    if args.role == "android-builder":
+        if not re.fullmatch(
+            r"ubuntu:24[.]04@sha256:[0-9a-f]{64}",
+            args.base,
+        ):
+            fail("certified Android builder base identity is malformed")
+        if args.source_date_epoch is None or args.source_date_epoch < 0:
+            fail("certified Android builder source-date epoch is malformed")
+        return CertifiedAndroidBuilderSpec(
+            role=args.role,
+            image_id=require_image_id(
+                (
+                    expected_image_id
+                    if expected_image_id is not None
+                    else args.expected_id
+                ),
+                "expected image ID",
+            ),
+            base=args.base,
+            dockerfile_sha256=require_sha(
+                args.dockerfile_sha,
+                "certification Dockerfile SHA-256",
+            ),
+            recipe_sha256=require_sha(
+                args.recipe_sha or "",
+                "Android builder bootstrap recipe SHA-256",
+            ),
+            dpkg_sha256=require_sha(
+                args.dpkg_sha or "",
+                "Android builder package-manifest SHA-256",
+            ),
+            bootstrap_image_id=require_image_id(
+                args.bootstrap_image_id or "",
+                "Android builder bootstrap image ID",
+            ),
+            bootstrap_manifest_id=require_image_id(
+                args.bootstrap_manifest_id or "",
+                "Android builder bootstrap manifest ID",
+            ),
+            source_date_epoch=args.source_date_epoch,
+            config_id=require_image_id(
+                args.config_id or "",
+                "certified Android builder config ID",
+            ),
+            manifest_id=require_image_id(
+                args.manifest_id or "",
+                "certified Android builder manifest ID",
+            ),
+        )
+    if not re.fullmatch(
+        r"deb-builder|android-builder-bootstrap(?:-candidate)?|win-helper",
+        args.role,
+    ):
         fail(f"unsupported builder image role: {args.role}")
     if not re.fullmatch(r"ubuntu:(?:18[.]04|24[.]04)@sha256:[0-9a-f]{64}", args.base):
         fail("base image identity is malformed or unsupported")
+    is_android_bootstrap = args.role == "android-builder-bootstrap"
+    is_android_bootstrap_role = args.role.startswith(
+        "android-builder-bootstrap"
+    )
     return Spec(
-        role=args.role,
+        role=(
+            "android-builder"
+            if is_android_bootstrap_role
+            else args.role
+        ),
         image_id=require_image_id(args.expected_id, "expected image ID"),
         base=args.base,
         dockerfile_sha256=require_sha(args.dockerfile_sha, "Dockerfile SHA-256"),
         dpkg_sha256=require_sha(args.dpkg_sha or "", "dpkg manifest SHA-256"),
+        config_id=(
+            require_image_id(
+                args.config_id or "",
+                "Android builder bootstrap config ID",
+            )
+            if is_android_bootstrap
+            else None
+        ),
+        manifest_id=(
+            require_image_id(
+                args.manifest_id or "",
+                "Android builder bootstrap manifest ID",
+            )
+            if is_android_bootstrap
+            else None
+        ),
     )
 
 
@@ -785,6 +987,15 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
+    if isinstance(spec, CertifiedAndroidBuilderSpec):
+        if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
+            fail("certified Android builder platform must be exactly linux/amd64")
+        if config != spec.runtime_config:
+            fail(
+                "certified Android builder runtime config differs from "
+                "the reviewed contract"
+            )
+        return
     if isinstance(spec, AppleCheckSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Apple check image platform must be exactly linux/amd64")
@@ -858,6 +1069,69 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
+    if isinstance(spec, CertifiedAndroidBuilderSpec):
+        command = (
+            "set -eu; "
+            "[ \"$(/usr/bin/id -u):$(/usr/bin/id -g)\" = 1000:1000 ]; "
+            "p=/usr/local/share/rustdesk-build-provenance; "
+            f"[ \"$(/usr/bin/sha256sum \"$p/Dockerfile\" "
+            "| /usr/bin/cut -d' ' -f1)\" = "
+            f"{spec.recipe_sha256} ]; "
+            "[ \"$(LC_ALL=C /usr/bin/dpkg-query -W "
+            "-f='${binary:Package}\\t${Version}\\n' "
+            "| LC_ALL=C /usr/bin/sort | /usr/bin/sha256sum "
+            f"| /usr/bin/cut -d' ' -f1)\" = {spec.dpkg_sha256} ]; "
+            f"[ \"$(/usr/bin/sha256sum \"$p/dpkg-manifest.tsv\" "
+            "| /usr/bin/cut -d' ' -f1)\" = "
+            f"{spec.dpkg_sha256} ]; "
+            "[ \"$(/usr/bin/cat \"$p/contract-v1\")\" = "
+            "\"$(/usr/bin/printf '%s\\n' "
+            "'contract=rustdesk-build-image-v1' "
+            "'role=android-builder' "
+            f"'base={spec.base}' "
+            f"'dockerfile_sha256={spec.recipe_sha256}' "
+            f"'dpkg_manifest_sha256={spec.dpkg_sha256}')\" ]; "
+            "for tool in clang cmake git java javac nasm ninja "
+            "pkg-config python3 unzip wget xz yasm zip; do "
+            "command -v \"$tool\" >/dev/null; done; "
+            "printf 'android-builder-certified=ok\\n'"
+        )
+        result = run(
+            [
+                DOCKER,
+                "run",
+                "--rm",
+                "--pull=never",
+                "--network=none",
+                "--read-only",
+                "--user",
+                "1000:1000",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=32",
+                "--memory=256m",
+                "--memory-swap=256m",
+                "--cpus=1",
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
+                "--entrypoint",
+                "/bin/sh",
+                spec.image_id,
+                "-c",
+                command,
+            ]
+        )
+        if result.returncode != 0:
+            fail(
+                "cannot verify certified Android builder runtime contents: "
+                + result.stderr.decode(errors="replace").strip()
+            )
+        if result.stdout != b"android-builder-certified=ok\n" or result.stderr:
+            fail(
+                "certified Android builder runtime fingerprint differs "
+                "from the reviewed pins"
+            )
+        return
     if isinstance(spec, AppleCheckSpec):
         command = (
             "set -euo pipefail; "
@@ -1215,7 +1489,58 @@ def parse_json(data: bytes | None, label: str) -> object:
         fail(f"Docker archive {label} is malformed: {exc}")
 
 
+def canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+
+
 def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> None:
+    if isinstance(spec, CertifiedAndroidBuilderSpec):
+        if not isinstance(config_json, dict) \
+           or config_json.get("architecture") != "amd64" \
+           or config_json.get("os") != "linux" \
+           or config_json.get("created") != "2023-11-14T22:13:20Z":
+            fail(
+                "Docker archive certified Android builder config platform "
+                "or epoch is malformed"
+            )
+        if config_json.get("config") != spec.runtime_config:
+            fail(
+                "Docker archive certified Android builder runtime config "
+                "differs from the reviewed contract"
+            )
+        rootfs = config_json.get("rootfs")
+        diff_ids = rootfs.get("diff_ids") if isinstance(rootfs, dict) else None
+        if not isinstance(rootfs, dict) \
+           or rootfs.get("type") != "layers" \
+           or not isinstance(diff_ids, list) \
+           or len(diff_ids) != len(layers) \
+           or len(diff_ids) != 4 \
+           or any(
+               not isinstance(value, str) or not IMAGE_ID.fullmatch(value)
+               for value in diff_ids
+           ):
+            fail(
+                "Docker archive certified Android builder layer identities "
+                "differ from the four-layer contract"
+            )
+        history = config_json.get("history")
+        expected_created = "2023-11-14T22:13:20Z"
+        if not isinstance(history, list) \
+           or len(history) != 20 \
+           or any(not isinstance(item, dict) for item in history) \
+           or any(
+               item.get("created") != expected_created
+               for item in history[-8:]
+           ):
+            fail(
+                "Docker archive certified Android builder history differs "
+                "from the reviewed certification topology"
+            )
+        return
     if isinstance(spec, AppleCheckSpec):
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
@@ -1359,6 +1684,416 @@ def descriptor_blob(
     if value is None and require_metadata:
         fail(f"Docker archive {label} metadata blob is absent or too large")
     return name, value or b""
+
+
+def validate_certified_android_builder_attestation(
+    statement: object,
+    image_manifest_id: object,
+    image_layers: list[object],
+    spec: CertifiedAndroidBuilderSpec,
+) -> None:
+    def contains_vcs_authority(value: object) -> bool:
+        if isinstance(value, dict):
+            return any(
+                (
+                    isinstance(key, str)
+                    and (key == "vcs" or key.startswith("vcs:"))
+                )
+                or contains_vcs_authority(item)
+                for key, item in value.items()
+            )
+        if isinstance(value, list):
+            return any(contains_vcs_authority(item) for item in value)
+        return False
+
+    expected_digest = str(image_manifest_id).removeprefix("sha256:")
+    if not isinstance(statement, dict) \
+       or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
+       or statement.get("subject") != [
+           {
+               "name": (
+                   "pkg:docker/rd-android-builder-certified@"
+                   "authenticated-v1?platform=linux%2Famd64"
+               ),
+               "digest": {"sha256": expected_digest},
+           }
+       ]:
+        fail(
+            "Docker archive certified Android builder provenance subject "
+            "differs from the image manifest"
+        )
+    if contains_vcs_authority(statement):
+        fail(
+            "Docker archive certified Android builder provenance contains "
+            "undeclared VCS authority"
+        )
+    predicate = statement.get("predicate")
+    if not isinstance(predicate, dict) \
+       or set(predicate) != {"buildDefinition", "runDetails"}:
+        fail("Docker archive certified Android builder predicate differs")
+    definition = predicate.get("buildDefinition")
+    if not isinstance(definition, dict) \
+       or set(definition) != {
+           "buildType",
+           "resolvedDependencies",
+           "externalParameters",
+           "internalParameters",
+       } \
+       or definition.get("buildType") != (
+           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
+           "slsa-definitions.md"
+       ) \
+       or definition.get("resolvedDependencies") != [
+           {
+               "uri": (
+                   "pkg:oci/android-builder-bootstrap?"
+                   f"digest={spec.bootstrap_image_id}&platform=linux%2Famd64"
+               ),
+               "digest": {
+                   "sha256": spec.bootstrap_image_id.removeprefix("sha256:")
+               },
+           }
+       ]:
+        fail(
+            "Docker archive certified Android builder provenance does not "
+            "bind the exact bootstrap material"
+        )
+
+    external = definition.get("externalParameters")
+    request = external.get("request") if isinstance(external, dict) else None
+    arguments = request.get("args") if isinstance(request, dict) else None
+    context_argument = (
+        arguments.get("context:android-builder-bootstrap")
+        if isinstance(arguments, dict)
+        else None
+    )
+    context_match = re.fullmatch(
+        r"oci-layout://([a-z0-9]{20,64})@"
+        + re.escape(spec.bootstrap_image_id),
+        context_argument or "",
+    )
+    if context_match is None:
+        fail(
+            "Docker archive certified Android builder provenance has an "
+            "unbound bootstrap OCI-layout context"
+        )
+    oci_store = context_match.group(1)
+    expected_args = {
+        "build-arg:ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID": (
+            spec.bootstrap_image_id
+        ),
+        "build-arg:ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID": (
+            spec.bootstrap_manifest_id
+        ),
+        "build-arg:ANDROID_BUILDER_DPKG_MANIFEST_SHA256": spec.dpkg_sha256,
+        "build-arg:ANDROID_BUILDER_RECIPE_SHA256": spec.recipe_sha256,
+        "build-arg:SOURCE_DATE_EPOCH": str(spec.source_date_epoch),
+        "context:android-builder-bootstrap": context_argument,
+        "force-network-mode": "none",
+        "frontend.caps": "moby.buildkit.frontend.contexts+forward",
+        "no-cache": "",
+    }
+    expected_request = {
+        "frontend": "dockerfile.v0",
+        "args": expected_args,
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile"},
+            "request": {"args": expected_args},
+        },
+        "compatibilityVersion": 30,
+    }
+    if external != {
+        "configSource": {"path": "Dockerfile"},
+        "request": expected_request,
+    }:
+        fail(
+            "Docker archive certified Android builder provenance does not "
+            "bind the reviewed private recipe"
+        )
+
+    run_details = predicate.get("runDetails")
+    metadata = (
+        run_details.get("metadata") if isinstance(run_details, dict) else None
+    )
+    buildkit_metadata = (
+        metadata.get("buildkit_metadata")
+        if isinstance(metadata, dict)
+        else None
+    )
+    source = (
+        buildkit_metadata.get("source")
+        if isinstance(buildkit_metadata, dict)
+        else None
+    )
+    infos = source.get("infos") if isinstance(source, dict) else None
+    attested_layers = [
+        {
+            "mediaType": layer.get("mediaType"),
+            "digest": layer.get("digest"),
+            "size": layer.get("size"),
+        }
+        if isinstance(layer, dict)
+        else None
+        for layer in image_layers
+    ]
+    expected_locations = {
+        "step0": {},
+        "step1": {
+            "locations": [
+                {
+                    "ranges": [
+                        {
+                            "start": {"line": line},
+                            "end": {"line": line},
+                        }
+                        for line in range(20, 44)
+                    ]
+                }
+            ]
+        },
+    }
+    if not isinstance(run_details, dict) \
+       or set(run_details) != {"builder", "metadata"} \
+       or run_details.get("builder") != {"id": ""} \
+       or not isinstance(metadata, dict) \
+       or set(metadata) != {
+           "buildkit_completeness",
+           "buildkit_metadata",
+           "finishedOn",
+           "invocationId",
+           "startedOn",
+       } \
+       or any(
+           not isinstance(metadata.get(name), str) or not metadata.get(name)
+           for name in ("finishedOn", "invocationId", "startedOn")
+       ) \
+       or metadata.get("buildkit_completeness") != {
+           "request": True,
+           "resolvedDependencies": False,
+       } \
+       or not isinstance(buildkit_metadata, dict) \
+       or set(buildkit_metadata) != {"layers", "source"} \
+       or buildkit_metadata.get("layers") != {
+           "step0:0": [attested_layers[:3]],
+           "step1:0": [attested_layers],
+       } \
+       or not isinstance(source, dict) \
+       or set(source) != {"infos", "locations"} \
+       or source.get("locations") != expected_locations \
+       or not isinstance(infos, list) \
+       or len(infos) != 1:
+        fail(
+            "Docker archive certified Android builder provenance runtime "
+            "metadata differs"
+        )
+
+    source_info = infos[0]
+    source_digest_mapping = (
+        source_info.get("digestMapping")
+        if isinstance(source_info, dict)
+        else None
+    )
+    expected_source_llb = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "identifier": "local://dockerfile",
+                        "attrs": {
+                            "local.differ": "none",
+                            "local.followpaths": (
+                                '["Dockerfile","Dockerfile.dockerignore",'
+                                '"dockerfile"]'
+                            ),
+                            "local.sharedkeyhint": "dockerfile",
+                        },
+                    }
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step1",
+            "op": {"Op": {}},
+            "inputs": ["step0:0"],
+        },
+    ]
+    if not isinstance(source_info, dict) \
+       or set(source_info) != {
+           "data",
+           "digestMapping",
+           "filename",
+           "language",
+           "llbDefinition",
+       } \
+       or source_info.get("filename") != "Dockerfile" \
+       or source_info.get("language") != "Dockerfile" \
+       or not isinstance(source_info.get("data"), str) \
+       or not isinstance(source_digest_mapping, dict) \
+       or len(source_digest_mapping) != 2 \
+       or any(
+           not isinstance(key, str) or not IMAGE_ID.fullmatch(key)
+           for key in source_digest_mapping
+       ) \
+       or set(source_digest_mapping.values()) != {"step0", "step1"} \
+       or source_info.get("llbDefinition") != expected_source_llb:
+        fail(
+            "Docker archive certified Android builder provenance source "
+            "record differs"
+        )
+    try:
+        dockerfile = base64.b64decode(source_info["data"], validate=True)
+    except (ValueError, TypeError) as exc:
+        fail(
+            "Docker archive certified Android builder Dockerfile is malformed: "
+            f"{exc}"
+        )
+    if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
+        fail(
+            "Docker archive certified Android builder Dockerfile differs "
+            "from its pin"
+        )
+    source_runs = dockerfile_run_contract(dockerfile)
+    if len(source_runs) != 1 or source_runs[0][0] != "none":
+        fail(
+            "Docker archive certified Android builder Dockerfile must have "
+            "one networkless execution"
+        )
+
+    internal = definition.get("internalParameters")
+    build_config = (
+        internal.get("buildConfig") if isinstance(internal, dict) else None
+    )
+    digest_mapping = (
+        build_config.get("digestMapping")
+        if isinstance(build_config, dict)
+        else None
+    )
+    llb = (
+        build_config.get("llbDefinition")
+        if isinstance(build_config, dict)
+        else None
+    )
+    if not isinstance(internal, dict) \
+       or set(internal) != {
+           "buildConfig",
+           "builderPlatform",
+           "dockerfileVersion",
+       } \
+       or internal.get("builderPlatform") != "linux/amd64" \
+       or internal.get("dockerfileVersion") != "1.25.0" \
+       or not isinstance(build_config, dict) \
+       or set(build_config) != {"digestMapping", "llbDefinition"} \
+       or not isinstance(digest_mapping, dict) \
+       or len(digest_mapping) != 3 \
+       or any(
+           not isinstance(key, str) or not IMAGE_ID.fullmatch(key)
+           for key in digest_mapping
+       ) \
+       or set(digest_mapping.values()) != {"step0", "step1", "step2"} \
+       or not isinstance(llb, list) \
+       or len(llb) != 3:
+        fail(
+            "Docker archive certified Android builder provenance builder "
+            "contract differs"
+        )
+    platform = {"Architecture": "amd64", "OS": "linux"}
+    source_wrapper = llb[0].get("op") if isinstance(llb[0], dict) else None
+    source_operation = (
+        source_wrapper.get("Op")
+        if isinstance(source_wrapper, dict)
+        else None
+    )
+    source_descriptor = (
+        source_operation.get("source")
+        if isinstance(source_operation, dict)
+        else None
+    )
+    source_attributes = (
+        source_descriptor.get("attrs")
+        if isinstance(source_descriptor, dict)
+        else None
+    )
+    oci_session = (
+        source_attributes.get("oci.session")
+        if isinstance(source_attributes, dict)
+        else None
+    )
+    if llb[0] != {
+        "id": "step0",
+        "op": {
+            "Op": {
+                "source": {
+                    "attrs": {
+                        "oci.session": oci_session,
+                        "oci.store": oci_store,
+                    },
+                    "identifier": (
+                        "oci-layout://docker.io/library/"
+                        "android-builder-bootstrap@"
+                        f"{spec.bootstrap_image_id}"
+                    ),
+                }
+            },
+            "constraints": {},
+            "platform": platform,
+        },
+    }:
+        fail(
+            "Docker archive certified Android builder provenance bootstrap "
+            "source operation differs"
+        )
+    if not isinstance(oci_session, str) \
+       or re.fullmatch(r"[a-z0-9]{20,64}", oci_session) is None:
+        fail(
+            "Docker archive certified Android builder provenance OCI "
+            "session is malformed"
+        )
+    expected_environment = ANDROID_BUILDER_ENV + [
+        f"ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID={spec.bootstrap_image_id}",
+        (
+            "ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID="
+            f"{spec.bootstrap_manifest_id}"
+        ),
+        f"ANDROID_BUILDER_RECIPE_SHA256={spec.recipe_sha256}",
+        (
+            "ANDROID_BUILDER_DPKG_MANIFEST_SHA256="
+            f"{spec.dpkg_sha256}"
+        ),
+        f"SOURCE_DATE_EPOCH={spec.source_date_epoch}",
+    ]
+    if llb[1] != {
+        "id": "step1",
+        "inputs": ["step0:0"],
+        "op": {
+            "Op": {
+                "exec": {
+                    "meta": {
+                        "args": ["/bin/sh", "-c", source_runs[0][1]],
+                        "cwd": "/",
+                        "env": expected_environment,
+                        "removeMountStubsRecursive": True,
+                        "user": "1000:1000",
+                    },
+                    "mounts": [{"dest": "/"}],
+                    "network": 2,
+                }
+            },
+            "constraints": {},
+            "platform": platform,
+        },
+    } \
+       or llb[2] != {
+           "id": "step2",
+           "inputs": ["step1:0"],
+           "op": {"Op": {}},
+       }:
+        fail(
+            "Docker archive certified Android builder provenance is not "
+            "the exact one-step numeric-nonroot networkless graph"
+        )
 
 
 def validate_verifier_attestation(
@@ -2661,7 +3396,15 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
-    if isinstance(spec, (AppleCheckSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (
+            CertifiedAndroidBuilderSpec,
+            AppleCheckSpec,
+            DartAuditSpec,
+            RustAuditSpec,
+        ),
+    ):
         expected_annotations = None
     elif isinstance(spec, VerifierSpec):
         expected_annotations = spec.root_annotations
@@ -2683,7 +3426,12 @@ def validate_modern_archive(
         fail("Docker archive root OCI descriptor does not bind the expected image identity")
     if isinstance(
         spec,
-        (AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+        (
+            CertifiedAndroidBuilderSpec,
+            AppleCheckSpec,
+            DartAuditSpec,
+            RustAuditSpec,
+        ),
     ) and set(root_descriptor) != {
         "digest",
         "mediaType",
@@ -2713,8 +3461,14 @@ def validate_modern_archive(
         fail("Docker archive image manifest media type is unsupported")
     if isinstance(
         spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-    ):
+        (
+            CertifiedAndroidBuilderSpec,
+            VerifierSpec,
+            AppleCheckSpec,
+            DartAuditSpec,
+            RustAuditSpec,
+        ),
+    ) or (isinstance(spec, Spec) and spec.manifest_id is not None):
         if spec.manifest_id is None:
             fail(f"Docker archive {spec.role} manifest pin is absent")
         if image_descriptor.get("digest") != spec.manifest_id:
@@ -2735,8 +3489,14 @@ def validate_modern_archive(
         fail("Docker archive image config media type is unsupported")
     if isinstance(
         spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-    ):
+        (
+            CertifiedAndroidBuilderSpec,
+            VerifierSpec,
+            AppleCheckSpec,
+            DartAuditSpec,
+            RustAuditSpec,
+        ),
+    ) or (isinstance(spec, Spec) and spec.config_id is not None):
         if spec.config_id is None:
             fail(f"Docker archive {spec.role} config pin is absent")
         if config_descriptor.get("digest") != spec.config_id:
@@ -2767,6 +3527,25 @@ def validate_modern_archive(
                 fail(
                     "Docker archive Apple check layer timestamp-rewrite "
                     "annotations differ"
+                )
+        elif isinstance(spec, CertifiedAndroidBuilderSpec):
+            expected_annotations = (
+                None
+                if position < 3
+                else {
+                    "buildkit/rewritten-timestamp": (
+                        str(spec.source_date_epoch)
+                    )
+                }
+            )
+            expected_keys = {"digest", "mediaType", "size"}
+            if expected_annotations is not None:
+                expected_keys.add("annotations")
+            if set(descriptor) != expected_keys \
+               or descriptor.get("annotations") != expected_annotations:
+                fail(
+                    "Docker archive certified Android builder layer "
+                    "timestamp-rewrite annotations differ"
                 )
         name, _ = descriptor_blob(
             descriptor,
@@ -2841,7 +3620,14 @@ def validate_modern_archive(
            or not isinstance(subjects, list) \
            or not any(isinstance(subject, dict) and subject.get("digest") == {"sha256": str(actual_digest).removeprefix("sha256:")} for subject in subjects):
             fail("Docker archive provenance attestation does not name the image manifest")
-        if isinstance(spec, VerifierSpec):
+        if isinstance(spec, CertifiedAndroidBuilderSpec):
+            validate_certified_android_builder_attestation(
+                statement,
+                actual_digest,
+                layer_descriptors,
+                spec,
+            )
+        elif isinstance(spec, VerifierSpec):
             validate_verifier_attestation(statement, actual_digest, spec)
         elif isinstance(spec, AppleCheckSpec):
             validate_apple_check_attestation(statement, actual_digest, spec)
@@ -2851,7 +3637,13 @@ def validate_modern_archive(
             validate_rust_audit_attestation(statement, actual_digest, spec)
     if isinstance(
         spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+        (
+            CertifiedAndroidBuilderSpec,
+            VerifierSpec,
+            AppleCheckSpec,
+            DartAuditSpec,
+            RustAuditSpec,
+        ),
     ) and len(attestations) != 1:
         fail(f"Docker archive {spec.role} image must contain exactly one provenance attestation")
     blob_files = {name for name in files if name.startswith("blobs/sha256/")}
@@ -2871,10 +3663,7 @@ def validate_legacy_archive(
     member_hashes: dict[str, str],
     spec: ImageSpec,
 ) -> None:
-    if isinstance(
-        spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-    ):
+    if requires_private_archive(spec):
         fail(f"{spec.role} recovery requires the content-addressed OCI archive layout")
     expected_config = spec.image_id.removeprefix("sha256:") + ".json"
     layers = item.get("Layers")
@@ -2955,10 +3744,7 @@ def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
     if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
         fail("Docker archive must contain exactly one compatibility image manifest")
     item = manifest[0]
-    if isinstance(
-        spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-    ):
+    if requires_private_archive(spec) and not isinstance(spec, Spec):
         expected_tags = spec.archive_tags
     else:
         expected_tags = [spec.capture_tag]
@@ -3000,10 +3786,7 @@ def verify_archive_fd(
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         fail("image archive must be one non-hardlinked regular file")
-    if isinstance(
-        spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-    ):
+    if requires_private_archive(spec):
         if before.st_uid != os.getuid() or before.st_gid != os.getgid():
             fail(f"{spec.role} image archive must be owned by the invoking identity")
         if stat.S_IMODE(before.st_mode) != 0o400:
@@ -3054,6 +3837,433 @@ def verify_archive(
         verify_archive_fd(fd, archive_path, expected_archive_sha, spec, expected_archive_size)
     finally:
         os.close(fd)
+
+
+def open_private_directory(
+    path: Path,
+    expected_mode: int,
+    label: str,
+) -> int:
+    try:
+        before = os.lstat(path)
+    except OSError as exc:
+        fail(f"cannot inspect {label} {path}: {exc}")
+    if not stat.S_ISDIR(before.st_mode) or stat.S_ISLNK(before.st_mode):
+        fail(f"{label} must be one real directory")
+    if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+       or stat.S_IMODE(before.st_mode) != expected_mode:
+        fail(
+            f"{label} must be current-user-owned mode "
+            f"{expected_mode:04o}"
+        )
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        fail(f"cannot open {label} {path}: {exc}")
+    after = os.fstat(fd)
+    if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+        os.close(fd)
+        fail(f"{label} identity changed while it was opened")
+    return fd
+
+
+def open_layout_directory(
+    parent_fd: int,
+    name: str,
+    expected_mode: int,
+    label: str,
+) -> int:
+    try:
+        before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except OSError as exc:
+        fail(f"cannot inspect {label}: {exc}")
+    if not stat.S_ISDIR(before.st_mode) or stat.S_ISLNK(before.st_mode):
+        fail(f"{label} must be one real directory")
+    if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+       or stat.S_IMODE(before.st_mode) != expected_mode:
+        fail(
+            f"{label} must be current-user-owned mode "
+            f"{expected_mode:04o}"
+        )
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        fail(f"cannot open {label}: {exc}")
+    after = os.fstat(fd)
+    if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+        os.close(fd)
+        fail(f"{label} identity changed while it was opened")
+    return fd
+
+
+def read_layout_file(
+    parent_fd: int,
+    name: str,
+    label: str,
+    *,
+    retain: bool,
+) -> tuple[str, int, bytes | None]:
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        fail(f"cannot open {label}: {exc}")
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            fail(f"{label} must be one non-hardlinked regular file")
+        if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+           or stat.S_IMODE(before.st_mode) != 0o400:
+            fail(f"{label} must be current-user-owned mode 0400")
+        digest = hashlib.sha256()
+        retained = bytearray() if retain else None
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            while True:
+                block = stream.read(1024 * 1024)
+                if not block:
+                    break
+                digest.update(block)
+                if retained is not None:
+                    retained += block
+                    if len(retained) > 16 * 1024 * 1024:
+                        fail(f"{label} exceeds the metadata parser budget")
+        stable_file(before, os.fstat(fd), Path(label))
+        return (
+            digest.hexdigest(),
+            before.st_size,
+            bytes(retained) if retained is not None else None,
+        )
+    finally:
+        os.close(fd)
+
+
+def verify_oci_layout(
+    layout: Path,
+    expected_layout_sha: str | None = None,
+) -> str:
+    root_fd = open_private_directory(layout, 0o700, "OCI layout root")
+    blobs_fd = -1
+    sha_fd = -1
+    try:
+        if set(os.listdir(root_fd)) != {
+            "blobs",
+            "index.json",
+            "manifest.json",
+            "oci-layout",
+        }:
+            fail("OCI layout root inventory differs from the exact contract")
+        blobs_fd = open_layout_directory(
+            root_fd,
+            "blobs",
+            0o500,
+            "OCI layout blobs directory",
+        )
+        if set(os.listdir(blobs_fd)) != {"sha256"}:
+            fail("OCI layout blobs inventory differs from the exact contract")
+        sha_fd = open_layout_directory(
+            blobs_fd,
+            "sha256",
+            0o500,
+            "OCI layout SHA-256 directory",
+        )
+        blob_names = os.listdir(sha_fd)
+        if not blob_names or any(
+            HEX256.fullmatch(name) is None for name in blob_names
+        ):
+            fail("OCI layout has an absent or malformed SHA-256 blob")
+        records = [
+            "directory\t0500\tblobs\n",
+            "directory\t0500\tblobs/sha256\n",
+        ]
+        metadata: dict[str, bytes] = {}
+        for name in ("index.json", "manifest.json", "oci-layout"):
+            digest, size, value = read_layout_file(
+                root_fd,
+                name,
+                f"OCI layout {name}",
+                retain=True,
+            )
+            if value is None:
+                fail(f"OCI layout {name} was not retained")
+            metadata[name] = value
+            records.append(
+                f"file\t0400\t{name}\t{size}\t{digest}\n"
+            )
+        for name in sorted(blob_names):
+            digest, size, _ = read_layout_file(
+                sha_fd,
+                name,
+                f"OCI layout blob {name}",
+                retain=False,
+            )
+            if digest != name:
+                fail(f"OCI layout blob {name} does not match its name")
+            records.append(
+                f"file\t0400\tblobs/sha256/{name}\t{size}\t{digest}\n"
+            )
+        if parse_json(metadata["oci-layout"], "OCI layout marker") != {
+            "imageLayoutVersion": "1.0.0"
+        }:
+            fail("OCI layout marker version is unsupported")
+        index = parse_json(metadata["index.json"], "OCI layout index")
+        descriptors = index.get("manifests") if isinstance(index, dict) else None
+        root_digest = (
+            descriptors[0].get("digest")
+            if isinstance(descriptors, list)
+            and len(descriptors) == 1
+            and isinstance(descriptors[0], dict)
+            else None
+        )
+        if not isinstance(index, dict) \
+           or index.get("schemaVersion") != 2 \
+           or index.get("mediaType") != (
+               "application/vnd.oci.image.index.v1+json"
+           ) \
+           or not isinstance(descriptors, list) \
+           or len(descriptors) != 1 \
+           or not isinstance(descriptors[0], dict) \
+           or not isinstance(root_digest, str) \
+           or root_digest.removeprefix("sha256:") \
+               not in blob_names:
+            fail("OCI layout index does not bind one retained image index")
+        manifest = parse_json(
+            metadata["manifest.json"],
+            "OCI compatibility manifest",
+        )
+        if not isinstance(manifest, list) \
+           or len(manifest) != 1 \
+           or not isinstance(manifest[0], dict):
+            fail("OCI compatibility manifest is malformed")
+        layout_sha = hashlib.sha256(
+            "".join(sorted(records)).encode("ascii")
+        ).hexdigest()
+        if expected_layout_sha is not None \
+           and layout_sha != require_sha(
+               expected_layout_sha,
+               "OCI layout SHA-256",
+           ):
+            fail(
+                "OCI layout identity mismatch: expected "
+                f"{expected_layout_sha}, got {layout_sha}"
+            )
+        return layout_sha
+    finally:
+        if sha_fd >= 0:
+            os.close(sha_fd)
+        if blobs_fd >= 0:
+            os.close(blobs_fd)
+        os.close(root_fd)
+
+
+def materialize_oci_layout(
+    archive_path: Path,
+    expected_archive_sha: str,
+    expected_archive_size: int,
+    spec: ImageSpec,
+    output: Path,
+) -> str:
+    if not isinstance(spec, Spec):
+        fail("OCI layout materialization accepts a bootstrap image only")
+    output_fd = open_private_directory(
+        output,
+        0o700,
+        "OCI layout output root",
+    )
+    try:
+        if os.listdir(output_fd):
+            fail("OCI layout output root must be empty")
+    finally:
+        os.close(output_fd)
+    fd = open_archive(archive_path)
+    root_fd = -1
+    blobs_fd = -1
+    sha_fd = -1
+    try:
+        before = verify_archive_fd(
+            fd,
+            archive_path,
+            expected_archive_sha,
+            spec,
+            expected_archive_size,
+        )
+        if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+           or stat.S_IMODE(before.st_mode) != 0o400 \
+           or before.st_size != expected_archive_size:
+            fail(
+                "bootstrap image archive must be current-user-owned mode "
+                "0400 at its exact pinned size"
+            )
+        root_fd = open_private_directory(
+            output,
+            0o700,
+            "OCI layout output root",
+        )
+        os.mkdir("blobs", 0o700, dir_fd=root_fd)
+        blobs_fd = open_layout_directory(
+            root_fd,
+            "blobs",
+            0o700,
+            "OCI layout staging blobs directory",
+        )
+        os.mkdir("sha256", 0o700, dir_fd=blobs_fd)
+        sha_fd = open_layout_directory(
+            blobs_fd,
+            "sha256",
+            0o700,
+            "OCI layout staging SHA-256 directory",
+        )
+        seen: set[str] = set()
+        folded: set[str] = set()
+        files: set[str] = set()
+        directories: set[str] = set()
+        extracted_bytes = 0
+        os.lseek(fd, 0, os.SEEK_SET)
+        hashing = HashingReader(os.fdopen(os.dup(fd), "rb"))
+        try:
+            archive = tarfile.open(fileobj=hashing, mode="r|gz")
+            with archive:
+                for position, member in enumerate(archive):
+                    if position >= 4096:
+                        fail("OCI layout archive exceeds the member bound")
+                    validate_archive_name(member.name, seen, folded)
+                    canonical = member.name.rstrip("/")
+                    if member.isdir():
+                        if canonical not in {"blobs", "blobs/sha256"}:
+                            fail(
+                                "OCI layout archive has an undeclared "
+                                f"directory: {canonical}"
+                            )
+                        directories.add(canonical)
+                        continue
+                    if not member.isfile():
+                        fail(
+                            "OCI layout archive member is not a regular "
+                            f"file/directory: {canonical}"
+                        )
+                    if canonical in {
+                        "index.json",
+                        "manifest.json",
+                        "oci-layout",
+                    }:
+                        target_fd = root_fd
+                        target_name = canonical
+                        if member.size > 16 * 1024 * 1024:
+                            fail(
+                                f"OCI layout metadata is oversized: {canonical}"
+                            )
+                    else:
+                        match = re.fullmatch(
+                            r"blobs/sha256/([0-9a-f]{64})",
+                            canonical,
+                        )
+                        if match is None:
+                            fail(
+                                "OCI layout archive has an undeclared file: "
+                                f"{canonical}"
+                            )
+                        target_fd = sha_fd
+                        target_name = match.group(1)
+                    extracted_bytes += member.size
+                    if extracted_bytes > 8 * 1024 * 1024 * 1024:
+                        fail("OCI layout archive exceeds the content bound")
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+                    if hasattr(os, "O_NOFOLLOW"):
+                        flags |= os.O_NOFOLLOW
+                    try:
+                        output_file_fd = os.open(
+                            target_name,
+                            flags,
+                            0o400,
+                            dir_fd=target_fd,
+                        )
+                    except OSError as exc:
+                        fail(
+                            f"cannot create OCI layout file {canonical}: {exc}"
+                        )
+                    try:
+                        extracted = archive.extractfile(member)
+                        if extracted is None:
+                            fail(
+                                f"cannot read OCI layout member {canonical}"
+                            )
+                        digest = hashlib.sha256()
+                        count = 0
+                        while True:
+                            block = extracted.read(1024 * 1024)
+                            if not block:
+                                break
+                            count += len(block)
+                            digest.update(block)
+                            view = memoryview(block)
+                            while view:
+                                written = os.write(output_file_fd, view)
+                                if written <= 0:
+                                    fail(
+                                        "short write while materializing "
+                                        f"{canonical}"
+                                    )
+                                view = view[written:]
+                        if count != member.size:
+                            fail(
+                                f"OCI layout member size changed: {canonical}"
+                            )
+                        if canonical.startswith("blobs/sha256/") \
+                           and digest.hexdigest() != target_name:
+                            fail(
+                                "OCI layout blob does not match its name: "
+                                f"{canonical}"
+                            )
+                        os.fchmod(output_file_fd, 0o400)
+                        os.fsync(output_file_fd)
+                    finally:
+                        os.close(output_file_fd)
+                    files.add(canonical)
+            while hashing.read(1024 * 1024):
+                pass
+        except (tarfile.TarError, EOFError, OSError) as exc:
+            fail(f"cannot materialize OCI layout archive: {exc}")
+        finally:
+            hashing.stream.close()
+        if hashing.digest.hexdigest() != expected_archive_sha:
+            fail(
+                "image archive changed between verification and OCI "
+                "materialization"
+            )
+        stable_file(before, os.fstat(fd), archive_path)
+        if directories != {"blobs", "blobs/sha256"} \
+           or not {
+               "index.json",
+               "manifest.json",
+               "oci-layout",
+           }.issubset(files) \
+           or not any(name.startswith("blobs/sha256/") for name in files):
+            fail("materialized OCI layout inventory is incomplete")
+        os.fchmod(sha_fd, 0o500)
+        os.fsync(sha_fd)
+        os.fchmod(blobs_fd, 0o500)
+        os.fsync(blobs_fd)
+        os.fsync(root_fd)
+    finally:
+        if sha_fd >= 0:
+            os.close(sha_fd)
+        if blobs_fd >= 0:
+            os.close(blobs_fd)
+        if root_fd >= 0:
+            os.close(root_fd)
+        os.close(fd)
+    return verify_oci_layout(output)
 
 
 def load_archive(
@@ -3117,15 +4327,11 @@ def load_archive(
 def rename_noreplace(source: Path, destination: Path) -> None:
     if source.parent != destination.parent:
         fail("image archive publication must remain within one private directory")
-    flags = os.O_RDONLY | os.O_CLOEXEC
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        parent_fd = os.open(source.parent, flags)
-    except OSError as exc:
-        fail(f"cannot open image archive publication directory: {exc}")
+    parent_fd = open_private_directory(
+        source.parent,
+        0o700,
+        "image archive publication directory",
+    )
     try:
         function = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
         if function is None:
@@ -3154,6 +4360,34 @@ def rename_noreplace(source: Path, destination: Path) -> None:
         os.close(parent_fd)
 
 
+def publish_existing_archive_noreplace(
+    source: Path,
+    destination: Path,
+) -> None:
+    if source.parent != destination.parent:
+        fail("image archive publication must remain within one directory")
+    validate_private_output_parent(source.parent)
+    try:
+        before = os.lstat(source)
+    except OSError as exc:
+        fail(f"cannot inspect image archive publication source: {exc}")
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 \
+       or before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+       or stat.S_IMODE(before.st_mode) != 0o400:
+        fail(
+            "image archive publication source must be one current-user-owned "
+            "mode-0400 non-hardlinked regular file"
+        )
+    rename_noreplace(source, destination)
+    try:
+        after = os.lstat(destination)
+    except OSError as exc:
+        fail(f"cannot inspect published image archive: {exc}")
+    if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino) \
+       or source.exists() or source.is_symlink():
+        fail("image archive no-replace publication postcondition failed")
+
+
 def validate_private_output_parent(parent: Path) -> None:
     try:
         metadata = os.lstat(parent)
@@ -3166,16 +4400,693 @@ def validate_private_output_parent(parent: Path) -> None:
         fail("image archive output parent must be current-user-owned mode 0700")
 
 
+def validate_direct_oci_export_member(
+    member: tarfile.TarInfo,
+    canonical: str,
+) -> None:
+    if member.uid != 0 or member.gid != 0 or member.mtime != 0:
+        fail(
+            "direct certified Android builder OCI export has "
+            "noncanonical tar ownership or time"
+        )
+    if member.pax_headers:
+        fail(
+            "direct certified Android builder OCI export has "
+            "undeclared extended tar headers"
+        )
+    if canonical in {"blobs", "blobs/sha256"}:
+        if not member.isdir() or stat.S_IMODE(member.mode) != 0o755:
+            fail(
+                "direct certified Android builder OCI export directory "
+                "metadata differs"
+            )
+        return
+    if not member.isfile():
+        fail(
+            "direct certified Android builder OCI export member is not "
+            f"a regular file/directory: {member.name}"
+        )
+    expected_mode = 0o644 if canonical == "index.json" else 0o444
+    if stat.S_IMODE(member.mode) != expected_mode:
+        fail(
+            "direct certified Android builder OCI export file mode differs: "
+            f"{canonical}"
+        )
+
+
+def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
+    if os.getuid() == 0 or os.getgid() == 0:
+        fail(
+            "direct certified Android builder OCI export verification "
+            "refuses root execution"
+        )
+    validate_private_output_parent(archive_path.parent)
+    fd = open_archive(archive_path)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            fail(
+                "direct certified Android builder OCI export must be one "
+                "non-hardlinked regular file"
+            )
+        if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
+           or stat.S_IMODE(before.st_mode) != 0o600:
+            fail(
+                "direct certified Android builder OCI export must be "
+                "current-user-owned mode 0600"
+            )
+        if before.st_size <= 0 \
+           or before.st_size > 8 * 1024 * 1024 * 1024 \
+           or before.st_size % 512 != 0:
+            fail(
+                "direct certified Android builder OCI export size is "
+                "empty, oversized, or not tar-block aligned"
+            )
+
+        seen: set[str] = set()
+        folded: set[str] = set()
+        files: set[str] = set()
+        directories: set[str] = set()
+        metadata: dict[str, bytes] = {}
+        member_sizes: dict[str, int] = {}
+        member_hashes: dict[str, str] = {}
+        sequence: list[str] = []
+        metadata_bytes = 0
+        expanded_bytes = 0
+        os.lseek(fd, 0, os.SEEK_SET)
+        hashing = HashingReader(os.fdopen(os.dup(fd), "rb"))
+        try:
+            archive = tarfile.open(fileobj=hashing, mode="r|")
+            with archive:
+                if archive.pax_headers:
+                    fail(
+                        "direct certified Android builder OCI export has "
+                        "undeclared global extended headers"
+                    )
+                for position, member in enumerate(archive):
+                    if position >= 4096:
+                        fail(
+                            "direct certified Android builder OCI export "
+                            "exceeds the member bound"
+                        )
+                    validate_archive_name(member.name, seen, folded)
+                    canonical = member.name.rstrip("/")
+                    sequence.append(canonical)
+                    validate_direct_oci_export_member(member, canonical)
+                    if member.isdir():
+                        directories.add(canonical)
+                        continue
+                    if canonical not in {"index.json", "oci-layout"} \
+                       and re.fullmatch(
+                           r"blobs/sha256/[0-9a-f]{64}",
+                           canonical,
+                       ) is None:
+                        fail(
+                            "direct certified Android builder OCI export "
+                            f"has an undeclared file: {canonical}"
+                        )
+                    files.add(canonical)
+                    member_sizes[canonical] = member.size
+                    expanded_bytes += member.size
+                    if expanded_bytes > 8 * 1024 * 1024 * 1024:
+                        fail(
+                            "direct certified Android builder OCI export "
+                            "exceeds the expanded-content bound"
+                        )
+                    extracted = archive.extractfile(member)
+                    if extracted is None:
+                        fail(
+                            "cannot read direct certified Android builder "
+                            f"OCI export member: {canonical}"
+                        )
+                    content_hash = hashlib.sha256()
+                    retained = (
+                        bytearray()
+                        if member.size <= 16 * 1024 * 1024
+                        else None
+                    )
+                    count = 0
+                    while True:
+                        block = extracted.read(1024 * 1024)
+                        if not block:
+                            break
+                        count += len(block)
+                        content_hash.update(block)
+                        if retained is not None:
+                            retained += block
+                    if count != member.size:
+                        fail(
+                            "direct certified Android builder OCI export "
+                            f"member size changed: {canonical}"
+                        )
+                    member_hashes[canonical] = content_hash.hexdigest()
+                    if retained is not None:
+                        metadata_bytes += len(retained)
+                        if metadata_bytes > 64 * 1024 * 1024:
+                            fail(
+                                "direct certified Android builder OCI export "
+                                "metadata exceeds the parser budget"
+                            )
+                        metadata[canonical] = bytes(retained)
+            while True:
+                trailing = hashing.read(1024 * 1024)
+                if not trailing:
+                    break
+                if any(trailing):
+                    fail(
+                        "direct certified Android builder OCI export has "
+                        "nonzero trailing tar data"
+                    )
+        except (tarfile.TarError, EOFError, OSError) as exc:
+            fail(
+                "malformed direct certified Android builder OCI export: "
+                f"{exc}"
+            )
+        finally:
+            hashing.stream.close()
+
+        stable_file(before, os.fstat(fd), archive_path)
+        blob_names = sorted(
+            name for name in files if name.startswith("blobs/sha256/")
+        )
+        expected_sequence = (
+            ["blobs", "blobs/sha256"]
+            + blob_names
+            + ["index.json", "oci-layout"]
+        )
+        if sequence != expected_sequence:
+            fail(
+                "direct certified Android builder OCI export member order "
+                "or inventory differs"
+            )
+        if directories != {"blobs", "blobs/sha256"} \
+           or files != set(blob_names) | {"index.json", "oci-layout"} \
+           or not blob_names:
+            fail(
+                "direct certified Android builder OCI export inventory "
+                "differs"
+            )
+        if metadata.get("oci-layout") != canonical_json(
+            {"imageLayoutVersion": "1.0.0"}
+        ):
+            fail(
+                "direct certified Android builder OCI export layout marker "
+                "differs"
+            )
+        for name in blob_names:
+            if member_hashes.get(name) != name.rsplit("/", 1)[1]:
+                fail(
+                    "direct certified Android builder OCI export blob does "
+                    f"not match its name: {name}"
+                )
+        if "index.json" not in metadata:
+            fail(
+                "direct certified Android builder OCI export root index "
+                "exceeds the metadata budget"
+            )
+        return DirectOciExport(
+            before=before,
+            archive_sha256=hashing.digest.hexdigest(),
+            files=frozenset(files),
+            directories=frozenset(directories),
+            metadata=metadata,
+            member_sizes=member_sizes,
+            member_hashes=member_hashes,
+            sequence=tuple(sequence),
+            blob_names=tuple(blob_names),
+        )
+    finally:
+        os.close(fd)
+
+
+def prepare_certified_android_builder_oci_export(
+    scanned: DirectOciExport,
+    contract: CertifiedAndroidBuilderSpec,
+) -> tuple[
+    CertifiedAndroidBuilderSpec,
+    bytes,
+    bytes,
+]:
+    root_index = parse_json(
+        scanned.metadata.get("index.json"),
+        "direct OCI export index.json",
+    )
+    descriptors = (
+        root_index.get("manifests")
+        if isinstance(root_index, dict)
+        else None
+    )
+    if not isinstance(root_index, dict) \
+       or set(root_index) != {"schemaVersion", "mediaType", "manifests"} \
+       or root_index.get("schemaVersion") != 2 \
+       or root_index.get("mediaType") != (
+           "application/vnd.oci.image.index.v1+json"
+       ) \
+       or not isinstance(descriptors, list) \
+       or len(descriptors) != 1 \
+       or not isinstance(descriptors[0], dict):
+        fail(
+            "direct certified Android builder OCI export must name exactly "
+            "one image index"
+        )
+    root_descriptor = descriptors[0]
+    try:
+        created = datetime.fromtimestamp(
+            contract.source_date_epoch,
+            timezone.utc,
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (OSError, OverflowError, ValueError) as exc:
+        fail(f"certified Android builder source-date epoch is invalid: {exc}")
+    expected_annotations = {
+        "io.containerd.image.name": (
+            ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+        ),
+        "org.opencontainers.image.created": created,
+        "org.opencontainers.image.ref.name": (
+            ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME.rsplit(":", 1)[1]
+        ),
+    }
+    if set(root_descriptor) != {
+        "mediaType",
+        "digest",
+        "size",
+        "annotations",
+    } \
+       or root_descriptor.get("mediaType") != (
+           "application/vnd.oci.image.index.v1+json"
+       ) \
+       or root_descriptor.get("annotations") != expected_annotations:
+        fail(
+            "direct certified Android builder OCI export root descriptor "
+            "does not match the named private exporter contract"
+        )
+    image_index_name, image_index_bytes = descriptor_blob(
+        root_descriptor,
+        scanned.metadata,
+        scanned.member_sizes,
+        scanned.member_hashes,
+        "direct OCI export image index",
+    )
+    image_id = root_descriptor.get("digest")
+    if not isinstance(image_id, str) or not IMAGE_ID.fullmatch(image_id):
+        fail(
+            "direct certified Android builder OCI export image identity "
+            "is malformed"
+        )
+    spec = replace(contract, image_id=image_id)
+
+    image_index = parse_json(
+        image_index_bytes,
+        "direct OCI export image index blob",
+    )
+    image_descriptors = (
+        image_index.get("manifests")
+        if isinstance(image_index, dict)
+        else None
+    )
+    runtime_descriptors = [
+        descriptor
+        for descriptor in image_descriptors
+        if isinstance(descriptor, dict)
+        and descriptor.get("platform")
+        == {"architecture": "amd64", "os": "linux"}
+    ] if isinstance(image_descriptors, list) else []
+    if len(runtime_descriptors) != 1 \
+       or runtime_descriptors[0].get("digest") != spec.manifest_id:
+        fail(
+            "direct certified Android builder OCI export runtime manifest "
+            "differs from its pin"
+        )
+    image_manifest_name, image_manifest_bytes = descriptor_blob(
+        runtime_descriptors[0],
+        scanned.metadata,
+        scanned.member_sizes,
+        scanned.member_hashes,
+        "direct OCI export runtime manifest",
+    )
+    image_manifest = parse_json(
+        image_manifest_bytes,
+        "direct OCI export runtime manifest blob",
+    )
+    config_descriptor = (
+        image_manifest.get("config")
+        if isinstance(image_manifest, dict)
+        else None
+    )
+    if not isinstance(config_descriptor, dict) \
+       or config_descriptor.get("digest") != spec.config_id:
+        fail(
+            "direct certified Android builder OCI export runtime config "
+            "differs from its pin"
+        )
+    config_name, _ = descriptor_blob(
+        config_descriptor,
+        scanned.metadata,
+        scanned.member_sizes,
+        scanned.member_hashes,
+        "direct OCI export runtime config",
+    )
+    layer_descriptors = (
+        image_manifest.get("layers")
+        if isinstance(image_manifest, dict)
+        else None
+    )
+    if not isinstance(layer_descriptors, list) or not layer_descriptors:
+        fail(
+            "direct certified Android builder OCI export has no runtime "
+            "layers"
+        )
+    layer_names: list[str] = []
+    for position, descriptor in enumerate(layer_descriptors):
+        name, _ = descriptor_blob(
+            descriptor,
+            scanned.metadata,
+            scanned.member_sizes,
+            scanned.member_hashes,
+            f"direct OCI export runtime layer {position}",
+            require_metadata=False,
+        )
+        layer_names.append(name)
+
+    compatibility_item = {
+        "Config": config_name,
+        "RepoTags": None,
+        "Layers": layer_names,
+    }
+    compatibility_manifest = canonical_json([compatibility_item])
+    canonical_root_index = canonical_json(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {
+                    "mediaType": (
+                        "application/vnd.oci.image.index.v1+json"
+                    ),
+                    "digest": spec.image_id,
+                    "size": len(image_index_bytes),
+                }
+            ],
+        }
+    )
+    canonical_metadata = dict(scanned.metadata)
+    canonical_sizes = dict(scanned.member_sizes)
+    canonical_hashes = dict(scanned.member_hashes)
+    canonical_files = set(scanned.files)
+    canonical_metadata["index.json"] = canonical_root_index
+    canonical_sizes["index.json"] = len(canonical_root_index)
+    canonical_hashes["index.json"] = hashlib.sha256(
+        canonical_root_index
+    ).hexdigest()
+    canonical_metadata["manifest.json"] = compatibility_manifest
+    canonical_sizes["manifest.json"] = len(compatibility_manifest)
+    canonical_hashes["manifest.json"] = hashlib.sha256(
+        compatibility_manifest
+    ).hexdigest()
+    canonical_files.add("manifest.json")
+    validate_modern_archive(
+        compatibility_item,
+        canonical_files,
+        set(scanned.directories),
+        canonical_metadata,
+        canonical_sizes,
+        canonical_hashes,
+        spec,
+    )
+    if image_index_name not in scanned.blob_names \
+       or image_manifest_name not in scanned.blob_names:
+        fail(
+            "direct certified Android builder OCI export omits a reachable "
+            "index or manifest blob"
+        )
+    return spec, canonical_root_index, compatibility_manifest
+
+
+def deterministic_tar_info(
+    name: str,
+    *,
+    size: int = 0,
+    mode: int,
+    directory: bool = False,
+) -> tarfile.TarInfo:
+    info = tarfile.TarInfo(name)
+    info.size = size
+    info.mode = mode
+    info.uid = 0
+    info.gid = 0
+    info.mtime = 0
+    if directory:
+        info.type = tarfile.DIRTYPE
+    return info
+
+
+def canonicalize_certified_android_builder_oci_export(
+    source: Path,
+    output: Path,
+    contract: CertifiedAndroidBuilderSpec,
+) -> tuple[CertifiedAndroidBuilderSpec, str, int, str, int]:
+    validate_private_output_parent(source.parent)
+    if output.parent != source.parent:
+        validate_private_output_parent(output.parent)
+    if output.exists() or output.is_symlink():
+        fail(f"refusing to replace existing image archive: {output}")
+    temporary = output.with_name(output.name + ".part")
+    if temporary.exists() or temporary.is_symlink():
+        fail(
+            "stale certified Android builder normalization temporary exists: "
+            f"{temporary}"
+        )
+
+    scanned = scan_direct_oci_export(source)
+    spec, root_index, compatibility_manifest = (
+        prepare_certified_android_builder_oci_export(scanned, contract)
+    )
+    source_fd = open_archive(source)
+    output_fd = -1
+    temporary_identity: tuple[int, int] | None = None
+    try:
+        stable_file(scanned.before, os.fstat(source_fd), source)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            output_fd = os.open(temporary, flags, 0o600)
+        except OSError as exc:
+            fail(
+                "cannot create certified Android builder normalization "
+                f"temporary: {exc}"
+            )
+        output_before = os.fstat(output_fd)
+        temporary_identity = (output_before.st_dev, output_before.st_ino)
+        digest = hashlib.sha256()
+        count = 0
+
+        with os.fdopen(output_fd, "wb") as raw:
+            output_fd = -1
+
+            class DigestingWriter:
+                def write(self, data: bytes) -> int:
+                    nonlocal count
+                    written = raw.write(data)
+                    if written != len(data):
+                        fail(
+                            "short write while normalizing the certified "
+                            "Android builder OCI export"
+                        )
+                    digest.update(data)
+                    count += written
+                    return written
+
+                def flush(self) -> None:
+                    raw.flush()
+
+            os.lseek(source_fd, 0, os.SEEK_SET)
+            hashing = HashingReader(os.fdopen(os.dup(source_fd), "rb"))
+            try:
+                with gzip.GzipFile(
+                    filename="",
+                    mode="wb",
+                    fileobj=DigestingWriter(),
+                    compresslevel=9,
+                    mtime=0,
+                ) as compressed:
+                    with tarfile.open(
+                        fileobj=compressed,
+                        mode="w|",
+                        format=tarfile.USTAR_FORMAT,
+                    ) as destination:
+                        for name in ("blobs", "blobs/sha256"):
+                            destination.addfile(
+                                deterministic_tar_info(
+                                    name,
+                                    mode=0o755,
+                                    directory=True,
+                                )
+                            )
+                        archive = tarfile.open(fileobj=hashing, mode="r|")
+                        with archive:
+                            sequence: list[str] = []
+                            for member in archive:
+                                canonical = member.name.rstrip("/")
+                                sequence.append(canonical)
+                                validate_direct_oci_export_member(
+                                    member,
+                                    canonical,
+                                )
+                                if member.isdir():
+                                    continue
+                                extracted = archive.extractfile(member)
+                                if extracted is None:
+                                    fail(
+                                        "cannot reread direct certified "
+                                        "Android builder OCI export member: "
+                                        f"{canonical}"
+                                    )
+                                if canonical.startswith("blobs/sha256/"):
+                                    destination.addfile(
+                                        deterministic_tar_info(
+                                            canonical,
+                                            size=member.size,
+                                            mode=0o444,
+                                        ),
+                                        extracted,
+                                    )
+                                else:
+                                    value = extracted.read()
+                                    if value != scanned.metadata.get(canonical):
+                                        fail(
+                                            "direct certified Android builder "
+                                            "OCI metadata changed during "
+                                            f"normalization: {canonical}"
+                                        )
+                            if tuple(sequence) != scanned.sequence:
+                                fail(
+                                    "direct certified Android builder OCI "
+                                    "export inventory changed during "
+                                    "normalization"
+                                )
+                        while hashing.read(1024 * 1024):
+                            pass
+                        for name, value, mode in (
+                            ("index.json", root_index, 0o644),
+                            (
+                                "manifest.json",
+                                compatibility_manifest,
+                                0o644,
+                            ),
+                            (
+                                "oci-layout",
+                                canonical_json(
+                                    {"imageLayoutVersion": "1.0.0"}
+                                ),
+                                0o444,
+                            ),
+                        ):
+                            destination.addfile(
+                                deterministic_tar_info(
+                                    name,
+                                    size=len(value),
+                                    mode=mode,
+                                ),
+                                io.BytesIO(value),
+                            )
+            except (tarfile.TarError, EOFError, OSError) as exc:
+                fail(
+                    "cannot normalize direct certified Android builder OCI "
+                    f"export: {exc}"
+                )
+            finally:
+                hashing.stream.close()
+            if hashing.digest.hexdigest() != scanned.archive_sha256:
+                fail(
+                    "direct certified Android builder OCI export changed "
+                    "between validation and normalization"
+                )
+            stable_file(scanned.before, os.fstat(source_fd), source)
+            os.fchmod(raw.fileno(), 0o400)
+            raw.flush()
+            os.fsync(raw.fileno())
+            if os.fstat(raw.fileno()).st_size != count:
+                fail(
+                    "certified Android builder normalized archive size "
+                    "accounting differs"
+                )
+
+        archive_sha = digest.hexdigest()
+        verify_archive(temporary, archive_sha, spec, count)
+        normalized_before = os.lstat(temporary)
+        rename_noreplace(temporary, output)
+        normalized_after = os.lstat(output)
+        if (normalized_before.st_dev, normalized_before.st_ino) != (
+            normalized_after.st_dev,
+            normalized_after.st_ino,
+        ) \
+           or temporary.exists() or temporary.is_symlink():
+            fail(
+                "certified Android builder normalized archive publication "
+                "postcondition failed"
+            )
+        verify_archive(output, archive_sha, spec, count)
+        return (
+            spec,
+            archive_sha,
+            count,
+            scanned.archive_sha256,
+            scanned.before.st_size,
+        )
+    except BaseException:
+        if temporary_identity is not None:
+            try:
+                current = os.lstat(temporary)
+            except FileNotFoundError:
+                current = None
+            except OSError as exc:
+                fail(
+                    "cannot inspect failed certified Android builder "
+                    f"normalization temporary: {exc}"
+                )
+            if current is not None:
+                if (current.st_dev, current.st_ino) != temporary_identity \
+                   or not stat.S_ISREG(current.st_mode):
+                    fail(
+                        "failed certified Android builder normalization "
+                        "temporary identity changed"
+                    )
+                try:
+                    os.unlink(temporary)
+                except OSError as exc:
+                    fail(
+                        "cannot remove failed certified Android builder "
+                        f"normalization temporary: {exc}"
+                    )
+        raise
+    finally:
+        if output_fd >= 0:
+            os.close(output_fd)
+        os.close(source_fd)
+
+
 def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
     verify_local(spec.image_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
-    if isinstance(
-        spec,
-        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-    ):
+    if requires_private_archive(spec):
         validate_private_output_parent(output.parent)
-        save_ref = spec.image_id
+        if isinstance(spec, Spec):
+            result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
+            if result.returncode != 0:
+                fail(
+                    "cannot create fixed bootstrap capture tag: "
+                    + result.stderr.decode(errors="replace").strip()
+                )
+            validate_inspect(
+                inspect_image(spec.capture_tag),
+                spec.capture_tag,
+                spec,
+            )
+            save_ref = spec.capture_tag
+        else:
+            save_ref = spec.image_id
     else:
         output.parent.mkdir(parents=True, exist_ok=True)
         result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
@@ -3214,10 +5125,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         stderr = process.stderr.read() if process.stderr is not None else b""
         if process.wait() != 0:
             fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
-        if isinstance(
-            spec,
-            (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-        ):
+        if requires_private_archive(spec):
             temporary.chmod(0o400)
             archive_sha = digest.hexdigest()
             verify_archive(temporary, archive_sha, spec, count)
@@ -3239,10 +5147,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         archive_sha,
         spec,
         count
-        if isinstance(
-            spec,
-            (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
-        )
+        if requires_private_archive(spec)
         else None,
     )
     return archive_sha, count
@@ -5437,6 +7342,636 @@ def create_rust_audit_fixture_archive(
     return spec
 
 
+def create_certified_android_builder_fixture_archive(
+    path: Path,
+    repo_tags: object = None,
+    *,
+    add_vcs: bool = False,
+    embedded_dockerfile: bytes | None = None,
+    execution_network: int = 2,
+    execution_user: str = "1000:1000",
+    context_scheme: str = "oci-layout",
+    wrong_material: bool = False,
+    wrong_layer_mapping: bool = False,
+    runtime_user: str = "1000:1000",
+    annotate_root: bool = False,
+    layer_epoch: int = 1700000000,
+    wrong_subject: bool = False,
+    omit_attestation: bool = False,
+    extra_operation: bool = False,
+) -> CertifiedAndroidBuilderSpec:
+    def encoded(value: object) -> bytes:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+
+    def blob_descriptor(
+        value: bytes,
+        media_type: str,
+        **extra: object,
+    ) -> dict[str, object]:
+        return {
+            "mediaType": media_type,
+            "digest": "sha256:" + hashlib.sha256(value).hexdigest(),
+            "size": len(value),
+            **extra,
+        }
+
+    dockerfile = (
+        Path(__file__)
+        .with_name("Dockerfile.android-builder-certify")
+        .read_bytes()
+    )
+    source_dockerfile = (
+        dockerfile if embedded_dockerfile is None else embedded_dockerfile
+    )
+    bootstrap_image_id = "sha256:" + "a" * 64
+    bootstrap_manifest_id = "sha256:" + "b" * 64
+    preliminary = CertifiedAndroidBuilderSpec(
+        role="android-builder",
+        image_id="sha256:" + "0" * 64,
+        base="ubuntu:24.04@sha256:" + "c" * 64,
+        dockerfile_sha256=hashlib.sha256(dockerfile).hexdigest(),
+        recipe_sha256="d" * 64,
+        dpkg_sha256="e" * 64,
+        bootstrap_image_id=bootstrap_image_id,
+        bootstrap_manifest_id=bootstrap_manifest_id,
+        source_date_epoch=1700000000,
+        config_id="sha256:" + "0" * 64,
+        manifest_id="sha256:" + "0" * 64,
+    )
+    layers = [
+        gzip.compress(f"fixture layer {position}".encode("ascii"), mtime=0)
+        for position in range(4)
+    ]
+    layer_descriptors: list[dict[str, object]] = []
+    for position, layer in enumerate(layers):
+        extra: dict[str, object] = {}
+        if position == 3:
+            extra["annotations"] = {
+                "buildkit/rewritten-timestamp": str(layer_epoch)
+            }
+        layer_descriptors.append(
+            blob_descriptor(
+                layer,
+                "application/vnd.oci.image.layer.v1.tar+gzip",
+                **extra,
+            )
+        )
+    history = [
+        {
+            "created": "2026-07-25T00:00:00Z",
+            "created_by": f"bootstrap-{position}",
+            "empty_layer": True,
+        }
+        for position in range(12)
+    ] + [
+        {
+            "created": "2023-11-14T22:13:20Z",
+            "created_by": f"certification-{position}",
+            "empty_layer": True,
+        }
+        for position in range(8)
+    ]
+    runtime_config = {
+        **preliminary.runtime_config,
+        "User": runtime_user,
+    }
+    config = encoded(
+        {
+            "architecture": "amd64",
+            "config": runtime_config,
+            "created": "2023-11-14T22:13:20Z",
+            "history": history,
+            "os": "linux",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + hashlib.sha256(layer).hexdigest()
+                    for layer in layers
+                ],
+            },
+        }
+    )
+    config_descriptor = blob_descriptor(
+        config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    image_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": config_descriptor,
+            "layers": layer_descriptors,
+        }
+    )
+    image_descriptor = blob_descriptor(
+        image_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        platform={"architecture": "amd64", "os": "linux"},
+    )
+    image_manifest_id = str(image_descriptor["digest"])
+    store = "fixturestore000000000000000"
+    session = "fixturesession0000000000000"
+    context_value = (
+        f"{context_scheme}://{store}@{bootstrap_image_id}"
+    )
+    expected_args = {
+        "build-arg:ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID": (
+            bootstrap_image_id
+        ),
+        "build-arg:ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID": (
+            bootstrap_manifest_id
+        ),
+        "build-arg:ANDROID_BUILDER_DPKG_MANIFEST_SHA256": (
+            preliminary.dpkg_sha256
+        ),
+        "build-arg:ANDROID_BUILDER_RECIPE_SHA256": (
+            preliminary.recipe_sha256
+        ),
+        "build-arg:SOURCE_DATE_EPOCH": "1700000000",
+        "context:android-builder-bootstrap": context_value,
+        "force-network-mode": "none",
+        "frontend.caps": "moby.buildkit.frontend.contexts+forward",
+        "no-cache": "",
+    }
+    source_runs = dockerfile_run_contract(source_dockerfile)
+    source_command = (
+        source_runs[0][1] if len(source_runs) == 1 else "invalid-source"
+    )
+    environment = ANDROID_BUILDER_ENV + [
+        f"ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID={bootstrap_image_id}",
+        (
+            "ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID="
+            f"{bootstrap_manifest_id}"
+        ),
+        f"ANDROID_BUILDER_RECIPE_SHA256={preliminary.recipe_sha256}",
+        (
+            "ANDROID_BUILDER_DPKG_MANIFEST_SHA256="
+            f"{preliminary.dpkg_sha256}"
+        ),
+        "SOURCE_DATE_EPOCH=1700000000",
+    ]
+    llb: list[dict[str, object]] = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "attrs": {
+                            "oci.session": session,
+                            "oci.store": store,
+                        },
+                        "identifier": (
+                            "oci-layout://docker.io/library/"
+                            "android-builder-bootstrap@"
+                            f"{bootstrap_image_id}"
+                        ),
+                    }
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        {
+            "id": "step1",
+            "inputs": ["step0:0"],
+            "op": {
+                "Op": {
+                    "exec": {
+                        "meta": {
+                            "args": ["/bin/sh", "-c", source_command],
+                            "cwd": "/",
+                            "env": environment,
+                            "removeMountStubsRecursive": True,
+                            "user": execution_user,
+                        },
+                        "mounts": [{"dest": "/"}],
+                        "network": execution_network,
+                    }
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        {
+            "id": "step2",
+            "inputs": ["step1:0"],
+            "op": {"Op": {}},
+        },
+    ]
+    if extra_operation:
+        llb.insert(
+            2,
+            {
+                "id": "step-extra",
+                "inputs": ["step1:0"],
+                "op": {"Op": {}},
+            },
+        )
+    digest_mapping = {
+        "sha256:" + hashlib.sha256(
+            f"operation-{position}".encode("ascii")
+        ).hexdigest(): str(item["id"])
+        for position, item in enumerate(llb)
+    }
+    source_llb = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "identifier": "local://dockerfile",
+                        "attrs": {
+                            "local.differ": "none",
+                            "local.followpaths": (
+                                '["Dockerfile","Dockerfile.dockerignore",'
+                                '"dockerfile"]'
+                            ),
+                            "local.sharedkeyhint": "dockerfile",
+                        },
+                    }
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step1",
+            "op": {"Op": {}},
+            "inputs": ["step0:0"],
+        },
+    ]
+    source_info = {
+        "filename": "Dockerfile",
+        "language": "Dockerfile",
+        "data": base64.b64encode(source_dockerfile).decode("ascii"),
+        "llbDefinition": source_llb,
+        "digestMapping": {
+            "sha256:" + "1" * 64: "step0",
+            "sha256:" + "2" * 64: "step1",
+        },
+    }
+    attested_layers = [
+        {
+            "mediaType": descriptor["mediaType"],
+            "digest": descriptor["digest"],
+            "size": descriptor["size"],
+        }
+        for descriptor in layer_descriptors
+    ]
+    buildkit_metadata: dict[str, object] = {
+        "source": {
+            "locations": {
+                "step0": {},
+                "step1": {
+                    "locations": [
+                        {
+                            "ranges": [
+                                {
+                                    "start": {"line": line},
+                                    "end": {"line": line},
+                                }
+                                for line in range(20, 44)
+                            ]
+                        }
+                    ]
+                },
+            },
+            "infos": [source_info],
+        },
+        "layers": {
+            "step0:0": [attested_layers[:2 if wrong_layer_mapping else 3]],
+            "step1:0": [attested_layers],
+        },
+    }
+    if add_vcs:
+        buildkit_metadata["vcs"] = {
+            "revision": "f" * 40,
+            "source": "https://example.invalid/unreviewed.git",
+        }
+    material_id = (
+        "sha256:" + "f" * 64 if wrong_material else bootstrap_image_id
+    )
+    statement = encoded(
+        {
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [
+                {
+                    "name": (
+                        "pkg:docker/rd-android-builder-certified@"
+                        "authenticated-v1?platform=linux%2Famd64"
+                    ),
+                    "digest": {
+                        "sha256": (
+                            "f" * 64
+                            if wrong_subject
+                            else image_manifest_id.removeprefix("sha256:")
+                        )
+                    },
+                }
+            ],
+            "predicate": {
+                "buildDefinition": {
+                    "buildType": (
+                        "https://github.com/moby/buildkit/blob/master/"
+                        "docs/attestations/slsa-definitions.md"
+                    ),
+                    "resolvedDependencies": [
+                        {
+                            "uri": (
+                                "pkg:oci/android-builder-bootstrap?"
+                                f"digest={material_id}"
+                                "&platform=linux%2Famd64"
+                            ),
+                            "digest": {
+                                "sha256": material_id.removeprefix("sha256:")
+                            },
+                        }
+                    ],
+                    "externalParameters": {
+                        "configSource": {"path": "Dockerfile"},
+                        "request": {
+                            "frontend": "dockerfile.v0",
+                            "args": expected_args,
+                            "locals": [
+                                {"name": "context"},
+                                {"name": "dockerfile"},
+                            ],
+                            "root": {
+                                "configSource": {"path": "Dockerfile"},
+                                "request": {"args": expected_args},
+                            },
+                            "compatibilityVersion": 30,
+                        },
+                    },
+                    "internalParameters": {
+                        "buildConfig": {
+                            "digestMapping": digest_mapping,
+                            "llbDefinition": llb,
+                        },
+                        "builderPlatform": "linux/amd64",
+                        "dockerfileVersion": "1.25.0",
+                    },
+                },
+                "runDetails": {
+                    "builder": {"id": ""},
+                    "metadata": {
+                        "invocationId": "fixture",
+                        "startedOn": "2026-07-25T00:00:00Z",
+                        "finishedOn": "2026-07-25T00:00:01Z",
+                        "buildkit_metadata": buildkit_metadata,
+                        "buildkit_completeness": {
+                            "request": True,
+                            "resolvedDependencies": False,
+                        },
+                    },
+                },
+            },
+        }
+    )
+    statement_descriptor = blob_descriptor(
+        statement,
+        "application/vnd.in-toto+json",
+        annotations={
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+        },
+    )
+    attestation_config = encoded(
+        {
+            "architecture": "unknown",
+            "config": {},
+            "os": "unknown",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + hashlib.sha256(statement).hexdigest()
+                ],
+            },
+        }
+    )
+    attestation_config_descriptor = blob_descriptor(
+        attestation_config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    attestation_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": attestation_config_descriptor,
+            "layers": [statement_descriptor],
+        }
+    )
+    attestation_descriptor = blob_descriptor(
+        attestation_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        annotations={
+            "vnd.docker.reference.digest": image_manifest_id,
+            "vnd.docker.reference.type": "attestation-manifest",
+        },
+        platform={"architecture": "unknown", "os": "unknown"},
+    )
+    image_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": (
+                [image_descriptor]
+                if omit_attestation
+                else [image_descriptor, attestation_descriptor]
+            ),
+        }
+    )
+    spec = replace(
+        preliminary,
+        image_id="sha256:" + hashlib.sha256(image_index).hexdigest(),
+        config_id=str(config_descriptor["digest"]),
+        manifest_id=image_manifest_id,
+    )
+    root_descriptor: dict[str, object] = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": spec.image_id,
+        "size": len(image_index),
+    }
+    if annotate_root:
+        root_descriptor["annotations"] = {"unexpected": "authority"}
+    root_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [root_descriptor],
+        }
+    )
+    config_name = "blobs/sha256/" + spec.config_id.removeprefix("sha256:")
+    layer_names = [
+        "blobs/sha256/" + str(descriptor["digest"]).removeprefix("sha256:")
+        for descriptor in layer_descriptors
+    ]
+    compatibility_manifest = encoded(
+        [{"Config": config_name, "RepoTags": repo_tags, "Layers": layer_names}]
+    )
+    members = {
+        "index.json": root_index,
+        "manifest.json": compatibility_manifest,
+        "oci-layout": encoded({"imageLayoutVersion": "1.0.0"}),
+        "blobs/sha256/" + spec.image_id.removeprefix("sha256:"): image_index,
+        "blobs/sha256/" + spec.manifest_id.removeprefix("sha256:"): (
+            image_manifest
+        ),
+        config_name: config,
+    }
+    if not omit_attestation:
+        members.update(
+            {
+                "blobs/sha256/"
+                + str(attestation_descriptor["digest"]).removeprefix(
+                    "sha256:"
+                ): attestation_manifest,
+                "blobs/sha256/"
+                + str(attestation_config_descriptor["digest"]).removeprefix(
+                    "sha256:"
+                ): attestation_config,
+                "blobs/sha256/"
+                + str(statement_descriptor["digest"]).removeprefix(
+                    "sha256:"
+                ): statement,
+            }
+        )
+    members.update(zip(layer_names, layers))
+    with path.open("wb") as raw:
+        with gzip.GzipFile(
+            filename="",
+            mode="wb",
+            fileobj=raw,
+            mtime=0,
+        ) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name, content in sorted(members.items()):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    info.mtime = 0
+                    archive.addfile(info, io.BytesIO(content))
+    path.chmod(0o400)
+    return spec
+
+
+def create_certified_android_builder_fixture_oci_export(
+    archive_path: Path,
+    export_path: Path,
+    spec: CertifiedAndroidBuilderSpec,
+    *,
+    extra_root_descriptor: bool = False,
+    wrong_export_name: bool = False,
+    include_compatibility_manifest: bool = False,
+) -> None:
+    members: dict[str, bytes] = {}
+    with tarfile.open(archive_path, mode="r:gz") as archive:
+        for member in archive:
+            if not member.isfile():
+                continue
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                fail(
+                    "cannot read certified Android builder fixture member: "
+                    f"{member.name}"
+                )
+            members[member.name.rstrip("/")] = extracted.read()
+    root_index = parse_json(
+        members.get("index.json"),
+        "certified Android builder fixture root index",
+    )
+    descriptors = (
+        root_index.get("manifests")
+        if isinstance(root_index, dict)
+        else None
+    )
+    if not isinstance(descriptors, list) \
+       or len(descriptors) != 1 \
+       or not isinstance(descriptors[0], dict):
+        fail("certified Android builder fixture root descriptor is malformed")
+    descriptor = dict(descriptors[0])
+    created = datetime.fromtimestamp(
+        spec.source_date_epoch,
+        timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    descriptor["annotations"] = {
+        "io.containerd.image.name": (
+            "docker.io/library/unreviewed:latest"
+            if wrong_export_name
+            else ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+        ),
+        "org.opencontainers.image.created": created,
+        "org.opencontainers.image.ref.name": (
+            "latest"
+            if wrong_export_name
+            else ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME.rsplit(":", 1)[1]
+        ),
+    }
+    output_descriptors = [descriptor]
+    if extra_root_descriptor:
+        output_descriptors.append(dict(descriptor))
+    members["index.json"] = canonical_json(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": output_descriptors,
+        }
+    )
+    compatibility_manifest = members.pop("manifest.json")
+    with export_path.open("xb") as raw:
+        with tarfile.open(
+            fileobj=raw,
+            mode="w|",
+            format=tarfile.USTAR_FORMAT,
+        ) as archive:
+            for name in ("blobs", "blobs/sha256"):
+                archive.addfile(
+                    deterministic_tar_info(
+                        name,
+                        mode=0o755,
+                        directory=True,
+                    )
+                )
+            for name in sorted(
+                item for item in members if item.startswith("blobs/sha256/")
+            ):
+                value = members[name]
+                archive.addfile(
+                    deterministic_tar_info(
+                        name,
+                        size=len(value),
+                        mode=0o444,
+                    ),
+                    io.BytesIO(value),
+                )
+            for name, value, mode in (
+                ("index.json", members["index.json"], 0o644),
+                *(
+                    (
+                        (
+                            "manifest.json",
+                            compatibility_manifest,
+                            0o644,
+                        ),
+                    )
+                    if include_compatibility_manifest
+                    else ()
+                ),
+                ("oci-layout", members["oci-layout"], 0o444),
+            ):
+                archive.addfile(
+                    deterministic_tar_info(
+                        name,
+                        size=len(value),
+                        mode=mode,
+                    ),
+                    io.BytesIO(value),
+                )
+    export_path.chmod(0o600)
+
+
 def expect_failure(operation: Callable[[], object], label: str) -> None:
     try:
         operation()
@@ -5507,6 +8042,438 @@ def self_test() -> None:
         )
         modern_sha = hashlib.sha256(modern_archive.read_bytes()).hexdigest()
         verify_archive(modern_archive, modern_sha, modern_spec)
+
+        android_archive = (
+            Path(temporary) / "certified-android-builder-image.tar.gz"
+        )
+        android_spec = create_certified_android_builder_fixture_archive(
+            android_archive
+        )
+        android_bytes = android_archive.read_bytes()
+        android_sha = hashlib.sha256(android_bytes).hexdigest()
+        android_size = len(android_bytes)
+        verify_archive(
+            android_archive,
+            android_sha,
+            android_spec,
+            android_size,
+        )
+        android_payload = {
+            "Id": android_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": android_spec.runtime_config,
+        }
+        validate_inspect(
+            android_payload,
+            android_spec.image_id,
+            android_spec,
+        )
+        android_checks = 2
+
+        def android_failure(
+            operation: Callable[[], object],
+            label: str,
+        ) -> None:
+            nonlocal android_checks
+            expect_failure(operation, label)
+            android_checks += 1
+
+        android_failure(
+            lambda: verify_archive(
+                android_archive,
+                "f" * 64,
+                android_spec,
+                android_size,
+            ),
+            "certified Android builder archive hash",
+        )
+        android_failure(
+            lambda: verify_archive(
+                android_archive,
+                android_sha,
+                android_spec,
+                android_size + 1,
+            ),
+            "certified Android builder archive size",
+        )
+        for label, mutation in (
+            (
+                "image identity",
+                replace(android_spec, image_id="sha256:" + "f" * 64),
+            ),
+            (
+                "config identity",
+                replace(android_spec, config_id="sha256:" + "f" * 64),
+            ),
+            (
+                "manifest identity",
+                replace(android_spec, manifest_id="sha256:" + "f" * 64),
+            ),
+            (
+                "bootstrap identity",
+                replace(
+                    android_spec,
+                    bootstrap_image_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "bootstrap manifest",
+                replace(
+                    android_spec,
+                    bootstrap_manifest_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "certification Dockerfile",
+                replace(android_spec, dockerfile_sha256="f" * 64),
+            ),
+            (
+                "bootstrap recipe",
+                replace(android_spec, recipe_sha256="f" * 64),
+            ),
+            (
+                "package manifest",
+                replace(android_spec, dpkg_sha256="f" * 64),
+            ),
+            (
+                "source epoch",
+                replace(android_spec, source_date_epoch=1700000001),
+            ),
+        ):
+            android_failure(
+                lambda mutation=mutation: verify_archive(
+                    android_archive,
+                    android_sha,
+                    mutation,
+                    android_size,
+                ),
+                f"certified Android builder {label}",
+            )
+        android_failure(
+            lambda: validate_inspect(
+                {
+                    **android_payload,
+                    "Config": {
+                        **android_spec.runtime_config,
+                        "User": "0:0",
+                    },
+                },
+                android_spec.image_id,
+                android_spec,
+            ),
+            "certified Android builder runtime identity",
+        )
+        android_archive.chmod(0o600)
+        android_failure(
+            lambda: verify_archive(
+                android_archive,
+                android_sha,
+                android_spec,
+                android_size,
+            ),
+            "certified Android builder archive mode",
+        )
+        android_archive.chmod(0o400)
+        android_link = (
+            Path(temporary)
+            / "certified-android-builder-image-hardlink.tar.gz"
+        )
+        os.link(android_archive, android_link)
+        android_failure(
+            lambda: verify_archive(
+                android_archive,
+                android_sha,
+                android_spec,
+                android_size,
+            ),
+            "certified Android builder archive hardlink",
+        )
+        android_link.unlink()
+
+        android_export = (
+            Path(temporary)
+            / "certified-android-builder-direct.oci.tar"
+        )
+        create_certified_android_builder_fixture_oci_export(
+            android_archive,
+            android_export,
+            android_spec,
+        )
+        android_contract = replace(
+            android_spec,
+            image_id="sha256:" + "0" * 64,
+        )
+        normalized_android_archive = (
+            Path(temporary)
+            / "normalized-certified-android-builder.tar.gz"
+        )
+        (
+            normalized_spec,
+            normalized_sha,
+            normalized_size,
+            export_sha,
+            export_size,
+        ) = canonicalize_certified_android_builder_oci_export(
+            android_export,
+            normalized_android_archive,
+            android_contract,
+        )
+        if normalized_spec != android_spec \
+           or export_sha != hashlib.sha256(
+               android_export.read_bytes()
+           ).hexdigest() \
+           or export_size != android_export.stat().st_size \
+           or normalized_size != normalized_android_archive.stat().st_size \
+           or normalized_sha != hashlib.sha256(
+               normalized_android_archive.read_bytes()
+           ).hexdigest():
+            fail(
+                "certified Android builder direct OCI normalization "
+                "identity differs"
+            )
+        verify_archive(
+            normalized_android_archive,
+            normalized_sha,
+            normalized_spec,
+            normalized_size,
+        )
+        android_checks += 1
+
+        android_export.chmod(0o644)
+        android_failure(
+            lambda: canonicalize_certified_android_builder_oci_export(
+                android_export,
+                Path(temporary) / "wrong-mode-normalized.tar.gz",
+                android_contract,
+            ),
+            "certified Android builder direct OCI export mode",
+        )
+        android_export.chmod(0o600)
+        android_export_link = (
+            Path(temporary)
+            / "certified-android-builder-direct-hardlink.oci.tar"
+        )
+        os.link(android_export, android_export_link)
+        android_failure(
+            lambda: canonicalize_certified_android_builder_oci_export(
+                android_export,
+                Path(temporary) / "hardlinked-normalized.tar.gz",
+                android_contract,
+            ),
+            "certified Android builder direct OCI export hardlink",
+        )
+        android_export_link.unlink()
+
+        wrong_name_export = (
+            Path(temporary)
+            / "wrong-name-certified-android-builder.oci.tar"
+        )
+        create_certified_android_builder_fixture_oci_export(
+            android_archive,
+            wrong_name_export,
+            android_spec,
+            wrong_export_name=True,
+        )
+        android_failure(
+            lambda: canonicalize_certified_android_builder_oci_export(
+                wrong_name_export,
+                Path(temporary) / "wrong-name-normalized.tar.gz",
+                android_contract,
+            ),
+            "certified Android builder direct OCI exporter name",
+        )
+
+        referrer_export = (
+            Path(temporary)
+            / "extra-referrer-certified-android-builder.oci.tar"
+        )
+        create_certified_android_builder_fixture_oci_export(
+            android_archive,
+            referrer_export,
+            android_spec,
+            extra_root_descriptor=True,
+        )
+        android_failure(
+            lambda: canonicalize_certified_android_builder_oci_export(
+                referrer_export,
+                Path(temporary) / "extra-referrer-normalized.tar.gz",
+                android_contract,
+            ),
+            "certified Android builder direct OCI extra root referrer",
+        )
+
+        compatibility_export = (
+            Path(temporary)
+            / "compatibility-certified-android-builder.oci.tar"
+        )
+        create_certified_android_builder_fixture_oci_export(
+            android_archive,
+            compatibility_export,
+            android_spec,
+            include_compatibility_manifest=True,
+        )
+        android_failure(
+            lambda: canonicalize_certified_android_builder_oci_export(
+                compatibility_export,
+                Path(temporary) / "compatibility-normalized.tar.gz",
+                android_contract,
+            ),
+            "certified Android builder direct OCI unexpected compatibility "
+            "manifest",
+        )
+
+        occupied_normalized = (
+            Path(temporary) / "occupied-normalized.tar.gz"
+        )
+        occupied_normalized.write_bytes(b"existing")
+        android_failure(
+            lambda: canonicalize_certified_android_builder_oci_export(
+                android_export,
+                occupied_normalized,
+                android_contract,
+            ),
+            "certified Android builder normalized archive no-clobber",
+        )
+        if occupied_normalized.read_bytes() != b"existing":
+            fail(
+                "certified Android builder normalization changed an "
+                "occupied output"
+            )
+
+        replay_normalized = (
+            Path(temporary) / "replayed-normalized.tar.gz"
+        )
+        (
+            replay_spec,
+            replay_sha,
+            replay_size,
+            replay_export_sha,
+            replay_export_size,
+        ) = canonicalize_certified_android_builder_oci_export(
+            android_export,
+            replay_normalized,
+            android_contract,
+        )
+        if replay_spec != normalized_spec \
+           or replay_sha != normalized_sha \
+           or replay_size != normalized_size \
+           or replay_export_sha != export_sha \
+           or replay_export_size != export_size \
+           or replay_normalized.read_bytes() != (
+               normalized_android_archive.read_bytes()
+           ):
+            fail(
+                "certified Android builder direct OCI normalization is "
+                "not deterministic"
+            )
+        android_checks += 1
+
+        def reject_android_fixture(
+            name: str,
+            label: str,
+            **arguments: object,
+        ) -> None:
+            candidate = Path(temporary) / name
+            candidate_spec = create_certified_android_builder_fixture_archive(
+                candidate,
+                **arguments,
+            )
+            candidate_bytes = candidate.read_bytes()
+            android_failure(
+                lambda: verify_archive(
+                    candidate,
+                    hashlib.sha256(candidate_bytes).hexdigest(),
+                    candidate_spec,
+                    len(candidate_bytes),
+                ),
+                label,
+            )
+
+        reject_android_fixture(
+            "tagged-certified-android-builder.tar.gz",
+            "certified Android builder archive tag",
+            repo_tags=[
+                "rd-android-builder-certified:authenticated-v1"
+            ],
+        )
+        reject_android_fixture(
+            "vcs-certified-android-builder.tar.gz",
+            "certified Android builder VCS attribution",
+            add_vcs=True,
+        )
+        reject_android_fixture(
+            "source-drift-certified-android-builder.tar.gz",
+            "certified Android builder embedded Dockerfile",
+            embedded_dockerfile=b"FROM unreviewed\n",
+        )
+        reject_android_fixture(
+            "networked-certified-android-builder.tar.gz",
+            "certified Android builder networked execution",
+            execution_network=0,
+        )
+        reject_android_fixture(
+            "root-certified-android-builder.tar.gz",
+            "certified Android builder root execution",
+            execution_user="0:0",
+        )
+        reject_android_fixture(
+            "registry-certified-android-builder.tar.gz",
+            "certified Android builder registry context",
+            context_scheme="docker-image",
+        )
+        reject_android_fixture(
+            "material-drift-certified-android-builder.tar.gz",
+            "certified Android builder material identity",
+            wrong_material=True,
+        )
+        reject_android_fixture(
+            "layer-map-certified-android-builder.tar.gz",
+            "certified Android builder layer mapping",
+            wrong_layer_mapping=True,
+        )
+        reject_android_fixture(
+            "root-runtime-certified-android-builder.tar.gz",
+            "certified Android builder root runtime",
+            runtime_user="0:0",
+        )
+        reject_android_fixture(
+            "annotated-certified-android-builder.tar.gz",
+            "certified Android builder root descriptor annotation",
+            annotate_root=True,
+        )
+        reject_android_fixture(
+            "layer-epoch-certified-android-builder.tar.gz",
+            "certified Android builder layer rewrite epoch",
+            layer_epoch=1700000001,
+        )
+        reject_android_fixture(
+            "subject-certified-android-builder.tar.gz",
+            "certified Android builder subject",
+            wrong_subject=True,
+        )
+        reject_android_fixture(
+            "unattested-certified-android-builder.tar.gz",
+            "certified Android builder missing attestation",
+            omit_attestation=True,
+        )
+        reject_android_fixture(
+            "extra-operation-certified-android-builder.tar.gz",
+            "certified Android builder extra operation",
+            extra_operation=True,
+        )
+        verify_archive(
+            android_archive,
+            android_sha,
+            android_spec,
+            android_size,
+        )
+        android_checks += 1
+        if android_checks != 39:
+            fail(
+                "certified Android builder image self-test count differs: "
+                f"{android_checks}"
+            )
 
         verifier_archive = Path(temporary) / "devcheck-image.tar.gz"
         verifier_spec = create_verifier_fixture_archive(verifier_archive)
@@ -6399,11 +9366,16 @@ def self_test() -> None:
             fail(f"Rust audit image self-test count differs: {rust_checks}")
 
 
-def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
+def add_spec_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    expected_id_required: bool = True,
+) -> None:
     parser.add_argument("--role", required=True)
-    parser.add_argument("--expected-id", required=True)
+    parser.add_argument("--expected-id", required=expected_id_required)
     parser.add_argument("--base", required=True)
     parser.add_argument("--dockerfile-sha", required=True)
+    parser.add_argument("--recipe-sha")
     parser.add_argument("--dpkg-sha")
     parser.add_argument("--cargo-sha")
     parser.add_argument("--rustc-sha")
@@ -6412,6 +9384,8 @@ def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config-id")
     parser.add_argument("--manifest-id")
     parser.add_argument("--base-manifest-id")
+    parser.add_argument("--bootstrap-image-id")
+    parser.add_argument("--bootstrap-manifest-id")
     parser.add_argument("--source-date-epoch", type=int)
     parser.add_argument("--release-helper-sha")
     parser.add_argument("--provenance-helper-sha")
@@ -6474,6 +9448,24 @@ def argument_parser() -> argparse.ArgumentParser:
     verify.add_argument("--archive", type=Path, required=True)
     verify.add_argument("--archive-sha", required=True)
     verify.add_argument("--archive-size", type=int)
+    materialize = subparsers.add_parser("materialize-oci-layout")
+    add_spec_arguments(materialize)
+    materialize.add_argument("--archive", type=Path, required=True)
+    materialize.add_argument("--archive-sha", required=True)
+    materialize.add_argument("--archive-size", type=int, required=True)
+    materialize.add_argument("--output", type=Path, required=True)
+    layout_verify = subparsers.add_parser("verify-oci-layout")
+    layout_verify.add_argument("--layout", type=Path, required=True)
+    layout_verify.add_argument("--layout-sha", required=True)
+    normalize = subparsers.add_parser(
+        "maintenance-normalize-certified-oci"
+    )
+    add_spec_arguments(normalize, expected_id_required=False)
+    normalize.add_argument("--input", type=Path, required=True)
+    normalize.add_argument("--output", type=Path, required=True)
+    publish = subparsers.add_parser("maintenance-rename-noreplace")
+    publish.add_argument("--source", type=Path, required=True)
+    publish.add_argument("--destination", type=Path, required=True)
     capture_parser = subparsers.add_parser("maintenance-capture")
     add_spec_arguments(capture_parser)
     capture_parser.add_argument("--output", type=Path, required=True)
@@ -6488,6 +9480,52 @@ def main() -> int:
         print("offline image provenance self-test: PASS")
         return 0
     args = argument_parser().parse_args()
+    if args.command == "verify-oci-layout":
+        layout_sha = verify_oci_layout(args.layout, args.layout_sha)
+        print(f"layout_sha256={layout_sha}")
+        return 0
+    if args.command == "maintenance-rename-noreplace":
+        publish_existing_archive_noreplace(
+            args.source,
+            args.destination,
+        )
+        print(f"published={args.destination}")
+        return 0
+    if args.command == "maintenance-normalize-certified-oci":
+        if args.role != "android-builder" or args.expected_id is not None:
+            fail(
+                "certified OCI normalization derives the Android builder "
+                "image identity from the exact direct export"
+            )
+        contract = spec_from_args(
+            args,
+            expected_image_id="sha256:" + "0" * 64,
+        )
+        if not isinstance(contract, CertifiedAndroidBuilderSpec):
+            fail(
+                "certified OCI normalization requires the Android builder "
+                "contract"
+            )
+        (
+            spec,
+            archive_sha,
+            archive_size,
+            raw_sha,
+            raw_size,
+        ) = canonicalize_certified_android_builder_oci_export(
+            args.input,
+            args.output,
+            contract,
+        )
+        print(f"image_id={spec.image_id}")
+        print(f"manifest_id={spec.manifest_id}")
+        print(f"config_id={spec.config_id}")
+        print(f"raw_oci_sha256={raw_sha}")
+        print(f"raw_oci_bytes={raw_size}")
+        print(f"archive={args.output}")
+        print(f"sha256={archive_sha}")
+        print(f"bytes={archive_size}")
+        return 0
     spec = spec_from_args(args)
     if args.command == "verify-local":
         verify_local(args.image_ref or spec.image_id, spec)
@@ -6498,6 +9536,15 @@ def main() -> int:
     elif args.command == "verify-archive":
         verify_archive(args.archive, args.archive_sha, spec, args.archive_size)
         print(f"verified archive for {spec.role} {spec.image_id}")
+    elif args.command == "materialize-oci-layout":
+        layout_sha = materialize_oci_layout(
+            args.archive,
+            args.archive_sha,
+            args.archive_size,
+            spec,
+            args.output,
+        )
+        print(f"layout_sha256={layout_sha}")
     elif args.command == "maintenance-capture":
         archive_sha, size = capture(args.output, spec)
         print(f"archive={args.output}")

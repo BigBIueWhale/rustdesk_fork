@@ -1248,6 +1248,91 @@ load_builder_images() {
         "$SHA256_WIN_HELPER_DPKG_MANIFEST" "$SHA256_WIN_HELPER_IMAGE_ARCHIVE"
 }
 
+devcheck_image_spec_args() {
+    printf '%s\0' \
+        --role devcheck \
+        --expected-id "$DEV_CHECK_IMAGE_ID" \
+        --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+        --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+        --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+        --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+        --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+        --source-commit "$DEV_CHECK_SOURCE_COMMIT" \
+        --source-repository "$DEV_CHECK_SOURCE_REPOSITORY" \
+        --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+        --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+}
+
+require_devcheck_image_pins() {
+    local names=(
+        DEV_CHECK_IMAGE_ID DEV_CHECK_BASE_IMAGE_ID
+        DEV_CHECK_IMAGE_CONFIG_ID DEV_CHECK_IMAGE_MANIFEST_ID
+        DEV_CHECK_SOURCE_COMMIT DEV_CHECK_SOURCE_REPOSITORY
+        SHA256_DEV_CHECK_DOCKERFILE SHA256_DEV_CHECK_DPKG_MANIFEST
+        SHA256_DEV_CHECK_CARGO SHA256_DEV_CHECK_RUSTC
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+    local historical_sha
+    online_source_git merge-base --is-ancestor "$DEV_CHECK_SOURCE_COMMIT" HEAD \
+        || die "devcheck provenance source revision is not an ancestor of the current source"
+    historical_sha="$(
+        online_source_git show "$DEV_CHECK_SOURCE_COMMIT:scripts/Dockerfile.devcheck" \
+            | /usr/bin/sha256sum | /usr/bin/awk '{print $1}'
+    )" || die "cannot read the devcheck provenance Dockerfile from its source revision"
+    [ "$historical_sha" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+        || die "devcheck provenance revision does not contain the reviewed Dockerfile"
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.devcheck" | /usr/bin/awk '{print $1}')" \
+       = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+        || die "current devcheck Dockerfile differs from the archived image recipe"
+}
+
+verify_or_load_devcheck_image() {
+    require_devcheck_image_pins
+    require_image_pin SHA256_DEV_CHECK_IMAGE_ARCHIVE
+    require_image_pin SIZE_DEV_CHECK_IMAGE_ARCHIVE
+    case "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" in
+        0|*[!0-9]*|'') die "SIZE_DEV_CHECK_IMAGE_ARCHIVE is not one positive decimal integer" ;;
+    esac
+    local args=()
+    mapfile -d '' args < <(devcheck_image_spec_args)
+    online_image_provenance verify-load \
+        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz" \
+        --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+        "${args[@]}"
+}
+
+maintenance_capture_devcheck_image() {
+    require_devcheck_image_pins
+    local directory="$ONLINE_DIR/verifier-images"
+    if [ -e "$directory" ] || [ -L "$directory" ]; then
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            || die "devcheck image archive root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "devcheck image archive root is not current-user-private mode 0700"
+    else
+        /usr/bin/install -d -m 0700 "$directory"
+    fi
+    local lock_fd
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the devcheck image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another devcheck image archive transaction owns the archive root"
+    local args=() result
+    mapfile -d '' args < <(devcheck_image_spec_args)
+    result="$(
+        online_image_provenance maintenance-capture \
+            --output "$directory/devcheck.docker.tar.gz" \
+            "${args[@]}"
+    )" || die "devcheck image archive capture failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the devcheck image archive lock"
+    exec {lock_fd}<&-
+    printf '%s\n' "$result"
+}
+
 # Explicit maintenance candidate builds. Captured images remain the release authority.
 build_deb_builder_image() {
     require_image_pin SHA256_DEB_BUILDER_DOCKERFILE
@@ -3594,6 +3679,16 @@ main() {
             maintenance_capture_builder_images
             return 0
             ;;
+        --maintenance-capture-devcheck-image)
+            [ "$#" -eq 1 ] || die "--maintenance-capture-devcheck-image takes no arguments"
+            maintenance_capture_devcheck_image
+            return 0
+            ;;
+        --devcheck-image)
+            [ "$#" -eq 1 ] || die "--devcheck-image takes no arguments"
+            verify_or_load_devcheck_image
+            return 0
+            ;;
         --maintenance-print-online-closure)
             [ "$#" -eq 1 ] || die "--maintenance-print-online-closure takes no arguments"
             python3 "$LIB_DIR/online-input-provenance.py" maintenance-print-root --tree "$ONLINE_DIR"
@@ -3608,6 +3703,7 @@ main() {
             [ "$#" -eq 1 ] || die "--verify-offline-inputs takes no arguments"
             verify_online_pinned_archives
             load_builder_images
+            verify_or_load_devcheck_image
             require_online_complete
             return 0
             ;;
@@ -3617,10 +3713,11 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-capture-devcheck-image|--devcheck-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images
+    verify_or_load_devcheck_image
     stage_fixed_archives
     vendor_cargo
     verify_online_glob_cardinality

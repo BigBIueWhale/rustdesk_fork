@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import gzip
 import hashlib
 import io
@@ -15,9 +17,9 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import BinaryIO, Callable
+from typing import BinaryIO, Callable, Union
 
 
 CONTRACT = "rustdesk-build-image-v1"
@@ -26,6 +28,14 @@ HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 PACKAGE = re.compile(rb"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
 DOCKER = "/usr/bin/docker"
+RENAME_NOREPLACE = 1
+DEV_CHECK_ENV = [
+    "PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "RUSTUP_HOME=/usr/local/rustup",
+    "CARGO_HOME=/usr/local/cargo",
+    "RUST_VERSION=1.75.0",
+    "SODIUM_USE_PKG_CONFIG=1",
+]
 
 
 class ProvenanceError(RuntimeError):
@@ -64,6 +74,32 @@ class Spec:
         ).encode("ascii")
 
 
+@dataclass(frozen=True)
+class VerifierSpec:
+    role: str
+    image_id: str
+    base: str
+    dockerfile_sha256: str
+    dpkg_sha256: str
+    cargo_sha256: str
+    rustc_sha256: str
+    source_commit: str
+    source_repository: str
+    config_id: str
+    manifest_id: str
+
+    @property
+    def archive_tags(self) -> None:
+        return None
+
+    @property
+    def root_annotations(self) -> dict[str, str]:
+        return {"containerd.io/distribution.source.docker.io": "library/rd-devcheck"}
+
+
+ImageSpec = Union[Spec, VerifierSpec]
+
+
 def fail(message: str) -> None:
     raise ProvenanceError(message)
 
@@ -74,16 +110,40 @@ def require_sha(value: str, label: str) -> str:
     return value
 
 
-def spec_from_args(args: argparse.Namespace) -> Spec:
+def require_image_id(value: str, label: str) -> str:
+    if not IMAGE_ID.fullmatch(value):
+        fail(f"{label} must be sha256: followed by 64 lowercase hexadecimal characters")
+    return value
+
+
+def spec_from_args(args: argparse.Namespace) -> ImageSpec:
+    if args.role == "devcheck":
+        if not re.fullmatch(r"rust:1[.]75-slim@sha256:[0-9a-f]{64}", args.base):
+            fail("devcheck base image identity is malformed or unsupported")
+        if not re.fullmatch(r"[0-9a-f]{40}", args.source_commit or ""):
+            fail("devcheck source commit must be exactly 40 lowercase hexadecimal characters")
+        if not re.fullmatch(r"https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+[.]git", args.source_repository or ""):
+            fail("devcheck source repository is malformed or unsupported")
+        return VerifierSpec(
+            role=args.role,
+            image_id=require_image_id(args.expected_id, "expected image ID"),
+            base=args.base,
+            dockerfile_sha256=require_sha(args.dockerfile_sha, "Dockerfile SHA-256"),
+            dpkg_sha256=require_sha(args.dpkg_sha, "dpkg manifest SHA-256"),
+            cargo_sha256=require_sha(args.cargo_sha or "", "Cargo SHA-256"),
+            rustc_sha256=require_sha(args.rustc_sha or "", "rustc SHA-256"),
+            source_commit=args.source_commit,
+            source_repository=args.source_repository,
+            config_id=require_image_id(args.config_id or "", "devcheck config ID"),
+            manifest_id=require_image_id(args.manifest_id or "", "devcheck manifest ID"),
+        )
     if not re.fullmatch(r"(?:deb|android)-builder|win-helper", args.role):
         fail(f"unsupported builder image role: {args.role}")
-    if not IMAGE_ID.fullmatch(args.expected_id):
-        fail("expected image ID must be sha256: followed by 64 lowercase hexadecimal characters")
     if not re.fullmatch(r"ubuntu:(?:18[.]04|24[.]04)@sha256:[0-9a-f]{64}", args.base):
         fail("base image identity is malformed or unsupported")
     return Spec(
         role=args.role,
-        image_id=args.expected_id,
+        image_id=require_image_id(args.expected_id, "expected image ID"),
         base=args.base,
         dockerfile_sha256=require_sha(args.dockerfile_sha, "Dockerfile SHA-256"),
         dpkg_sha256=require_sha(args.dpkg_sha, "dpkg manifest SHA-256"),
@@ -116,12 +176,24 @@ def inspect_image(image_ref: str) -> dict[str, object]:
     return payload[0]
 
 
-def validate_inspect(payload: dict[str, object], image_ref: str, spec: Spec) -> None:
+def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec) -> None:
     if payload.get("Id") != spec.image_id:
         fail(f"image reference {image_ref} resolves to {payload.get('Id')!r}, expected {spec.image_id}")
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
+    if isinstance(spec, VerifierSpec):
+        if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
+            fail("devcheck image platform must be exactly linux/amd64")
+        if config.get("User") not in (None, ""):
+            fail("devcheck image has an unexpected default user")
+        if config.get("Env") != DEV_CHECK_ENV:
+            fail("devcheck image environment differs from the reviewed contract")
+        if config.get("Cmd") != ["bash"]:
+            fail("devcheck image command differs from the reviewed contract")
+        if config.get("Labels") not in (None, {}):
+            fail("devcheck image has unexpected labels")
+        return
     labels = config.get("Labels")
     if not isinstance(labels, dict):
         fail("image provenance labels are absent")
@@ -155,10 +227,67 @@ def validate_package_manifest(manifest: bytes) -> str:
     return hashlib.sha256(manifest).hexdigest()
 
 
-def verify_local(image_ref: str, spec: Spec) -> None:
+def verify_local(image_ref: str, spec: ImageSpec) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
+    if isinstance(spec, VerifierSpec):
+        command = (
+            "set -euo pipefail; "
+            "[ \"$(id -u)\" -ne 0 ] && [ \"$(id -g)\" -ne 0 ]; "
+            "printf 'rustc=%s\\n' \"$(rustc --version)\"; "
+            "printf 'cargo=%s\\n' \"$(cargo --version)\"; "
+            "cargo_sha=\"$(sha256sum /usr/local/cargo/bin/cargo)\"; cargo_sha=\"${cargo_sha%% *}\"; "
+            "rustc_sha=\"$(sha256sum /usr/local/rustup/toolchains/1.75.0-x86_64-unknown-linux-gnu/bin/rustc)\"; "
+            "rustc_sha=\"${rustc_sha%% *}\"; "
+            "dpkg_sha=\"$(dpkg-query -W | LC_ALL=C sort | sha256sum)\"; dpkg_sha=\"${dpkg_sha%% *}\"; "
+            "printf 'cargo-sha=%s\\n' \"$cargo_sha\"; "
+            "printf 'rustc-sha=%s\\n' \"$rustc_sha\"; "
+            "printf 'dpkg-sha=%s\\n' \"$dpkg_sha\"; "
+            "printf 'sodium=%s\\n' \"${SODIUM_USE_PKG_CONFIG-}\""
+        )
+        result = run(
+            [
+                DOCKER,
+                "run",
+                "--rm",
+                "--pull=never",
+                "--network=none",
+                "--read-only",
+                "--user",
+                f"{os.getuid()}:{os.getgid()}",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=32",
+                "--memory=256m",
+                "--memory-swap=256m",
+                "--cpus=1",
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
+                "--env",
+                "RUSTUP_TOOLCHAIN=1.75.0",
+                spec.image_id,
+                "/bin/bash",
+                "-c",
+                command,
+            ]
+        )
+        if result.returncode != 0:
+            fail(
+                "cannot verify devcheck runtime contents: "
+                + result.stderr.decode(errors="replace").strip()
+            )
+        expected = (
+            "rustc=rustc 1.75.0 (82e1608df 2023-12-21)\n"
+            "cargo=cargo 1.75.0 (1d8b05cdd 2023-11-20)\n"
+            f"cargo-sha={spec.cargo_sha256}\n"
+            f"rustc-sha={spec.rustc_sha256}\n"
+            f"dpkg-sha={spec.dpkg_sha256}\n"
+            "sodium=1\n"
+        ).encode("ascii")
+        if result.stdout != expected or result.stderr:
+            fail("devcheck runtime fingerprint differs from the reviewed pins")
+        return
     command = (
         "set -eu; "
         "p=/usr/local/share/rustdesk-build-provenance; "
@@ -253,7 +382,30 @@ def parse_json(data: bytes | None, label: str) -> object:
         fail(f"Docker archive {label} is malformed: {exc}")
 
 
-def validate_config(config_json: object, layers: list[str], spec: Spec) -> None:
+def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> None:
+    if isinstance(spec, VerifierSpec):
+        if not isinstance(config_json, dict) \
+           or config_json.get("architecture") != "amd64" \
+           or config_json.get("os") != "linux":
+            fail("Docker archive devcheck config platform is malformed")
+        config = config_json.get("config")
+        if not isinstance(config, dict) \
+           or config.get("Env") != DEV_CHECK_ENV \
+           or config.get("Cmd") != ["bash"] \
+           or config.get("User") not in (None, "") \
+           or config.get("Labels") not in (None, {}):
+            fail("Docker archive devcheck runtime config differs from the reviewed contract")
+        rootfs = config_json.get("rootfs")
+        if not isinstance(rootfs, dict) or rootfs.get("type") != "layers":
+            fail("Docker archive devcheck rootfs metadata is malformed")
+        diff_ids = rootfs.get("diff_ids")
+        if not isinstance(diff_ids, list) or len(diff_ids) != len(layers) or len(diff_ids) != 4 \
+           or any(not isinstance(value, str) or not IMAGE_ID.fullmatch(value) for value in diff_ids):
+            fail("Docker archive devcheck layer identities differ from the four-layer contract")
+        history = config_json.get("history")
+        if not isinstance(history, list) or len(history) != 7:
+            fail("Docker archive devcheck history differs from the reviewed build topology")
+        return
     labels = config_json.get("config", {}).get("Labels") if isinstance(config_json, dict) else None
     if not isinstance(labels, dict):
         fail("Docker archive image config has no provenance labels")
@@ -293,6 +445,76 @@ def descriptor_blob(
     return name, value or b""
 
 
+def validate_verifier_attestation(
+    statement: object,
+    image_manifest_id: object,
+    spec: VerifierSpec,
+) -> None:
+    expected_digest = str(image_manifest_id).removeprefix("sha256:")
+    if not isinstance(statement, dict) or statement.get("subject") != [
+        {
+            "name": "pkg:docker/rd-devcheck@latest?platform=linux%2Famd64",
+            "digest": {"sha256": expected_digest},
+        }
+    ]:
+        fail("Docker archive devcheck provenance subject differs from the image manifest")
+    predicate = statement.get("predicate")
+    if not isinstance(predicate, dict):
+        fail("Docker archive devcheck provenance predicate is absent")
+    definition = predicate.get("buildDefinition")
+    if not isinstance(definition, dict) \
+       or definition.get("buildType") != (
+           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
+           "slsa-definitions.md"
+       ) \
+       or definition.get("resolvedDependencies") != [
+           {
+               "uri": "pkg:docker/rust@1.75-slim?platform=linux%2Famd64",
+               "digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]},
+           }
+       ]:
+        fail("Docker archive devcheck provenance does not bind the exact Rust base")
+    external = definition.get("externalParameters")
+    request = external.get("request") if isinstance(external, dict) else None
+    root = request.get("root") if isinstance(request, dict) else None
+    root_request = root.get("request") if isinstance(root, dict) else None
+    root_args = root_request.get("args") if isinstance(root_request, dict) else None
+    if not isinstance(external, dict) \
+       or external.get("configSource") != {"path": "Dockerfile.devcheck"} \
+       or not isinstance(request, dict) \
+       or request.get("frontend") != "dockerfile.v0" \
+       or request.get("locals") != [{"name": "context"}, {"name": "dockerfile"}] \
+       or not isinstance(root, dict) \
+       or root.get("configSource") != {"path": "Dockerfile.devcheck"} \
+       or not isinstance(root_args, dict) \
+       or root_args.get("vcs:localdir:context") != "scripts" \
+       or root_args.get("vcs:localdir:dockerfile") != "scripts" \
+       or root_args.get("vcs:revision") != spec.source_commit \
+       or root_args.get("vcs:source") != spec.source_repository:
+        fail("Docker archive devcheck provenance does not bind the reviewed source revision")
+    internal = definition.get("internalParameters")
+    if not isinstance(internal, dict) \
+       or internal.get("builderPlatform") != "linux/amd64" \
+       or internal.get("dockerfileVersion") != "1.25.0":
+        fail("Docker archive devcheck provenance builder contract differs")
+    run_details = predicate.get("runDetails")
+    metadata = run_details.get("metadata") if isinstance(run_details, dict) else None
+    buildkit_metadata = metadata.get("buildkit_metadata") if isinstance(metadata, dict) else None
+    completeness = metadata.get("buildkit_completeness") if isinstance(metadata, dict) else None
+    if not isinstance(buildkit_metadata, dict) \
+       or buildkit_metadata.get("vcs") != {
+           "localdir:context": "scripts",
+           "localdir:dockerfile": "scripts",
+           "revision": spec.source_commit,
+           "source": spec.source_repository,
+       } \
+       or completeness != {
+           "request": True,
+           "resolvedDependencies": False,
+       }:
+        fail("Docker archive devcheck provenance metadata differs from the reviewed statement")
+
+
 def validate_modern_archive(
     item: dict[str, object],
     files: set[str],
@@ -300,7 +522,7 @@ def validate_modern_archive(
     metadata: dict[str, bytes],
     member_sizes: dict[str, int],
     member_hashes: dict[str, str],
-    spec: Spec,
+    spec: ImageSpec,
 ) -> None:
     if "repositories" in files:
         fail("content-addressed Docker archive must not contain legacy repositories metadata")
@@ -308,8 +530,6 @@ def validate_modern_archive(
     if layout != {"imageLayoutVersion": "1.0.0"}:
         fail("Docker archive OCI layout version is unsupported")
     root_index = parse_json(metadata.get("index.json"), "index.json")
-    repository_name = spec.capture_tag.rsplit(":", 1)[0]
-    expected_name = f"docker.io/{spec.capture_tag}" if "/" in repository_name else f"docker.io/library/{spec.capture_tag}"
     expected_digest = spec.image_id
     if not isinstance(root_index, dict) or root_index.get("schemaVersion") != 2 \
        or root_index.get("mediaType") != "application/vnd.oci.image.index.v1+json":
@@ -318,13 +538,24 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
-    if not isinstance(root_descriptor, dict) or root_descriptor.get("mediaType") != "application/vnd.oci.image.index.v1+json" \
+    if isinstance(spec, VerifierSpec):
+        expected_annotations = spec.root_annotations
+    else:
+        repository_name = spec.capture_tag.rsplit(":", 1)[0]
+        expected_name = (
+            f"docker.io/{spec.capture_tag}"
+            if "/" in repository_name
+            else f"docker.io/library/{spec.capture_tag}"
+        )
+        expected_annotations = {
+            "io.containerd.image.name": expected_name,
+            "org.opencontainers.image.ref.name": spec.capture_tag.rsplit(":", 1)[1],
+        }
+    if not isinstance(root_descriptor, dict) \
+       or root_descriptor.get("mediaType") != "application/vnd.oci.image.index.v1+json" \
        or root_descriptor.get("digest") != expected_digest \
-       or root_descriptor.get("annotations") != {
-           "io.containerd.image.name": expected_name,
-           "org.opencontainers.image.ref.name": spec.capture_tag.rsplit(":", 1)[1],
-       }:
-        fail("Docker archive root OCI descriptor does not bind the fixed capture tag and image ID")
+       or root_descriptor.get("annotations") != expected_annotations:
+        fail("Docker archive root OCI descriptor does not bind the expected image identity")
     expected_index_name, image_index_bytes = descriptor_blob(
         root_descriptor, metadata, member_sizes, member_hashes, "image index"
     )
@@ -344,6 +575,8 @@ def validate_modern_archive(
     image_descriptor = image_descriptors[0]
     if image_descriptor.get("mediaType") != "application/vnd.oci.image.manifest.v1+json":
         fail("Docker archive image manifest media type is unsupported")
+    if isinstance(spec, VerifierSpec) and image_descriptor.get("digest") != spec.manifest_id:
+        fail("Docker archive devcheck image manifest differs from its pin")
     image_manifest_name, image_manifest_bytes = descriptor_blob(
         image_descriptor, metadata, member_sizes, member_hashes, "image manifest"
     )
@@ -358,6 +591,8 @@ def validate_modern_archive(
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json":
         fail("Docker archive image config media type is unsupported")
+    if isinstance(spec, VerifierSpec) and config_descriptor.get("digest") != spec.config_id:
+        fail("Docker archive devcheck image config differs from its pin")
     layer_descriptors = image_manifest.get("layers")
     if not isinstance(layer_descriptors, list) or not layer_descriptors:
         fail("Docker archive image manifest has no layers")
@@ -439,6 +674,10 @@ def validate_modern_archive(
            or not isinstance(subjects, list) \
            or not any(isinstance(subject, dict) and subject.get("digest") == {"sha256": str(actual_digest).removeprefix("sha256:")} for subject in subjects):
             fail("Docker archive provenance attestation does not name the image manifest")
+        if isinstance(spec, VerifierSpec):
+            validate_verifier_attestation(statement, actual_digest, spec)
+    if isinstance(spec, VerifierSpec) and len(attestations) != 1:
+        fail("Docker archive devcheck image must contain exactly one provenance attestation")
     blob_files = {name for name in files if name.startswith("blobs/sha256/")}
     if blob_files != expected_blobs:
         fail("Docker archive contains an absent, duplicate, or unreferenced OCI blob")
@@ -454,8 +693,10 @@ def validate_legacy_archive(
     directories: set[str],
     metadata: dict[str, bytes],
     member_hashes: dict[str, str],
-    spec: Spec,
+    spec: ImageSpec,
 ) -> None:
+    if isinstance(spec, VerifierSpec):
+        fail("devcheck recovery requires the content-addressed OCI archive layout")
     expected_config = spec.image_id.removeprefix("sha256:") + ".json"
     layers = item.get("Layers")
     if item.get("Config") != expected_config or expected_config not in files:
@@ -484,7 +725,7 @@ def validate_legacy_archive(
     validate_config(parse_json(metadata.get(expected_config), "image config"), layers, spec)
 
 
-def validate_archive_stream(stream: BinaryIO, spec: Spec) -> None:
+def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
     seen: set[str] = set()
     folded: set[str] = set()
     files: set[str] = set()
@@ -535,8 +776,9 @@ def validate_archive_stream(stream: BinaryIO, spec: Spec) -> None:
     if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
         fail("Docker archive must contain exactly one compatibility image manifest")
     item = manifest[0]
-    if item.get("RepoTags") != [spec.capture_tag]:
-        fail(f"Docker archive tags must be exactly [{spec.capture_tag!r}]")
+    expected_tags = spec.archive_tags if isinstance(spec, VerifierSpec) else [spec.capture_tag]
+    if item.get("RepoTags") != expected_tags:
+        fail(f"Docker archive tags differ from the exact contract: {expected_tags!r}")
     modern_markers = {"index.json", "oci-layout"} & files
     if modern_markers:
         if modern_markers != {"index.json", "oci-layout"}:
@@ -562,11 +804,29 @@ def stable_file(before: os.stat_result, after: os.stat_result, path: Path) -> No
         fail(f"image archive mutated while being verified: {path}")
 
 
-def verify_archive_fd(fd: int, archive_path: Path, expected_archive_sha: str, spec: Spec) -> os.stat_result:
+def verify_archive_fd(
+    fd: int,
+    archive_path: Path,
+    expected_archive_sha: str,
+    spec: ImageSpec,
+    expected_archive_size: int | None = None,
+) -> os.stat_result:
     expected_archive_sha = require_sha(expected_archive_sha, "image archive SHA-256")
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         fail("image archive must be one non-hardlinked regular file")
+    if isinstance(spec, VerifierSpec):
+        if before.st_uid != os.getuid() or before.st_gid != os.getgid():
+            fail("devcheck image archive must be owned by the invoking identity")
+        if stat.S_IMODE(before.st_mode) != 0o400:
+            fail("devcheck image archive must be mode 0400")
+        if expected_archive_size is None or expected_archive_size <= 0:
+            fail("devcheck image archive requires a positive exact size")
+        if before.st_size != expected_archive_size:
+            fail(
+                "devcheck image archive size mismatch: "
+                f"expected {expected_archive_size}, got {before.st_size}"
+            )
     os.lseek(fd, 0, os.SEEK_SET)
     with os.fdopen(os.dup(fd), "rb") as stream:
         first_sha = hash_open_file(stream)
@@ -595,18 +855,34 @@ def open_archive(archive_path: Path) -> int:
         fail(f"cannot open image archive {archive_path}: {exc}")
 
 
-def verify_archive(archive_path: Path, expected_archive_sha: str, spec: Spec) -> None:
+def verify_archive(
+    archive_path: Path,
+    expected_archive_sha: str,
+    spec: ImageSpec,
+    expected_archive_size: int | None = None,
+) -> None:
     fd = open_archive(archive_path)
     try:
-        verify_archive_fd(fd, archive_path, expected_archive_sha, spec)
+        verify_archive_fd(fd, archive_path, expected_archive_sha, spec, expected_archive_size)
     finally:
         os.close(fd)
 
 
-def load_archive(archive_path: Path, expected_archive_sha: str, spec: Spec) -> None:
+def load_archive(
+    archive_path: Path,
+    expected_archive_sha: str,
+    spec: ImageSpec,
+    expected_archive_size: int | None = None,
+) -> None:
     fd = open_archive(archive_path)
     try:
-        before = verify_archive_fd(fd, archive_path, expected_archive_sha, spec)
+        before = verify_archive_fd(
+            fd,
+            archive_path,
+            expected_archive_sha,
+            spec,
+            expected_archive_size,
+        )
         os.lseek(fd, 0, os.SEEK_SET)
         hashing = HashingReader(os.fdopen(os.dup(fd), "rb"))
         try:
@@ -650,19 +926,78 @@ def load_archive(archive_path: Path, expected_archive_sha: str, spec: Spec) -> N
     verify_local(spec.image_id, spec)
 
 
-def capture(output: Path, spec: Spec) -> tuple[str, int]:
+def rename_noreplace(source: Path, destination: Path) -> None:
+    if source.parent != destination.parent:
+        fail("image archive publication must remain within one private directory")
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        parent_fd = os.open(source.parent, flags)
+    except OSError as exc:
+        fail(f"cannot open image archive publication directory: {exc}")
+    try:
+        function = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+        if function is None:
+            fail("libc does not expose renameat2(RENAME_NOREPLACE)")
+        function.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        function.restype = ctypes.c_int
+        if function(
+            parent_fd,
+            os.fsencode(source.name),
+            parent_fd,
+            os.fsencode(destination.name),
+            RENAME_NOREPLACE,
+        ) != 0:
+            error = ctypes.get_errno()
+            if error == errno.EEXIST:
+                fail(f"refusing to replace existing image archive: {destination}")
+            fail(f"cannot publish image archive without replacement: {os.strerror(error)}")
+        os.fsync(parent_fd)
+    finally:
+        os.close(parent_fd)
+
+
+def validate_private_output_parent(parent: Path) -> None:
+    try:
+        metadata = os.lstat(parent)
+    except OSError as exc:
+        fail(f"cannot inspect image archive output directory {parent}: {exc}")
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        fail("image archive output parent must be one real directory")
+    if metadata.st_uid != os.getuid() or metadata.st_gid != os.getgid() \
+       or stat.S_IMODE(metadata.st_mode) != 0o700:
+        fail("image archive output parent must be current-user-owned mode 0700")
+
+
+def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
     verify_local(spec.image_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
-    if result.returncode != 0:
-        fail(f"cannot create fixed capture tag: {result.stderr.decode(errors='replace').strip()}")
-    validate_inspect(inspect_image(spec.capture_tag), spec.capture_tag, spec)
+    if isinstance(spec, VerifierSpec):
+        validate_private_output_parent(output.parent)
+        save_ref = spec.image_id
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result = run([DOCKER, "tag", spec.image_id, spec.capture_tag])
+        if result.returncode != 0:
+            fail(f"cannot create fixed capture tag: {result.stderr.decode(errors='replace').strip()}")
+        validate_inspect(inspect_image(spec.capture_tag), spec.capture_tag, spec)
+        save_ref = spec.capture_tag
     temporary = output.with_name(output.name + ".part")
+    if temporary.exists() or temporary.is_symlink():
+        fail(f"stale image archive capture temporary exists: {temporary}")
     digest = hashlib.sha256()
     count = 0
-    process = subprocess.Popen([DOCKER, "save", spec.capture_tag], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([DOCKER, "save", save_ref], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         if process.stdout is None:
             fail("docker save stdout is unavailable")
@@ -688,17 +1023,29 @@ def capture(output: Path, spec: Spec) -> tuple[str, int]:
         stderr = process.stderr.read() if process.stderr is not None else b""
         if process.wait() != 0:
             fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
-        os.replace(temporary, output)
+        if isinstance(spec, VerifierSpec):
+            temporary.chmod(0o400)
+            archive_sha = digest.hexdigest()
+            verify_archive(temporary, archive_sha, spec, count)
+            rename_noreplace(temporary, output)
+        else:
+            os.replace(temporary, output)
     except BaseException:
-        process.kill()
-        process.wait()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
         try:
             temporary.unlink()
         except FileNotFoundError:
             pass
         raise
     archive_sha = digest.hexdigest()
-    verify_archive(output, archive_sha, spec)
+    verify_archive(
+        output,
+        archive_sha,
+        spec,
+        count if isinstance(spec, VerifierSpec) else None,
+    )
     return archive_sha, count
 
 
@@ -832,6 +1179,229 @@ def create_modern_fixture_archive(path: Path, spec: Spec) -> str:
     return fixture_spec.image_id
 
 
+def create_verifier_fixture_archive(
+    path: Path, repo_tags: object = None
+) -> VerifierSpec:
+    def encoded(value: object) -> bytes:
+        return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+
+    def blob_descriptor(value: bytes, media_type: str, **extra: object) -> dict[str, object]:
+        return {
+            "mediaType": media_type,
+            "digest": "sha256:" + hashlib.sha256(value).hexdigest(),
+            "size": len(value),
+            **extra,
+        }
+
+    layers = [gzip.compress(f"fixture layer {position}".encode("ascii"), mtime=0) for position in range(4)]
+    layer_descriptors = [
+        blob_descriptor(layer, "application/vnd.oci.image.layer.v1.tar+gzip")
+        for layer in layers
+    ]
+    config = encoded(
+        {
+            "architecture": "amd64",
+            "config": {"Env": DEV_CHECK_ENV, "Cmd": ["bash"]},
+            "history": [{"created_by": f"fixture {position}"} for position in range(7)],
+            "os": "linux",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": ["sha256:" + str(position) * 64 for position in range(1, 5)],
+            },
+        }
+    )
+    config_descriptor = blob_descriptor(config, "application/vnd.oci.image.config.v1+json")
+    image_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": config_descriptor,
+            "layers": layer_descriptors,
+        }
+    )
+    image_descriptor = blob_descriptor(
+        image_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        platform={"architecture": "amd64", "os": "linux"},
+    )
+    source_commit = "5" * 40
+    source_repository = "https://github.com/example/rustdesk_fork.git"
+    base_digest = "6" * 64
+    statement = encoded(
+        {
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [
+                {
+                    "name": "pkg:docker/rd-devcheck@latest?platform=linux%2Famd64",
+                    "digest": {
+                        "sha256": image_descriptor["digest"].removeprefix("sha256:")
+                    },
+                }
+            ],
+            "predicate": {
+                "buildDefinition": {
+                    "buildType": (
+                        "https://github.com/moby/buildkit/blob/master/docs/attestations/"
+                        "slsa-definitions.md"
+                    ),
+                    "resolvedDependencies": [
+                        {
+                            "uri": "pkg:docker/rust@1.75-slim?platform=linux%2Famd64",
+                            "digest": {"sha256": base_digest},
+                        }
+                    ],
+                    "externalParameters": {
+                        "configSource": {"path": "Dockerfile.devcheck"},
+                        "request": {
+                            "frontend": "dockerfile.v0",
+                            "locals": [{"name": "context"}, {"name": "dockerfile"}],
+                            "root": {
+                                "configSource": {"path": "Dockerfile.devcheck"},
+                                "request": {
+                                    "args": {
+                                        "vcs:localdir:context": "scripts",
+                                        "vcs:localdir:dockerfile": "scripts",
+                                        "vcs:revision": source_commit,
+                                        "vcs:source": source_repository,
+                                    }
+                                },
+                            },
+                        },
+                    },
+                    "internalParameters": {
+                        "builderPlatform": "linux/amd64",
+                        "dockerfileVersion": "1.25.0",
+                    },
+                },
+                "runDetails": {
+                    "metadata": {
+                        "buildkit_metadata": {
+                            "vcs": {
+                                "localdir:context": "scripts",
+                                "localdir:dockerfile": "scripts",
+                                "revision": source_commit,
+                                "source": source_repository,
+                            }
+                        },
+                        "buildkit_completeness": {
+                            "request": True,
+                            "resolvedDependencies": False,
+                        },
+                    }
+                },
+            },
+        }
+    )
+    statement_descriptor = blob_descriptor(
+        statement,
+        "application/vnd.in-toto+json",
+        annotations={"in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"},
+    )
+    attestation_config = encoded(
+        {
+            "architecture": "unknown",
+            "config": {},
+            "os": "unknown",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + hashlib.sha256(statement).hexdigest(),
+                ],
+            },
+        }
+    )
+    attestation_config_descriptor = blob_descriptor(
+        attestation_config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    attestation_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": attestation_config_descriptor,
+            "layers": [statement_descriptor],
+        }
+    )
+    attestation_descriptor = blob_descriptor(
+        attestation_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        annotations={
+            "vnd.docker.reference.digest": image_descriptor["digest"],
+            "vnd.docker.reference.type": "attestation-manifest",
+        },
+        platform={"architecture": "unknown", "os": "unknown"},
+    )
+    image_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [image_descriptor, attestation_descriptor],
+        }
+    )
+    image_id = "sha256:" + hashlib.sha256(image_index).hexdigest()
+    spec = VerifierSpec(
+        role="devcheck",
+        image_id=image_id,
+        base="rust:1.75-slim@sha256:" + base_digest,
+        dockerfile_sha256="7" * 64,
+        dpkg_sha256="8" * 64,
+        cargo_sha256="9" * 64,
+        rustc_sha256="a" * 64,
+        source_commit=source_commit,
+        source_repository=source_repository,
+        config_id=str(config_descriptor["digest"]),
+        manifest_id=str(image_descriptor["digest"]),
+    )
+    root_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {
+                    "mediaType": "application/vnd.oci.image.index.v1+json",
+                    "digest": image_id,
+                    "size": len(image_index),
+                    "annotations": spec.root_annotations,
+                }
+            ],
+        }
+    )
+    config_name = "blobs/sha256/" + spec.config_id.removeprefix("sha256:")
+    layer_names = [
+        "blobs/sha256/" + str(descriptor["digest"]).removeprefix("sha256:")
+        for descriptor in layer_descriptors
+    ]
+    compatibility_manifest = encoded(
+        [{"Config": config_name, "RepoTags": repo_tags, "Layers": layer_names}]
+    )
+    members = {
+        "index.json": root_index,
+        "manifest.json": compatibility_manifest,
+        "oci-layout": encoded({"imageLayoutVersion": "1.0.0"}),
+        "blobs/sha256/" + image_id.removeprefix("sha256:"): image_index,
+        "blobs/sha256/" + spec.manifest_id.removeprefix("sha256:"): image_manifest,
+        "blobs/sha256/"
+        + str(attestation_descriptor["digest"]).removeprefix("sha256:"): attestation_manifest,
+        "blobs/sha256/"
+        + str(attestation_config_descriptor["digest"]).removeprefix("sha256:"): attestation_config,
+        "blobs/sha256/"
+        + str(statement_descriptor["digest"]).removeprefix("sha256:"): statement,
+        config_name: config,
+    }
+    members.update(zip(layer_names, layers))
+    with path.open("wb") as raw:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name, content in sorted(members.items()):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    info.mtime = 0
+                    archive.addfile(info, io.BytesIO(content))
+    path.chmod(0o400)
+    return spec
+
+
 def expect_failure(operation: Callable[[], object], label: str) -> None:
     try:
         operation()
@@ -903,6 +1473,178 @@ def self_test() -> None:
         modern_sha = hashlib.sha256(modern_archive.read_bytes()).hexdigest()
         verify_archive(modern_archive, modern_sha, modern_spec)
 
+        verifier_archive = Path(temporary) / "devcheck-image.tar.gz"
+        verifier_spec = create_verifier_fixture_archive(verifier_archive)
+        verifier_bytes = verifier_archive.read_bytes()
+        verifier_sha = hashlib.sha256(verifier_bytes).hexdigest()
+        verifier_size = len(verifier_bytes)
+        verify_archive(
+            verifier_archive,
+            verifier_sha,
+            verifier_spec,
+            verifier_size,
+        )
+        verifier_payload = {
+            "Id": verifier_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": {
+                "User": None,
+                "Env": DEV_CHECK_ENV,
+                "Cmd": ["bash"],
+                "Labels": None,
+            },
+        }
+        validate_inspect(verifier_payload, verifier_spec.image_id, verifier_spec)
+        verifier_checks = 2
+
+        def verifier_failure(operation: Callable[[], object], label: str) -> None:
+            nonlocal verifier_checks
+            expect_failure(operation, label)
+            verifier_checks += 1
+
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                "f" * 64,
+                verifier_spec,
+                verifier_size,
+            ),
+            "devcheck archive hash",
+        )
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                verifier_spec,
+                verifier_size + 1,
+            ),
+            "devcheck archive size",
+        )
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                replace(verifier_spec, image_id="sha256:" + "f" * 64),
+                verifier_size,
+            ),
+            "devcheck image identity",
+        )
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                replace(verifier_spec, config_id="sha256:" + "f" * 64),
+                verifier_size,
+            ),
+            "devcheck config identity",
+        )
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                replace(verifier_spec, manifest_id="sha256:" + "f" * 64),
+                verifier_size,
+            ),
+            "devcheck manifest identity",
+        )
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                replace(
+                    verifier_spec,
+                    base="rust:1.75-slim@sha256:" + "f" * 64,
+                ),
+                verifier_size,
+            ),
+            "devcheck attested base",
+        )
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                replace(verifier_spec, source_commit="f" * 40),
+                verifier_size,
+            ),
+            "devcheck attested source commit",
+        )
+        verifier_failure(
+            lambda: validate_inspect(
+                {
+                    **verifier_payload,
+                    "Config": {
+                        **verifier_payload["Config"],
+                        "Env": DEV_CHECK_ENV[:-1],
+                    },
+                },
+                verifier_spec.image_id,
+                verifier_spec,
+            ),
+            "devcheck runtime environment",
+        )
+        verifier_archive.chmod(0o600)
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                verifier_spec,
+                verifier_size,
+            ),
+            "devcheck archive mode",
+        )
+        verifier_archive.chmod(0o400)
+        verifier_link = Path(temporary) / "devcheck-image-hardlink.tar.gz"
+        os.link(verifier_archive, verifier_link)
+        verifier_failure(
+            lambda: verify_archive(
+                verifier_archive,
+                verifier_sha,
+                verifier_spec,
+                verifier_size,
+            ),
+            "devcheck archive hardlink",
+        )
+        verifier_link.unlink()
+        tagged_archive = Path(temporary) / "tagged-devcheck-image.tar.gz"
+        tagged_spec = create_verifier_fixture_archive(
+            tagged_archive, ["rd-devcheck:latest"]
+        )
+        tagged_bytes = tagged_archive.read_bytes()
+        verifier_failure(
+            lambda: verify_archive(
+                tagged_archive,
+                hashlib.sha256(tagged_bytes).hexdigest(),
+                tagged_spec,
+                len(tagged_bytes),
+            ),
+            "devcheck archive tag",
+        )
+        rename_source = Path(temporary) / "rename-source"
+        rename_destination = Path(temporary) / "rename-destination"
+        rename_source.write_bytes(b"new")
+        rename_noreplace(rename_source, rename_destination)
+        if rename_source.exists() or rename_destination.read_bytes() != b"new":
+            fail("no-replace publication did not atomically rename the archive")
+        verifier_checks += 1
+        collision_source = Path(temporary) / "collision-source"
+        collision_destination = Path(temporary) / "collision-destination"
+        collision_source.write_bytes(b"new")
+        collision_destination.write_bytes(b"existing")
+        verifier_failure(
+            lambda: rename_noreplace(collision_source, collision_destination),
+            "devcheck archive no-clobber publication",
+        )
+        if (
+            collision_source.read_bytes() != b"new"
+            or collision_destination.read_bytes() != b"existing"
+        ):
+            fail("no-replace collision changed archive bytes")
+        verify_archive(verifier_archive, verifier_sha, verifier_spec, verifier_size)
+        verifier_checks += 1
+        if verifier_checks != 16:
+            fail(f"devcheck image self-test count differs: {verifier_checks}")
+
 
 def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--role", required=True)
@@ -910,6 +1652,12 @@ def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base", required=True)
     parser.add_argument("--dockerfile-sha", required=True)
     parser.add_argument("--dpkg-sha", required=True)
+    parser.add_argument("--cargo-sha")
+    parser.add_argument("--rustc-sha")
+    parser.add_argument("--source-commit")
+    parser.add_argument("--source-repository")
+    parser.add_argument("--config-id")
+    parser.add_argument("--manifest-id")
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -922,10 +1670,12 @@ def argument_parser() -> argparse.ArgumentParser:
     add_spec_arguments(load)
     load.add_argument("--archive", type=Path, required=True)
     load.add_argument("--archive-sha", required=True)
+    load.add_argument("--archive-size", type=int)
     verify = subparsers.add_parser("verify-archive")
     add_spec_arguments(verify)
     verify.add_argument("--archive", type=Path, required=True)
     verify.add_argument("--archive-sha", required=True)
+    verify.add_argument("--archive-size", type=int)
     capture_parser = subparsers.add_parser("maintenance-capture")
     add_spec_arguments(capture_parser)
     capture_parser.add_argument("--output", type=Path, required=True)
@@ -945,10 +1695,10 @@ def main() -> int:
         verify_local(args.image_ref or spec.image_id, spec)
         print(f"verified {spec.role} {spec.image_id}")
     elif args.command == "verify-load":
-        load_archive(args.archive, args.archive_sha, spec)
+        load_archive(args.archive, args.archive_sha, spec, args.archive_size)
         print(f"loaded and verified {spec.role} {spec.image_id}")
     elif args.command == "verify-archive":
-        verify_archive(args.archive, args.archive_sha, spec)
+        verify_archive(args.archive, args.archive_sha, spec, args.archive_size)
         print(f"verified archive for {spec.role} {spec.image_id}")
     elif args.command == "maintenance-capture":
         archive_sha, size = capture(args.output, spec)

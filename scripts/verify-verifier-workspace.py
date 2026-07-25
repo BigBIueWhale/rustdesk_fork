@@ -21051,6 +21051,8 @@ def validate_main_verifier_authority_contract(sources):
     helper = sources["root_ipc_artifact_helper"]
     authority = sources["main_verifier_authority_validator"]
     provenance = sources["online_input_provenance"]
+    image_provenance = sources["offline_image_provenance"]
+    online_fetch = sources["online_fetch"]
     pins = sources["pins"]
     ipc_fs = sources["ipc_fs_source"]
 
@@ -21121,9 +21123,49 @@ def validate_main_verifier_authority_contract(sources):
         require_text(provenance, text, label)
     require_text(
         pins,
-        'DEV_CHECK_IMAGE_ID="sha256:2f0406ee5b7dcd5683d900fb8b45668abd69934e6b4bdbf4737165fc01e72398"',
+        'DEV_CHECK_IMAGE_ID="sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c"',
         "main verifier immutable image pin",
     )
+    for text, label in (
+        ('DEV_CHECK_BASE_IMAGE_ID="sha256:70c2a016184099262fd7cee46f3d35fec3568c45c62f87e37f7f665f766b1f74"', "main verifier base image pin"),
+        ('DEV_CHECK_IMAGE_CONFIG_ID="sha256:0d2606df948de4484771f2b2204cca50d9b2af9b1945f9c76f4d2f70945b6da3"', "main verifier config pin"),
+        ('DEV_CHECK_IMAGE_MANIFEST_ID="sha256:93864e168e6c5f4e6b3afc9be219f7bb688701a460e13855dd793834b2a8c3a5"', "main verifier manifest pin"),
+        ('DEV_CHECK_SOURCE_COMMIT="02320c1a05dd7646e2c3f8b67a891cbbbe681b92"', "main verifier source pin"),
+        ('SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc8228ff2536bcd5ffbac351f0736e377d5ba46750922af352"', "main verifier archive pin"),
+        ('SIZE_DEV_CHECK_IMAGE_ARCHIVE="822395974"', "main verifier archive size"),
+    ):
+        require_text(pins, text, label)
+    for text, label in (
+        ("class VerifierSpec:", "main verifier archive specification"),
+        ("def validate_verifier_attestation(", "main verifier attestation validation"),
+        (
+            'root_args.get("vcs:revision") != spec.source_commit',
+            "main verifier attested source revision",
+        ),
+        (
+            '"digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]}',
+            "main verifier attested base identity",
+        ),
+        ("expected_tags = spec.archive_tags", "main verifier untagged archive"),
+        ("save_ref = spec.image_id", "main verifier exact-ID capture"),
+        ("RENAME_NOREPLACE = 1", "main verifier archive no-clobber primitive"),
+        ("devcheck image archive must be mode 0400", "main verifier archive mode"),
+        ("if verifier_checks != 16:", "main verifier archive behavioral inventory"),
+    ):
+        require_text(image_provenance, text, label)
+    for text, label in (
+        ("verify_or_load_devcheck_image()", "main verifier archive recovery"),
+        ("maintenance_capture_devcheck_image()", "main verifier archive capture"),
+        (
+            'online_image_provenance verify-load \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"',
+            "main verifier archive recovery load",
+        ),
+        ('--archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"', "main verifier exact archive path"),
+        ('--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"', "main verifier archive size wiring"),
+        ("--maintenance-capture-devcheck-image", "main verifier capture entry point"),
+        ("--devcheck-image", "main verifier recovery entry point"),
+    ):
+        require_text(online_fetch, text, label)
     require_exact_count(
         ipc_fs,
         "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0",
@@ -21150,9 +21192,18 @@ def validate_main_verifier_authority_contract(sources):
         ('Mutation("helper", \'target.get("name") == "librustdesk"\'', "main verifier library-target mutation"),
         ('Mutation("helper", \'target.get("kind") == ["cdylib", "staticlib", "rlib"]\'', "main verifier library-kind mutation"),
         ('Mutation("helper", "os.fchmod(output_fd, 0o555)"', "main verifier artifact-mode mutation"),
+        ('Mutation("image_provenance", "expected_tags = spec.archive_tags"', "main verifier archive-tag mutation"),
+        ('Mutation("image_provenance", "RENAME_NOREPLACE = 1"', "main verifier archive publication mutation"),
+        ('Mutation("online_fetch", \'--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"\'', "main verifier archive-size mutation"),
+        ('Mutation("pins", \'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc\'', "main verifier archive-pin mutation"),
         ('Mutation("requirements", \'<span class="id">R-S11bg</span>\'', "main verifier requirement mutation"),
     ):
         require_text(authority_mutations, text, label)
+    require_text(
+        shell,
+        "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
+        "main verifier archive helper shared-gate wiring",
+    )
     require_text(
         shell,
         "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test",
@@ -21165,6 +21216,7 @@ def validate_main_verifier_authority_contract(sources):
         "immutable, non-root build authority",
         "--pull=never",
         "--network=none",
+        "Recoverable archive distribution",
         "CHOWN",
         "FOWNER",
         "MUST NOT",
@@ -21173,7 +21225,7 @@ def validate_main_verifier_authority_contract(sources):
     require_text(sources["requirements"], "<tr><td>184</td>", "main verifier Appendix C row")
     require_text(
         sources["hardening"],
-        "R-S11bg/R-S11e-73 — main verifier container and root-test authority",
+        "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority",
         "main verifier authority hardening ledger",
     )
 
@@ -33758,9 +33810,69 @@ def run_source_mutations(sources):
         ),
         (
             "pins",
-            'DEV_CHECK_IMAGE_ID="sha256:2f0406ee5b7dcd5683d900fb8b45668abd69934e6b4bdbf4737165fc01e72398"',
+            'DEV_CHECK_IMAGE_ID="sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c"',
             'DEV_CHECK_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
             "main verifier immutable image pin",
+        ),
+        (
+            "pins",
+            'DEV_CHECK_BASE_IMAGE_ID="sha256:70c2a016184099262fd7cee46f3d35fec3568c45c62f87e37f7f665f766b1f74"',
+            'DEV_CHECK_BASE_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
+            "main verifier base image pin",
+        ),
+        (
+            "pins",
+            'DEV_CHECK_SOURCE_COMMIT="02320c1a05dd7646e2c3f8b67a891cbbbe681b92"',
+            'DEV_CHECK_SOURCE_COMMIT="0000000000000000000000000000000000000000"',
+            "main verifier source pin",
+        ),
+        (
+            "pins",
+            'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc8228ff2536bcd5ffbac351f0736e377d5ba46750922af352"',
+            'SHA256_DEV_CHECK_IMAGE_ARCHIVE="0000000000000000000000000000000000000000000000000000000000000000"',
+            "main verifier archive pin",
+        ),
+        (
+            "offline_image_provenance",
+            "expected_tags = spec.archive_tags",
+            'expected_tags = ["rd-devcheck:latest"]',
+            "main verifier untagged archive",
+        ),
+        (
+            "offline_image_provenance",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "main verifier archive no-clobber primitive",
+        ),
+        (
+            "offline_image_provenance",
+            'root_args.get("vcs:revision") != spec.source_commit',
+            'root_args.get("vcs:revision") is not None',
+            "main verifier attested source revision",
+        ),
+        (
+            "offline_image_provenance",
+            '"digest": {"sha256": spec.base.rsplit("sha256:", 1)[1]}',
+            '"digest": {"sha256": "0" * 64}',
+            "main verifier attested base identity",
+        ),
+        (
+            "online_fetch",
+            '--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"',
+            "--archive-size 0",
+            "main verifier archive size wiring",
+        ),
+        (
+            "online_fetch",
+            'online_image_provenance verify-load \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"',
+            'online_image_provenance verify-archive \\\n        --archive "$ONLINE_DIR/verifier-images/devcheck.docker.tar.gz"',
+            "main verifier archive recovery load",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
+            "true # image archive self-test removed",
+            "main verifier archive helper shared-gate wiring",
         ),
         (
             "ipc_fs_source",
@@ -33788,7 +33900,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11bg/R-S11e-73 — main verifier container and root-test authority",
+            "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority",
             "R-S11bg/R-S11e-73 — main verifier authority deferred",
             "main verifier authority hardening ledger",
         ),
@@ -38452,6 +38564,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_input_provenance": (
                 repo / "scripts/online-input-provenance.py"
+            ).read_text(encoding="utf-8"),
+            "offline_image_provenance": (
+                repo / "scripts/offline-image-provenance.py"
             ).read_text(encoding="utf-8"),
             "mobile_build_authority_verifier": (
                 repo / "scripts/verify-mobile-build-authority.py"

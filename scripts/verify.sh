@@ -181,6 +181,9 @@ r_s11bg=
 if ! /usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py --self-test; then
   r_s11bg="$r_s11bg root-artifact-helper-self-test-failed"
 fi
+if ! /usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test; then
+  r_s11bg="$r_s11bg image-archive-helper-self-test-failed"
+fi
 if ! /usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test; then
   r_s11bg="$r_s11bg authority-mutation-gate-failed"
 fi

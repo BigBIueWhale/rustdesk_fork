@@ -4975,9 +4975,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Docker-socket delegation, or privilege expansion was used to manufacture a result. Independently
   archived/provenance-verified distribution of this image, exact clean R-B2/R-B10 artifacts, installed-platform
   evidence, and R-V3 external review remain open; neither this item nor the overall release is claimed complete.
-- **R-S11bg/R-S11e-73 — main verifier container and root-test authority — SOURCE IMPLEMENTED/GATED;
-  CONFINED FULL-GATE EXECUTION VERIFIED 2026-07-20; INDEPENDENT IMAGE ACQUISITION AND BROADER RELEASE EVIDENCE
-  OPEN.** Platform:
+- **R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority — SOURCE
+  IMPLEMENTED/GATED; CONFINED FULL-GATE EXECUTION VERIFIED 2026-07-20; RECOVERABLE ARCHIVE DISTRIBUTION
+  VERIFIED 2026-07-25; FRESH INDEPENDENT REBUILD AND BROADER RELEASE EVIDENCE OPEN.** Platform:
   the Linux Docker build host used by the primary `scripts/verify.sh` source/behavior/compile gate. Endpoint/action:
   117 Cargo test/check/clean invocations and the two IPC filesystem tests that construct a foreign-owned service
   directory. Boundary: build scripts, test binaries, mutable build outputs, image/tag/cache state, and Docker
@@ -4995,11 +4995,29 @@ unreachable and a source/test/AST gate prevents reintroduction.
 
   Source closure: the verifier now rejects host effective UID or primary GID zero and never builds, pulls, tags,
   or resolves an image or creates/uses a named volume. `DEV_CHECK_IMAGE_ID` pins the already-present local content
-  identity `sha256:2f0406ee5b7dcd5683d900fb8b45668abd69934e6b4bdbf4737165fc01e72398`. A mount-free
+  identity `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`. A mount-free
   nonroot preflight verifies Rust/Cargo 1.75.0, both binary hashes, the sorted installed-package manifest hash, and
-  the required sodium environment. `scripts/Dockerfile.devcheck` has a review-recipe hash, but independently
-  archived acquisition and reproducible distribution of this opaque image remain open; loss of the content ID is
-  a hard failure, never authority to build or fetch it.
+  the required sodium environment. The prior content pin became unavailable after a disclosed historical
+  mutable-tag build; the replacement identity is not inferred from that tag. Its exact runtime fingerprints equal
+  every existing reviewed pin, and its saved OCI graph contains one BuildKit SLSA statement naming source commit
+  `02320c1a05dd7646e2c3f8b67a891cbbbe681b92`, the unchanged `scripts/Dockerfile.devcheck` bytes at SHA-256
+  `a2c6a501a8799e4c396cdc29cc9d37d30fcc8dfad9ac3dea4816f0d8a956345f`, the fork source repository, and
+  Docker Hub's exact still-published official `rust:1.75-slim` Linux/amd64 index
+  `sha256:70c2a016184099262fd7cee46f3d35fec3568c45c62f87e37f7f665f766b1f74`. The statement is useful
+  content-bound BuildKit provenance, not a publisher signature or an independently reproduced build.
+
+  The recoverable archive distribution is now separate from the verdict.
+  `online/verifier-images/devcheck.docker.tar.gz` is
+  pinned at exactly 822,395,974 bytes and SHA-256
+  `234f17f9355c7bfc8228ff2536bcd5ffbac351f0736e377d5ba46750922af352`, current-user-owned mode 0400 with one
+  link beneath a current-user-private mode-0700 directory. The shared image-provenance parser hashes a stable
+  descriptor, rejects unsafe/duplicate/case-colliding/special archive members, and requires exactly one
+  Linux/amd64 OCI image; null `RepoTags`; exact image, config, and manifest identities; four runtime layers; and
+  exactly one source/base-bound provenance statement. The explicit `online-fetch.sh --devcheck-image` path
+  verifies all of that before streaming the same descriptor to `docker load`, then repeats exact image-ID and
+  mount-free nonroot/networkless runtime checks. The verdict never invokes this loader. Explicit maintenance
+  capture accepts only the already-present content ID, performs no build, pull, network operation, or tag creation,
+  writes only inside the private archive directory, and publishes through `renameat2(RENAME_NOREPLACE)`.
 
   Before Cargo, one current-user mode-0700 identity-bound workspace receives a normalized NUL-safe archive of
   exactly tracked plus nonignored current source and a race-detecting read-only snapshot of the complete canonical
@@ -5034,7 +5052,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   marker on failure. The root-artifact helper has ten behavioral checks, including rejection of the package name
   or a generic `lib` kind in place of the exact `librustdesk` `cdylib`/`staticlib`/`rlib` target; the
   online-provenance helper tests the
-  subtree snapshot; and the focused semantic validator deliberately mutates the image/build/tag/volume absence,
+  subtree snapshot; the image-provenance helper exercises 16 archive checks, including a real tagged-archive
+  rejection and both successful and colliding `renameat2(RENAME_NOREPLACE)` publication; and the focused semantic
+  validator deliberately mutates the image/build/tag/volume absence,
   private inputs, ordinary/root Docker inventories, exact capabilities, wrapper, artifact selection, required ACL
   coverage, postconditions, R-S11bg, Appendix C #184, and this ledger.
 
@@ -5049,12 +5069,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   generic sudo/env launcher, staged xrandr command, descriptor allowlist, macOS installer-versus-daemon path, Cargo
   source mount, and other already-implemented authority shapes. Those assertions were corrected to bind the current
   stronger implementations; no failed transaction was counted as evidence. Bash syntax, exact focused assertions,
-  the complete workspace/source-mutation suite, and all 63 focused main-verifier authority mutations then passed.
+  the complete workspace/source-mutation suite, and all 74 focused main-verifier authority mutations then passed.
   No image was built, pulled, fetched, or tagged during implementation or verification.
 
-  This closes only the source-defined main-verifier authority. It does not close independently archived devcheck
-  image acquisition, the intentionally release-blocking RustSec refresh, exact clean cold R-B2 artifacts, installed
-  platform behavior, or R-V3 independent review, and neither this item nor the overall release is claimed complete.
+  Archive evidence on 2026-07-25: two independent `docker image save <exact-ID> | gzip -n` diagnostic streams
+  produced the same SHA-256 before implementation. The maintained capture then created the exact pinned archive
+  without changing the image's sole pre-existing `rd-devcheck:latest` reference. A full real-archive
+  verify/load/fingerprint transaction passed, and the image reference inventory remained unchanged afterward.
+  The helper's synthetic archive suite rejects hash, size, image/config/manifest, attested-base, attested-source,
+  runtime-environment, file-mode, hardlink, tag, and no-clobber publication mutations. The refreshed canonical
+  `online/` closure is
+  `3529dd46232bb2f7a5dddb0d43d6f20e255da6a7a3cc31813b2a3594386e1f3e`: 145,716 files, 42,857 directories,
+  41 symlinks, 26,501,882,789 content bytes, 16 hardlink groups, and 9 case collisions. This closes recoverable
+  archive distribution of the reviewed image, not a fresh independent rebuild, signed or fully dual-sourced
+  provenance, the intentionally
+  release-blocking RustSec refresh, exact clean cold R-B2 artifacts, installed-platform behavior, or R-V3
+  independent review; neither this item nor the overall release is claimed complete.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
   ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: every viewer, including Android, iOS, Linux, macOS, Windows,
   and the authored web bridge. Boundary: direct transport establishment ↔ proactive login option construction ↔
@@ -11692,7 +11722,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-26c507bd7c250121bbfc0734c56de6a00b4e763d31602a375067c6374a5c8ee3  requirements.html
+2e7713ff112f719c153ea2c1835bf55edfb3c81e815d43ea08cbc3d16ce405af  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cz, R-SV4a,

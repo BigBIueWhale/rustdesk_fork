@@ -304,7 +304,18 @@ def validate(sources: Dict[str, str]) -> None:
         ('DOCKER = "/usr/bin/docker"', "fixed provenance Docker client"),
         ("local image provenance verification refuses root execution",
          "provenance root refusal"),
-        ('"--pull=never"', "provenance no-pull launch"),
+        (
+            '"--rm",\n'
+            '            "--pull=never",\n'
+            '            "--network=none",\n'
+            '            "--read-only",\n'
+            '            "--user",\n'
+            '            f"{os.getuid()}:{os.getgid()}",\n'
+            '            "--cap-drop=ALL",\n'
+            '            "--security-opt=no-new-privileges",\n'
+            '            "--pids-limit=64",',
+            "provenance no-pull launch",
+        ),
         ('"--network=none"', "provenance networkless launch"),
         ('"--read-only"', "provenance read-only root"),
         ('f"{os.getuid()}:{os.getgid()}"', "provenance numeric nonroot identity"),
@@ -473,10 +484,50 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("extractor", "if found != 1:", "if found < 1:", "single kernel member"),
     Mutation("provenance", 'DOCKER = "/usr/bin/docker"', 'DOCKER = "docker"',
              "provenance fixed Docker client"),
-    Mutation("provenance", '"--pull=never"', '"--pull=always"',
-             "provenance no-pull launch"),
-    Mutation("provenance", '"--cap-drop=ALL"', '"--cap-add=ALL"',
-             "provenance capability drop"),
+    Mutation(
+        "provenance",
+        '"--rm",\n'
+        '            "--pull=never",\n'
+        '            "--network=none",\n'
+        '            "--read-only",\n'
+        '            "--user",\n'
+        '            f"{os.getuid()}:{os.getgid()}",\n'
+        '            "--cap-drop=ALL",\n'
+        '            "--security-opt=no-new-privileges",\n'
+        '            "--pids-limit=64",',
+        '"--rm",\n'
+        '            "--pull=always",\n'
+        '            "--network=none",\n'
+        '            "--read-only",\n'
+        '            "--user",\n'
+        '            f"{os.getuid()}:{os.getgid()}",\n'
+        '            "--cap-drop=ALL",\n'
+        '            "--security-opt=no-new-privileges",\n'
+        '            "--pids-limit=64",',
+        "provenance no-pull launch",
+    ),
+    Mutation(
+        "provenance",
+        '"--rm",\n'
+        '            "--pull=never",\n'
+        '            "--network=none",\n'
+        '            "--read-only",\n'
+        '            "--user",\n'
+        '            f"{os.getuid()}:{os.getgid()}",\n'
+        '            "--cap-drop=ALL",\n'
+        '            "--security-opt=no-new-privileges",\n'
+        '            "--pids-limit=64",',
+        '"--rm",\n'
+        '            "--pull=never",\n'
+        '            "--network=none",\n'
+        '            "--read-only",\n'
+        '            "--user",\n'
+        '            f"{os.getuid()}:{os.getgid()}",\n'
+        '            "--cap-add=ALL",\n'
+        '            "--security-opt=no-new-privileges",\n'
+        '            "--pids-limit=64",',
+        "provenance capability drop",
+    ),
     Mutation("verify", "python3 scripts/verify-windows-helper-authority.py --repo . --self-test",
              "true # Windows helper authority verifier removed", "shared verifier wiring"),
     Mutation("requirements", '<span class="id">R-S11ch</span>',

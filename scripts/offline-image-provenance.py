@@ -26,8 +26,8 @@ from typing import BinaryIO, Callable, Union
 
 CONTRACT = "rustdesk-build-image-v1"
 LABEL_PREFIX = "org.rustdesk.build-input."
-ANDROID_BUILDER_CERTIFICATION_CONTRACT = "rustdesk-builder-certification-v1"
-ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX = (
+BUILDER_CERTIFICATION_CONTRACT = "rustdesk-builder-certification-v1"
+BUILDER_CERTIFICATION_LABEL_PREFIX = (
     "org.rustdesk.builder-certification."
 )
 ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME = (
@@ -36,7 +36,17 @@ ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME = (
 ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME = (
     "docker.io/library/" + ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME
 )
+DEB_BUILDER_CERTIFICATION_EXPORT_NAME = (
+    "rd-deb-builder-certified:authenticated-v1"
+)
+DEB_BUILDER_CERTIFICATION_EXPORT_OCI_NAME = (
+    "docker.io/library/" + DEB_BUILDER_CERTIFICATION_EXPORT_NAME
+)
 ANDROID_BUILDER_ENV = [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "DEBIAN_FRONTEND=noninteractive",
+]
+DEB_BUILDER_ENV = [
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "DEBIAN_FRONTEND=noninteractive",
 ]
@@ -179,7 +189,7 @@ class Spec:
 
 
 @dataclass(frozen=True)
-class CertifiedAndroidBuilderSpec:
+class CertifiedBuilderSpec:
     role: str
     image_id: str
     base: str
@@ -193,6 +203,117 @@ class CertifiedAndroidBuilderSpec:
     manifest_id: str
 
     @property
+    def display_name(self) -> str:
+        return (
+            "Android builder"
+            if self.role == "android-builder"
+            else "Debian builder"
+        )
+
+    @property
+    def bootstrap_context_name(self) -> str:
+        return (
+            "android-builder-bootstrap"
+            if self.role == "android-builder"
+            else "deb-builder-bootstrap"
+        )
+
+    @property
+    def argument_prefix(self) -> str:
+        return (
+            "ANDROID_BUILDER"
+            if self.role == "android-builder"
+            else "DEB_BUILDER"
+        )
+
+    @property
+    def export_name(self) -> str:
+        return (
+            ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME
+            if self.role == "android-builder"
+            else DEB_BUILDER_CERTIFICATION_EXPORT_NAME
+        )
+
+    @property
+    def export_oci_name(self) -> str:
+        return (
+            ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+            if self.role == "android-builder"
+            else DEB_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+        )
+
+    @property
+    def runtime_environment(self) -> list[str]:
+        return (
+            ANDROID_BUILDER_ENV
+            if self.role == "android-builder"
+            else DEB_BUILDER_ENV
+        )
+
+    @property
+    def source_location_lines(self) -> range:
+        return range(20, 44)
+
+    @property
+    def history_count(self) -> int:
+        return 20 if self.role == "android-builder" else 21
+
+    @property
+    def bootstrap_layer_count(self) -> int:
+        return 3
+
+    @property
+    def cat_path(self) -> str:
+        return (
+            "/usr/bin/cat"
+            if self.role == "android-builder"
+            else "/bin/cat"
+        )
+
+    @property
+    def runtime_tools(self) -> tuple[str, ...]:
+        if self.role == "android-builder":
+            return (
+                "clang",
+                "cmake",
+                "git",
+                "java",
+                "javac",
+                "nasm",
+                "ninja",
+                "pkg-config",
+                "python3",
+                "unzip",
+                "wget",
+                "xz",
+                "yasm",
+                "zip",
+            )
+        return (
+            "ar",
+            "bash",
+            "cc",
+            "clang",
+            "cmake",
+            "curl",
+            "dpkg-deb",
+            "g++",
+            "gcc",
+            "git",
+            "make",
+            "nasm",
+            "ninja",
+            "pkg-config",
+            "python3",
+            "tar",
+            "unzip",
+            "wget",
+            "xz",
+            "yasm",
+            "zip",
+        )
+
+    @property
     def archive_tags(self) -> None:
         return None
 
@@ -202,46 +323,51 @@ class CertifiedAndroidBuilderSpec:
 
     @property
     def labels(self) -> dict[str, str]:
-        return {
-            "org.opencontainers.image.version": "24.04",
+        labels = {
+            "org.opencontainers.image.version": (
+                "24.04" if self.role == "android-builder" else "18.04"
+            ),
             LABEL_PREFIX + "contract": CONTRACT,
             LABEL_PREFIX + "role": self.role,
             LABEL_PREFIX + "base": self.base,
             LABEL_PREFIX + "dockerfile-sha256": self.recipe_sha256,
             LABEL_PREFIX + "dpkg-manifest-sha256": self.dpkg_sha256,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX + "contract"
-            ): ANDROID_BUILDER_CERTIFICATION_CONTRACT,
+                BUILDER_CERTIFICATION_LABEL_PREFIX + "contract"
+            ): BUILDER_CERTIFICATION_CONTRACT,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX + "role"
+                BUILDER_CERTIFICATION_LABEL_PREFIX + "role"
             ): self.role,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                BUILDER_CERTIFICATION_LABEL_PREFIX
                 + "bootstrap-image-id"
             ): self.bootstrap_image_id,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                BUILDER_CERTIFICATION_LABEL_PREFIX
                 + "bootstrap-manifest-id"
             ): self.bootstrap_manifest_id,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                BUILDER_CERTIFICATION_LABEL_PREFIX
                 + "recipe-sha256"
             ): self.recipe_sha256,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                BUILDER_CERTIFICATION_LABEL_PREFIX
                 + "dpkg-manifest-sha256"
             ): self.dpkg_sha256,
             (
-                ANDROID_BUILDER_CERTIFICATION_LABEL_PREFIX
+                BUILDER_CERTIFICATION_LABEL_PREFIX
                 + "source-date-epoch"
             ): str(self.source_date_epoch),
         }
+        if self.role == "deb-builder":
+            labels["org.opencontainers.image.ref.name"] = "ubuntu"
+        return labels
 
     @property
     def runtime_config(self) -> dict[str, object]:
         return {
             "User": "1000:1000",
-            "Env": ANDROID_BUILDER_ENV,
+            "Env": self.runtime_environment,
             "Cmd": ["/bin/bash"],
             "Labels": self.labels,
         }
@@ -538,7 +664,7 @@ class RustAuditSpec:
 
 ImageSpec = Union[
     Spec,
-    CertifiedAndroidBuilderSpec,
+    CertifiedBuilderSpec,
     VerifierSpec,
     AppleCheckSpec,
     DartAuditSpec,
@@ -563,7 +689,7 @@ def requires_private_archive(spec: ImageSpec) -> bool:
     return isinstance(
         spec,
         (
-            CertifiedAndroidBuilderSpec,
+            CertifiedBuilderSpec,
             VerifierSpec,
             AppleCheckSpec,
             DartAuditSpec,
@@ -866,15 +992,18 @@ def spec_from_args(
             config_id=require_image_id(args.config_id or "", "devcheck config ID"),
             manifest_id=require_image_id(args.manifest_id or "", "devcheck manifest ID"),
         )
-    if args.role == "android-builder":
+    if args.role in {"android-builder", "deb-builder"}:
+        expected_release = (
+            "24[.]04" if args.role == "android-builder" else "18[.]04"
+        )
         if not re.fullmatch(
-            r"ubuntu:24[.]04@sha256:[0-9a-f]{64}",
+            rf"ubuntu:{expected_release}@sha256:[0-9a-f]{{64}}",
             args.base,
         ):
-            fail("certified Android builder base identity is malformed")
+            fail(f"certified {args.role} base identity is malformed")
         if args.source_date_epoch is None or args.source_date_epoch < 0:
-            fail("certified Android builder source-date epoch is malformed")
-        return CertifiedAndroidBuilderSpec(
+            fail(f"certified {args.role} source-date epoch is malformed")
+        return CertifiedBuilderSpec(
             role=args.role,
             image_id=require_image_id(
                 (
@@ -891,45 +1020,54 @@ def spec_from_args(
             ),
             recipe_sha256=require_sha(
                 args.recipe_sha or "",
-                "Android builder bootstrap recipe SHA-256",
+                f"{args.role} bootstrap recipe SHA-256",
             ),
             dpkg_sha256=require_sha(
                 args.dpkg_sha or "",
-                "Android builder package-manifest SHA-256",
+                f"{args.role} package-manifest SHA-256",
             ),
             bootstrap_image_id=require_image_id(
                 args.bootstrap_image_id or "",
-                "Android builder bootstrap image ID",
+                f"{args.role} bootstrap image ID",
             ),
             bootstrap_manifest_id=require_image_id(
                 args.bootstrap_manifest_id or "",
-                "Android builder bootstrap manifest ID",
+                f"{args.role} bootstrap manifest ID",
             ),
             source_date_epoch=args.source_date_epoch,
             config_id=require_image_id(
                 args.config_id or "",
-                "certified Android builder config ID",
+                f"certified {args.role} config ID",
             ),
             manifest_id=require_image_id(
                 args.manifest_id or "",
-                "certified Android builder manifest ID",
+                f"certified {args.role} manifest ID",
             ),
         )
     if not re.fullmatch(
-        r"deb-builder|android-builder-bootstrap(?:-candidate)?|win-helper",
+        (
+            r"(?:android|deb)-builder-bootstrap(?:-candidate)?"
+            r"|win-helper"
+        ),
         args.role,
     ):
         fail(f"unsupported builder image role: {args.role}")
     if not re.fullmatch(r"ubuntu:(?:18[.]04|24[.]04)@sha256:[0-9a-f]{64}", args.base):
         fail("base image identity is malformed or unsupported")
-    is_android_bootstrap = args.role == "android-builder-bootstrap"
-    is_android_bootstrap_role = args.role.startswith(
-        "android-builder-bootstrap"
+    is_bootstrap = args.role in {
+        "android-builder-bootstrap",
+        "deb-builder-bootstrap",
+    }
+    is_bootstrap_role = args.role.startswith(
+        ("android-builder-bootstrap", "deb-builder-bootstrap")
+    )
+    bootstrap_role = args.role.removesuffix("-candidate").removesuffix(
+        "-bootstrap"
     )
     return Spec(
         role=(
-            "android-builder"
-            if is_android_bootstrap_role
+            bootstrap_role
+            if is_bootstrap_role
             else args.role
         ),
         image_id=require_image_id(args.expected_id, "expected image ID"),
@@ -939,17 +1077,17 @@ def spec_from_args(
         config_id=(
             require_image_id(
                 args.config_id or "",
-                "Android builder bootstrap config ID",
+                f"{bootstrap_role} bootstrap config ID",
             )
-            if is_android_bootstrap
+            if is_bootstrap
             else None
         ),
         manifest_id=(
             require_image_id(
                 args.manifest_id or "",
-                "Android builder bootstrap manifest ID",
+                f"{bootstrap_role} bootstrap manifest ID",
             )
-            if is_android_bootstrap
+            if is_bootstrap
             else None
         ),
     )
@@ -987,12 +1125,15 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
-    if isinstance(spec, CertifiedAndroidBuilderSpec):
+    if isinstance(spec, CertifiedBuilderSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
-            fail("certified Android builder platform must be exactly linux/amd64")
+            fail(
+                f"certified {spec.display_name} platform must be exactly "
+                "linux/amd64"
+            )
         if config != spec.runtime_config:
             fail(
-                "certified Android builder runtime config differs from "
+                f"certified {spec.display_name} runtime config differs from "
                 "the reviewed contract"
             )
         return
@@ -1069,7 +1210,9 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
-    if isinstance(spec, CertifiedAndroidBuilderSpec):
+    if isinstance(spec, CertifiedBuilderSpec):
+        tools = " ".join(spec.runtime_tools)
+        marker = f"{spec.role}-certified=ok\n".encode("ascii")
         command = (
             "set -eu; "
             "[ \"$(/usr/bin/id -u):$(/usr/bin/id -g)\" = 1000:1000 ]; "
@@ -1084,17 +1227,16 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
             f"[ \"$(/usr/bin/sha256sum \"$p/dpkg-manifest.tsv\" "
             "| /usr/bin/cut -d' ' -f1)\" = "
             f"{spec.dpkg_sha256} ]; "
-            "[ \"$(/usr/bin/cat \"$p/contract-v1\")\" = "
+            f"[ \"$({spec.cat_path} \"$p/contract-v1\")\" = "
             "\"$(/usr/bin/printf '%s\\n' "
             "'contract=rustdesk-build-image-v1' "
-            "'role=android-builder' "
+            f"'role={spec.role}' "
             f"'base={spec.base}' "
             f"'dockerfile_sha256={spec.recipe_sha256}' "
             f"'dpkg_manifest_sha256={spec.dpkg_sha256}')\" ]; "
-            "for tool in clang cmake git java javac nasm ninja "
-            "pkg-config python3 unzip wget xz yasm zip; do "
+            f"for tool in {tools}; do "
             "command -v \"$tool\" >/dev/null; done; "
-            "printf 'android-builder-certified=ok\\n'"
+            f"printf '{spec.role}-certified=ok\\n'"
         )
         result = run(
             [
@@ -1123,12 +1265,13 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
         )
         if result.returncode != 0:
             fail(
-                "cannot verify certified Android builder runtime contents: "
+                f"cannot verify certified {spec.display_name} runtime "
+                "contents: "
                 + result.stderr.decode(errors="replace").strip()
             )
-        if result.stdout != b"android-builder-certified=ok\n" or result.stderr:
+        if result.stdout != marker or result.stderr:
             fail(
-                "certified Android builder runtime fingerprint differs "
+                f"certified {spec.display_name} runtime fingerprint differs "
                 "from the reviewed pins"
             )
         return
@@ -1498,18 +1641,18 @@ def canonical_json(value: object) -> bytes:
 
 
 def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> None:
-    if isinstance(spec, CertifiedAndroidBuilderSpec):
+    if isinstance(spec, CertifiedBuilderSpec):
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
            or config_json.get("os") != "linux" \
            or config_json.get("created") != "2023-11-14T22:13:20Z":
             fail(
-                "Docker archive certified Android builder config platform "
+                f"Docker archive certified {spec.display_name} config platform "
                 "or epoch is malformed"
             )
         if config_json.get("config") != spec.runtime_config:
             fail(
-                "Docker archive certified Android builder runtime config "
+                f"Docker archive certified {spec.display_name} runtime config "
                 "differs from the reviewed contract"
             )
         rootfs = config_json.get("rootfs")
@@ -1518,26 +1661,26 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
            or rootfs.get("type") != "layers" \
            or not isinstance(diff_ids, list) \
            or len(diff_ids) != len(layers) \
-           or len(diff_ids) != 4 \
+           or len(diff_ids) != spec.bootstrap_layer_count + 1 \
            or any(
                not isinstance(value, str) or not IMAGE_ID.fullmatch(value)
                for value in diff_ids
            ):
             fail(
-                "Docker archive certified Android builder layer identities "
-                "differ from the four-layer contract"
+                f"Docker archive certified {spec.display_name} layer "
+                "identities differ from the certification contract"
             )
         history = config_json.get("history")
         expected_created = "2023-11-14T22:13:20Z"
         if not isinstance(history, list) \
-           or len(history) != 20 \
+           or len(history) != spec.history_count \
            or any(not isinstance(item, dict) for item in history) \
            or any(
                item.get("created") != expected_created
                for item in history[-8:]
            ):
             fail(
-                "Docker archive certified Android builder history differs "
+                f"Docker archive certified {spec.display_name} history differs "
                 "from the reviewed certification topology"
             )
         return
@@ -1686,11 +1829,11 @@ def descriptor_blob(
     return name, value or b""
 
 
-def validate_certified_android_builder_attestation(
+def validate_certified_builder_attestation(
     statement: object,
     image_manifest_id: object,
     image_layers: list[object],
-    spec: CertifiedAndroidBuilderSpec,
+    spec: CertifiedBuilderSpec,
 ) -> None:
     def contains_vcs_authority(value: object) -> bool:
         if isinstance(value, dict):
@@ -1707,30 +1850,33 @@ def validate_certified_android_builder_attestation(
         return False
 
     expected_digest = str(image_manifest_id).removeprefix("sha256:")
+    subject_name = spec.export_name.rsplit(":", 1)[0]
     if not isinstance(statement, dict) \
        or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
        or statement.get("subject") != [
            {
                "name": (
-                   "pkg:docker/rd-android-builder-certified@"
+                   f"pkg:docker/{subject_name}@"
                    "authenticated-v1?platform=linux%2Famd64"
                ),
                "digest": {"sha256": expected_digest},
            }
        ]:
         fail(
-            "Docker archive certified Android builder provenance subject "
+            f"Docker archive certified {spec.display_name} provenance subject "
             "differs from the image manifest"
         )
     if contains_vcs_authority(statement):
         fail(
-            "Docker archive certified Android builder provenance contains "
+            f"Docker archive certified {spec.display_name} provenance contains "
             "undeclared VCS authority"
         )
     predicate = statement.get("predicate")
     if not isinstance(predicate, dict) \
        or set(predicate) != {"buildDefinition", "runDetails"}:
-        fail("Docker archive certified Android builder predicate differs")
+        fail(
+            f"Docker archive certified {spec.display_name} predicate differs"
+        )
     definition = predicate.get("buildDefinition")
     if not isinstance(definition, dict) \
        or set(definition) != {
@@ -1746,7 +1892,7 @@ def validate_certified_android_builder_attestation(
        or definition.get("resolvedDependencies") != [
            {
                "uri": (
-                   "pkg:oci/android-builder-bootstrap?"
+                   f"pkg:oci/{spec.bootstrap_context_name}?"
                    f"digest={spec.bootstrap_image_id}&platform=linux%2Famd64"
                ),
                "digest": {
@@ -1755,15 +1901,16 @@ def validate_certified_android_builder_attestation(
            }
        ]:
         fail(
-            "Docker archive certified Android builder provenance does not "
+            f"Docker archive certified {spec.display_name} provenance does not "
             "bind the exact bootstrap material"
         )
 
     external = definition.get("externalParameters")
     request = external.get("request") if isinstance(external, dict) else None
     arguments = request.get("args") if isinstance(request, dict) else None
+    context_key = "context:" + spec.bootstrap_context_name
     context_argument = (
-        arguments.get("context:android-builder-bootstrap")
+        arguments.get(context_key)
         if isinstance(arguments, dict)
         else None
     )
@@ -1774,21 +1921,22 @@ def validate_certified_android_builder_attestation(
     )
     if context_match is None:
         fail(
-            "Docker archive certified Android builder provenance has an "
+            f"Docker archive certified {spec.display_name} provenance has an "
             "unbound bootstrap OCI-layout context"
         )
     oci_store = context_match.group(1)
+    prefix = spec.argument_prefix
     expected_args = {
-        "build-arg:ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID": (
+        f"build-arg:{prefix}_BOOTSTRAP_IMAGE_ID": (
             spec.bootstrap_image_id
         ),
-        "build-arg:ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID": (
+        f"build-arg:{prefix}_BOOTSTRAP_MANIFEST_ID": (
             spec.bootstrap_manifest_id
         ),
-        "build-arg:ANDROID_BUILDER_DPKG_MANIFEST_SHA256": spec.dpkg_sha256,
-        "build-arg:ANDROID_BUILDER_RECIPE_SHA256": spec.recipe_sha256,
+        f"build-arg:{prefix}_DPKG_MANIFEST_SHA256": spec.dpkg_sha256,
+        f"build-arg:{prefix}_RECIPE_SHA256": spec.recipe_sha256,
         "build-arg:SOURCE_DATE_EPOCH": str(spec.source_date_epoch),
-        "context:android-builder-bootstrap": context_argument,
+        context_key: context_argument,
         "force-network-mode": "none",
         "frontend.caps": "moby.buildkit.frontend.contexts+forward",
         "no-cache": "",
@@ -1808,7 +1956,7 @@ def validate_certified_android_builder_attestation(
         "request": expected_request,
     }:
         fail(
-            "Docker archive certified Android builder provenance does not "
+            f"Docker archive certified {spec.display_name} provenance does not "
             "bind the reviewed private recipe"
         )
 
@@ -1847,7 +1995,7 @@ def validate_certified_android_builder_attestation(
                             "start": {"line": line},
                             "end": {"line": line},
                         }
-                        for line in range(20, 44)
+                        for line in spec.source_location_lines
                     ]
                 }
             ]
@@ -1875,7 +2023,9 @@ def validate_certified_android_builder_attestation(
        or not isinstance(buildkit_metadata, dict) \
        or set(buildkit_metadata) != {"layers", "source"} \
        or buildkit_metadata.get("layers") != {
-           "step0:0": [attested_layers[:3]],
+           "step0:0": [
+               attested_layers[: spec.bootstrap_layer_count]
+           ],
            "step1:0": [attested_layers],
        } \
        or not isinstance(source, dict) \
@@ -1884,7 +2034,7 @@ def validate_certified_android_builder_attestation(
        or not isinstance(infos, list) \
        or len(infos) != 1:
         fail(
-            "Docker archive certified Android builder provenance runtime "
+            f"Docker archive certified {spec.display_name} provenance runtime "
             "metadata differs"
         )
 
@@ -1940,25 +2090,27 @@ def validate_certified_android_builder_attestation(
        or set(source_digest_mapping.values()) != {"step0", "step1"} \
        or source_info.get("llbDefinition") != expected_source_llb:
         fail(
-            "Docker archive certified Android builder provenance source "
+            f"Docker archive certified {spec.display_name} provenance source "
             "record differs"
         )
     try:
         dockerfile = base64.b64decode(source_info["data"], validate=True)
     except (ValueError, TypeError) as exc:
         fail(
-            "Docker archive certified Android builder Dockerfile is malformed: "
+            f"Docker archive certified {spec.display_name} Dockerfile is "
+            "malformed: "
             f"{exc}"
         )
     if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
         fail(
-            "Docker archive certified Android builder Dockerfile differs "
+            f"Docker archive certified {spec.display_name} Dockerfile differs "
             "from its pin"
         )
     source_runs = dockerfile_run_contract(dockerfile)
     if len(source_runs) != 1 or source_runs[0][0] != "none":
         fail(
-            "Docker archive certified Android builder Dockerfile must have "
+            f"Docker archive certified {spec.display_name} Dockerfile must "
+            "have "
             "one networkless execution"
         )
 
@@ -1996,7 +2148,7 @@ def validate_certified_android_builder_attestation(
        or not isinstance(llb, list) \
        or len(llb) != 3:
         fail(
-            "Docker archive certified Android builder provenance builder "
+            f"Docker archive certified {spec.display_name} provenance builder "
             "contract differs"
         )
     platform = {"Architecture": "amd64", "OS": "linux"}
@@ -2032,7 +2184,7 @@ def validate_certified_android_builder_attestation(
                     },
                     "identifier": (
                         "oci-layout://docker.io/library/"
-                        "android-builder-bootstrap@"
+                        f"{spec.bootstrap_context_name}@"
                         f"{spec.bootstrap_image_id}"
                     ),
                 }
@@ -2042,24 +2194,25 @@ def validate_certified_android_builder_attestation(
         },
     }:
         fail(
-            "Docker archive certified Android builder provenance bootstrap "
+            f"Docker archive certified {spec.display_name} provenance "
+            "bootstrap "
             "source operation differs"
         )
     if not isinstance(oci_session, str) \
        or re.fullmatch(r"[a-z0-9]{20,64}", oci_session) is None:
         fail(
-            "Docker archive certified Android builder provenance OCI "
+            f"Docker archive certified {spec.display_name} provenance OCI "
             "session is malformed"
         )
-    expected_environment = ANDROID_BUILDER_ENV + [
-        f"ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID={spec.bootstrap_image_id}",
+    expected_environment = spec.runtime_environment + [
+        f"{prefix}_BOOTSTRAP_IMAGE_ID={spec.bootstrap_image_id}",
         (
-            "ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID="
+            f"{prefix}_BOOTSTRAP_MANIFEST_ID="
             f"{spec.bootstrap_manifest_id}"
         ),
-        f"ANDROID_BUILDER_RECIPE_SHA256={spec.recipe_sha256}",
+        f"{prefix}_RECIPE_SHA256={spec.recipe_sha256}",
         (
-            "ANDROID_BUILDER_DPKG_MANIFEST_SHA256="
+            f"{prefix}_DPKG_MANIFEST_SHA256="
             f"{spec.dpkg_sha256}"
         ),
         f"SOURCE_DATE_EPOCH={spec.source_date_epoch}",
@@ -2091,7 +2244,7 @@ def validate_certified_android_builder_attestation(
            "op": {"Op": {}},
        }:
         fail(
-            "Docker archive certified Android builder provenance is not "
+            f"Docker archive certified {spec.display_name} provenance is not "
             "the exact one-step numeric-nonroot networkless graph"
         )
 
@@ -3399,7 +3552,7 @@ def validate_modern_archive(
     if isinstance(
         spec,
         (
-            CertifiedAndroidBuilderSpec,
+            CertifiedBuilderSpec,
             AppleCheckSpec,
             DartAuditSpec,
             RustAuditSpec,
@@ -3427,7 +3580,7 @@ def validate_modern_archive(
     if isinstance(
         spec,
         (
-            CertifiedAndroidBuilderSpec,
+            CertifiedBuilderSpec,
             AppleCheckSpec,
             DartAuditSpec,
             RustAuditSpec,
@@ -3462,7 +3615,7 @@ def validate_modern_archive(
     if isinstance(
         spec,
         (
-            CertifiedAndroidBuilderSpec,
+            CertifiedBuilderSpec,
             VerifierSpec,
             AppleCheckSpec,
             DartAuditSpec,
@@ -3490,7 +3643,7 @@ def validate_modern_archive(
     if isinstance(
         spec,
         (
-            CertifiedAndroidBuilderSpec,
+            CertifiedBuilderSpec,
             VerifierSpec,
             AppleCheckSpec,
             DartAuditSpec,
@@ -3528,10 +3681,10 @@ def validate_modern_archive(
                     "Docker archive Apple check layer timestamp-rewrite "
                     "annotations differ"
                 )
-        elif isinstance(spec, CertifiedAndroidBuilderSpec):
+        elif isinstance(spec, CertifiedBuilderSpec):
             expected_annotations = (
                 None
-                if position < 3
+                if position < spec.bootstrap_layer_count
                 else {
                     "buildkit/rewritten-timestamp": (
                         str(spec.source_date_epoch)
@@ -3544,7 +3697,7 @@ def validate_modern_archive(
             if set(descriptor) != expected_keys \
                or descriptor.get("annotations") != expected_annotations:
                 fail(
-                    "Docker archive certified Android builder layer "
+                    f"Docker archive certified {spec.display_name} layer "
                     "timestamp-rewrite annotations differ"
                 )
         name, _ = descriptor_blob(
@@ -3620,8 +3773,8 @@ def validate_modern_archive(
            or not isinstance(subjects, list) \
            or not any(isinstance(subject, dict) and subject.get("digest") == {"sha256": str(actual_digest).removeprefix("sha256:")} for subject in subjects):
             fail("Docker archive provenance attestation does not name the image manifest")
-        if isinstance(spec, CertifiedAndroidBuilderSpec):
-            validate_certified_android_builder_attestation(
+        if isinstance(spec, CertifiedBuilderSpec):
+            validate_certified_builder_attestation(
                 statement,
                 actual_digest,
                 layer_descriptors,
@@ -3638,7 +3791,7 @@ def validate_modern_archive(
     if isinstance(
         spec,
         (
-            CertifiedAndroidBuilderSpec,
+            CertifiedBuilderSpec,
             VerifierSpec,
             AppleCheckSpec,
             DartAuditSpec,
@@ -4406,30 +4559,30 @@ def validate_direct_oci_export_member(
 ) -> None:
     if member.uid != 0 or member.gid != 0 or member.mtime != 0:
         fail(
-            "direct certified Android builder OCI export has "
+            "direct certified builder OCI export has "
             "noncanonical tar ownership or time"
         )
     if member.pax_headers:
         fail(
-            "direct certified Android builder OCI export has "
+            "direct certified builder OCI export has "
             "undeclared extended tar headers"
         )
     if canonical in {"blobs", "blobs/sha256"}:
         if not member.isdir() or stat.S_IMODE(member.mode) != 0o755:
             fail(
-                "direct certified Android builder OCI export directory "
+                "direct certified builder OCI export directory "
                 "metadata differs"
             )
         return
     if not member.isfile():
         fail(
-            "direct certified Android builder OCI export member is not "
+            "direct certified builder OCI export member is not "
             f"a regular file/directory: {member.name}"
         )
     expected_mode = 0o644 if canonical == "index.json" else 0o444
     if stat.S_IMODE(member.mode) != expected_mode:
         fail(
-            "direct certified Android builder OCI export file mode differs: "
+            "direct certified builder OCI export file mode differs: "
             f"{canonical}"
         )
 
@@ -4437,7 +4590,7 @@ def validate_direct_oci_export_member(
 def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
     if os.getuid() == 0 or os.getgid() == 0:
         fail(
-            "direct certified Android builder OCI export verification "
+            "direct certified builder OCI export verification "
             "refuses root execution"
         )
     validate_private_output_parent(archive_path.parent)
@@ -4446,20 +4599,20 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
         before = os.fstat(fd)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
             fail(
-                "direct certified Android builder OCI export must be one "
+                "direct certified builder OCI export must be one "
                 "non-hardlinked regular file"
             )
         if before.st_uid != os.getuid() or before.st_gid != os.getgid() \
            or stat.S_IMODE(before.st_mode) != 0o600:
             fail(
-                "direct certified Android builder OCI export must be "
+                "direct certified builder OCI export must be "
                 "current-user-owned mode 0600"
             )
         if before.st_size <= 0 \
            or before.st_size > 8 * 1024 * 1024 * 1024 \
            or before.st_size % 512 != 0:
             fail(
-                "direct certified Android builder OCI export size is "
+                "direct certified builder OCI export size is "
                 "empty, oversized, or not tar-block aligned"
             )
 
@@ -4480,13 +4633,13 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
             with archive:
                 if archive.pax_headers:
                     fail(
-                        "direct certified Android builder OCI export has "
+                        "direct certified builder OCI export has "
                         "undeclared global extended headers"
                     )
                 for position, member in enumerate(archive):
                     if position >= 4096:
                         fail(
-                            "direct certified Android builder OCI export "
+                            "direct certified builder OCI export "
                             "exceeds the member bound"
                         )
                     validate_archive_name(member.name, seen, folded)
@@ -4502,7 +4655,7 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
                            canonical,
                        ) is None:
                         fail(
-                            "direct certified Android builder OCI export "
+                            "direct certified builder OCI export "
                             f"has an undeclared file: {canonical}"
                         )
                     files.add(canonical)
@@ -4510,13 +4663,13 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
                     expanded_bytes += member.size
                     if expanded_bytes > 8 * 1024 * 1024 * 1024:
                         fail(
-                            "direct certified Android builder OCI export "
+                            "direct certified builder OCI export "
                             "exceeds the expanded-content bound"
                         )
                     extracted = archive.extractfile(member)
                     if extracted is None:
                         fail(
-                            "cannot read direct certified Android builder "
+                            "cannot read direct certified builder "
                             f"OCI export member: {canonical}"
                         )
                     content_hash = hashlib.sha256()
@@ -4536,7 +4689,7 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
                             retained += block
                     if count != member.size:
                         fail(
-                            "direct certified Android builder OCI export "
+                            "direct certified builder OCI export "
                             f"member size changed: {canonical}"
                         )
                     member_hashes[canonical] = content_hash.hexdigest()
@@ -4544,7 +4697,7 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
                         metadata_bytes += len(retained)
                         if metadata_bytes > 64 * 1024 * 1024:
                             fail(
-                                "direct certified Android builder OCI export "
+                                "direct certified builder OCI export "
                                 "metadata exceeds the parser budget"
                             )
                         metadata[canonical] = bytes(retained)
@@ -4554,12 +4707,12 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
                     break
                 if any(trailing):
                     fail(
-                        "direct certified Android builder OCI export has "
+                        "direct certified builder OCI export has "
                         "nonzero trailing tar data"
                     )
         except (tarfile.TarError, EOFError, OSError) as exc:
             fail(
-                "malformed direct certified Android builder OCI export: "
+                "malformed direct certified builder OCI export: "
                 f"{exc}"
             )
         finally:
@@ -4576,32 +4729,32 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
         )
         if sequence != expected_sequence:
             fail(
-                "direct certified Android builder OCI export member order "
+                "direct certified builder OCI export member order "
                 "or inventory differs"
             )
         if directories != {"blobs", "blobs/sha256"} \
            or files != set(blob_names) | {"index.json", "oci-layout"} \
            or not blob_names:
             fail(
-                "direct certified Android builder OCI export inventory "
+                "direct certified builder OCI export inventory "
                 "differs"
             )
         if metadata.get("oci-layout") != canonical_json(
             {"imageLayoutVersion": "1.0.0"}
         ):
             fail(
-                "direct certified Android builder OCI export layout marker "
+                "direct certified builder OCI export layout marker "
                 "differs"
             )
         for name in blob_names:
             if member_hashes.get(name) != name.rsplit("/", 1)[1]:
                 fail(
-                    "direct certified Android builder OCI export blob does "
+                    "direct certified builder OCI export blob does "
                     f"not match its name: {name}"
                 )
         if "index.json" not in metadata:
             fail(
-                "direct certified Android builder OCI export root index "
+                "direct certified builder OCI export root index "
                 "exceeds the metadata budget"
             )
         return DirectOciExport(
@@ -4619,11 +4772,11 @@ def scan_direct_oci_export(archive_path: Path) -> DirectOciExport:
         os.close(fd)
 
 
-def prepare_certified_android_builder_oci_export(
+def prepare_certified_builder_oci_export(
     scanned: DirectOciExport,
-    contract: CertifiedAndroidBuilderSpec,
+    contract: CertifiedBuilderSpec,
 ) -> tuple[
-    CertifiedAndroidBuilderSpec,
+    CertifiedBuilderSpec,
     bytes,
     bytes,
 ]:
@@ -4646,7 +4799,7 @@ def prepare_certified_android_builder_oci_export(
        or len(descriptors) != 1 \
        or not isinstance(descriptors[0], dict):
         fail(
-            "direct certified Android builder OCI export must name exactly "
+            "direct certified builder OCI export must name exactly "
             "one image index"
         )
     root_descriptor = descriptors[0]
@@ -4656,14 +4809,14 @@ def prepare_certified_android_builder_oci_export(
             timezone.utc,
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
     except (OSError, OverflowError, ValueError) as exc:
-        fail(f"certified Android builder source-date epoch is invalid: {exc}")
+        fail(f"certified builder source-date epoch is invalid: {exc}")
     expected_annotations = {
         "io.containerd.image.name": (
-            ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME
+            contract.export_oci_name
         ),
         "org.opencontainers.image.created": created,
         "org.opencontainers.image.ref.name": (
-            ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME.rsplit(":", 1)[1]
+            contract.export_name.rsplit(":", 1)[1]
         ),
     }
     if set(root_descriptor) != {
@@ -4677,7 +4830,7 @@ def prepare_certified_android_builder_oci_export(
        ) \
        or root_descriptor.get("annotations") != expected_annotations:
         fail(
-            "direct certified Android builder OCI export root descriptor "
+            "direct certified builder OCI export root descriptor "
             "does not match the named private exporter contract"
         )
     image_index_name, image_index_bytes = descriptor_blob(
@@ -4690,7 +4843,7 @@ def prepare_certified_android_builder_oci_export(
     image_id = root_descriptor.get("digest")
     if not isinstance(image_id, str) or not IMAGE_ID.fullmatch(image_id):
         fail(
-            "direct certified Android builder OCI export image identity "
+            "direct certified builder OCI export image identity "
             "is malformed"
         )
     spec = replace(contract, image_id=image_id)
@@ -4714,7 +4867,7 @@ def prepare_certified_android_builder_oci_export(
     if len(runtime_descriptors) != 1 \
        or runtime_descriptors[0].get("digest") != spec.manifest_id:
         fail(
-            "direct certified Android builder OCI export runtime manifest "
+            "direct certified builder OCI export runtime manifest "
             "differs from its pin"
         )
     image_manifest_name, image_manifest_bytes = descriptor_blob(
@@ -4736,7 +4889,7 @@ def prepare_certified_android_builder_oci_export(
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("digest") != spec.config_id:
         fail(
-            "direct certified Android builder OCI export runtime config "
+            "direct certified builder OCI export runtime config "
             "differs from its pin"
         )
     config_name, _ = descriptor_blob(
@@ -4753,7 +4906,7 @@ def prepare_certified_android_builder_oci_export(
     )
     if not isinstance(layer_descriptors, list) or not layer_descriptors:
         fail(
-            "direct certified Android builder OCI export has no runtime "
+            "direct certified builder OCI export has no runtime "
             "layers"
         )
     layer_names: list[str] = []
@@ -4816,7 +4969,7 @@ def prepare_certified_android_builder_oci_export(
     if image_index_name not in scanned.blob_names \
        or image_manifest_name not in scanned.blob_names:
         fail(
-            "direct certified Android builder OCI export omits a reachable "
+            "direct certified builder OCI export omits a reachable "
             "index or manifest blob"
         )
     return spec, canonical_root_index, compatibility_manifest
@@ -4840,11 +4993,11 @@ def deterministic_tar_info(
     return info
 
 
-def canonicalize_certified_android_builder_oci_export(
+def canonicalize_certified_builder_oci_export(
     source: Path,
     output: Path,
-    contract: CertifiedAndroidBuilderSpec,
-) -> tuple[CertifiedAndroidBuilderSpec, str, int, str, int]:
+    contract: CertifiedBuilderSpec,
+) -> tuple[CertifiedBuilderSpec, str, int, str, int]:
     validate_private_output_parent(source.parent)
     if output.parent != source.parent:
         validate_private_output_parent(output.parent)
@@ -4853,13 +5006,13 @@ def canonicalize_certified_android_builder_oci_export(
     temporary = output.with_name(output.name + ".part")
     if temporary.exists() or temporary.is_symlink():
         fail(
-            "stale certified Android builder normalization temporary exists: "
+            "stale certified builder normalization temporary exists: "
             f"{temporary}"
         )
 
     scanned = scan_direct_oci_export(source)
     spec, root_index, compatibility_manifest = (
-        prepare_certified_android_builder_oci_export(scanned, contract)
+        prepare_certified_builder_oci_export(scanned, contract)
     )
     source_fd = open_archive(source)
     output_fd = -1
@@ -4873,7 +5026,7 @@ def canonicalize_certified_android_builder_oci_export(
             output_fd = os.open(temporary, flags, 0o600)
         except OSError as exc:
             fail(
-                "cannot create certified Android builder normalization "
+                "cannot create certified builder normalization "
                 f"temporary: {exc}"
             )
         output_before = os.fstat(output_fd)
@@ -4891,7 +5044,7 @@ def canonicalize_certified_android_builder_oci_export(
                     if written != len(data):
                         fail(
                             "short write while normalizing the certified "
-                            "Android builder OCI export"
+                            "builder OCI export"
                         )
                     digest.update(data)
                     count += written
@@ -4939,7 +5092,7 @@ def canonicalize_certified_android_builder_oci_export(
                                 if extracted is None:
                                     fail(
                                         "cannot reread direct certified "
-                                        "Android builder OCI export member: "
+                                        "builder OCI export member: "
                                         f"{canonical}"
                                     )
                                 if canonical.startswith("blobs/sha256/"):
@@ -4955,13 +5108,13 @@ def canonicalize_certified_android_builder_oci_export(
                                     value = extracted.read()
                                     if value != scanned.metadata.get(canonical):
                                         fail(
-                                            "direct certified Android builder "
+                                            "direct certified builder "
                                             "OCI metadata changed during "
                                             f"normalization: {canonical}"
                                         )
                             if tuple(sequence) != scanned.sequence:
                                 fail(
-                                    "direct certified Android builder OCI "
+                                    "direct certified builder OCI "
                                     "export inventory changed during "
                                     "normalization"
                                 )
@@ -4992,14 +5145,14 @@ def canonicalize_certified_android_builder_oci_export(
                             )
             except (tarfile.TarError, EOFError, OSError) as exc:
                 fail(
-                    "cannot normalize direct certified Android builder OCI "
+                    "cannot normalize direct certified builder OCI "
                     f"export: {exc}"
                 )
             finally:
                 hashing.stream.close()
             if hashing.digest.hexdigest() != scanned.archive_sha256:
                 fail(
-                    "direct certified Android builder OCI export changed "
+                    "direct certified builder OCI export changed "
                     "between validation and normalization"
                 )
             stable_file(scanned.before, os.fstat(source_fd), source)
@@ -5008,7 +5161,7 @@ def canonicalize_certified_android_builder_oci_export(
             os.fsync(raw.fileno())
             if os.fstat(raw.fileno()).st_size != count:
                 fail(
-                    "certified Android builder normalized archive size "
+                    "certified builder normalized archive size "
                     "accounting differs"
                 )
 
@@ -5023,7 +5176,7 @@ def canonicalize_certified_android_builder_oci_export(
         ) \
            or temporary.exists() or temporary.is_symlink():
             fail(
-                "certified Android builder normalized archive publication "
+                "certified builder normalized archive publication "
                 "postcondition failed"
             )
         verify_archive(output, archive_sha, spec, count)
@@ -5042,21 +5195,21 @@ def canonicalize_certified_android_builder_oci_export(
                 current = None
             except OSError as exc:
                 fail(
-                    "cannot inspect failed certified Android builder "
+                    "cannot inspect failed certified builder "
                     f"normalization temporary: {exc}"
                 )
             if current is not None:
                 if (current.st_dev, current.st_ino) != temporary_identity \
                    or not stat.S_ISREG(current.st_mode):
                     fail(
-                        "failed certified Android builder normalization "
+                        "failed certified builder normalization "
                         "temporary identity changed"
                     )
                 try:
                     os.unlink(temporary)
                 except OSError as exc:
                     fail(
-                        "cannot remove failed certified Android builder "
+                        "cannot remove failed certified builder "
                         f"normalization temporary: {exc}"
                     )
         raise
@@ -7359,7 +7512,7 @@ def create_certified_android_builder_fixture_archive(
     wrong_subject: bool = False,
     omit_attestation: bool = False,
     extra_operation: bool = False,
-) -> CertifiedAndroidBuilderSpec:
+) -> CertifiedBuilderSpec:
     def encoded(value: object) -> bytes:
         return json.dumps(
             value,
@@ -7389,7 +7542,7 @@ def create_certified_android_builder_fixture_archive(
     )
     bootstrap_image_id = "sha256:" + "a" * 64
     bootstrap_manifest_id = "sha256:" + "b" * 64
-    preliminary = CertifiedAndroidBuilderSpec(
+    preliminary = CertifiedBuilderSpec(
         role="android-builder",
         image_id="sha256:" + "0" * 64,
         base="ubuntu:24.04@sha256:" + "c" * 64,
@@ -7860,7 +8013,7 @@ def create_certified_android_builder_fixture_archive(
 def create_certified_android_builder_fixture_oci_export(
     archive_path: Path,
     export_path: Path,
-    spec: CertifiedAndroidBuilderSpec,
+    spec: CertifiedBuilderSpec,
     *,
     extra_root_descriptor: bool = False,
     wrong_export_name: bool = False,
@@ -8214,7 +8367,7 @@ def self_test() -> None:
             normalized_size,
             export_sha,
             export_size,
-        ) = canonicalize_certified_android_builder_oci_export(
+        ) = canonicalize_certified_builder_oci_export(
             android_export,
             normalized_android_archive,
             android_contract,
@@ -8242,7 +8395,7 @@ def self_test() -> None:
 
         android_export.chmod(0o644)
         android_failure(
-            lambda: canonicalize_certified_android_builder_oci_export(
+            lambda: canonicalize_certified_builder_oci_export(
                 android_export,
                 Path(temporary) / "wrong-mode-normalized.tar.gz",
                 android_contract,
@@ -8256,7 +8409,7 @@ def self_test() -> None:
         )
         os.link(android_export, android_export_link)
         android_failure(
-            lambda: canonicalize_certified_android_builder_oci_export(
+            lambda: canonicalize_certified_builder_oci_export(
                 android_export,
                 Path(temporary) / "hardlinked-normalized.tar.gz",
                 android_contract,
@@ -8276,7 +8429,7 @@ def self_test() -> None:
             wrong_export_name=True,
         )
         android_failure(
-            lambda: canonicalize_certified_android_builder_oci_export(
+            lambda: canonicalize_certified_builder_oci_export(
                 wrong_name_export,
                 Path(temporary) / "wrong-name-normalized.tar.gz",
                 android_contract,
@@ -8295,7 +8448,7 @@ def self_test() -> None:
             extra_root_descriptor=True,
         )
         android_failure(
-            lambda: canonicalize_certified_android_builder_oci_export(
+            lambda: canonicalize_certified_builder_oci_export(
                 referrer_export,
                 Path(temporary) / "extra-referrer-normalized.tar.gz",
                 android_contract,
@@ -8314,7 +8467,7 @@ def self_test() -> None:
             include_compatibility_manifest=True,
         )
         android_failure(
-            lambda: canonicalize_certified_android_builder_oci_export(
+            lambda: canonicalize_certified_builder_oci_export(
                 compatibility_export,
                 Path(temporary) / "compatibility-normalized.tar.gz",
                 android_contract,
@@ -8328,7 +8481,7 @@ def self_test() -> None:
         )
         occupied_normalized.write_bytes(b"existing")
         android_failure(
-            lambda: canonicalize_certified_android_builder_oci_export(
+            lambda: canonicalize_certified_builder_oci_export(
                 android_export,
                 occupied_normalized,
                 android_contract,
@@ -8350,7 +8503,7 @@ def self_test() -> None:
             replay_size,
             replay_export_sha,
             replay_export_size,
-        ) = canonicalize_certified_android_builder_oci_export(
+        ) = canonicalize_certified_builder_oci_export(
             android_export,
             replay_normalized,
             android_contract,
@@ -9492,18 +9645,19 @@ def main() -> int:
         print(f"published={args.destination}")
         return 0
     if args.command == "maintenance-normalize-certified-oci":
-        if args.role != "android-builder" or args.expected_id is not None:
+        if args.role not in {"android-builder", "deb-builder"} \
+           or args.expected_id is not None:
             fail(
-                "certified OCI normalization derives the Android builder "
+                "certified OCI normalization derives the builder "
                 "image identity from the exact direct export"
             )
         contract = spec_from_args(
             args,
             expected_image_id="sha256:" + "0" * 64,
         )
-        if not isinstance(contract, CertifiedAndroidBuilderSpec):
+        if not isinstance(contract, CertifiedBuilderSpec):
             fail(
-                "certified OCI normalization requires the Android builder "
+                "certified OCI normalization requires a certified builder "
                 "contract"
             )
         (
@@ -9512,7 +9666,7 @@ def main() -> int:
             archive_size,
             raw_sha,
             raw_size,
-        ) = canonicalize_certified_android_builder_oci_export(
+        ) = canonicalize_certified_builder_oci_export(
             args.input,
             args.output,
             contract,

@@ -517,7 +517,7 @@ def validate_contract(sources):
     require_all(
         private_archive,
         (
-            "CertifiedAndroidBuilderSpec",
+            "CertifiedBuilderSpec",
             "VerifierSpec",
             "AppleCheckSpec",
             "DartAuditSpec",
@@ -565,12 +565,12 @@ def validate_contract(sources):
     capture_block = function_block(
         online_fetch,
         "maintenance_capture_rust_audit_image",
-        "build_deb_builder_image",
+        "build_deb_builder_bootstrap_image",
     )
     build_block = function_block(
         online_fetch,
         "maintenance_build_rust_audit_image_candidate",
-        "capture_builder_image",
+        "capture_windows_helper_image",
     )
     require_all(
         spec_block,
@@ -856,7 +856,7 @@ MUTATIONS = (
             "    return isinstance(\n"
             "        spec,\n"
             "        (\n"
-            "            CertifiedAndroidBuilderSpec,\n"
+            "            CertifiedBuilderSpec,\n"
             "            VerifierSpec,\n"
             "            AppleCheckSpec,\n"
             "            DartAuditSpec,\n"
@@ -869,7 +869,7 @@ MUTATIONS = (
             "    return isinstance(\n"
             "        spec,\n"
             "        (\n"
-            "            CertifiedAndroidBuilderSpec,\n"
+            "            CertifiedBuilderSpec,\n"
             "            VerifierSpec,\n"
             "            AppleCheckSpec,\n"
             "            DartAuditSpec,\n"

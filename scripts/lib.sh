@@ -197,28 +197,33 @@ require_pinned_builder_image() {
         || die "pins.env is missing $image_var, $dockerfile_var, or $dpkg_var"
     require_cmd python3 docker
     local args=()
-    if [ "$role" = android-builder ]; then
+    if [ "$role" = android-builder ] || [ "$role" = deb-builder ]; then
         local required=(
-            ANDROID_BUILDER_CONFIG_ID
-            ANDROID_BUILDER_MANIFEST_ID
-            ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID
-            ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID
-            SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE
+            "${prefix}_CONFIG_ID"
+            "${prefix}_MANIFEST_ID"
+            "${prefix}_BOOTSTRAP_IMAGE_ID"
+            "${prefix}_BOOTSTRAP_MANIFEST_ID"
+            "SHA256_${prefix}_CERTIFICATION_DOCKERFILE"
             SOURCE_DATE_EPOCH_PIN
         )
         local name
         for name in "${required[@]}"; do
             [ -n "${!name:-}" ] || die "pins.env is missing $name"
         done
+        local config_var="${prefix}_CONFIG_ID"
+        local manifest_var="${prefix}_MANIFEST_ID"
+        local bootstrap_image_var="${prefix}_BOOTSTRAP_IMAGE_ID"
+        local bootstrap_manifest_var="${prefix}_BOOTSTRAP_MANIFEST_ID"
+        local certification_dockerfile_var="SHA256_${prefix}_CERTIFICATION_DOCKERFILE"
         args=(
             verify-local --role "$role" --expected-id "$image_id" --base "$base"
-            --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE"
+            --dockerfile-sha "${!certification_dockerfile_var}"
             --recipe-sha "$dockerfile_sha" --dpkg-sha "$dpkg_sha"
-            --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID"
-            --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID"
+            --bootstrap-image-id "${!bootstrap_image_var}"
+            --bootstrap-manifest-id "${!bootstrap_manifest_var}"
             --source-date-epoch "$SOURCE_DATE_EPOCH_PIN"
-            --config-id "$ANDROID_BUILDER_CONFIG_ID"
-            --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
+            --config-id "${!config_var}"
+            --manifest-id "${!manifest_var}"
         )
     else
         args=(

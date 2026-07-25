@@ -206,7 +206,19 @@ else
   echo "  ok  R-S11cf direct builds use independent private exact-commit sources and the sole Debian compiler is non-root/offline/no-pull/read-only-root/capability-free/resource-bounded"
 fi
 
-echo "== (0d1) authenticated Android builder image distribution authority (R-S11da/R-S11e-119) =="
+echo "== (0d1) authenticated Debian builder image distribution authority (R-S11db/R-S11e-120) =="
+r_s11db=
+if ! /usr/bin/python3 -I -S scripts/verify-deb-builder-image-authority.py --repo . --self-test; then
+  r_s11db="$r_s11db authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11db" ]; then
+  echo "  FAIL R-S11db Debian builder image distribution authority:$r_s11db"
+  rc=1
+else
+  echo "  ok  R-S11db the exact historical bootstrap is binary material only; one networkless numeric-nonroot mode-max certification graph and private exact untagged archive authorize the release builder"
+fi
+
+echo "== (0d2) authenticated Android builder image distribution authority (R-S11da/R-S11e-119) =="
 r_s11da=
 if ! /usr/bin/python3 -I -S scripts/verify-android-builder-image-authority.py --repo . --self-test; then
   r_s11da="$r_s11da authority-or-mutation-self-test-failed"

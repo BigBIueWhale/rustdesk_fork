@@ -402,7 +402,7 @@ def validate_online_fetch(source: str) -> None:
 
     generic_capture = function_block(
         source,
-        "maintenance_capture_builder_images",
+        "maintenance_capture_windows_helper_image",
     )
     require_absent(
         generic_capture,
@@ -479,19 +479,20 @@ def validate_library(source: str) -> None:
     require_all(
         block,
         (
-            'if [ "$role" = android-builder ]; then',
-            "ANDROID_BUILDER_CONFIG_ID",
-            "ANDROID_BUILDER_MANIFEST_ID",
-            "ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID",
-            "ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID",
-            "SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE",
+            "android-builder) prefix=ANDROID_BUILDER;",
+            '[ "$role" = android-builder ] || [ "$role" = deb-builder ]',
+            '"${prefix}_CONFIG_ID"',
+            '"${prefix}_MANIFEST_ID"',
+            '"${prefix}_BOOTSTRAP_IMAGE_ID"',
+            '"${prefix}_BOOTSTRAP_MANIFEST_ID"',
+            '"SHA256_${prefix}_CERTIFICATION_DOCKERFILE"',
             "SOURCE_DATE_EPOCH_PIN",
-            '--dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE"',
+            '--dockerfile-sha "${!certification_dockerfile_var}"',
             '--recipe-sha "$dockerfile_sha"',
-            '--bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID"',
-            '--bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID"',
-            '--config-id "$ANDROID_BUILDER_CONFIG_ID"',
-            '--manifest-id "$ANDROID_BUILDER_MANIFEST_ID"',
+            '--bootstrap-image-id "${!bootstrap_image_var}"',
+            '--bootstrap-manifest-id "${!bootstrap_manifest_var}"',
+            '--config-id "${!config_var}"',
+            '--manifest-id "${!manifest_var}"',
         ),
         "ordinary Android builder runtime verifier",
     )
@@ -507,29 +508,29 @@ def validate_provenance(source: str) -> None:
     require_all(
         source,
         (
-            "class CertifiedAndroidBuilderSpec:",
+            "class CertifiedBuilderSpec:",
             "ANDROID_BUILDER_CERTIFICATION_EXPORT_NAME = (\n"
             '    "rd-android-builder-certified:authenticated-v1"\n'
             ")",
             "def requires_private_archive(spec: ImageSpec) -> bool:",
-            'if args.role == "android-builder":',
-            'args.role == "android-builder-bootstrap"',
-            "certified Android builder runtime config differs",
+            'if args.role in {"android-builder", "deb-builder"}:',
+            '"android-builder-bootstrap",',
+            "f\"certified {spec.display_name} runtime config differs from \"",
             "if contains_vcs_authority(statement):\n"
             "        fail(\n"
-            '            "Docker archive certified Android builder provenance '
-            'contains "',
+            "            f\"Docker archive certified {spec.display_name} "
+            "provenance contains \"",
             "provenance contains undeclared VCS authority",
             "resolvedDependencies",
-            "context:android-builder-bootstrap",
+            'context_key = "context:" + spec.bootstrap_context_name',
             "force-network-mode",
             "frontend.caps",
             "source_info.get(\"llbDefinition\") != expected_source_llb",
             "if hashlib.sha256(dockerfile).hexdigest() "
             "!= spec.dockerfile_sha256:\n"
             "        fail(\n"
-            '            "Docker archive certified Android builder Dockerfile '
-            'differs "',
+            "            f\"Docker archive certified {spec.display_name} "
+            "Dockerfile differs \"",
             "if len(source_runs) != 1 or source_runs[0][0] != \"none\":",
             '"args": ["/bin/sh", "-c", source_runs[0][1]],\n'
             '                        "cwd": "/",\n'
@@ -570,36 +571,36 @@ def validate_provenance(source: str) -> None:
             "return verify_oci_layout(output)",
             "class DirectOciExport:",
             "def scan_direct_oci_export(",
-            '"direct certified Android builder OCI export verification "\n'
+            '"direct certified builder OCI export verification "\n'
             '            "refuses root execution"',
             "stat.S_IMODE(before.st_mode) != 0o600:",
-            '"direct certified Android builder OCI export must be "\n'
+            '"direct certified builder OCI export must be "\n'
             '                "current-user-owned mode 0600"',
             "if position >= 4096:\n"
             "                        fail(\n"
-            "                            \"direct certified Android builder "
+            "                            \"direct certified builder "
             "OCI export \"",
             "if expanded_bytes > 8 * 1024 * 1024 * 1024:",
             "if sequence != expected_sequence:",
             "blob does not match its name",
-            "def prepare_certified_android_builder_oci_export(",
+            "def prepare_certified_builder_oci_export(",
             "or not isinstance(descriptors, list) \\\n"
             "       or len(descriptors) != 1 \\\n"
             "       or not isinstance(descriptors[0], dict):\n"
             "        fail(\n"
-            "            \"direct certified Android builder OCI export must "
+            "            \"direct certified builder OCI export must "
             "name exactly \"",
             '"io.containerd.image.name": (\n'
-            "            ANDROID_BUILDER_CERTIFICATION_EXPORT_OCI_NAME",
+            "            contract.export_oci_name",
             '"org.opencontainers.image.created": created',
             '"org.opencontainers.image.ref.name": (',
             "does not match the named private exporter contract",
             "canonical_metadata[\"manifest.json\"] = "
             "compatibility_manifest",
             "validate_modern_archive(",
-            "def canonicalize_certified_android_builder_oci_export(",
+            "def canonicalize_certified_builder_oci_export(",
             "format=tarfile.USTAR_FORMAT",
-            '"direct certified Android builder OCI export changed "\n'
+            '"direct certified builder OCI export changed "\n'
             '                    "between validation and normalization"',
             "verify_archive(temporary, archive_sha, spec, count)",
             "rename_noreplace(temporary, output)",
@@ -633,7 +634,7 @@ def validate_provenance(source: str) -> None:
         "offline image provenance authority",
     )
     preparation_start = source.index(
-        "def prepare_certified_android_builder_oci_export("
+        "def prepare_certified_builder_oci_export("
     )
     preparation_end = source.index(
         "\ndef deterministic_tar_info(",
@@ -649,7 +650,7 @@ def validate_provenance(source: str) -> None:
         "normalized certified Android builder archive authority",
     )
     runtime_start = source.index(
-        "if isinstance(spec, CertifiedAndroidBuilderSpec):",
+        "if isinstance(spec, CertifiedBuilderSpec):",
         source.index("def verify_local("),
     )
     runtime_end = source.index(
@@ -707,6 +708,7 @@ def validate_contract(sources: dict[str, str]) -> None:
         (
             "validate_android_builder_authority_contract(sources)\n"
             "    validate_android_builder_image_authority_contract(sources)\n"
+            "    validate_deb_builder_image_authority_contract(sources)\n"
             "    validate_android_keystore_authority_contract(sources)",
             '"android_builder_image_authority_verifier": (',
             'repo / "scripts/verify-android-builder-image-authority.py"',
@@ -859,29 +861,57 @@ MUTATIONS = (
     Mutation(
         "online",
         "online_docker_without_vcs buildx build \\\n"
-        "            --network=none --pull=false --no-cache",
+        "            --network=none --pull=false --no-cache \\\n"
+        "            --platform=linux/amd64 --provenance=mode=max \\\n"
+        "            --output=\"type=oci,name=${export_name},"
+        "dest=${candidate_oci},tar=true,compression=gzip,"
+        "oci-mediatypes=true,rewrite-timestamp=true\" \\\n"
+        "            --build-context \\\n"
+        "            \"android-builder-bootstrap=oci-layout://${layout}@"
+        "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}\"",
         "online_docker_without_vcs buildx build \\\n"
-        "            --network=default --pull=true",
+        "            --network=default --pull=true \\\n"
+        "            --platform=linux/amd64 --provenance=mode=max \\\n"
+        "            --output=\"type=oci,name=${export_name},"
+        "dest=${candidate_oci},tar=true,compression=gzip,"
+        "oci-mediatypes=true,rewrite-timestamp=true\" \\\n"
+        "            --build-context \\\n"
+        "            \"android-builder-bootstrap=oci-layout://${layout}@"
+        "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}\"",
         "certification network/pull/cache boundary",
     ),
     Mutation(
         "online",
-        "online_docker_without_vcs buildx build \\\n"
-        "            --network=none --pull=false --no-cache \\\n"
-        "            --platform=linux/amd64 --provenance=mode=max",
-        "online_docker_without_vcs buildx build \\\n"
-        "            --network=none --pull=false --no-cache \\\n"
-        "            --platform=linux/amd64 --provenance=mode=min",
+        "--platform=linux/amd64 --provenance=mode=max \\\n"
+        "            --output=\"type=oci,name=${export_name},"
+        "dest=${candidate_oci},tar=true,compression=gzip,"
+        "oci-mediatypes=true,rewrite-timestamp=true\" \\\n"
+        "            --build-context \\\n"
+        "            \"android-builder-bootstrap=oci-layout://${layout}@"
+        "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}\"",
+        "--platform=linux/amd64 --provenance=mode=min \\\n"
+        "            --output=\"type=oci,name=${export_name},"
+        "dest=${candidate_oci},tar=true,compression=gzip,"
+        "oci-mediatypes=true,rewrite-timestamp=true\" \\\n"
+        "            --build-context \\\n"
+        "            \"android-builder-bootstrap=oci-layout://${layout}@"
+        "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}\"",
         "mode-max provenance",
     ),
     Mutation(
         "online",
         '--output="type=oci,name=${export_name},dest=${candidate_oci},'
         "tar=true,compression=gzip,oci-mediatypes=true,"
-        'rewrite-timestamp=true"',
+        'rewrite-timestamp=true" \\\n'
+        "            --build-context \\\n"
+        "            \"android-builder-bootstrap=oci-layout://${layout}@"
+        "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}\"",
         '--output="type=docker,name=${export_name},dest=${candidate_oci},'
         "tar=true,compression=gzip,oci-mediatypes=true,"
-        'rewrite-timestamp=false"',
+        'rewrite-timestamp=false" \\\n'
+        "            --build-context \\\n"
+        "            \"android-builder-bootstrap=oci-layout://${layout}@"
+        "${ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID}\"",
         "isolated deterministic OCI output policy",
     ),
     Mutation(
@@ -905,21 +935,37 @@ MUTATIONS = (
     ),
     Mutation(
         "online",
-        "online_image_provenance maintenance-normalize-certified-oci \\\n"
+        "mapfile -d '' contract_args < "
+        "<(android_builder_certification_spec_args)\n"
+        "    result=\"$(\n"
+        "        online_image_provenance "
+        "maintenance-normalize-certified-oci \\\n"
         "            --input \"$candidate_oci\" \\\n"
         "            --output \"$candidate_archive\"",
-        "printf 'image_id=sha256:"
+        "mapfile -d '' contract_args < "
+        "<(android_builder_certification_spec_args)\n"
+        "    result=\"$(\n"
+        "        printf 'image_id=sha256:"
         "0000000000000000000000000000000000000000000000000000000000000000"
         "\\nsha256=unchecked\\nbytes=1\\n'",
         "candidate direct OCI semantic normalization",
     ),
     Mutation(
         "online",
-        "online_image_provenance verify-load \\\n"
+        "candidate_args=(--expected-id \"$image_id\" "
+        "\"${contract_args[@]}\")\n"
+        "    online_image_provenance verify-load \\\n"
         "        --archive \"$candidate_archive\" \\\n"
         "        --archive-sha \"$archive_sha\" \\\n"
-        "        --archive-size \"$archive_size\"",
-        "true # candidate archive load/runtime proof removed",
+        "        --archive-size \"$archive_size\" \\\n"
+        "        \"${candidate_args[@]}\" \\\n"
+        "        || die \"certified Android builder candidate load/runtime "
+        "verification failed\"",
+        "candidate_args=(--expected-id \"$image_id\" "
+        "\"${contract_args[@]}\")\n"
+        "    true # candidate archive load/runtime proof removed\n"
+        "        || die \"certified Android builder candidate load/runtime "
+        "verification failed\"",
         "candidate loaded runtime fingerprint",
     ),
     Mutation(
@@ -941,9 +987,9 @@ MUTATIONS = (
     ),
     Mutation(
         "online",
-        "maintenance_capture_builder_images() {\n"
+        "maintenance_capture_windows_helper_image() {\n"
         "    local names=(",
-        "maintenance_capture_builder_images() {\n"
+        "maintenance_capture_windows_helper_image() {\n"
         "    local ANDROID_BUILDER_IMAGE_ID=unreviewed\n"
         "    local names=(",
         "generic Android Docker-store capture absence",
@@ -958,13 +1004,13 @@ MUTATIONS = (
     ),
     Mutation(
         "lib",
-        '--dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE"',
+        '--dockerfile-sha "${!certification_dockerfile_var}"',
         '--dockerfile-sha "$dockerfile_sha"',
         "ordinary runtime certification recipe",
     ),
     Mutation(
         "lib",
-        '--bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID"',
+        '--bootstrap-image-id "${!bootstrap_image_var}"',
         "--bootstrap-image-id sha256:"
         "0000000000000000000000000000000000000000000000000000000000000000",
         "ordinary runtime bootstrap material",
@@ -973,12 +1019,12 @@ MUTATIONS = (
         "provenance",
         "if contains_vcs_authority(statement):\n"
         "        fail(\n"
-        '            "Docker archive certified Android builder provenance '
-        'contains "',
+        "            f\"Docker archive certified {spec.display_name} "
+        "provenance contains \"",
         "if False:\n"
         "        fail(\n"
-        '            "Docker archive certified Android builder provenance '
-        'contains "',
+        "            f\"Docker archive certified {spec.display_name} "
+        "provenance contains \"",
         "VCS-hint rejection",
     ),
     Mutation(
@@ -986,12 +1032,12 @@ MUTATIONS = (
         "if hashlib.sha256(dockerfile).hexdigest() "
         "!= spec.dockerfile_sha256:\n"
         "        fail(\n"
-        '            "Docker archive certified Android builder Dockerfile '
-        'differs "',
+        "            f\"Docker archive certified {spec.display_name} "
+        "Dockerfile differs \"",
         "if False:\n"
         "        fail(\n"
-        '            "Docker archive certified Android builder Dockerfile '
-        'differs "',
+        "            f\"Docker archive certified {spec.display_name} "
+        "Dockerfile differs \"",
         "embedded Dockerfile binding",
     ),
     Mutation(
@@ -1102,10 +1148,10 @@ MUTATIONS = (
         "provenance",
         "or stat.S_IMODE(before.st_mode) != 0o600:\n"
         "            fail(\n"
-        "                \"direct certified Android builder OCI export must be \"",
+        "                \"direct certified builder OCI export must be \"",
         "or stat.S_IMODE(before.st_mode) != 0o666:\n"
         "            fail(\n"
-        "                \"direct certified Android builder OCI export must be \"",
+        "                \"direct certified builder OCI export must be \"",
         "private direct OCI export mode",
     ),
     Mutation(
@@ -1114,13 +1160,13 @@ MUTATIONS = (
         "       or len(descriptors) != 1 \\\n"
         "       or not isinstance(descriptors[0], dict):\n"
         "        fail(\n"
-        "            \"direct certified Android builder OCI export must name "
+        "            \"direct certified builder OCI export must name "
         "exactly \"",
         "or not isinstance(descriptors, list) \\\n"
         "       or len(descriptors) < 1 \\\n"
         "       or not isinstance(descriptors[0], dict):\n"
         "        fail(\n"
-        "            \"direct certified Android builder OCI export must name "
+        "            \"direct certified builder OCI export must name "
         "exactly \"",
         "direct OCI sole-root/referrer rejection",
     ),
@@ -1139,11 +1185,11 @@ MUTATIONS = (
         "provenance",
         "if expanded_bytes > 8 * 1024 * 1024 * 1024:\n"
         "                        fail(\n"
-        "                            \"direct certified Android builder OCI "
+        "                            \"direct certified builder OCI "
         "export \"",
         "if expanded_bytes > 80 * 1024 * 1024 * 1024:\n"
         "                        fail(\n"
-        "                            \"direct certified Android builder OCI "
+        "                            \"direct certified builder OCI "
         "export \"",
         "direct OCI expanded-content bound",
     ),
@@ -1165,9 +1211,11 @@ MUTATIONS = (
         "workspace",
         "validate_android_builder_authority_contract(sources)\n"
         "    validate_android_builder_image_authority_contract(sources)\n"
+        "    validate_deb_builder_image_authority_contract(sources)\n"
         "    validate_android_keystore_authority_contract(sources)",
         "validate_android_builder_authority_contract(sources)\n"
         "    true # Android builder image workspace contract removed\n"
+        "    validate_deb_builder_image_authority_contract(sources)\n"
         "    validate_android_keystore_authority_contract(sources)",
         "independent workspace dispatch",
     ),

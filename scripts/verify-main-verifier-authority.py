@@ -375,8 +375,9 @@ def validate_contract(sources):
         "devcheck recovery does not use the verified load boundary",
     )
     require(
-        online_fetch.count("verify_or_load_devcheck_image") == 4,
-        "devcheck image preparation is not wired to explicit, offline-input, and default paths",
+        online_fetch.count("verify_or_load_devcheck_image") == 5,
+        "devcheck image preparation is not wired to the Apple candidate, "
+        "explicit, offline-input, and default paths",
     )
     capture_block = extract(
         online_fetch,

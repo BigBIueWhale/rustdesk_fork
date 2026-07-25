@@ -11264,8 +11264,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `build_android_builder_bootstrap_image` operation; exact bootstrap capture is separate; and the
   bootstrap becomes eligible material only after the networkless certification transaction.
   The prior self-authorizing `build_android_builder_image` surface and Android Docker-store
-  capture function are absent; generic builder capture now covers only the Debian and Windows
-  images. New archive publication uses a current-user mode-0700 parent, current-user mode-0400
+  capture function are absent; generic builder capture now covers only the Windows helper
+  image. New archive publication uses a current-user mode-0700 parent, current-user mode-0400
   one-link source, and descriptor-relative `renameat2(RENAME_NOREPLACE)` with namespace
   synchronization and inode postcondition; occupied state is preserved.
 
@@ -11309,8 +11309,144 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   process/service/configuration/listener/firewall/network inspection or mutation occurred.
   This slice does not complete the clean independent-snapshot R-B2/R-B10 transaction, build or
   sign an APK, test Android devices or the original swipe/relaunch sequence, prove native
-  installed-platform behavior, authenticate/distribute the Debian or Windows builder archives,
+  installed-platform behavior, authenticate/distribute the Windows helper archive,
   or complete R-V3 external review.
+- **R-S11db/R-S11e-120 — authenticated Debian builder image distribution authority —
+  SOURCE, DIRECT-OCI DISTRIBUTION, REAL ARCHIVE/RUNTIME, INDEPENDENT RUNTIME-GRAPH
+  REPRODUCTION, AND FOCUSED/WORKSPACE MUTATION EVIDENCE RECORDED 2026-07-25; CLEAN
+  EXACT-COMMIT R-B2/R-B10 RELEASE, INSTALLED DEBIAN LIFECYCLE, WINDOWS IMAGE-DISTRIBUTION,
+  DEVICE/NATIVE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
+  acquisition/build host, its local Docker/BuildKit engine, and each offline Debian release
+  consumer. Endpoint/action: the Debian image maintenance acquisition, direct certification,
+  canonicalization, exact-pin promotion, ordinary `load_builder_images`, and
+  `require_pinned_builder_image deb-builder`. Boundary: a historical network/root
+  package-installing build with incomplete source metadata ↔ the exact independently archived
+  builder executable authority admitted to release compilation.
+
+  Before this slice, `online/build-images/deb-builder.docker.tar.gz` was a 462,069,452-byte
+  archive at SHA-256
+  `361e04156023e286e4c0014753e379a2aef1e63c4f3a56ea7dafa316ecb15d6f`.
+  Its image/index ID was
+  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776`,
+  its runtime manifest was
+  `sha256:9fa4f01154f278ecf285bad9e59940ebb181d6464489dbd9473f40320e2482f6`,
+  and its config was
+  `sha256:ff9c506bb404f079cf37d36396d25d4a53fb6b57aeff258f7764b1900c62c738`.
+  The embedded Debian recipe SHA-256
+  `3f50a91a679138318c5cc0f7151fd4cf1d3ec55e6fa6736b67b88919eab8d9b6`
+  and live/stored package-manifest SHA-256
+  `e5003404717eea27ffb2cb6cf1aaac72b89b5ea6e70d11c16c605a15129760ae`
+  are internally coherent. Its only mode-min BuildKit provenance nevertheless supplied
+  local-worktree VCS revision `ef8b8226…`; the Debian builder Dockerfile committed at that
+  revision hashes to
+  `dc2109a073bca71de0fb481c537a2f8e264ce0f678292385d8a5f01f7f43fa9c`,
+  not the embedded recipe. Docker's primary SLSA-definition documentation says those
+  local-context VCS values are client-supplied, unverified metadata hints. That mismatch made
+  the old attestation insufficient build/source authority. It is not evidence that the exact
+  archive or package set changed, Docker escaped, host root was acquired, a listener or public
+  port was exposed, host RustDesk/service/configuration/firewall/network state changed,
+  exploitation occurred, or the host was compromised.
+
+  The historical object is now bootstrap-only
+  `deb-builder-bootstrap.docker.tar.gz`. Its exact archive identity, index/config/manifest,
+  recipe/package contract, and complete materialized OCI-layout SHA-256
+  `b411562e7deec95cb0f362d09e229df00422dc92b60cd27ce39ce43929f4043c`
+  are separately pinned. The bootstrap verifier requires a current-user-owned, one-link
+  mode-0400 modern content-addressed archive and cannot accept it as the final role. The common
+  materializer stably no-follow reads and twice hashes it, applies bounded exact-member and
+  expanded-byte rules, creates every member descriptor-relatively with no-follow exclusive
+  creation, validates blob bytes against names, synchronizes and seals the layout, and proves
+  that independent complete-layout identity immediately before and after certification.
+
+  `scripts/Dockerfile.deb-builder-certify` is the sole 51-line certification recipe at SHA-256
+  `d5f22c0adbec24e9f95a51ad5f40ce32d5fea59c7d840bdbf7f15caca6af0283`.
+  It names only `FROM deb-builder-bootstrap`, sets `USER 1000:1000`, and has one
+  `RUN --network=none`. That operation proves live UID/GID, the embedded original Debian
+  recipe, live and stored package manifests, exact `deb-builder` provenance contract, and all
+  required build tools. It installs, fetches, copies, and repairs nothing. The maintenance
+  build fixes an empty private Docker configuration/client endpoint, clears client Git
+  metadata with `BUILDX_GIT_INFO=false`, supplies only
+  `oci-layout://<private-layout>@<exact-index-id>`, and invokes BuildKit for Linux/amd64 with
+  no network, pull, cache, secret, SSH agent, privileged entitlement, registry context, load,
+  tag, or push. Mode-max provenance, `SOURCE_DATE_EPOCH=1700000000`, OCI media types, gzip
+  layer compression, and timestamp rewriting are explicit.
+
+  BuildKit writes only the fixed private direct OCI export
+  `rd-deb-builder-certified:authenticated-v1`; it never loads or tags that result. The common
+  raw-export scanner requires a current-user-owned one-link mode-0600 tar under a
+  current-user mode-0700 directory and rejects more than 4,096 members, more than 8 GiB of
+  expanded content, malformed inventory/order/headers/modes/timestamps, links/specials/PAX,
+  blob-name disagreement, nonzero trailing data, extra outer descriptors/referrers,
+  unexpected compatibility metadata, unreferenced objects, and missing reachable objects. The
+  canonicalizer derives the candidate index from the sole named descriptor, exact-matches the
+  pinned runtime manifest/config and reachable graph, strips exporter annotations, synthesizes
+  `RepoTags: null`, and streams deterministic gzip/USTAR bytes through no-follow exclusive
+  creation. It reproves the raw source, seals the result mode 0400, and applies the semantic
+  verdict before and after descriptor-relative no-clobber publication.
+
+  The final certified archive is current-user-owned, single-link mode 0400, exactly
+  462,076,812 bytes, and SHA-256
+  `8138ada8977c431ec3e1c91bc2daa8279687d889d8d0efe65587a5515b36de4b`.
+  Its image/index ID is
+  `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`,
+  runtime manifest
+  `sha256:3554ab3356afcac84ef8aeba034bd4fe55f3df95c89fb8abd934d4989808d434`,
+  and config
+  `sha256:a9e2b1ca4dde1ad4c4818f27dc312ea2575bd3d235c88f5acf5927193b423179`.
+  It has the exact three inherited layers plus one certification layer, 21 normalized history
+  entries, numeric-nonroot runtime config, exact labels, no tag/outer annotation or
+  unreachable member, and one in-toto provenance statement. The generalized verifier rejects
+  every VCS-shaped field and exact-matches the subject; sole bootstrap material; request and
+  five build arguments; embedded certification Dockerfile and source map; complete
+  three-operation LLB; local OCI store/session; sole UID/GID-1000 execution with BuildKit
+  network mode 2 and only the root mount; layer mapping; platform; metadata; and
+  request-completeness state.
+
+  The reviewed production candidate was semantically verified before promotion, renamed as the
+  same inode through descriptor-relative `RENAME_NOREPLACE` only after every final pin matched,
+  and then loaded and runtime-verified from its stable descriptor at the final name. The
+  confined runtime uses no pull/network, a read-only root, UID/GID 1000, all capabilities
+  dropped, no-new-privileges, PID/memory/no-swap/CPU ceilings, and bounded non-executable tmpfs,
+  then rechecks live identity, embedded/live package contract, and tools. A separate development
+  direct certification and the production maintenance certification independently reproduced
+  the exact runtime manifest and config above. Their dynamic outer indexes and archives differ
+  because mode-max provenance records invocation/session/timestamp metadata; no byte-identical
+  attestation-archive claim is made.
+
+  Ordinary loading now admits only the exact final `deb-builder.docker.tar.gz`. The historical
+  bootstrap and fixed `deb-builder-certified-candidate.docker.tar.gz` cannot enter that path.
+  Networked acquisition can emit only `deb-builder-bootstrap-candidate`; Debian capture can
+  archive only the bootstrap role; and generic capture is Windows-helper-only. The old
+  self-authorizing `build_deb_builder_image`, shared `capture_builder_image`, generic
+  `maintenance_capture_builder_images`, and its CLI entry point are absent. The new focused
+  semantic gate, its deliberate mutations, generalized provenance fixtures, independent
+  workspace contract/mutations, shared verifier wiring, exact requirement/Appendix disposition,
+  and this ledger bind those boundaries.
+
+  The self-excluding complete ignored online tree was regenerated through the canonical
+  maintenance writer and independently reverified at
+  `2eaa0c68b94863402199fa03c4ddc364407c9b271009d7c5cfb5a4e1299e5272`:
+  145,628 files, 42,831 directories, 41 symlinks, 29,686,750,086 content bytes,
+  16 hardlink groups, and 9 case collisions. Both real Debian archives independently passed
+  their mount-free semantic validators after publication; exact stat/hash replay confirmed
+  current UID/GID 1000 ownership, one link, mode 0400, and the pinned sizes and hashes, while
+  the promoted Debian candidate name was absent. The generalized provenance self-test,
+  Android image gate's 55 mutations, Debian image gate's 39 mutations, Dart image gate's 85,
+  Rust image gate's 95, online-container gate's 44, and the complete independent workspace
+  source-mutation matrix pass.
+
+  All project Bash/Python execution and verification for this slice ran in the immutable
+  unprivileged devcheck container with no network, read-only repository/root, no capabilities,
+  no-new-privileges, no Docker socket or published port, and explicit resource ceilings, except
+  direct host Docker/BuildKit orchestration required to create and load the reviewed image.
+  The certification Dockerfile's only execution was UID/GID 1000 and networkless. No root
+  command or root container, privileged flag, added capability, host namespace/device, Docker
+  socket passed into a container, published port, release build, or host RustDesk
+  process/service/configuration/listener/firewall/network inspection or mutation occurred.
+  This slice does not build the cold exact-commit Debian package, execute R-B2/R-B10 release
+  determinism, inspect package payload semantics beyond existing gates, test
+  install/upgrade/uninstall on a Debian target, authenticate the Windows helper image, prove
+  device/native installed-platform behavior, or complete R-V3 external review.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12028,7 +12164,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-6ca54f6b8041d8291603dca612a82dd6109e07864c96d875631c8ed62b405de5  requirements.html
+c9ea4f24cff234c8880e124185e711cc479d232f3bf5ee4029aba0309d34d09b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cz, R-SV4a,

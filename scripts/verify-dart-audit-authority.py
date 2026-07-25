@@ -416,7 +416,7 @@ def validate_contract(sources):
     candidate = extract_between(
         online_fetch,
         "maintenance_build_dart_audit_image_candidate() {",
-        '\n}\n\ncapture_builder_image()',
+        '\n}\n\nmaintenance_build_rust_audit_image_candidate()',
         "Dart advisory candidate build",
     )[0]
     require_all(
@@ -453,7 +453,7 @@ def validate_contract(sources):
     require_all(
         private_archive,
         (
-            "CertifiedAndroidBuilderSpec",
+            "CertifiedBuilderSpec",
             "VerifierSpec",
             "AppleCheckSpec",
             "DartAuditSpec",
@@ -751,7 +751,7 @@ MUTATIONS = (
             "    return isinstance(\n"
             "        spec,\n"
             "        (\n"
-            "            CertifiedAndroidBuilderSpec,\n"
+            "            CertifiedBuilderSpec,\n"
             "            VerifierSpec,\n"
             "            AppleCheckSpec,\n"
             "            DartAuditSpec,\n"
@@ -764,7 +764,7 @@ MUTATIONS = (
             "    return isinstance(\n"
             "        spec,\n"
             "        (\n"
-            "            CertifiedAndroidBuilderSpec,\n"
+            "            CertifiedBuilderSpec,\n"
             "            VerifierSpec,\n"
             "            AppleCheckSpec,\n"
             "            RustAuditSpec,\n"

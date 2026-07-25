@@ -90,7 +90,7 @@ def validate(sources: Mapping[str, str]) -> None:
 
     expected_pins = {
         "SHA256_ONLINE_CLOSURE_V1": (
-            "a9a5546294b21793f55ae4aa9b6956cf1695a58e62e614adb4fc1e74bd672c60"
+            "2eaa0c68b94863402199fa03c4ddc364407c9b271009d7c5cfb5a4e1299e5272"
         ),
         "SHA256_CARGO_VENDOR_CLOSURE_V1": (
             "fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"
@@ -106,7 +106,7 @@ def validate(sources: Mapping[str, str]) -> None:
             "6bf166ddcad545aa26aa2d12a186454d7697133b52b7fbbd271ce3ee1ecfedc6"
         ),
         "DEB_BUILDER_IMAGE_ID": (
-            "sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776"
+            "sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2"
         ),
     }
     for name, expected in expected_pins.items():

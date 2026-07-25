@@ -34,6 +34,7 @@ readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
 readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
 readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-output.py"
+readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
@@ -146,6 +147,44 @@ readonly -a FIXED_ARCHIVE_ARGS=(
     "$SIZE_RUST_MSVC_1_75"
     "$SHA256_RUST_MSVC_1_75"
     "static.rust-lang.org"
+)
+readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(
+    --entry
+    "wix-nuget-packages/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "https://api.nuget.org/v3-flatcontainer/wixtoolset.firewall.wixext/${WIX_NUGET_VERSION}/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "$SIZE_WIX_NUGET_FIREWALL"
+    "$SHA256_WIX_NUGET_FIREWALL"
+    "api.nuget.org"
+    --entry
+    "wix-nuget-packages/wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg"
+    "https://api.nuget.org/v3-flatcontainer/wixtoolset.heat/${WIX_NUGET_VERSION}/wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg"
+    "$SIZE_WIX_NUGET_HEAT"
+    "$SHA256_WIX_NUGET_HEAT"
+    "api.nuget.org"
+    --entry
+    "wix-nuget-packages/wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "https://api.nuget.org/v3-flatcontainer/wixtoolset.netfx.wixext/${WIX_NUGET_VERSION}/wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "$SIZE_WIX_NUGET_NETFX"
+    "$SHA256_WIX_NUGET_NETFX"
+    "api.nuget.org"
+    --entry
+    "wix-nuget-packages/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg"
+    "https://api.nuget.org/v3-flatcontainer/wixtoolset.sdk/${WIX_NUGET_VERSION}/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg"
+    "$SIZE_WIX_NUGET_SDK"
+    "$SHA256_WIX_NUGET_SDK"
+    "api.nuget.org"
+    --entry
+    "wix-nuget-packages/wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "https://api.nuget.org/v3-flatcontainer/wixtoolset.ui.wixext/${WIX_NUGET_VERSION}/wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "$SIZE_WIX_NUGET_UI"
+    "$SHA256_WIX_NUGET_UI"
+    "api.nuget.org"
+    --entry
+    "wix-nuget-packages/wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "https://api.nuget.org/v3-flatcontainer/wixtoolset.util.wixext/${WIX_NUGET_VERSION}/wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg"
+    "$SIZE_WIX_NUGET_UTIL"
+    "$SHA256_WIX_NUGET_UTIL"
+    "api.nuget.org"
 )
 declare -a VCPKG_FIXED_ARCHIVE_ARGS=()
 readonly SYSTEMD_SMOKE_IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
@@ -983,8 +1022,9 @@ vendor_cargo() {
 # ── Fixed archive transactions ────────────────────────────────────────────────
 # Remote bytes receive one private output transaction, not the online root or a
 # final name. The host independently checks every exact length/digest before a
-# descriptor-relative no-clobber publication. The two admitted manifests are the
-# fourteen toolchain/installer archives and the 33 vcpkg source/tool distfiles.
+# descriptor-relative no-clobber publication. The admitted manifests are the
+# fourteen toolchain/installer archives, six signed WiX packages, 33 vcpkg
+# source/tool distfiles, and the one dated Debian systemd image.
 load_vcpkg_fixed_archive_manifest() {
     local name size digest url hosts extra tool_name tool_hash tool_extra count=0
     local manifest_sha256
@@ -1049,6 +1089,7 @@ archive_bundle_tool() {
         systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
         toolchain) archive_args=("${FIXED_ARCHIVE_ARGS[@]}") ;;
         vcpkg) archive_args=("${VCPKG_FIXED_ARCHIVE_ARGS[@]}") ;;
+        wix) archive_args=("${WIX_NUGET_FIXED_ARCHIVE_ARGS[@]}") ;;
         *) die "unknown fixed-archive bundle kind: $kind" ;;
     esac
     /usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" "$command" \
@@ -3502,21 +3543,29 @@ stage_flutter_pub_cache() {
     log "Windows flutter_tools Pub cache exactly validated and checked-published"
 }
 
-# ── The WiX v4.0.5 NuGet closure (§12.2 milestone-2, the .msi) ──────────────────────────────
-# The .msi (R-B7/B8) builds via `python res/msi/preprocess.py` then `msbuild res/msi/msi.sln`, which restores the
-# wixproj's 5 .wixext PackageReferences + the WixToolset.Sdk. Stage that whole NuGet closure OFFLINE so the in-VM
-# msbuild needs 0 network. The six-package tarball is a separately captured, digest-verified input until its
-# producer has an audited immutable image pin; online-fetch must not recreate it through a mutable SDK tag.
-# DETERMINISTIC (proven: two fresh re-downloads -> identical SHA): sorted tar + fixed mtime/owner + gzip -n. Shipped
-# on the TOOLCHAINS CD + pre-placed at the golden's NUGET_PACKAGES by win-guest-setup (milestone 2 re-provision).
+# ── The exact signed WiX v4.0.5 NuGet source (§12.2 milestone-2, the .msi) ──────
+# NuGet itself owns package signature verification and global-cache extraction.
+# Acquire only the exact SDK + five extension .nupkg files through the common
+# bounded transaction. The Windows guest consumes this directory as a read-only
+# local package source, requires the pinned WiX author certificate, and restores
+# into a fresh private global-packages directory with its committed lock file.
 stage_windows_wix_nuget() {
-    local out="$ONLINE_DIR/wix-nuget.tar.gz"
-    if [ -f "$out" ]; then
-        verify_sha256 "$out" "${SHA256_WIX_NUGET}"
-        log "WiX NuGet already staged and digest-verified, skipping"
-        return 0
-    fi
-    die "online/wix-nuget.tar.gz is absent; the former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden. Capture the exact six-package closure under a separately audited immutable image, then stage only bytes matching SHA256_WIX_NUGET"
+    stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages \
+        "fixed signed WiX NuGet packages"
+    /usr/bin/python3 -I -S "$WIX_NUGET_RETIRE_HELPER" retire \
+        --online "$ONLINE_DIR" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        --package "wix-nuget-packages/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg" "$SIZE_WIX_NUGET_FIREWALL" "$SHA256_WIX_NUGET_FIREWALL" \
+        --package "wix-nuget-packages/wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg" "$SIZE_WIX_NUGET_HEAT" "$SHA256_WIX_NUGET_HEAT" \
+        --package "wix-nuget-packages/wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg" "$SIZE_WIX_NUGET_NETFX" "$SHA256_WIX_NUGET_NETFX" \
+        --package "wix-nuget-packages/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg" "$SIZE_WIX_NUGET_SDK" "$SHA256_WIX_NUGET_SDK" \
+        --package "wix-nuget-packages/wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg" "$SIZE_WIX_NUGET_UI" "$SHA256_WIX_NUGET_UI" \
+        --package "wix-nuget-packages/wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg" "$SIZE_WIX_NUGET_UTIL" "$SHA256_WIX_NUGET_UTIL" \
+        --legacy-six-size "$SIZE_WIX_NUGET_LEGACY_SIX" \
+        --legacy-six-sha256 "$SHA256_WIX_NUGET_LEGACY_SIX" \
+        --legacy-eight-size "$SIZE_WIX_NUGET_LEGACY_EIGHT" \
+        --legacy-eight-sha256 "$SHA256_WIX_NUGET_LEGACY_EIGHT"
+    log "exact signed WiX local-feed packages staged; obsolete expanded-cache archive absent"
 }
 
 main() {
@@ -3527,6 +3576,12 @@ main() {
         --libvpx-distfiles)
             [ "$#" -eq 1 ] || die "--libvpx-distfiles takes no arguments"
             stage_libvpx_distfiles
+            return 0
+            ;;
+        --wix-nuget-packages)
+            [ "$#" -eq 1 ] || die "--wix-nuget-packages takes no arguments"
+            load_builder_images
+            stage_windows_wix_nuget
             return 0
             ;;
         --maintenance-build-image-candidates)
@@ -3562,7 +3617,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images

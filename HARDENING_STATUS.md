@@ -10845,6 +10845,136 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   clean exact-commit R-B2 release transaction. WiX acquisition, maintenance-image
   distribution, exact release artifacts, installed/native/device behavior, independent image
   distribution, and R-V3 external review remain open.
+- **R-S11cz/R-S11e-118 — exact signed WiX package acquisition and locked offline restore
+  authority — SOURCE, TRANSACTION, SCOPED COLD ACQUISITION, LEGACY RETIREMENT, SIGNATURE,
+  LOCKED-RESTORE, AND MUTATION VERIFIED 2026-07-25; CLEAN WINDOWS RELEASE, NATIVE MSI TABLE,
+  AND INSTALLED LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
+  acquisition host, manifest-bound offline UDF media, and networkless ephemeral Windows build
+  guest. Endpoint/action: `scripts/online-fetch.sh::stage_windows_wix_nuget`, Linux-side
+  `build_offline_media`, and the WiX restore in `scripts/build-windows.ps1`. Boundary:
+  publisher-signed NuGet package bytes ↔ durable offline input, derived global-package cache,
+  and the Windows MSI build.
+
+  Before this slice, `online/wix-nuget.tar.gz` was an opaque archived NuGet global-packages
+  tree. Its retired producer selected mutable `mcr.microsoft.com/dotnet/sdk:8.0`; the Linux
+  harness extracted the tar into writable run state, mapped the expanded tree into UDF media,
+  and the Windows guest copied it to `C:\wix-nuget` before an unlocked restore. The extant
+  71,249,853-byte historical archive at SHA-256
+  `0f76c469cd2171f3bf7913828851a2cb22c10a7e0be8bf73ef99a791a6cd1190`
+  contained eight package roots, including the already removed DUtil and WcaUtil native custom-
+  action build dependencies. A separately derived six-root archive at exact size 54,038,393 and
+  SHA-256 `62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58`
+  removed those two roots, but it still made mutable derived package-manager state—including
+  extraction results and completion metadata—the durable authority. This was acquisition,
+  cache-state, package-signature, lock, and stale-lifecycle authority debt. It is not evidence
+  that the historical package bytes changed, WiX/NuGet was malicious, host root was acquired,
+  Docker escaped, a listener or public port was exposed, host RustDesk/service/configuration/
+  firewall/network state changed, exploitation occurred, or the host was compromised.
+
+  The durable authority is now exactly six publisher `.nupkg` files at version 4.0.5:
+  Firewall 330,923 bytes / SHA-256
+  `d722cd6d5d262736fc9220fa1d287147c244fd5c2b21065bf192935d8e45d8e3`;
+  Heat 5,018,595 /
+  `6c137c6a7d6b724169ff47832d080bf75009f24cda656d5644585031ebbe66d8`;
+  Netfx 1,577,895 /
+  `e09e0e121c482cba3e77521f83f9820f232dd0ab65199f66398efdef3f7b2e46`;
+  SDK 18,626,823 /
+  `917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f`;
+  UI 793,813 /
+  `313cc0a9b2c2e90661a6ab56f46a08ce551ed64673cbef95ceab6508690147a1`;
+  and Util 891,963 /
+  `b63e40584d3b5ceb23607586ad720ae0288bad2c8699a0a07cd3260591d1292e`.
+  The exact lower-case flat-container URLs admit only `api.nuget.org`. Independent signature
+  verification binds WiX author certificate SHA-256
+  `0DB368BC1A5A9E19CC9E036B490B7C4A4D3DFB941C0781B4F22F218BE0B54986`
+  and NuGet.org repository certificate SHA-256
+  `5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4`.
+
+  Acquisition reuses the R-S11cs fixed-archive helper under its new exact six-entry profile.
+  The already verified immutable Android builder runs with numeric UID:GID, `--pull=never`,
+  isolated bridge egress, read-only root, all capabilities dropped, no-new-privileges, bounded
+  resources, and only exact helper/state read-only mounts plus one private output writable. It
+  receives no online root or final name. Independent host validation proves exact response
+  framing, length/digest, ownership, mode, link count, mount, xattr, and six-file inventory
+  before descriptor-relative no-clobber publication. The explicit
+  `--wix-nuget-packages` mode invokes only this transaction and retirement. No .NET SDK image,
+  host `dotnet`, cache producer, compatibility tag, broad writable online bind, or direct final
+  writer remains.
+
+  `scripts/online-wix-nuget-retire.py` runs only after all six exact finals are durable. It
+  refuses UID/GID zero, exclusively locks and revalidates the current-owner mode-0700 xattr-free
+  online root, revalidates the mode-0700 six-package directory and every mode-0400 single-link
+  current-owner package through stable no-follow descriptors, proves same filesystem/mount and
+  no xattrs, and recognizes only a current-owner mode-0644 archive with one of the two exact
+  historical size/digest identities above. An unknown or unsafe archive is preserved. A
+  recognized archive moves by descriptor-relative
+  `renameat2(RENAME_NOREPLACE)` into unpredictable same-parent private staging; both namespaces
+  are synchronized, the staged exact bytes are revalidated, and only that exact leaf is
+  unlinked. Restart recovery admits only empty private staging or one exact known archive.
+  Adversarial self-tests cover exact retirement, idempotent absence, unknown-input
+  preservation, and interrupted exact-staging recovery. A separate disposable replay used the
+  real historical 71,249,853-byte archive plus all six source-identical package files and
+  returned `retired`, then idempotent `absent`, without changing any mounted source.
+
+  The Linux Windows harness no longer defines `WIX_NUGET_ROOT`, extracts the archive, or gives
+  a helper writable WiX output. Preflight proves the exact six names, sizes, and hashes.
+  `windows-offline-manifest.py` records the direct `wix-nuget-packages` mapping; the complete
+  online tree is read-only to media creation; genisoimage grafts that directory directly; and
+  before/after manifest equality proves input stability. The Windows guest revalidates all six
+  source files, validates its ephemeral temporary directory, requires the run-ID-scoped cache
+  and configuration names to be absent, atomically creates both without deleting or overwriting
+  occupied state, and never copies expanded source state. `NUGET_PACKAGES` points at that fresh
+  directory; the no-clobber configuration is synchronized and hashed across restore; and the
+  guest disables online revocation lookup, requires signature verification, clears ambient
+  sources, maps only `WixToolset.*` to the read-only UDF source, and names both pinned signer
+  fingerprints.
+
+  `Package.wixproj` now pins `WixToolset.Sdk/4.0.5`, expresses every direct extension as exact
+  `[4.0.5]`, and requires locked restore. The committed `packages.lock.json` binds exactly the
+  five direct PackageReferences and their signed-package content hashes; the SDK remains exact
+  in the project SDK declaration and in the six-file source inventory. MSBuild restore passes
+  `RestoreLockedMode=true`, `RestorePackagesWithLockFile=true`, `RestoreNoCache=true`, and
+  `NuGetAudit=false`. It must leave source package, temporary configuration, and lock bytes
+  unchanged and produce exactly six `4.0.5` global-package roots with nonempty
+  `.nupkg.metadata`, nuspec, `.nupkg.sha512`, and source-identical cached `.nupkg` bytes before
+  MSI compilation.
+
+  The scoped real acquisition used exact Android-builder image
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
+  as numeric non-root with bridge egress and no port/host namespace. It acquired, independently
+  verified, and no-clobber published all six packages, then retired the exact eight-package
+  archive. Persistent postconditions are current-user mode 0700 for the package directory and
+  mode 0400, one link, exact length/digest for every file. The canonical self-excluding online
+  closure was deliberately regenerated to SHA-256
+  `29dc7e958ef7d78c02723d15601fcfe360915d8328cc319a20484513187ecad3`:
+  145,715 files, 42,856 directories, 41 symlinks, 25,679,486,815 content bytes, 16 hardlink
+  groups, and nine case collisions.
+
+  A separate no-network semantic replay used the already present exact .NET 8.0.422 SDK image
+  `sha256:d80fdd84f7e18eea12f8e45c52914f1353395009c95c41197178ea19944e6d48`
+  as UID:GID 1000 with read-only root/source, zero capabilities, no-new-privileges, bounded
+  resources, and tmpfs-only writes. Starting from a blank global cache, it independently
+  verified every exact package SHA-256, both signatures on all six packages, the same cleared
+  local-source/package-mapping/trusted-signer configuration used by Windows, and the actual
+  updated project plus committed lock. `dotnet restore --locked-mode --no-cache` completed in
+  217 ms with the lock unchanged and exactly six complete cache roots. The certificate validity
+  dates printed by verification are historical, but the packages carry signed timestamp
+  evidence and the offline restore under the pinned exact bytes/signers passed; no live network
+  or moving publisher state participated.
+
+  Confined Bash/Python checks, the fixed-archive and retirement executable fixtures, offline
+  manifest fixture, fixed-archive 63-mutation gate, online-container 39-mutation gate, Windows
+  helper 42-mutation gate, Windows harness contract plus 139 mutations and four bounded
+  behavioral suites, focused WiX 24-mutation gate, shared source gate, and independent workspace
+  mutation matrix bind the producer, consumer, lock, signer, legacy retirement, requirements,
+  Appendix C #253, and this ledger. The synchronized requirements identity is recorded below.
+  No root process,
+  privilege escalation, image pull/build/tag, port, Docker-socket mount, host namespace/device,
+  host firewall/network mutation, or host RustDesk process/service/listener/configuration
+  inspection or change occurred. This slice does not build an MSI or Windows release artifact,
+  inspect native MSI tables, exercise install/repair/major-upgrade/uninstall, complete cross-
+  target R-B2 double-builds, close maintenance-image distribution, prove installed/native/device
+  behavior, independently distribute build images, or complete R-V3 external review.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -11562,9 +11692,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5218234eefdd41df0132028b42642c3ef7960f070e7102d1d421a437acc368c2  requirements.html
+26c507bd7c250121bbfc0734c56de6a00b4e763d31602a375067c6374a5c8ee3  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cy, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cz, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

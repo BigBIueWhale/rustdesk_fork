@@ -116,7 +116,7 @@ def validate(sources: Dict[str, str]) -> None:
     lifecycle = extract_between(
         shell,
         "stage_flutter_pub_cache() {",
-        "\n}\n\n# ── The WiX",
+        "\n}\n\n# ── The exact signed WiX",
         "Flutter Pub-cache output lifecycle",
     )
     semantic_profile = extract_between(

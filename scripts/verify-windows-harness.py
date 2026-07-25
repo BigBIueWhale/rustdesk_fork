@@ -466,7 +466,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     verify_private_golden = shell_function(host, "verify_private_golden")
     write_manifest = shell_function(host, "write_manifest")
     write_offline_manifest = shell_function(host, "write_offline_manifest")
-    extract_wix_nuget = shell_function(host, "extract_wix_nuget")
+    verify_wix_nuget_packages = shell_function(host, "verify_wix_nuget_packages")
     build_offline_media = shell_function(host, "build_offline_media")
     build_pass_media = shell_function(host, "build_pass_media")
     prepare_overlay = shell_function(host, "prepare_overlay")
@@ -659,14 +659,14 @@ def validate_sources(sources: dict[str, str]) -> None:
         "common invoking-UID Windows helper identity",
     )
     require(
-        extract_wix_nuget,
-        "windows_helper_small_run",
-        "confined invoking-UID WiX extraction",
+        verify_wix_nuget_packages,
+        'local root="$ONLINE_DIR/wix-nuget-packages"',
+        "exact WiX local-package source validation",
     )
     require(
-        extract_wix_nuget,
-        "source=$ONLINE_DIR/wix-nuget.tar.gz,target=/authority/wix-nuget.tar.gz,readonly",
-        "exact read-only WiX archive",
+        verify_wix_nuget_packages,
+        'verify_sha256 "$file" "$expected_sha"',
+        "exact WiX local-package hashes",
     )
     require(
         build_offline_media,
@@ -675,8 +675,8 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     require(
         build_offline_media,
-        '--mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget,readonly"',
-        "read-only extracted WiX media input",
+        "/wix-nuget-packages=/online/wix-nuget-packages",
+        "read-only signed WiX package media input",
     )
     require(
         build_offline_media,
@@ -686,13 +686,12 @@ def validate_sources(sources: dict[str, str]) -> None:
     require_order(
         build_offline_media,
         (
-            "extract_wix_nuget",
             'write_offline_manifest "$manifest"',
             "genisoimage -udf -D -r -f -quiet",
             'write_offline_manifest "$after"',
             'cmp -s "$manifest" "$after"',
         ),
-        "offline extraction, identity, materialization, and stability ordering",
+        "offline identity, materialization, and stability ordering",
     )
 
     offline_hash = python_function(offline_tree, "hash_regular")
@@ -1775,10 +1774,10 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "freeze_image win-helper",
         ),
         (
-            "WiX helper wrapper",
+            "WiX package media mapping",
             "host",
-            'windows_helper_small_run \\\n        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz',
-            'docker run \\\n        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz',
+            "/wix-nuget-packages=/online/wix-nuget-packages",
+            "/wix-nuget-packages=/online/pub-cache",
         ),
         (
             "online snapshot",

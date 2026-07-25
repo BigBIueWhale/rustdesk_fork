@@ -190,8 +190,10 @@ if ($src) {
 } else {
     Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'
 }
-# WiX NuGet is intentionally per-build media, not golden-template state: scripts/build-windows.ps1
-# copies the staged closure from OFFLINE\wix-nuget into a writable NUGET_PACKAGES directory.
+# WiX NuGet is intentionally per-build media, not golden-template state:
+# scripts/build-windows.ps1 verifies the signed packages in
+# OFFLINE\wix-nuget-packages and restores them into a fresh writable
+# NUGET_PACKAGES directory.
 
 # --- per-build harness: persistent auto-login + a logon task that runs the build CD's run-build.ps1 ----
 # A per-build is a throwaway CoW clone of this golden + a BUILD CD (the repo's run-build.ps1) + an OUTPUT

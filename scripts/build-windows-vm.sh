@@ -39,7 +39,6 @@ SOURCE_MODE=""
 FORK_VERSION_VALUE=""
 BASE_MANIFEST_SHA256=""
 OFFLINE_MANIFEST_SHA256=""
-WIX_NUGET_ROOT=""
 DEB_BUILDER_IMAGE=""
 PRIVATE_GOLDEN=""
 ONLINE_SNAPSHOT_PARENT=""
@@ -78,6 +77,49 @@ assert_disjoint_paths() {
     case "$second/" in
         "$first/"*) die "$second_label must not be beneath $first_label" ;;
     esac
+}
+
+verify_wix_nuget_packages() {
+    local root="$ONLINE_DIR/wix-nuget-packages"
+    local file name expected_size expected_sha metadata i
+    local -a actual=()
+    local -a expected=(
+        "wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg"
+        "wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg"
+        "wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg"
+        "wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg"
+        "wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg"
+        "wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg"
+    )
+    local -a records=(
+        "${expected[0]}|$SIZE_WIX_NUGET_FIREWALL|$SHA256_WIX_NUGET_FIREWALL"
+        "${expected[1]}|$SIZE_WIX_NUGET_HEAT|$SHA256_WIX_NUGET_HEAT"
+        "${expected[2]}|$SIZE_WIX_NUGET_NETFX|$SHA256_WIX_NUGET_NETFX"
+        "${expected[3]}|$SIZE_WIX_NUGET_SDK|$SHA256_WIX_NUGET_SDK"
+        "${expected[4]}|$SIZE_WIX_NUGET_UI|$SHA256_WIX_NUGET_UI"
+        "${expected[5]}|$SIZE_WIX_NUGET_UTIL|$SHA256_WIX_NUGET_UTIL"
+    )
+
+    [ -d "$root" ] && [ ! -L "$root" ] \
+        || die "exact WiX local-package source is missing or not a real directory"
+    mapfile -t actual < <(
+        find "$root" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort
+    )
+    [ "${#actual[@]}" -eq "${#expected[@]}" ] \
+        || die "WiX local-package source must contain exactly six entries"
+    for ((i = 0; i < ${#expected[@]}; i++)); do
+        [ "${actual[i]}" = "${expected[i]}" ] \
+            || die "WiX local-package source inventory differs at entry $i"
+    done
+    for metadata in "${records[@]}"; do
+        IFS='|' read -r name expected_size expected_sha <<<"$metadata"
+        file="$root/$name"
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            || die "WiX local-package source entry is not an ordinary file: $name"
+        [ "$(stat -c '%s' "$file")" = "$expected_size" ] \
+            || die "WiX local-package source entry has the wrong size: $name"
+        verify_sha256 "$file" "$expected_sha"
+    done
 }
 
 assert_uuid() {
@@ -384,7 +426,7 @@ preflight() {
     verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"
     [ -d "$ONLINE_DIR/cargo-vendor" ] && [ ! -L "$ONLINE_DIR/cargo-vendor" ] || die "cargo-vendor cache is missing"
     [ -d "$ONLINE_DIR/pub-cache" ] && [ ! -L "$ONLINE_DIR/pub-cache" ] || die "pub-cache is missing"
-    verify_sha256 "$ONLINE_DIR/wix-nuget.tar.gz" "$SHA256_WIX_NUGET"
+    verify_wix_nuget_packages
     verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"
     verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" "$SHA512_LIBVPX_SOURCE"
     verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch" "$SHA512_LIBVPX_PATCH"
@@ -705,32 +747,18 @@ libvpx_native_key_for_tree() {
 
 write_offline_manifest() {
     local output="$1"
-    [ -n "$WIX_NUGET_ROOT" ] || die "extracted WiX root is not initialized"
     python3 "$SOURCE_SNAPSHOT/scripts/windows-offline-manifest.py" \
         --online-root "$ONLINE_DIR" \
-        --wix-root "$WIX_NUGET_ROOT" \
+        --wix-root "$ONLINE_DIR/wix-nuget-packages" \
         --olefile-version "$OLEFILE_VERSION" \
         --libvpx-source-ref "$LIBVPX_SOURCE_REF" \
         --libvpx-fix-commit "$LIBVPX_FIX_COMMIT" \
         --output "$output"
 }
 
-extract_wix_nuget() {
-    WIX_NUGET_ROOT="$RUN_ROOT/wix-nuget"
-    [ ! -e "$WIX_NUGET_ROOT" ] && [ ! -L "$WIX_NUGET_ROOT" ] \
-        || die "extracted WiX root path is already occupied"
-    mkdir -m 0700 "$WIX_NUGET_ROOT"
-    windows_helper_small_run \
-        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz,target=/authority/wix-nuget.tar.gz,readonly" \
-        --mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget" \
-        -- /usr/bin/tar --extract --gzip --file=/authority/wix-nuget.tar.gz \
-            --directory=/wix-nuget --no-same-owner --no-same-permissions
-}
-
 build_offline_media() {
     local manifest="$RUN_ROOT/offline-input-manifest.json"
     local after="$RUN_ROOT/offline-input-manifest.after.json"
-    extract_wix_nuget
     write_offline_manifest "$manifest"
     OFFLINE_MANIFEST_SHA256="$(sha256sum "$manifest" | awk '{print $1}')"
     local offline_iso="$RUN_ROOT/offline.iso"
@@ -740,7 +768,6 @@ build_offline_media() {
     mkdir -m 0700 "$media_output"
     windows_helper_media_run \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
-        --mount "type=bind,source=$WIX_NUGET_ROOT,target=/wix-nuget,readonly" \
         --mount "type=bind,source=$manifest,target=/authority/offline-input-manifest.json,readonly" \
         --mount "type=bind,source=$media_output,target=/out" \
         -- /usr/bin/genisoimage -udf -D -r -f -quiet -V OFFLINE \
@@ -753,7 +780,7 @@ build_offline_media() {
             /vcpkg-distfiles/libvpx-native-key.txt=/online/vcpkg-distfiles/libvpx-native-key.txt \
             /vcpkg-distfiles/windows-tools=/online/vcpkg-distfiles/windows-tools \
             "/python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \
-            /wix-nuget=/wix-nuget \
+            /wix-nuget-packages=/online/wix-nuget-packages \
             /.offline-input-manifest.json=/authority/offline-input-manifest.json
     [ -s "$media_output/offline.iso" ] \
         || die "confined Windows helper did not produce offline UDF media"

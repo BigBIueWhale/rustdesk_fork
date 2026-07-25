@@ -224,7 +224,7 @@ def mappings(
             online_root / f"olefile-{olefile_version}-py2.py3-none-any.whl",
             online_root,
         ),
-        Mapping("wix-nuget", wix_root, wix_root),
+        Mapping("wix-nuget-packages", wix_root, wix_root),
     ]
 
 
@@ -236,7 +236,7 @@ def calculate_manifest(
     fix_commit: str,
 ) -> dict[str, object]:
     online_root = require_real_directory(online_root, "online root")
-    wix_root = require_real_directory(wix_root, "extracted WiX root")
+    wix_root = require_real_directory(wix_root, "WiX local-package source")
     files: list[dict[str, object]] = []
     directories: set[str] = set()
     file_parents: set[str] = set()
@@ -399,7 +399,7 @@ def self_test() -> None:
             fail("self-test did not materialize the approved internal file link")
         for expected_path in (
             "python-wheels/olefile-0.47-py2.py3-none-any.whl",
-            "wix-nuget/package/content",
+            "wix-nuget-packages/package/content",
         ):
             if expected_path not in entries:
                 fail(f"self-test omitted media mapping {expected_path}")

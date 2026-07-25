@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind fixed toolchain, vcpkg, and Debian image acquisition authority."""
+"""Bind fixed toolchain, WiX, vcpkg, and Debian image acquisition authority."""
 
 from __future__ import annotations
 
@@ -175,6 +175,78 @@ EXPECTED_MANIFEST = (
     ),
 )
 
+EXPECTED_WIX_MANIFEST = (
+    (
+        "wix-nuget-packages/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.firewall.wixext/${WIX_NUGET_VERSION}/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "$SIZE_WIX_NUGET_FIREWALL",
+        "$SHA256_WIX_NUGET_FIREWALL",
+        "api.nuget.org",
+    ),
+    (
+        "wix-nuget-packages/wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.heat/${WIX_NUGET_VERSION}/wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg",
+        "$SIZE_WIX_NUGET_HEAT",
+        "$SHA256_WIX_NUGET_HEAT",
+        "api.nuget.org",
+    ),
+    (
+        "wix-nuget-packages/wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.netfx.wixext/${WIX_NUGET_VERSION}/wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "$SIZE_WIX_NUGET_NETFX",
+        "$SHA256_WIX_NUGET_NETFX",
+        "api.nuget.org",
+    ),
+    (
+        "wix-nuget-packages/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.sdk/${WIX_NUGET_VERSION}/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg",
+        "$SIZE_WIX_NUGET_SDK",
+        "$SHA256_WIX_NUGET_SDK",
+        "api.nuget.org",
+    ),
+    (
+        "wix-nuget-packages/wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.ui.wixext/${WIX_NUGET_VERSION}/wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "$SIZE_WIX_NUGET_UI",
+        "$SHA256_WIX_NUGET_UI",
+        "api.nuget.org",
+    ),
+    (
+        "wix-nuget-packages/wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.util.wixext/${WIX_NUGET_VERSION}/wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg",
+        "$SIZE_WIX_NUGET_UTIL",
+        "$SHA256_WIX_NUGET_UTIL",
+        "api.nuget.org",
+    ),
+)
+
+EXPECTED_WIX_PINS = {
+    "FIREWALL": (
+        "330923",
+        "d722cd6d5d262736fc9220fa1d287147c244fd5c2b21065bf192935d8e45d8e3",
+    ),
+    "HEAT": (
+        "5018595",
+        "6c137c6a7d6b724169ff47832d080bf75009f24cda656d5644585031ebbe66d8",
+    ),
+    "NETFX": (
+        "1577895",
+        "e09e0e121c482cba3e77521f83f9820f232dd0ab65199f66398efdef3f7b2e46",
+    ),
+    "SDK": (
+        "18626823",
+        "917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f",
+    ),
+    "UI": (
+        "793813",
+        "313cc0a9b2c2e90661a6ab56f46a08ce551ed64673cbef95ceab6508690147a1",
+    ),
+    "UTIL": (
+        "891963",
+        "b63e40584d3b5ceb23607586ad720ae0288bad2c8699a0a07cd3260591d1292e",
+    ),
+}
+
 
 class VerificationError(RuntimeError):
     pass
@@ -239,6 +311,44 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             f"exact archive digest pin changed: {variable}",
         )
         require(manifest.count(f'"${variable}"') == 1, f"digest pin is not consumed once: {variable}")
+    wix_manifest_start = shell.find("readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(")
+    require(wix_manifest_start >= 0, "WiX fixed-package manifest declaration is absent")
+    wix_manifest_end = shell.find("\n)\n", wix_manifest_start)
+    require(wix_manifest_end >= 0, "WiX fixed-package manifest terminator is absent")
+    wix_manifest = shell[wix_manifest_start : wix_manifest_end + 3]
+    require(
+        wix_manifest.count("--entry\n") == 6,
+        "WiX fixed-package manifest is not exactly six entries",
+    )
+    wix_positions = []
+    for entry in EXPECTED_WIX_MANIFEST:
+        snippet = "\n".join(f'    "{field}"' for field in entry)
+        require(
+            wix_manifest.count(snippet) == 1,
+            f"WiX fixed-package manifest entry changed: {entry[0]}",
+        )
+        wix_positions.append(wix_manifest.index(snippet))
+    require(wix_positions == sorted(wix_positions), "WiX package manifest order changed")
+    require(
+        pins.count('WIX_NUGET_VERSION="4.0.5"') == 1,
+        "WiX package version pin changed",
+    )
+    for suffix, (size, digest) in EXPECTED_WIX_PINS.items():
+        size_variable = f"SIZE_WIX_NUGET_{suffix}"
+        digest_variable = f"SHA256_WIX_NUGET_{suffix}"
+        require(
+            pins.count(f'{size_variable}="{size}"') == 1,
+            f"WiX package size pin changed: {size_variable}",
+        )
+        require(
+            pins.count(f'{digest_variable}="{digest}"') == 1,
+            f"WiX package digest pin changed: {digest_variable}",
+        )
+        require(
+            wix_manifest.count(f'"${size_variable}"') == 1
+            and wix_manifest.count(f'"${digest_variable}"') == 1,
+            f"WiX package pins are not each consumed once: {suffix}",
+        )
     systemd_manifest_start = shell.find("readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(")
     require(systemd_manifest_start >= 0, "systemd image manifest declaration is absent")
     systemd_manifest_end = shell.find("\n)\n", systemd_manifest_start)
@@ -344,6 +454,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"',
             'readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"',
             "readonly -a FIXED_ARCHIVE_ARGS=(",
+            "readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(",
             "readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(",
             "load_vcpkg_fixed_archive_manifest",
             "reconcile_archive_bundle_transactions",
@@ -368,6 +479,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "stage_fixed_archives",
             "stage_vcpkg_fixed_archives",
             'stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-fixed-archives',
+            'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
             'stage_archive_bundle vcpkg "$ONLINE_DIR" .rustdesk-vcpkg-fixed-archives',
             'stage_archive_bundle systemd "$state_dir" .rustdesk-debian-systemd-image',
             "require_windows_operator_toolchain",
@@ -454,6 +566,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "def download_timeout_seconds(spec: ArchiveSpec) -> int:",
             "timeout=download_timeout_seconds(spec)",
             "if len(specs) == 1:",
+            "if len(specs) == 6:",
             "if len(specs) == 14:",
             "if len(specs) == 33:",
             "is_debian_systemd_image_name(names[0])",
@@ -500,6 +613,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "systemd-image self-test lost its bounded large-image timeout",
             "archive self-test widened the ordinary download timeout",
             "vcpkg self-test publication omitted an archive",
+            "WiX self-test publication omitted a package",
             "self-test accepted a response without admitted length framing",
         ),
         "fixed archive helper",
@@ -619,6 +733,24 @@ MUTATIONS = (
     Mutation("pins", 'SIZE_RUST_1_75="156249584"', 'SIZE_RUST_1_75="156249585"', "length pin"),
     Mutation(
         "pins",
+        'SIZE_WIX_NUGET_SDK="18626823"',
+        'SIZE_WIX_NUGET_SDK="18626824"',
+        "WiX package length pin",
+    ),
+    Mutation(
+        "pins",
+        'SHA256_WIX_NUGET_SDK="917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f"',
+        'SHA256_WIX_NUGET_SDK="a17009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f"',
+        "WiX package digest pin",
+    ),
+    Mutation(
+        "shell",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.sdk/${WIX_NUGET_VERSION}/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg",
+        "https://api.nuget.org/v3-flatcontainer/wixtoolset.sdk/4.0.4/wixtoolset.sdk.4.0.4.nupkg",
+        "WiX package URL mapping",
+    ),
+    Mutation(
+        "pins",
         'SHA256_RUST_1_75="6bf166ddcad545aa26aa2d12a186454d7697133b52b7fbbd271ce3ee1ecfedc6"',
         'SHA256_RUST_1_75="7bf166ddcad545aa26aa2d12a186454d7697133b52b7fbbd271ce3ee1ecfedc6"',
         "digest pin",
@@ -664,6 +796,12 @@ MUTATIONS = (
         "if len(specs) == 33:",
         "if len(specs) == 32:",
         "closed vcpkg manifest count",
+    ),
+    Mutation(
+        "helper",
+        "if len(specs) == 6:",
+        "if len(specs) == 5:",
+        "closed WiX manifest count",
     ),
     Mutation(
         "helper",

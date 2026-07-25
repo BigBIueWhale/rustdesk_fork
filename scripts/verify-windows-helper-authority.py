@@ -165,9 +165,8 @@ def validate(sources: Dict[str, str]) -> None:
         ('require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"',
          "exact FRB helper provenance"),
         ("windows_helper_authority_close", "terminal authority cleanup"),
-        ('source=$ONLINE_DIR/wix-nuget.tar.gz,target=/authority/wix-nuget.tar.gz,readonly',
-         "exact WiX input"),
-        ('source=$WIX_NUGET_ROOT,target=/wix-nuget"', "private WiX output"),
+        ('/wix-nuget-packages=/online/wix-nuget-packages',
+         "exact read-only WiX local-package source mapping"),
         ('source=$manifest,target=/authority/offline-input-manifest.json,readonly',
          "exact offline manifest input"),
         ('source=$media_output,target=/out"', "private ISO output"),
@@ -188,7 +187,7 @@ def validate(sources: Dict[str, str]) -> None:
         ('source=$msi_stage,target=/out"', "private MSI output"),
     ):
         require(build, token, label)
-    require_count(build, "windows_helper_small_run", 2, "two small helper operations")
+    require_count(build, "windows_helper_small_run", 1, "one small helper operation")
     require_count(build, "windows_helper_media_run", 1, "one media helper operation")
     require_count(build, "windows_helper_guestfish_run", 3, "three libguestfs operations")
     main = build[build.index("\nmain() {") :]
@@ -213,6 +212,8 @@ def validate(sources: Dict[str, str]) -> None:
         ("source=$SOURCE_SNAPSHOT/scripts,target=/scripts", "whole-script-tree mount"),
         ("--env HOST_UID=", "container-root output chown"),
         ("chown -R", "container-root output ownership repair"),
+        ("wix-nuget.tar.gz", "obsolete expanded WiX archive"),
+        ("WIX_NUGET_ROOT", "host-extracted WiX cache"),
     ):
         forbid(build, token, label)
 
@@ -415,9 +416,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "build",
         'windows_helper_small_run \\\n'
-        '        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz',
+        '        --mount "type=bind,source=$msi_input,target=/authority/input.msi,readonly"',
         'docker run \\\n'
-        '        --mount "type=bind,source=$ONLINE_DIR/wix-nuget.tar.gz',
+        '        --mount "type=bind,source=$msi_input,target=/authority/input.msi,readonly"',
         "small-operation wrapper",
     ),
     Mutation("build", "windows_helper_media_run", "docker run", "media-operation wrapper"),

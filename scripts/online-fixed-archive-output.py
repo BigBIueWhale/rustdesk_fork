@@ -209,6 +209,21 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         ):
             fail("the fourteen-entry toolchain manifest has a non-win/ nested path")
         return
+    if len(specs) == 6:
+        expected = tuple(
+            f"wix-nuget-packages/{package}.4.0.5.nupkg"
+            for package in (
+                "wixtoolset.firewall.wixext",
+                "wixtoolset.heat",
+                "wixtoolset.netfx.wixext",
+                "wixtoolset.sdk",
+                "wixtoolset.ui.wixext",
+                "wixtoolset.util.wixext",
+            )
+        )
+        if names != expected:
+            fail("the WiX manifest is not the exact sorted six-package 4.0.5 source")
+        return
     if len(specs) == 33:
         source_names = tuple(
             name
@@ -232,7 +247,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         return
     fail(
         "the archive manifest must contain exactly one Debian systemd image, "
-        "14 toolchain entries, or 33 vcpkg distfile entries, "
+        "six WiX packages, 14 toolchain entries, or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
     )
 
@@ -1374,6 +1389,30 @@ def test_vcpkg_specs() -> tuple[ArchiveSpec, ...]:
     return parse_specs(records)
 
 
+def test_wix_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for package in (
+        "wixtoolset.firewall.wixext",
+        "wixtoolset.heat",
+        "wixtoolset.netfx.wixext",
+        "wixtoolset.sdk",
+        "wixtoolset.ui.wixext",
+        "wixtoolset.util.wixext",
+    ):
+        name = f"wix-nuget-packages/{package}.4.0.5.nupkg"
+        payload = f"wix-payload-{package}".encode("ascii")
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def test_systemd_image_specs() -> tuple[ArchiveSpec, ...]:
     name = "debian-12-genericcloud-amd64-20260712-2537.qcow2"
     payload = b"systemd-image-fixture"
@@ -1538,6 +1577,83 @@ def self_test() -> None:
                     fail("vcpkg self-test publication omitted an archive")
         finally:
             os.close(vcpkg_online_fd)
+
+        wix_specs = test_wix_specs()
+        wix_online = root / "wix-online"
+        wix_staging = root / "wix-staging"
+        wix_online.mkdir(mode=0o700)
+        wix_staging.mkdir(mode=0o700)
+        if (
+            prepare_transaction(
+                wix_online,
+                wix_staging,
+                wix_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+            != "acquire"
+        ):
+            fail("WiX self-test transaction unexpectedly reused output")
+        wix_state = read_state(wix_staging)
+        wix_output = wix_staging / OUTPUT_NAME
+        wix_output_fd = open_directory(wix_output)
+        try:
+            for package, spec in zip(
+                (
+                    "wixtoolset.firewall.wixext",
+                    "wixtoolset.heat",
+                    "wixtoolset.netfx.wixext",
+                    "wixtoolset.sdk",
+                    "wixtoolset.ui.wixext",
+                    "wixtoolset.util.wixext",
+                ),
+                wix_specs,
+                strict=True,
+            ):
+                payload = f"wix-payload-{package}".encode("ascii")
+                download_archive(
+                    wix_output_fd,
+                    spec,
+                    FakeOpener(FakeResponse(payload, spec.url)),
+                )
+        finally:
+            os.close(wix_output_fd)
+        validate_candidate_tree(
+            wix_output,
+            wix_specs,
+            uid,
+            gid,
+            str(wix_state["output"]),
+        )
+        verify_transaction(
+            wix_online,
+            wix_staging,
+            wix_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        publish_transaction(
+            wix_online,
+            wix_staging,
+            wix_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        wix_online_fd = open_directory(wix_online)
+        try:
+            for spec in wix_specs:
+                if not validate_archive_at(
+                    wix_online_fd, spec, uid, gid, candidate=False
+                ):
+                    fail("WiX self-test publication omitted a package")
+        finally:
+            os.close(wix_online_fd)
 
         systemd_specs = test_systemd_image_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:

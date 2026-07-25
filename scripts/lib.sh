@@ -160,7 +160,12 @@ verify_online_pinned_archives() {
         "llvm-windows-${LLVM_VERSION}.exe" "$SHA256_LLVM_WIN_15_0_6" \
         "python-windows-${PYTHON_VERSION}.exe" "$SHA256_PYTHON_WIN_3_11_9" \
         "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47" \
-        "wix-nuget.tar.gz" "$SHA256_WIX_NUGET" \
+        "wix-nuget-packages/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_FIREWALL" \
+        "wix-nuget-packages/wixtoolset.heat.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_HEAT" \
+        "wix-nuget-packages/wixtoolset.netfx.wixext.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_NETFX" \
+        "wix-nuget-packages/wixtoolset.sdk.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_SDK" \
+        "wix-nuget-packages/wixtoolset.ui.wixext.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_UI" \
+        "wix-nuget-packages/wixtoolset.util.wixext.${WIX_NUGET_VERSION}.nupkg" "$SHA256_WIX_NUGET_UTIL" \
         "android-ndk-${ANDROID_NDK_VERSION}.zip" "$SHA256_ANDROID_NDK_R28C" \
         "android-cmdline-tools.zip" "$SHA256_ANDROID_CMDLINE_TOOLS" \
         "vcpkg-${VCPKG_BASELINE}.tar.gz" "$SHA256_VCPKG_120DEAC3" \

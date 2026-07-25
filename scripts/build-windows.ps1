@@ -24,7 +24,41 @@ $LLVM_RC_SHA256  = 'f1c4e01ae6214be7e1326e6290ee96b3cd7d36e690f400a16b5e33ad3aa3
 $PYTHON_VERSION  = '3.11.9'
 $PYTHON_EXE      = 'C:\Program Files\Python311\python.exe'
 $OLEFILE_SHA256  = '543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f'
-$WIX_VERSION     = '4'      # WixToolset v4 (res/msi targets schemas/v4)
+$WIX_VERSION     = '4.0.5'
+$WIX_AUTHOR_CERT_SHA256 = '0DB368BC1A5A9E19CC9E036B490B7C4A4D3DFB941C0781B4F22F218BE0B54986'
+$WIX_REPOSITORY_CERT_SHA256 = '5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4'
+$WIX_PACKAGES = @(
+    [PSCustomObject]@{
+        Name = 'wixtoolset.firewall.wixext.4.0.5.nupkg'
+        Size = [Int64]330923
+        Sha256 = 'd722cd6d5d262736fc9220fa1d287147c244fd5c2b21065bf192935d8e45d8e3'
+    },
+    [PSCustomObject]@{
+        Name = 'wixtoolset.heat.4.0.5.nupkg'
+        Size = [Int64]5018595
+        Sha256 = '6c137c6a7d6b724169ff47832d080bf75009f24cda656d5644585031ebbe66d8'
+    },
+    [PSCustomObject]@{
+        Name = 'wixtoolset.netfx.wixext.4.0.5.nupkg'
+        Size = [Int64]1577895
+        Sha256 = 'e09e0e121c482cba3e77521f83f9820f232dd0ab65199f66398efdef3f7b2e46'
+    },
+    [PSCustomObject]@{
+        Name = 'wixtoolset.sdk.4.0.5.nupkg'
+        Size = [Int64]18626823
+        Sha256 = '917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f'
+    },
+    [PSCustomObject]@{
+        Name = 'wixtoolset.ui.wixext.4.0.5.nupkg'
+        Size = [Int64]793813
+        Sha256 = '313cc0a9b2c2e90661a6ab56f46a08ce551ed64673cbef95ceab6508690147a1'
+    },
+    [PSCustomObject]@{
+        Name = 'wixtoolset.util.wixext.4.0.5.nupkg'
+        Size = [Int64]891963
+        Sha256 = 'b63e40584d3b5ceb23607586ad720ae0288bad2c8699a0a07cd3260591d1292e'
+    }
+)
 $SRC = $env:RUSTDESK_SOURCE_ROOT
 $script:OFFLINE = $null
 $VCPKG_BASELINE = '120deac3062162151622ca4860575a33844ba10b'
@@ -63,6 +97,76 @@ function Get-OrdinaryPathItem([string]$Path, [bool]$RequireLeaf) {
     if ($RequireLeaf -and $result.PSIsContainer) { Die "path is not a file: $Path" }
     if (-not $RequireLeaf -and -not $result.PSIsContainer) { Die "path is not a directory: $Path" }
     return $result
+}
+
+function Assert-WixPackageSource([string]$Path) {
+    [void](Get-OrdinaryPathItem $Path $false)
+    $actual = @(Get-ChildItem -LiteralPath $Path -Force | Sort-Object -Property Name)
+    if ($actual.Count -ne $WIX_PACKAGES.Count) {
+        Die "WiX local-package source contains $($actual.Count) entries, expected exactly $($WIX_PACKAGES.Count)"
+    }
+    for ($index = 0; $index -lt $WIX_PACKAGES.Count; $index++) {
+        $expected = $WIX_PACKAGES[$index]
+        $entry = $actual[$index]
+        if ($entry.Name -cne $expected.Name) {
+            Die "WiX local-package source inventory differs at entry ${index}: expected $($expected.Name), got $($entry.Name)"
+        }
+        if ($entry.PSIsContainer -or
+            ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Die "WiX local-package source entry is not an ordinary file: $($entry.FullName)"
+        }
+        $ordinary = Get-OrdinaryPathItem $entry.FullName $true
+        if ($ordinary.Length -ne $expected.Size) {
+            Die "WiX local-package source entry size mismatch: $($expected.Name)"
+        }
+        $digest = (Get-FileHash -LiteralPath $ordinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($digest -cne $expected.Sha256) {
+            Die "WiX local-package source entry SHA-256 mismatch: $($expected.Name)"
+        }
+    }
+}
+
+function Assert-WixGlobalPackages([string]$Path) {
+    [void](Get-OrdinaryPathItem $Path $false)
+    $expectedIds = @(
+        $WIX_PACKAGES |
+            ForEach-Object { $_.Name.Substring(0, $_.Name.Length - ".${WIX_VERSION}.nupkg".Length) } |
+            Sort-Object
+    )
+    $actual = @(Get-ChildItem -LiteralPath $Path -Force | Sort-Object -Property Name)
+    if ($actual.Count -ne $expectedIds.Count) {
+        Die "fresh WiX global-packages directory contains $($actual.Count) package IDs, expected exactly $($expectedIds.Count)"
+    }
+    for ($index = 0; $index -lt $expectedIds.Count; $index++) {
+        if (-not $actual[$index].PSIsContainer -or
+            ($actual[$index].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            $actual[$index].Name -cne $expectedIds[$index]) {
+            Die "fresh WiX global-packages inventory differs at package ID entry $index"
+        }
+    }
+    foreach ($package in $WIX_PACKAGES) {
+        $packageId = $package.Name.Substring(0, $package.Name.Length - ".${WIX_VERSION}.nupkg".Length)
+        $idRoot = Join-Path $Path $packageId
+        [void](Get-OrdinaryPathItem $idRoot $false)
+        $versions = @(Get-ChildItem -LiteralPath $idRoot -Force)
+        if ($versions.Count -ne 1 -or -not $versions[0].PSIsContainer -or
+            ($versions[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            $versions[0].Name -cne $WIX_VERSION) {
+            Die "fresh WiX global-packages entry is not the one exact $WIX_VERSION version: $packageId"
+        }
+        $versionRoot = $versions[0].FullName
+        foreach ($metadataName in @('.nupkg.metadata', "$packageId.nuspec", "$packageId.$WIX_VERSION.nupkg", "$packageId.$WIX_VERSION.nupkg.sha512")) {
+            $metadata = Get-OrdinaryPathItem (Join-Path $versionRoot $metadataName) $true
+            if ($metadata.Length -le 0) {
+                Die "fresh WiX global-packages entry is incomplete: $packageId/$metadataName"
+            }
+        }
+        $cachedPackage = Get-OrdinaryPathItem (Join-Path $versionRoot "$packageId.$WIX_VERSION.nupkg") $true
+        if ($cachedPackage.Length -ne $package.Size -or
+            (Get-FileHash -LiteralPath $cachedPackage.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $package.Sha256) {
+            Die "fresh WiX global-packages package bytes differ from the pinned local source: $packageId"
+        }
+    }
 }
 
 function Get-JsonInt64([object]$Value, [string]$Description) {
@@ -1015,26 +1119,78 @@ if /I "%~1"=="build" (
     # can be embedded in rustdesk-setup.exe. This mirrors upstream's flutter-build.yml "Build msi"
     # (preprocess.py --arp -d <dist>; restore; msbuild msi.sln). NO .NET SDK needed -- VS msbuild +
     # .NET Framework (golden) + the WiX NuGet build it.
-    # OFFLINE: the WiX NuGet set (WixToolset.Sdk + the 5 .wixext packages) is staged on the OFFLINE
-    # UDF CD at $offline\wix-nuget; copy it to a WRITABLE global-packages dir (UDF is read-only; NuGet writes
-    # there) and force an offline restore via a <clear/>-sources NuGet.config + NUGET_PACKAGES, so msbuild
-    # resolves WixToolset.Sdk/4.0.5 from the cache with no network. preprocess.py reads the dist's
-    # rustdesk.exe (--build-date/--version), so it runs against the real flutter dist build.py just produced.
-    $wixSrc = Join-Path $offline 'wix-nuget'
-    if (-not (Test-Path (Join-Path $wixSrc 'wixtoolset.sdk'))) { Die ".msi: OFFLINE media lacks wix-nuget\wixtoolset.sdk (staged WiX NuGet cache) -- run online-fetch.sh stage_windows_wix_nuget" }
-    $wixPkgs = 'C:\wix-nuget'
-    if (Test-Path $wixPkgs) { Remove-Item -Recurse -Force $wixPkgs }
-    New-Item -ItemType Directory -Force -Path $wixPkgs | Out-Null
-    Copy-Item -Recurse -Force (Join-Path $wixSrc '*') $wixPkgs
-    $env:NUGET_PACKAGES = $wixPkgs                       # the MSBuild-SDK resolver reads this to find WixToolset.Sdk
-    $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'
-    @"
+    # OFFLINE: the exact signed WixToolset.Sdk + five .wixext .nupkg files are a
+    # read-only local package source on the UDF media. Verify their bytes, require
+    # the pinned WiX author/repository signers, and let NuGet perform one locked
+    # restore into a fresh guest-owned global-packages directory. The acquisition
+    # side never fabricates or ships NuGet's mutable expanded-cache state.
+    $wixSrc = Join-Path $offline 'wix-nuget-packages'
+    Assert-WixPackageSource $wixSrc
+    [void](Get-OrdinaryPathItem $env:TEMP $false)
+    $wixPkgs = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID)"
+    if (Test-Path -LiteralPath $wixPkgs) {
+        Die ".msi: run-scoped WiX global-packages path is already occupied: $wixPkgs"
+    }
+    New-Item -ItemType Directory -Path $wixPkgs | Out-Null
+    [void](Get-OrdinaryPathItem $wixPkgs $false)
+    $env:NUGET_PACKAGES = $wixPkgs
+    $env:NUGET_CERT_REVOCATION_MODE = 'offline'
+    $env:DOTNET_NUGET_SIGNATURE_VERIFICATION = 'true'
+    $nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"
+    if (Test-Path -LiteralPath $nugetCfg) {
+        Die ".msi: run-scoped WiX NuGet config path is already occupied: $nugetCfg"
+    }
+    $wixSourceXml = [Security.SecurityElement]::Escape($wixSrc)
+    $nugetConfigContent = @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
-  <config><add key="globalPackagesFolder" value="$wixPkgs" /></config>
-  <packageSources><clear /></packageSources>
+  <config>
+    <add key="globalPackagesFolder" value="$wixPkgs" />
+    <add key="signatureValidationMode" value="require" />
+    <add key="updatePackageLastAccessTime" value="false" />
+  </config>
+  <packageSources>
+    <clear />
+    <add key="offline-wix" value="$wixSourceXml" />
+  </packageSources>
+  <packageSourceMapping>
+    <clear />
+    <packageSource key="offline-wix">
+      <package pattern="WixToolset.*" />
+    </packageSource>
+  </packageSourceMapping>
+  <trustedSigners>
+    <author name="WiX Toolset">
+      <certificate fingerprint="$WIX_AUTHOR_CERT_SHA256" hashAlgorithm="SHA256" allowUntrustedRoot="false" />
+    </author>
+    <repository name="nuget.org" serviceIndex="https://api.nuget.org/v3/index.json">
+      <certificate fingerprint="$WIX_REPOSITORY_CERT_SHA256" hashAlgorithm="SHA256" allowUntrustedRoot="false" />
+    </repository>
+  </trustedSigners>
 </configuration>
-"@ | Set-Content -Encoding UTF8 $nugetCfg
+"@
+    $nugetConfigBytes = [Text.UTF8Encoding]::new($false).GetBytes($nugetConfigContent)
+    $nugetConfigStream = $null
+    try {
+        $nugetConfigStream = [IO.File]::Open(
+            $nugetCfg,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+        )
+        $nugetConfigStream.Write($nugetConfigBytes, 0, $nugetConfigBytes.Length)
+        $nugetConfigStream.Flush($true)
+    } finally {
+        if ($null -ne $nugetConfigStream) {
+            $nugetConfigStream.Dispose()
+        }
+    }
+    [void](Get-OrdinaryPathItem $nugetCfg $true)
+    $nugetCfgBefore = (Get-FileHash -LiteralPath $nugetCfg -Algorithm SHA256).Hash
+    $wixLock = Join-Path $SRC 'res\msi\Package\packages.lock.json'
+    $wixLockItem = Get-OrdinaryPathItem $wixLock $true
+    if ($wixLockItem.Length -le 0) { Die '.msi: committed NuGet lock file is empty' }
+    $wixLockBefore = (Get-FileHash -LiteralPath $wixLock -Algorithm SHA256).Hash
     if (-not (Test-Path (Join-Path $msiDist 'rustdesk.exe') -PathType Leaf)) { Die ".msi: flutter dist (rustdesk.exe) not at $msiDist -- build.py --flutter should produce it" }
     # msbuild lives in the VS install dir, NOT on PATH by default (the golden has no CI "Add MSBuild to
     # PATH" step). Locate it via vswhere (-products * so it finds BuildTools, not just full VS) + prepend.
@@ -1047,8 +1203,20 @@ if /I "%~1"=="build" (
     Push-Location (Join-Path $SRC 'res\msi')
     & $PYTHON_EXE preprocess.py --arp -d $msiDist
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "res/msi/preprocess.py --arp failed ($LASTEXITCODE)" }
-    msbuild msi.sln -t:restore -p:RestoreConfigFile=$nugetCfg -p:Configuration=Release -p:Platform=x64
-    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild -t:restore (WiX NuGet, OFFLINE from $wixPkgs) failed ($LASTEXITCODE) -- staged cache incomplete, or the SDK resolver wanted the network" }
+    msbuild msi.sln -t:restore -p:RestoreConfigFile=$nugetCfg -p:RestoreLockedMode=true -p:RestorePackagesWithLockFile=true -p:RestoreNoCache=true -p:NuGetAudit=false -p:Configuration=Release -p:Platform=x64
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild -t:restore (signed WiX NuGet, OFFLINE from $wixSrc) failed ($LASTEXITCODE) -- local source, package signature, or lock authority did not validate" }
+    Assert-WixPackageSource $wixSrc
+    Assert-WixGlobalPackages $wixPkgs
+    $nugetCfgAfter = (Get-FileHash -LiteralPath $nugetCfg -Algorithm SHA256).Hash
+    if ($nugetCfgAfter -cne $nugetCfgBefore) {
+        Pop-Location
+        Die '.msi: run-scoped NuGet configuration changed during locked offline restore'
+    }
+    $wixLockAfter = (Get-FileHash -LiteralPath $wixLock -Algorithm SHA256).Hash
+    if ($wixLockAfter -cne $wixLockBefore) {
+        Pop-Location
+        Die '.msi: committed NuGet lock file changed during locked offline restore'
+    }
     msbuild msi.sln -p:RestoreConfigFile=$nugetCfg -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild msi.sln (WiX .msi build) failed ($LASTEXITCODE)" }
     Pop-Location

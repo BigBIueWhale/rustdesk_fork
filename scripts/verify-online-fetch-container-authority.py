@@ -96,10 +96,15 @@ def validate(sources: Dict[str, str]) -> None:
         ("require_online_fetch_builder_image()", "verified immutable-image funnel"),
         ('--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
          "exact loaded-image verification"),
-        ("former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
-         "unreviewed WiX producer refusal"),
+        ('stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+         "exact WiX package acquisition funnel"),
     ):
         require(shell, token, label)
+    forbid(
+        shell,
+        "mcr.microsoft.com/dotnet/sdk:8.0",
+        "mutable WiX cache producer",
+    )
 
     docker_client = extract(
         shell,
@@ -601,9 +606,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("shell", "--image-ref \"$image_id\" --role \"$role\" --expected-id \"$image_id\"",
              "--image-ref \"$role\" --role \"$role\" --expected-id \"$image_id\"",
              "exact loaded-image verification"),
-    Mutation("shell", "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
-             "mcr.microsoft.com/dotnet/sdk:8.0 producer is allowed",
-             "mutable WiX producer refusal"),
+    Mutation(
+        "shell",
+        'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+        'stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+        "exact WiX package acquisition funnel",
+    ),
     Mutation(
         "verify",
         "/usr/bin/python3 -I -S scripts/verify-online-fetch-container-authority.py --repo . --self-test",

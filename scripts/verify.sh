@@ -293,7 +293,22 @@ if [ -n "$r_s11cs" ]; then
   echo "  FAIL R-S11cs fixed toolchain archive authority:$r_s11cs"
   rc=1
 else
-  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
+  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, six signed WiX packages, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
+fi
+
+echo "== (0j-wix) exact signed WiX NuGet authority (R-S11cz/R-S11e-118) =="
+r_s11cz=
+if ! /usr/bin/python3 -I -S scripts/online-wix-nuget-retire.py self-test; then
+  r_s11cz="$r_s11cz retirement-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/verify-wix-nuget-authority.py --repo . --self-test; then
+  r_s11cz="$r_s11cz authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11cz" ]; then
+  echo "  FAIL R-S11cz exact signed WiX NuGet authority:$r_s11cz"
+  rc=1
+else
+  echo "  ok  R-S11cz six exact signed WiX packages are independently pinned, acquired transactionally, shipped as a read-only local source, signature-checked, and restored under an exact committed lock into fresh guest-owned cache state"
 fi
 
 echo "== (0j-local) committed libvpx local-output authority (R-S11cv/R-S11e-114) =="
@@ -2220,14 +2235,17 @@ fi
 if grep -Eq 'CustomActions|DUtil|WcaUtil' res/msi/Package/Package.wixproj res/msi/msi.sln res/msi/preprocess.py "$windows_build" scripts/online-fetch.sh; then
   r_s11e20="$r_s11e20 custom-action-build-or-dependency-leftover"
 fi
-grep -Fq 'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"' scripts/pins.env || r_s11e20="$r_s11e20 six-package-wix-closure-digest-missing"
-grep -Fq '# msbuild needs 0 network. Captured by a host `dotnet restore` of the real wixproj. 6 packages.' scripts/online-fetch.sh || r_s11e20="$r_s11e20 six-package-wix-closure-stager-missing"
+for wix_pin in \
+  SHA256_WIX_NUGET_FIREWALL SHA256_WIX_NUGET_HEAT SHA256_WIX_NUGET_NETFX \
+  SHA256_WIX_NUGET_SDK SHA256_WIX_NUGET_UI SHA256_WIX_NUGET_UTIL; do
+  grep -Eq "^${wix_pin}=\"[0-9a-f]{64}\"$" scripts/pins.env \
+    || r_s11e20="$r_s11e20 exact-wix-package-pin-missing:$wix_pin"
+done
 wix_stage=$(awk '/^stage_windows_wix_nuget\(\) \{/{capture=1} capture{print} capture && /^}/{exit}' scripts/online-fetch.sh)
-wix_cached_verify_line=$(grep -nF 'verify_sha256 "$out" "${SHA256_WIX_NUGET}"' <<<"$wix_stage" | cut -d: -f1 | head -n1 || true)
-wix_cached_return_line=$(grep -nF 'return 0' <<<"$wix_stage" | cut -d: -f1 | head -n1 || true)
-if [ -z "$wix_cached_verify_line" ] || [ -z "$wix_cached_return_line" ] || [ "$wix_cached_verify_line" -ge "$wix_cached_return_line" ]; then
-  r_s11e20="$r_s11e20 cached-wix-closure-not-digest-verified-before-skip"
-fi
+printf '%s\n' "$wix_stage" | grep -Fq 'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages' \
+  || r_s11e20="$r_s11e20 exact-wix-package-transaction-missing"
+printf '%s\n' "$wix_stage" | grep -Fq '"$WIX_NUGET_RETIRE_HELPER" retire' \
+  || r_s11e20="$r_s11e20 obsolete-wix-cache-retirement-missing"
 
 if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_amyuni_remove" -nE 'RemoveAmyuniIdd|DriverUninstallStatus|UninstallDriver|DeviceUtils\.cpp|Common\.h|DI_REMOVEDEVICE_GLOBAL|DIF_REMOVE|WcaDeferredActionRequiresReboot|remove usbmmidd|DeviceInstaller64RebootPolicy|pub (unsafe )?fn uninstall_driver' \
   res/msi src/virtual_display_manager.rs src/platform/win_device.rs; then

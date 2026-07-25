@@ -11159,7 +11159,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11240,7 +11240,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11419,7 +11419,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11553,7 +11553,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11721,7 +11721,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11817,41 +11817,38 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
 
     require_text(
         sources["pins"],
-        'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"',
-        "six-package WiX closure digest",
+        'SHA256_WIX_NUGET_SDK="917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f"',
+        "exact WiX SDK package digest",
     )
     require_text(
         sources["pins"],
-        "WixToolset.Sdk + Firewall/Heat/Netfx/UI/Util .wixext = 6 pkgs",
-        "six-package WiX closure inventory",
+        'WIX_NUGET_AUTHOR_CERT_SHA256="0DB368BC1A5A9E19CC9E036B490B7C4A4D3DFB941C0781B4F22F218BE0B54986"',
+        "WiX author certificate pin",
     )
     wix_stage = extract_between(
         online_fetch,
         "stage_windows_wix_nuget() {\n",
         "\n}\n\nmain() {",
-        "WiX closure staging function",
+        "WiX package staging function",
     )
-    require_exact_count(
+    require_text(
         wix_stage,
-        'verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
-        1,
-        "WiX closure preexisting digest verification",
+        'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+        "WiX fixed-package transaction",
     )
     require_order(
         wix_stage,
         (
-            'if [ -f "$out" ]; then',
-            'verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
-            'log "WiX NuGet already staged and digest-verified, skipping"',
-            "return 0",
-            "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
+            'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+            '"$WIX_NUGET_RETIRE_HELPER" retire',
+            "exact signed WiX local-feed packages staged",
         ),
-        "preexisting WiX verification or absent-input refusal",
+        "durable exact packages before legacy-cache retirement",
     )
     require_text(
         online_fetch,
-        "six-package tarball is a separately captured, digest-verified input until its",
-        "six-package WiX fail-closed acquisition description",
+        "NuGet itself owns package signature verification and global-cache extraction",
+        "exact signed WiX acquisition description",
     )
 
     for text, label in (
@@ -11895,7 +11892,10 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ('On="uninstall"', "Windows component-removal mode requirement"),
         ("No RustDesk-authored custom path property", "Windows custom path absence requirement"),
         ("DUtil/WcaUtil", "Windows custom-action dependency absence requirement"),
-        ("six-package digest-pinned WiX closure", "Windows WiX closure requirement"),
+        (
+            "six exact signed digest-pinned WiX packages and committed lock authority",
+            "Windows WiX closure requirement",
+        ),
         (
             "This source invariant does not claim that the final MSI <code>CustomAction</code> table is empty",
             "Windows extension-owned action attribution requirement",
@@ -11914,7 +11914,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11934,8 +11934,8 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("Windows custom-action preprocess hook absence", "preprocess-hook mutation"),
         ("Windows custom-action build path absence", "build-path mutation"),
         ("Windows DUtil offline dependency absence", "offline-dependency mutation"),
-        ("six-package WiX closure digest", "closure-digest mutation"),
-        ("preexisting WiX verification or absent-input refusal", "cached-closure mutation"),
+        ("exact WiX SDK package digest", "closure-digest mutation"),
+        ("WiX fixed-package transaction", "package-transaction mutation"),
         ("declarative runtime-cleanup shared assertion", "shared-gate mutation"),
         ("declarative Windows runtime-cleanup requirement", "requirement mutation"),
         ("Windows extension-owned action attribution requirement", "extension-action boundary mutation"),
@@ -12248,7 +12248,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+        "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13808,8 +13808,8 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition focused mutation inventory"),
         ("run_mutations(sources)",
          "online acquisition focused mutation dispatch"),
-        ("unreviewed WiX producer refusal",
-         "online acquisition focused WiX refusal"),
+        ("exact WiX package acquisition funnel",
+         "online acquisition focused WiX authority"),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -13841,10 +13841,15 @@ def validate_online_fetch_container_authority_contract(sources):
          "online acquisition exact Android builder"),
         ('--image-ref "$image_id" --role "$role" --expected-id "$image_id"',
          "online acquisition exact loaded-image verification"),
-        ("former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
-         "online acquisition mutable WiX refusal"),
+        ('stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+         "online acquisition exact WiX package funnel"),
     ):
         require_text(online, text, label)
+    require_absent(
+        online,
+        "mcr.microsoft.com/dotnet/sdk:8.0",
+        "online acquisition mutable WiX producer absence",
+    )
     launch_funnel = extract_between(
         online,
         "online_docker_run() {",
@@ -15214,13 +15219,87 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
     )
 
 
+def validate_wix_nuget_authority_contract(sources):
+    focused = sources["wix_nuget_authority_verifier"]
+    retirement = sources["online_wix_nuget_retire_helper"]
+    lock = sources["windows_wix_lock"]
+    for text, label in (
+        (
+            "Verify the exact signed WiX package acquisition and consumption authority",
+            "WiX focused authority binding",
+        ),
+        ("AUTHOR_CERT =", "WiX focused author-signer authority"),
+        ("REPOSITORY_CERT =", "WiX focused repository-signer authority"),
+        ("PACKAGES = (", "WiX focused exact package inventory"),
+        ("def verify_lock(", "WiX focused lock verifier"),
+        ("run_mutations(sources)", "WiX focused mutation dispatch"),
+    ):
+        require_text(focused, text, label)
+    for text, label in (
+        ("RENAME_NOREPLACE = 1", "WiX retirement no-clobber primitive"),
+        ("WiX retirement refuses root UID or GID", "WiX retirement root refusal"),
+        (
+            "obsolete WiX cache archive has an unknown size and was preserved",
+            "WiX retirement unknown-input preservation",
+        ),
+    ):
+        require_text(retirement, text, label)
+    require_text(
+        lock,
+        '"contentHash": "Ec4D2SNJVOy415p1twmQ5qGdInRz48SzRZTbBKTLF/NWSlueo4pcHPKLiHVSH7Kc4++vK4aAG2PYohkkySosYg=="',
+        "exact WiX package lock",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-wix-nuget-authority.py --repo . --self-test",
+        "WiX focused verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/online-wix-nuget-retire.py self-test",
+        "WiX retirement self-test wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11cz</span>',
+        "WiX signed-package normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>253</td>",
+        "WiX signed-package Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cz/R-S11e-118 — exact signed WiX package acquisition and locked offline restore",
+        "WiX signed-package hardening ledger",
+    )
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "WiX signed-package deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("WiX focused author-signer authority", "focused signer mutation"),
+        ("WiX retirement no-clobber primitive", "retirement mutation"),
+        ("exact WiX package lock", "lock mutation"),
+        ("WiX focused verifier wiring", "focused-gate mutation"),
+        ("WiX retirement self-test wiring", "retirement-gate mutation"),
+        ("WiX signed-package normative requirement", "requirement mutation"),
+        ("WiX signed-package Appendix C row", "Appendix mutation"),
+        ("WiX signed-package hardening ledger", "hardening-ledger mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_online_fetch_fixed_archive_authority_contract(sources):
     focused = sources["online_fetch_fixed_archive_authority_verifier"]
     helper = sources["online_fixed_archive_output_helper"]
     online = sources["online_fetch"]
     for text, label in (
         (
-            "Bind fixed toolchain, vcpkg, and Debian image acquisition authority",
+            "Bind fixed toolchain, WiX, vcpkg, and Debian image acquisition authority",
             "fixed-archive focused authority binding",
         ),
         (
@@ -15320,6 +15399,10 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive closed toolchain cardinality",
         ),
         (
+            "if len(specs) == 6:",
+            "fixed-archive closed WiX-package cardinality",
+        ),
+        (
             "if len(specs) == 33:",
             "fixed-archive closed vcpkg cardinality",
         ),
@@ -15390,6 +15473,10 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         (
             "systemd-image self-test publication omitted its image",
             "fixed-archive systemd-image lifecycle fixture",
+        ),
+        (
+            "WiX self-test publication omitted a package",
+            "fixed-archive WiX-package lifecycle fixture",
         ),
         (
             "systemd-image self-test accepted writable published output",
@@ -15939,7 +16026,7 @@ def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
     lifecycle = extract_between(
         online,
         "stage_flutter_pub_cache() {",
-        "\n}\n\n# ── The WiX",
+        "\n}\n\n# ── The exact signed WiX",
         "Flutter Pub-cache acquisition lifecycle",
     )
     semantic_profile = extract_between(
@@ -21183,6 +21270,7 @@ def validate_sources(sources):
     validate_online_fetch_libyuv_output_authority_contract(sources)
     validate_online_fetch_vcpkg_native_output_authority_contract(sources)
     validate_online_fetch_android_sdk_output_authority_contract(sources)
+    validate_wix_nuget_authority_contract(sources)
     validate_online_fetch_fixed_archive_authority_contract(sources)
     validate_online_fetch_libvpx_local_output_authority_contract(sources)
     validate_online_fetch_cargo_vendor_output_authority_contract(sources)
@@ -33838,7 +33926,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11cy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#252",
+            "R-S11n through R-S11cz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#253",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -34108,27 +34196,28 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build_script",
-            "    $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'",
-            "    $customActionsProject = 'CustomActions.vcxproj'\n    $nugetCfg = Join-Path $env:TEMP 'offline-nuget.config'",
+            '    $nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"',
+            '    $customActionsProject = \'CustomActions.vcxproj\'\n'
+            '    $nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"',
             "Windows custom-action build path absence",
         ),
         (
             "online_fetch",
-            "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden",
-            "former mutable mcr.microsoft.com/dotnet/sdk:8.0 producer is forbidden; WixToolset.DUtil",
+            "NuGet itself owns package signature verification and global-cache extraction",
+            "NuGet itself owns package signature verification and global-cache extraction; WixToolset.DUtil",
             "Windows DUtil offline dependency absence",
         ),
         (
             "pins",
-            'SHA256_WIX_NUGET="62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58"',
-            'SHA256_WIX_NUGET="0f76c469cd2171f3bf7913828851a2cb22c10a7e0be8bf73ef99a791a6cd1190"',
-            "six-package WiX closure digest",
+            'SHA256_WIX_NUGET_SDK="917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f"',
+            'SHA256_WIX_NUGET_SDK="a17009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f"',
+            "exact WiX SDK package digest",
         ),
         (
             "online_fetch",
-            '        verify_sha256 "$out" "${SHA256_WIX_NUGET}"\n        log "WiX NuGet already staged and digest-verified, skipping"',
-            '        log "WiX NuGet already staged without digest verification, skipping"\n        return 0\n        verify_sha256 "$out" "${SHA256_WIX_NUGET}"',
-            "preexisting WiX verification or absent-input refusal",
+            '    stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
+            '    true # exact WiX package transaction removed',
+            "WiX fixed-package transaction",
         ),
         (
             "verify",
@@ -36439,6 +36528,54 @@ def run_source_mutations(sources):
             "online-fetch Android SDK/Gradle correction hardening ledger",
         ),
         (
+            "wix_nuget_authority_verifier",
+            "AUTHOR_CERT =",
+            "AUTHOR_CERT_DISABLED =",
+            "WiX focused author-signer authority",
+        ),
+        (
+            "online_wix_nuget_retire_helper",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "WiX retirement no-clobber primitive",
+        ),
+        (
+            "windows_wix_lock",
+            '"contentHash": "Ec4D2SNJVOy415p1twmQ5qGdInRz48SzRZTbBKTLF/NWSlueo4pcHPKLiHVSH7Kc4++vK4aAG2PYohkkySosYg=="',
+            '"contentHash": "BAD"',
+            "exact WiX package lock",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-wix-nuget-authority.py --repo . --self-test",
+            "true # WiX authority gate removed",
+            "WiX focused verifier wiring",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/online-wix-nuget-retire.py self-test",
+            "true # WiX retirement self-test removed",
+            "WiX retirement self-test wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11cz</span>',
+            '<span class="id">R-S11cz-disabled</span>',
+            "WiX signed-package normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>253</td>",
+            "<tr><td>253-disabled</td>",
+            "WiX signed-package Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11cz/R-S11e-118 — exact signed WiX package acquisition and locked offline restore",
+            "R-S11cz/R-S11e-118 — ambient expanded WiX cache authority",
+            "WiX signed-package hardening ledger",
+        ),
+        (
             "online_fetch_fixed_archive_authority_verifier",
             "EXPECTED_SIZES = {",
             "REMOVED_SIZE_INVENTORY = {",
@@ -38398,6 +38535,15 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_fixed_archive_output_helper": (
                 repo / "scripts/online-fixed-archive-output.py"
+            ).read_text(encoding="utf-8"),
+            "wix_nuget_authority_verifier": (
+                repo / "scripts/verify-wix-nuget-authority.py"
+            ).read_text(encoding="utf-8"),
+            "online_wix_nuget_retire_helper": (
+                repo / "scripts/online-wix-nuget-retire.py"
+            ).read_text(encoding="utf-8"),
+            "windows_wix_lock": (
+                repo / "res/msi/Package/packages.lock.json"
             ).read_text(encoding="utf-8"),
             "online_fetch_libvpx_local_output_authority_verifier": (
                 repo

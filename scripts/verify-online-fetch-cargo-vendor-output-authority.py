@@ -90,7 +90,7 @@ def validate(sources: Mapping[str, str]) -> None:
 
     expected_pins = {
         "SHA256_ONLINE_CLOSURE_V1": (
-            "be403f983979ad2a0d7682435a552b9489728a2715c004fbc0fb0c82f2c742b3"
+            "a9a5546294b21793f55ae4aa9b6956cf1695a58e62e614adb4fc1e74bd672c60"
         ),
         "SHA256_CARGO_VENDOR_CLOSURE_V1": (
             "fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"
@@ -199,6 +199,14 @@ def validate(sources: Mapping[str, str]) -> None:
         (
             "source=$staging/cargo-vendor-config.toml,target=/inputs/config.toml,readonly",
             "sealed semantic source-map mount",
+        ),
+        (
+            r'Path(\"/inputs/config.toml\").read_bytes()',
+            "executable semantic source-map rewrite",
+        ),
+        (
+            r'b\"directory = \\\"/vendor\\\"\\n\"',
+            "exact semantic vendor path",
         ),
         (
             "cargo fetch --offline --locked --manifest-path /source/Cargo.toml",
@@ -495,6 +503,12 @@ def mutations() -> Sequence[Mutation]:
             "cargo fetch --offline --locked --manifest-path /source/Cargo.toml",
             "cargo fetch --locked --manifest-path /source/Cargo.toml",
             "online semantic resolution",
+        ),
+        Mutation(
+            "shell",
+            r'Path(\"/inputs/config.toml\").read_bytes()',
+            r'Path(\\"/inputs/config.toml\\").read_bytes()',
+            "over-escaped semantic source-map rewrite",
         ),
         Mutation(
             "shell",

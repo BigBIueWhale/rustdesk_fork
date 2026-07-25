@@ -57,10 +57,61 @@ DART_AUDIT_VALIDATION_COMMAND_SHA256 = (
     "e8c2ad1bc895b67920107e76caf327c54a740ab84f4b40018f59b5948cf46a47"
 )
 RUST_AUDIT_ROOT = "/var/tmp/rustdesk-rust-audit"
+RUST_AUDIT_PASSWD = (
+    "root:x:0:0:root:/root:/bin/bash\n"
+    "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n"
+    "bin:x:2:2:bin:/bin:/usr/sbin/nologin\n"
+    "sys:x:3:3:sys:/dev:/usr/sbin/nologin\n"
+    "sync:x:4:65534:sync:/bin:/bin/sync\n"
+    "games:x:5:60:games:/usr/games:/usr/sbin/nologin\n"
+    "man:x:6:12:man:/var/cache/man:/usr/sbin/nologin\n"
+    "lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin\n"
+    "mail:x:8:8:mail:/var/mail:/usr/sbin/nologin\n"
+    "news:x:9:9:news:/var/spool/news:/usr/sbin/nologin\n"
+    "uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin\n"
+    "proxy:x:13:13:proxy:/bin:/usr/sbin/nologin\n"
+    "www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\n"
+    "backup:x:34:34:backup:/var/backups:/usr/sbin/nologin\n"
+    "list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin\n"
+    "irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin\n"
+    "_apt:x:42:65534::/nonexistent:/usr/sbin/nologin\n"
+    "rustdesk-audit:x:1000:1000:RustDesk audit builder:"
+    "/var/tmp/rustdesk-rust-audit/home:/usr/sbin/nologin\n"
+    "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n"
+).encode("ascii")
 
 
 class ProvenanceError(RuntimeError):
     pass
+
+
+def dockerfile_run_contract(dockerfile: bytes) -> list[tuple[str, str]]:
+    """Return exact RUN network directives and frontend-normalized commands."""
+    try:
+        lines = dockerfile.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        fail(f"Docker archive provenance Dockerfile is not UTF-8: {exc}")
+    runs: list[tuple[str, str]] = []
+    position = 0
+    while position < len(lines):
+        match = re.fullmatch(
+            r"RUN --network=(none|default) (.*)",
+            lines[position],
+        )
+        if match is None:
+            position += 1
+            continue
+        network = match.group(1)
+        command = match.group(2)
+        while command.endswith("\\"):
+            command = command[:-1]
+            position += 1
+            if position >= len(lines):
+                fail("Docker archive provenance Dockerfile has a truncated RUN")
+            command += lines[position]
+        runs.append((network, command))
+        position += 1
+    return runs
 
 
 @dataclass(frozen=True)
@@ -173,6 +224,15 @@ class RustAuditSpec:
     rustc_version: str
     cargo_audit_version: str
     cargo_deny_version: str
+    cargo_audit_tag_object: str
+    cargo_audit_source_commit: str
+    cargo_audit_source_tree: str
+    cargo_audit_source_archive_sha256: str
+    cargo_audit_signing_key_fingerprint: str
+    cargo_deny_tag_object: str
+    cargo_deny_source_commit: str
+    cargo_deny_source_tree: str
+    cargo_deny_source_archive_sha256: str
     cargo_audit_sha256: str
     cargo_deny_sha256: str
     advisory_db_sha: str
@@ -200,7 +260,19 @@ class RustAuditSpec:
             ),
             "org.rustdesk.audit.base": self.base,
             "org.rustdesk.audit.cargo-audit": self.cargo_audit_version,
+            "org.rustdesk.audit.cargo-audit-source": (
+                self.cargo_audit_source_commit
+            ),
+            "org.rustdesk.audit.cargo-audit-source-tree": (
+                self.cargo_audit_source_tree
+            ),
             "org.rustdesk.audit.cargo-deny": self.cargo_deny_version,
+            "org.rustdesk.audit.cargo-deny-source": (
+                self.cargo_deny_source_commit
+            ),
+            "org.rustdesk.audit.cargo-deny-source-tree": (
+                self.cargo_deny_source_tree
+            ),
             "org.rustdesk.audit.run-user": "1000:1000",
             "org.rustdesk.audit.rust": self.rust_version,
         }
@@ -272,6 +344,20 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
         ):
             if not re.fullmatch(r"0[.][0-9]+[.][0-9]+", value or ""):
                 fail(f"Rust audit {label} version is malformed")
+        for value, label in (
+            (args.cargo_audit_tag_object, "cargo-audit tag object"),
+            (args.cargo_audit_source_commit, "cargo-audit source commit"),
+            (args.cargo_audit_source_tree, "cargo-audit source tree"),
+            (args.cargo_deny_tag_object, "cargo-deny tag object"),
+            (args.cargo_deny_source_commit, "cargo-deny source commit"),
+            (args.cargo_deny_source_tree, "cargo-deny source tree"),
+        ):
+            if not re.fullmatch(r"[0-9a-f]{40}", value or ""):
+                fail(f"Rust audit {label} is malformed")
+        if args.cargo_audit_signing_key_fingerprint != (
+            "SHA256:Nek/oTQkBpjde4wx0GVl9zJkmMae8M65edoqmLdafUE"
+        ):
+            fail("Rust audit cargo-audit signing-key fingerprint is unsupported")
         if not re.fullmatch(r"[0-9a-f]{40}", args.advisory_db_sha or ""):
             fail("Rust audit advisory database commit is malformed")
         if args.advisory_db_epoch is None or args.advisory_db_epoch <= 0:
@@ -299,6 +385,23 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             rustc_version=args.rustc_version,
             cargo_audit_version=args.cargo_audit_version,
             cargo_deny_version=args.cargo_deny_version,
+            cargo_audit_tag_object=args.cargo_audit_tag_object,
+            cargo_audit_source_commit=args.cargo_audit_source_commit,
+            cargo_audit_source_tree=args.cargo_audit_source_tree,
+            cargo_audit_source_archive_sha256=require_sha(
+                args.cargo_audit_source_archive_sha or "",
+                "cargo-audit source archive SHA-256",
+            ),
+            cargo_audit_signing_key_fingerprint=(
+                args.cargo_audit_signing_key_fingerprint
+            ),
+            cargo_deny_tag_object=args.cargo_deny_tag_object,
+            cargo_deny_source_commit=args.cargo_deny_source_commit,
+            cargo_deny_source_tree=args.cargo_deny_source_tree,
+            cargo_deny_source_archive_sha256=require_sha(
+                args.cargo_deny_source_archive_sha or "",
+                "cargo-deny source archive SHA-256",
+            ),
             cargo_audit_sha256=require_sha(
                 args.cargo_audit_sha or "", "cargo-audit SHA-256"
             ),
@@ -795,7 +898,7 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
                 "the nine-layer contract"
             )
         history = config_json.get("history")
-        if not isinstance(history, list) or len(history) != 21:
+        if not isinstance(history, list) or len(history) != 29:
             fail(
                 "Docker archive Rust audit history differs from "
                 "the reviewed build topology"
@@ -1172,6 +1275,11 @@ def validate_rust_audit_attestation(
     image_manifest_id: object,
     spec: RustAuditSpec,
 ) -> None:
+    if spec.cargo_audit_signing_key_fingerprint != (
+        "SHA256:Nek/oTQkBpjde4wx0GVl9zJkmMae8M65edoqmLdafUE"
+    ):
+        fail("Docker archive Rust audit cargo-audit signing identity differs")
+
     def contains_vcs_authority(value: object) -> bool:
         if isinstance(value, dict):
             return any(
@@ -1208,6 +1316,32 @@ def validate_rust_audit_attestation(
     if not isinstance(predicate, dict) \
        or set(predicate) != {"buildDefinition", "runDetails"}:
         fail("Docker archive Rust audit provenance predicate differs")
+    try:
+        embedded_source = (
+            predicate["runDetails"]["metadata"]["buildkit_metadata"]
+            ["source"]["infos"][0]
+        )
+        embedded_dockerfile = base64.b64decode(
+            embedded_source["data"],
+            validate=True,
+        )
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        fail(
+            "Docker archive Rust audit provenance Dockerfile is unavailable: "
+            f"{exc}"
+        )
+    if hashlib.sha256(embedded_dockerfile).hexdigest() != spec.dockerfile_sha256:
+        fail("Docker archive Rust audit provenance Dockerfile differs from its pin")
+    source_runs = dockerfile_run_contract(embedded_dockerfile)
+    if [network for network, _ in source_runs] != [
+        "none",
+        "default",
+        "none",
+        "default",
+        "none",
+        "none",
+    ]:
+        fail("Docker archive Rust audit Dockerfile RUN network contract differs")
     definition = predicate.get("buildDefinition")
     base_digest = spec.base.rsplit("@", 1)[1]
     if not isinstance(definition, dict) \
@@ -1235,9 +1369,21 @@ def validate_rust_audit_attestation(
         "build-arg:ADVISORY_DB_COMMIT_EPOCH": str(spec.advisory_db_epoch),
         "build-arg:ADVISORY_DB_SHA": spec.advisory_db_sha,
         "build-arg:BASE_DIGEST": base_digest,
+        "build-arg:CARGO_AUDIT_SOURCE_COMMIT": spec.cargo_audit_source_commit,
+        "build-arg:CARGO_AUDIT_SOURCE_TREE": spec.cargo_audit_source_tree,
+        "build-arg:CARGO_AUDIT_TAG_OBJECT": spec.cargo_audit_tag_object,
         "build-arg:CARGO_AUDIT_VERSION": spec.cargo_audit_version,
+        "build-arg:CARGO_DENY_SOURCE_COMMIT": spec.cargo_deny_source_commit,
+        "build-arg:CARGO_DENY_SOURCE_TREE": spec.cargo_deny_source_tree,
+        "build-arg:CARGO_DENY_TAG_OBJECT": spec.cargo_deny_tag_object,
         "build-arg:CARGO_DENY_VERSION": spec.cargo_deny_version,
         "build-arg:RUST_AUDIT_RUST_VERSION": spec.rust_version,
+        "build-arg:SHA256_CARGO_AUDIT_SOURCE_ARCHIVE": (
+            spec.cargo_audit_source_archive_sha256
+        ),
+        "build-arg:SHA256_CARGO_DENY_SOURCE_ARCHIVE": (
+            spec.cargo_deny_source_archive_sha256
+        ),
         "no-cache": "",
     }
     expected_request = {
@@ -1266,22 +1412,28 @@ def validate_rust_audit_attestation(
        or set(build_config) != {"digestMapping", "llbDefinition"} \
        or not isinstance(build_config.get("digestMapping"), dict) \
        or not isinstance(llb, list) \
-       or len(llb) != 9:
+       or len(llb) != 12:
         fail("Docker archive Rust audit provenance builder contract differs")
 
     expected_inputs: list[list[str] | None] = [
         None,
         ["step0:0"],
-        ["step0:0"],
-        ["step2:0"],
+        None,
+        ["step0:0", "step2:0"],
         ["step3:0"],
-        ["step1:0", "step4:0"],
-        ["step5:0", "step4:0"],
+        ["step4:0"],
+        ["step5:0"],
         ["step6:0"],
-        ["step7:0"],
+        ["step1:0", "step7:0"],
+        ["step8:0", "step7:0"],
+        ["step9:0"],
+        ["step10:0"],
     ]
     expected_kinds = [
         {"source"},
+        {"exec"},
+        {"file"},
+        {"file"},
         {"exec"},
         {"exec"},
         {"exec"},
@@ -1294,7 +1446,7 @@ def validate_rust_audit_attestation(
     operations: list[dict[str, object]] = []
     platform = {"Architecture": "amd64", "OS": "linux"}
     for position, item in enumerate(llb):
-        expected_item_keys = {"id", "op"} if position == 0 else {
+        expected_item_keys = {"id", "op"} if position in (0, 2) else {
             "id",
             "inputs",
             "op",
@@ -1303,9 +1455,9 @@ def validate_rust_audit_attestation(
         operation = op_wrapper.get("Op") if isinstance(op_wrapper, dict) else None
         expected_wrapper_keys = (
             {"Op"}
-            if position == 8
+            if position == 11
             else {"Op", "constraints"}
-            if position in (5, 6)
+            if position in (2, 3, 8, 9)
             else {"Op", "constraints", "platform"}
         )
         if not isinstance(item, dict) \
@@ -1316,7 +1468,7 @@ def validate_rust_audit_attestation(
            or set(op_wrapper) != expected_wrapper_keys \
            or op_wrapper.get("constraints") not in (None, {}) \
            or (
-               position not in (5, 6, 8)
+               position not in (2, 3, 8, 9, 11)
                and op_wrapper.get("platform") != platform
            ) \
            or not isinstance(operation, dict) \
@@ -1333,6 +1485,45 @@ def validate_rust_audit_attestation(
     if operations[0].get("source") != expected_source:
         fail("Docker archive Rust audit provenance source operation differs")
 
+    expected_passwd_mkfile = {
+        "actions": [
+            {
+                "Action": {
+                    "mkfile": {
+                        "data": base64.b64encode(RUST_AUDIT_PASSWD).decode("ascii"),
+                        "mode": 0o644,
+                        "path": "/EOF",
+                        "timestamp": -1,
+                    }
+                },
+                "input": -1,
+                "output": 0,
+                "secondaryInput": -1,
+            }
+        ]
+    }
+    expected_passwd_copy = {
+        "actions": [
+            {
+                "Action": {
+                    "copy": {
+                        "createDestPath": True,
+                        "dest": "/etc/passwd",
+                        "mode": -1,
+                        "src": "/EOF",
+                        "timestamp": -1,
+                    }
+                },
+                "input": 0,
+                "output": 0,
+                "secondaryInput": 1,
+            }
+        ]
+    }
+    if operations[2].get("file") != expected_passwd_mkfile \
+       or operations[3].get("file") != expected_passwd_copy:
+        fail("Docker archive Rust audit passwd-construction graph differs")
+
     common_environment = [
         "RUSTUP_HOME=/usr/local/rustup",
         f"RUST_VERSION={spec.rustc_version}",
@@ -1340,12 +1531,28 @@ def validate_rust_audit_attestation(
         f"BASE_DIGEST={base_digest}",
         f"CARGO_AUDIT_VERSION={spec.cargo_audit_version}",
         f"CARGO_DENY_VERSION={spec.cargo_deny_version}",
+        f"CARGO_AUDIT_TAG_OBJECT={spec.cargo_audit_tag_object}",
+        f"CARGO_AUDIT_SOURCE_COMMIT={spec.cargo_audit_source_commit}",
+        f"CARGO_AUDIT_SOURCE_TREE={spec.cargo_audit_source_tree}",
+        (
+            "SHA256_CARGO_AUDIT_SOURCE_ARCHIVE="
+            f"{spec.cargo_audit_source_archive_sha256}"
+        ),
+        f"CARGO_DENY_TAG_OBJECT={spec.cargo_deny_tag_object}",
+        f"CARGO_DENY_SOURCE_COMMIT={spec.cargo_deny_source_commit}",
+        f"CARGO_DENY_SOURCE_TREE={spec.cargo_deny_source_tree}",
+        (
+            "SHA256_CARGO_DENY_SOURCE_ARCHIVE="
+            f"{spec.cargo_deny_source_archive_sha256}"
+        ),
         f"ADVISORY_DB_SHA={spec.advisory_db_sha}",
         f"ADVISORY_DB_COMMIT_EPOCH={spec.advisory_db_epoch}",
     ]
     builder_environment = common_environment + [
         f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
         f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+        f"CARGO_AUDIT_SOURCE={RUST_AUDIT_ROOT}/scanner-sources/rustsec",
+        f"CARGO_DENY_SOURCE={RUST_AUDIT_ROOT}/scanner-sources/cargo-deny",
         f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
         f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
         f"HOME={RUST_AUDIT_ROOT}/home",
@@ -1367,68 +1574,27 @@ def validate_rust_audit_attestation(
             "/usr/local/bin:/usr/bin:/bin"
         ),
     ]
+    # BuildKit schedules the runtime setup before the independent builder
+    # branch. Tie each attested command back to the exact embedded Dockerfile
+    # instead of maintaining a second, drift-prone shell transcription.
     commands = [
-        (
-            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
-            '&& umask 022     && mkdir -p "$CARGO_HOME" "$HOME" '
-            '"$CARGO_DENY_DB_PATH"'
-        ),
-        (
-            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
-            '&& umask 022     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" '
-            '"$AUDIT_ROOT/cargo-target" "$HOME"'
-        ),
-        (
-            'export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target"     '
-            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
-            '--version "$CARGO_AUDIT_VERSION" cargo-audit     '
-            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
-            '--version "$CARGO_DENY_VERSION" cargo-deny     '
-            '&& [ "$(cargo-audit --version)" = '
-            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
-            '&& [ "$(cargo-deny --version)" = '
-            '"cargo-deny $CARGO_DENY_VERSION" ]     '
-            '&& rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" '
-            '"$CARGO_TARGET_DIR"'
-        ),
-        (
-            'git init -q "$ADVISORY_DB"     '
-            '&& git -C "$ADVISORY_DB" remote add origin '
-            'https://github.com/RustSec/advisory-db     '
-            '&& git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q '
-            '--depth=1 origin "$ADVISORY_DB_SHA"     '
-            '&& git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD     '
-            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
-            '"$ADVISORY_DB_SHA" ]     '
-            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
-            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
-            '&& [ -z "$(git -C "$ADVISORY_DB" status '
-            '--porcelain --untracked-files=all)" ]'
-        ),
-        (
-            'ln -s "$ADVISORY_DB" '
-            '"$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR"     '
-            '&& [ "$(cargo-audit --version)" = '
-            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
-            '&& [ "$(cargo-deny --version)" = '
-            '"cargo-deny $CARGO_DENY_VERSION" ]     '
-            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
-            '"$ADVISORY_DB_SHA" ]     '
-            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
-            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
-            '&& [ -z "$(git -C "$ADVISORY_DB" status '
-            '--porcelain --untracked-files=all)" ]'
-        ),
+        source_runs[4][1],
+        source_runs[0][1],
+        source_runs[1][1],
+        source_runs[2][1],
+        source_runs[3][1],
+        source_runs[5][1],
     ]
-    execution_positions = (1, 2, 3, 4, 7)
+    execution_positions = (1, 4, 5, 6, 7, 10)
     execution_environments = (
         runtime_environment,
         builder_environment,
         builder_environment,
         builder_environment,
+        builder_environment,
         runtime_environment,
     )
-    execution_networks = (2, 2, None, None, 2)
+    execution_networks = (2, 2, None, 2, None, 2)
     for command, position, environment, network in zip(
         commands,
         execution_positions,
@@ -1450,7 +1616,7 @@ def validate_rust_audit_attestation(
         if operations[position].get("exec") != expected_execution:
             fail(
                 "Docker archive Rust audit execution graph is not the exact "
-                "two-networked/three-networkless nonroot contract"
+                "two-networked/four-networkless nonroot contract"
             )
 
     copy_owner = {
@@ -1458,8 +1624,8 @@ def validate_rust_audit_attestation(
         "user": {"User": {"byId": 1000}},
     }
     for position, suffix in (
-        (5, "tools"),
-        (6, "advisory-db"),
+        (8, "tools"),
+        (9, "advisory-db"),
     ):
         path = f"{RUST_AUDIT_ROOT}/{suffix}"
         expected_file = {
@@ -2920,6 +3086,8 @@ def create_rust_audit_fixture_archive(
     embedded_dockerfile: bytes | None = None,
     setup_network: int | None = 2,
     acquisition_network: int | None = None,
+    compile_network: int | None = 2,
+    passwd_data: bytes = RUST_AUDIT_PASSWD,
     execution_user: str = "1000:1000",
     copy_user: int = 1000,
     annotate_root: bool = False,
@@ -2942,10 +3110,30 @@ def create_rust_audit_fixture_archive(
             **extra,
         }
 
+    source_commands = [
+        "fixture-builder-setup",
+        "fixture-scanner-source-acquisition",
+        "fixture-scanner-offline-compilation",
+        "fixture-advisory-db-acquisition",
+        "fixture-runtime-setup",
+        "fixture-runtime-validation",
+    ]
     dockerfile = (
         b"FROM rust:1.88-bookworm@sha256:"
         + b"b" * 64
-        + b"\nUSER 1000:1000\nRUN --network=none true\n"
+        + b"\nCOPY <<EOF /etc/passwd\n"
+        + RUST_AUDIT_PASSWD
+        + b"EOF\n"
+        + b"USER 1000:1000\n"
+        + b"RUN --network=none fixture-builder-setup\n"
+        + b"RUN --network=default fixture-scanner-source-acquisition\n"
+        + b"RUN --network=none fixture-scanner-offline-compilation\n"
+        + b"RUN --network=default fixture-advisory-db-acquisition\n"
+        + b"FROM rust:1.88-bookworm@sha256:"
+        + b"b" * 64
+        + b"\nUSER 1000:1000\n"
+        + b"RUN --network=none fixture-runtime-setup\n"
+        + b"RUN --network=none fixture-runtime-validation\n"
     )
     source_dockerfile = (
         dockerfile if embedded_dockerfile is None else embedded_dockerfile
@@ -2960,6 +3148,17 @@ def create_rust_audit_fixture_archive(
         rustc_version="1.88.0",
         cargo_audit_version="0.22.2",
         cargo_deny_version="0.20.2",
+        cargo_audit_tag_object="1" * 40,
+        cargo_audit_source_commit="2" * 40,
+        cargo_audit_source_tree="3" * 40,
+        cargo_audit_source_archive_sha256="4" * 64,
+        cargo_audit_signing_key_fingerprint=(
+            "SHA256:Nek/oTQkBpjde4wx0GVl9zJkmMae8M65edoqmLdafUE"
+        ),
+        cargo_deny_tag_object="5" * 40,
+        cargo_deny_source_commit="6" * 40,
+        cargo_deny_source_tree="7" * 40,
+        cargo_deny_source_archive_sha256="8" * 64,
         cargo_audit_sha256="c" * 64,
         cargo_deny_sha256="d" * 64,
         advisory_db_sha="e" * 40,
@@ -2982,7 +3181,7 @@ def create_rust_audit_fixture_archive(
         {
             "architecture": "amd64",
             "config": preliminary.runtime_config,
-            "history": [{} for _ in range(21)],
+            "history": [{} for _ in range(29)],
             "os": "linux",
             "rootfs": {
                 "type": "layers",
@@ -3016,9 +3215,29 @@ def create_rust_audit_fixture_archive(
         ),
         "build-arg:ADVISORY_DB_SHA": preliminary.advisory_db_sha,
         "build-arg:BASE_DIGEST": "sha256:" + base_digest,
+        "build-arg:CARGO_AUDIT_SOURCE_COMMIT": (
+            preliminary.cargo_audit_source_commit
+        ),
+        "build-arg:CARGO_AUDIT_SOURCE_TREE": (
+            preliminary.cargo_audit_source_tree
+        ),
+        "build-arg:CARGO_AUDIT_TAG_OBJECT": preliminary.cargo_audit_tag_object,
         "build-arg:CARGO_AUDIT_VERSION": preliminary.cargo_audit_version,
+        "build-arg:CARGO_DENY_SOURCE_COMMIT": (
+            preliminary.cargo_deny_source_commit
+        ),
+        "build-arg:CARGO_DENY_SOURCE_TREE": (
+            preliminary.cargo_deny_source_tree
+        ),
+        "build-arg:CARGO_DENY_TAG_OBJECT": preliminary.cargo_deny_tag_object,
         "build-arg:CARGO_DENY_VERSION": preliminary.cargo_deny_version,
         "build-arg:RUST_AUDIT_RUST_VERSION": preliminary.rust_version,
+        "build-arg:SHA256_CARGO_AUDIT_SOURCE_ARCHIVE": (
+            preliminary.cargo_audit_source_archive_sha256
+        ),
+        "build-arg:SHA256_CARGO_DENY_SOURCE_ARCHIVE": (
+            preliminary.cargo_deny_source_archive_sha256
+        ),
         "no-cache": "",
     }
     request = {
@@ -3038,12 +3257,34 @@ def create_rust_audit_fixture_archive(
         "BASE_DIGEST=sha256:" + base_digest,
         f"CARGO_AUDIT_VERSION={preliminary.cargo_audit_version}",
         f"CARGO_DENY_VERSION={preliminary.cargo_deny_version}",
+        f"CARGO_AUDIT_TAG_OBJECT={preliminary.cargo_audit_tag_object}",
+        (
+            "CARGO_AUDIT_SOURCE_COMMIT="
+            f"{preliminary.cargo_audit_source_commit}"
+        ),
+        f"CARGO_AUDIT_SOURCE_TREE={preliminary.cargo_audit_source_tree}",
+        (
+            "SHA256_CARGO_AUDIT_SOURCE_ARCHIVE="
+            f"{preliminary.cargo_audit_source_archive_sha256}"
+        ),
+        f"CARGO_DENY_TAG_OBJECT={preliminary.cargo_deny_tag_object}",
+        (
+            "CARGO_DENY_SOURCE_COMMIT="
+            f"{preliminary.cargo_deny_source_commit}"
+        ),
+        f"CARGO_DENY_SOURCE_TREE={preliminary.cargo_deny_source_tree}",
+        (
+            "SHA256_CARGO_DENY_SOURCE_ARCHIVE="
+            f"{preliminary.cargo_deny_source_archive_sha256}"
+        ),
         f"ADVISORY_DB_SHA={preliminary.advisory_db_sha}",
         f"ADVISORY_DB_COMMIT_EPOCH={preliminary.advisory_db_epoch}",
     ]
     builder_environment = common_environment + [
         f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
         f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+        f"CARGO_AUDIT_SOURCE={RUST_AUDIT_ROOT}/scanner-sources/rustsec",
+        f"CARGO_DENY_SOURCE={RUST_AUDIT_ROOT}/scanner-sources/cargo-deny",
         f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
         f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
         f"HOME={RUST_AUDIT_ROOT}/home",
@@ -3066,57 +3307,12 @@ def create_rust_audit_fixture_archive(
         ),
     ]
     commands = [
-        (
-            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
-            '&& umask 022     && mkdir -p "$CARGO_HOME" "$HOME" '
-            '"$CARGO_DENY_DB_PATH"'
-        ),
-        (
-            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
-            '&& umask 022     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" '
-            '"$AUDIT_ROOT/cargo-target" "$HOME"'
-        ),
-        (
-            'export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target"     '
-            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
-            '--version "$CARGO_AUDIT_VERSION" cargo-audit     '
-            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
-            '--version "$CARGO_DENY_VERSION" cargo-deny     '
-            '&& [ "$(cargo-audit --version)" = '
-            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
-            '&& [ "$(cargo-deny --version)" = '
-            '"cargo-deny $CARGO_DENY_VERSION" ]     '
-            '&& rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" '
-            '"$CARGO_TARGET_DIR"'
-        ),
-        (
-            'git init -q "$ADVISORY_DB"     '
-            '&& git -C "$ADVISORY_DB" remote add origin '
-            'https://github.com/RustSec/advisory-db     '
-            '&& git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q '
-            '--depth=1 origin "$ADVISORY_DB_SHA"     '
-            '&& git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD     '
-            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
-            '"$ADVISORY_DB_SHA" ]     '
-            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
-            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
-            '&& [ -z "$(git -C "$ADVISORY_DB" status '
-            '--porcelain --untracked-files=all)" ]'
-        ),
-        (
-            'ln -s "$ADVISORY_DB" '
-            '"$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR"     '
-            '&& [ "$(cargo-audit --version)" = '
-            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
-            '&& [ "$(cargo-deny --version)" = '
-            '"cargo-deny $CARGO_DENY_VERSION" ]     '
-            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
-            '"$ADVISORY_DB_SHA" ]     '
-            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
-            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
-            '&& [ -z "$(git -C "$ADVISORY_DB" status '
-            '--porcelain --untracked-files=all)" ]'
-        ),
+        source_commands[4],
+        source_commands[0],
+        source_commands[1],
+        source_commands[2],
+        source_commands[3],
+        source_commands[5],
     ]
 
     def execution(
@@ -3201,6 +3397,64 @@ def create_rust_audit_fixture_archive(
             },
         }
 
+    def passwd_mkfile_item() -> dict[str, object]:
+        return {
+            "id": "step2",
+            "op": {
+                "Op": {
+                    "file": {
+                        "actions": [
+                            {
+                                "Action": {
+                                    "mkfile": {
+                                        "data": base64.b64encode(
+                                            passwd_data
+                                        ).decode("ascii"),
+                                        "mode": 0o644,
+                                        "path": "/EOF",
+                                        "timestamp": -1,
+                                    }
+                                },
+                                "input": -1,
+                                "output": 0,
+                                "secondaryInput": -1,
+                            }
+                        ]
+                    }
+                },
+                "constraints": {},
+            },
+        }
+
+    def passwd_copy_item() -> dict[str, object]:
+        return {
+            "id": "step3",
+            "inputs": ["step0:0", "step2:0"],
+            "op": {
+                "Op": {
+                    "file": {
+                        "actions": [
+                            {
+                                "Action": {
+                                    "copy": {
+                                        "createDestPath": True,
+                                        "dest": "/etc/passwd",
+                                        "mode": -1,
+                                        "src": "/EOF",
+                                        "timestamp": -1,
+                                    }
+                                },
+                                "input": 0,
+                                "output": 0,
+                                "secondaryInput": 1,
+                            }
+                        ]
+                    }
+                },
+                "constraints": {},
+            },
+        }
+
     llb_definition: list[dict[str, object]] = [
         {
             "id": "step0",
@@ -3225,33 +3479,42 @@ def create_rust_audit_fixture_archive(
             runtime_environment,
             setup_network,
         ),
+        passwd_mkfile_item(),
+        passwd_copy_item(),
         execution_item(
-            2,
-            ["step0:0"],
+            4,
+            ["step3:0"],
             commands[1],
             builder_environment,
             setup_network,
         ),
         execution_item(
-            3,
-            ["step2:0"],
+            5,
+            ["step4:0"],
             commands[2],
             builder_environment,
             acquisition_network,
         ),
         execution_item(
-            4,
-            ["step3:0"],
+            6,
+            ["step5:0"],
             commands[3],
             builder_environment,
-            acquisition_network,
+            compile_network,
         ),
-        copy_item(5, ["step1:0", "step4:0"], "tools"),
-        copy_item(6, ["step5:0", "step4:0"], "advisory-db"),
         execution_item(
             7,
             ["step6:0"],
             commands[4],
+            builder_environment,
+            acquisition_network,
+        ),
+        copy_item(8, ["step1:0", "step7:0"], "tools"),
+        copy_item(9, ["step8:0", "step7:0"], "advisory-db"),
+        execution_item(
+            10,
+            ["step9:0"],
+            commands[5],
             runtime_environment,
             setup_network,
         ),
@@ -3271,7 +3534,7 @@ def create_rust_audit_fixture_archive(
             }
         )
     llb_definition.append(
-        {"id": "step8", "inputs": ["step7:0"], "op": {"Op": {}}}
+        {"id": "step11", "inputs": ["step10:0"], "op": {"Op": {}}}
     )
     buildkit_metadata: dict[str, object] = {
         "layers": {},
@@ -3996,6 +4259,51 @@ def self_test() -> None:
                 replace(rust_spec, cargo_deny_version="0.20.1"),
             ),
             (
+                "cargo-audit tag object",
+                replace(rust_spec, cargo_audit_tag_object="f" * 40),
+            ),
+            (
+                "cargo-audit source commit",
+                replace(rust_spec, cargo_audit_source_commit="f" * 40),
+            ),
+            (
+                "cargo-audit source tree",
+                replace(rust_spec, cargo_audit_source_tree="f" * 40),
+            ),
+            (
+                "cargo-audit source archive",
+                replace(
+                    rust_spec,
+                    cargo_audit_source_archive_sha256="f" * 64,
+                ),
+            ),
+            (
+                "cargo-audit signing identity",
+                replace(
+                    rust_spec,
+                    cargo_audit_signing_key_fingerprint="SHA256:unreviewed",
+                ),
+            ),
+            (
+                "cargo-deny tag object",
+                replace(rust_spec, cargo_deny_tag_object="f" * 40),
+            ),
+            (
+                "cargo-deny source commit",
+                replace(rust_spec, cargo_deny_source_commit="f" * 40),
+            ),
+            (
+                "cargo-deny source tree",
+                replace(rust_spec, cargo_deny_source_tree="f" * 40),
+            ),
+            (
+                "cargo-deny source archive",
+                replace(
+                    rust_spec,
+                    cargo_deny_source_archive_sha256="f" * 64,
+                ),
+            ),
+            (
                 "advisory database commit",
                 replace(rust_spec, advisory_db_sha="f" * 40),
             ),
@@ -4098,6 +4406,16 @@ def self_test() -> None:
             acquisition_network=2,
         )
         reject_rust_fixture(
+            "networked-compile-rust-audit-image.tar.gz",
+            "Rust audit networked scanner compilation",
+            compile_network=None,
+        )
+        reject_rust_fixture(
+            "passwd-drift-rust-audit-image.tar.gz",
+            "Rust audit passwd construction",
+            passwd_data=b"root:x:0:0:root:/root:/bin/bash\n",
+        )
+        reject_rust_fixture(
             "extra-source-rust-audit-image.tar.gz",
             "Rust audit undeclared source",
             add_extra_source=True,
@@ -4124,7 +4442,7 @@ def self_test() -> None:
         )
         verify_archive(rust_archive, rust_sha, rust_spec, rust_size)
         rust_checks += 1
-        if rust_checks != 29:
+        if rust_checks != 40:
             fail(f"Rust audit image self-test count differs: {rust_checks}")
 
 
@@ -4153,6 +4471,15 @@ def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rustc-version")
     parser.add_argument("--cargo-audit-version")
     parser.add_argument("--cargo-deny-version")
+    parser.add_argument("--cargo-audit-tag-object")
+    parser.add_argument("--cargo-audit-source-commit")
+    parser.add_argument("--cargo-audit-source-tree")
+    parser.add_argument("--cargo-audit-source-archive-sha")
+    parser.add_argument("--cargo-audit-signing-key-fingerprint")
+    parser.add_argument("--cargo-deny-tag-object")
+    parser.add_argument("--cargo-deny-source-commit")
+    parser.add_argument("--cargo-deny-source-tree")
+    parser.add_argument("--cargo-deny-source-archive-sha")
     parser.add_argument("--cargo-audit-sha")
     parser.add_argument("--cargo-deny-sha")
     parser.add_argument("--advisory-db-sha")

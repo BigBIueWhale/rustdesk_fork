@@ -21391,27 +21391,27 @@ def validate_rust_audit_distribution_contract(sources):
 
     for text, label in (
         (
-            'RUST_AUDIT_IMAGE_ID="sha256:098829c8f12ac0cccc7a7ebe041230c73420b847a8d023bc54d615d5b39118fe"',
+            'RUST_AUDIT_IMAGE_ID="sha256:ef686dadbe8b0846ddd5565c7dff251d84467337bf2a2efe6caab54eb92dc689"',
             "Rust audit immutable image pin",
         ),
         (
-            'RUST_AUDIT_IMAGE_CONFIG_ID="sha256:6b150c10cb67c87b24f6167c8f7b5bb3cac92bd4f2fa58b03a1ff68fc7267491"',
+            'RUST_AUDIT_IMAGE_CONFIG_ID="sha256:d6ab0e782795da49e1acb415f14fcc57dc83fa4d9433b59617be57a865073389"',
             "Rust audit image config pin",
         ),
         (
-            'RUST_AUDIT_IMAGE_MANIFEST_ID="sha256:ecaef27804954d5fa57c9ee265758220a147b67c133f521eb3ea5047b93f1010"',
+            'RUST_AUDIT_IMAGE_MANIFEST_ID="sha256:eddb729aa817300721bd4ffd62f968761f8dda18c445870f356630330de04eb8"',
             "Rust audit image manifest pin",
         ),
         (
-            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62957435904d2c9611d798ccfdee248535b942c11a1bc6e17b35cdfd1d"',
+            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="d7ad706d15fa41770f105a628ced93172102aa205d558af26e2b6753e5b0a152"',
             "Rust audit image archive pin",
         ),
         (
-            'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="565547152"',
+            'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="563327519"',
             "Rust audit image archive size",
         ),
         (
-            'SHA256_RUST_AUDIT_DOCKERFILE="8d3e7bb30d1554b9c5b8469d46a950d6198296548e7132fb5621012c6798a840"',
+            'SHA256_RUST_AUDIT_DOCKERFILE="dad88247654a87fe49cff73b23f16047ecc8f2fd3cbd1c8617c9af16d05874bf"',
             "Rust audit Dockerfile pin",
         ),
     ):
@@ -21419,7 +21419,7 @@ def validate_rust_audit_distribution_contract(sources):
     require_exact_count(
         dockerfile,
         "\nRUN --network=none ",
-        3,
+        4,
         "Rust audit networkless build-step inventory",
     )
     require_exact_count(
@@ -21434,9 +21434,53 @@ def validate_rust_audit_distribution_contract(sources):
         2,
         "Rust audit nonroot stage inventory",
     )
+    for text, label in (
+        (
+            "https://github.com/RustSec/rustsec.git",
+            "Rust audit cargo-audit source repository",
+        ),
+        (
+            '"refs/tags/cargo-audit/v${CARGO_AUDIT_VERSION}"',
+            "Rust audit cargo-audit exact upstream tag",
+        ),
+        ("verify-tag --raw", "Rust audit cargo-audit publisher signature"),
+        (
+            "SHA256:Nek/oTQkBpjde4wx0GVl9zJkmMae8M65edoqmLdafUE",
+            "Rust audit cargo-audit signer fingerprint",
+        ),
+        (
+            "https://github.com/EmbarkStudios/cargo-deny.git",
+            "Rust audit cargo-deny source repository",
+        ),
+        (
+            '"refs/tags/${CARGO_DENY_VERSION}"',
+            "Rust audit cargo-deny exact upstream tag",
+        ),
+        (
+            'cargo fetch --locked --manifest-path "$CARGO_AUDIT_SOURCE/Cargo.toml"',
+            "Rust audit locked cargo-audit dependency acquisition",
+        ),
+        (
+            '--path "$CARGO_AUDIT_SOURCE/cargo-audit"',
+            "Rust audit offline cargo-audit source compilation",
+        ),
+        (
+            '--path "$CARGO_DENY_SOURCE"',
+            "Rust audit offline cargo-deny source compilation",
+        ),
+        (
+            'org.rustdesk.audit.cargo-audit-source-tree="${CARGO_AUDIT_SOURCE_TREE}"',
+            "Rust audit cargo-audit source-tree label",
+        ),
+        (
+            'org.rustdesk.audit.cargo-deny-source-tree="${CARGO_DENY_SOURCE_TREE}"',
+            "Rust audit cargo-deny source-tree label",
+        ),
+    ):
+        require_text(dockerfile, text, label)
     if (
         hashlib.sha256(dockerfile.encode("utf-8")).hexdigest()
-        != "8d3e7bb30d1554b9c5b8469d46a950d6198296548e7132fb5621012c6798a840"
+        != "dad88247654a87fe49cff73b23f16047ecc8f2fd3cbd1c8617c9af16d05874bf"
     ):
         raise VerificationError(
             "Rust audit Dockerfile bytes differ from the workspace pin"
@@ -21448,7 +21492,11 @@ def validate_rust_audit_distribution_contract(sources):
             "Rust audit SLSA provenance validation",
         ),
         (
-            'execution_networks = (2, 2, None, None, 2)',
+            "source_runs = dockerfile_run_contract(embedded_dockerfile)",
+            "Rust audit embedded-Dockerfile command graph",
+        ),
+        (
+            'execution_networks = (2, 2, None, 2, None, 2)',
             "Rust audit exact attested network graph",
         ),
         (
@@ -21464,7 +21512,11 @@ def validate_rust_audit_distribution_contract(sources):
             "Rust audit exact nonroot execution graph",
         ),
         (
-            'if rust_checks != 29:',
+            "RUST_AUDIT_PASSWD = (",
+            "Rust audit exact attested passwd bytes",
+        ),
+        (
+            'if rust_checks != 40:',
             "Rust audit archive behavioral inventory",
         ),
     ):
@@ -21529,7 +21581,15 @@ def validate_rust_audit_distribution_contract(sources):
             "Rust audit focused mutation result",
         ),
         (
-            'Mutation("image_provenance", "execution_networks = (2, 2, None, None, 2)"',
+            'Mutation("dockerfile", "verify-tag --raw"',
+            "Rust audit publisher-signature mutation",
+        ),
+        (
+            'Mutation("image_provenance", "source_runs = dockerfile_run_contract(embedded_dockerfile)"',
+            "Rust audit embedded-command mutation",
+        ),
+        (
+            'Mutation("image_provenance", "execution_networks = (2, 2, None, 2, None, 2)"',
             "Rust audit provenance-network mutation",
         ),
         (
@@ -21543,7 +21603,7 @@ def validate_rust_audit_distribution_contract(sources):
             "Rust audit candidate-network mutation",
         ),
         (
-            'Mutation("pins", \'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62\'',
+            'Mutation("pins", \'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="d7ad706d\'',
             "Rust audit archive-pin mutation",
         ),
     ):
@@ -21560,8 +21620,11 @@ def validate_rust_audit_distribution_contract(sources):
     )
     for text in (
         "Dockerfile-only",
-        "exactly two acquisition",
-        "three networkless",
+        "official upstream tag refs",
+        "pinned publisher identity",
+        "selected upstream <code>cargo-deny</code> tag is unsigned",
+        "two-networked/four-networkless",
+        "one-source/twelve-operation",
         "mode-0400",
         "untagged OCI archive",
         "BuildKit",
@@ -34395,21 +34458,45 @@ def run_source_mutations(sources):
             "Rust audit networkless build-step inventory",
         ),
         (
+            "rust_audit_dockerfile",
+            "https://github.com/RustSec/rustsec.git",
+            "https://example.invalid/rustsec.git",
+            "Rust audit cargo-audit source repository",
+        ),
+        (
+            "rust_audit_dockerfile",
+            "verify-tag --raw",
+            "show --show-signature",
+            "Rust audit cargo-audit publisher signature",
+        ),
+        (
+            "rust_audit_dockerfile",
+            '--path "$CARGO_DENY_SOURCE"',
+            '--version "$CARGO_DENY_VERSION" cargo-deny',
+            "Rust audit offline cargo-deny source compilation",
+        ),
+        (
             "pins",
-            'RUST_AUDIT_IMAGE_ID="sha256:098829c8f12ac0cccc7a7ebe041230c73420b847a8d023bc54d615d5b39118fe"',
+            'RUST_AUDIT_IMAGE_ID="sha256:ef686dadbe8b0846ddd5565c7dff251d84467337bf2a2efe6caab54eb92dc689"',
             'RUST_AUDIT_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
             "Rust audit immutable image pin",
         ),
         (
             "pins",
-            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62957435904d2c9611d798ccfdee248535b942c11a1bc6e17b35cdfd1d"',
+            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="d7ad706d15fa41770f105a628ced93172102aa205d558af26e2b6753e5b0a152"',
             'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="0000000000000000000000000000000000000000000000000000000000000000"',
             "Rust audit image archive pin",
         ),
         (
             "offline_image_provenance",
-            "execution_networks = (2, 2, None, None, 2)",
-            "execution_networks = (None, None, None, None, None)",
+            "source_runs = dockerfile_run_contract(embedded_dockerfile)",
+            "source_runs = []",
+            "Rust audit embedded-Dockerfile command graph",
+        ),
+        (
+            "offline_image_provenance",
+            "execution_networks = (2, 2, None, 2, None, 2)",
+            "execution_networks = (None, None, None, None, None, None)",
             "Rust audit exact attested network graph",
         ),
         (

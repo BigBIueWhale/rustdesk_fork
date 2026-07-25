@@ -3,14 +3,22 @@
 #
 # This recipe is never invoked by scripts/audit.sh. It accepts only the
 # Dockerfile itself as an empty build context and executes every RUN as numeric
-# UID/GID 1000. The resulting image contains released, lockfile-built scanners
-# plus one exact clean RustSec advisory-db commit. Verdict execution separately
-# addresses only the recorded immutable image content ID and runs without
-# network or root authority.
+# UID/GID 1000. The resulting image contains scanners built from independently
+# pinned upstream release source plus one exact clean RustSec advisory-db
+# commit. Verdict execution separately addresses only the recorded immutable
+# image content ID and runs without network or root authority.
 ARG RUST_AUDIT_RUST_VERSION=1.88
-ARG BASE_DIGEST
+ARG BASE_DIGEST=sha256:af306cfa71d987911a781c37b59d7d67d934f49684058f96cf72079c3626bfe0
 ARG CARGO_AUDIT_VERSION=0.22.2
 ARG CARGO_DENY_VERSION=0.20.2
+ARG CARGO_AUDIT_TAG_OBJECT
+ARG CARGO_AUDIT_SOURCE_COMMIT
+ARG CARGO_AUDIT_SOURCE_TREE
+ARG SHA256_CARGO_AUDIT_SOURCE_ARCHIVE
+ARG CARGO_DENY_TAG_OBJECT
+ARG CARGO_DENY_SOURCE_COMMIT
+ARG CARGO_DENY_SOURCE_TREE
+ARG SHA256_CARGO_DENY_SOURCE_ARCHIVE
 ARG ADVISORY_DB_SHA
 ARG ADVISORY_DB_COMMIT_EPOCH
 FROM rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST} AS builder
@@ -19,14 +27,50 @@ ARG RUST_AUDIT_RUST_VERSION
 ARG BASE_DIGEST
 ARG CARGO_AUDIT_VERSION
 ARG CARGO_DENY_VERSION
+ARG CARGO_AUDIT_TAG_OBJECT
+ARG CARGO_AUDIT_SOURCE_COMMIT
+ARG CARGO_AUDIT_SOURCE_TREE
+ARG SHA256_CARGO_AUDIT_SOURCE_ARCHIVE
+ARG CARGO_DENY_TAG_OBJECT
+ARG CARGO_DENY_SOURCE_COMMIT
+ARG CARGO_DENY_SOURCE_TREE
+ARG SHA256_CARGO_DENY_SOURCE_ARCHIVE
 ARG ADVISORY_DB_SHA
 ARG ADVISORY_DB_COMMIT_EPOCH
+
+# OpenSSH signature verification requires getpwuid(1000). The digest-pinned
+# official Rust image has no uid-1000 passwd entry, so the reviewed Dockerfile
+# supplies the complete base passwd database plus this non-login build identity.
+# COPY is metadata construction, not a root process execution.
+COPY <<EOF /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+rustdesk-audit:x:1000:1000:RustDesk audit builder:/var/tmp/rustdesk-rust-audit/home:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+EOF
 
 USER 1000:1000
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
 ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
     AUDIT_TOOLS=/var/tmp/rustdesk-rust-audit/tools \
+    CARGO_AUDIT_SOURCE=/var/tmp/rustdesk-rust-audit/scanner-sources/rustsec \
+    CARGO_DENY_SOURCE=/var/tmp/rustdesk-rust-audit/scanner-sources/cargo-deny \
     ADVISORY_DB=/var/tmp/rustdesk-rust-audit/advisory-db \
     CARGO_HOME=/var/tmp/rustdesk-rust-audit/cargo-home \
     HOME=/var/tmp/rustdesk-rust-audit/home \
@@ -37,14 +81,72 @@ RUN --network=none [ "$(id -u)" = 1000 ] \
     && umask 022 \
     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" "$AUDIT_ROOT/cargo-target" "$HOME"
 
-# Both released crates are compiled from their packaged lockfiles. Build-only
-# registry, Git, and target state is deleted before this layer is committed and
-# is never copied into the runtime stage.
-RUN --network=default export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
-    && cargo install --root "$AUDIT_TOOLS" --locked \
-        --version "$CARGO_AUDIT_VERSION" cargo-audit \
-    && cargo install --root "$AUDIT_TOOLS" --locked \
-        --version "$CARGO_DENY_VERSION" cargo-deny \
+# Fetch the two exact official release tags, bind their complete source trees
+# independently of crates.io, and prefetch only their committed lock closures.
+# cargo-audit additionally has an upstream signed release tag. cargo-deny's
+# upstream tag is unsigned, so its separately reviewed tag object, commit, tree,
+# and canonical archive SHA-256 are the explicit trust anchor.
+RUN --network=default fetch_scanner_source() { \
+        local repository="$1" url="$2" ref="$3" expected_tag="$4" \
+            expected_commit="$5" expected_tree="$6" expected_archive="$7"; \
+        local tag commit tree archive; \
+        git init -q "$repository"; \
+        git -C "$repository" remote add origin "$url"; \
+        git -c protocol.version=2 -C "$repository" fetch -q --depth=1 origin "$ref"; \
+        tag="$(git -C "$repository" rev-parse FETCH_HEAD)"; \
+        [ "$tag" = "$expected_tag" ]; \
+        [ "$(git -C "$repository" cat-file -t "$tag")" = tag ]; \
+        commit="$(git -C "$repository" rev-parse "$tag^{commit}")"; \
+        [ "$commit" = "$expected_commit" ]; \
+        [ "$(git -C "$repository" cat-file -t "$commit")" = commit ]; \
+        tree="$(git -C "$repository" rev-parse "$commit^{tree}")"; \
+        [ "$tree" = "$expected_tree" ]; \
+        [ "$(git -C "$repository" cat-file -t "$tree")" = tree ]; \
+        archive="$repository/source.tar"; \
+        git -C "$repository" archive --format=tar --output="$archive" "$commit"; \
+        [ "$(sha256sum "$archive" | cut -d' ' -f1)" = "$expected_archive" ]; \
+    } \
+    && mkdir -p "$AUDIT_ROOT/scanner-git" "$AUDIT_ROOT/scanner-sources" \
+    && fetch_scanner_source \
+        "$AUDIT_ROOT/scanner-git/rustsec" \
+        https://github.com/RustSec/rustsec.git \
+        "refs/tags/cargo-audit/v${CARGO_AUDIT_VERSION}" \
+        "$CARGO_AUDIT_TAG_OBJECT" "$CARGO_AUDIT_SOURCE_COMMIT" \
+        "$CARGO_AUDIT_SOURCE_TREE" "$SHA256_CARGO_AUDIT_SOURCE_ARCHIVE" \
+    && printf '%s %s\n' \
+        'dirkjan@ochtman.nl' \
+        'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAdyFjfzdhqQVdamlsu8LFAVGipsMdsd4r6K/FmhCbqkYHATxXBmBveLv7HeDF9QpB44OWzkiX76g/Q3NR9jGso=' \
+        > "$AUDIT_ROOT/cargo-audit-allowed-signers" \
+    && [ "$(git -c gpg.format=ssh \
+        -c gpg.ssh.allowedSignersFile="$AUDIT_ROOT/cargo-audit-allowed-signers" \
+        -C "$AUDIT_ROOT/scanner-git/rustsec" verify-tag --raw \
+        "$CARGO_AUDIT_TAG_OBJECT" 2>&1)" \
+        = 'Good "git" signature for dirkjan@ochtman.nl with ECDSA key SHA256:Nek/oTQkBpjde4wx0GVl9zJkmMae8M65edoqmLdafUE' ] \
+    && fetch_scanner_source \
+        "$AUDIT_ROOT/scanner-git/cargo-deny" \
+        https://github.com/EmbarkStudios/cargo-deny.git \
+        "refs/tags/${CARGO_DENY_VERSION}" \
+        "$CARGO_DENY_TAG_OBJECT" "$CARGO_DENY_SOURCE_COMMIT" \
+        "$CARGO_DENY_SOURCE_TREE" "$SHA256_CARGO_DENY_SOURCE_ARCHIVE" \
+    && mkdir -p "$CARGO_AUDIT_SOURCE" "$CARGO_DENY_SOURCE" \
+    && tar -xf "$AUDIT_ROOT/scanner-git/rustsec/source.tar" \
+        -C "$CARGO_AUDIT_SOURCE" \
+    && tar -xf "$AUDIT_ROOT/scanner-git/cargo-deny/source.tar" \
+        -C "$CARGO_DENY_SOURCE" \
+    && rm -rf "$AUDIT_ROOT/scanner-git" \
+        "$AUDIT_ROOT/cargo-audit-allowed-signers" \
+    && cargo fetch --locked --manifest-path "$CARGO_AUDIT_SOURCE/Cargo.toml" \
+    && cargo fetch --locked --manifest-path "$CARGO_DENY_SOURCE/Cargo.toml" \
+    && chmod -R a-w "$AUDIT_ROOT/scanner-sources"
+
+# Compilation has no network even though dependency acquisition did. Cargo
+# consumes only the read-only canonical source archives and their committed
+# lockfiles; the crates.io root-package path is absent.
+RUN --network=none export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
+    && cargo install --root "$AUDIT_TOOLS" --locked --offline \
+        --path "$CARGO_AUDIT_SOURCE/cargo-audit" \
+    && cargo install --root "$AUDIT_TOOLS" --locked --offline \
+        --path "$CARGO_DENY_SOURCE" \
     && [ "$(cargo-audit --version)" = "cargo-audit $CARGO_AUDIT_VERSION" ] \
     && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
     && rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"
@@ -63,6 +165,14 @@ ARG RUST_AUDIT_RUST_VERSION
 ARG BASE_DIGEST
 ARG CARGO_AUDIT_VERSION
 ARG CARGO_DENY_VERSION
+ARG CARGO_AUDIT_TAG_OBJECT
+ARG CARGO_AUDIT_SOURCE_COMMIT
+ARG CARGO_AUDIT_SOURCE_TREE
+ARG SHA256_CARGO_AUDIT_SOURCE_ARCHIVE
+ARG CARGO_DENY_TAG_OBJECT
+ARG CARGO_DENY_SOURCE_COMMIT
+ARG CARGO_DENY_SOURCE_TREE
+ARG SHA256_CARGO_DENY_SOURCE_ARCHIVE
 ARG ADVISORY_DB_SHA
 ARG ADVISORY_DB_COMMIT_EPOCH
 
@@ -100,7 +210,11 @@ RUN --network=none ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR"
 LABEL org.rustdesk.audit.base="rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${BASE_DIGEST}" \
       org.rustdesk.audit.rust="${RUST_AUDIT_RUST_VERSION}" \
       org.rustdesk.audit.cargo-audit="${CARGO_AUDIT_VERSION}" \
+      org.rustdesk.audit.cargo-audit-source="${CARGO_AUDIT_SOURCE_COMMIT}" \
+      org.rustdesk.audit.cargo-audit-source-tree="${CARGO_AUDIT_SOURCE_TREE}" \
       org.rustdesk.audit.cargo-deny="${CARGO_DENY_VERSION}" \
+      org.rustdesk.audit.cargo-deny-source="${CARGO_DENY_SOURCE_COMMIT}" \
+      org.rustdesk.audit.cargo-deny-source-tree="${CARGO_DENY_SOURCE_TREE}" \
       org.rustdesk.audit.advisory-db="${ADVISORY_DB_SHA}" \
       org.rustdesk.audit.advisory-db-epoch="${ADVISORY_DB_COMMIT_EPOCH}" \
       org.rustdesk.audit.run-user="1000:1000"

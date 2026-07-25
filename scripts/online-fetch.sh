@@ -983,7 +983,7 @@ vendor_cargo() {
                 installer="/tmp/toolchain/rust-${RUSTDESK_RUST_VERSION}.0-x86_64-unknown-linux-gnu/install.sh"
                 "$installer" --prefix=/tmp/rust --disable-ldconfig \
                     --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu >/dev/null
-                /usr/bin/python3 -I -S -c "import sys; from pathlib import Path; source = Path(\\"/inputs/config.toml\\").read_bytes(); lines = source.splitlines(keepends=True); matches = [index for index, line in enumerate(lines) if line.startswith(b\\"directory = \\")]; len(matches) == 1 or sys.exit(\\"Cargo vendor directory authority is ambiguous\\"); lines[matches[0]] = b\\"directory = \\\\\\"/vendor\\\\\\"\\\\n\\"; Path(\\"/tmp/cargo-home/config.toml\\").write_bytes(b\\"\\".join(lines))"
+                /usr/bin/python3 -I -S -c "import sys; from pathlib import Path; source = Path(\"/inputs/config.toml\").read_bytes(); lines = source.splitlines(keepends=True); matches = [index for index, line in enumerate(lines) if line.startswith(b\"directory = \")]; len(matches) == 1 or sys.exit(\"Cargo vendor directory authority is ambiguous\"); lines[matches[0]] = b\"directory = \\\"/vendor\\\"\\n\"; Path(\"/tmp/cargo-home/config.toml\").write_bytes(b\"\".join(lines))"
                 chmod 0400 /tmp/cargo-home/config.toml
                 export HOME=/tmp/home
                 export CARGO_HOME=/tmp/cargo-home
@@ -1469,6 +1469,15 @@ rust_audit_image_spec_args() {
         --rustc-version "$RUST_AUDIT_RUSTC_VERSION" \
         --cargo-audit-version "$CARGO_AUDIT_VERSION" \
         --cargo-deny-version "$CARGO_DENY_VERSION" \
+        --cargo-audit-tag-object "$CARGO_AUDIT_TAG_OBJECT" \
+        --cargo-audit-source-commit "$CARGO_AUDIT_SOURCE_COMMIT" \
+        --cargo-audit-source-tree "$CARGO_AUDIT_SOURCE_TREE" \
+        --cargo-audit-source-archive-sha "$SHA256_CARGO_AUDIT_SOURCE_ARCHIVE" \
+        --cargo-audit-signing-key-fingerprint "$CARGO_AUDIT_SIGNING_KEY_FINGERPRINT" \
+        --cargo-deny-tag-object "$CARGO_DENY_TAG_OBJECT" \
+        --cargo-deny-source-commit "$CARGO_DENY_SOURCE_COMMIT" \
+        --cargo-deny-source-tree "$CARGO_DENY_SOURCE_TREE" \
+        --cargo-deny-source-archive-sha "$SHA256_CARGO_DENY_SOURCE_ARCHIVE" \
         --cargo-audit-sha "$SHA256_RUST_AUDIT_CARGO_AUDIT" \
         --cargo-deny-sha "$SHA256_RUST_AUDIT_CARGO_DENY" \
         --advisory-db-sha "$ADVISORY_DB_COMMIT" \
@@ -1484,6 +1493,11 @@ require_rust_audit_image_pins() {
         SHA256_RUST_AUDIT_DOCKERFILE
         RUST_AUDIT_RUST_VERSION RUST_AUDIT_RUSTC_VERSION
         CARGO_AUDIT_VERSION CARGO_DENY_VERSION
+        CARGO_AUDIT_TAG_OBJECT CARGO_AUDIT_SOURCE_COMMIT
+        CARGO_AUDIT_SOURCE_TREE SHA256_CARGO_AUDIT_SOURCE_ARCHIVE
+        CARGO_AUDIT_SIGNING_KEY_FINGERPRINT
+        CARGO_DENY_TAG_OBJECT CARGO_DENY_SOURCE_COMMIT
+        CARGO_DENY_SOURCE_TREE SHA256_CARGO_DENY_SOURCE_ARCHIVE
         SHA256_RUST_AUDIT_CARGO_AUDIT SHA256_RUST_AUDIT_CARGO_DENY
         ADVISORY_DB_COMMIT ADVISORY_DB_COMMIT_EPOCH
     )
@@ -1698,6 +1712,11 @@ maintenance_build_rust_audit_image_candidate() {
         RUST_AUDIT_BASE_IMAGE_DIGEST
         RUST_AUDIT_RUST_VERSION RUST_AUDIT_RUSTC_VERSION
         CARGO_AUDIT_VERSION CARGO_DENY_VERSION
+        CARGO_AUDIT_TAG_OBJECT CARGO_AUDIT_SOURCE_COMMIT
+        CARGO_AUDIT_SOURCE_TREE SHA256_CARGO_AUDIT_SOURCE_ARCHIVE
+        CARGO_AUDIT_SIGNING_KEY_FINGERPRINT
+        CARGO_DENY_TAG_OBJECT CARGO_DENY_SOURCE_COMMIT
+        CARGO_DENY_SOURCE_TREE SHA256_CARGO_DENY_SOURCE_ARCHIVE
         SHA256_RUST_AUDIT_CARGO_AUDIT SHA256_RUST_AUDIT_CARGO_DENY
         ADVISORY_DB_COMMIT ADVISORY_DB_COMMIT_EPOCH
         SHA256_RUST_AUDIT_DOCKERFILE
@@ -1733,6 +1752,14 @@ maintenance_build_rust_audit_image_candidate() {
         --build-arg "BASE_DIGEST=${RUST_AUDIT_BASE_IMAGE_DIGEST}" \
         --build-arg "CARGO_AUDIT_VERSION=${CARGO_AUDIT_VERSION}" \
         --build-arg "CARGO_DENY_VERSION=${CARGO_DENY_VERSION}" \
+        --build-arg "CARGO_AUDIT_TAG_OBJECT=${CARGO_AUDIT_TAG_OBJECT}" \
+        --build-arg "CARGO_AUDIT_SOURCE_COMMIT=${CARGO_AUDIT_SOURCE_COMMIT}" \
+        --build-arg "CARGO_AUDIT_SOURCE_TREE=${CARGO_AUDIT_SOURCE_TREE}" \
+        --build-arg "SHA256_CARGO_AUDIT_SOURCE_ARCHIVE=${SHA256_CARGO_AUDIT_SOURCE_ARCHIVE}" \
+        --build-arg "CARGO_DENY_TAG_OBJECT=${CARGO_DENY_TAG_OBJECT}" \
+        --build-arg "CARGO_DENY_SOURCE_COMMIT=${CARGO_DENY_SOURCE_COMMIT}" \
+        --build-arg "CARGO_DENY_SOURCE_TREE=${CARGO_DENY_SOURCE_TREE}" \
+        --build-arg "SHA256_CARGO_DENY_SOURCE_ARCHIVE=${SHA256_CARGO_DENY_SOURCE_ARCHIVE}" \
         --build-arg "ADVISORY_DB_SHA=${ADVISORY_DB_COMMIT}" \
         --build-arg "ADVISORY_DB_COMMIT_EPOCH=${ADVISORY_DB_COMMIT_EPOCH}" \
         --tag "$tag" \
@@ -1750,6 +1777,15 @@ maintenance_build_rust_audit_image_candidate() {
         --rustc-version "$RUST_AUDIT_RUSTC_VERSION" \
         --cargo-audit-version "$CARGO_AUDIT_VERSION" \
         --cargo-deny-version "$CARGO_DENY_VERSION" \
+        --cargo-audit-tag-object "$CARGO_AUDIT_TAG_OBJECT" \
+        --cargo-audit-source-commit "$CARGO_AUDIT_SOURCE_COMMIT" \
+        --cargo-audit-source-tree "$CARGO_AUDIT_SOURCE_TREE" \
+        --cargo-audit-source-archive-sha "$SHA256_CARGO_AUDIT_SOURCE_ARCHIVE" \
+        --cargo-audit-signing-key-fingerprint "$CARGO_AUDIT_SIGNING_KEY_FINGERPRINT" \
+        --cargo-deny-tag-object "$CARGO_DENY_TAG_OBJECT" \
+        --cargo-deny-source-commit "$CARGO_DENY_SOURCE_COMMIT" \
+        --cargo-deny-source-tree "$CARGO_DENY_SOURCE_TREE" \
+        --cargo-deny-source-archive-sha "$SHA256_CARGO_DENY_SOURCE_ARCHIVE" \
         --cargo-audit-sha "$SHA256_RUST_AUDIT_CARGO_AUDIT" \
         --cargo-deny-sha "$SHA256_RUST_AUDIT_CARGO_DENY" \
         --advisory-db-sha "$ADVISORY_DB_COMMIT" \

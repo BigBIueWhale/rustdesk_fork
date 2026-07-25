@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import ctypes
 import errno
 import gzip
@@ -24,6 +25,8 @@ from typing import BinaryIO, Callable, Union
 
 CONTRACT = "rustdesk-build-image-v1"
 LABEL_PREFIX = "org.rustdesk.build-input."
+DART_AUDIT_CONTRACT = "rustdesk-dart-audit-image-v1"
+DART_AUDIT_LABEL_PREFIX = "org.rustdesk.dart-audit-input."
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 PACKAGE = re.compile(rb"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?\Z")
@@ -36,6 +39,23 @@ DEV_CHECK_ENV = [
     "RUST_VERSION=1.75.0",
     "SODIUM_USE_PKG_CONFIG=1",
 ]
+DART_AUDIT_ENV = [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/osv-db",
+]
+DART_AUDIT_VALIDATION_COMMAND = (
+    "set -eu;     printf '%s  %s\\n' \"${OSV_SCANNER_SHA256}\" "
+    "/inputs/osv-scanner       | sha256sum --check --strict --status -;     "
+    "printf '%s  %s\\n' \"${OSV_DB_PUB_SHA256}\" /inputs/all.zip       "
+    "| sha256sum --check --strict --status -;     "
+    "[ \"$(stat -c '%s' /inputs/all.zip)\" = \"${OSV_DB_PUB_SIZE}\" ];     "
+    "touch -d \"@${OSV_DB_PUB_CAPTURE_EPOCH}\" /inputs/all.zip;     "
+    "[ \"$(stat -c '%Y' /inputs/all.zip)\" = "
+    "\"${OSV_DB_PUB_CAPTURE_EPOCH}\" ];     /inputs/osv-scanner --version"
+)
+DART_AUDIT_VALIDATION_COMMAND_SHA256 = (
+    "e8c2ad1bc895b67920107e76caf327c54a740ab84f4b40018f59b5948cf46a47"
+)
 
 
 class ProvenanceError(RuntimeError):
@@ -97,7 +117,52 @@ class VerifierSpec:
         return {"containerd.io/distribution.source.docker.io": "library/rd-devcheck"}
 
 
-ImageSpec = Union[Spec, VerifierSpec]
+@dataclass(frozen=True)
+class DartAuditSpec:
+    role: str
+    image_id: str
+    base: str
+    dockerfile_sha256: str
+    scanner_sha256: str
+    scanner_version: str
+    scalibr_version: str
+    scanner_commit: str
+    scanner_built_at: str
+    database_sha256: str
+    database_size: int
+    database_capture_epoch: int
+    database_generation: str
+    config_id: str | None
+    manifest_id: str | None
+
+    @property
+    def archive_tags(self) -> None:
+        return None
+
+    @property
+    def root_annotations(self) -> None:
+        return None
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            "org.opencontainers.image.ref.name": "ubuntu",
+            "org.opencontainers.image.version": "18.04",
+            DART_AUDIT_LABEL_PREFIX + "contract": DART_AUDIT_CONTRACT,
+            DART_AUDIT_LABEL_PREFIX + "base": self.base,
+            DART_AUDIT_LABEL_PREFIX + "dockerfile-sha256": self.dockerfile_sha256,
+            DART_AUDIT_LABEL_PREFIX + "scanner-version": self.scanner_version,
+            DART_AUDIT_LABEL_PREFIX + "scanner-sha256": self.scanner_sha256,
+            DART_AUDIT_LABEL_PREFIX + "database-sha256": self.database_sha256,
+            DART_AUDIT_LABEL_PREFIX + "database-size": str(self.database_size),
+            DART_AUDIT_LABEL_PREFIX
+            + "database-capture-epoch": str(self.database_capture_epoch),
+            DART_AUDIT_LABEL_PREFIX
+            + "database-generation": self.database_generation,
+        }
+
+
+ImageSpec = Union[Spec, VerifierSpec, DartAuditSpec]
 
 
 def fail(message: str) -> None:
@@ -117,6 +182,61 @@ def require_image_id(value: str, label: str) -> str:
 
 
 def spec_from_args(args: argparse.Namespace) -> ImageSpec:
+    if args.role == "dart-audit":
+        if not re.fullmatch(r"ubuntu:18[.]04@sha256:[0-9a-f]{64}", args.base):
+            fail("Dart audit base image identity is malformed or unsupported")
+        if not re.fullmatch(r"2[.][0-9]+[.][0-9]+", args.scanner_version or ""):
+            fail("Dart audit scanner version is malformed")
+        if not re.fullmatch(r"0[.][0-9]+[.][0-9]+", args.scalibr_version or ""):
+            fail("Dart audit Scalibr version is malformed")
+        if not re.fullmatch(r"[0-9a-f]{40}", args.scanner_commit or ""):
+            fail("Dart audit scanner commit is malformed")
+        if not re.fullmatch(
+            r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            args.scanner_built_at or "",
+        ):
+            fail("Dart audit scanner build timestamp is malformed")
+        if not re.fullmatch(r"[1-9][0-9]*", args.database_generation or ""):
+            fail("Dart audit database generation is malformed")
+        if args.database_size is None or args.database_size <= 0:
+            fail("Dart audit database size must be positive")
+        if args.database_capture_epoch is None or args.database_capture_epoch <= 0:
+            fail("Dart audit database capture epoch must be positive")
+        config_id = (
+            require_image_id(args.config_id, "Dart audit config ID")
+            if args.config_id
+            else None
+        )
+        manifest_id = (
+            require_image_id(args.manifest_id, "Dart audit manifest ID")
+            if args.manifest_id
+            else None
+        )
+        if (config_id is None) != (manifest_id is None):
+            fail("Dart audit config and manifest pins must be supplied together")
+        return DartAuditSpec(
+            role=args.role,
+            image_id=require_image_id(args.expected_id, "expected image ID"),
+            base=args.base,
+            dockerfile_sha256=require_sha(
+                args.dockerfile_sha, "Dockerfile SHA-256"
+            ),
+            scanner_sha256=require_sha(
+                args.scanner_sha or "", "scanner SHA-256"
+            ),
+            scanner_version=args.scanner_version,
+            scalibr_version=args.scalibr_version,
+            scanner_commit=args.scanner_commit,
+            scanner_built_at=args.scanner_built_at,
+            database_sha256=require_sha(
+                args.database_sha or "", "database SHA-256"
+            ),
+            database_size=args.database_size,
+            database_capture_epoch=args.database_capture_epoch,
+            database_generation=args.database_generation,
+            config_id=config_id,
+            manifest_id=manifest_id,
+        )
     if args.role == "devcheck":
         if not re.fullmatch(r"rust:1[.]75-slim@sha256:[0-9a-f]{64}", args.base):
             fail("devcheck base image identity is malformed or unsupported")
@@ -129,7 +249,7 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
             image_id=require_image_id(args.expected_id, "expected image ID"),
             base=args.base,
             dockerfile_sha256=require_sha(args.dockerfile_sha, "Dockerfile SHA-256"),
-            dpkg_sha256=require_sha(args.dpkg_sha, "dpkg manifest SHA-256"),
+            dpkg_sha256=require_sha(args.dpkg_sha or "", "dpkg manifest SHA-256"),
             cargo_sha256=require_sha(args.cargo_sha or "", "Cargo SHA-256"),
             rustc_sha256=require_sha(args.rustc_sha or "", "rustc SHA-256"),
             source_commit=args.source_commit,
@@ -146,7 +266,7 @@ def spec_from_args(args: argparse.Namespace) -> ImageSpec:
         image_id=require_image_id(args.expected_id, "expected image ID"),
         base=args.base,
         dockerfile_sha256=require_sha(args.dockerfile_sha, "Dockerfile SHA-256"),
-        dpkg_sha256=require_sha(args.dpkg_sha, "dpkg manifest SHA-256"),
+        dpkg_sha256=require_sha(args.dpkg_sha or "", "dpkg manifest SHA-256"),
     )
 
 
@@ -182,6 +302,18 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
+    if isinstance(spec, DartAuditSpec):
+        if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
+            fail("Dart audit image platform must be exactly linux/amd64")
+        if config.get("User") not in (None, ""):
+            fail("Dart audit image has an unexpected default user")
+        if config.get("Env") != DART_AUDIT_ENV:
+            fail("Dart audit image environment differs from the reviewed contract")
+        if config.get("Cmd") != ["/bin/bash"]:
+            fail("Dart audit image command differs from the reviewed contract")
+        if config.get("Labels") != spec.labels:
+            fail("Dart audit image labels differ from the exact input contract")
+        return
     if isinstance(spec, VerifierSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("devcheck image platform must be exactly linux/amd64")
@@ -231,6 +363,59 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
+    if isinstance(spec, DartAuditSpec):
+        command = (
+            "set -euo pipefail; "
+            "[ \"$(id -u)\" -ne 0 ] && [ \"$(id -g)\" -ne 0 ]; "
+            "osv-scanner --version; "
+            "printf 'scanner-sha=%s\\n' \"$(sha256sum /usr/local/bin/osv-scanner | cut -d' ' -f1)\"; "
+            "printf 'database-sha=%s\\n' \"$(sha256sum /opt/osv-db/osv-scanner/Pub/all.zip | cut -d' ' -f1)\"; "
+            "printf 'database-meta=%s\\n' \"$(stat -c '%F:%s:%Y:%a:%u:%g:%h' /opt/osv-db/osv-scanner/Pub/all.zip)\""
+        )
+        result = run(
+            [
+                DOCKER,
+                "run",
+                "--rm",
+                "--pull=never",
+                "--network=none",
+                "--read-only",
+                "--user",
+                f"{os.getuid()}:{os.getgid()}",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=32",
+                "--memory=256m",
+                "--memory-swap=256m",
+                "--cpus=1",
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
+                spec.image_id,
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                command,
+            ]
+        )
+        if result.returncode != 0:
+            fail(
+                "cannot verify Dart audit runtime contents: "
+                + result.stderr.decode(errors="replace").strip()
+            )
+        expected = (
+            f"osv-scanner version: {spec.scanner_version}\n"
+            f"osv-scalibr version: {spec.scalibr_version}\n"
+            f"commit: {spec.scanner_commit}\n"
+            f"built at: {spec.scanner_built_at}\n"
+            f"scanner-sha={spec.scanner_sha256}\n"
+            f"database-sha={spec.database_sha256}\n"
+            "database-meta=regular file:"
+            f"{spec.database_size}:{spec.database_capture_epoch}:644:0:0:1\n"
+        ).encode("ascii")
+        if result.stdout != expected or result.stderr:
+            fail("Dart audit runtime fingerprint differs from the reviewed pins")
+        return
     if isinstance(spec, VerifierSpec):
         command = (
             "set -euo pipefail; "
@@ -383,6 +568,18 @@ def parse_json(data: bytes | None, label: str) -> object:
 
 
 def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> None:
+    if isinstance(spec, DartAuditSpec):
+        if not isinstance(config_json, dict) \
+           or config_json.get("architecture") != "amd64" \
+           or config_json.get("os") != "linux":
+            fail("Docker archive Dart audit config platform is malformed")
+        config = config_json.get("config")
+        if not isinstance(config, dict) \
+           or config.get("Env") != DART_AUDIT_ENV \
+           or config.get("Cmd") != ["/bin/bash"] \
+           or config.get("User") not in (None, "") \
+           or config.get("Labels") != spec.labels:
+            fail("Docker archive Dart audit runtime config differs from the reviewed contract")
     if isinstance(spec, VerifierSpec):
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
@@ -515,6 +712,228 @@ def validate_verifier_attestation(
         fail("Docker archive devcheck provenance metadata differs from the reviewed statement")
 
 
+def validate_dart_audit_attestation(
+    statement: object,
+    image_manifest_id: object,
+    spec: DartAuditSpec,
+) -> None:
+    def contains_vcs_authority(value: object) -> bool:
+        if isinstance(value, dict):
+            return any(
+                isinstance(key, str) and (key == "vcs" or key.startswith("vcs:"))
+                or contains_vcs_authority(item)
+                for key, item in value.items()
+            )
+        if isinstance(value, list):
+            return any(contains_vcs_authority(item) for item in value)
+        return False
+
+    expected_digest = str(image_manifest_id).removeprefix("sha256:")
+    if not isinstance(statement, dict) or statement.get("subject") != [
+        {
+            "name": (
+                "pkg:docker/rd-dart-audit-candidate@provenance-v1"
+                "?platform=linux%2Famd64"
+            ),
+            "digest": {"sha256": expected_digest},
+        }
+    ]:
+        fail("Docker archive Dart audit provenance subject differs from the image manifest")
+    if contains_vcs_authority(statement):
+        fail("Docker archive Dart audit provenance contains undeclared VCS authority")
+    predicate = statement.get("predicate")
+    definition = predicate.get("buildDefinition") if isinstance(predicate, dict) else None
+    base_digest = spec.base.rsplit("@", 1)[1]
+    if not isinstance(definition, dict) \
+       or definition.get("buildType") != (
+           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
+           "slsa-definitions.md"
+       ) \
+       or definition.get("resolvedDependencies") != [
+           {
+               "uri": (
+                   "pkg:docker/ubuntu@18.04?"
+                   f"digest={base_digest}&platform=linux%2Famd64"
+               ),
+               "digest": {"sha256": base_digest.removeprefix("sha256:")},
+           }
+       ]:
+        fail("Docker archive Dart audit provenance does not bind the exact Ubuntu base")
+    expected_args = {
+        "build-arg:BASE_DIGEST": base_digest,
+        "build-arg:DART_AUDIT_DOCKERFILE_SHA256": spec.dockerfile_sha256,
+        "build-arg:OSV_DB_PUB_CAPTURE_EPOCH": str(spec.database_capture_epoch),
+        "build-arg:OSV_DB_PUB_GENERATION": spec.database_generation,
+        "build-arg:OSV_DB_PUB_SHA256": spec.database_sha256,
+        "build-arg:OSV_DB_PUB_SIZE": str(spec.database_size),
+        "build-arg:OSV_SCANNER_SHA256": spec.scanner_sha256,
+        "build-arg:OSV_SCANNER_VERSION": spec.scanner_version,
+        "force-network-mode": "none",
+        "no-cache": "",
+    }
+    external = definition.get("externalParameters")
+    expected_request = {
+        "args": expected_args,
+        "compatibilityVersion": 30,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile.dart-audit"},
+            "request": {"args": expected_args},
+        },
+    }
+    if external != {
+        "configSource": {"path": "Dockerfile.dart-audit"},
+        "request": expected_request,
+    }:
+        fail("Docker archive Dart audit provenance does not bind the reviewed recipe")
+    internal = definition.get("internalParameters")
+    build_config = internal.get("buildConfig") if isinstance(internal, dict) else None
+    llb = build_config.get("llbDefinition") if isinstance(build_config, dict) else None
+    if not isinstance(internal, dict) \
+       or set(internal) != {"buildConfig", "builderPlatform", "dockerfileVersion"} \
+       or internal.get("builderPlatform") != "linux/amd64" \
+       or internal.get("dockerfileVersion") != "1.25.0" \
+       or not isinstance(build_config, dict) \
+       or set(build_config) != {"digestMapping", "llbDefinition"} \
+       or not isinstance(build_config.get("digestMapping"), dict) \
+       or not isinstance(llb, list):
+        fail("Docker archive Dart audit provenance builder contract differs")
+    operations = [
+        item.get("op", {}).get("Op", {})
+        for item in llb
+        if isinstance(item, dict)
+        and isinstance(item.get("op"), dict)
+        and isinstance(item["op"].get("Op"), dict)
+    ]
+    source_operations = [
+        operation["source"]
+        for operation in operations
+        if isinstance(operation.get("source"), dict)
+    ]
+    expected_sources = [
+        {
+            "attrs": {"image.resolvemode": "local"},
+            "identifier": (
+                "docker-image://docker.io/library/"
+                f"ubuntu:18.04@{base_digest}"
+            ),
+        },
+        {
+            "attrs": {
+                "local.followpaths": '["Pub-all.zip","osv-scanner"]',
+                "local.sharedkeyhint": "context",
+            },
+            "identifier": "local://context",
+        },
+    ]
+    executions = [
+        operation["exec"]
+        for operation in operations
+        if isinstance(operation.get("exec"), dict)
+    ]
+    if len(operations) != len(llb) \
+       or [set(operation) for operation in operations] != [
+           {"source"},
+           {"source"},
+           {"file"},
+           {"file"},
+           {"exec"},
+           {"file"},
+           {"file"},
+           {"file"},
+           set(),
+       ] \
+       or source_operations != expected_sources \
+       or len(executions) != 1:
+        fail("Docker archive Dart audit provenance input graph differs")
+    execution_meta = executions[0].get("meta")
+    execution_arguments = (
+        execution_meta.get("args") if isinstance(execution_meta, dict) else None
+    )
+    validation_command = (
+        execution_arguments[2]
+        if isinstance(execution_arguments, list)
+        and len(execution_arguments) == 3
+        and isinstance(execution_arguments[2], str)
+        else None
+    )
+    expected_environment = [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        f"OSV_SCANNER_VERSION={spec.scanner_version}",
+        f"OSV_SCANNER_SHA256={spec.scanner_sha256}",
+        f"OSV_DB_PUB_SHA256={spec.database_sha256}",
+        f"OSV_DB_PUB_SIZE={spec.database_size}",
+        f"OSV_DB_PUB_CAPTURE_EPOCH={spec.database_capture_epoch}",
+    ]
+    if set(executions[0]) != {"meta", "mounts", "network"} \
+       or executions[0].get("mounts") != [{"dest": "/"}] \
+       or executions[0].get("network") != 2 \
+       or not isinstance(execution_meta, dict) \
+       or set(execution_meta) != {
+           "args",
+           "cwd",
+           "env",
+           "removeMountStubsRecursive",
+           "user",
+       } \
+       or not isinstance(execution_arguments, list) \
+       or execution_arguments[:2] != ["/bin/sh", "-c"] \
+       or validation_command is None \
+       or hashlib.sha256(validation_command.encode("utf-8")).hexdigest() \
+       != DART_AUDIT_VALIDATION_COMMAND_SHA256 \
+       or execution_meta.get("cwd") != "/" \
+       or execution_meta.get("env") != expected_environment \
+       or execution_meta.get("removeMountStubsRecursive") is not True \
+       or execution_meta.get("user") != "65532:65532":
+        fail("Docker archive Dart audit validation step is not nonroot and networkless")
+    run_details = predicate.get("runDetails") if isinstance(predicate, dict) else None
+    metadata = run_details.get("metadata") if isinstance(run_details, dict) else None
+    buildkit_metadata = (
+        metadata.get("buildkit_metadata") if isinstance(metadata, dict) else None
+    )
+    completeness = (
+        metadata.get("buildkit_completeness") if isinstance(metadata, dict) else None
+    )
+    source = (
+        buildkit_metadata.get("source")
+        if isinstance(buildkit_metadata, dict)
+        else None
+    )
+    infos = source.get("infos") if isinstance(source, dict) else None
+    if not isinstance(buildkit_metadata, dict) \
+       or set(buildkit_metadata) != {"layers", "source"} \
+       or not isinstance(buildkit_metadata.get("layers"), dict) \
+       or not isinstance(source, dict) \
+       or set(source) != {"infos", "locations"} \
+       or not isinstance(source.get("locations"), dict) \
+       or not isinstance(infos, list) \
+       or len(infos) != 1 \
+       or completeness != {"request": True, "resolvedDependencies": False}:
+        fail("Docker archive Dart audit provenance metadata differs")
+    source_info = infos[0]
+    if not isinstance(source_info, dict) \
+       or set(source_info) != {
+           "data",
+           "digestMapping",
+           "filename",
+           "language",
+           "llbDefinition",
+       } \
+       or source_info.get("filename") != "Dockerfile.dart-audit" \
+       or source_info.get("language") != "Dockerfile" \
+       or not isinstance(source_info.get("digestMapping"), dict) \
+       or not isinstance(source_info.get("llbDefinition"), list) \
+       or not isinstance(source_info.get("data"), str):
+        fail("Docker archive Dart audit provenance source record differs")
+    try:
+        dockerfile = base64.b64decode(source_info["data"], validate=True)
+    except (ValueError, TypeError) as exc:
+        fail(f"Docker archive Dart audit provenance Dockerfile is malformed: {exc}")
+    if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
+        fail("Docker archive Dart audit provenance Dockerfile differs from its pin")
+
+
 def validate_modern_archive(
     item: dict[str, object],
     files: set[str],
@@ -538,7 +957,9 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
-    if isinstance(spec, VerifierSpec):
+    if isinstance(spec, DartAuditSpec):
+        expected_annotations = None
+    elif isinstance(spec, VerifierSpec):
         expected_annotations = spec.root_annotations
     else:
         repository_name = spec.capture_tag.rsplit(":", 1)[0]
@@ -556,6 +977,12 @@ def validate_modern_archive(
        or root_descriptor.get("digest") != expected_digest \
        or root_descriptor.get("annotations") != expected_annotations:
         fail("Docker archive root OCI descriptor does not bind the expected image identity")
+    if isinstance(spec, DartAuditSpec) and set(root_descriptor) != {
+        "digest",
+        "mediaType",
+        "size",
+    }:
+        fail("Docker archive Dart audit root descriptor has undeclared annotations")
     expected_index_name, image_index_bytes = descriptor_blob(
         root_descriptor, metadata, member_sizes, member_hashes, "image index"
     )
@@ -575,8 +1002,11 @@ def validate_modern_archive(
     image_descriptor = image_descriptors[0]
     if image_descriptor.get("mediaType") != "application/vnd.oci.image.manifest.v1+json":
         fail("Docker archive image manifest media type is unsupported")
-    if isinstance(spec, VerifierSpec) and image_descriptor.get("digest") != spec.manifest_id:
-        fail("Docker archive devcheck image manifest differs from its pin")
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+        if spec.manifest_id is None:
+            fail(f"Docker archive {spec.role} manifest pin is absent")
+        if image_descriptor.get("digest") != spec.manifest_id:
+            fail(f"Docker archive {spec.role} image manifest differs from its pin")
     image_manifest_name, image_manifest_bytes = descriptor_blob(
         image_descriptor, metadata, member_sizes, member_hashes, "image manifest"
     )
@@ -591,8 +1021,11 @@ def validate_modern_archive(
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json":
         fail("Docker archive image config media type is unsupported")
-    if isinstance(spec, VerifierSpec) and config_descriptor.get("digest") != spec.config_id:
-        fail("Docker archive devcheck image config differs from its pin")
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+        if spec.config_id is None:
+            fail(f"Docker archive {spec.role} config pin is absent")
+        if config_descriptor.get("digest") != spec.config_id:
+            fail(f"Docker archive {spec.role} image config differs from its pin")
     layer_descriptors = image_manifest.get("layers")
     if not isinstance(layer_descriptors, list) or not layer_descriptors:
         fail("Docker archive image manifest has no layers")
@@ -676,8 +1109,10 @@ def validate_modern_archive(
             fail("Docker archive provenance attestation does not name the image manifest")
         if isinstance(spec, VerifierSpec):
             validate_verifier_attestation(statement, actual_digest, spec)
-    if isinstance(spec, VerifierSpec) and len(attestations) != 1:
-        fail("Docker archive devcheck image must contain exactly one provenance attestation")
+        elif isinstance(spec, DartAuditSpec):
+            validate_dart_audit_attestation(statement, actual_digest, spec)
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)) and len(attestations) != 1:
+        fail(f"Docker archive {spec.role} image must contain exactly one provenance attestation")
     blob_files = {name for name in files if name.startswith("blobs/sha256/")}
     if blob_files != expected_blobs:
         fail("Docker archive contains an absent, duplicate, or unreferenced OCI blob")
@@ -695,8 +1130,8 @@ def validate_legacy_archive(
     member_hashes: dict[str, str],
     spec: ImageSpec,
 ) -> None:
-    if isinstance(spec, VerifierSpec):
-        fail("devcheck recovery requires the content-addressed OCI archive layout")
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+        fail(f"{spec.role} recovery requires the content-addressed OCI archive layout")
     expected_config = spec.image_id.removeprefix("sha256:") + ".json"
     layers = item.get("Layers")
     if item.get("Config") != expected_config or expected_config not in files:
@@ -776,7 +1211,10 @@ def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
     if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
         fail("Docker archive must contain exactly one compatibility image manifest")
     item = manifest[0]
-    expected_tags = spec.archive_tags if isinstance(spec, VerifierSpec) else [spec.capture_tag]
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+        expected_tags = spec.archive_tags
+    else:
+        expected_tags = [spec.capture_tag]
     if item.get("RepoTags") != expected_tags:
         fail(f"Docker archive tags differ from the exact contract: {expected_tags!r}")
     modern_markers = {"index.json", "oci-layout"} & files
@@ -815,16 +1253,16 @@ def verify_archive_fd(
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         fail("image archive must be one non-hardlinked regular file")
-    if isinstance(spec, VerifierSpec):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
         if before.st_uid != os.getuid() or before.st_gid != os.getgid():
-            fail("devcheck image archive must be owned by the invoking identity")
+            fail(f"{spec.role} image archive must be owned by the invoking identity")
         if stat.S_IMODE(before.st_mode) != 0o400:
-            fail("devcheck image archive must be mode 0400")
+            fail(f"{spec.role} image archive must be mode 0400")
         if expected_archive_size is None or expected_archive_size <= 0:
-            fail("devcheck image archive requires a positive exact size")
+            fail(f"{spec.role} image archive requires a positive exact size")
         if before.st_size != expected_archive_size:
             fail(
-                "devcheck image archive size mismatch: "
+                f"{spec.role} image archive size mismatch: "
                 f"expected {expected_archive_size}, got {before.st_size}"
             )
     os.lseek(fd, 0, os.SEEK_SET)
@@ -982,7 +1420,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
     verify_local(spec.image_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
-    if isinstance(spec, VerifierSpec):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
         validate_private_output_parent(output.parent)
         save_ref = spec.image_id
     else:
@@ -1023,7 +1461,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         stderr = process.stderr.read() if process.stderr is not None else b""
         if process.wait() != 0:
             fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
-        if isinstance(spec, VerifierSpec):
+        if isinstance(spec, (VerifierSpec, DartAuditSpec)):
             temporary.chmod(0o400)
             archive_sha = digest.hexdigest()
             verify_archive(temporary, archive_sha, spec, count)
@@ -1044,7 +1482,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         output,
         archive_sha,
         spec,
-        count if isinstance(spec, VerifierSpec) else None,
+        count if isinstance(spec, (VerifierSpec, DartAuditSpec)) else None,
     )
     return archive_sha, count
 
@@ -1402,6 +1840,415 @@ def create_verifier_fixture_archive(
     return spec
 
 
+def create_dart_audit_fixture_archive(
+    path: Path,
+    repo_tags: object = None,
+    *,
+    add_vcs: bool = False,
+    add_extra_source: bool = False,
+    embedded_dockerfile: bytes | None = None,
+    validation_network: int = 2,
+    validation_user: str = "65532:65532",
+    annotate_root: bool = False,
+) -> DartAuditSpec:
+    def encoded(value: object) -> bytes:
+        return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+
+    def blob_descriptor(
+        value: bytes,
+        media_type: str,
+        **extra: object,
+    ) -> dict[str, object]:
+        return {
+            "mediaType": media_type,
+            "digest": "sha256:" + hashlib.sha256(value).hexdigest(),
+            "size": len(value),
+            **extra,
+        }
+
+    dockerfile = b"FROM ubuntu:18.04\\nRUN [ \\\"$(id -u)\\\" -ne 0 ]\\n"
+    source_dockerfile = (
+        dockerfile if embedded_dockerfile is None else embedded_dockerfile
+    )
+    base_digest = "b" * 64
+    preliminary = DartAuditSpec(
+        role="dart-audit",
+        image_id="sha256:" + "0" * 64,
+        base="ubuntu:18.04@sha256:" + base_digest,
+        dockerfile_sha256=hashlib.sha256(dockerfile).hexdigest(),
+        scanner_sha256="c" * 64,
+        scanner_version="2.4.0",
+        scalibr_version="0.4.5",
+        scanner_commit="d" * 40,
+        scanner_built_at="2026-06-18T12:55:27Z",
+        database_sha256="e" * 64,
+        database_size=19448,
+        database_capture_epoch=1783494618,
+        database_generation="1783494617999513",
+        config_id=None,
+        manifest_id=None,
+    )
+    layers = [
+        gzip.compress(f"Dart fixture layer {position}".encode("ascii"), mtime=0)
+        for position in range(4)
+    ]
+    layer_descriptors = [
+        blob_descriptor(layer, "application/vnd.oci.image.layer.v1.tar+gzip")
+        for layer in layers
+    ]
+    config = encoded(
+        {
+            "architecture": "amd64",
+            "config": {
+                "Cmd": ["/bin/bash"],
+                "Env": DART_AUDIT_ENV,
+                "Labels": preliminary.labels,
+            },
+            "os": "linux",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + str(position) * 64
+                    for position in range(1, 5)
+                ],
+            },
+        }
+    )
+    config_descriptor = blob_descriptor(
+        config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    image_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": config_descriptor,
+            "layers": layer_descriptors,
+        }
+    )
+    image_descriptor = blob_descriptor(
+        image_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        platform={"architecture": "amd64", "os": "linux"},
+    )
+    build_args = {
+        "build-arg:BASE_DIGEST": "sha256:" + base_digest,
+        "build-arg:DART_AUDIT_DOCKERFILE_SHA256": (
+            preliminary.dockerfile_sha256
+        ),
+        "build-arg:OSV_DB_PUB_CAPTURE_EPOCH": str(
+            preliminary.database_capture_epoch
+        ),
+        "build-arg:OSV_DB_PUB_GENERATION": preliminary.database_generation,
+        "build-arg:OSV_DB_PUB_SHA256": preliminary.database_sha256,
+        "build-arg:OSV_DB_PUB_SIZE": str(preliminary.database_size),
+        "build-arg:OSV_SCANNER_SHA256": preliminary.scanner_sha256,
+        "build-arg:OSV_SCANNER_VERSION": preliminary.scanner_version,
+        "force-network-mode": "none",
+        "no-cache": "",
+    }
+    request = {
+        "args": build_args,
+        "compatibilityVersion": 30,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile.dart-audit"},
+            "request": {"args": build_args},
+        },
+    }
+    buildkit_metadata: dict[str, object] = {
+        "layers": {},
+        "source": {
+            "infos": [
+                {
+                    "data": base64.b64encode(source_dockerfile).decode("ascii"),
+                    "digestMapping": {},
+                    "filename": "Dockerfile.dart-audit",
+                    "language": "Dockerfile",
+                    "llbDefinition": [],
+                }
+            ],
+            "locations": {},
+        },
+    }
+    if add_vcs:
+        buildkit_metadata["vcs"] = {
+            "revision": "f" * 40,
+            "source": "https://example.invalid/repository.git",
+        }
+    llb_definition: list[dict[str, object]] = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "attrs": {"image.resolvemode": "local"},
+                        "identifier": (
+                            "docker-image://docker.io/library/"
+                            "ubuntu:18.04@sha256:" + base_digest
+                        ),
+                    }
+                }
+            },
+        },
+        {
+            "id": "step1",
+            "op": {
+                "Op": {
+                    "source": {
+                        "attrs": {
+                            "local.followpaths": (
+                                '["Pub-all.zip","osv-scanner"]'
+                            ),
+                            "local.sharedkeyhint": "context",
+                        },
+                        "identifier": "local://context",
+                    }
+                }
+            },
+        },
+        {"id": "step2", "op": {"Op": {"file": {}}}},
+        {"id": "step3", "op": {"Op": {"file": {}}}},
+        {
+            "id": "step4",
+            "op": {
+                "Op": {
+                    "exec": {
+                        "meta": {
+                            "args": [
+                                "/bin/sh",
+                                "-c",
+                                DART_AUDIT_VALIDATION_COMMAND,
+                            ],
+                            "cwd": "/",
+                            "env": [
+                                (
+                                    "PATH=/usr/local/sbin:/usr/local/bin:"
+                                    "/usr/sbin:/usr/bin:/sbin:/bin"
+                                ),
+                                (
+                                    "OSV_SCANNER_VERSION="
+                                    + preliminary.scanner_version
+                                ),
+                                (
+                                    "OSV_SCANNER_SHA256="
+                                    + preliminary.scanner_sha256
+                                ),
+                                (
+                                    "OSV_DB_PUB_SHA256="
+                                    + preliminary.database_sha256
+                                ),
+                                (
+                                    "OSV_DB_PUB_SIZE="
+                                    + str(preliminary.database_size)
+                                ),
+                                (
+                                    "OSV_DB_PUB_CAPTURE_EPOCH="
+                                    + str(
+                                        preliminary.database_capture_epoch
+                                    )
+                                ),
+                            ],
+                            "removeMountStubsRecursive": True,
+                            "user": validation_user,
+                        },
+                        "mounts": [{"dest": "/"}],
+                        "network": validation_network,
+                    }
+                }
+            },
+        },
+        {"id": "step5", "op": {"Op": {"file": {}}}},
+        {"id": "step6", "op": {"Op": {"file": {}}}},
+        {"id": "step7", "op": {"Op": {"file": {}}}},
+    ]
+    if add_extra_source:
+        llb_definition.append(
+            {
+                "id": "unexpected-source",
+                "op": {
+                    "Op": {
+                        "source": {
+                            "attrs": {"local.sharedkeyhint": "unexpected"},
+                            "identifier": "local://unexpected",
+                        }
+                    }
+                },
+            }
+        )
+    llb_definition.append({"id": "step8", "op": {"Op": {}}})
+    statement = encoded(
+        {
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [
+                {
+                    "name": (
+                        "pkg:docker/rd-dart-audit-candidate@provenance-v1"
+                        "?platform=linux%2Famd64"
+                    ),
+                    "digest": {
+                        "sha256": image_descriptor["digest"].removeprefix(
+                            "sha256:"
+                        )
+                    },
+                }
+            ],
+            "predicate": {
+                "buildDefinition": {
+                    "buildType": (
+                        "https://github.com/moby/buildkit/blob/master/docs/"
+                        "attestations/slsa-definitions.md"
+                    ),
+                    "externalParameters": {
+                        "configSource": {"path": "Dockerfile.dart-audit"},
+                        "request": request,
+                    },
+                    "internalParameters": {
+                        "buildConfig": {
+                            "digestMapping": {},
+                            "llbDefinition": llb_definition,
+                        },
+                        "builderPlatform": "linux/amd64",
+                        "dockerfileVersion": "1.25.0",
+                    },
+                    "resolvedDependencies": [
+                        {
+                            "digest": {"sha256": base_digest},
+                            "uri": (
+                                "pkg:docker/ubuntu@18.04?"
+                                f"digest=sha256:{base_digest}"
+                                "&platform=linux%2Famd64"
+                            ),
+                        }
+                    ],
+                },
+                "runDetails": {
+                    "builder": {"id": ""},
+                    "metadata": {
+                        "buildkit_completeness": {
+                            "request": True,
+                            "resolvedDependencies": False,
+                        },
+                        "buildkit_metadata": buildkit_metadata,
+                        "finishedOn": "2026-07-25T00:00:01Z",
+                        "invocationId": "fixture",
+                        "startedOn": "2026-07-25T00:00:00Z",
+                    },
+                },
+            },
+        }
+    )
+    statement_descriptor = blob_descriptor(
+        statement,
+        "application/vnd.in-toto+json",
+        annotations={"in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"},
+    )
+    attestation_config = encoded(
+        {
+            "architecture": "unknown",
+            "config": {},
+            "os": "unknown",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + hashlib.sha256(statement).hexdigest(),
+                ],
+            },
+        }
+    )
+    attestation_config_descriptor = blob_descriptor(
+        attestation_config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    attestation_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": attestation_config_descriptor,
+            "layers": [statement_descriptor],
+        }
+    )
+    attestation_descriptor = blob_descriptor(
+        attestation_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        annotations={
+            "vnd.docker.reference.digest": image_descriptor["digest"],
+            "vnd.docker.reference.type": "attestation-manifest",
+        },
+        platform={"architecture": "unknown", "os": "unknown"},
+    )
+    image_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [image_descriptor, attestation_descriptor],
+        }
+    )
+    spec = replace(
+        preliminary,
+        image_id="sha256:" + hashlib.sha256(image_index).hexdigest(),
+        config_id=str(config_descriptor["digest"]),
+        manifest_id=str(image_descriptor["digest"]),
+    )
+    root_descriptor: dict[str, object] = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": spec.image_id,
+        "size": len(image_index),
+    }
+    if annotate_root:
+        root_descriptor["annotations"] = {"unexpected": "authority"}
+    root_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [root_descriptor],
+        }
+    )
+    config_name = "blobs/sha256/" + spec.config_id.removeprefix("sha256:")
+    layer_names = [
+        "blobs/sha256/" + str(descriptor["digest"]).removeprefix("sha256:")
+        for descriptor in layer_descriptors
+    ]
+    compatibility_manifest = encoded(
+        [{"Config": config_name, "RepoTags": repo_tags, "Layers": layer_names}]
+    )
+    members = {
+        "index.json": root_index,
+        "manifest.json": compatibility_manifest,
+        "oci-layout": encoded({"imageLayoutVersion": "1.0.0"}),
+        "blobs/sha256/" + spec.image_id.removeprefix("sha256:"): image_index,
+        "blobs/sha256/" + spec.manifest_id.removeprefix("sha256:"): (
+            image_manifest
+        ),
+        "blobs/sha256/"
+        + str(attestation_descriptor["digest"]).removeprefix("sha256:"): (
+            attestation_manifest
+        ),
+        "blobs/sha256/"
+        + str(attestation_config_descriptor["digest"]).removeprefix("sha256:"): (
+            attestation_config
+        ),
+        "blobs/sha256/"
+        + str(statement_descriptor["digest"]).removeprefix("sha256:"): (
+            statement
+        ),
+        config_name: config,
+    }
+    members.update(zip(layer_names, layers))
+    with path.open("wb") as raw:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name, content in sorted(members.items()):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    info.mtime = 0
+                    archive.addfile(info, io.BytesIO(content))
+    path.chmod(0o400)
+    return spec
+
+
 def expect_failure(operation: Callable[[], object], label: str) -> None:
     try:
         operation()
@@ -1645,19 +2492,208 @@ def self_test() -> None:
         if verifier_checks != 16:
             fail(f"devcheck image self-test count differs: {verifier_checks}")
 
+        dart_archive = Path(temporary) / "dart-audit-image.tar.gz"
+        dart_spec = create_dart_audit_fixture_archive(dart_archive)
+        dart_bytes = dart_archive.read_bytes()
+        dart_sha = hashlib.sha256(dart_bytes).hexdigest()
+        dart_size = len(dart_bytes)
+        verify_archive(dart_archive, dart_sha, dart_spec, dart_size)
+        dart_payload = {
+            "Id": dart_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": {
+                "User": None,
+                "Env": DART_AUDIT_ENV,
+                "Cmd": ["/bin/bash"],
+                "Labels": dart_spec.labels,
+            },
+        }
+        validate_inspect(dart_payload, dart_spec.image_id, dart_spec)
+        dart_checks = 2
+
+        def dart_failure(operation: Callable[[], object], label: str) -> None:
+            nonlocal dart_checks
+            expect_failure(operation, label)
+            dart_checks += 1
+
+        dart_failure(
+            lambda: verify_archive(
+                dart_archive,
+                "f" * 64,
+                dart_spec,
+                dart_size,
+            ),
+            "Dart audit archive hash",
+        )
+        dart_failure(
+            lambda: verify_archive(
+                dart_archive,
+                dart_sha,
+                dart_spec,
+                dart_size + 1,
+            ),
+            "Dart audit archive size",
+        )
+        for label, mutation in (
+            (
+                "image identity",
+                replace(dart_spec, image_id="sha256:" + "f" * 64),
+            ),
+            (
+                "config identity",
+                replace(dart_spec, config_id="sha256:" + "f" * 64),
+            ),
+            (
+                "manifest identity",
+                replace(dart_spec, manifest_id="sha256:" + "f" * 64),
+            ),
+            (
+                "attested base",
+                replace(
+                    dart_spec,
+                    base="ubuntu:18.04@sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "scanner input",
+                replace(dart_spec, scanner_sha256="f" * 64),
+            ),
+            (
+                "database input",
+                replace(dart_spec, database_sha256="f" * 64),
+            ),
+        ):
+            dart_failure(
+                lambda mutation=mutation: verify_archive(
+                    dart_archive,
+                    dart_sha,
+                    mutation,
+                    dart_size,
+                ),
+                f"Dart audit {label}",
+            )
+        dart_failure(
+            lambda: validate_inspect(
+                {
+                    **dart_payload,
+                    "Config": {
+                        **dart_payload["Config"],
+                        "Env": DART_AUDIT_ENV[:-1],
+                    },
+                },
+                dart_spec.image_id,
+                dart_spec,
+            ),
+            "Dart audit runtime environment",
+        )
+        dart_archive.chmod(0o600)
+        dart_failure(
+            lambda: verify_archive(
+                dart_archive,
+                dart_sha,
+                dart_spec,
+                dart_size,
+            ),
+            "Dart audit archive mode",
+        )
+        dart_archive.chmod(0o400)
+        dart_link = Path(temporary) / "dart-audit-image-hardlink.tar.gz"
+        os.link(dart_archive, dart_link)
+        dart_failure(
+            lambda: verify_archive(
+                dart_archive,
+                dart_sha,
+                dart_spec,
+                dart_size,
+            ),
+            "Dart audit archive hardlink",
+        )
+        dart_link.unlink()
+
+        def reject_dart_fixture(
+            name: str,
+            label: str,
+            **arguments: object,
+        ) -> None:
+            candidate = Path(temporary) / name
+            candidate_spec = create_dart_audit_fixture_archive(
+                candidate,
+                **arguments,
+            )
+            candidate_bytes = candidate.read_bytes()
+            dart_failure(
+                lambda: verify_archive(
+                    candidate,
+                    hashlib.sha256(candidate_bytes).hexdigest(),
+                    candidate_spec,
+                    len(candidate_bytes),
+                ),
+                label,
+            )
+
+        reject_dart_fixture(
+            "tagged-dart-audit-image.tar.gz",
+            "Dart audit archive tag",
+            repo_tags=["rd-dart-audit-candidate:provenance-v1"],
+        )
+        reject_dart_fixture(
+            "vcs-dart-audit-image.tar.gz",
+            "Dart audit VCS attribution",
+            add_vcs=True,
+        )
+        reject_dart_fixture(
+            "source-drift-dart-audit-image.tar.gz",
+            "Dart audit embedded Dockerfile",
+            embedded_dockerfile=b"FROM unreviewed\\n",
+        )
+        reject_dart_fixture(
+            "networked-dart-audit-image.tar.gz",
+            "Dart audit networked validation",
+            validation_network=0,
+        )
+        reject_dart_fixture(
+            "extra-source-dart-audit-image.tar.gz",
+            "Dart audit undeclared source",
+            add_extra_source=True,
+        )
+        reject_dart_fixture(
+            "root-dart-audit-image.tar.gz",
+            "Dart audit root validation",
+            validation_user="0:0",
+        )
+        reject_dart_fixture(
+            "annotated-dart-audit-image.tar.gz",
+            "Dart audit root descriptor annotation",
+            annotate_root=True,
+        )
+        verify_archive(dart_archive, dart_sha, dart_spec, dart_size)
+        dart_checks += 1
+        if dart_checks != 21:
+            fail(f"Dart audit image self-test count differs: {dart_checks}")
+
 
 def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--role", required=True)
     parser.add_argument("--expected-id", required=True)
     parser.add_argument("--base", required=True)
     parser.add_argument("--dockerfile-sha", required=True)
-    parser.add_argument("--dpkg-sha", required=True)
+    parser.add_argument("--dpkg-sha")
     parser.add_argument("--cargo-sha")
     parser.add_argument("--rustc-sha")
     parser.add_argument("--source-commit")
     parser.add_argument("--source-repository")
     parser.add_argument("--config-id")
     parser.add_argument("--manifest-id")
+    parser.add_argument("--scanner-sha")
+    parser.add_argument("--scanner-version")
+    parser.add_argument("--scalibr-version")
+    parser.add_argument("--scanner-commit")
+    parser.add_argument("--scanner-built-at")
+    parser.add_argument("--database-sha")
+    parser.add_argument("--database-size", type=int)
+    parser.add_argument("--database-capture-epoch", type=int)
+    parser.add_argument("--database-generation")
 
 
 def argument_parser() -> argparse.ArgumentParser:

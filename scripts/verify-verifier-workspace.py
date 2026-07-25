@@ -15299,8 +15299,12 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     online = sources["online_fetch"]
     for text, label in (
         (
-            "Bind fixed toolchain, WiX, vcpkg, and Debian image acquisition authority",
+            "Bind fixed toolchain, Dart, WiX, vcpkg, and Debian image acquisition authority",
             "fixed-archive focused authority binding",
+        ),
+        (
+            "EXPECTED_DART_AUDIT_MANIFEST = (",
+            "fixed-archive focused Dart advisory manifest",
         ),
         (
             "EXPECTED_SIZES = {",
@@ -15378,6 +15382,32 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     )
     for text, label in (
         (
+            "readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(",
+            "fixed-archive Dart advisory input manifest",
+        ),
+        (
+            "https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o/"
+            "Pub%2Fall.zip?alt=media&generation=${OSV_DB_PUB_GENERATION}",
+            "fixed-archive generation-bound Dart database URL",
+        ),
+        (
+            "https://github.com/google/osv-scanner/releases/download/"
+            "v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64",
+            "fixed-archive versioned Dart scanner URL",
+        ),
+        (
+            'dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}")',
+            "fixed-archive Dart advisory profile dispatch",
+        ),
+        (
+            'stage_archive_bundle dart-audit "$ONLINE_DIR" '
+            ".rustdesk-dart-audit-inputs",
+            "fixed-archive Dart advisory transaction",
+        ),
+    ):
+        require_text(online, text, label)
+    for text, label in (
+        (
             'FORMAT = "rustdesk-fixed-archive-output-v1"',
             "fixed-archive state format",
         ),
@@ -15397,6 +15427,18 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         (
             "if len(specs) == 14:",
             "fixed-archive closed toolchain cardinality",
+        ),
+        (
+            "if len(specs) == 2:",
+            "fixed-archive closed Dart advisory cardinality",
+        ),
+        (
+            '"dart-audit-inputs/Pub-all.zip"',
+            "fixed-archive Dart database destination",
+        ),
+        (
+            '"dart-audit-inputs/osv-scanner"',
+            "fixed-archive Dart scanner destination",
         ),
         (
             "if len(specs) == 6:",
@@ -15479,6 +15521,10 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
             "fixed-archive WiX-package lifecycle fixture",
         ),
         (
+            "Dart-audit self-test publication omitted an input",
+            "fixed-archive Dart advisory lifecycle fixture",
+        ),
+        (
             "systemd-image self-test accepted writable published output",
             "fixed-archive systemd-image writable-output rejection fixture",
         ),
@@ -15498,6 +15544,11 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/online-fixed-archive-output.py self-test",
         "fixed-archive transaction self-test wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/dart-audit-image-input.py --self-test",
+        "fixed-archive Dart input self-test wiring",
     )
     require_text(
         sources["requirements"],
@@ -15737,6 +15788,10 @@ def validate_online_fetch_cargo_vendor_output_authority_contract(sources):
             "Cargo vendor focused authority binding",
         ),
         ("def mutations()", "Cargo vendor focused mutation inventory"),
+        (
+            '"\\n}\\n\\n# Pub resolution needs"',
+            "Cargo vendor focused semantic-profile boundary",
+        ),
         ("self_test(sources)", "Cargo vendor focused mutation dispatch"),
     ):
         require_text(focused, text, label)
@@ -15768,6 +15823,42 @@ def validate_online_fetch_cargo_vendor_output_authority_contract(sources):
         ("cargo_vendor_output_tool publish", "Cargo vendor checked publication"),
     ):
         require_text(online, text, label)
+    semantic_profile = extract_between(
+        online,
+        "online_docker_run_cargo_semantic() {",
+        "\n}\n\n# Pub resolution needs",
+        "Cargo vendor semantic container profile",
+    )
+    for text, label in (
+        ("--pull=never", "Cargo vendor semantic pull refusal"),
+        ("--network=none", "Cargo vendor semantic network isolation"),
+        ("--read-only", "Cargo vendor semantic read-only root"),
+        (
+            '--user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID"',
+            "Cargo vendor semantic nonroot identity",
+        ),
+        ("--cap-drop=ALL", "Cargo vendor semantic capability drop"),
+        (
+            "--security-opt=no-new-privileges",
+            "Cargo vendor semantic no-new-privileges",
+        ),
+        ("--pids-limit=256", "Cargo vendor semantic PID bound"),
+        ("--memory=4g", "Cargo vendor semantic memory bound"),
+        ("--memory-swap=4g", "Cargo vendor semantic swap bound"),
+        ("--cpus=2", "Cargo vendor semantic CPU bound"),
+        (
+            "--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g",
+            "Cargo vendor semantic scratch bound",
+        ),
+    ):
+        require_text(semantic_profile, text, label)
+    for text, label in (
+        ("--network=bridge", "Cargo vendor semantic bridge network"),
+        ("--privileged", "Cargo vendor semantic privileged execution"),
+        ("--user 0", "Cargo vendor semantic root identity"),
+        ("--pid=host", "Cargo vendor semantic host PID namespace"),
+    ):
+        require_absent(semantic_profile, text, label)
     main = extract_between(
         online,
         "main() {",
@@ -20926,6 +21017,11 @@ def validate_dart_audit_authority_contract(sources):
     result = sources["dart_audit_result"]
     authority = sources["dart_audit_authority_validator"]
     pins = sources["pins"]
+    dockerfile = sources["dart_audit_dockerfile"]
+    input_validator = sources["dart_audit_image_input"]
+    online_fetch = sources["online_fetch"]
+    provenance = sources["offline_image_provenance"]
+    fixed_helper = sources["online_fixed_archive_output_helper"]
 
     for text, label in (
         ('[ "$(id -u)" -ne 0 ] || dart_audit_die "refuses host or container-root execution"', "Dart audit UID-root refusal"),
@@ -20985,11 +21081,231 @@ def validate_dart_audit_authority_contract(sources):
     ):
         require_text(result, text, label)
     for text, label in (
-        ('DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"', "Dart audit immutable image pin"),
-        ('OSV_DB_PUB_CAPTURE_EPOCH="1782347599"', "Dart audit capture pin"),
+        ('DART_AUDIT_IMAGE_ID="sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65"', "Dart audit immutable image pin"),
+        ('DART_AUDIT_IMAGE_CONFIG_ID="sha256:a1833b5698aef708a1c5485776aea2264b966f978db7923881b7c1e9e70a54fd"', "Dart audit image config pin"),
+        ('DART_AUDIT_IMAGE_MANIFEST_ID="sha256:8b09349196d4c32a90072f055840952c0e702be8c2a03ab54586211558217b33"', "Dart audit image manifest pin"),
+        ('SHA256_DART_AUDIT_DOCKERFILE="ced57c69244532025697db580ddd54dc9475cd98dd076a47571de5ce2c3a068f"', "Dart audit Dockerfile pin"),
+        ('SHA256_DART_AUDIT_IMAGE_ARCHIVE="f6afc51f31b0c85c15e1497adfdaa18fe3736150f7149823298a6584d3b811b9"', "Dart audit archive digest pin"),
+        ('SIZE_DART_AUDIT_IMAGE_ARCHIVE="45818346"', "Dart audit archive length pin"),
+        ('OSV_SCANNER_SIZE="56676514"', "Dart audit scanner length pin"),
+        ('OSV_SCANNER_SHA256="15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0"', "Dart audit scanner digest pin"),
+        ('OSV_DB_PUB_SHA256="5fdd3db5059b4f935a507385cb93cab3c35ba3d632332a5c8f5deb604f95a5c0"', "Dart audit database digest pin"),
+        ('OSV_DB_PUB_SIZE="19448"', "Dart audit database length pin"),
+        ('OSV_DB_PUB_CAPTURE_EPOCH="1783494618"', "Dart audit capture pin"),
         ('OSV_DB_PUB_MAX_AGE_DAYS="30"', "Dart audit age pin"),
+        ('OSV_DB_PUB_GENERATION="1783494617999513"', "Dart audit generation pin"),
+        ('OSV_DB_PUB_MD5_BASE64="yOWu6VS64jMQQPA8ZzScvQ=="', "Dart audit publisher MD5 pin"),
+        ('OSV_DB_PUB_CRC32C_BASE64="W78GeA=="', "Dart audit publisher CRC32C pin"),
+        ('OSV_DB_PUB_RECORDS="13"', "Dart audit database record pin"),
+        ('OSV_DB_PUB_UNCOMPRESSED_BYTES="47209"', "Dart audit database expansion pin"),
     ):
         require_text(pins, text, label)
+
+    for text, label in (
+        (
+            "ARG BASE_DIGEST=sha256:"
+            "152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98",
+            "Dart audit exact local base",
+        ),
+        ("FROM ubuntu:18.04@${BASE_DIGEST} AS validated-inputs", "Dart audit validation stage"),
+        ("USER 65532:65532", "Dart audit nonroot build validation"),
+        (
+            "COPY --chown=65532:65532 --chmod=0755 osv-scanner "
+            "/inputs/osv-scanner",
+            "Dart audit scanner input copy",
+        ),
+        (
+            "COPY --chown=65532:65532 --chmod=0644 Pub-all.zip "
+            "/inputs/all.zip",
+            "Dart audit database input copy",
+        ),
+        (
+            "org.rustdesk.dart-audit-input.contract",
+            "Dart audit image contract label",
+        ),
+        (
+            "org.rustdesk.dart-audit-input.dockerfile-sha256",
+            "Dart audit recipe label",
+        ),
+        (
+            "COPY --from=validated-inputs --chown=0:0 --chmod=0755",
+            "Dart audit validated input promotion",
+        ),
+    ):
+        require_text(dockerfile, text, label)
+    for text, label in (
+        ("apt-get", "Dart audit Dockerfile package acquisition"),
+        ("curl ", "Dart audit Dockerfile HTTP acquisition"),
+        ("wget ", "Dart audit Dockerfile alternate HTTP acquisition"),
+        ("https://", "Dart audit Dockerfile embedded network URL"),
+        ("http://", "Dart audit Dockerfile embedded plaintext URL"),
+    ):
+        require_absent(dockerfile, text, label)
+
+    for text, label in (
+        ("MAX_SCANNER_BYTES = 64 * 1024 * 1024", "Dart input scanner size ceiling"),
+        ("MAX_DATABASE_BYTES = 16 * 1024 * 1024", "Dart input database size ceiling"),
+        ("metadata_identity(before) == metadata_identity(opened)", "Dart input open identity"),
+        ("metadata_identity(opened) == metadata_identity(closed)", "Dart input close identity"),
+        ("metadata_identity(closed) == metadata_identity(after)", "Dart input path identity"),
+        ("before.st_nlink == 1", "Dart input hardlink refusal"),
+        ("stat.S_IMODE(before.st_mode) == 0o400", "Dart input immutable mode"),
+        ("flags |= os.O_NOFOLLOW", "Dart input no-follow open"),
+        ("actual == expected_sha256", "Dart input SHA-256 equality"),
+        ("actual_md5 == expected_md5", "Dart input publisher MD5 verification"),
+        ("actual_crc32c == expected_crc32c", "Dart input publisher CRC32C verification"),
+        ("len(members) == expected_records", "Dart input record cardinality"),
+        ("total == expected_uncompressed_bytes", "Dart input bounded expansion"),
+        ("match = ADVISORY_FILE.fullmatch(name)", "Dart input member-name grammar"),
+        ('record.get("id") == match.group(1)', "Dart input advisory identity"),
+        ('data.startswith(b"\\x7fELF")', "Dart input scanner ELF requirement"),
+        ("require(checks == 11", "Dart input self-test decision count"),
+    ):
+        require_text(input_validator, text, label)
+
+    for text, label in (
+        (
+            "https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o/"
+            "Pub%2Fall.zip?alt=media&generation=${OSV_DB_PUB_GENERATION}",
+            "Dart audit generation-specific database acquisition",
+        ),
+        (
+            "https://github.com/google/osv-scanner/releases/download/"
+            "v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64",
+            "Dart audit versioned scanner acquisition",
+        ),
+        (
+            'stage_archive_bundle dart-audit "$ONLINE_DIR" '
+            ".rustdesk-dart-audit-inputs",
+            "Dart audit fixed-input transaction",
+        ),
+        ("validate_dart_audit_inputs", "Dart audit structural input validation"),
+        (
+            'local context="$ONLINE_FETCH_TMP/dart-audit-build-context"',
+            "Dart audit private build context",
+        ),
+        (
+            "--network=none --pull=false --no-cache",
+            "Dart audit networkless candidate build",
+        ),
+        (
+            "--platform=linux/amd64 --provenance=mode=max --load",
+            "Dart audit BuildKit provenance production",
+        ),
+        ("dart_audit_image_spec_args() {", "Dart audit image specification"),
+        ("verify_or_load_dart_audit_image() {", "Dart audit archive recovery"),
+        (
+            'online_image_provenance verify-load \\\n'
+            '        --archive "$ONLINE_DIR/verifier-images/dart-audit.docker.tar.gz"',
+            "Dart audit verified archive load",
+        ),
+        (
+            "maintenance_capture_dart_audit_image() {",
+            "Dart audit explicit archive capture",
+        ),
+        (
+            'online_image_provenance maintenance-capture \\\n'
+            '            --output "$directory/dart-audit.docker.tar.gz"',
+            "Dart audit untagged archive capture",
+        ),
+    ):
+        require_text(online_fetch, text, label)
+    candidate = extract_between(
+        online_fetch,
+        "maintenance_build_dart_audit_image_candidate() {",
+        "\n}\n\ncapture_builder_image()",
+        "Dart audit candidate build",
+    )
+    for text, label in (
+        ("docker pull", "Dart audit candidate pull"),
+        ("online_docker pull", "Dart audit candidate online pull"),
+        ("--network=host", "Dart audit candidate host network"),
+        ("--privileged", "Dart audit candidate privileged execution"),
+        ("--cap-add", "Dart audit candidate added capability"),
+        ("--publish", "Dart audit candidate published port"),
+        ("source=$REPO_ROOT", "Dart audit candidate repository mount"),
+        ("source=$SCRIPT_DIR", "Dart audit candidate script-tree mount"),
+    ):
+        require_absent(candidate, text, label)
+
+    for text, label in (
+        ("class DartAuditSpec:", "Dart audit image provenance specification"),
+        (
+            'DART_AUDIT_CONTRACT = "rustdesk-dart-audit-image-v1"',
+            "Dart audit provenance contract",
+        ),
+        (
+            "def contains_vcs_authority(value: object) -> bool:",
+            "Dart audit VCS-attribution rejection",
+        ),
+        ("contains undeclared VCS authority", "Dart audit recursive VCS failure"),
+        (
+            '"build-arg:DART_AUDIT_DOCKERFILE_SHA256"',
+            "Dart audit attested recipe argument",
+        ),
+        ('"force-network-mode": "none"', "Dart audit attested network policy"),
+        ('"no-cache": ""', "Dart audit attested cache policy"),
+        (
+            '"local.followpaths": \'["Pub-all.zip","osv-scanner"]\'',
+            "Dart audit attested private context graph",
+        ),
+        (
+            "source_operations != expected_sources",
+            "Dart audit exact attested source inventory",
+        ),
+        (
+            'executions[0].get("mounts") != [{"dest": "/"}]',
+            "Dart audit attested validation mount inventory",
+        ),
+        (
+            "DART_AUDIT_VALIDATION_COMMAND_SHA256 = (\n"
+            '    "e8c2ad1bc895b67920107e76caf327c54'
+            'a740ab84f4b40018f59b5948cf46a47"',
+            "Dart audit attested validation command",
+        ),
+        (
+            'execution_meta.get("user") != "65532:65532"',
+            "Dart audit attested nonroot validation",
+        ),
+        (
+            'executions[0].get("network") != 2',
+            "Dart audit attested networkless validation",
+        ),
+        (
+            'base64.b64decode(source_info["data"], validate=True)',
+            "Dart audit embedded Dockerfile decode",
+        ),
+        (
+            "provenance Dockerfile differs from its pin",
+            "Dart audit embedded Dockerfile equality",
+        ),
+        (
+            "root descriptor has undeclared annotations",
+            "Dart audit untagged root descriptor",
+        ),
+        (
+            "if isinstance(spec, (VerifierSpec, DartAuditSpec)):",
+            "Dart audit image-ID capture selection",
+        ),
+        ("save_ref = spec.image_id", "Dart audit untagged save reference"),
+        (
+            "create_dart_audit_fixture_archive(",
+            "Dart audit archive behavioral fixture",
+        ),
+        ("add_extra_source=True", "Dart audit undeclared-source fixture"),
+        ("if dart_checks != 21:", "Dart audit archive decision count"),
+    ):
+        require_text(provenance, text, label)
+    for text, label in (
+        ("if len(specs) == 2:", "Dart audit fixed-input cardinality"),
+        ('"dart-audit-inputs/Pub-all.zip"', "Dart audit fixed database destination"),
+        ('"dart-audit-inputs/osv-scanner"', "Dart audit fixed scanner destination"),
+        (
+            "Dart-audit self-test publication omitted an input",
+            "Dart audit fixed-input behavioral fixture",
+        ),
+    ):
+        require_text(fixed_helper, text, label)
 
     authority_mutations = extract_between(
         authority,
@@ -21005,9 +21321,12 @@ def validate_dart_audit_authority_contract(sources):
             "Dart audit validator freshness mutation",
         ),
         (
-            'Mutation("pins", \'DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"\'',
+            'Mutation("pins", \'DART_AUDIT_IMAGE_ID="sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65"\'',
             "Dart audit validator image-pin mutation",
         ),
+        ('"networkless candidate build"', "Dart audit candidate-build mutation"),
+        ('"VCS-attribution rejection"', "Dart audit provenance mutation"),
+        ('"standalone input immutability"', "Dart audit input mutation"),
     ):
         require_text(authority_mutations, text, label)
     require_text(
@@ -21020,6 +21339,16 @@ def validate_dart_audit_authority_contract(sources):
         "python3 scripts/verify-dart-audit-authority.py --repo . --self-test",
         "Dart audit authority shared-gate wiring",
     )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/dart-audit-image-input.py --self-test",
+        "Dart audit input shared-gate wiring",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
+        "Dart audit archive shared-gate wiring",
+    )
     requirement = extract_html_requirement(
         sources["requirements"], "R-S11be", "Dart audit authority requirement"
     )
@@ -21029,6 +21358,11 @@ def validate_dart_audit_authority_contract(sources):
         "exactly 30 days",
         "--pull=never",
         "--network=none",
+        "generation-specific GCS media object",
+        "current-user-private three-file context",
+        "VCS-free BuildKit provenance statement",
+        "single-link, mode-0400, untagged OCI archive",
+        "Recovery remains outside the verdict path",
         "MUST NOT",
     ):
         require_text(requirement, text, "Dart audit authority requirement")
@@ -21040,8 +21374,8 @@ def validate_dart_audit_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "ACQUISITION REMOVED FROM VERDICT PATH",
-        "Dart audit acquisition-removal evidence",
+        "Networkless construction and distribution:",
+        "Dart audit acquisition/distribution evidence",
     )
 
 
@@ -21149,7 +21483,10 @@ def validate_main_verifier_authority_contract(sources):
         ("expected_tags = spec.archive_tags", "main verifier untagged archive"),
         ("save_ref = spec.image_id", "main verifier exact-ID capture"),
         ("RENAME_NOREPLACE = 1", "main verifier archive no-clobber primitive"),
-        ("devcheck image archive must be mode 0400", "main verifier archive mode"),
+        (
+            'fail(f"{spec.role} image archive must be mode 0400")',
+            "main verifier archive mode",
+        ),
         ("if verifier_checks != 16:", "main verifier archive behavioral inventory"),
     ):
         require_text(image_provenance, text, label)
@@ -33732,9 +34069,81 @@ def run_source_mutations(sources):
         ),
         (
             "pins",
-            'DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"',
+            'DART_AUDIT_IMAGE_ID="sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65"',
             'DART_AUDIT_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
             "Dart audit immutable image pin",
+        ),
+        (
+            "pins",
+            'DART_AUDIT_IMAGE_CONFIG_ID="sha256:a1833b5698aef708a1c5485776aea2264b966f978db7923881b7c1e9e70a54fd"',
+            'DART_AUDIT_IMAGE_CONFIG_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
+            "Dart audit image config pin",
+        ),
+        (
+            "pins",
+            'SHA256_DART_AUDIT_IMAGE_ARCHIVE="f6afc51f31b0c85c15e1497adfdaa18fe3736150f7149823298a6584d3b811b9"',
+            'SHA256_DART_AUDIT_IMAGE_ARCHIVE="0000000000000000000000000000000000000000000000000000000000000000"',
+            "Dart audit archive digest pin",
+        ),
+        (
+            "dart_audit_dockerfile",
+            "USER 65532:65532",
+            "USER 0:0",
+            "Dart audit nonroot build validation",
+        ),
+        (
+            "online_fetch",
+            "--network=none --pull=false --no-cache",
+            "--network=default --pull=true --no-cache",
+            "Dart audit networkless candidate build",
+        ),
+        (
+            "offline_image_provenance",
+            "def contains_vcs_authority(value: object) -> bool:",
+            "def contains_vcs_authority_removed(value: object) -> bool:",
+            "Dart audit VCS-attribution rejection",
+        ),
+        (
+            "offline_image_provenance",
+            "source_operations != expected_sources",
+            "False",
+            "Dart audit exact attested source inventory",
+        ),
+        (
+            "dart_audit_image_input",
+            "stat.S_IMODE(before.st_mode) == 0o400",
+            "stat.S_IMODE(before.st_mode) in (0o400, 0o600)",
+            "Dart input immutable mode",
+        ),
+        (
+            "dart_audit_image_input",
+            "metadata_identity(closed) == metadata_identity(after)",
+            "metadata_identity(closed) != metadata_identity(after)",
+            "Dart input path identity",
+        ),
+        (
+            "dart_audit_image_input",
+            "actual == expected_sha256",
+            "len(actual) == 64",
+            "Dart input SHA-256 equality",
+        ),
+        (
+            "dart_audit_image_input",
+            'record.get("id") == match.group(1)',
+            'record.get("id") is not None',
+            "Dart input advisory identity",
+        ),
+        (
+            "dart_audit_image_input",
+            'data.startswith(b"\\x7fELF")',
+            "bool(data)",
+            "Dart input scanner ELF requirement",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/dart-audit-image-input.py --self-test",
+            "true # Dart advisory input self-test removed",
+            "fixed-archive Dart input self-test wiring",
         ),
         (
             "dart_audit_authority_validator",
@@ -33872,7 +34281,7 @@ def run_source_mutations(sources):
             "verify",
             "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
             "true # image archive self-test removed",
-            "main verifier archive helper shared-gate wiring",
+            "Dart audit archive shared-gate wiring",
         ),
         (
             "ipc_fs_source",
@@ -36706,6 +37115,12 @@ def run_source_mutations(sources):
             "fixed-archive focused manifest mapping",
         ),
         (
+            "online_fetch_fixed_archive_authority_verifier",
+            "EXPECTED_DART_AUDIT_MANIFEST = (",
+            "REMOVED_DART_AUDIT_MANIFEST = (",
+            "fixed-archive focused Dart advisory manifest",
+        ),
+        (
             "online_fetch",
             "stage_archive_bundle() {",
             "stage_archive_bundle_disabled() {",
@@ -36728,6 +37143,19 @@ def run_source_mutations(sources):
             "if len(specs) == 1:",
             "if len(specs) == 2:",
             "fixed-archive closed systemd-image cardinality",
+        ),
+        (
+            "online_fixed_archive_output_helper",
+            "if len(specs) == 2:",
+            "if len(specs) == 3:",
+            "fixed-archive closed Dart advisory cardinality",
+        ),
+        (
+            "online_fetch",
+            "https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o/"
+            "Pub%2Fall.zip?alt=media&generation=${OSV_DB_PUB_GENERATION}",
+            "https://osv-vulnerabilities.storage.googleapis.com/Pub/all.zip",
+            "fixed-archive generation-bound Dart database URL",
         ),
         (
             "online_fixed_archive_output_helper",
@@ -36933,6 +37361,12 @@ def run_source_mutations(sources):
             "Cargo vendor focused mutation inventory",
         ),
         (
+            "online_fetch_cargo_vendor_output_authority_verifier",
+            '"\\n}\\n\\n# Pub resolution needs"',
+            '"\\n}\\n\\n# Exact archive acquisition"',
+            "Cargo vendor focused semantic-profile boundary",
+        ),
+        (
             "online_fetch",
             "stage_fixed_archives\n    vendor_cargo",
             "vendor_cargo\n    stage_fixed_archives",
@@ -36943,6 +37377,18 @@ def run_source_mutations(sources):
             "cargo fetch --offline --locked --manifest-path /source/Cargo.toml",
             "cargo fetch --locked --manifest-path /source/Cargo.toml",
             "Cargo vendor offline semantic resolution",
+        ),
+        (
+            "online_fetch",
+            "online_docker_run_cargo_semantic() {\n"
+            "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+            '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+            "        --cap-drop=ALL --security-opt=no-new-privileges",
+            "online_docker_run_cargo_semantic() {\n"
+            "    online_docker run --rm --pull=never --network=none --read-only \\\n"
+            '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+            "        --security-opt=no-new-privileges",
+            "Cargo vendor semantic capability drop",
         ),
         (
             "online_fetch",
@@ -38552,6 +38998,12 @@ def main():
             "dart_audit_result": (repo / "scripts/dart-audit-result.py").read_text(encoding="utf-8"),
             "dart_audit_authority_validator": (
                 repo / "scripts/verify-dart-audit-authority.py"
+            ).read_text(encoding="utf-8"),
+            "dart_audit_image_input": (
+                repo / "scripts/dart-audit-image-input.py"
+            ).read_text(encoding="utf-8"),
+            "dart_audit_dockerfile": (
+                repo / "scripts/Dockerfile.dart-audit"
             ).read_text(encoding="utf-8"),
             "verifier_command_wrapper": (
                 repo / "scripts/verify-container-command.sh"

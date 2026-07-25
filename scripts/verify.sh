@@ -286,6 +286,9 @@ fi
 
 echo "== (0j-archives) fixed input authority (R-S11cs/R-S11ct/R-S11cu; R-S11e-111/R-S11e-112/R-S11e-113) =="
 r_s11cs=
+if ! /usr/bin/python3 -I -S scripts/dart-audit-image-input.py --self-test; then
+  r_s11cs="$r_s11cs dart-advisory-input-self-test-failed"
+fi
 if ! /usr/bin/python3 -I -S scripts/online-fixed-archive-output.py self-test; then
   r_s11cs="$r_s11cs transaction-self-test-failed"
 fi
@@ -296,7 +299,7 @@ if [ -n "$r_s11cs" ]; then
   echo "  FAIL R-S11cs fixed toolchain archive authority:$r_s11cs"
   rc=1
 else
-  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, six signed WiX packages, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
+  echo "  ok  R-S11cs/R-S11ct/R-S11cu the fourteen toolchain archives, two Dart advisory inputs, six signed WiX packages, 33 vcpkg distfiles, and one Debian systemd image use closed exact-length manifests, one private immutable non-root producer, independent host validation, and recoverable no-clobber publication"
 fi
 
 echo "== (0j-wix) exact signed WiX NuGet authority (R-S11cz/R-S11e-118) =="

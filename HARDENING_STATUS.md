@@ -4815,8 +4815,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   inventory, native-codec, syntax, requirements-hash, diff, and publication evidence are recorded before publication.
   This strengthens source verification but does not substitute for the clean exact-commit R-B2 Debian double build,
   package/manifest/lifecycle evidence, native installed behavior, or R-V3 independent review.
-- **R-S11be/R-S11e-71 — Dart advisory result and scanner authority — SOURCE CLOSED/GATED; ACQUISITION REMOVED FROM VERDICT PATH;
-  CONFINED CURRENT SCAN RECORDED; INDEPENDENT IMAGE DISTRIBUTION AND BROADER RELEASE EVIDENCE OPEN.** Platform: the
+- **R-S11be/R-S11e-71 — Dart advisory result and scanner authority — SOURCE, FIXED-INPUT ACQUISITION, AND RECOVERABLE
+  IMAGE DISTRIBUTION CLOSED/GATED; CONFINED CURRENT SCAN RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the
   Linux Docker build host used by the release source-verification bundle. Endpoint/action: `scripts/dart-audit.sh`
   executing pinned OSV-Scanner against `flutter/pubspec.lock` and interpreting the result through the reason-bearing
   Pub advisory policy. Boundary: live network/image acquisition, mutable Docker identity, stale advisory data,
@@ -4831,17 +4831,18 @@ unreachable and a source/test/AST gate prevents reintroduction.
   defects, not evidence of exploitation, a container escape, privilege escalation, compromise, a public listener,
   RustDesk execution, host-service/configuration mutation, or host firewall/network mutation.
 
-  Source closure: verdict execution and acquisition are now separate. `scripts/dart-audit.sh` rejects effective UID
-  or primary GID zero and never builds, pulls, or resolves a tag. It requires only the already-present exact content
-  ID `sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d`; absence is final, with no fallback.
+  Verdict closure: `scripts/dart-audit.sh` rejects effective UID or primary GID zero and never builds, pulls, loads,
+  captures, or resolves a tag. It requires only already-present exact content ID
+  `sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65`; absence is final, with no fallback.
   Before Docker, `scripts/dart-audit-result.py` reads the real policy and lockfile through descriptor-stable
   `O_NOFOLLOW` regular-file checks, rejects hardlinks, validates the policy plus the lockfile's one top-level package
   map, and writes stable mode-0600 private copies and hashes inside an identity-bound current-user mode-0700
-  workspace. The database pin is 19,437 bytes with SHA-256
-  `8b1d25767804f7487d7a26d9ae001c00813329252157eb7d267a8fb6f575b87c` and immutable capture mtime epoch
-  `1782347599` (2026-06-25T00:33:19Z). A fork-owned exact 30-day capture-age ceiling has no caller override and is
-  checked before Docker and before green; the current snapshot is eligible on 2026-07-20 but will fail closed after
-  the exact boundary unless image, bytes, capture metadata, and policy review are deliberately refreshed together.
+  workspace. The database pin is 19,448 bytes with SHA-256
+  `5fdd3db5059b4f935a507385cb93cab3c35ba3d632332a5c8f5deb604f95a5c0`, generation
+  `1783494617999513`, and immutable publisher-update/capture mtime epoch `1783494618`
+  (2026-07-08T07:10:18Z). A fork-owned exact 30-day capture-age ceiling has no caller override and is checked before
+  Docker and before green; the snapshot will fail closed at the exact boundary unless image, bytes, capture metadata,
+  and policy review are deliberately refreshed together.
 
   A mount-free preflight checks the scanner's exact 2.4.0/Scalibr 0.4.5 version report, upstream commit/build report,
   binary hash, database hash, and database regular-file size/mtime/mode/UID/GID/link metadata. Preflight and scan
@@ -4855,21 +4856,49 @@ unreachable and a source/test/AST gate prevents reintroduction.
   and exact local Pub database. Any extra warning/diagnostic fails. Status/finding cardinality, reason-bearing accept
   IDs/aliases, freshness, and both real/private input hashes must agree before cleanup can publish green.
 
+  Fixed input acquisition: `scripts/online-fetch.sh` admits exactly the versioned 56,676,514-byte OSV-Scanner 2.4.0
+  release asset and GCS Pub object generation `1783494617999513` through the common exact-URL/size/SHA-256,
+  no-clobber fixed-archive transaction. The scanner SHA-256
+  `15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0` independently agrees with the official
+  versioned checksum file and release Sigstore/SLSA bundle. GCS metadata named size 19,448, update time
+  2026-07-08T07:10:18.106Z, MD5 `yOWu6VS64jMQQPA8ZzScvQ==`, and CRC32C `W78GeA==`; the generation-addressed
+  response and independent local calculations agreed. A bounded validator requires current-user-owned mode-0400
+  single-link inputs, stable no-follow reads, an ELF scanner, both publisher checksums, exactly 13 canonical
+  single-file JSON records, 47,209 uncompressed bytes, no traversal/duplicate/case-collision entry, and exact
+  filename/record IDs.
+
+  Networkless construction and distribution: explicit maintenance build uses only an already-local
+  `ubuntu:18.04@sha256:152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98` base and one
+  current-user-private three-file context outside Git discovery. BuildKit runs with `--network=none`,
+  `--pull=false`, `--no-cache`, Linux/amd64, and maximal provenance; the sole `RUN` validates both inputs as numeric
+  UID:GID 65532:65532. The resulting exact config is
+  `sha256:a1833b5698aef708a1c5485776aea2264b966f978db7923881b7c1e9e70a54fd` and image manifest is
+  `sha256:8b09349196d4c32a90072f055840952c0e702be8c2a03ab54586211558217b33`. Its one BuildKit SLSA statement binds that
+  manifest, the exact base, eight pinned build arguments, forced network-none/no-cache request, exact two-source
+  inventory and nine-operation-kind topology, sole root mount, validation command/environment, nonroot/networkless
+  execution, and embedded Dockerfile SHA-256
+  `ced57c69244532025697db580ddd54dc9475cd98dd076a47571de5ce2c3a068f`; it contains no VCS authority or false
+  source revision. Explicit maintenance capture saved only the content ID, not its candidate tag, into untagged
+  (`RepoTags: null`) current-user-owned mode-0400 single-link
+  `online/verifier-images/dart-audit.docker.tar.gz`: 45,818,346 bytes, SHA-256
+  `f6afc51f31b0c85c15e1497adfdaa18fe3736150f7149823298a6584d3b811b9`. Recovery remains outside the verdict:
+  it verifies a stable descriptor, exact bytes and complete OCI/provenance graph, rehashes the same stream during
+  `docker load`, repeats the mount-free runtime fingerprint, and created no tag; the pre-existing disposable
+  candidate tag set was unchanged. The canonical full `online/` closure now includes both fixed inputs and that
+  archive at root `672429137499995654db109cb0bfeb5823f5204528e352e3bb1904ac071f0b92`: 145,719 files,
+  42,858 directories, 41 symlinks, 26,604,397,097 content bytes, 16 hardlink groups, and 9 case collisions.
+
   Verification: the evaluator's 31 policy/freshness/status/schema decisions pass, including exact-age boundary and
   one-second-stale cases, future/noncanonical epochs, hardlink refusal, private staging, strict scanner telemetry,
-  infrastructure statuses, malformed schema, and status/result disagreement. The focused semantic validator rejects
-  all 61 deliberate mutations across live-acquisition absence, immutable pins, capture age, stable inputs, preflight
-  bytes/metadata, output/resource/privilege/mount confinement, telemetry, JSON/status finality, source postconditions,
-  shared-gate wiring, R-S11be, Appendix C #182, and this ledger. The exact existing image passed its mount-free
-  preflight and current offline scan: OSV status 0, 199 packages reported from the exact private lockfile, an explicit
-  empty `results` list, and only the four accepted telemetry lines. A separate disposable private-lockfile probe
-  changed only `archive` from 3.6.1 to vulnerable 3.3.7; the same confined scanner returned status 1, and the strict
-  evaluator also returned 1 while naming both pinned-snapshot GHSA findings and their 3.3.8 fix. No image was built or
-  pulled. Syntax, independent
-  workspace/source mutation, requirements-hash, native-codec, diff, and publication evidence are recorded before
-  publication. `scripts/Dockerfile.dart-audit` remains an explicit acquisition recipe only; independently archived
-  and provenance-verified distribution of a refreshed image is still open, as are Rust advisory image distribution,
-  other Docker consumers, exact R-B2/R-B10 artifacts, installed-platform behavior, and R-V3 external review.
+  infrastructure statuses, malformed schema, and status/result disagreement. The standalone-input helper, fixed
+  archive transaction, Dart image archive/provenance helper, focused semantic/mutation gates, and independent
+  workspace/source mutations bind acquisition, construction, archive/recovery, verdict separation, exact pins,
+  confinement, telemetry, JSON/status finality, R-S11be, Appendix C #182, and this ledger. The refreshed exact image
+  passed its mount-free preflight and current offline scan: OSV status 0, 199 packages reported from the exact private
+  lockfile, an explicit empty `results` list, and only the four accepted telemetry lines. Syntax, requirements-hash,
+  native-codec, diff, and publication evidence are recorded before publication. Rust advisory-image distribution,
+  other Docker consumers, exact clean-commit R-B2/R-B10 artifacts, installed-platform behavior, and R-V3 external
+  review remain open.
 - **R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority — SOURCE
   CLOSED/GATED; CURRENT SNAPSHOT/POLICY REVIEWED AND SCANNERS GREEN 2026-07-22; INDEPENDENT IMAGE DISTRIBUTION AND
   BROADER RELEASE EVIDENCE OPEN.** Platform: the Linux Docker build host used by the release source-verification
@@ -5077,12 +5106,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   without changing the image's sole pre-existing `rd-devcheck:latest` reference. A full real-archive
   verify/load/fingerprint transaction passed, and the image reference inventory remained unchanged afterward.
   The helper's synthetic archive suite rejects hash, size, image/config/manifest, attested-base, attested-source,
-  runtime-environment, file-mode, hardlink, tag, and no-clobber publication mutations. The refreshed canonical
-  `online/` closure is
-  `3529dd46232bb2f7a5dddb0d43d6f20e255da6a7a3cc31813b2a3594386e1f3e`: 145,716 files, 42,857 directories,
-  41 symlinks, 26,501,882,789 content bytes, 16 hardlink groups, and 9 case collisions. This closes recoverable
-  archive distribution of the reviewed image, not a fresh independent rebuild, signed or fully dual-sourced
-  provenance, the intentionally
+  runtime-environment, file-mode, hardlink, tag, and no-clobber publication mutations. The canonical `online/`
+  closure was subsequently extended, without changing the devcheck archive bytes, to include the two exact Dart
+  advisory inputs and their recoverable untagged image archive; its current root is
+  `672429137499995654db109cb0bfeb5823f5204528e352e3bb1904ac071f0b92`: 145,719 files, 42,858 directories,
+  41 symlinks, 26,604,397,097 content bytes, 16 hardlink groups, and 9 case collisions. This closes recoverable
+  archive distribution of the reviewed devcheck image, not a fresh independent rebuild, signed or fully
+  dual-sourced provenance, the intentionally
   release-blocking RustSec refresh, exact clean cold R-B2 artifacts, installed-platform behavior, or R-V3
   independent review; neither this item nor the overall release is claimed complete.
 - **R-SV4a — direct-only viewer transport and state finality — SOURCE IMPLEMENTED; EXACT GENERATED/PLATFORM
@@ -10606,7 +10636,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   respectively. The independent workspace passed normally and across its complete source-mutation
   matrix. That matrix exposed and closed two source-verifier gaps before publication: shared Rust
   archive-check literals are now scoped to the exact Cargo-tool lifecycle, and main acquisition
-  order independently requires fixed Rust inputs before Cargo vendoring. The native-codec watch
+  order independently requires fixed Rust inputs before Cargo vendoring. During the 2026-07-25
+  whole-closure refresh, the focused Cargo semantic-profile extractor was also found to span the
+  following Pub semantic profile; a missing Cargo `--cap-drop=ALL` therefore borrowed the Pub copy
+  and escaped its capability-widening mutation. The extractor now ends at the immediate Pub-profile
+  boundary, the focused 22-mutation suite rejects that removal, and the independent workspace
+  extracts the same exact function and carries its own capability-drop mutation. This is an
+  assurance repair; the already capability-free producer/semantic runtime profiles did not change.
+  The native-codec watch
   passed normally and in mutation-self-test mode. Bash/Python/HTML parsing, synchronized
   requirements SHA-256
   `f785be15c36ac3e0b9d31b83a761a6d5480a62e706be7161c32274aa22e3b862`,
@@ -11722,7 +11759,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2e7713ff112f719c153ea2c1835bf55edfb3c81e815d43ea08cbc3d16ce405af  requirements.html
+fc297964c6b8ba19367c50c9c43698b7f6ca72a81e2abb51619d6f8c512ea8b0  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cz, R-SV4a,

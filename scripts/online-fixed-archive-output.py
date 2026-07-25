@@ -202,6 +202,13 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         if not is_debian_systemd_image_name(names[0]):
             fail("the one-entry systemd image manifest has a noncanonical destination")
         return
+    if len(specs) == 2:
+        if names != (
+            "dart-audit-inputs/Pub-all.zip",
+            "dart-audit-inputs/osv-scanner",
+        ):
+            fail("the Dart audit manifest is not the exact two-input rebuild source")
+        return
     if len(specs) == 14:
         if any(
             len(validate_name(name)) > 1 and validate_name(name)[0] != "win"
@@ -247,7 +254,8 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         return
     fail(
         "the archive manifest must contain exactly one Debian systemd image, "
-        "six WiX packages, 14 toolchain entries, or 33 vcpkg distfile entries, "
+        "two Dart audit inputs, six WiX packages, 14 toolchain entries, "
+        "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
     )
 
@@ -1429,6 +1437,24 @@ def test_systemd_image_specs() -> tuple[ArchiveSpec, ...]:
     )
 
 
+def test_dart_audit_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for name, payload in (
+        ("dart-audit-inputs/Pub-all.zip", b"dart-database-fixture"),
+        ("dart-audit-inputs/osv-scanner", b"dart-scanner-fixture"),
+    ):
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def self_test() -> None:
     uid = os.geteuid()
     gid = os.getegid()
@@ -1761,6 +1787,75 @@ def self_test() -> None:
         else:
             fail("systemd-image self-test accepted writable published output")
         os.chmod(systemd_final, 0o400)
+
+        dart_specs = test_dart_audit_specs()
+        dart_online = root / "dart-online"
+        dart_staging = root / "dart-staging"
+        dart_online.mkdir(mode=0o700)
+        dart_staging.mkdir(mode=0o700)
+        if (
+            prepare_transaction(
+                dart_online,
+                dart_staging,
+                dart_specs,
+                uid,
+                gid,
+                builder_id,
+                helper_sha256,
+            )
+            != "acquire"
+        ):
+            fail("Dart-audit self-test transaction unexpectedly reused output")
+        dart_state = read_state(dart_staging)
+        dart_output = dart_staging / OUTPUT_NAME
+        dart_output_fd = open_directory(dart_output)
+        try:
+            for spec, payload in zip(
+                dart_specs,
+                (b"dart-database-fixture", b"dart-scanner-fixture"),
+                strict=True,
+            ):
+                download_archive(
+                    dart_output_fd,
+                    spec,
+                    FakeOpener(FakeResponse(payload, spec.url)),
+                )
+        finally:
+            os.close(dart_output_fd)
+        validate_candidate_tree(
+            dart_output,
+            dart_specs,
+            uid,
+            gid,
+            str(dart_state["output"]),
+        )
+        verify_transaction(
+            dart_online,
+            dart_staging,
+            dart_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        publish_transaction(
+            dart_online,
+            dart_staging,
+            dart_specs,
+            uid,
+            gid,
+            builder_id,
+            helper_sha256,
+        )
+        dart_online_fd = open_directory(dart_online)
+        try:
+            for spec in dart_specs:
+                if not validate_archive_at(
+                    dart_online_fd, spec, uid, gid, candidate=False
+                ):
+                    fail("Dart-audit self-test publication omitted an input")
+        finally:
+            os.close(dart_online_fd)
 
         bad_output = root / "bad-output"
         bad_output.mkdir(mode=0o700)

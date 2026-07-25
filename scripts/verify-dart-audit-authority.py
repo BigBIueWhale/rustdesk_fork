@@ -7,10 +7,17 @@ import re
 import sys
 
 
-IMAGE_ID = "sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"
+IMAGE_ID = "sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65"
+CONFIG_ID = "sha256:a1833b5698aef708a1c5485776aea2264b966f978db7923881b7c1e9e70a54fd"
+MANIFEST_ID = "sha256:8b09349196d4c32a90072f055840952c0e702be8c2a03ab54586211558217b33"
+ARCHIVE_SHA256 = "f6afc51f31b0c85c15e1497adfdaa18fe3736150f7149823298a6584d3b811b9"
+ARCHIVE_SIZE = "45818346"
+DOCKERFILE_SHA256 = "ced57c69244532025697db580ddd54dc9475cd98dd076a47571de5ce2c3a068f"
+SCANNER_SIZE = "56676514"
 SCANNER_SHA256 = "15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0"
-DATABASE_SHA256 = "8b1d25767804f7487d7a26d9ae001c00813329252157eb7d267a8fb6f575b87c"
-DATABASE_CAPTURE_EPOCH = "1782347599"
+DATABASE_SHA256 = "5fdd3db5059b4f935a507385cb93cab3c35ba3d632332a5c8f5deb604f95a5c0"
+DATABASE_CAPTURE_EPOCH = "1783494618"
+DATABASE_GENERATION = "1783494617999513"
 DATABASE_MAX_AGE_DAYS = "30"
 
 
@@ -103,6 +110,10 @@ def validate_contract(sources):
     requirements = sources["requirements"]
     hardening = sources["hardening"]
     validator = sources["validator"]
+    online_fetch = sources["online_fetch"]
+    provenance = sources["provenance"]
+    input_validator = sources["input_validator"]
+    fixed_helper = sources["fixed_helper"]
 
     require_all(
         shell,
@@ -274,26 +285,206 @@ def validate_contract(sources):
             'OSV_SCALIBR_VERSION="0.4.5"',
             'OSV_SCANNER_COMMIT="b56b5191101d5f27d4787d5583d8d01e9518a7af"',
             'OSV_SCANNER_BUILT_AT="2026-06-18T12:55:27Z"',
+            'OSV_SCANNER_SIZE="{}"'.format(SCANNER_SIZE),
             'OSV_SCANNER_SHA256="{}"'.format(SCANNER_SHA256),
             'OSV_DB_PUB_SHA256="{}"'.format(DATABASE_SHA256),
-            'OSV_DB_PUB_SIZE="19437"',
+            'OSV_DB_PUB_SIZE="19448"',
             'OSV_DB_PUB_CAPTURE_EPOCH="{}"'.format(DATABASE_CAPTURE_EPOCH),
+            'OSV_DB_PUB_GENERATION="{}"'.format(DATABASE_GENERATION),
+            'OSV_DB_PUB_MD5_BASE64="yOWu6VS64jMQQPA8ZzScvQ=="',
+            'OSV_DB_PUB_CRC32C_BASE64="W78GeA=="',
+            'OSV_DB_PUB_RECORDS="13"',
+            'OSV_DB_PUB_UNCOMPRESSED_BYTES="47209"',
             'OSV_DB_PUB_MAX_AGE_DAYS="{}"'.format(DATABASE_MAX_AGE_DAYS),
             'DART_AUDIT_IMAGE_ID="{}"'.format(IMAGE_ID),
+            'SHA256_DART_AUDIT_DOCKERFILE="{}"'.format(DOCKERFILE_SHA256),
+            'DART_AUDIT_IMAGE_CONFIG_ID="{}"'.format(CONFIG_ID),
+            'DART_AUDIT_IMAGE_MANIFEST_ID="{}"'.format(MANIFEST_ID),
+            'SHA256_DART_AUDIT_IMAGE_ARCHIVE="{}"'.format(ARCHIVE_SHA256),
+            'SIZE_DART_AUDIT_IMAGE_ARCHIVE="{}"'.format(ARCHIVE_SIZE),
         ),
         "Dart advisory immutable pins",
     )
     require_all(
         dockerfile,
         (
-            "This file is an acquisition recipe only.",
+            "scripts/online-fetch.sh acquires those standalone files by exact URL, size, and",
             "scripts/dart-audit.sh never invokes",
-            "then update the exact content ID, scanner/database pins, capture metadata, and",
+            "ARG BASE_DIGEST=sha256:152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98",
+            "USER 65532:65532",
+            "COPY --chown=65532:65532 --chmod=0755 osv-scanner /inputs/osv-scanner",
+            "COPY --chown=65532:65532 --chmod=0644 Pub-all.zip /inputs/all.zip",
+            "sha256sum --check --strict --status",
+            "touch -d \"@${OSV_DB_PUB_CAPTURE_EPOCH}\"",
+            "org.rustdesk.dart-audit-input.contract",
+            "COPY --from=validated-inputs --chown=0:0 --chmod=0755",
+            "COPY --from=validated-inputs --chown=0:0 --chmod=0644",
         ),
         "Dart advisory acquisition separation",
     )
+    for forbidden in ("apt-get", "curl ", "wget ", "https://", "http://"):
+        require(
+            forbidden not in dockerfile,
+            "Dart advisory Dockerfile retained live acquisition {!r}".format(
+                forbidden
+            ),
+        )
+
+    require_all(
+        input_validator,
+        (
+            "MAX_SCANNER_BYTES = 64 * 1024 * 1024",
+            "MAX_DATABASE_BYTES = 16 * 1024 * 1024",
+            "metadata_identity(before) == metadata_identity(opened)",
+            "metadata_identity(opened) == metadata_identity(closed)",
+            "metadata_identity(closed) == metadata_identity(after)",
+            "before.st_nlink == 1",
+            "stat.S_IMODE(before.st_mode) == 0o400",
+            "flags |= os.O_NOFOLLOW",
+            "actual == expected_sha256",
+            "actual_md5 == expected_md5",
+            "actual_crc32c == expected_crc32c",
+            "len(members) == expected_records",
+            "total == expected_uncompressed_bytes",
+            "match = ADVISORY_FILE.fullmatch(name)",
+            "record.get(\"id\") == match.group(1)",
+            "data.startswith(b\"\\x7fELF\")",
+            "require(checks == 11",
+        ),
+        "Dart advisory standalone input validator",
+    )
+    require_all(
+        fixed_helper,
+        (
+            "if len(specs) == 2:",
+            '"dart-audit-inputs/Pub-all.zip"',
+            '"dart-audit-inputs/osv-scanner"',
+            "Dart-audit self-test publication omitted an input",
+        ),
+        "Dart advisory fixed-input transaction profile",
+    )
+    require_all(
+        online_fetch,
+        (
+            "readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(",
+            (
+                "https://storage.googleapis.com/storage/v1/b/"
+                "osv-vulnerabilities/o/Pub%2Fall.zip?alt=media"
+                "&generation=${OSV_DB_PUB_GENERATION}"
+            ),
+            (
+                "https://github.com/google/osv-scanner/releases/download/"
+                "v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+            ),
+            'dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}")',
+            "stage_dart_audit_inputs() {",
+            'stage_archive_bundle dart-audit "$ONLINE_DIR" .rustdesk-dart-audit-inputs',
+            "validate_dart_audit_inputs",
+            "--database-md5 \"$OSV_DB_PUB_MD5_BASE64\"",
+            "--database-crc32c \"$OSV_DB_PUB_CRC32C_BASE64\"",
+            "--database-records \"$OSV_DB_PUB_RECORDS\"",
+            "--database-uncompressed-bytes \"$OSV_DB_PUB_UNCOMPRESSED_BYTES\"",
+            "maintenance_build_dart_audit_image_candidate() {",
+            'local context="$ONLINE_FETCH_TMP/dart-audit-build-context"',
+            '/usr/bin/install -d -m 0700 "$context"',
+            '"$SCRIPT_DIR/Dockerfile.dart-audit" "$context/Dockerfile.dart-audit"',
+            '"$ONLINE_DIR/dart-audit-inputs/osv-scanner" "$context/osv-scanner"',
+            '"$ONLINE_DIR/dart-audit-inputs/Pub-all.zip" "$context/Pub-all.zip"',
+            '"$context" -mindepth 1 -maxdepth 1 -type f',
+            "--network=none --pull=false --no-cache",
+            "--platform=linux/amd64 --provenance=mode=max --load",
+            '--build-arg "DART_AUDIT_DOCKERFILE_SHA256=${SHA256_DART_AUDIT_DOCKERFILE}"',
+            'local tag="rd-dart-audit-candidate:provenance-v1"',
+            "online_image_provenance verify-local",
+            "dart_audit_image_spec_args() {",
+            "require_dart_audit_image_pins() {",
+            "verify_or_load_dart_audit_image() {",
+            "maintenance_capture_dart_audit_image() {",
+            '--archive "$ONLINE_DIR/verifier-images/dart-audit.docker.tar.gz"',
+            '--archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE"',
+            '--archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE"',
+            (
+                'online_image_provenance maintenance-capture \\\n'
+                '            --output "$directory/dart-audit.docker.tar.gz"'
+            ),
+            '--output "$directory/dart-audit.docker.tar.gz"',
+            "--maintenance-capture-dart-audit-image",
+            "--dart-audit-image",
+        ),
+        "Dart advisory acquisition, build, archive, and recovery authority",
+    )
+    candidate = extract_between(
+        online_fetch,
+        "maintenance_build_dart_audit_image_candidate() {",
+        '\n}\n\ncapture_builder_image()',
+        "Dart advisory candidate build",
+    )[0]
+    for forbidden in (
+        "docker pull",
+        "online_docker pull",
+        "--network=host",
+        "--privileged",
+        "--cap-add",
+        "--publish",
+        "source=$REPO_ROOT",
+        "source=$SCRIPT_DIR",
+    ):
+        require(
+            forbidden not in candidate,
+            "Dart advisory candidate build retained forbidden authority {!r}".format(
+                forbidden
+            ),
+        )
+    require_all(
+        provenance,
+        (
+            "class DartAuditSpec:",
+            "DART_AUDIT_CONTRACT = \"rustdesk-dart-audit-image-v1\"",
+            "def contains_vcs_authority(value: object) -> bool:",
+            "contains undeclared VCS authority",
+            '"build-arg:DART_AUDIT_DOCKERFILE_SHA256"',
+            '"force-network-mode": "none"',
+            '"no-cache": ""',
+            (
+                '"local.followpaths": '
+                '\'["Pub-all.zip","osv-scanner"]\''
+            ),
+            "source_operations != expected_sources",
+            (
+                "[set(operation) for operation in operations] != "
+                "["
+            ),
+            'executions[0].get("mounts") != [{"dest": "/"}]',
+            (
+                "DART_AUDIT_VALIDATION_COMMAND_SHA256 = (\n"
+                '    "e8c2ad1bc895b67920107e76caf327c54'
+                'a740ab84f4b40018f59b5948cf46a47"'
+            ),
+            'execution_meta.get("user") != "65532:65532"',
+            'executions[0].get("network") != 2',
+            "base64.b64decode(source_info[\"data\"], validate=True)",
+            "provenance Dockerfile differs from its pin",
+            "root descriptor has undeclared annotations",
+            "if isinstance(spec, (VerifierSpec, DartAuditSpec)):",
+            "save_ref = spec.image_id",
+            "create_dart_audit_fixture_archive(",
+            "add_extra_source=True",
+            "if dart_checks != 21:",
+        ),
+        "Dart advisory image provenance and recoverable archive contract",
+    )
 
     require_once(verify, "python3 scripts/dart-audit-result.py --self-test", "Dart audit result self-test wiring")
+    require_once(
+        verify,
+        "/usr/bin/python3 -I -S scripts/dart-audit-image-input.py --self-test",
+        "Dart advisory fixed-input self-test wiring",
+    )
+    require_once(
+        verify,
+        "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
+        "Dart advisory image archive self-test wiring",
+    )
     require_once(
         verify,
         "python3 scripts/verify-dart-audit-authority.py --repo . --self-test",
@@ -309,6 +500,11 @@ def validate_contract(sources):
             "exactly 30 days",
             "stable private copies",
             "bounded stderr telemetry",
+            "generation-specific GCS media object",
+            "current-user-private three-file context",
+            "VCS-free BuildKit provenance statement",
+            "single-link, mode-0400, untagged OCI archive",
+            "Recovery remains outside the verdict path",
         ),
         "Dart advisory normative closure",
     )
@@ -319,10 +515,15 @@ def validate_contract(sources):
     require_all(
         hardening,
         (
-            "ACQUISITION REMOVED FROM VERDICT PATH",
+            "RECOVERABLE\n  IMAGE DISTRIBUTION CLOSED/GATED",
             "exact 30-day capture-age ceiling",
             IMAGE_ID,
+            CONFIG_ID,
+            MANIFEST_ID,
+            ARCHIVE_SHA256,
+            "Networkless construction and distribution:",
             "31 policy/freshness/status/schema decisions",
+            "199 packages reported",
         ),
         "Dart advisory hardening evidence",
     )
@@ -337,8 +538,11 @@ def validate_contract(sources):
             'Mutation("shell", \'case "$SCANNER_STATUS" in\\n  0|1) ;;\'',
             'Mutation("result", "EXPECTED_DB_MAX_AGE_DAYS = 30"',
             'Mutation("pins", \'DART_AUDIT_IMAGE_ID="{}"\''.format(IMAGE_ID),
+            '"networkless candidate build"',
+            '"VCS-attribution rejection"',
+            '"standalone input immutability"',
             'Mutation("requirements", \'<span class="id">R-S11be</span>\'',
-            'Mutation("hardening", "ACQUISITION REMOVED FROM VERDICT PATH"',
+            'Mutation("hardening", "Networkless construction and distribution:"',
         ),
         "Dart audit authority validator mutation coverage",
     )
@@ -412,15 +616,140 @@ MUTATIONS = (
     Mutation("result", 'require(not findings, "OSV status 0 disagrees with nonempty vulnerability results")', "pass # status 0 agreement", "clean-status agreement"),
     Mutation("result", 'require(bool(findings), "OSV status 1 has no vulnerability result")', "pass # status 1 agreement", "finding-status agreement"),
     Mutation("result", "require(checks == 31", "require(checks >= 0", "behavioral self-test count"),
-    Mutation("pins", 'DART_AUDIT_IMAGE_ID="sha256:f80e9869536995a1db9c14ab07c7b2ddfc83a4eaef52be2e49971c767323de0d"', 'DART_AUDIT_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"', "image content pin"),
-    Mutation("pins", 'OSV_DB_PUB_CAPTURE_EPOCH="1782347599"', 'OSV_DB_PUB_CAPTURE_EPOCH="9999999999"', "capture epoch pin"),
+    Mutation("pins", 'DART_AUDIT_IMAGE_ID="sha256:1cdfd518d52738f17f2724a8424acb0530eaa69e38e1a053a7bead82aae77a65"', 'DART_AUDIT_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"', "image content pin"),
+    Mutation("pins", 'DART_AUDIT_IMAGE_CONFIG_ID="sha256:a1833b5698aef708a1c5485776aea2264b966f978db7923881b7c1e9e70a54fd"', 'DART_AUDIT_IMAGE_CONFIG_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"', "image config pin"),
+    Mutation("pins", 'DART_AUDIT_IMAGE_MANIFEST_ID="sha256:8b09349196d4c32a90072f055840952c0e702be8c2a03ab54586211558217b33"', 'DART_AUDIT_IMAGE_MANIFEST_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"', "image manifest pin"),
+    Mutation("pins", 'SHA256_DART_AUDIT_IMAGE_ARCHIVE="f6afc51f31b0c85c15e1497adfdaa18fe3736150f7149823298a6584d3b811b9"', 'SHA256_DART_AUDIT_IMAGE_ARCHIVE="0000000000000000000000000000000000000000000000000000000000000000"', "image archive pin"),
+    Mutation("pins", 'OSV_DB_PUB_CAPTURE_EPOCH="1783494618"', 'OSV_DB_PUB_CAPTURE_EPOCH="9999999999"', "capture epoch pin"),
     Mutation("pins", 'OSV_DB_PUB_MAX_AGE_DAYS="30"', 'OSV_DB_PUB_MAX_AGE_DAYS="90"', "capture age pin"),
-    Mutation("pins", 'OSV_DB_PUB_SHA256="8b1d25767804f7487d7a26d9ae001c00813329252157eb7d267a8fb6f575b87c"', 'OSV_DB_PUB_SHA256="0000000000000000000000000000000000000000000000000000000000000000"', "database byte pin"),
-    Mutation("dockerfile", "This file is an acquisition recipe only.", "The release gate builds this image.", "acquisition separation"),
+    Mutation("pins", 'OSV_DB_PUB_SHA256="5fdd3db5059b4f935a507385cb93cab3c35ba3d632332a5c8f5deb604f95a5c0"', 'OSV_DB_PUB_SHA256="0000000000000000000000000000000000000000000000000000000000000000"', "database byte pin"),
+    Mutation("dockerfile", "USER 65532:65532", "USER 0:0", "nonroot build validation"),
+    Mutation(
+        "online_fetch",
+        "--network=none --pull=false --no-cache",
+        "--network=default --pull=true --no-cache",
+        "networkless candidate build",
+    ),
+    Mutation(
+        "online_fetch",
+        'local context="$ONLINE_FETCH_TMP/dart-audit-build-context"',
+        'local context="$REPO_ROOT"',
+        "private candidate context",
+    ),
+    Mutation(
+        "online_fetch",
+        'online_image_provenance maintenance-capture \\\n'
+        '            --output "$directory/dart-audit.docker.tar.gz"',
+        'online_image_provenance verify-local \\\n'
+        '            --output "$directory/dart-audit.docker.tar.gz"',
+        "archive capture authority",
+    ),
+    Mutation(
+        "online_fetch",
+        '--archive "$ONLINE_DIR/verifier-images/dart-audit.docker.tar.gz"',
+        '--archive "$ONLINE_DIR/dart-audit.docker.tar.gz"',
+        "private archive namespace",
+    ),
+    Mutation(
+        "provenance",
+        "def contains_vcs_authority(value: object) -> bool:",
+        "def contains_vcs_authority_removed(value: object) -> bool:",
+        "VCS-attribution rejection",
+    ),
+    Mutation(
+        "provenance",
+        'execution_meta.get("user") != "65532:65532"',
+        'execution_meta.get("user") != "0:0"',
+        "attested nonroot validation",
+    ),
+    Mutation(
+        "provenance",
+        'executions[0].get("network") != 2',
+        'executions[0].get("network") != 0',
+        "attested networkless validation",
+    ),
+    Mutation(
+        "provenance",
+        "source_operations != expected_sources",
+        "False",
+        "attested exact source inventory",
+    ),
+    Mutation(
+        "provenance",
+        "if dart_checks != 21:",
+        "if dart_checks < 1:",
+        "Dart image behavioral coverage",
+    ),
+    Mutation(
+        "input_validator",
+        "stat.S_IMODE(before.st_mode) == 0o400",
+        "stat.S_IMODE(before.st_mode) in (0o400, 0o600)",
+        "standalone input immutability",
+    ),
+    Mutation(
+        "input_validator",
+        "metadata_identity(closed) == metadata_identity(after)",
+        "metadata_identity(closed) != metadata_identity(after)",
+        "standalone input path stability",
+    ),
+    Mutation(
+        "input_validator",
+        "before.st_nlink == 1",
+        "before.st_nlink >= 1",
+        "standalone input hardlink refusal",
+    ),
+    Mutation(
+        "input_validator",
+        "actual == expected_sha256",
+        "len(actual) == 64",
+        "standalone input SHA-256 equality",
+    ),
+    Mutation(
+        "input_validator",
+        "actual_md5 == expected_md5",
+        "len(actual_md5) == 24",
+        "standalone input publisher MD5 equality",
+    ),
+    Mutation(
+        "input_validator",
+        "actual_crc32c == expected_crc32c",
+        "len(actual_crc32c) == 8",
+        "standalone input publisher CRC32C equality",
+    ),
+    Mutation(
+        "input_validator",
+        "match = ADVISORY_FILE.fullmatch(name)",
+        "match = ADVISORY_FILE.search(name)",
+        "standalone input member-name grammar",
+    ),
+    Mutation(
+        "input_validator",
+        'record.get("id") == match.group(1)',
+        'record.get("id") is not None',
+        "standalone input record identity",
+    ),
+    Mutation(
+        "input_validator",
+        'data.startswith(b"\\x7fELF")',
+        "bool(data)",
+        "standalone scanner format",
+    ),
+    Mutation(
+        "fixed_helper",
+        "if len(specs) == 2:",
+        "if len(specs) == 3:",
+        "closed fixed-input profile",
+    ),
+    Mutation(
+        "verify",
+        "/usr/bin/python3 -I -S scripts/dart-audit-image-input.py --self-test",
+        "true # Dart advisory input self-test removed",
+        "standalone input self-test",
+    ),
     Mutation("verify", "python3 scripts/verify-dart-audit-authority.py --repo . --self-test", "python3 scripts/verify-dart-audit-authority.py --repo .", "shared semantic gate"),
     Mutation("requirements", '<span class="id">R-S11be</span>', '<span class="id">R-S11be-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>182</td>", "<tr><td>182-disabled</td>", "Appendix disposition"),
-    Mutation("hardening", "ACQUISITION REMOVED FROM VERDICT PATH", "ACQUISITION RETAINED IN VERDICT PATH", "hardening acquisition record"),
+    Mutation("hardening", "Networkless construction and distribution:", "Networked construction and mutable distribution:", "hardening acquisition record"),
 )
 
 
@@ -443,6 +772,10 @@ def load_sources(repo):
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "validator": (repo / "scripts/verify-dart-audit-authority.py").read_text(encoding="utf-8"),
+        "online_fetch": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
+        "provenance": (repo / "scripts/offline-image-provenance.py").read_text(encoding="utf-8"),
+        "input_validator": (repo / "scripts/dart-audit-image-input.py").read_text(encoding="utf-8"),
+        "fixed_helper": (repo / "scripts/online-fixed-archive-output.py").read_text(encoding="utf-8"),
     }
 
 

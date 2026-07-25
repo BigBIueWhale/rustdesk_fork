@@ -90,7 +90,7 @@ def validate(sources: Mapping[str, str]) -> None:
 
     expected_pins = {
         "SHA256_ONLINE_CLOSURE_V1": (
-            "ab9d1b9e467dbc7723f809eb7d7e905ca5b9285fe00f8572e96c2490fe0ffc66"
+            "672429137499995654db109cb0bfeb5823f5204528e352e3bb1904ac071f0b92"
         ),
         "SHA256_CARGO_VENDOR_CLOSURE_V1": (
             "fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"
@@ -301,7 +301,7 @@ def validate(sources: Mapping[str, str]) -> None:
     semantic_profile = extract(
         shell,
         "online_docker_run_cargo_semantic() {",
-        "\n}\n\n# Exact archive acquisition",
+        "\n}\n\n# Pub resolution needs",
         "Cargo semantic container profile",
     )
     for token in (

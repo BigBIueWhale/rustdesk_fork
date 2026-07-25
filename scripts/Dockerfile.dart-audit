@@ -8,42 +8,72 @@
 # the verdict is reproducible against a fixed snapshot (R-B10/R-B12 provenance),
 # exactly like the cargo-audit twin against ADVISORY_DB_COMMIT.
 #
-# Two pins are load-bearing and verified DURING this build (fail-closed on drift):
+# Two pins are load-bearing and verified before this build (fail-closed on drift):
 #   * the osv-scanner binary  -> OSV_SCANNER_SHA256  (pins.env)
 #   * the OSV Pub db snapshot  -> OSV_DB_PUB_SHA256  (pins.env)
-# This file is an acquisition recipe only. scripts/dart-audit.sh never invokes
-# it: acquisition must deliberately produce and independently archive an image,
-# then update the exact content ID, scanner/database pins, capture metadata, and
-# reviewed policy together. The resulting image is self-contained, so verdict
-# execution needs no network.
+# scripts/online-fetch.sh acquires those standalone files by exact URL, size, and
+# SHA-256 through its no-clobber fixed-archive transaction, validates their
+# publisher checksums and database structure, then invokes this Dockerfile with
+# --network=none and --pull=false. scripts/dart-audit.sh never invokes any of
+# that maintenance authority. The resulting image is independently archived,
+# and verdict execution needs no network or mutable tag.
 #
-# FROM the digest-pinned ubuntu:18.04 baseline (the same SHA256_BASEIMAGE_UBUNTU_1804
-# already provenance'd in pins.env for the .deb builder). osv-scanner ships as a
-# statically-linked Go binary, so the base only needs ca-certificates + curl for
-# the one build-time fetch — no runtime libs.
-ARG BASE_DIGEST
-FROM ubuntu:18.04@${BASE_DIGEST}
-ENV DEBIAN_FRONTEND=noninteractive
+# FROM the already-local digest-pinned ubuntu:18.04 baseline (the same
+# SHA256_BASEIMAGE_UBUNTU_1804 provenance used by the .deb builder). osv-scanner
+# is a static Go binary, so no package installation or network operation exists.
+ARG BASE_DIGEST=sha256:152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98
+FROM ubuntu:18.04@${BASE_DIGEST} AS validated-inputs
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── 1. the pinned OSV-Scanner binary (verified against the pins.env SHA-256) ──
 ARG OSV_SCANNER_VERSION
 ARG OSV_SCANNER_SHA256
-RUN curl -fsSL -o /usr/local/bin/osv-scanner \
-      "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" \
-    && echo "${OSV_SCANNER_SHA256}  /usr/local/bin/osv-scanner" | sha256sum -c - \
-    && chmod 0755 /usr/local/bin/osv-scanner \
-    && osv-scanner --version
-
-# ── 2. the pinned OSV "Pub" advisory-db snapshot (verified against pins.env) ──
-# osv-scanner --offline reads {OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY}/osv-scanner/
-# <ecosystem>/all.zip. Bake the Pub snapshot there so the scan is fully offline.
 ARG OSV_DB_PUB_SHA256
+ARG OSV_DB_PUB_SIZE
+ARG OSV_DB_PUB_CAPTURE_EPOCH
+
+USER 65532:65532
+COPY --chown=65532:65532 --chmod=0755 osv-scanner /inputs/osv-scanner
+COPY --chown=65532:65532 --chmod=0644 Pub-all.zip /inputs/all.zip
+
+RUN set -eu; \
+    printf '%s  %s\n' "${OSV_SCANNER_SHA256}" /inputs/osv-scanner \
+      | sha256sum --check --strict --status -; \
+    printf '%s  %s\n' "${OSV_DB_PUB_SHA256}" /inputs/all.zip \
+      | sha256sum --check --strict --status -; \
+    [ "$(stat -c '%s' /inputs/all.zip)" = "${OSV_DB_PUB_SIZE}" ]; \
+    touch -d "@${OSV_DB_PUB_CAPTURE_EPOCH}" /inputs/all.zip; \
+    [ "$(stat -c '%Y' /inputs/all.zip)" = "${OSV_DB_PUB_CAPTURE_EPOCH}" ]; \
+    /inputs/osv-scanner --version
+
+FROM ubuntu:18.04@${BASE_DIGEST}
+
+ARG BASE_DIGEST
+ARG OSV_SCANNER_VERSION
+ARG OSV_SCANNER_SHA256
+ARG OSV_DB_PUB_SHA256
+ARG OSV_DB_PUB_SIZE
+ARG OSV_DB_PUB_CAPTURE_EPOCH
+ARG OSV_DB_PUB_GENERATION
+ARG DART_AUDIT_DOCKERFILE_SHA256
+ARG DART_AUDIT_CONTRACT=rustdesk-dart-audit-image-v1
+
 ENV OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/osv-db
-RUN mkdir -p /opt/osv-db/osv-scanner/Pub \
-    && curl -fsSL -o /opt/osv-db/osv-scanner/Pub/all.zip \
-      "https://osv-vulnerabilities.storage.googleapis.com/Pub/all.zip" \
-    && echo "${OSV_DB_PUB_SHA256}  /opt/osv-db/osv-scanner/Pub/all.zip" | sha256sum -c -
+
+LABEL org.rustdesk.dart-audit-input.contract="${DART_AUDIT_CONTRACT}" \
+      org.rustdesk.dart-audit-input.base="ubuntu:18.04@${BASE_DIGEST}" \
+      org.rustdesk.dart-audit-input.dockerfile-sha256="${DART_AUDIT_DOCKERFILE_SHA256}" \
+      org.rustdesk.dart-audit-input.scanner-version="${OSV_SCANNER_VERSION}" \
+      org.rustdesk.dart-audit-input.scanner-sha256="${OSV_SCANNER_SHA256}" \
+      org.rustdesk.dart-audit-input.database-sha256="${OSV_DB_PUB_SHA256}" \
+      org.rustdesk.dart-audit-input.database-size="${OSV_DB_PUB_SIZE}" \
+      org.rustdesk.dart-audit-input.database-capture-epoch="${OSV_DB_PUB_CAPTURE_EPOCH}" \
+      org.rustdesk.dart-audit-input.database-generation="${OSV_DB_PUB_GENERATION}"
+
+COPY --from=validated-inputs --chown=0:0 --chmod=0755 \
+    /inputs/osv-scanner /usr/local/bin/osv-scanner
+# BuildKit applies COPY --chmod to the first missing destination component.
+# Establish traversable database parents with the exact same bytes first, then
+# replace only the final file at its required read-only runtime mode.
+COPY --from=validated-inputs --chown=0:0 --chmod=0755 \
+    /inputs/all.zip /opt/osv-db/osv-scanner/Pub/all.zip
+COPY --from=validated-inputs --chown=0:0 --chmod=0644 \
+    /inputs/all.zip /opt/osv-db/osv-scanner/Pub/all.zip

@@ -148,6 +148,20 @@ readonly -a FIXED_ARCHIVE_ARGS=(
     "$SHA256_RUST_MSVC_1_75"
     "static.rust-lang.org"
 )
+readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(
+    --entry
+    "dart-audit-inputs/Pub-all.zip"
+    "https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o/Pub%2Fall.zip?alt=media&generation=${OSV_DB_PUB_GENERATION}"
+    "$OSV_DB_PUB_SIZE"
+    "$OSV_DB_PUB_SHA256"
+    "storage.googleapis.com"
+    --entry
+    "dart-audit-inputs/osv-scanner"
+    "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+    "$OSV_SCANNER_SIZE"
+    "$OSV_SCANNER_SHA256"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
+)
 readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(
     --entry
     "wix-nuget-packages/wixtoolset.firewall.wixext.${WIX_NUGET_VERSION}.nupkg"
@@ -1023,8 +1037,9 @@ vendor_cargo() {
 # Remote bytes receive one private output transaction, not the online root or a
 # final name. The host independently checks every exact length/digest before a
 # descriptor-relative no-clobber publication. The admitted manifests are the
-# fourteen toolchain/installer archives, six signed WiX packages, 33 vcpkg
-# source/tool distfiles, and the one dated Debian systemd image.
+# fourteen toolchain/installer archives, the two Dart-audit rebuild inputs, six
+# signed WiX packages, 33 vcpkg source/tool distfiles, and the one dated Debian
+# systemd image.
 load_vcpkg_fixed_archive_manifest() {
     local name size digest url hosts extra tool_name tool_hash tool_extra count=0
     local manifest_sha256
@@ -1086,6 +1101,7 @@ archive_bundle_tool() {
     local -a archive_args=()
     shift 6
     case "$kind" in
+        dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}") ;;
         systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
         toolchain) archive_args=("${FIXED_ARCHIVE_ARGS[@]}") ;;
         vcpkg) archive_args=("${VCPKG_FIXED_ARCHIVE_ARGS[@]}") ;;
@@ -1194,6 +1210,34 @@ stage_archive_bundle() {
 stage_fixed_archives() {
     stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-fixed-archives \
         "fixed toolchain and installer archives"
+}
+
+validate_dart_audit_inputs() {
+    local builder="$ANDROID_BUILDER_IMAGE_ID"
+    require_online_fetch_builder_image android-builder "$builder"
+    online_docker_run_offline \
+        --mount "type=bind,source=$SCRIPT_DIR/dart-audit-image-input.py,target=/authority/dart-audit-image-input.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$ONLINE_DIR/dart-audit-inputs/osv-scanner,target=/inputs/osv-scanner,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$ONLINE_DIR/dart-audit-inputs/Pub-all.zip,target=/inputs/Pub-all.zip,readonly,bind-recursive=disabled" \
+        "$builder" \
+        /usr/bin/python3 -I -S /authority/dart-audit-image-input.py \
+        --scanner /inputs/osv-scanner \
+        --scanner-size "$OSV_SCANNER_SIZE" \
+        --scanner-sha256 "$OSV_SCANNER_SHA256" \
+        --database /inputs/Pub-all.zip \
+        --database-size "$OSV_DB_PUB_SIZE" \
+        --database-sha256 "$OSV_DB_PUB_SHA256" \
+        --database-md5 "$OSV_DB_PUB_MD5_BASE64" \
+        --database-crc32c "$OSV_DB_PUB_CRC32C_BASE64" \
+        --database-records "$OSV_DB_PUB_RECORDS" \
+        --database-uncompressed-bytes "$OSV_DB_PUB_UNCOMPRESSED_BYTES"
+}
+
+stage_dart_audit_inputs() {
+    stage_archive_bundle dart-audit "$ONLINE_DIR" .rustdesk-dart-audit-inputs \
+        "fixed Dart advisory image inputs"
+    validate_dart_audit_inputs \
+        || die "Dart advisory image inputs failed their independent structural validation"
 }
 
 stage_vcpkg_fixed_archives() {
@@ -1333,6 +1377,88 @@ maintenance_capture_devcheck_image() {
     printf '%s\n' "$result"
 }
 
+dart_audit_image_spec_args() {
+    printf '%s\0' \
+        --role dart-audit \
+        --expected-id "$DART_AUDIT_IMAGE_ID" \
+        --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        --dockerfile-sha "$SHA256_DART_AUDIT_DOCKERFILE" \
+        --scanner-sha "$OSV_SCANNER_SHA256" \
+        --scanner-version "$OSV_SCANNER_VERSION" \
+        --scalibr-version "$OSV_SCALIBR_VERSION" \
+        --scanner-commit "$OSV_SCANNER_COMMIT" \
+        --scanner-built-at "$OSV_SCANNER_BUILT_AT" \
+        --database-sha "$OSV_DB_PUB_SHA256" \
+        --database-size "$OSV_DB_PUB_SIZE" \
+        --database-capture-epoch "$OSV_DB_PUB_CAPTURE_EPOCH" \
+        --database-generation "$OSV_DB_PUB_GENERATION" \
+        --config-id "$DART_AUDIT_IMAGE_CONFIG_ID" \
+        --manifest-id "$DART_AUDIT_IMAGE_MANIFEST_ID"
+}
+
+require_dart_audit_image_pins() {
+    local names=(
+        DART_AUDIT_IMAGE_ID DART_AUDIT_IMAGE_CONFIG_ID
+        DART_AUDIT_IMAGE_MANIFEST_ID SHA256_BASEIMAGE_UBUNTU_1804
+        SHA256_DART_AUDIT_DOCKERFILE
+        OSV_SCANNER_SHA256 OSV_SCANNER_VERSION OSV_SCALIBR_VERSION
+        OSV_SCANNER_COMMIT OSV_SCANNER_BUILT_AT
+        OSV_DB_PUB_SHA256 OSV_DB_PUB_SIZE OSV_DB_PUB_CAPTURE_EPOCH
+        OSV_DB_PUB_GENERATION
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.dart-audit" | /usr/bin/awk '{print $1}')" \
+       = "$SHA256_DART_AUDIT_DOCKERFILE" ] \
+        || die "current Dart advisory Dockerfile differs from the archived image recipe"
+}
+
+verify_or_load_dart_audit_image() {
+    require_dart_audit_image_pins
+    require_image_pin SHA256_DART_AUDIT_IMAGE_ARCHIVE
+    require_image_pin SIZE_DART_AUDIT_IMAGE_ARCHIVE
+    case "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" in
+        0|*[!0-9]*|'') die "SIZE_DART_AUDIT_IMAGE_ARCHIVE is not one positive decimal integer" ;;
+    esac
+    local args=()
+    mapfile -d '' args < <(dart_audit_image_spec_args)
+    online_image_provenance verify-load \
+        --archive "$ONLINE_DIR/verifier-images/dart-audit.docker.tar.gz" \
+        --archive-sha "$SHA256_DART_AUDIT_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_DART_AUDIT_IMAGE_ARCHIVE" \
+        "${args[@]}"
+}
+
+maintenance_capture_dart_audit_image() {
+    require_dart_audit_image_pins
+    local directory="$ONLINE_DIR/verifier-images"
+    if [ -e "$directory" ] || [ -L "$directory" ]; then
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            || die "Dart advisory image archive root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "Dart advisory image archive root is not current-user-private mode 0700"
+    else
+        /usr/bin/install -d -m 0700 "$directory"
+    fi
+    local lock_fd
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the Dart advisory image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Dart advisory image archive transaction owns the archive root"
+    local args=() result
+    mapfile -d '' args < <(dart_audit_image_spec_args)
+    result="$(
+        online_image_provenance maintenance-capture \
+            --output "$directory/dart-audit.docker.tar.gz" \
+            "${args[@]}"
+    )" || die "Dart advisory image archive capture failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Dart advisory image archive lock"
+    exec {lock_fd}<&-
+    printf '%s\n' "$result"
+}
+
 # Explicit maintenance candidate builds. Captured images remain the release authority.
 build_deb_builder_image() {
     require_image_pin SHA256_DEB_BUILDER_DOCKERFILE
@@ -1401,6 +1527,89 @@ maintenance_build_image_candidates() {
     build_deb_builder_image
     build_android_builder_image
     build_windows_helper_image
+}
+
+maintenance_build_dart_audit_image_candidate() {
+    local names=(
+        SHA256_BASEIMAGE_UBUNTU_1804
+        OSV_SCANNER_VERSION OSV_SCALIBR_VERSION OSV_SCANNER_COMMIT
+        OSV_SCANNER_BUILT_AT OSV_SCANNER_SIZE OSV_SCANNER_SHA256
+        OSV_DB_PUB_SHA256 OSV_DB_PUB_SIZE OSV_DB_PUB_CAPTURE_EPOCH
+        OSV_DB_PUB_GENERATION SHA256_DART_AUDIT_DOCKERFILE
+    )
+    local name base_identity image_id
+    local tag="rd-dart-audit-candidate:provenance-v1"
+    local context="$ONLINE_FETCH_TMP/dart-audit-build-context"
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.dart-audit" | /usr/bin/awk '{print $1}')" \
+       = "$SHA256_DART_AUDIT_DOCKERFILE" ] \
+        || die "Dart advisory Dockerfile differs from its pin"
+    stage_dart_audit_inputs
+    [ ! -e "$context" ] && [ ! -L "$context" ] \
+        || die "private Dart advisory build context already exists"
+    /usr/bin/install -d -m 0700 "$context"
+    /usr/bin/install -m 0400 \
+        "$SCRIPT_DIR/Dockerfile.dart-audit" "$context/Dockerfile.dart-audit"
+    /usr/bin/install -m 0400 \
+        "$ONLINE_DIR/dart-audit-inputs/osv-scanner" "$context/osv-scanner"
+    /usr/bin/install -m 0400 \
+        "$ONLINE_DIR/dart-audit-inputs/Pub-all.zip" "$context/Pub-all.zip"
+    [ "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 -type f | /usr/bin/wc -l)" -eq 3 ] \
+        && [ -z "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 ! -type f -print -quit)" ] \
+        || die "private Dart advisory build context has an unexpected inventory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' "$context")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private Dart advisory build context metadata differs"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' "$context/Dockerfile.dart-audit")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" ] \
+        || die "private Dart advisory Dockerfile metadata differs"
+    [ "$(/usr/bin/sha256sum "$context/Dockerfile.dart-audit" | /usr/bin/awk '{print $1}')" \
+       = "$SHA256_DART_AUDIT_DOCKERFILE" ] \
+        || die "private Dart advisory Dockerfile bytes differ"
+    [ "$(/usr/bin/sha256sum "$context/osv-scanner" | /usr/bin/awk '{print $1}')" \
+       = "$OSV_SCANNER_SHA256" ] \
+        || die "private Dart advisory scanner bytes differ"
+    [ "$(/usr/bin/sha256sum "$context/Pub-all.zip" | /usr/bin/awk '{print $1}')" \
+       = "$OSV_DB_PUB_SHA256" ] \
+        || die "private Dart advisory database bytes differ"
+    base_identity="$(
+        online_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}' \
+            "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}"
+    )" || die "the exact Dart advisory base image is not already present"
+    [ "$base_identity" = "${SHA256_BASEIMAGE_UBUNTU_1804}|linux|amd64" ] \
+        || die "the local Dart advisory base image differs from its exact Linux/amd64 pin"
+    online_docker buildx build \
+        --network=none --pull=false --no-cache \
+        --platform=linux/amd64 --provenance=mode=max --load \
+        --build-arg "BASE_DIGEST=${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        --build-arg "OSV_SCANNER_VERSION=${OSV_SCANNER_VERSION}" \
+        --build-arg "OSV_SCANNER_SHA256=${OSV_SCANNER_SHA256}" \
+        --build-arg "OSV_DB_PUB_SHA256=${OSV_DB_PUB_SHA256}" \
+        --build-arg "OSV_DB_PUB_SIZE=${OSV_DB_PUB_SIZE}" \
+        --build-arg "OSV_DB_PUB_CAPTURE_EPOCH=${OSV_DB_PUB_CAPTURE_EPOCH}" \
+        --build-arg "OSV_DB_PUB_GENERATION=${OSV_DB_PUB_GENERATION}" \
+        --build-arg "DART_AUDIT_DOCKERFILE_SHA256=${SHA256_DART_AUDIT_DOCKERFILE}" \
+        --tag "$tag" \
+        --file "$context/Dockerfile.dart-audit" \
+        "$context"
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the Dart advisory candidate"
+    online_image_provenance verify-local \
+        --image-ref "$tag" \
+        --role dart-audit \
+        --expected-id "$image_id" \
+        --base "ubuntu:18.04@${SHA256_BASEIMAGE_UBUNTU_1804}" \
+        --dockerfile-sha "$SHA256_DART_AUDIT_DOCKERFILE" \
+        --scanner-sha "$OSV_SCANNER_SHA256" \
+        --scanner-version "$OSV_SCANNER_VERSION" \
+        --scalibr-version "$OSV_SCALIBR_VERSION" \
+        --scanner-commit "$OSV_SCANNER_COMMIT" \
+        --scanner-built-at "$OSV_SCANNER_BUILT_AT" \
+        --database-sha "$OSV_DB_PUB_SHA256" \
+        --database-size "$OSV_DB_PUB_SIZE" \
+        --database-capture-epoch "$OSV_DB_PUB_CAPTURE_EPOCH" \
+        --database-generation "$OSV_DB_PUB_GENERATION"
+    printf 'DART_AUDIT_IMAGE_ID="%s"\n' "$image_id"
 }
 
 capture_builder_image() {
@@ -3674,6 +3883,16 @@ main() {
             maintenance_build_image_candidates
             return 0
             ;;
+        --maintenance-build-dart-audit-image-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-build-dart-audit-image-candidate takes no arguments"
+            maintenance_build_dart_audit_image_candidate
+            return 0
+            ;;
+        --dart-audit-inputs)
+            [ "$#" -eq 1 ] || die "--dart-audit-inputs takes no arguments"
+            stage_dart_audit_inputs
+            return 0
+            ;;
         --maintenance-capture-builder-images)
             [ "$#" -eq 1 ] || die "--maintenance-capture-builder-images takes no arguments"
             maintenance_capture_builder_images
@@ -3684,9 +3903,19 @@ main() {
             maintenance_capture_devcheck_image
             return 0
             ;;
+        --maintenance-capture-dart-audit-image)
+            [ "$#" -eq 1 ] || die "--maintenance-capture-dart-audit-image takes no arguments"
+            maintenance_capture_dart_audit_image
+            return 0
+            ;;
         --devcheck-image)
             [ "$#" -eq 1 ] || die "--devcheck-image takes no arguments"
             verify_or_load_devcheck_image
+            return 0
+            ;;
+        --dart-audit-image)
+            [ "$#" -eq 1 ] || die "--dart-audit-image takes no arguments"
+            verify_or_load_dart_audit_image
             return 0
             ;;
         --maintenance-print-online-closure)
@@ -3704,6 +3933,7 @@ main() {
             verify_online_pinned_archives
             load_builder_images
             verify_or_load_devcheck_image
+            verify_or_load_dart_audit_image
             require_online_complete
             return 0
             ;;
@@ -3713,11 +3943,13 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--maintenance-build-image-candidates|--maintenance-capture-builder-images|--maintenance-capture-devcheck-image|--devcheck-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-dart-audit-image-candidate|--maintenance-capture-builder-images|--maintenance-capture-devcheck-image|--maintenance-capture-dart-audit-image|--devcheck-image|--dart-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images
     verify_or_load_devcheck_image
+    verify_or_load_dart_audit_image
+    stage_dart_audit_inputs
     stage_fixed_archives
     vendor_cargo
     verify_online_glob_cardinality

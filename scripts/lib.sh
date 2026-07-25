@@ -174,7 +174,9 @@ verify_online_pinned_archives() {
         "vs-buildtools.layout.tar" "$SHA256_VS_BUILDTOOLS" \
         "win/rust-${RUST_VERSION}.0-x86_64-pc-windows-msvc.msi" "$SHA256_RUST_MSVC_1_75" \
         "win/Git-2.45.2-64-bit.exe" "$SHA256_GIT_WIN_2_45_2" \
-        "win/rustup-init.exe" "$SHA256_RUSTUP_INIT_WIN"
+        "win/rustup-init.exe" "$SHA256_RUSTUP_INIT_WIN" \
+        "dart-audit-inputs/Pub-all.zip" "$OSV_DB_PUB_SHA256" \
+        "dart-audit-inputs/osv-scanner" "$OSV_SCANNER_SHA256"
     verify_sha512 "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
 }
 

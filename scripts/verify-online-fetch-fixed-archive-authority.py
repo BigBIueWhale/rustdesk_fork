@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind fixed toolchain, WiX, vcpkg, and Debian image acquisition authority."""
+"""Bind fixed toolchain, Dart, WiX, vcpkg, and Debian image acquisition authority."""
 
 from __future__ import annotations
 
@@ -38,6 +38,31 @@ EXPECTED_SYSTEMD_IMAGE_SHA256 = (
 EXPECTED_SYSTEMD_IMAGE_SHA512 = (
     "6c2607f1846ee86040830c87d0b723f0967da3e884ea4673d9db4aa8eee13a4b"
     "7c663524bfa42082c16fc6919f3aa1bf425c004d07ff06c53a319ad0c42647bb"
+)
+EXPECTED_DART_AUDIT_MANIFEST = (
+    (
+        "dart-audit-inputs/Pub-all.zip",
+        (
+            "https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o/"
+            "Pub%2Fall.zip?alt=media&generation=${OSV_DB_PUB_GENERATION}"
+        ),
+        "$OSV_DB_PUB_SIZE",
+        "$OSV_DB_PUB_SHA256",
+        "storage.googleapis.com",
+    ),
+    (
+        "dart-audit-inputs/osv-scanner",
+        (
+            "https://github.com/google/osv-scanner/releases/download/"
+            "v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+        ),
+        "$OSV_SCANNER_SIZE",
+        "$OSV_SCANNER_SHA256",
+        (
+            "github.com,release-assets.githubusercontent.com,"
+            "objects.githubusercontent.com"
+        ),
+    ),
 )
 
 EXPECTED_SIZES = {
@@ -311,6 +336,60 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             f"exact archive digest pin changed: {variable}",
         )
         require(manifest.count(f'"${variable}"') == 1, f"digest pin is not consumed once: {variable}")
+    dart_manifest_start = shell.find("readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(")
+    require(
+        dart_manifest_start >= 0,
+        "Dart advisory fixed-input manifest declaration is absent",
+    )
+    dart_manifest_end = shell.find("\n)\n", dart_manifest_start)
+    require(
+        dart_manifest_end >= 0,
+        "Dart advisory fixed-input manifest terminator is absent",
+    )
+    dart_manifest = shell[dart_manifest_start : dart_manifest_end + 3]
+    require(
+        dart_manifest.count("--entry\n") == 2,
+        "Dart advisory fixed-input manifest is not exactly two entries",
+    )
+    dart_positions = []
+    for entry in EXPECTED_DART_AUDIT_MANIFEST:
+        snippet = "\n".join(f'    "{field}"' for field in entry)
+        require(
+            dart_manifest.count(snippet) == 1,
+            f"Dart advisory fixed-input manifest entry changed: {entry[0]}",
+        )
+        dart_positions.append(dart_manifest.index(snippet))
+    require(
+        dart_positions == sorted(dart_positions),
+        "Dart advisory fixed-input manifest order changed",
+    )
+    for name, value in (
+        ("OSV_SCANNER_SIZE", "56676514"),
+        (
+            "OSV_SCANNER_SHA256",
+            "15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0",
+        ),
+        ("OSV_DB_PUB_SIZE", "19448"),
+        (
+            "OSV_DB_PUB_SHA256",
+            "5fdd3db5059b4f935a507385cb93cab3c35ba3d632332a5c8f5deb604f95a5c0",
+        ),
+        ("OSV_DB_PUB_GENERATION", "1783494617999513"),
+    ):
+        require(
+            pins.count(f'{name}="{value}"') == 1,
+            f"Dart advisory fixed-input pin changed: {name}",
+        )
+        if name == "OSV_DB_PUB_GENERATION":
+            require(
+                dart_manifest.count("${OSV_DB_PUB_GENERATION}") == 1,
+                "Dart advisory database generation is not consumed once",
+            )
+        else:
+            require(
+                dart_manifest.count(f'"${name}"') == 1,
+                f"Dart advisory fixed-input pin is not consumed once: {name}",
+            )
     wix_manifest_start = shell.find("readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(")
     require(wix_manifest_start >= 0, "WiX fixed-package manifest declaration is absent")
     wix_manifest_end = shell.find("\n)\n", wix_manifest_start)
@@ -454,6 +533,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"',
             'readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"',
             "readonly -a FIXED_ARCHIVE_ARGS=(",
+            "readonly -a DART_AUDIT_FIXED_INPUT_ARGS=(",
             "readonly -a WIX_NUGET_FIXED_ARCHIVE_ARGS=(",
             "readonly -a SYSTEMD_SMOKE_IMAGE_ARGS=(",
             "load_vcpkg_fixed_archive_manifest",
@@ -467,6 +547,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'archive_bundle_tool "$kind" "$root" verify "$staging"',
             'archive_bundle_tool "$kind" "$root" publish "$staging"',
             'archive_bundle_tool "$kind" "$root" reconcile "$staging"',
+            'dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}")',
             'exec {lock_fd}<"$root"',
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
             '"$FLOCK_BIN" --unlock "$lock_fd"',
@@ -477,7 +558,9 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             '"$builder" \\\n        /usr/bin/python3 -I -S /online-fixed-archive-output.py acquire',
             '--builder-id "$builder" --helper-sha256 "$helper_sha256"',
             "stage_fixed_archives",
+            "stage_dart_audit_inputs",
             "stage_vcpkg_fixed_archives",
+            'stage_archive_bundle dart-audit "$ONLINE_DIR" .rustdesk-dart-audit-inputs',
             'stage_archive_bundle toolchain "$ONLINE_DIR" .rustdesk-fixed-archives',
             'stage_archive_bundle wix "$ONLINE_DIR" .rustdesk-wix-nuget-packages',
             'stage_archive_bundle vcpkg "$ONLINE_DIR" .rustdesk-vcpkg-fixed-archives',
@@ -566,6 +649,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "def download_timeout_seconds(spec: ArchiveSpec) -> int:",
             "timeout=download_timeout_seconds(spec)",
             "if len(specs) == 1:",
+            "if len(specs) == 2:",
             "if len(specs) == 6:",
             "if len(specs) == 14:",
             "if len(specs) == 33:",
@@ -614,6 +698,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "archive self-test widened the ordinary download timeout",
             "vcpkg self-test publication omitted an archive",
             "WiX self-test publication omitted a package",
+            "Dart-audit self-test publication omitted an input",
             "self-test accepted a response without admitted length framing",
         ),
         "fixed archive helper",
@@ -702,6 +787,33 @@ MUTATIONS = (
         "legacy downloader absence",
     ),
     Mutation("shell", "--entry\n", "--entry-removed\n", "manifest entry count"),
+    Mutation(
+        "shell",
+        (
+            "https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o/"
+            "Pub%2Fall.zip?alt=media&generation=${OSV_DB_PUB_GENERATION}"
+        ),
+        "https://osv-vulnerabilities.storage.googleapis.com/Pub/all.zip",
+        "Dart advisory generation-bound database URL",
+    ),
+    Mutation(
+        "pins",
+        'OSV_SCANNER_SIZE="56676514"',
+        'OSV_SCANNER_SIZE="56676515"',
+        "Dart advisory scanner length pin",
+    ),
+    Mutation(
+        "helper",
+        "if len(specs) == 2:",
+        "if len(specs) == 3:",
+        "closed Dart advisory input profile",
+    ),
+    Mutation(
+        "shell",
+        'dart-audit) archive_args=("${DART_AUDIT_FIXED_INPUT_ARGS[@]}")',
+        'dart-audit) archive_args=("${FIXED_ARCHIVE_ARGS[@]}")',
+        "Dart advisory acquisition profile dispatch",
+    ),
     Mutation(
         "shell",
         "    stage_fixed_archives\n",
